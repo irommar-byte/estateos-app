@@ -53,7 +53,7 @@ export default function Radar({ theme, navigation }: { theme: any, navigation: a
   const fetchOffers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://192.168.50.128:3000/api/mobile/v1/offers');
+      const res = await fetch('https://estateos.pl/api/mobile/v1/offers');
       const data = await res.json();
       if (data.success && data.offers) {
         setAllOffers(data.offers);
@@ -169,7 +169,7 @@ export default function Radar({ theme, navigation }: { theme: any, navigation: a
                 isSelected ? styles.markerPillActive : null
               ]}>
                 <Text style={[styles.markerText, { color: isSelected ? '#FFF' : (isDark ? '#FFF' : '#000') }]}>
-                  {formatPriceMarker(offer.price)}
+                  <View style={{ backgroundColor: "white", padding: 5, borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: "#ccc" }}><Text style={{ color: "black", fontWeight: "bold", textAlign: "center" }}>{formatPriceMarker(offer.price)}</Text></View>
                 </Text>
               </View>
             </Marker>

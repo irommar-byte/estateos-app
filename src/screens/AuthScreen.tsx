@@ -31,7 +31,7 @@ export default function AuthScreen({ theme }: { theme: any }) {
     const timer = setTimeout(async () => {
       setEmailStatus('loading');
       try {
-        const res = await fetch('http://192.168.50.128:3000/api/mobile/v1/auth/check', {
+        const res = await fetch('https://estateos.pl/api/mobile/v1/auth/check', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field: 'email', value: email })
         });
         const d = await res.json();
@@ -47,7 +47,7 @@ export default function AuthScreen({ theme }: { theme: any }) {
     const timer = setTimeout(async () => {
       setPhoneStatus('loading');
       try {
-        const res = await fetch('http://192.168.50.128:3000/api/mobile/v1/auth/check', {
+        const res = await fetch('https://estateos.pl/api/mobile/v1/auth/check', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field: 'phone', value: '+48 ' + cleanPhone })
         });
         const d = await res.json();

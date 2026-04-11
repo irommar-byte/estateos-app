@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 const Colors = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
-const API_URL = 'http://192.168.50.128:3000'; // Twój serwer Next.js
+const API_URL = 'https://estateos.pl'; // Twój serwer Next.js
 
 export default function Step6_Summary({ theme }: { theme: any }) {
   const { draft, resetDraft, setCurrentStep } = useOfferStore();

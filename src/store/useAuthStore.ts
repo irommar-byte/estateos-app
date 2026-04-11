@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Passkey } from 'react-native-passkey';
 
-const API_URL = 'http://192.168.50.128:3000/api/mobile/v1/auth';
-const PASSKEY_URL = 'http://192.168.50.128:3000/api/mobile/v1/passkeys';
+const API_URL = 'https://estateos.pl/api/mobile/v1/auth';
+const PASSKEY_URL = 'https://estateos.pl/api/mobile/v1/passkeys';
 
 const normalizeUser = (u: any) => {
   if (!u) return u;
@@ -22,7 +22,7 @@ export const useAuthStore = create((set, get: any) => ({
   token: null,
 
   login: async (email, password) => {
-    const res = await fetch('http://192.168.50.128:3000/api/mobile/v1/login', {
+    const res = await fetch('https://estateos.pl/api/mobile/v1/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
     });
     const data = await res.json();
@@ -115,7 +115,7 @@ export const useAuthStore = create((set, get: any) => ({
     set({ user: updatedUser });
     await AsyncStorage.setItem('userData', JSON.stringify(updatedUser));
     try {
-      await fetch('http://192.168.50.128:3000/api/mobile/v1/user/update', { 
+      await fetch('https://estateos.pl/api/mobile/v1/user/update', { 
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, image: base64Img }) 
       });
     } catch (e) { console.log("Błąd zapisu avatara", e); }

@@ -17,7 +17,7 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
   const fetchOffers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`http://192.168.50.128:3000/api/mobile/v1/admin/offers?status=${activeTab}`);
+      const res = await fetch(`https://estateos.pl/api/mobile/v1/admin/offers?status=${activeTab}`);
       const data = await res.json();
       if (data.success) setOffers(data.offers);
     } catch (e) {
@@ -31,7 +31,7 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
   const changeStatus = async (offerId: number, newStatus: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const res = await fetch('http://192.168.50.128:3000/api/mobile/v1/admin/offers', {
+      const res = await fetch('https://estateos.pl/api/mobile/v1/admin/offers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offerId, newStatus })
       });
