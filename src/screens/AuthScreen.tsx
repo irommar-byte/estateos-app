@@ -1,3 +1,4 @@
+import { useNavigation } from "@react-navigation/native";
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
@@ -5,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 export default function AuthScreen({ theme }: { theme: any }) {
+  const navigation = useNavigation<any>();
   const [isLogin, setIsLogin] = useState(true);
   const [role, setRole] = useState<'PRIVATE' | 'PARTNER'>('PRIVATE');
   const [email, setEmail] = useState('');
@@ -61,7 +63,8 @@ export default function AuthScreen({ theme }: { theme: any }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       if (isLogin) {
-        await store.login(email, password);
+        const ok = await store.login(email, password); if (!ok) return;
+        navigation.replace("MainTabs", { screen: "Radar" });
       } else {
         if (!firstName || !lastName || phone.replace(/\s/g, '').length < 9) {
           Alert.alert("Błąd", "Wypełnij poprawnie wizytówkę."); return;

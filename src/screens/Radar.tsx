@@ -1,7 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Animated, Platform, ScrollView, Modal, TextInput, Switch } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import MapView from 'react-native-map-clustering';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,11 +20,22 @@ const formatPriceMarker = (price: string | number) => {
   return num.toString();
 };
 
-export default function Radar() {
+import { useColorScheme } from 'react-native';
+export default function Radar({ theme }: any) {
   const navigation = useNavigation<any>();
   const { user } = useAuthStore() as any;
+
+  // APPLE-STYLE MEMORY CLEANER: Cicho czyścimy mapę przy wylogowaniu
+  React.useEffect(() => {
+    if (!user) {
+      setAllOffers([]);
+      setFavorites([]);
+      setActiveTab('ALL');
+    }
+  }, [user]);
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   
   // Stany UX
   const [activeTab, setActiveTab] = useState<'ALL' | 'FAV' | 'MINE'>('ALL');
@@ -47,9 +59,10 @@ export default function Radar() {
   // Kopia robocza filtrów do modalu
   const [draftFilters, setDraftFilters] = useState(filters);
 
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const flatListRef = useRef<any>(null);
-  const isDark = true;
+  const colorScheme = useColorScheme();
+  const isDark = theme?.glass === 'dark' || theme?.dark || colorScheme === 'dark';
 
   // --- PODŁĄCZENIE DO NOWEGO SERWERA NEXT.JS ---
   const fetchOffers = async () => {
@@ -71,6 +84,7 @@ export default function Radar() {
   // --- LOGIKA KALIBRACJI I ZAKŁADEK ---
   const filteredOffers = useMemo(() => {
     return allOffers.filter(offer => {
+      if (!offer.lat || !offer.lng || isNaN(parseFloat(offer.lat))) return false;
       // 1. Filtrowanie po zakładkach (Tab)
       if (activeTab === 'MINE' && offer.userId !== user?.id) return false;
       if (activeTab === 'FAV' && !favorites.includes(offer.id)) return false;
@@ -143,10 +157,17 @@ export default function Radar() {
     <View style={styles.container}>
       
       {/* MAPA W TLE */}
-      <MapView 
+      <MapView
+        mapType={mapType || "standard"}
+        clusterColor="#10b981"
+        clusterTextColor="#FFFFFF"
+        animationEnabled={false}
+        radius={45}  
         ref={mapRef}
+        mapPadding={{ top: 40, right: 0, bottom: 180, left: 0 }} // APPLE STYLE: Zapobiega zasłanianiu pinesek przez karty
         style={StyleSheet.absoluteFillObject}
         userInterfaceStyle={isDark ? "dark" : "light"}
+        mapType={mapType}
         showsUserLocation={true}
         showsBuildings={true}
         pitchEnabled={true}
@@ -155,24 +176,39 @@ export default function Radar() {
         {filteredOffers.map((offer, index) => {
           const lat = parseFloat(offer.lat);
           const lng = parseFloat(offer.lng);
-          if (isNaN(lat) || isNaN(lng)) return null;
+          
           
           const isSelected = activeIndex === index;
           
+          const isRent = offer.transactionType === 'RENT';
+          // Rozpoznajemy, czy to Agent (zależnie od tego, jak backend podaje rolę, sprawdzamy parę wariantów)
+          const isAgent = offer.user?.role === 'AGENT' || offer.advertiserType === 'AGENT' || offer.role === 'AGENT';
+          
+          const insideColor = isRent ? '#0A2463' : '#10b981'; // Granatowy dla Wynajmu, Zielony dla Sprzedaży
+          const borderColor = isAgent ? '#FF9F0A' : '#FFFFFF'; // Złota ramka dla Agenta, Biała dla osoby prywatnej
+          
           return (
             <Marker 
-              key={offer.id || index} 
+              key={offer.id || index}
               coordinate={{ latitude: lat, longitude: lng }}
               onPress={() => handleMarkerPress(index)}
               style={{ zIndex: isSelected ? 10 : 1 }}
+              tracksViewChanges={isSelected} // APPLE FIX: Pineska śledzi zmiany TYLKO gdy na nią klikniesz (wtedy rośnie)
             >
               <View style={[
                 styles.markerPill, 
-                { backgroundColor: isSelected ? Colors.primary : (isDark ? '#2C2C2E' : '#FFFFFF') },
-                isSelected ? styles.markerPillActive : null
+                { 
+                  backgroundColor: insideColor,
+                  borderColor: borderColor,
+                  borderWidth: isAgent ? 2.5 : 2,
+                  shadowColor: isAgent ? '#FF9F0A' : '#000',
+                  shadowOpacity: isSelected ? 0.6 : 0.3,
+                  shadowRadius: isSelected ? 10 : 5
+                },
+                isSelected && { transform: [{ scale: 1.15 }] }
               ]}>
-                <Text style={[styles.markerText, { color: isSelected ? '#FFF' : (isDark ? '#FFF' : '#000') }]}>
-                  <View style={{ backgroundColor: "white", padding: 5, borderRadius: 8, overflow: "hidden", borderWidth: 1, borderColor: "#ccc" }}><Text style={{ color: "black", fontWeight: "bold", textAlign: "center" }}>{formatPriceMarker(offer.price)}</Text></View>
+                <Text style={[styles.markerText, { color: '#FFF' }]}>
+                  {formatPriceMarker(offer.price)}
                 </Text>
               </View>
             </Marker>
@@ -202,6 +238,9 @@ export default function Radar() {
             })}
           </View>
 
+          <Pressable style={styles.filterBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setMapType(prev => prev === 'standard' ? 'hybrid' : 'standard'); }}>
+            <Ionicons name="map" size={22} color={isDark ? '#FFF' : '#000'} />
+          </Pressable>
           <Pressable style={styles.filterBtn} onPress={() => { setDraftFilters(filters); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowCalibration(true); }}>
             <Ionicons name="options" size={24} color={isDark ? '#FFF' : '#000'} />
             {isFilterActive && <View style={styles.filterActiveDot} />}
@@ -228,40 +267,42 @@ export default function Radar() {
               
               return (
                 <Pressable key={offer.id || index} style={styles.cardWrapper}>
-                  <BlurView intensity={isDark ? 60 : 100} tint={isDark ? "dark" : "light"} style={styles.cardGlass}>
+                  <BlurView intensity={isDark ? 75 : 100} tint={isDark ? "dark" : "light"} style={styles.cardGlass}>
                     
+                    {/* MINIATURKA Z LEWEJ */}
                     <View style={styles.cardImageContainer}>
                       {firstImage ? (
                         <Image source={{ uri: firstImage }} style={styles.cardImage} />
                       ) : (
                         <View style={[styles.cardImage, { backgroundColor: isDark ? '#333' : '#E5E5EA', justifyContent: 'center', alignItems: 'center' }]}>
-                          <Ionicons name="home" size={40} color={Colors.subtitle} />
+                          <Ionicons name="home" size={24} color={Colors.subtitle} />
                         </View>
                       )}
-                      
                       <View style={styles.typeTag}>
-                        <Text style={styles.typeTagText}>{offer.transactionType === 'RENT' ? 'WYNAJEM' : 'SPRZEDAŻ'}</Text>
+                        <Text style={styles.typeTagText}>{offer.transactionType === 'RENT' ? 'WYN' : 'SPRZ'}</Text>
                       </View>
-
-                      {/* Serduszko (Ulubione) */}
-                      <Pressable style={styles.favButton} onPress={() => toggleFavorite(offer.id)}>
-                        <Ionicons name={isFav ? "heart" : "heart-outline"} size={26} color={isFav ? Colors.danger : "#FFF"} />
-                      </Pressable>
-
                     </View>
 
+                    {/* DANE PO PRAWEJ */}
                     <View style={styles.cardContent}>
-                      <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#000' }]}>
-                        {parseInt(offer.price || "0").toLocaleString("pl-PL")} PLN
-                      </Text>
-                      <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#666' }]} numberOfLines={1}>
-                        {offer.propertyType} • {offer.city}, {offer.district}
-                      </Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#000' }]}>
+                            {parseInt(offer.price || "0").toLocaleString("pl-PL")} PLN
+                          </Text>
+                          <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#8E8E93' }]} numberOfLines={1}>
+                            {offer.propertyType} • {offer.city}
+                          </Text>
+                        </View>
+                        <Pressable style={styles.favButton} onPress={() => toggleFavorite(offer.id)}>
+                          <Ionicons name={isFav ? "heart" : "heart-outline"} size={22} color={isFav ? Colors.danger : Colors.subtitle} />
+                        </Pressable>
+                      </View>
                       
                       <View style={styles.cardSpecs}>
-                        <View style={styles.specItem}><Ionicons name="resize" size={14} color={Colors.subtitle} /><Text style={styles.specText}>{offer.area} m²</Text></View>
-                        <View style={styles.specItem}><Ionicons name="bed" size={14} color={Colors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} pok.</Text></View>
-                        <View style={styles.specItem}><Ionicons name="layers" size={14} color={Colors.subtitle} /><Text style={styles.specText}>p. {offer.floor !== null ? offer.floor : '-'}</Text></View>
+                        <View style={styles.specItem}><Ionicons name="resize" size={12} color={Colors.subtitle} /><Text style={styles.specText}>{offer.area} m²</Text></View>
+                        <View style={styles.specItem}><Ionicons name="bed" size={12} color={Colors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} pok.</Text></View>
+                        <View style={styles.specItem}><Ionicons name="layers" size={12} color={Colors.subtitle} /><Text style={styles.specText}>p. {offer.floor !== null ? offer.floor : '-'}</Text></View>
                       </View>
                     </View>
 
@@ -382,27 +423,28 @@ const styles = StyleSheet.create({
   filterActiveDot: { position: 'absolute', top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.danger, borderWidth: 1, borderColor: '#FFF' },
 
   // Markery
-  markerPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 5, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
-  markerPillActive: { transform: [{ scale: 1.15 }], shadowColor: Colors.primary, shadowOpacity: 0.5, shadowRadius: 10 },
-  markerText: { fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  markerPill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 5, justifyContent: 'center', alignItems: 'center' },
+  markerText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
 
-  // Karuzela
-  bottomCarouselContainer: { position: 'absolute', bottom: Platform.OS === 'ios' ? 100 : 80, width: '100%', zIndex: 10 },
-  cardWrapper: { width: width * 0.85, marginHorizontal: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 10 },
-  cardGlass: { borderRadius: 32, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  cardImageContainer: { height: 180, width: '100%', position: 'relative' },
+  // Karuzela - Apple Compact Style
+  bottomCarouselContainer: { position: 'absolute', bottom: Platform.OS === 'ios' ? 40 : 30, width: '100%', zIndex: 10 },
+  cardWrapper: { width: width * 0.88, marginHorizontal: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 16, elevation: 10 },
+  cardGlass: { borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', padding: 10, alignItems: 'center' },
+  
+  cardImageContainer: { height: 85, width: 85, borderRadius: 16, overflow: 'hidden', position: 'relative' },
   cardImage: { width: '100%', height: '100%' },
+  typeTag: { position: 'absolute', bottom: 6, left: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 4, borderRadius: 8 },
+  typeTagText: { color: '#FFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   
-  typeTag: { position: 'absolute', top: 15, left: 15, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  typeTagText: { color: '#FFF', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  favButton: { position: 'absolute', top: 10, right: 10, padding: 8, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20 },
+  cardContent: { flex: 1, paddingLeft: 14, justifyContent: 'center' },
+  cardPrice: { fontSize: 20, fontWeight: '800', marginBottom: 2, letterSpacing: -0.5 },
+  cardTitle: { fontSize: 12, fontWeight: '600', marginBottom: 8 },
   
-  cardContent: { padding: 20 },
-  cardPrice: { fontSize: 26, fontWeight: '800', marginBottom: 4 },
-  cardTitle: { fontSize: 14, fontWeight: '600', marginBottom: 12 },
-  cardSpecs: { flexDirection: 'row', gap: 15 },
-  specItem: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(0,0,0,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  specText: { fontSize: 12, fontWeight: '700', color: Colors.subtitle },
+  favButton: { padding: 4, marginLeft: 10 },
+  
+  cardSpecs: { flexDirection: 'row', gap: 8 },
+  specItem: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  specText: { fontSize: 11, fontWeight: '700', color: Colors.subtitle },
 
   emptyStateGlass: { marginHorizontal: 20, padding: 30, borderRadius: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   emptyStateText: { fontSize: 18, fontWeight: '800', marginTop: 15 },

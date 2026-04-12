@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../store/useAuthStore';
-import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import AuthScreen from './AuthScreen';
+import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 
 // --- KOMPONENT ADMINA (BAZA OFERT) - ZACHOWANY W 100% ---
 const AdminOffersModal = ({ visible, onClose, theme }: any) => {
@@ -145,7 +145,8 @@ export default function ProfileScreen({ theme }: { theme: any }) {
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
-  if (!isLoggedIn) return <AuthScreen theme={theme} />;
+
+  if (!user) return <AuthScreen theme={theme} />;
 
   const isZarzad = user?.role === 'ADMIN';
 

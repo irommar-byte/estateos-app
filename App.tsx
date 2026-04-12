@@ -45,7 +45,7 @@ function AddOfferNavigator({ theme }: { theme: any }) {
 
 const FloatingNextButton = ({ onPress }: any) => {
   const { draft, currentStep } = useOfferStore();
-  const { isLoggedIn } = useAuthStore();
+  const user = useAuthStore(state => state.user); const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const themeMode = useThemeStore(s => s.themeMode);
@@ -106,11 +106,12 @@ const FloatingNextButton = ({ onPress }: any) => {
 
 const Tab = createBottomTabNavigator();
 function MainTabs() {
-  const { checkUser } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const restoreSession = useAuthStore(state => state.restoreSession);
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
   
-  useEffect(() => { checkUser(); }, []);
+  useEffect(() => { restoreSession(); }, []);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
   const currentColors = Colors[resolvedTheme];
@@ -129,11 +130,9 @@ function MainTabs() {
 const AppStack = createNativeStackNavigator();
 
 export default function App() {
-  const { checkUser } = useAuthStore();
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
   
-  React.useEffect(() => { checkUser(); }, []);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
   const currentColors = Colors[resolvedTheme];
