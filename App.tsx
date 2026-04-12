@@ -1,3 +1,4 @@
+import OfferDetail from './src/screens/OfferDetail';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
@@ -104,7 +105,7 @@ const FloatingNextButton = ({ onPress }: any) => {
 };
 
 const Tab = createBottomTabNavigator();
-export default function App() {
+function MainTabs() {
   const { checkUser } = useAuthStore();
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
@@ -114,15 +115,39 @@ export default function App() {
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
   const currentColors = Colors[resolvedTheme];
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+  
+    return (
         <Tab.Navigator screenOptions={{ headerShown: false, tabBarShowLabel: true, tabBarActiveTintColor: Colors.primary, tabBarInactiveTintColor: currentColors.subtitle, tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } }}>
           <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>{() => <Radar theme={currentColors} />}</Tab.Screen>
           <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>{() => <AddOfferNavigator theme={currentColors} />}</Tab.Screen>
           <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>{() => <ProfileScreen theme={currentColors} />}</Tab.Screen>
         </Tab.Navigator>
+    );
+    
+}
+
+const AppStack = createNativeStackNavigator();
+
+export default function App() {
+  const { checkUser } = useAuthStore();
+  const systemColorScheme = useColorScheme();
+  const themeMode = useThemeStore((state) => state.themeMode);
+  
+  React.useEffect(() => { checkUser(); }, []);
+
+  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
+  const currentColors = Colors[resolvedTheme];
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+        <AppStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          {/* Tu ładujemy wszystkie zakładki z paskiem na dole */}
+          <AppStack.Screen name="MainTabs" component={MainTabs} />
+          {/* A tu ładujemy nasz potężny ekran na pełnej szerokości */}
+          <AppStack.Screen name="OfferDetail" component={OfferDetail} />
+        </AppStack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
   );

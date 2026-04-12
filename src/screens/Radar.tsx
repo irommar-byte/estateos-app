@@ -1,3 +1,4 @@
+import { useNavigation } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Animated, Platform, ScrollView, Modal, TextInput, Switch } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
@@ -18,7 +19,8 @@ const formatPriceMarker = (price: string | number) => {
   return num.toString();
 };
 
-export default function Radar({ theme, navigation }: { theme: any, navigation: any }) {
+export default function Radar() {
+  const navigation = useNavigation<any>();
   const { user } = useAuthStore() as any;
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ export default function Radar({ theme, navigation }: { theme: any, navigation: a
 
   const mapRef = useRef<MapView>(null);
   const flatListRef = useRef<any>(null);
-  const isDark = theme.glass === 'dark';
+  const isDark = true;
 
   // --- PODŁĄCZENIE DO NOWEGO SERWERA NEXT.JS ---
   const fetchOffers = async () => {
@@ -121,6 +123,7 @@ export default function Radar({ theme, navigation }: { theme: any, navigation: a
     flatListRef.current?.scrollTo({ x: index * (width * 0.85 + 20), animated: true });
     setActiveIndex(index);
     flyToMarker(filteredOffers[index]);
+    navigation.navigate("OfferDetail", { offer: filteredOffers[index] });
   };
 
   const toggleFavorite = (id: number) => {
