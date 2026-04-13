@@ -20,9 +20,9 @@ const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => (
   </View>
 );
 
-const ROOMS = Array.from({length: 10}, (_, i) => (i + 1).toString());
-const FLOORS = ['Parter', ...Array.from({length: 30}, (_, i) => (i + 1).toString())];
-const YEARS = Array.from({length: 100}, (_, i) => (new Date().getFullYear() - i).toString());
+const ROOMS = ['', ...Array.from({length: 10}, (_, i) => (i + 1).toString())];
+const FLOORS = ['', 'Parter', ...Array.from({length: 30}, (_, i) => (i + 1).toString())];
+const YEARS = ['', ...Array.from({length: 100}, (_, i) => (new Date().getFullYear() - i).toString())];
 
 export default function Step3_Parameters({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
@@ -75,8 +75,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           <View style={styles.pickerColumn}>
             <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>POKOJE</Text>
             <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
-              <Picker selectedValue={draft.rooms || '2'} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({rooms: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>
-                {ROOMS.map(r => <Picker.Item key={r} label={r} value={r} />)}
+              <Picker selectedValue={draft.rooms || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({rooms: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>
+                {ROOMS.map(r => <Picker.Item key={r} label={r === '' ? '-' : r} value={r} />)}
               </Picker>
             </View>
           </View>
@@ -84,8 +84,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           <View style={styles.pickerColumn}>
             <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>PIĘTRO</Text>
             <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
-              <Picker selectedValue={draft.floor || '3'} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({floor: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
-                {FLOORS.map(f => <Picker.Item key={f} label={f} value={f} />)}
+              <Picker selectedValue={draft.floor || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({floor: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
+                {FLOORS.map(f => <Picker.Item key={f} label={f === '' ? '-' : f} value={f} />)}
               </Picker>
             </View>
           </View>
@@ -93,8 +93,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           <View style={styles.pickerColumn}>
             <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>ROK</Text>
             <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
-              <Picker selectedValue={draft.buildYear || '2020'} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({buildYear: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
-                {YEARS.map(y => <Picker.Item key={y} label={y} value={y} />)}
+              <Picker selectedValue={draft.buildYear || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({buildYear: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
+                {YEARS.map(y => <Picker.Item key={y} label={y === '' ? '-' : y} value={y} />)}
               </Picker>
             </View>
           </View>
@@ -103,12 +103,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
         <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Udogodnienia</Text>
         <View style={styles.pillsContainer}>
-          <TogglePill label="Balkon/Taras" icon="sunny-outline" field="hasBalcony" />
-          <TogglePill label="Garaż/Parking" icon="car-sport-outline" field="hasGarage" />
-          <TogglePill label="Komórka" icon="cube-outline" field="hasStorage" />
+          <TogglePill label="Balkon / Taras" icon="sunny-outline" field="hasBalcony" />
+          <TogglePill label="Garaż / Parking" icon="car-sport-outline" field="hasParking" />
+          <TogglePill label="Piwnica / Komórka" icon="cube-outline" field="hasStorage" />
           <TogglePill label="Winda" icon="arrow-up-circle-outline" field="hasElevator" />
           <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
-          <TogglePill label="Dwupoziomowe" icon="layers-outline" field="isTwoLevel" />
+          <TogglePill label="Umeblowane" icon="bed-outline" field="isFurnished" />
+          <TogglePill label="Zwierzęta akc." icon="paw-outline" field="petsAllowed" />
+          <TogglePill label="Klimatyzacja" icon="snow-outline" field="airConditioning" />
         </View>
 
         <View style={{ height: 200 }} />

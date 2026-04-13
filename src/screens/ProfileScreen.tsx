@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../store/useAuthStore';
+import { useNavigation } from '@react-navigation/native';
+
 import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 
@@ -86,6 +88,211 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
 };
 
 // --- NOWE KOMPONENTY KATEGORYZACJI (APPLE STYLE) ---
+
+// --- KOMPONENT ZARZĄDZANIA OFERTAMI UŻYTKOWNIKA (APPLE STYLE PREMIUM) ---
+const MyOffersModal = ({ visible, onClose, theme }: any) => {
+  const [offers, setOffers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'ALL' | 'ACTIVE' | 'ENDED'>('ALL');
+  const { user } = useAuthStore() as any;
+  const navigation = useNavigation<any>();
+  const isDark = theme.glass === 'dark';
+
+  const fetchMyOffers = async () => {
+    setLoading(true);
+    try {
+      // UWAGA: Publiczny endpoint /offers może odrzucać oferty PENDING. 
+      // Docelowo należy tu użyć /offers/my, gdy backend zacznie go obsługiwać.
+      // Próba pobrania wszystkich ofert (w tym nieaktywnych)
+      const res = await fetch(`https://estateos.pl/api/mobile/v1/offers?includeAll=true&_t=${Date.now()}`);
+      const text = await res.text();
+      const data = JSON.parse(text);
+      if (data.success && data.offers) {
+         console.log("DEBUG: Twój ID:", user?.id, "Typ:", typeof user?.id);
+         const myOffers = data.offers.filter((o: any) => {
+            console.log("DEBUG: Oferta ID:", o.id, "userId oferty:", o.userId);
+            return Number(o.userId) === Number(user?.id);
+         });
+         setOffers(myOffers);
+      }
+    } catch (e) {
+      console.log("Błąd pobierania ofert:", e);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { if (visible) fetchMyOffers(); }, [visible]);
+
+  // FILTROWANIE PO ZAKŁADKACH
+  const filteredOffers = offers.filter(o => {
+     if (activeTab === 'ACTIVE') return o.status === 'ACTIVE';
+     if (activeTab === 'ENDED') return o.status === 'ARCHIVED' || o.status === 'REJECTED';
+     // W zakładce "Wszystkie" pokazujemy wszystko, w tym PENDING i REJECTED
+     return true; 
+  });
+
+  // GŁĘBOKI STATUS ODDYCHAJĄCY / PULSUJĄCY (Skala + Przezroczystość)
+  const StatusBadge = ({ status }: { status: string }) => {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+    useEffect(() => {
+      if (status === 'ACTIVE' || status === 'PENDING') {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulseAnim, { toValue: status === 'PENDING' ? 0.3 : 0.6, duration: status === 'PENDING' ? 500 : 1500, useNativeDriver: true }),
+            Animated.timing(pulseAnim, { toValue: 1, duration: status === 'PENDING' ? 500 : 1500, useNativeDriver: true })
+          ])
+        ).start();
+      }
+    }, [status]);
+
+    let config = { text: 'NIEZNANY', color: '#8E8E93', glow: '#8E8E93' };
+    if (status === 'ACTIVE') config = { text: 'AKTYWNE', color: '#34C759', glow: '#34C759' };
+    if (status === 'PENDING') config = { text: 'WERYFIKACJA', color: '#FF9F0A', glow: '#FF9F0A' };
+    if (status === 'REJECTED' || status === 'ARCHIVED') config = { text: 'ZAKOŃCZONE', color: '#FF3B30', glow: '#FF3B30' };
+
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }}>
+        <Animated.View style={[{ width: 6, height: 6, borderRadius: 3, backgroundColor: config.color, marginRight: 6, shadowColor: config.glow, shadowOffset: {width: 0, height: 0}, shadowOpacity: 1, shadowRadius: 4 }, (status === 'ACTIVE' || status === 'PENDING') && { opacity: pulseAnim }] } />
+        <Text style={{ color: config.color, fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>{config.text}</Text>
+      </View>
+    );
+  };
+
+  const CountdownTimer = ({ startDate, status }: { startDate: string, status: string }) => {
+    const [timeLeft, setTimeLeft] = useState('');
+
+    useEffect(() => {
+      if (status !== 'ACTIVE') {
+        setTimeLeft(status === 'PENDING' ? 'Oczekuje na akceptację' : 'Oferta zarchiwizowana');
+        return;
+      }
+
+      const calculateTime = () => {
+        const start = new Date(startDate).getTime();
+        const expires = start + (30 * 24 * 60 * 60 * 1000);
+        const now = new Date().getTime();
+        const diff = expires - now;
+
+        if (diff <= 0) return 'Czas minął (Wygasła)';
+
+        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+        return `${d}d ${h}h ${m}m ${s}s`;
+      };
+
+      setTimeLeft(calculateTime());
+      const timer = setInterval(() => setTimeLeft(calculateTime()), 1000);
+      return () => clearInterval(timer);
+    }, [startDate, status]);
+
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 }}>
+         <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', padding: 4, borderRadius: 6 }}>
+           <Ionicons name="time" size={12} color={isDark ? '#E5E5EA' : '#8E8E93'} />
+         </View>
+         <Text style={{ fontSize: 13, color: isDark ? '#E5E5EA' : '#8E8E93', fontWeight: '700', fontVariant: ['tabular-nums'] }}>
+           {timeLeft}
+         </Text>
+      </View>
+    );
+  };
+
+  const translateType = (type: string) => {
+    const dict: any = { FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
+    return dict[type] || 'Nieruchomość';
+  };
+
+  const handleAction = (action: string, offer: any) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (action === 'PREVIEW') { onClose(); navigation.navigate('OfferDetail', { offer }); }
+    if (action === 'REFRESH') Alert.alert('Odświeżenie', 'Twoja oferta została podbita na szczyt listy! (Wkrótce)');
+    if (action === 'PROMOTE') Alert.alert('Wyróżnienie', 'Przenoszę do płatności za wyróżnienie... (Wkrótce)');
+    if (action === 'END') {
+       Alert.alert('Zakończ ofertę', 'Czy na pewno chcesz przenieść to ogłoszenie do archiwum?', [
+         { text: 'Anuluj', style: 'cancel' },
+         { text: 'Zakończ', style: 'destructive', onPress: async () => {
+             try {
+               const res = await fetch('https://estateos.pl/api/mobile/v1/admin/offers', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({ offerId: offer.id, newStatus: 'ARCHIVED' })
+               });
+               const data = await res.json();
+               if (res.ok && data.success) {
+                 Alert.alert('Sukces', 'Oferta została zakończona i przeniesiona do archiwum.');
+                 fetchMyOffers(); // Odświeżamy listę, żeby status od razu zmienił się na ekranie!
+               } else {
+                 Alert.alert('Błąd', 'Serwer odmówił: ' + (data.message || res.status));
+               }
+             } catch (e) {
+               Alert.alert('Błąd', 'Brak połączenia z serwerem.');
+             }
+           } 
+         }
+       ]);
+    }
+  };
+
+  const renderOffer = ({ item }: any) => {
+     const firstImg = item.images ? (typeof item.images === 'string' ? JSON.parse(item.images)[0] : item.images[0]) : null;
+     
+     return (
+       <View style={[styles.myOfferCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+         <Pressable onPress={() => handleAction('PREVIEW', item)} style={({pressed}) => [styles.myOfferHeader, pressed && { opacity: 0.7 }]}>
+            <View style={{ flexDirection: 'row', gap: 16, flex: 1 }}>
+               <View style={styles.myOfferImgBox}>
+                  {firstImg ? <Image source={{ uri: firstImg }} style={{ width: '100%', height: '100%' }} /> : <Ionicons name="home" size={28} color="#8E8E93" />}
+               </View>
+               <View style={{ flex: 1, justifyContent: 'center' }}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <Text style={[styles.myOfferTitle, { color: theme.text }]} numberOfLines={1}>{translateType(item.propertyType)} {item.city}</Text>
+                    <Text style={{fontSize: 10, color: theme.subtitle, fontWeight: '700'}}>#{item.id}</Text>
+                  </View>
+                  <Text style={[styles.myOfferPrice, { color: theme.text }]}>{parseInt(item.price || 0).toLocaleString('pl-PL')} PLN</Text>
+                  <CountdownTimer startDate={item.createdAt} status={item.status || 'PENDING'} />
+               </View>
+            </View>
+            <View style={{ paddingLeft: 10 }}>
+                <StatusBadge status={item.status || 'PENDING'} />
+            </View>
+         </Pressable>
+         
+         <View style={[styles.myOfferToolbar, { borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 14, paddingHorizontal: 18 }}>
+               <Pressable onPress={() => handleAction('REFRESH', item)} style={[styles.toolBtn, { backgroundColor: 'rgba(52, 199, 89, 0.12)' }]}><Ionicons name="flash" size={16} color="#34C759" /><Text style={[styles.toolText, { color: '#34C759' }]}>Odśwież</Text></Pressable>
+               <Pressable onPress={() => handleAction('PROMOTE', item)} style={[styles.toolBtn, { backgroundColor: 'rgba(255, 159, 10, 0.12)' }]}><Ionicons name="star" size={16} color="#FF9F0A" /><Text style={[styles.toolText, { color: '#FF9F0A' }]}>Wyróżnij</Text></Pressable>
+               <Pressable onPress={() => handleAction('END', item)} style={[styles.toolBtn, { backgroundColor: 'rgba(255, 59, 48, 0.1)' }]}><Ionicons name="archive-outline" size={16} color="#FF3B30" /><Text style={[styles.toolText, { color: '#FF3B30' }]}>Zakończ</Text></Pressable>
+            </ScrollView>
+         </View>
+       </View>
+     );
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+        <View style={styles.modalHeader}>
+          <Text style={[styles.modalTitle, { color: theme.text }]}>Moje Ogłoszenia</Text>
+          <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
+        </View>
+        
+        {/* ZAKŁADKI / TABS */}
+        <View style={styles.myTabsContainer}>
+          <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ALL'); }} style={[styles.myTab, activeTab === 'ALL' && { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }]}><Text style={[styles.myTabText, { color: activeTab === 'ALL' ? theme.text : theme.subtitle }]}>Wszystkie</Text></Pressable>
+          <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ACTIVE'); }} style={[styles.myTab, activeTab === 'ACTIVE' && { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }]}><Text style={[styles.myTabText, { color: activeTab === 'ACTIVE' ? theme.text : theme.subtitle }]}>Aktywne</Text></Pressable>
+          <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ENDED'); }} style={[styles.myTab, activeTab === 'ENDED' && { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }]}><Text style={[styles.myTabText, { color: activeTab === 'ENDED' ? theme.text : theme.subtitle }]}>Zakończone</Text></Pressable>
+        </View>
+
+        {loading ? <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} /> : 
+        <FlatList data={filteredOffers} keyExtractor={item => item.id.toString()} renderItem={renderOffer} contentContainerStyle={{ padding: 16, paddingBottom: 50 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej zakładce.</Text>} />}
+      </View>
+    </Modal>
+  );
+};
+
 const ListGroup = ({ children, isDark }: any) => (
   <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>
     {children}
@@ -143,6 +350,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
   const isDark = theme.glass === 'dark';
   
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
+  const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
 
@@ -211,6 +419,17 @@ export default function ProfileScreen({ theme }: { theme: any }) {
           </ListGroup>
         </View>
 
+        {/* Sekcja: ZARZĄDZANIE OFERTAMI */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Twoje Nieruchomości</Text>
+          <ListGroup isDark={isDark}>
+            <ListItem 
+              icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd, edycja i statystyki Twoich ofert" 
+              onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark}
+            />
+          </ListGroup>
+        </View>
+
         {/* Sekcja: BEZPIECZEŃSTWO */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bezpieczeństwo</Text>
@@ -259,6 +478,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
 
       </ScrollView>
 
+      <MyOffersModal visible={isMyOffersVisible} onClose={() => setIsMyOffersVisible(false)} theme={theme} />
       <AdminOffersModal visible={isAdminOffersVisible} onClose={() => setIsAdminOffersVisible(false)} theme={theme} />
     </>
   );
@@ -301,6 +521,20 @@ const styles = StyleSheet.create({
   versionText: { textAlign: 'center', color: '#8E8E93', fontSize: 13, marginTop: 10 },
 
   // Admin Modal Styles
+  
+  // My Offers Styles (Premium Apple Layout)
+  myOfferCard: { borderRadius: 24, marginBottom: 20, borderWidth: 1, shadowColor: '#000', shadowOffset: {width: 0, height: 12}, shadowOpacity: 0.08, shadowRadius: 20, elevation: 4, overflow: 'hidden' },
+  myOfferHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', padding: 18 },
+  myOfferImgBox: { width: 65, height: 65, borderRadius: 16, backgroundColor: '#F2F2F7', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(0,0,0,0.1)' },
+  myOfferTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.4, marginBottom: 4 },
+  myOfferPrice: { fontSize: 15, fontWeight: '700' },
+  myOfferToolbar: { borderTopWidth: StyleSheet.hairlineWidth },
+  toolBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, gap: 6 },
+  toolText: { fontSize: 13, fontWeight: '700' },
+  myTabsContainer: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 12, gap: 8 },
+  myTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
+  myTabText: { fontSize: 13, fontWeight: '700' },
+
   modalContainer: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 30 },
   modalTitle: { fontSize: 24, fontWeight: '800' },

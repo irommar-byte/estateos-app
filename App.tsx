@@ -28,6 +28,7 @@ const Colors = { light: { background: '#f5f5f7', text: '#1d1d1f', subtitle: '#86
 const modes: { label: string; value: ThemeMode }[] = [ { label: 'Jasny', value: 'light' }, { label: 'Auto', value: 'auto' }, { label: 'Ciemny', value: 'dark' } ];
 
 import ProfileScreen from './src/screens/ProfileScreen';
+import EditOfferScreen from './src/screens/EditOfferScreen';
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
@@ -146,6 +147,7 @@ export default function App() {
           <AppStack.Screen name="MainTabs" component={MainTabs} />
           {/* A tu ładujemy nasz potężny ekran na pełnej szerokości */}
           <AppStack.Screen name="OfferDetail" component={OfferDetail} />
+          <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
         </AppStack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

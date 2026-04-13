@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable } from 'react-native';
-import MapView from 'react-native-maps';
+import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager } from 'react-native';
+import MapView, { Region } from 'react-native-maps';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -8,6 +8,10 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const Colors = { primary: '#10b981' };
 
@@ -93,9 +97,12 @@ const getClosestDistrict = (lat: number, lng: number, city: string) => {
 
 export default function Step2_Location({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
-  const [streetInput, setStreetInput] = useState(draft.street);
+  const [streetInput, setStreetInput] = useState(draft.street || '');
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
+  
+  // TARCZA OCHRONNA: Blokuje zapętlanie się "odwrotnego geokodowania" z animacjami mapy
+  const isProgrammaticMove = useRef(false);
   
   useFocusEffect(useCallback(() => { setCurrentStep(2); }, []));
 
@@ -105,9 +112,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const shadow = isDark ? {} : { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 };
   const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.03)';
 
-  const stopOrbit = () => { };
+  const hasAddress = !!draft.street && draft.street.length > 2;
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
+    isProgrammaticMove.current = true; // Włączamy tarczę
     mapRef.current?.animateCamera({ 
       center: { latitude: targetLat, longitude: targetLng }, 
       pitch: isExact ? 75 : 30, 
@@ -115,6 +123,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
       zoom: isExact ? 19.5 : 13.5, 
       heading: 0 
     }, { duration: 2500 }); 
+    
+    // Zdejmujemy tarczę po zakończeniu lotu kamery
+    setTimeout(() => { isProgrammaticMove.current = false; }, 2600);
   };
 
   const handleAddressSearch = async () => {
@@ -125,43 +136,112 @@ export default function Step2_Location({ theme }: { theme: any }) {
       if (result.length > 0) {
         const { latitude, longitude } = result[0];
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        flyTo(latitude, longitude, true);
+        
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        let newStreet = streetInput;
+        let finalCity = 'Reszta Polski';
+        let finalDistrict = 'Inna lokalizacja';
+        
         if (reverse.length > 0) {
           const place = reverse[0];
           const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
-          let finalCity = 'Reszta Polski';
           if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
           else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
-          const finalDistrict = getClosestDistrict(latitude, longitude, finalCity);
-          const newStreet = place.street && place.streetNumber ? `${place.street} ${place.streetNumber}` : streetInput;
-          setStreetInput(newStreet);
-          updateDraft({ city: finalCity, district: finalDistrict, lat: latitude, lng: longitude, isExactLocation: true, street: newStreet });
+          finalDistrict = getClosestDistrict(latitude, longitude, finalCity);
+          if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
         }
+        
+        setStreetInput(newStreet);
+        updateDraft({ city: finalCity, district: finalDistrict, lat: latitude, lng: longitude, isExactLocation: true, street: newStreet });
+        flyTo(latitude, longitude, true);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Nie znaleziono", "System nie mógł odnaleźć tego adresu na mapie.");
       }
     } catch (e) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
+  };
+
+  // UBER MODE: Odwrotne geokodowanie podczas przesuwania mapy palcem
+  const handleRegionChangeComplete = async (region: Region, details: any) => {
+    // 1. Zawsze aktualizujemy bazowe współrzędne
+    updateDraft({ lat: region.latitude, lng: region.longitude });
+
+    // 2. Jeśli mapa leci automatycznie (po wpisaniu adresu), ignorujemy, by nie zrobić pętli
+    if (isProgrammaticMove.current) return;
+
+    // 3. Jeśli to nie był ruch wywołany przez palec użytkownika (isGesture), ignorujemy (przydatne w Androidzie)
+    if (details && details.isGesture === false) return;
+
+    try {
+      // Pytamy satelitę, na jakiej ulicy upadła pinezka
+      const reverse = await Location.reverseGeocodeAsync({ latitude: region.latitude, longitude: region.longitude });
+      if (reverse.length > 0) {
+        const place = reverse[0];
+        
+        let newStreet = streetInput;
+        if (place.street && place.streetNumber) {
+          newStreet = `${place.street} ${place.streetNumber}`;
+        } else if (place.street) {
+          newStreet = place.street;
+        } else if (place.name) {
+          newStreet = place.name;
+        }
+
+        const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
+        let finalCity = 'Reszta Polski';
+        if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
+        else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
+        
+        const finalDistrict = getClosestDistrict(region.latitude, region.longitude, finalCity);
+
+        // Luksusowa wibracja potwierdzająca namierzenie adresu
+        if (newStreet !== streetInput) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          
+          // Podmiana tekstu w wyszukiwarce na żywo!
+          setStreetInput(newStreet);
+          updateDraft({ city: finalCity, district: finalDistrict, street: newStreet });
+        }
+      }
+    } catch (e) {
+      console.log("Błąd Reverse Geocoding:", e);
+    }
   };
 
   const handleCityChange = (city: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
     const newDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA]; const coords = DISTRICT_COORDS[city] || { lat: 52.0, lng: 19.0 }; 
     updateDraft({ city, district: newDistricts[0], lat: coords.lat, lng: coords.lng }); 
-    if (city !== 'Reszta Polski') flyTo(coords.lat, coords.lng, false); 
+    if (city !== 'Reszta Polski') flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
   };
   
   const handleDistrictChange = (district: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
     updateDraft({ district }); 
     const coords = DISTRICT_COORDS[district]; 
-    if (coords) flyTo(coords.lat, coords.lng, false); 
+    if (coords) flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
   };
+
+  const currentIsExact = draft.isExactLocation !== undefined ? draft.isExactLocation : true;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       
       <View style={styles.mapContainer}>
-        <MapView ref={mapRef} style={styles.map} userInterfaceStyle={isDark ? "dark" : "light"} showsBuildings={true} pitchEnabled={true} initialRegion={{ latitude: draft.lat || 52.2297, longitude: draft.lng || 21.0122, latitudeDelta: 0.05, longitudeDelta: 0.05 }} onRegionChangeComplete={(region) => updateDraft({ lat: region.latitude, lng: region.longitude })} />
-        <View style={styles.centerPinContainer} pointerEvents="none">{draft.isExactLocation ? <RedNeedlePin /> : <BreathingCircle />}</View>
+        {/* DODANY onRegionChangeComplete Z ODWROTNYM GEOKODOWANIEM */}
+        <MapView 
+          ref={mapRef} 
+          style={styles.map} 
+          userInterfaceStyle={isDark ? "dark" : "light"} 
+          showsBuildings={true} 
+          pitchEnabled={true} 
+          initialRegion={{ latitude: draft.lat || 52.2297, longitude: draft.lng || 21.0122, latitudeDelta: 0.05, longitudeDelta: 0.05 }} 
+          onRegionChangeComplete={handleRegionChangeComplete} 
+        />
+        <View style={styles.centerPinContainer} pointerEvents="none">{currentIsExact ? <RedNeedlePin /> : <BreathingCircle />}</View>
         <View style={[styles.mapGradient, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.4)' }]} pointerEvents="none" />
       </View>
 
@@ -170,34 +250,38 @@ export default function Step2_Location({ theme }: { theme: any }) {
         
         <Text style={[styles.header, { color: theme.text }]}>Lokalizacja</Text>
         
-        <View style={[styles.glassCard, { backgroundColor: cardBg, borderColor }, shadow]}>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.label, { color: theme.text }]}>Dokładna lokalizacja</Text>
-              <Text style={[styles.subLabel, { color: theme.subtitle }]}>Obszar ok. 200m dla ochrony prywatności.</Text>
-            </View>
-            <Switch value={draft.isExactLocation} onValueChange={(val) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ isExactLocation: val }); if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val); }} trackColor={{ false: '#D1D1D6', true: '#10b981' }} />
-          </View>
-        </View>
-
         <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Wyszukaj adres</Text>
         <View style={[styles.insetSlot, { backgroundColor: inputBg, borderColor }, shadow]}>
           <TextInput style={[styles.input, { color: theme.text }]} placeholder="np. Wolska 56" placeholderTextColor={theme.subtitle} value={streetInput} onChangeText={setStreetInput} onSubmitEditing={handleAddressSearch} returnKeyType="search" selectionColor="#dc2626" />
         </View>
 
-        <View style={styles.pickerWrapper}>
-          <View style={styles.pickerColumn}>
-            <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>MIASTO</Text>
-            <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
-              <Picker selectedValue={draft.city || 'Warszawa'} onValueChange={handleCityChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 19, fontWeight: '700' }}>{Object.keys(DISTRICTS_DATA).map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker>
+        <View pointerEvents={hasAddress ? "auto" : "none"} style={{ opacity: hasAddress ? 1 : 0.35 }}>
+          
+          <View style={[styles.glassCard, { backgroundColor: cardBg, borderColor }, shadow]}>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.label, { color: theme.text }]}>Dokładna lokalizacja</Text>
+                <Text style={[styles.subLabel, { color: theme.subtitle }]}>Obszar ok. 200m dla ochrony prywatności.</Text>
+              </View>
+              <Switch value={currentIsExact} onValueChange={(val) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ isExactLocation: val }); if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val); }} trackColor={{ false: '#D1D1D6', true: '#10b981' }} />
             </View>
           </View>
-          <View style={styles.pickerColumn}>
-            <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
-            <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
-              <Picker selectedValue={draft.district || ''} onValueChange={handleDistrictChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>{(DISTRICTS_DATA[draft.city as keyof typeof DISTRICTS_DATA] || []).map(d => <Picker.Item key={d} label={d} value={d} />)}</Picker>
+
+          <View style={styles.pickerWrapper}>
+            <View style={styles.pickerColumn}>
+              <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>MIASTO</Text>
+              <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
+                <Picker selectedValue={draft.city || 'Warszawa'} onValueChange={handleCityChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 19, fontWeight: '700' }}>{Object.keys(DISTRICTS_DATA).map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker>
+              </View>
+            </View>
+            <View style={styles.pickerColumn}>
+              <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
+              <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
+                <Picker selectedValue={draft.district || ''} onValueChange={handleDistrictChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>{(DISTRICTS_DATA[draft.city as keyof typeof DISTRICTS_DATA] || []).map(d => <Picker.Item key={d} label={d} value={d} />)}</Picker>
+              </View>
             </View>
           </View>
+
         </View>
 
         <View style={{ height: 200 }} />
