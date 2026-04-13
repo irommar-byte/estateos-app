@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView, Animated } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView, Animated, Modal, SafeAreaView } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -67,9 +67,111 @@ const PremiumCheckbox = ({ checked, onPress, onReadTerms, theme }: any) => {
   );
 };
 
+// --- MODAL: RESET HASŁA PRZEZ EMAIL ---
+const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  
+  const isDark = theme.glass === 'dark';
+  const cardBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+  const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
+
+  useEffect(() => {
+    if (!visible) { setStep(1); setEmail(''); setOtp(''); setNewPassword(''); }
+  }, [visible]);
+
+  const handleSendEmailCode = async () => {
+    if (!email.includes('@')) return Alert.alert("Błąd", "Wpisz poprawny adres e-mail.");
+    setLoading(true);
+    try {
+      const res = await fetch('https://estateos.pl/api/auth/reset-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: email })
+      });
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setStep(2);
+      } else {
+        const d = await res.json();
+        Alert.alert("Błąd", d.message || "Użytkownik nie istnieje.");
+      }
+    } catch { Alert.alert("Błąd", "Brak połączenia z serwerem."); }
+    setLoading(false);
+  };
+
+  const handleFinalReset = async () => {
+    if (otp.length < 4) return Alert.alert("Błąd", "Wpisz kod z e-maila.");
+    if (newPassword.length < 6) return Alert.alert("Błąd", "Nowe hasło musi mieć min. 6 znaków.");
+    
+    setLoading(true);
+    try {
+      const res = await fetch('https://estateos.pl/api/auth/reset-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ identifier: email, otp, newPassword })
+      });
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Sukces!", "Hasło zmienione. Możesz się zalogować.", [{ text: "Super", onPress: onClose }]);
+      } else {
+        Alert.alert("Błąd", "Kod jest nieprawidłowy lub wygasł.");
+      }
+    } catch { Alert.alert("Błąd", "Problem z resetowaniem."); }
+    setLoading(false);
+  };
+
+  return (
+    <Modal visible={visible} animationType="fade" presentationStyle="overFullScreen" transparent={true}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 }}>
+        <View style={{ backgroundColor: theme.background, borderRadius: 30, padding: 25, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20 }}>
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: theme.text }}>{step === 1 ? 'Resetuj przez Email' : 'Ustaw nowe hasło'}</Text>
+            <Pressable onPress={onClose}><Ionicons name="close-circle" size={28} color={theme.subtitle} /></Pressable>
+          </View>
+
+          {step === 1 ? (
+            <View>
+              <Text style={{ color: theme.subtitle, marginBottom: 20, fontSize: 14 }}>Wyślemy Ci wiadomość e-mail z jednorazowym kodem weryfikacyjnym.</Text>
+              <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+                <View style={styles.inputRow}>
+                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Twój e-mail" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
+                </View>
+              </View>
+              <Pressable onPress={handleSendEmailCode} style={[styles.mainButton, { backgroundColor: '#10b981', marginTop: 20 }]}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>Wyślij kod</Text>}
+              </Pressable>
+            </View>
+          ) : (
+            <View>
+              <Text style={{ color: theme.subtitle, marginBottom: 15, fontSize: 14 }}>Wpisz kod z e-maila oraz nowe hasło.</Text>
+              <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+                <View style={styles.inputRow}>
+                  <Ionicons name="mail-open-outline" size={20} color={theme.subtitle} style={{marginRight: 10}} />
+                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Kod (np. 1234)" keyboardType="numeric" placeholderTextColor={theme.subtitle} value={otp} onChangeText={setOtp} />
+                </View>
+                <View style={[styles.divider, { backgroundColor: cardBorder }]} />
+                <View style={styles.inputRow}>
+                  <Ionicons name="key-outline" size={20} color={theme.subtitle} style={{marginRight: 10}} />
+                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Nowe hasło" secureTextEntry placeholderTextColor={theme.subtitle} value={newPassword} onChangeText={setNewPassword} />
+                </View>
+              </View>
+              <Pressable onPress={handleFinalReset} style={[styles.mainButton, { backgroundColor: '#10b981', marginTop: 20 }]}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>Zmień hasło</Text>}
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function AuthScreen({ theme }: { theme: any }) {
   const navigation = useNavigation<any>();
   const [isLogin, setIsLogin] = useState(true);
+  const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
   const [role, setRole] = useState<'PRIVATE' | 'PARTNER'>('PRIVATE');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -239,6 +341,13 @@ export default function AuthScreen({ theme }: { theme: any }) {
           </View>
         </View>
 
+        {/* NOWY ELEMENT: LINK DO RESETU HASŁA */}
+        {isLogin && (
+          <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsForgotModalVisible(true); }} style={{ alignSelf: 'flex-end', marginTop: 15 }}>
+            <Text style={{ color: theme.subtitle, fontSize: 13, fontWeight: '600' }}>Nie pamiętasz hasła?</Text>
+          </Pressable>
+        )}
+
         {!isLogin && (
           <PremiumCheckbox 
             checked={termsAccepted} 
@@ -285,6 +394,8 @@ export default function AuthScreen({ theme }: { theme: any }) {
         </Pressable>
 
       </ScrollView>
+      
+      <ForgotPasswordModal visible={isForgotModalVisible} onClose={() => setIsForgotModalVisible(false)} theme={theme} />
     </KeyboardAvoidingView>
   );
 }
