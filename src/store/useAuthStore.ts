@@ -12,6 +12,7 @@ interface User {
   avatar?: string;
   role: string;
   planType: string | null;
+  isVerifiedPhone?: boolean;
 }
 
 interface AuthState {
@@ -24,20 +25,27 @@ interface AuthState {
   loginWithPasskey: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
+  updateAvatar: (base64Image: string) => Promise<void>;
 }
 
-// 🧠 AUTOMATYCZNY TŁUMACZ DANYCH Z BACKENDU
 const normalizeUser = (apiUser: any) => {
   if (!apiUser) return null;
-  const nameParts = (apiUser.name || '').split(' ');
+  
+  // Rozdzielamy 'Marian Romanienko' na imię i nazwisko dla luksusowego wyglądu
+  const fullDisplayName = apiUser.name || apiUser.contactName || 'Użytkownik';
+  const nameParts = fullDisplayName.split(' ');
+  
   return {
     ...apiUser,
-    firstName: nameParts[0] || '',
-    lastName: nameParts.slice(1).join(' ') || ''
+    firstName: nameParts[0] || 'Użytkownik',
+    lastName: nameParts.slice(1).join(' ') || '',
+    phone: apiUser.phone || apiUser.contactPhone || 'Brak numeru',
+    avatar: apiUser.image || apiUser.avatar || null,
+    isVerifiedPhone: apiUser.isVerified === true || apiUser.phoneVerified === true || false
   };
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   isLoading: false,
@@ -71,12 +79,16 @@ export const useAuthStore = create<AuthState>((set) => ({
       const response = await fetch('https://estateos.pl/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass, contactName: `${fName} ${lName}`, contactPhone: phone, advertiserType: role.toLowerCase() }),
+        body: JSON.stringify({ 
+          email, 
+          password: pass, 
+          name: `${fName} ${lName}`, 
+          phone: phone,
+          role: role 
+        }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Błąd rejestracji');
-      
-      Alert.alert("Sukces", "Konto utworzone! Możesz się teraz zalogować.");
       set({ isLoading: false });
       return true;
     } catch (err: any) {
@@ -85,9 +97,25 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
+  updateAvatar: async (base64Image: string) => {
+    const { user, token } = get();
+    if (!user) return;
+    const updatedUser = { ...user, avatar: base64Image };
+    set({ user: updatedUser });
+    await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
+    
+    try {
+      await fetch('https://estateos.pl/api/mobile/v1/user/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ image: base64Image, userId: user.id })
+      });
+    } catch (e) { console.log("Avatar sync error", e); }
+  },
+
   loginWithPasskey: async (email: string) => {
-     Alert.alert("Passkey", "Integracja Apple Passkey wymaga konfiguracji Apple Developer Program. Na razie użyj hasła.");
-     return false;
+    Alert.alert("Passkey", "Integracja Apple Passkey wymaga Apple Developer Program.");
+    return false;
   },
 
   logout: async () => {

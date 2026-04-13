@@ -29,6 +29,8 @@ const modes: { label: string; value: ThemeMode }[] = [ { label: 'Jasny', value: 
 
 import ProfileScreen from './src/screens/ProfileScreen';
 import EditOfferScreen from './src/screens/EditOfferScreen';
+import TermsScreen from './src/screens/TermsScreen';
+import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
@@ -148,6 +150,8 @@ export default function App() {
           {/* A tu ładujemy nasz potężny ekran na pełnej szerokości */}
           <AppStack.Screen name="OfferDetail" component={OfferDetail} />
           <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
+          <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
+          <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
         </AppStack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

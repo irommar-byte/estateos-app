@@ -342,8 +342,37 @@ function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }: any) {
   );
 }
 
+
+// --- KOMPONENT: ODDYCHAJĄCA PLAKIETKA WERYFIKACJI ---
+const UnverifiedBadge = ({ onPress, isDark }: any) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 1500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1500, useNativeDriver: true })
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 10 }}>
+      <Animated.View style={{ transform: [{ scale: pulseAnim }], flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239, 68, 68, 0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)', shadowColor: '#ef4444', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6 }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444', marginRight: 6 }} />
+        <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>NIEZWERYFIKOWANY</Text>
+      </Animated.View>
+      <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 }]}>
+        <Text style={{ color: '#10b981', fontSize: 12, fontWeight: '800' }}>Zweryfikuj SMS</Text>
+      </Pressable>
+    </View>
+  );
+};
+
 // --- GŁÓWNY EKRAN PROFILU ---
+
 export default function ProfileScreen({ theme }: { theme: any }) {
+  const navigation = useNavigation<any>();
   const { isLoggedIn, user, logout, updateAvatar, registerPasskey } = useAuthStore() as any;
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
@@ -407,6 +436,10 @@ export default function ProfileScreen({ theme }: { theme: any }) {
           <View style={styles.headerInfo}>
             <Text style={[styles.headerName, { color: theme.text }]} numberOfLines={1}>{user?.firstName || user?.email} {user?.lastName || ''}</Text>
             <Text style={styles.headerRole}>{isZarzad ? 'Zarząd EstateOS™' : (user?.role === 'AGENT' ? 'Partner EstateOS™' : 'Osoba Prywatna')}</Text>
+            {/* Tutaj sprawdzamy flagę weryfikacji. Na razie załóżmy, że pole isVerifiedPhone jest false (wymuś testowo) */}
+            {(!user?.isVerifiedPhone) && (
+              <UnverifiedBadge isDark={isDark} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('SmsVerification'); }} />
+            )}
           </View>
         </View>
 

@@ -1,9 +1,71 @@
 import { useNavigation } from "@react-navigation/native";
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView, Animated } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+
+// --- LUKSUSOWE IKONY WALIDACJI ---
+const StatusIcon = ({ status }: { status: string }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: status === 'idle' ? 0 : 1, duration: 300, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: status === 'idle' ? 0.5 : 1, friction: 5, useNativeDriver: true })
+    ]).start();
+  }, [status]);
+
+  const getBgColor = () => {
+    if (status === 'available') return 'rgba(16, 185, 129, 0.15)';
+    if (status === 'taken') return 'rgba(239, 68, 68, 0.15)';
+    return 'transparent';
+  };
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }], marginLeft: 10, width: 30, height: 30, borderRadius: 15, backgroundColor: getBgColor(), alignItems: 'center', justifyContent: 'center' }}>
+      {status === 'loading' && <ActivityIndicator size="small" color="#10b981" />}
+      {status === 'available' && <Ionicons name="checkmark" size={20} color="#10b981" style={{ fontWeight: '900' }} />}
+      {status === 'taken' && <Ionicons name="close" size={22} color="#ef4444" style={{ fontWeight: '900' }} />}
+    </Animated.View>
+  );
+};
+
+// --- ANIMOWANY CHECKBOX Z EFEKTEM GLOW ---
+const PremiumCheckbox = ({ checked, onPress, onReadTerms, theme }: any) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  
+  useEffect(() => {
+    Animated.spring(scaleAnim, { toValue: checked ? 1 : 0.9, friction: 4, useNativeDriver: true }).start();
+  }, [checked]);
+
+  return (
+    <View style={styles.checkboxContainer}>
+      <Pressable 
+        onPress={onPress} 
+        style={({pressed}) => [{ opacity: pressed ? 0.7 : 1 }, styles.checkboxTouchArea]}
+      >
+        <Animated.View style={[
+          styles.checkboxBox, 
+          { borderColor: checked ? '#10b981' : theme.subtitle },
+          checked && { backgroundColor: '#10b981', shadowColor: '#10b981', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 5, transform: [{ scale: scaleAnim }] }
+        ]}>
+          {checked && <Ionicons name="checkmark" size={16} color="#fff" style={{ fontWeight: '900' }} />}
+        </Animated.View>
+      </Pressable>
+      <View style={styles.checkboxTextContainer}>
+        <Text style={[styles.checkboxText, { color: theme.subtitle }]}>
+          Oświadczam, że zapoznałem się z{' '}
+          <Text onPress={onReadTerms} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>
+            Regulaminem
+          </Text>
+          {' '}i akceptuję jego warunki.
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 export default function AuthScreen({ theme }: { theme: any }) {
   const navigation = useNavigation<any>();
@@ -14,6 +76,7 @@ export default function AuthScreen({ theme }: { theme: any }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   
   const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'available' | 'taken'>('idle');
   const [phoneStatus, setPhoneStatus] = useState<'idle' | 'loading' | 'available' | 'taken'>('idle');
@@ -33,11 +96,16 @@ export default function AuthScreen({ theme }: { theme: any }) {
     const timer = setTimeout(async () => {
       setEmailStatus('loading');
       try {
-        const res = await fetch('https://estateos.pl/api/mobile/v1/auth/check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field: 'email', value: email })
+        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, field: 'email', value: email })
         });
+        if (!res.ok) throw new Error();
         const d = await res.json();
-        setEmailStatus(d.exists ? 'taken' : 'available');
+        if (d.exists === true || d.taken === true) {
+          setEmailStatus('taken'); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        } else {
+          setEmailStatus('available'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
       } catch { setEmailStatus('idle'); }
     }, 600);
     return () => clearTimeout(timer);
@@ -49,68 +117,89 @@ export default function AuthScreen({ theme }: { theme: any }) {
     const timer = setTimeout(async () => {
       setPhoneStatus('loading');
       try {
-        const res = await fetch('https://estateos.pl/api/mobile/v1/auth/check', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ field: 'phone', value: '+48 ' + cleanPhone })
+        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '+48 ' + cleanPhone, field: 'phone', value: '+48 ' + cleanPhone })
         });
+        if (!res.ok) throw new Error();
         const d = await res.json();
-        setPhoneStatus(d.exists ? 'taken' : 'available');
+        if (d.exists === true || d.taken === true) {
+          setPhoneStatus('taken'); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        } else {
+          setPhoneStatus('available'); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        }
       } catch { setPhoneStatus('idle'); }
     }, 600);
     return () => clearTimeout(timer);
   }, [phone, isLogin]);
 
+  // --- ZJAWISKOWY FLOW PO REJESTRACJI ---
   const handleSubmit = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       if (isLogin) {
-        const ok = await store.login(email, password); if (!ok) return;
-        navigation.replace("MainTabs", { screen: "Radar" });
+        const ok = await store.login(email, password); 
+        if (!ok) return;
       } else {
         if (!firstName || !lastName || phone.replace(/\s/g, '').length < 9) {
           Alert.alert("Błąd", "Wypełnij poprawnie wizytówkę."); return;
         }
-        await store.register(email, password, firstName, lastName, '+48 ' + phone.replace(/\s/g, ''), role);
+        if (emailStatus === 'taken') { Alert.alert("Błąd", "Ten adres e-mail jest już zarejestrowany."); return; }
+        if (phoneStatus === 'taken') { Alert.alert("Błąd", "Ten numer telefonu jest już używany."); return; }
+        
+        if (!termsAccepted) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert("Wymagany Regulamin", "Proszę zapoznać się z regulaminem i zaakceptować jego warunki przed dołączeniem do platformy.");
+          return;
+        }
+
+        // 1. Rejestracja w tle
+        const isRegistered = await store.register(email, password, firstName, lastName, '+48 ' + phone.replace(/\s/g, ''), role);
+        
+        if (isRegistered) {
+          // 2. Ciche zalogowanie w tle
+          const isLogged = await store.login(email, password);
+          
+          if (isLogged) {
+            // 3. Po zalogowaniu ekran Profilu "pod spodem" sam się odświeży. Witamy usera w luksusowy sposób!
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert(
+              "Konto pomyślnie założone!", 
+              "Witamy w gronie EstateOS™!\n\nZweryfikuj swój numer telefonu (SMS) w profilu, aby odblokować wszystkie funkcje i móc swobodnie kontaktować się z właścicielami ofert.",
+              [{ text: "Rozumiem", style: "default" }]
+            );
+          } else {
+            Alert.alert("Sukces", "Konto założone! Zaloguj się swoimi danymi.");
+            setIsLogin(true);
+          }
+        }
       }
     } catch (e: any) { Alert.alert('Błąd', e.message); }
   };
 
   const handlePasskey = async () => {
     if (!email) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert("Wpisz Email", "Najpierw wpisz swój adres e-mail, aby system mógł dopasować klucz Passkey.");
-      return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); Alert.alert("Wpisz Email", "Najpierw wpisz swój adres e-mail, aby system mógł dopasować klucz Passkey."); return;
     }
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsPasskeyLoading(true);
-    try {
-      await store.loginWithPasskey(email);
-    } catch (e: any) {
-      Alert.alert('Passkey', e.message);
-    } finally {
-      setIsPasskeyLoading(false);
-    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsPasskeyLoading(true);
+    try { await store.loginWithPasskey(email); } catch (e: any) { Alert.alert('Passkey', e.message); } finally { setIsPasskeyLoading(false); }
   };
 
-  const StatusIcon = ({ status }: { status: string }) => {
-    if (status === 'loading') return <ActivityIndicator size="small" color="#10b981" style={{ marginLeft: 10 }} />;
-    if (status === 'available') return <Ionicons name="checkmark-circle" size={20} color="#10b981" style={{ marginLeft: 10 }} />;
-    if (status === 'taken') return <Ionicons name="close-circle" size={20} color="#ef4444" style={{ marginLeft: 10 }} />;
-    return null;
-  };
+  const cardBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+  const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
+  const dividerColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 50 }}>
         
-        <View style={styles.iconWrapper}>
-          <Ionicons name={isLogin ? "lock-closed" : "person-add"} size={50} color={isLogin ? "#10b981" : (role === 'PARTNER' ? "#FF9F0A" : "#10b981")} />
+        <View style={[styles.iconWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+          <Ionicons name={isLogin ? "lock-closed" : "person-add"} size={45} color={isLogin ? "#10b981" : (role === 'PARTNER' ? "#FF9F0A" : "#10b981")} />
         </View>
         <Text style={[styles.title, { color: theme.text }]}>{isLogin ? 'Witaj ponownie' : 'Stwórz Wizytówkę'}</Text>
         
         {!isLogin && (
           <View style={{ marginBottom: 25 }}>
-            <View style={[styles.roleSwitchContainer, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+            <View style={[styles.roleSwitchContainer, { backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }]}>
               <Pressable onPress={() => { Haptics.selectionAsync(); setRole('PRIVATE'); }} style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}>
                 <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>Osoba prywatna</Text>
               </Pressable>
@@ -122,62 +211,61 @@ export default function AuthScreen({ theme }: { theme: any }) {
         )}
 
         {!isLogin && (
-          <View style={styles.card}>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
             <View style={styles.inputRow}>
               <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Imię" placeholderTextColor={theme.subtitle} value={firstName} onChangeText={setFirstName} />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: dividerColor }]} />
             <View style={styles.inputRow}>
               <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Nazwisko" placeholderTextColor={theme.subtitle} value={lastName} onChangeText={setLastName} />
             </View>
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: dividerColor }]} />
             <View style={styles.inputRow}>
-              <Text style={{ fontSize: 16, fontWeight: '700', color: theme.subtitle, marginRight: 8 }}>+48</Text>
+              <Text style={{ fontSize: 17, fontWeight: '700', color: theme.subtitle, marginRight: 8 }}>+48</Text>
               <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="000 000 000" placeholderTextColor={theme.subtitle} keyboardType="numeric" value={phone} onChangeText={handlePhoneChange} />
               <StatusIcon status={phoneStatus} />
             </View>
           </View>
         )}
 
-        <View style={[styles.card, { marginTop: isLogin ? 0 : 15 }]}>
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: isLogin ? 0 : 15 }]}>
           <View style={styles.inputRow}>
-            <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Email" autoCapitalize="none" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
+            <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Email" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
             {!isLogin && <StatusIcon status={emailStatus} />}
           </View>
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: dividerColor }]} />
           <View style={styles.inputRow}>
             <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Hasło" secureTextEntry placeholderTextColor={theme.subtitle} value={password} onChangeText={setPassword} />
           </View>
         </View>
+
+        {!isLogin && (
+          <PremiumCheckbox 
+            checked={termsAccepted} 
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTermsAccepted(!termsAccepted); }}
+            onReadTerms={() => { Haptics.selectionAsync(); navigation.navigate('Terms'); }}
+            theme={theme}
+          />
+        )}
 
         <Pressable onPress={handleSubmit} style={({ pressed }) => [
             styles.mainButton, 
             { opacity: pressed ? 0.8 : 1, backgroundColor: isLogin ? '#10b981' : (role === 'PARTNER' ? '#FF9F0A' : '#10b981') },
             !isLogin && role === 'PARTNER' && { shadowColor: '#FF9F0A' }
           ]}>
-          <Text style={styles.mainButtonText}>{isLogin ? 'Zaloguj się' : 'Rozpocznij przygodę'}</Text>
+          <Text style={styles.mainButtonText}>{isLogin ? 'Zaloguj się' : 'Dołącz do ekosystemu EstateOS™'}</Text>
         </Pressable>
 
-        {/* --- NOWA SEKCJA PASSKEY --- */}
         {isLogin && (
           <View style={styles.passkeySection}>
             <View style={styles.dividerRow}>
-              <View style={[styles.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+              <View style={[styles.line, { backgroundColor: dividerColor }]} />
               <Text style={{ color: theme.subtitle, paddingHorizontal: 15, fontSize: 12, fontWeight: '700' }}>LUB</Text>
-              <View style={[styles.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]} />
+              <View style={[styles.line, { backgroundColor: dividerColor }]} />
             </View>
 
-            <Pressable 
-              onPress={handlePasskey} 
-              style={({ pressed }) => [
-                styles.passkeyBtn, 
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
-                pressed && { opacity: 0.6 }
-              ]}
-            >
-              {isPasskeyLoading ? (
-                <ActivityIndicator size="small" color={theme.text} />
-              ) : (
+            <Pressable onPress={handlePasskey} style={({ pressed }) => [styles.passkeyBtn, { backgroundColor: cardBg, borderColor: cardBorder }, pressed && { opacity: 0.6 }]}>
+              {isPasskeyLoading ? <ActivityIndicator size="small" color={theme.text} /> : (
                 <>
                   <Ionicons name="finger-print" size={24} color={theme.text} style={{ marginRight: 12 }} />
                   <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>Zaloguj się z Passkey</Text>
@@ -186,7 +274,6 @@ export default function AuthScreen({ theme }: { theme: any }) {
             </Pressable>
           </View>
         )}
-        {/* --------------------------- */}
 
         <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsLogin(!isLogin); }} style={{ marginTop: 25, alignItems: 'center' }}>
           <Text style={{ color: theme.subtitle, fontSize: 15 }}>
@@ -203,7 +290,7 @@ export default function AuthScreen({ theme }: { theme: any }) {
 }
 
 const styles = StyleSheet.create({
-  iconWrapper: { width: 80, height: 80, borderRadius: 25, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 25, alignSelf: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  iconWrapper: { width: 80, height: 80, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 25, alignSelf: 'center', borderWidth: 1 },
   title: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 30, letterSpacing: -0.5 },
   
   roleSwitchContainer: { flexDirection: 'row', borderRadius: 16, padding: 4 },
@@ -212,15 +299,20 @@ const styles = StyleSheet.create({
   roleButtonActivePrivate: { backgroundColor: '#10b981', shadowColor: '#10b981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
   roleButtonActivePartner: { backgroundColor: '#FF9F0A', shadowColor: '#FF9F0A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
 
-  card: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  card: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18 },
-  input: { fontSize: 16, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginHorizontal: 20 },
+  input: { fontSize: 17, fontWeight: '600' },
+  divider: { height: 1, marginHorizontal: 20 },
   
-  mainButton: { padding: 20, borderRadius: 20, alignItems: 'center', marginTop: 30, shadowColor: '#10b981', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
+  mainButton: { padding: 20, borderRadius: 20, alignItems: 'center', marginTop: 15, shadowColor: '#10b981', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
   mainButtonText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
 
-  // Nowe style dla Passkey
+  checkboxContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 25, paddingHorizontal: 5 },
+  checkboxTouchArea: { padding: 5, marginRight: 10 },
+  checkboxBox: { width: 24, height: 24, borderRadius: 8, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
+  checkboxTextContainer: { flex: 1 },
+  checkboxText: { fontSize: 13, lineHeight: 20 },
+
   passkeySection: { marginTop: 25 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
   line: { flex: 1, height: 1 },

@@ -16,18 +16,31 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const Colors = { primary: '#10b981' };
 
 const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
+  // WARSZAWA
   'Warszawa': { lat: 52.2297, lng: 21.0122 }, 'Bemowo': { lat: 52.2460, lng: 20.9100 }, 'Białołęka': { lat: 52.3240, lng: 20.9700 },
   'Bielany': { lat: 52.2850, lng: 20.9320 }, 'Mokotów': { lat: 52.1939, lng: 21.0287 }, 'Ochota': { lat: 52.2120, lng: 20.9690 },
   'Praga-Południe': { lat: 52.2390, lng: 21.0825 }, 'Praga-Północ': { lat: 52.2581, lng: 21.0334 }, 'Rembertów': { lat: 52.2580, lng: 21.1620 },
   'Śródmieście': { lat: 52.2297, lng: 21.0122 }, 'Targówek': { lat: 52.2800, lng: 21.0500 }, 'Ursus': { lat: 52.1890, lng: 20.8850 },
   'Ursynów': { lat: 52.1484, lng: 21.0456 }, 'Wawer': { lat: 52.2000, lng: 21.1660 }, 'Wesoła': { lat: 52.2610, lng: 21.2280 },
   'Wilanów': { lat: 52.1643, lng: 21.0894 }, 'Włochy': { lat: 52.1940, lng: 20.9330 }, 'Wola': { lat: 52.2361, lng: 20.9575 }, 'Żoliborz': { lat: 52.2688, lng: 20.9820 },
+  
+  // ŁÓDŹ
   'Łódź': { lat: 51.7592, lng: 19.4560 }, 'Bałuty': { lat: 51.8003, lng: 19.4244 }, 'Górna': { lat: 51.7225, lng: 19.4756 },
   'Polesie': { lat: 51.7578, lng: 19.4186 }, 'Widzew': { lat: 51.7600, lng: 19.5300 },
+  
+  // KRAKÓW
+  'Kraków': { lat: 50.0614, lng: 19.9366 }, 'Stare Miasto': { lat: 50.0614, lng: 19.9366 }, 'Grzegórzki': { lat: 50.0583, lng: 19.9583 },
+  'Prądnik Czerwony': { lat: 50.0883, lng: 19.9692 }, 'Prądnik Biały': { lat: 50.0933, lng: 19.9300 }, 'Krowodrza': { lat: 50.0733, lng: 19.9183 },
+  'Bronowice': { lat: 50.0817, lng: 19.8833 }, 'Zwierzyniec': { lat: 50.0533, lng: 19.8833 }, 'Dębniki': { lat: 50.0350, lng: 19.9100 },
+  'Łagiewniki-Borek Fałęcki': { lat: 50.0183, lng: 19.9317 }, 'Swoszowice': { lat: 49.9883, lng: 19.9383 }, 'Podgórze Duchackie': { lat: 50.0167, lng: 19.9617 },
+  'Bieżanów-Prokocim': { lat: 50.0167, lng: 20.0050 }, 'Podgórze': { lat: 50.0350, lng: 19.9617 }, 'Czyżyny': { lat: 50.0733, lng: 20.0050 },
+  'Mistrzejowice': { lat: 50.0967, lng: 20.0133 }, 'Bieńczyce': { lat: 50.0867, lng: 20.0267 }, 'Wzgórza Krzesławickie': { lat: 50.0983, lng: 20.0650 },
+  'Nowa Huta': { lat: 50.0717, lng: 20.0383 }
 };
 
 const DISTRICTS_DATA = {
   'Warszawa': ['Bemowo', 'Białołęka', 'Bielany', 'Mokotów', 'Ochota', 'Praga-Południe', 'Praga-Północ', 'Rembertów', 'Śródmieście', 'Targówek', 'Ursus', 'Ursynów', 'Wawer', 'Wesoła', 'Wilanów', 'Włochy', 'Wola', 'Żoliborz'],
+  'Kraków': ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
   'Łódź': ['Bałuty', 'Górna', 'Polesie', 'Śródmieście', 'Widzew'],
   'Reszta Polski': ['Inna lokalizacja']
 };
@@ -101,7 +114,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
   
-  // TARCZA OCHRONNA: Blokuje zapętlanie się "odwrotnego geokodowania" z animacjami mapy
   const isProgrammaticMove = useRef(false);
   
   useFocusEffect(useCallback(() => { setCurrentStep(2); }, []));
@@ -115,7 +127,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const hasAddress = !!draft.street && draft.street.length > 2;
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
-    isProgrammaticMove.current = true; // Włączamy tarczę
+    isProgrammaticMove.current = true;
     mapRef.current?.animateCamera({ 
       center: { latitude: targetLat, longitude: targetLng }, 
       pitch: isExact ? 75 : 30, 
@@ -124,7 +136,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
       heading: 0 
     }, { duration: 2500 }); 
     
-    // Zdejmujemy tarczę po zakończeniu lotu kamery
     setTimeout(() => { isProgrammaticMove.current = false; }, 2600);
   };
 
@@ -147,8 +158,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
         if (reverse.length > 0) {
           const place = reverse[0];
           const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
+          
           if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
+          else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
           else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
+          
           finalDistrict = getClosestDistrict(latitude, longitude, finalCity);
           if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
         }
@@ -163,19 +177,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
     } catch (e) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
   };
 
-  // UBER MODE: Odwrotne geokodowanie podczas przesuwania mapy palcem
   const handleRegionChangeComplete = async (region: Region, details: any) => {
-    // 1. Zawsze aktualizujemy bazowe współrzędne
     updateDraft({ lat: region.latitude, lng: region.longitude });
 
-    // 2. Jeśli mapa leci automatycznie (po wpisaniu adresu), ignorujemy, by nie zrobić pętli
     if (isProgrammaticMove.current) return;
-
-    // 3. Jeśli to nie był ruch wywołany przez palec użytkownika (isGesture), ignorujemy (przydatne w Androidzie)
     if (details && details.isGesture === false) return;
 
     try {
-      // Pytamy satelitę, na jakiej ulicy upadła pinezka
       const reverse = await Location.reverseGeocodeAsync({ latitude: region.latitude, longitude: region.longitude });
       if (reverse.length > 0) {
         const place = reverse[0];
@@ -191,17 +199,17 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
         let finalCity = 'Reszta Polski';
+        
         if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
+        else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
         else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
         
         const finalDistrict = getClosestDistrict(region.latitude, region.longitude, finalCity);
 
-        // Luksusowa wibracja potwierdzająca namierzenie adresu
         if (newStreet !== streetInput) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           
-          // Podmiana tekstu w wyszukiwarce na żywo!
           setStreetInput(newStreet);
           updateDraft({ city: finalCity, district: finalDistrict, street: newStreet });
         }
@@ -231,7 +239,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       
       <View style={styles.mapContainer}>
-        {/* DODANY onRegionChangeComplete Z ODWROTNYM GEOKODOWANIEM */}
         <MapView 
           ref={mapRef} 
           style={styles.map} 
