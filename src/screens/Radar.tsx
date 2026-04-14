@@ -1,9 +1,8 @@
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, PanResponder, useColorScheme, LayoutAnimation, UIManager } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, PanResponder, useColorScheme, LayoutAnimation, UIManager, TouchableOpacity, TextInput } from 'react-native';
 import { Marker } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -39,56 +38,6 @@ const formatPriceMarker = (price: string | number) => {
   return num.toString();
 };
 
-const PremiumSlider = ({ label, min, max, step, value, onValueChange, formatFn, isDark, themeColor }: any) => {
-  const sliderWidth = width - 64; 
-  const pan = useRef(new Animated.Value(0)).current;
-  const [localVal, setLocalVal] = useState(value);
-
-  useEffect(() => {
-    const percentage = (value - min) / (max - min);
-    pan.setValue(percentage * sliderWidth);
-    setLocalVal(value);
-  }, [value]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); },
-      onPanResponderMove: (_, gestureState) => {
-        let newX = gestureState.moveX - 32;
-        if (newX < 0) newX = 0;
-        if (newX > sliderWidth) newX = sliderWidth;
-        pan.setValue(newX);
-        const percentage = newX / sliderWidth;
-        let rawVal = min + percentage * (max - min);
-        let snappedVal = Math.round(rawVal / step) * step;
-        
-        if (snappedVal !== localVal) {
-          setLocalVal(snappedVal);
-          if (snappedVal % (step * 2) === 0) Haptics.selectionAsync(); 
-        }
-      },
-      onPanResponderRelease: () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onValueChange(localVal);
-      }
-    })
-  ).current;
-
-  return (
-    <View style={styles.sliderContainer}>
-      <View style={styles.sliderHeader}>
-        <Text style={[styles.sliderLabel, { color: isDark ? '#FFF' : '#000' }]}>{label}</Text>
-        <Text style={[styles.sliderValue, { color: themeColor }]}>{formatFn(localVal)}</Text>
-      </View>
-      <View style={[styles.sliderTrackBg, { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }]} {...panResponder.panHandlers}>
-        <Animated.View style={[styles.sliderTrackFill, { width: pan, backgroundColor: themeColor }]} />
-        <Animated.View style={[styles.sliderThumb, { transform: [{ translateX: pan }], borderColor: themeColor }]} />
-      </View>
-    </View>
-  );
-};
-
 export default function Radar({ theme }: any) {
   const navigation = useNavigation<any>();
   const { user } = useAuthStore() as any;
@@ -117,6 +66,11 @@ export default function Radar({ theme }: any) {
     requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: true
   });
   const [draftFilters, setDraftFilters] = useState(filters);
+
+  // Zmienne tymczasowe dla pól input (aby sformatować po wpisaniu)
+  const [inputMaxPrice, setInputMaxPrice] = useState(draftFilters.maxPrice.toString());
+  const [inputMinArea, setInputMinArea] = useState(draftFilters.minArea.toString());
+  const [inputMinYear, setInputMinYear] = useState(draftFilters.minYear.toString());
 
   const activeColor = ThemeColors[draftFilters.transactionType];
 
@@ -221,24 +175,18 @@ export default function Radar({ theme }: any) {
     setShowCalibration(false); 
     setIsScanning(true);
     
-    // Reset do początkowych wartości 3D
     scale3D.setValue(3.5); 
     tilt3D.setValue(0);
     scanOpacity.setValue(1);
     flashOpacity.setValue(0);
 
     Animated.parallel([
-      // Powolne rotowanie rdzenia radaru
       Animated.loop(Animated.timing(scanSpin, { toValue: 1, duration: 3500, useNativeDriver: true })),
-      
-      // Pulsowanie blipów z opóźnieniem
       Animated.loop(Animated.sequence([
         Animated.delay(600),
         Animated.timing(blipOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
         Animated.timing(blipOpacity, { toValue: 0.1, duration: 1500, useNativeDriver: true })
       ])),
-
-      // KINEMATYKA: Powolny opad i oddalanie na mapę (3.5 sekundy)
       Animated.sequence([
         Animated.delay(400), 
         Animated.parallel([
@@ -248,7 +196,6 @@ export default function Radar({ theme }: any) {
       ])
     ]).start();
 
-    // Efekt wibrującego crescendo
     let hapticCount = 0;
     const hapticInterval = setInterval(() => {
       hapticCount++;
@@ -257,7 +204,6 @@ export default function Radar({ theme }: any) {
       else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     }, 150);
 
-    // Finałowe uderzenie Flasha i nałożenie filtrów
     setTimeout(() => {
       clearInterval(hapticInterval);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -301,6 +247,33 @@ export default function Radar({ theme }: any) {
     setDraftFilters({ ...draftFilters, city: city, selectedDistricts: [] });
     setShowCityPicker(false);
   };
+
+  // Funkcje formatujące dla TextInput
+  const formatNumberInput = (value: string) => {
+    return value.replace(/\D/g, ''); // Usuwa wszystko co nie jest cyfrą
+  };
+
+  const handlePriceEndEditing = () => {
+    let raw = parseInt(formatNumberInput(inputMaxPrice));
+    if (isNaN(raw) || raw < 0) raw = 0;
+    setInputMaxPrice(raw.toString());
+    setDraftFilters({ ...draftFilters, maxPrice: raw });
+  };
+
+  const handleAreaEndEditing = () => {
+    let raw = parseInt(formatNumberInput(inputMinArea));
+    if (isNaN(raw) || raw < 0) raw = 0;
+    setInputMinArea(raw.toString());
+    setDraftFilters({ ...draftFilters, minArea: raw });
+  };
+
+  const handleYearEndEditing = () => {
+    let raw = parseInt(formatNumberInput(inputMinYear));
+    if (isNaN(raw) || raw < 1900) raw = 1900;
+    setInputMinYear(raw.toString());
+    setDraftFilters({ ...draftFilters, minYear: raw });
+  };
+
 
   const spin = scanSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const tilt = tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] });
@@ -405,7 +378,6 @@ export default function Radar({ theme }: any) {
         )}
       </View>
 
-      {/* OVERLAY KALIBRACJI */}
       <Modal visible={showCalibration} animationType="slide" transparent={true}>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowCalibration(false)}>
@@ -417,7 +389,7 @@ export default function Radar({ theme }: any) {
 
             <View style={styles.premiumModalHeader}>
               <Text style={[styles.premiumModalTitle, { color: isDark ? '#FFF' : '#000' }]}>Kalibracja Radaru</Text>
-              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDraftFilters({ transactionType: 'SELL', propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [], maxPrice: 5000000, minArea: 0, minYear: 1900, requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: true }); }} style={styles.resetBtn}>
+              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDraftFilters({ transactionType: 'SELL', propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [], maxPrice: 5000000, minArea: 0, minYear: 1900, requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: true }); setInputMaxPrice('5000000'); setInputMinArea('0'); setInputMinYear('1900'); }} style={styles.resetBtn}>
                 <Text style={[styles.resetBtnText, { color: activeColor }]}>Wyczyść</Text>
               </Pressable>
             </View>
@@ -474,13 +446,54 @@ export default function Radar({ theme }: any) {
                 </ScrollView>
               </View>
 
+              {/* ZMIENIONA SEKCJA: PRECYZYJNE WYMIARY (INPUTY ZAMIAST SUWAKÓW) */}
               <Text style={styles.premiumSectionTitle}>PRECYZYJNE WYMIARY</Text>
-              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 10 }]}>
-                <PremiumSlider label="Maks. Cena" min={100000} max={5000000} step={50000} value={draftFilters.maxPrice} onValueChange={(v:number) => setDraftFilters({...draftFilters, maxPrice: v})} formatFn={(v:number) => `${(v/1000).toFixed(0)}k PLN`} isDark={isDark} themeColor={activeColor} />
-                <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16, marginVertical: 10 }]} />
-                <PremiumSlider label="Min. Metraż" min={0} max={300} step={5} value={draftFilters.minArea} onValueChange={(v:number) => setDraftFilters({...draftFilters, minArea: v})} formatFn={(v:number) => `${v} m²`} isDark={isDark} themeColor={activeColor} />
-                <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16, marginVertical: 10 }]} />
-                <PremiumSlider label="Rok Budowy (od)" min={1900} max={2026} step={1} value={draftFilters.minYear} onValueChange={(v:number) => setDraftFilters({...draftFilters, minYear: v})} formatFn={(v:number) => v.toString()} isDark={isDark} themeColor={activeColor} />
+              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 5 }]}>
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Maks. Cena</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={[styles.numberInput, { color: activeColor }]}
+                      keyboardType="numeric"
+                      value={inputMaxPrice}
+                      onChangeText={setInputMaxPrice}
+                      onBlur={handlePriceEndEditing}
+                      returnKeyType="done"
+                    />
+                    <Text style={styles.inputSuffix}>PLN</Text>
+                  </View>
+                </View>
+                <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
+                
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Min. Metraż</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={[styles.numberInput, { color: activeColor }]}
+                      keyboardType="numeric"
+                      value={inputMinArea}
+                      onChangeText={setInputMinArea}
+                      onBlur={handleAreaEndEditing}
+                      returnKeyType="done"
+                    />
+                    <Text style={styles.inputSuffix}>m²</Text>
+                  </View>
+                </View>
+                <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
+
+                <View style={styles.inputRow}>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Rok Budowy (od)</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={[styles.numberInput, { color: activeColor }]}
+                      keyboardType="numeric"
+                      value={inputMinYear}
+                      onChangeText={setInputMinYear}
+                      onBlur={handleYearEndEditing}
+                      returnKeyType="done"
+                    />
+                  </View>
+                </View>
               </View>
 
               <Text style={styles.premiumSectionTitle}>WYPOSAŻENIE (RESTRYKCYJNE)</Text>
@@ -495,7 +508,6 @@ export default function Radar({ theme }: any) {
               </View>
               <Text style={styles.warningDisclaimer}>Zaznaczenie powyższych opcji rygorystycznie odfiltruje wyniki. Nawet najbardziej okazyjna oferta zostanie ukryta, jeśli wprost nie posiada zaznaczonego atrybutu. Zalecamy używać oszczędnie.</Text>
 
-              {/* DISCLAIMER SYSTEMOWY */}
               <View style={styles.systemDisclaimerBox}>
                 <Ionicons name="shield-checkmark" size={24} color={BaseColors.subtitle} style={{ marginBottom: 8 }} />
                 <Text style={styles.systemDisclaimerText}>Radar to integralny rdzeń ekosystemu EstateOS™. Obecnie wspieramy wybrane metropolie, a nasz zasięg nieustannie rośnie.</Text>
@@ -551,6 +563,10 @@ export default function Radar({ theme }: any) {
               <View style={[styles.sweeperBeam, { shadowColor: activeColor }]} />
             </Animated.View>
 
+            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '30%', left: '70%', opacity: blipOpacity }]} />
+            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '65%', left: '25%', opacity: blipOpacity }]} />
+            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '40%', left: '20%', opacity: blipOpacity }]} />
+
           </Animated.View>
 
           <View style={styles.cinematicTextContainer}>
@@ -558,7 +574,6 @@ export default function Radar({ theme }: any) {
             <Text style={styles.cinematicTextSub}>ESTATE OS™ KINETIC SCAN...</Text>
           </View>
 
-          {/* EFEKT ROZBŁYSKU (LENS FLARE) NA KONIEC */}
           <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFF', opacity: flashOpacity, zIndex: 10000 }]} pointerEvents="none" />
         </Animated.View>
       )}
@@ -621,7 +636,6 @@ const styles = StyleSheet.create({
   premiumSwitchTitle: { fontSize: 16, fontWeight: '500' },
   pillBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
   pillText: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
-  pillBtnActive: { shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.5, shadowRadius: 10, elevation: 5 },
   pillTextActive: { color: '#FFF', fontWeight: '700' },
   cityDrumBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   cityDrumLabel: { fontSize: 16, fontWeight: '400' },
@@ -630,20 +644,17 @@ const styles = StyleSheet.create({
   premiumApplyBtn: { borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 5 },
   premiumApplyBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
   
-  // Custom Thick Slider
-  sliderContainer: { paddingHorizontal: 16, paddingVertical: 15 },
-  sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  sliderLabel: { fontSize: 16, fontWeight: '500' },
-  sliderValue: { fontSize: 17, fontWeight: '800' },
-  sliderTrackBg: { height: 48, borderRadius: 24, overflow: 'hidden' },
-  sliderTrackFill: { height: '100%', borderRadius: 24, shadowColor: '#000', shadowOffset: {width: 2, height: 0}, shadowOpacity: 0.2, shadowRadius: 4 },
-  sliderThumb: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFF', position: 'absolute', top: 2, borderWidth: 1, shadowColor: '#000', shadowOffset: {width: -2, height: 0}, shadowOpacity: 0.2, shadowRadius: 5 },
+  // NOWE POLE DO WPISYWANIA ZAMIAST SUWAKA
+  inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+  inputLabelText: { fontSize: 16, fontWeight: '500' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+  numberInput: { fontSize: 18, fontWeight: '800', minWidth: 80, textAlign: 'right' },
+  inputSuffix: { fontSize: 16, fontWeight: '600', color: '#8E8E93', marginLeft: 8 },
 
   warningDisclaimer: { fontSize: 11, color: BaseColors.subtitle, marginHorizontal: 16, marginTop: 10, lineHeight: 16, textAlign: 'center' },
   systemDisclaimerBox: { marginTop: 30, marginHorizontal: 20, alignItems: 'center', padding: 20, backgroundColor: 'rgba(150,150,150,0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.1)' },
   systemDisclaimerText: { fontSize: 12, color: BaseColors.subtitle, textAlign: 'center', lineHeight: 18, fontWeight: '500' },
 
-  // --- KINOWY RADAR 3D ---
   scannerOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.92)' },
   radar3DContainer: { width: 400, height: 400, justifyContent: 'center', alignItems: 'center' }, 
   gridVertical: { position: 'absolute', width: 2, height: '100%', opacity: 0.15, shadowRadius: 15, shadowOpacity: 1 },
