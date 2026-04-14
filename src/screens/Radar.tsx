@@ -1,9 +1,8 @@
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, PanResponder, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
 import { Marker } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -20,7 +19,6 @@ const API_URL = 'https://estateos.pl';
 const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF453A' };
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
 
-// Tymczasowa baza (zostanie zaktualizowana w Kroku 2)
 const CITY_DISTRICTS: Record<string, string[]> = {
   "Warszawa": ["Bemowo", "Białołęka", "Bielany", "Mokotów", "Ochota", "Praga-Południe", "Praga-Północ", "Rembertów", "Śródmieście", "Targówek", "Ursus", "Ursynów", "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz"],
   "Kraków": ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
@@ -59,29 +57,40 @@ export default function Radar({ theme }: any) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
 
-  const [filters, setFilters] = useState({
+  const defaultFilters = {
     transactionType: 'SELL' as 'RENT' | 'SELL', 
     propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [] as string[],
     maxPrice: 5000000, minArea: 0, minYear: 1900,
     requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: true
-  });
+  };
+
+  const [filters, setFilters] = useState(defaultFilters);
   const [draftFilters, setDraftFilters] = useState(filters);
 
-  // Dodane stany dla pól tekstowych (inputów)
+  // Stany dla formatowanych inputów
   const [inputMaxPrice, setInputMaxPrice] = useState(draftFilters.maxPrice.toString());
   const [inputMinArea, setInputMinArea] = useState(draftFilters.minArea.toString());
   const [inputMinYear, setInputMinYear] = useState(draftFilters.minYear.toString());
 
   const activeColor = ThemeColors[draftFilters.transactionType];
 
-  // CINEMATIC 3D VARIABLES
+  // ANIMACJA RADARU
   const scanSpin = useRef(new Animated.Value(0)).current;
-  const scanPulse = useRef(new Animated.Value(0)).current;
   const scanOpacity = useRef(new Animated.Value(0)).current;
-  const blipOpacity = useRef(new Animated.Value(0)).current;
+  
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const resultOpacity = useRef(new Animated.Value(0)).current;
+  const resultScale = useRef(new Animated.Value(0.5)).current;
+  const radarUIOpacity = useRef(new Animated.Value(1)).current;
+
   const scale3D = useRef(new Animated.Value(3)).current; 
   const tilt3D = useRef(new Animated.Value(0)).current; 
-  const flashOpacity = useRef(new Animated.Value(0)).current; 
+  const blipOpacity = useRef(new Animated.Value(0)).current;
+
+  const blip1 = useRef(new Animated.Value(0)).current;
+  const blip2 = useRef(new Animated.Value(0)).current;
+  const blip3 = useRef(new Animated.Value(0)).current;
+  const blip4 = useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     if (!user) { setAllOffers([]); setFavorites([]); setActiveTab('ALL'); }
@@ -127,7 +136,7 @@ export default function Radar({ theme }: any) {
   };
 
   const filteredOffers = useMemo(() => {
-    return allOffers.filter(offer => {
+    return (allOffers || []).filter(offer => {
       if (!offer.lat || !offer.lng || isNaN(parseFloat(offer.lat))) return false;
       if (activeTab === 'MINE') return offer.userId === user?.id;
       if (activeTab === 'FAV') return favorites.includes(offer.id);
@@ -136,10 +145,14 @@ export default function Radar({ theme }: any) {
   }, [allOffers, activeTab, favorites, filters, user]);
 
   const counts = useMemo(() => ({
-    ALL: allOffers.filter(o => o.lat && o.lng && matchesFilters(o, filters)).length,
-    FAV: allOffers.filter(o => o.lat && o.lng && favorites.includes(o.id)).length,
-    MINE: user?.id ? allOffers.filter(o => o.lat && o.lng && o.userId === user.id).length : 0
+    ALL: (allOffers || []).filter(o => o.lat && o.lng && matchesFilters(o, filters)).length,
+    FAV: (allOffers || []).filter(o => o.lat && o.lng && favorites.includes(o.id)).length,
+    MINE: user?.id ? (allOffers || []).filter(o => o.lat && o.lng && o.userId === user.id).length : 0
   }), [allOffers, filters, favorites, user]);
+
+  const projectedCount = useMemo(() => {
+    return (allOffers || []).filter(o => o.lat && o.lng && matchesFilters(o, draftFilters)).length;
+  }, [allOffers, draftFilters]);
 
   useFocusEffect(useCallback(() => {
     if (filteredOffers.length > 0) flyToMarker(filteredOffers[0]);
@@ -169,7 +182,7 @@ export default function Radar({ theme }: any) {
     navigation.navigate("OfferDetail", { offer: filteredOffers[index] });
   };
 
-  // --- CINEMATIC 3D RADAR ANIMATION ---
+  // --- ZMODYFIKOWANA ANIMACJA: ROZKRĘCANIE + ROZBŁYSK ---
   const applyCalibration = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setShowCalibration(false); 
@@ -178,7 +191,12 @@ export default function Radar({ theme }: any) {
     scale3D.setValue(3.5); 
     tilt3D.setValue(0);
     scanOpacity.setValue(1);
+    radarUIOpacity.setValue(1);
     flashOpacity.setValue(0);
+    resultOpacity.setValue(0);
+    resultScale.setValue(0.5);
+    
+    blip1.setValue(0); blip2.setValue(0); blip3.setValue(0); blip4.setValue(0);
 
     Animated.parallel([
       Animated.loop(Animated.timing(scanSpin, { toValue: 1, duration: 3500, useNativeDriver: true })),
@@ -196,32 +214,49 @@ export default function Radar({ theme }: any) {
       ])
     ]).start();
 
-    let hapticCount = 0;
-    const hapticInterval = setInterval(() => {
-      hapticCount++;
-      if (hapticCount < 15) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      else if (hapticCount < 25) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    }, 150);
+    // Haptic Ticking - Coraz szybciej (Rozkręca się)
+    const ticks = [100, 300, 480, 630, 750, 850, 930, 990, 1040, 1080, 1110, 1130, 1140, 1150];
+    ticks.forEach((time, index) => {
+      setTimeout(() => {
+        Haptics.impactAsync(index > 10 ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+      }, time);
+    });
 
+    // Pojawianie się kropeczek w miarę skanowania
+    setTimeout(() => Animated.timing(blip1, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 300);
+    setTimeout(() => Animated.timing(blip2, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 630);
+    setTimeout(() => Animated.timing(blip3, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 850);
+    setTimeout(() => Animated.timing(blip4, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 1040);
+
+    // KINOWY FINAŁ (PO 3.8s)
     setTimeout(() => {
-      clearInterval(hapticInterval);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setFilters(draftFilters);
       
       Animated.sequence([
         Animated.timing(flashOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
         Animated.parallel([
-          Animated.timing(scanOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
-          Animated.timing(flashOpacity, { toValue: 0, duration: 1000, useNativeDriver: true })
+           Animated.timing(radarUIOpacity, { toValue: 0, duration: 0, useNativeDriver: true }),
+           Animated.timing(resultOpacity, { toValue: 1, duration: 0, useNativeDriver: true }),
+           Animated.timing(flashOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+           Animated.spring(resultScale, { toValue: 1, friction: 6, tension: 35, useNativeDriver: true })
         ])
-      ]).start(() => {
-        setIsScanning(false);
-        scanSpin.setValue(0);
-        scanPulse.setValue(0);
-        blipOpacity.setValue(0);
-      });
+      ]).start();
+
+      setTimeout(() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 150);
+      }, 150);
+
+      setTimeout(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setFilters(draftFilters);
+        
+        Animated.timing(scanOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+          setIsScanning(false);
+          scanSpin.setValue(0);
+        });
+      }, 3000); 
+
     }, 3800); 
   };
 
@@ -247,25 +282,22 @@ export default function Radar({ theme }: any) {
     setDraftFilters({ ...draftFilters, city: city, selectedDistricts: [] });
   };
 
-  // Funkcje formatujące dla inputów
-  const formatNumberInput = (value: string) => value.replace(/\D/g, '');
-
   const handlePriceEndEditing = () => {
-    let raw = parseInt(formatNumberInput(inputMaxPrice));
+    let raw = parseInt(inputMaxPrice.replace(/\D/g, ''));
     if (isNaN(raw) || raw < 0) raw = 0;
     setInputMaxPrice(raw.toString());
     setDraftFilters({ ...draftFilters, maxPrice: raw });
   };
 
   const handleAreaEndEditing = () => {
-    let raw = parseInt(formatNumberInput(inputMinArea));
+    let raw = parseInt(inputMinArea.replace(/\D/g, ''));
     if (isNaN(raw) || raw < 0) raw = 0;
     setInputMinArea(raw.toString());
     setDraftFilters({ ...draftFilters, minArea: raw });
   };
 
   const handleYearEndEditing = () => {
-    let raw = parseInt(formatNumberInput(inputMinYear));
+    let raw = parseInt(inputMinYear.replace(/\D/g, ''));
     if (isNaN(raw) || raw < 1900) raw = 1900;
     setInputMinYear(raw.toString());
     setDraftFilters({ ...draftFilters, minYear: raw });
@@ -273,9 +305,9 @@ export default function Radar({ theme }: any) {
 
   const spin = scanSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const tilt = tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] });
-  
-  const isFilterActive = true; 
   const availableDistricts = CITY_DISTRICTS[draftFilters.city] || [];
+  
+  const isFilterActive = JSON.stringify(filters) !== JSON.stringify(defaultFilters);
 
   return (
     <View style={styles.container}>
@@ -350,14 +382,6 @@ export default function Radar({ theme }: any) {
                           <View style={styles.specItem}><Ionicons name="resize" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.area} m²</Text></View>
                           {offer.propertyType !== 'PLOT' && <View style={styles.specItem}><Ionicons name="bed" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} pok.</Text></View>}
                         </View>
-                        <View style={styles.amenitiesRow}>
-                          {offer.hasBalcony && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="leaf" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                          {offer.hasParking && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="car" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                          {offer.hasGarden && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="flower" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                          {offer.hasElevator && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="swap-vertical" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                          {offer.hasStorage && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="cube" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                          {offer.isFurnished && <View style={[styles.amenityStamp, { borderColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.3)' : 'rgba(52, 199, 89, 0.3)', backgroundColor: offer.transactionType === 'RENT' ? 'rgba(10, 132, 255, 0.1)' : 'rgba(52, 199, 89, 0.1)' }]}><Ionicons name="tv" size={10} color={offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL} /></View>}
-                        </View>
                       </View>
                     </View>
                   </BlurView>
@@ -418,14 +442,13 @@ export default function Radar({ theme }: any) {
                 </ScrollView>
               </View>
 
-              {/* ZMIENIONE: MIASTA JAKO WYSEPKI */}
               <Text style={styles.premiumSectionTitle}>METROPOLIA</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
                   {CITIES.map(c => {
                     const isActive = draftFilters.city === c;
                     return (
-                      <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.cityPillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.7, shadowRadius: 15, elevation: 10 }]}>
+                      <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.cityPillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.6, shadowRadius: 12, elevation: 8 }]}>
                         <Text style={[styles.cityPillText, isActive && styles.cityPillTextActive]}>{c}</Text>
                       </Pressable>
                     );
@@ -447,7 +470,6 @@ export default function Radar({ theme }: any) {
                 </ScrollView>
               </View>
 
-              {/* ZMIENIONE: POLA TEKSTOWE ZAMIAST SUWAKÓW */}
               <Text style={styles.premiumSectionTitle}>PRECYZYJNE WYMIARY</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 5 }]}>
                 <View style={styles.inputRow}>
@@ -473,7 +495,7 @@ export default function Radar({ theme }: any) {
                       style={[styles.numberInput, { color: activeColor }]}
                       keyboardType="numeric"
                       value={inputMinArea}
-                      onChangeText={setInputMinArea}
+                      onChangeText={(val) => setInputMinArea(val.replace(/\D/g, ''))}
                       onBlur={handleAreaEndEditing}
                       returnKeyType="done"
                     />
@@ -489,7 +511,7 @@ export default function Radar({ theme }: any) {
                       style={[styles.numberInput, { color: activeColor }]}
                       keyboardType="numeric"
                       value={inputMinYear}
-                      onChangeText={setInputMinYear}
+                      onChangeText={(val) => setInputMinYear(val.replace(/\D/g, ''))}
                       onBlur={handleYearEndEditing}
                       returnKeyType="done"
                     />
@@ -526,36 +548,44 @@ export default function Radar({ theme }: any) {
         </View>
       </Modal>
 
-      {/* PEŁNOEKRANOWA ANIMACJA SKANOWANIA KINOWEGO (CINEMATIC 3D LENS) */}
-      {isScanning && (
+      {/* MODAL OBEJMUJĄCY PEŁNOEKRANOWĄ ANIMACJĘ RADARU - NAPRAWA Z-INDEX */}
+      <Modal visible={isScanning} transparent={true} animationType="none">
         <Animated.View style={[styles.scannerOverlay, { opacity: scanOpacity }]}>
           
-          <Animated.View style={[styles.radar3DContainer, { transform: [{ perspective: 1200 }, { rotateX: tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] }) }, { scale: scale3D }] }]}>
-            
-            <View style={[styles.gridVertical, { backgroundColor: activeColor, shadowColor: activeColor }]} />
-            <View style={[styles.gridHorizontal, { backgroundColor: activeColor, shadowColor: activeColor }]} />
-
-            <View style={[styles.neonRing3, { borderColor: activeColor, shadowColor: activeColor }]} />
-            <View style={[styles.neonRing2, { borderColor: activeColor, shadowColor: activeColor }]} />
-            <View style={[styles.neonRing1, { borderColor: activeColor, shadowColor: activeColor }]} />
-
-            <Animated.View style={[styles.corePulse, { backgroundColor: activeColor, transform: [{ scale: scanPulse }], opacity: scanPulse.interpolate({ inputRange: [0, 1.5], outputRange: [1, 0] }) }]} />
-            <View style={styles.coreSolid} />
-
-            <Animated.View style={[styles.sweeperContainer, { transform: [{ rotate: spin }] }]}>
-              <View style={[styles.sweeperBeam, { shadowColor: activeColor }]} />
+          <Animated.View style={[{ alignItems: 'center', justifyContent: 'center' }, { opacity: radarUIOpacity }, StyleSheet.absoluteFill]}>
+            <Animated.View style={[styles.radar3DContainer, { transform: [{ perspective: 1200 }, { rotateX: tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] }) }, { scale: scale3D }] }]}>
+              <View style={[styles.gridVertical, { backgroundColor: activeColor, shadowColor: activeColor }]} />
+              <View style={[styles.gridHorizontal, { backgroundColor: activeColor, shadowColor: activeColor }]} />
+              <View style={[styles.neonRing3, { borderColor: activeColor, shadowColor: activeColor }]} />
+              <View style={[styles.neonRing2, { borderColor: activeColor, shadowColor: activeColor }]} />
+              <View style={[styles.neonRing1, { borderColor: activeColor, shadowColor: activeColor }]} />
+              <Animated.View style={[styles.corePulse, { backgroundColor: activeColor, transform: [{ scale: blipOpacity.interpolate({ inputRange: [0.1, 1], outputRange: [1, 1.5] }) }], opacity: blipOpacity.interpolate({ inputRange: [0.1, 1], outputRange: [0.6, 0] }) }]} />
+              <View style={styles.coreSolid} />
+              <Animated.View style={[styles.sweeperContainer, { transform: [{ rotate: spin }] }]}>
+                <View style={[styles.scannerTrail, { backgroundColor: activeColor, opacity: 0.15 }]} />
+                <View style={[styles.sweeperBeam, { backgroundColor: '#FFFFFF', shadowColor: activeColor }]} />
+              </Animated.View>
+              <Animated.View style={[styles.blip, { top: '30%', left: '65%', backgroundColor: activeColor, shadowColor: activeColor, opacity: blip1 }]} />
+              <Animated.View style={[styles.blip, { top: '70%', left: '35%', backgroundColor: activeColor, shadowColor: activeColor, opacity: blip2 }]} />
+              <Animated.View style={[styles.blip, { top: '45%', left: '20%', backgroundColor: activeColor, shadowColor: activeColor, opacity: blip3 }]} />
+              <Animated.View style={[styles.blip, { top: '25%', left: '40%', backgroundColor: activeColor, shadowColor: activeColor, opacity: blip4 }]} />
             </Animated.View>
 
+            <View style={styles.cinematicTextContainer}>
+              <Text style={[styles.cinematicTextMain, { color: activeColor, textShadowColor: activeColor }]}>ANALIZA TOPOGRAFII</Text>
+              <Text style={styles.cinematicTextSub}>ESTATE OS™ KINETIC SCAN...</Text>
+            </View>
           </Animated.View>
 
-          <View style={styles.cinematicTextContainer}>
-            <Text style={[styles.cinematicTextMain, { color: activeColor, textShadowColor: activeColor }]}>ANALIZA TOPOGRAFII</Text>
-            <Text style={styles.cinematicTextSub}>ESTATE OS™ KINETIC SCAN...</Text>
-          </View>
+          <Animated.View style={[{ alignItems: 'center', justifyContent: 'center' }, { opacity: resultOpacity, transform: [{ scale: resultScale }] }, StyleSheet.absoluteFill]} pointerEvents="none">
+             <Text style={[styles.resultValue, { color: activeColor, textShadowColor: activeColor }]}>{projectedCount}</Text>
+             <Text style={[styles.resultText, { color: '#FFF' }]}>DOPASOWANYCH OFERT</Text>
+             <Text style={styles.resultLuster}>ESTATE OS™ KINETIC</Text>
+          </Animated.View>
 
-          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFF', opacity: flashOpacity, zIndex: 10000 }]} pointerEvents="none" />
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFF', opacity: flashOpacity }]} pointerEvents="none" />
         </Animated.View>
-      )}
+      </Modal>
 
     </View>
   );
@@ -590,8 +620,7 @@ const styles = StyleSheet.create({
   cardSpecs: { flexDirection: 'row', gap: 8 },
   specItem: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   specText: { fontSize: 11, fontWeight: '700', color: BaseColors.subtitle },
-  amenitiesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  amenityStamp: { borderWidth: 1, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  
   emptyStateGlass: { marginHorizontal: 20, padding: 30, borderRadius: 30, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   emptyStateText: { fontSize: 18, fontWeight: '800', marginTop: 15 },
   emptyStateSub: { fontSize: 14, color: BaseColors.subtitle, marginTop: 5, textAlign: 'center' },
@@ -612,17 +641,18 @@ const styles = StyleSheet.create({
   premiumDivider: { height: StyleSheet.hairlineWidth },
   premiumSwitchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   premiumSwitchTitle: { fontSize: 16, fontWeight: '500' },
-  pillBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
-  pillText: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
-  pillTextActive: { color: '#FFF', fontWeight: '700' },
+  
   cityPillBtn: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(150,150,150,0.4)', backgroundColor: 'rgba(150,150,150,0.1)', shadowColor: '#000', shadowOffset: {width: 0, height: 6}, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
   cityPillText: { fontSize: 16, color: '#8E8E93', fontWeight: '800', letterSpacing: 0.5 },
   cityPillTextActive: { color: '#FFF', fontWeight: '900' },
+  
+  pillBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
+  pillText: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
+  pillTextActive: { color: '#FFF', fontWeight: '700' },
   premiumModalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(150,150,150,0.2)' },
   premiumApplyBtn: { borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 5 },
   premiumApplyBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
   
-  // NOWE POLE DO WPISYWANIA
   inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   inputLabelText: { fontSize: 16, fontWeight: '500' },
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
@@ -633,7 +663,7 @@ const styles = StyleSheet.create({
   systemDisclaimerBox: { marginTop: 30, marginHorizontal: 20, alignItems: 'center', padding: 20, backgroundColor: 'rgba(150,150,150,0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.1)' },
   systemDisclaimerText: { fontSize: 12, color: BaseColors.subtitle, textAlign: 'center', lineHeight: 18, fontWeight: '500' },
 
-  scannerOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.92)' },
+  scannerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.9)' },
   radar3DContainer: { width: 400, height: 400, justifyContent: 'center', alignItems: 'center' }, 
   gridVertical: { position: 'absolute', width: 2, height: '100%', opacity: 0.15, shadowRadius: 15, shadowOpacity: 1 },
   gridHorizontal: { position: 'absolute', width: '100%', height: 2, opacity: 0.15, shadowRadius: 15, shadowOpacity: 1 },
@@ -641,11 +671,17 @@ const styles = StyleSheet.create({
   neonRing2: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 4, opacity: 0.25, shadowRadius: 20, shadowOpacity: 1 },
   neonRing1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 5, opacity: 0.5, shadowRadius: 15, shadowOpacity: 1 },
   coreSolid: { position: 'absolute', width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#FFF', shadowRadius: 25, shadowOpacity: 1 },
-  corePulse: { position: 'absolute', width: 80, height: 80, borderRadius: 40, opacity: 0.6 },
+  corePulse: { position: 'absolute', width: 80, height: 80, borderRadius: 40 },
   sweeperContainer: { position: 'absolute', width: 380, height: 380, alignItems: 'center' },
-  sweeperBeam: { width: 6, height: 190, backgroundColor: '#FFFFFF', shadowRadius: 20, shadowOpacity: 1, elevation: 10 },
-  blip: { position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF', shadowRadius: 20, shadowOpacity: 1, borderWidth: 3 },
+  scannerTrail: { width: 380/2, height: 380/2, position: 'absolute', top: 380/2, left: 380/2, borderBottomLeftRadius: 190 }, 
+  sweeperBeam: { width: 6, height: 190, position: 'absolute', top: 0, borderRadius: 3, shadowRadius: 20, shadowOpacity: 1, elevation: 10 }, 
+  blip: { position: 'absolute', width: 14, height: 14, borderRadius: 7, shadowRadius: 10, shadowOpacity: 1, elevation: 5 },
+  
   cinematicTextContainer: { position: 'absolute', bottom: 80, alignItems: 'center' },
   cinematicTextMain: { fontSize: 28, fontWeight: '900', letterSpacing: 8, textShadowOffset: {width:0, height:0}, textShadowRadius: 30 },
-  cinematicTextSub: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '700', letterSpacing: 4, marginTop: 15 }
+  cinematicTextSub: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '700', letterSpacing: 4, marginTop: 15 },
+  
+  resultValue: { fontSize: 130, fontWeight: '900', textShadowOffset: {width:0, height:0}, textShadowRadius: 30 },
+  resultText: { fontSize: 20, fontWeight: '800', letterSpacing: 4, marginTop: 10 },
+  resultLuster: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 15, fontWeight: '700', letterSpacing: 2 }
 });
