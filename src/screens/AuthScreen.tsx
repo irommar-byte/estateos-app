@@ -187,6 +187,22 @@ export default function AuthScreen({ theme }: { theme: any }) {
   const store = useAuthStore() as any;
   const isDark = theme.glass === 'dark';
 
+  // --- AUTOMATYCZNE LOGOWANIE (APPLE KEYCHAIN) ---
+  const autofillTimer = useRef<any>(null);
+  
+  useEffect(() => {
+    if (isLogin && email.length > 5 && email.includes('@') && password.length >= 6) {
+      if (autofillTimer.current) clearTimeout(autofillTimer.current);
+      autofillTimer.current = setTimeout(() => {
+         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+         handleSubmit();
+      }, 800);
+    }
+    return () => {
+      if (autofillTimer.current) clearTimeout(autofillTimer.current);
+    };
+  }, [email, password, isLogin]);
+
   const handlePhoneChange = (text: string) => {
     const cleaned = text.replace(/\D/g, '').substring(0, 9);
     const parts = cleaned.match(/.{1,3}/g);
@@ -279,11 +295,19 @@ export default function AuthScreen({ theme }: { theme: any }) {
   };
 
   const handlePasskey = async () => {
-    if (!email) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); Alert.alert("Wpisz Email", "Najpierw wpisz swój adres e-mail, aby system mógł dopasować klucz Passkey."); return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+    setIsPasskeyLoading(true);
+    try { 
+      // Uruchamiamy Passkey bez podawania emaila - system Apple (Pęk Kluczy) sam rozpozna usera
+      await store.loginWithPasskey(); 
+    } catch (e: any) { 
+      // Ignorujemy błędy anulowania przez użytkownika (gdy kliknie poza ekran Face ID)
+      if (!e.message.includes('cancel')) {
+        Alert.alert('Passkey', e.message); 
+      }
+    } finally { 
+      setIsPasskeyLoading(false); 
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsPasskeyLoading(true);
-    try { await store.loginWithPasskey(email); } catch (e: any) { Alert.alert('Passkey', e.message); } finally { setIsPasskeyLoading(false); }
   };
 
   const cardBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,7 +14,6 @@ export default function SmsVerificationScreen({ route }: any) {
   const themeMode = useThemeStore(s => s.themeMode);
   const isDark = themeMode === 'dark';
   
-  // Wyciągamy dane użytkownika i możliwość nadpisania stanu sklepu
   const store = useAuthStore() as any;
   const user = store.user;
   
@@ -25,38 +24,84 @@ export default function SmsVerificationScreen({ route }: any) {
   const [code, setCode] = useState(['', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [resendTimer, setResendTimer] = useState(60); // 60 sekund blokady na kolejny SMS
+  
+  // Anti-Spam States
+  const [resendTimer, setResendTimer] = useState(0); 
+  const [smsCount, setSmsCount] = useState(0);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   const inputRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
 
-  // 1. AUTOMATYCZNA WYSYŁKA SMS PRZY OTWARCIU EKRANU
+  // 1. INICJALIZACJA PAMIĘCI ANTY-SPAMOWEJ
   useEffect(() => {
-    if (user?.id) {
-      triggerSmsSend();
-    }
+    const initSpamControl = async () => {
+      if (!user?.id) return;
+      const countKey = `@sms_count_${user.id}`;
+      const timeKey = `@sms_time_${user.id}`;
+
+      const storedCount = await AsyncStorage.getItem(countKey);
+      const storedTime = await AsyncStorage.getItem(timeKey);
+
+      let currentCount = storedCount ? parseInt(storedCount) : 0;
+      let lastTime = storedTime ? parseInt(storedTime) : 0;
+      const now = Math.floor(Date.now() / 1000);
+      const timePassed = now - lastTime;
+
+      if (currentCount >= 2) {
+        if (timePassed < 3600) {
+          setResendTimer(3600 - timePassed);
+        } else {
+          setIsBlocked(true); // Limit wyczerpany
+        }
+        setSmsCount(2);
+      } else if (currentCount === 1) {
+        if (timePassed < 300) {
+          setResendTimer(300 - timePassed);
+        } else {
+          setResendTimer(0);
+        }
+        setSmsCount(1);
+      } else {
+        // Pierwsze wejście - wysyłamy od razu i dajemy 5 min blokady
+        triggerSmsSend(1);
+      }
+    };
+    initSpamControl();
   }, []);
 
-  // 2. ODLICZANIE CZASU (TIMER ANTY-SPAMOWY)
+  // 2. ODLICZANIE CZASU
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (resendTimer > 0) {
       interval = setInterval(() => {
         setResendTimer((prev) => prev - 1);
       }, 1000);
+    } else if (resendTimer === 0 && smsCount >= 2) {
+       // Jeśli minęła godzina blokady 2 SMSa, permanentnie blokujemy na "Kontakt z adminem"
+       setIsBlocked(true);
     }
     return () => clearInterval(interval);
-  }, [resendTimer]);
+  }, [resendTimer, smsCount]);
 
-  // 3. AUTO-WERYFIKACJA PO WPISANIU 4 CYFR
+  // 3. AUTO-WERYFIKACJA PO UZUPEŁNIENIU 4 CYFR
   useEffect(() => {
-    if (code.every(c => c.length === 1)) {
-      handleVerify();
+    if (code.every(c => c.length === 1) && !loading) {
+      handleVerify(code.join(''));
     }
   }, [code]);
 
-  const triggerSmsSend = async () => {
+  const triggerSmsSend = async (newCount: number) => {
+    if (newCount > 2) return;
+
+    setSmsCount(newCount);
+    const timerValue = newCount === 1 ? 300 : 3600; // 5 minut dla 1, godzina dla 2
+    setResendTimer(timerValue);
+
+    const now = Math.floor(Date.now() / 1000);
+    await AsyncStorage.setItem(`@sms_count_${user.id}`, newCount.toString());
+    await AsyncStorage.setItem(`@sms_time_${user.id}`, now.toString());
+
     try {
-      setResendTimer(60);
       await fetch('https://estateos.pl/api/mobile/v1/auth/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,10 +114,21 @@ export default function SmsVerificationScreen({ route }: any) {
   };
 
   const handleType = (text: string, index: number) => {
-    setErrorMsg(''); // Czyścimy błąd po wpisaniu nowej cyfry
+    setErrorMsg('');
+    
+    // MAGIA AUTO-UZUPEŁNIANIA Z iOS/ANDROID: Jeśli system wklei cały 4-cyfrowy kod naraz
+    if (text.length === 4) {
+      const splitCode = text.split('');
+      setCode(splitCode);
+      inputRefs[3].current?.focus();
+      return;
+    }
+
+    // Normalne wpisywanie pojedynczej cyfry
     const newCode = [...code];
-    newCode[index] = text;
+    newCode[index] = text.replace(/[^0-9]/g, '');
     setCode(newCode);
+    
     if (text && index < 3) {
       inputRefs[index + 1].current?.focus();
     }
@@ -84,12 +140,12 @@ export default function SmsVerificationScreen({ route }: any) {
     }
   };
 
-  const handleVerify = async () => {
+  const handleVerify = async (finalCodeParam?: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setLoading(true);
     setErrorMsg('');
     
-    const finalCode = code.join('');
+    const finalCode = finalCodeParam || code.join('');
 
     try {
       const res = await fetch('https://estateos.pl/api/mobile/v1/auth/sms/verify', {
@@ -103,7 +159,6 @@ export default function SmsVerificationScreen({ route }: any) {
       if (res.ok && data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
-        // Magia! Zmieniamy status użytkownika "w locie", by plakietka w profilu od razu zniknęła
         const updatedUser = { ...user, isVerified: true, isVerifiedPhone: true };
         useAuthStore.setState({ user: updatedUser });
         await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
@@ -133,6 +188,12 @@ export default function SmsVerificationScreen({ route }: any) {
     } else {
       navigation.goBack();
     }
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   const isFull = code.every(c => c.length === 1);
@@ -166,11 +227,13 @@ export default function SmsVerificationScreen({ route }: any) {
                 digit && !hasError ? styles.otpBoxFilled : null
               ]}
               keyboardType="number-pad"
-              maxLength={1}
+              maxLength={4} // Zwiększone dla wklejania całości naraz
               value={digit}
               onChangeText={(t) => handleType(t, idx)}
               onKeyPress={(e) => handleKeyPress(e, idx)}
               selectionColor="#10b981"
+              textContentType="oneTimeCode" // Wymuszenie klawiatury z SMS dla iOS
+              autoComplete="sms-otp" // Wymuszenie podpowiedzi z SMS dla Android
             />
           ))}
         </View>
@@ -179,21 +242,27 @@ export default function SmsVerificationScreen({ route }: any) {
 
         <Pressable 
           disabled={!isFull || loading} 
-          onPress={handleVerify} 
+          onPress={() => handleVerify()} 
           style={({pressed}) => [styles.verifyBtn, { opacity: (!isFull ? 0.5 : (pressed ? 0.8 : 1)) }]}
         >
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.verifyText}>Zweryfikuj</Text>}
         </Pressable>
 
-        <Pressable 
-          disabled={resendTimer > 0}
-          onPress={triggerSmsSend} 
-          style={styles.resendBtn}
-        >
-          <Text style={[styles.resendText, { color: resendTimer > 0 ? subColor : '#10b981' }]}>
-            {resendTimer > 0 ? `Wyślij ponownie za ${resendTimer}s` : 'Wyślij nowy kod'}
-          </Text>
-        </Pressable>
+        {isBlocked ? (
+           <Text style={[styles.resendText, { color: '#ef4444', textAlign: 'center', marginTop: 10, paddingHorizontal: 20 }]}>
+             Wykorzystano limit kodów SMS. Skontaktuj się z administratorem EstateOS.
+           </Text>
+        ) : (
+          <Pressable 
+            disabled={resendTimer > 0}
+            onPress={() => triggerSmsSend(smsCount + 1)} 
+            style={styles.resendBtn}
+          >
+            <Text style={[styles.resendText, { color: resendTimer > 0 ? subColor : '#10b981' }]}>
+              {resendTimer > 0 ? `Wyślij ponownie za ${formatTime(resendTimer)}` : 'Wyślij nowy kod'}
+            </Text>
+          </Pressable>
+        )}
 
         <View style={{ flex: 1 }} />
 

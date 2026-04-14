@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platfor
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
 import AuthScreen from './AuthScreen';
@@ -205,7 +206,7 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`https://estateos.pl/api/mobile/v1/admin/users`);
+      const res = await fetch('https://estateos.pl/api/mobile/v1/admin/users', { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
       const data = await res.json();
       if (res.ok && data.success) setUsers(data.users);
     } catch (e) { }
@@ -271,18 +272,73 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
 const MyOffersModal = ({ visible, onClose, theme }: any) => {
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { user } = useAuthStore() as any;
+  const { user, token } = useAuthStore() as any;
+  const isDark = theme.glass === 'dark';
+
+  const fetchMyOffers = async () => {
+    if (!user || !token) return;
+    setLoading(true);
+    try {
+      // Pobieramy oferty uderzając bezpośrednio z Twoim userId
+      const res = await fetch(`https://estateos.pl/api/mobile/v1/offers?includeAll=true&userId=${user.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.offers) {
+         setOffers(data.offers);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (visible) {
-      setLoading(true);
-      fetch(`https://estateos.pl/api/mobile/v1/offers?includeAll=true&_t=${Date.now()}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.offers) setOffers(data.offers.filter((o: any) => Number(o.userId) === Number(user?.id)));
-        }).finally(() => setLoading(false));
-    }
+    if (visible) fetchMyOffers();
   }, [visible]);
+
+  const renderMyOffer = ({ item }: any) => {
+    // Sprawdzamy czy pierwsze zdjęcie istnieje i czy jest poprawne
+    let imageUri = null;
+    try {
+      const parsedImages = typeof item.images === 'string' ? JSON.parse(item.images) : item.images;
+      if (parsedImages && parsedImages.length > 0) {
+        // Jeśli URL zaczyna się od /uploads, doklejamy domenę
+        imageUri = parsedImages[0].startsWith('/') ? `https://estateos.pl${parsedImages[0]}` : parsedImages[0];
+      }
+    } catch (e) {}
+
+    return (
+      <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+           {imageUri ? (
+              <Image source={{ uri: imageUri }} style={{ width: 60, height: 60, borderRadius: 12, marginRight: 12 }} />
+           ) : (
+              <View style={{ width: 60, height: 60, borderRadius: 12, marginRight: 12, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', justifyContent: 'center', alignItems: 'center' }}>
+                 <Ionicons name="home" size={24} color="#8E8E93" />
+              </View>
+           )}
+           <View style={{ flex: 1 }}>
+              <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 2 }]} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.offerSubtitle}>{item.price} PLN • {item.city}</Text>
+           </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', paddingTop: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 6, backgroundColor: item.status === 'ACTIVE' ? '#10b981' : item.status === 'PENDING' ? '#FF9F0A' : '#8E8E93' }} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: item.status === 'ACTIVE' ? '#10b981' : item.status === 'PENDING' ? '#FF9F0A' : '#8E8E93' }}>
+              {item.status === 'ACTIVE' ? 'AKTYWNE' : item.status === 'PENDING' ? 'OCZEKUJĄCE' : 'ZAKOŃCZONE'}
+            </Text>
+          </View>
+          <Pressable style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(0, 122, 255, 0.1)', borderRadius: 8 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#007AFF' }}>Zarządzaj</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -291,7 +347,17 @@ const MyOffersModal = ({ visible, onClose, theme }: any) => {
           <Text style={[styles.modalTitle, { color: theme.text }]}>Moje Ogłoszenia</Text>
           <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
         </View>
-        {loading ? <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} /> : <FlatList data={offers} keyExtractor={item => item.id.toString()} renderItem={() => <View />} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert.</Text>} />}
+        {loading ? (
+           <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
+        ) : (
+           <FlatList 
+             data={offers} 
+             keyExtractor={item => item.id.toString()} 
+             renderItem={renderMyOffer} 
+             contentContainerStyle={{ padding: 16 }} 
+             ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Nie dodałeś jeszcze żadnych ofert.</Text>} 
+           />
+        )}
       </View>
     </Modal>
   );
@@ -390,10 +456,49 @@ export default function ProfileScreen({ theme }: { theme: any }) {
 
   const handleAvatarPick = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5, base64: true });
-    if (!result.canceled && result.assets[0].base64) {
-      if (updateAvatar) updateAvatar(`data:image/jpeg;base64,${result.assets[0].base64}`);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    let result = await ImagePicker.launchImageLibraryAsync({ 
+      mediaTypes: ['images'], 
+      allowsEditing: true, 
+      aspect: [1, 1], 
+      quality: 0.8 
+    });
+    
+    if (!result.canceled && result.assets[0].uri) {
+      try {
+        // Konwertujemy zdjęcie do równego formatu JPG i skalujemy na 500x500 (idealne dla awatarów)
+        const manipResult = await ImageManipulator.manipulateAsync(
+          result.assets[0].uri,
+          [{ resize: { width: 500, height: 500 } }],
+          { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+        );
+
+        const localUri = manipResult.uri;
+        const filename = `avatar_${user.id}.jpg`;
+
+        const formData = new FormData();
+        formData.append('userId', String(user.id));
+        formData.append('file', { uri: localUri, name: filename, type: 'image/jpeg' } as any);
+
+        // Wysyłamy fizyczny plik na serwer
+        const res = await fetch(`https://estateos.pl/api/mobile/v1/user/avatar`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await res.json();
+        
+        if (data.success && data.url) {
+          // Doklejamy pełną domenę i podmieniamy zdjęcie na żywo w interfejsie
+          const fullUrl = `https://estateos.pl${data.url}`;
+          if (updateAvatar) updateAvatar(fullUrl);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          Alert.alert('Błąd', 'Nie udało się zapisać zdjęcia na serwerze.');
+        }
+      } catch (e) {
+        Alert.alert('Błąd', 'Wystąpił problem podczas przetwarzania zdjęcia.');
+        console.error(e);
+      }
     }
   };
 
@@ -410,7 +515,11 @@ export default function ProfileScreen({ theme }: { theme: any }) {
         
         <View style={[styles.headerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
           <Pressable onPress={handleAvatarPick} style={({ pressed }) => [styles.avatarWrapper, { opacity: pressed ? 0.8 : 1 }]}>
-            {user?.avatar ? <Image source={{ uri: user.avatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={36} color="#fff" /></View>}
+            {(() => {
+              const rawAvatar = user?.avatar || user?.image;
+              const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `https://estateos.pl${rawAvatar}` : rawAvatar) : null;
+              return finalAvatar ? <Image source={{ uri: finalAvatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={36} color="#fff" /></View>;
+            })()}
             <View style={styles.editBadge}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>EDIT</Text></View>
           </Pressable>
           <View style={styles.headerInfo}>

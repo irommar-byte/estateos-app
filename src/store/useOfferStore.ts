@@ -8,19 +8,45 @@ interface OfferStore {
   resetDraft: () => void;
 }
 
-// Zabezpieczony, pełny szablon pustej oferty
+// CZYSTE MAPOWANIE 1:1 Z MYSQL (Bez petsAllowed i airConditioning)
 const initialDraft = {
-  images: [], 
-  title: '', 
-  price: '', 
-  rent: '', 
-  area: '', 
-  city: '', 
-  district: '', 
-  propertyType: '', 
-  transactionType: '', 
-  condition: '',
-  rooms: ''
+  // Krok 1 & 2: Podstawy i Lokalizacja
+  title: '',
+  description: '',
+  transactionType: 'SALE',
+  propertyType: 'APARTMENT',
+  condition: 'READY',
+  city: 'Warszawa',
+  district: 'OTHER',
+  street: '',
+  buildingNumber: '',
+  lat: null,
+  lng: null,
+  isExactLocation: true,
+
+  // Krok 3: Finanse i Wymiary
+  price: '',
+  adminFee: '',
+  deposit: '',
+  area: '',
+  plotArea: '',
+  rooms: '',
+  floor: '',
+  totalFloors: '',
+  yearBuilt: '',
+
+  // Krok 4: Udogodnienia
+  hasBalcony: false,
+  hasElevator: false,
+  hasStorage: false,
+  hasParking: false,
+  hasGarden: false,
+  isFurnished: false,
+
+  // Krok 5: Media
+  images: [],
+  videoUrl: '',
+  floorPlanUrl: ''
 };
 
 export const useOfferStore = create<OfferStore>((set) => ({
@@ -28,8 +54,6 @@ export const useOfferStore = create<OfferStore>((set) => ({
   draft: initialDraft,
   setCurrentStep: (step) => set({ currentStep: step }),
   updateDraft: (data) => set((state) => ({ draft: { ...state.draft, ...data } })),
-  
-  // Czyszczenie po opublikowaniu - nazwane tak, jak chce tego Krok 6
   resetDraft: () => set({ 
     currentStep: 0, 
     draft: initialDraft 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert } from 'react-native';
 import Animated, {
@@ -7,39 +7,101 @@ import Animated, {
   useAnimatedStyle,
   interpolate,
   Extrapolation,
+  withSpring
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Bath, Layers, Calendar, Pencil } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
+const API_URL = 'https://estateos.pl';
 
 export default function OfferDetail({ route, navigation }: any) {
   const offer = route?.params?.offer;
   const [isFavorite, setIsFavorite] = useState(false);
+  const heartScale = useSharedValue(1);
   const { user } = useAuthStore() as any;
   const isOwner = user?.id && offer?.userId === user?.id;
 
+  // --- LOGIKA ULUBIONYCH (Trwały zapis na telefonie) ---
+  useEffect(() => {
+    const checkFavorite = async () => {
+      if (!offer?.id) return;
+      try {
+        const storedFavs = await AsyncStorage.getItem('@estateos_favorites');
+        if (storedFavs) {
+          const favArray = JSON.parse(storedFavs);
+          if (favArray.includes(offer.id)) {
+            setIsFavorite(true);
+          }
+        }
+      } catch (e) {
+        console.error("Błąd odczytu ulubionych", e);
+      }
+    };
+    checkFavorite();
+  }, [offer?.id]);
+
+  const handleFavorite = async () => {
+    if (!offer?.id) return;
+    
+    // Animacja "bicia" serca
+    heartScale.value = withSpring(1.5, { damping: 2, stiffness: 80 }, () => {
+      heartScale.value = withSpring(1);
+    });
+
+    const newFavState = !isFavorite;
+    setIsFavorite(newFavState);
+    
+    if (newFavState) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    try {
+      const storedFavs = await AsyncStorage.getItem('@estateos_favorites');
+      let favArray = storedFavs ? JSON.parse(storedFavs) : [];
+      
+      if (newFavState) {
+        if (!favArray.includes(offer.id)) favArray.push(offer.id);
+      } else {
+        favArray = favArray.filter((id: number) => id !== offer.id);
+      }
+      
+      await AsyncStorage.setItem('@estateos_favorites', JSON.stringify(favArray));
+    } catch (e) {
+      console.error("Błąd zapisu ulubionych", e);
+    }
+  };
+
+  const animatedHeartStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: heartScale.value }]
+  }));
+
   const handleEdit = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Otwieramy formularz dodawania z wypełnionymi danymi, skacząc na krok 4
     navigation.navigate('EditOffer', { offerId: offer.id });
   };
 
-  // --- LOGIKA ZDJĘĆ ---
+  // --- LOGIKA ZDJĘĆ (Naprawa brakującego API_URL) ---
   let realImages: string[] = [];
   if (offer?.images) {
     try {
-      // Obsługa formatu string JSON z bazy lub czystej tablicy
-      realImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
+      const parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
+      // Doklejamy adres serwera do każdej ścieżki, która zaczyna się od /uploads
+      realImages = parsedImages.map((img: string) => {
+        if (img.startsWith('/uploads')) return `${API_URL}${img}`;
+        return img;
+      });
     } catch (e) {
       console.log("Błąd parsowania zdjęć", e);
     }
   }
 
-  // Jeśli brak zdjęć lub błąd, dajemy luksusowy placeholder z Unsplash
   const imagesToShow = (realImages && realImages.length > 0) 
     ? realImages 
     : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
@@ -55,7 +117,6 @@ export default function OfferDetail({ route, navigation }: any) {
     }
   };
 
-  // --- AKCJE PRZYCISKÓW ---
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -66,11 +127,6 @@ export default function OfferDetail({ route, navigation }: any) {
     } catch (error) {
       console.log(error);
     }
-  };
-
-  const handleFavorite = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setIsFavorite(!isFavorite);
   };
 
   const isTrue = (v: any) => v === true || v === 1 || v === 'true' || v === '1';
@@ -103,12 +159,8 @@ export default function OfferDetail({ route, navigation }: any) {
   const imageAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
-        {
-          translateY: interpolate(scrollY.value, [-IMG_HEIGHT, 0, IMG_HEIGHT], [-IMG_HEIGHT / 2, 0, IMG_HEIGHT * 0.5], Extrapolation.CLAMP),
-        },
-        {
-          scale: interpolate(scrollY.value, [-IMG_HEIGHT, 0], [2, 1], Extrapolation.CLAMP),
-        },
+        { translateY: interpolate(scrollY.value, [-IMG_HEIGHT, 0, IMG_HEIGHT], [-IMG_HEIGHT / 2, 0, IMG_HEIGHT * 0.5], Extrapolation.CLAMP) },
+        { scale: interpolate(scrollY.value, [-IMG_HEIGHT, 0], [2, 1], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -124,7 +176,6 @@ export default function OfferDetail({ route, navigation }: any) {
         />
       </Animated.View>
 
-      {/* GÓRNY PASEK - NAPRAWIONE HITBOXY I BLUR */}
       <View style={styles.topBar}>
         <TouchableOpacity 
           style={styles.glassButton} 
@@ -151,7 +202,9 @@ export default function OfferDetail({ route, navigation }: any) {
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
+            <Animated.View style={animatedHeartStyle}>
+               <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
+            </Animated.View>
           </TouchableOpacity>
         </View>
       </View>
