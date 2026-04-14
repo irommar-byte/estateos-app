@@ -1,8 +1,9 @@
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, PanResponder, useColorScheme, LayoutAnimation, UIManager, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, PanResponder, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
 import { Marker } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -22,11 +23,11 @@ const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
 // Tymczasowa baza (zostanie zaktualizowana w Kroku 2)
 const CITY_DISTRICTS: Record<string, string[]> = {
   "Warszawa": ["Bemowo", "Białołęka", "Bielany", "Mokotów", "Ochota", "Praga-Południe", "Praga-Północ", "Rembertów", "Śródmieście", "Targówek", "Ursus", "Ursynów", "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz"],
-  "Kraków": ["Stare Miasto", "Grzegórzki", "Krowodrza", "Nowa Huta", "Podgórze"],
+  "Kraków": ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
   "Łódź": ["Bałuty", "Górna", "Polesie", "Śródmieście", "Widzew"],
-  "Wrocław": ["Fabryczna", "Krzyki", "Psie Pole", "Stare Miasto", "Śródmieście"],
+  "Wrocław": ["Fabryczna", "Krzyki", "Psie Pole", "Stare Miasto WRO", "Śródmieście WRO"],
   "Trójmiasto": ["Gdańsk", "Sopot", "Gdynia"],
-  "Poznań": ["Stare Miasto", "Nowe Miasto", "Jeżyce", "Grunwald", "Wilda"]
+  "Poznań": ["Stare Miasto POZ", "Nowe Miasto POZ", "Jeżyce", "Grunwald", "Wilda"]
 };
 const CITIES = Object.keys(CITY_DISTRICTS);
 
@@ -53,7 +54,6 @@ export default function Radar({ theme }: any) {
   const [activeTab, setActiveTab] = useState<'ALL' | 'FAV' | 'MINE'>('ALL');
   
   const [showCalibration, setShowCalibration] = useState(false);
-  const [showCityPicker, setShowCityPicker] = useState(false);
   const [isScanning, setIsScanning] = useState(false); 
   
   const [activeIndex, setActiveIndex] = useState(0);
@@ -67,7 +67,7 @@ export default function Radar({ theme }: any) {
   });
   const [draftFilters, setDraftFilters] = useState(filters);
 
-  // Zmienne tymczasowe dla pól input (aby sformatować po wpisaniu)
+  // Dodane stany dla pól tekstowych (inputów)
   const [inputMaxPrice, setInputMaxPrice] = useState(draftFilters.maxPrice.toString());
   const [inputMinArea, setInputMinArea] = useState(draftFilters.minArea.toString());
   const [inputMinYear, setInputMinYear] = useState(draftFilters.minYear.toString());
@@ -245,13 +245,10 @@ export default function Radar({ theme }: any) {
     Haptics.selectionAsync();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setDraftFilters({ ...draftFilters, city: city, selectedDistricts: [] });
-    setShowCityPicker(false);
   };
 
-  // Funkcje formatujące dla TextInput
-  const formatNumberInput = (value: string) => {
-    return value.replace(/\D/g, ''); // Usuwa wszystko co nie jest cyfrą
-  };
+  // Funkcje formatujące dla inputów
+  const formatNumberInput = (value: string) => value.replace(/\D/g, '');
 
   const handlePriceEndEditing = () => {
     let raw = parseInt(formatNumberInput(inputMaxPrice));
@@ -273,7 +270,6 @@ export default function Radar({ theme }: any) {
     setInputMinYear(raw.toString());
     setDraftFilters({ ...draftFilters, minYear: raw });
   };
-
 
   const spin = scanSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const tilt = tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] });
@@ -422,18 +418,23 @@ export default function Radar({ theme }: any) {
                 </ScrollView>
               </View>
 
-              <Text style={styles.premiumSectionTitle}>LOKALIZACJA</Text>
-              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingBottom: 16 }]}>
-                <Pressable onPress={() => { Haptics.selectionAsync(); setShowCityPicker(true); }} style={styles.cityDrumBtn}>
-                  <Text style={[styles.cityDrumLabel, { color: isDark ? '#FFF' : '#000' }]}>Miasto</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={[styles.cityDrumValue, { color: activeColor }]}>{draftFilters.city}</Text>
-                    <Ionicons name="chevron-forward" size={20} color={BaseColors.subtitle} />
-                  </View>
-                </Pressable>
-                <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
-                
-                <Text style={[styles.premiumInputLabel, { color: isDark ? '#FFF' : '#000', marginHorizontal: 16, marginTop: 16, marginBottom: 12 }]}>Dzielnice ({draftFilters.city})</Text>
+              {/* ZMIENIONE: MIASTA JAKO WYSEPKI */}
+              <Text style={styles.premiumSectionTitle}>METROPOLIA</Text>
+              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+                  {CITIES.map(c => {
+                    const isActive = draftFilters.city === c;
+                    return (
+                      <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.pillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.5, shadowRadius: 8 }]}>
+                        <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{c}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <Text style={styles.premiumSectionTitle}>DZIELNICE ({draftFilters.city})</Text>
+              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
                   {availableDistricts.length > 0 ? availableDistricts.map(dist => {
                     const isActive = draftFilters.selectedDistricts.includes(dist);
@@ -442,11 +443,11 @@ export default function Radar({ theme }: any) {
                         <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{dist}</Text>
                       </Pressable>
                     );
-                  }) : <Text style={{ color: BaseColors.subtitle }}>Dla tego miasta dzielnice nie są zmapowane.</Text>}
+                  }) : <Text style={{ color: BaseColors.subtitle, marginLeft: 16 }}>Dla tego miasta dzielnice nie są zmapowane.</Text>}
                 </ScrollView>
               </View>
 
-              {/* ZMIENIONA SEKCJA: PRECYZYJNE WYMIARY (INPUTY ZAMIAST SUWAKÓW) */}
+              {/* ZMIENIONE: POLA TEKSTOWE ZAMIAST SUWAKÓW */}
               <Text style={styles.premiumSectionTitle}>PRECYZYJNE WYMIARY</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 5 }]}>
                 <View style={styles.inputRow}>
@@ -525,24 +526,6 @@ export default function Radar({ theme }: any) {
         </View>
       </Modal>
 
-      {/* MODAL WYBORU MIASTA */}
-      <Modal visible={showCityPicker} animationType="fade" transparent={true}>
-        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowCityPicker(false)}><BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} /></Pressable>
-          <View style={[styles.premiumModalContent, { height: height * 0.45, backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7' }]}>
-            <View style={styles.modalDragHandle} />
-            <Text style={[styles.premiumModalTitle, { textAlign: 'center', marginTop: 10, marginBottom: 20, color: isDark ? '#FFF' : '#000' }]}>Wybierz Metropolię</Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {CITIES.map(c => (
-                <Pressable key={c} onPress={() => handleCitySelect(c)} style={{ paddingVertical: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: isDark ? '#38383A' : '#E5E5EA', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 22, fontWeight: draftFilters.city === c ? '700' : '400', color: draftFilters.city === c ? activeColor : (isDark ? '#FFF' : '#000') }}>{c}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       {/* PEŁNOEKRANOWA ANIMACJA SKANOWANIA KINOWEGO (CINEMATIC 3D LENS) */}
       {isScanning && (
         <Animated.View style={[styles.scannerOverlay, { opacity: scanOpacity }]}>
@@ -562,10 +545,6 @@ export default function Radar({ theme }: any) {
             <Animated.View style={[styles.sweeperContainer, { transform: [{ rotate: spin }] }]}>
               <View style={[styles.sweeperBeam, { shadowColor: activeColor }]} />
             </Animated.View>
-
-            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '30%', left: '70%', opacity: blipOpacity }]} />
-            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '65%', left: '25%', opacity: blipOpacity }]} />
-            <Animated.View style={[styles.blip, { shadowColor: activeColor, borderColor: activeColor, top: '40%', left: '20%', opacity: blipOpacity }]} />
 
           </Animated.View>
 
@@ -631,24 +610,20 @@ const styles = StyleSheet.create({
   segmentBtnActive: { shadowOffset: {width: 0, height: 0}, shadowOpacity: 0.5, shadowRadius: 10, elevation: 5 },
   segmentTextActive: { color: '#FFF', fontWeight: '700' },
   premiumDivider: { height: StyleSheet.hairlineWidth },
-  premiumInputLabel: { fontSize: 16, width: 110, fontWeight: '400' },
   premiumSwitchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   premiumSwitchTitle: { fontSize: 16, fontWeight: '500' },
   pillBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
   pillText: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
   pillTextActive: { color: '#FFF', fontWeight: '700' },
-  cityDrumBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
-  cityDrumLabel: { fontSize: 16, fontWeight: '400' },
-  cityDrumValue: { fontSize: 18, fontWeight: '600', marginRight: 5 },
   premiumModalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(150,150,150,0.2)' },
   premiumApplyBtn: { borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 5 },
   premiumApplyBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
   
-  // NOWE POLE DO WPISYWANIA ZAMIAST SUWAKA
-  inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+  // NOWE POLE DO WPISYWANIA
+  inputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
   inputLabelText: { fontSize: 16, fontWeight: '500' },
-  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  numberInput: { fontSize: 18, fontWeight: '800', minWidth: 80, textAlign: 'right' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  numberInput: { fontSize: 17, fontWeight: '800', minWidth: 60, textAlign: 'right' },
   inputSuffix: { fontSize: 16, fontWeight: '600', color: '#8E8E93', marginLeft: 8 },
 
   warningDisclaimer: { fontSize: 11, color: BaseColors.subtitle, marginHorizontal: 16, marginTop: 10, lineHeight: 16, textAlign: 'center' },
