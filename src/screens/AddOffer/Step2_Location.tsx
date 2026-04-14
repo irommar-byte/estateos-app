@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
-import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -35,26 +34,80 @@ const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
   'Łagiewniki-Borek Fałęcki': { lat: 50.0183, lng: 19.9317 }, 'Swoszowice': { lat: 49.9883, lng: 19.9383 }, 'Podgórze Duchackie': { lat: 50.0167, lng: 19.9617 },
   'Bieżanów-Prokocim': { lat: 50.0167, lng: 20.0050 }, 'Podgórze': { lat: 50.0350, lng: 19.9617 }, 'Czyżyny': { lat: 50.0733, lng: 20.0050 },
   'Mistrzejowice': { lat: 50.0967, lng: 20.0133 }, 'Bieńczyce': { lat: 50.0867, lng: 20.0267 }, 'Wzgórza Krzesławickie': { lat: 50.0983, lng: 20.0650 },
-  'Nowa Huta': { lat: 50.0717, lng: 20.0383 }
+  'Nowa Huta': { lat: 50.0717, lng: 20.0383 },
+
+  // WROCŁAW
+  'Wrocław': { lat: 51.1079, lng: 17.0385 }, 'Biskupin': { lat: 51.103, lng: 17.100 }, 'Borek': { lat: 51.080, lng: 17.000 },
+  'Fabryczna': { lat: 51.1110, lng: 16.9630 }, 'Gaj': { lat: 51.075, lng: 17.040 }, 'Gądów Mały': { lat: 51.127, lng: 16.965 },
+  'Grabiszyn': { lat: 51.093, lng: 16.990 }, 'Huby': { lat: 51.085, lng: 17.040 }, 'Jagodno': { lat: 51.050, lng: 17.055 },
+  'Karłowice': { lat: 51.140, lng: 17.045 }, 'Kozanów': { lat: 51.135, lng: 16.960 }, 'Krzyki': { lat: 51.0760, lng: 17.0120 },
+  'Leśnica': { lat: 51.145, lng: 16.870 }, 'Maślice': { lat: 51.155, lng: 16.930 }, 'Muchobór': { lat: 51.105, lng: 16.940 },
+  'Nadodrze': { lat: 51.120, lng: 17.030 }, 'Ołbin': { lat: 51.125, lng: 17.050 }, 'Oporów': { lat: 51.075, lng: 16.970 },
+  'Popowice': { lat: 51.130, lng: 16.985 }, 'Psie Pole': { lat: 51.1440, lng: 17.1080 }, 'Stare Miasto WRO': { lat: 51.1079, lng: 17.0385 },
+  'Szczepin': { lat: 51.115, lng: 17.005 }, 'Śródmieście WRO': { lat: 51.1190, lng: 17.0540 }, 'Tarnogaj': { lat: 51.070, lng: 17.055 },
+
+  // POZNAŃ
+  'Poznań': { lat: 52.4064, lng: 16.9252 }, 'Antoninek': { lat: 52.405, lng: 17.000 }, 'Chartowo': { lat: 52.390, lng: 16.980 },
+  'Dębiec': { lat: 52.375, lng: 16.905 }, 'Górczyn': { lat: 52.380, lng: 16.880 }, 'Grunwald': { lat: 52.392, lng: 16.873 },
+  'Jeżyce': { lat: 52.413, lng: 16.890 }, 'Junikowo': { lat: 52.385, lng: 16.850 }, 'Łazarz': { lat: 52.395, lng: 16.900 },
+  'Naramowice': { lat: 52.450, lng: 16.940 }, 'Nowe Miasto POZ': { lat: 52.395, lng: 16.965 }, 'Ogrody': { lat: 52.420, lng: 16.880 },
+  'Piątkowo': { lat: 52.455, lng: 16.910 }, 'Podolany': { lat: 52.450, lng: 16.890 }, 'Rataje': { lat: 52.385, lng: 16.955 },
+  'Sołacz': { lat: 52.425, lng: 16.905 }, 'Stare Miasto POZ': { lat: 52.406, lng: 16.925 }, 'Strzeszyn': { lat: 52.455, lng: 16.865 },
+  'Świerczewo': { lat: 52.365, lng: 16.890 }, 'Wilda': { lat: 52.388, lng: 16.922 }, 'Winogrady': { lat: 52.435, lng: 16.925 }, 'Winiary': { lat: 52.430, lng: 16.910 },
+
+  // TRÓJMIASTO
+  'Trójmiasto': { lat: 54.4000, lng: 18.5700 }, 
+  'Gdańsk - Śródmieście': { lat: 54.352, lng: 18.646 }, 'Gdańsk - Wrzeszcz': { lat: 54.380, lng: 18.605 }, 'Gdańsk - Oliwa': { lat: 54.409, lng: 18.563 },
+  'Gdańsk - Przymorze': { lat: 54.410, lng: 18.595 }, 'Gdańsk - Zaspa': { lat: 54.395, lng: 18.605 }, 'Gdańsk - Osowa': { lat: 54.425, lng: 18.460 },
+  'Gdańsk - Chełm': { lat: 54.335, lng: 18.620 }, 'Gdańsk - Jasień': { lat: 54.335, lng: 18.565 },
+  'Gdynia - Śródmieście': { lat: 54.518, lng: 18.530 }, 'Gdynia - Orłowo': { lat: 54.480, lng: 18.560 }, 'Gdynia - Redłowo': { lat: 54.495, lng: 18.540 }, 'Gdynia - Chylonia': { lat: 54.535, lng: 18.470 },
+  'Sopot - Dolny': { lat: 54.445, lng: 18.565 }, 'Sopot - Górny': { lat: 54.440, lng: 18.550 },
+  
+  'Inna lokalizacja': { lat: 52.0, lng: 19.0 }
 };
 
 const DISTRICTS_DATA = {
   'Warszawa': ['Bemowo', 'Białołęka', 'Bielany', 'Mokotów', 'Ochota', 'Praga-Południe', 'Praga-Północ', 'Rembertów', 'Śródmieście', 'Targówek', 'Ursus', 'Ursynów', 'Wawer', 'Wesoła', 'Wilanów', 'Włochy', 'Wola', 'Żoliborz'],
   'Kraków': ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
   'Łódź': ['Bałuty', 'Górna', 'Polesie', 'Śródmieście', 'Widzew'],
+  'Wrocław': ['Biskupin', 'Borek', 'Fabryczna', 'Gaj', 'Gądów Mały', 'Grabiszyn', 'Huby', 'Jagodno', 'Karłowice', 'Kozanów', 'Krzyki', 'Leśnica', 'Maślice', 'Muchobór', 'Nadodrze', 'Ołbin', 'Oporów', 'Popowice', 'Psie Pole', 'Stare Miasto WRO', 'Szczepin', 'Śródmieście WRO', 'Tarnogaj'],
+  'Poznań': ['Antoninek', 'Chartowo', 'Dębiec', 'Górczyn', 'Grunwald', 'Jeżyce', 'Junikowo', 'Łazarz', 'Naramowice', 'Nowe Miasto POZ', 'Ogrody', 'Piątkowo', 'Podolany', 'Rataje', 'Sołacz', 'Stare Miasto POZ', 'Strzeszyn', 'Świerczewo', 'Wilda', 'Winogrady', 'Winiary'],
+  'Trójmiasto': ['Gdańsk - Śródmieście', 'Gdańsk - Wrzeszcz', 'Gdańsk - Oliwa', 'Gdańsk - Przymorze', 'Gdańsk - Zaspa', 'Gdańsk - Osowa', 'Gdańsk - Chełm', 'Gdańsk - Jasień', 'Gdynia - Śródmieście', 'Gdynia - Orłowo', 'Gdynia - Redłowo', 'Gdynia - Chylonia', 'Sopot - Dolny', 'Sopot - Górny'],
   'Reszta Polski': ['Inna lokalizacja']
 };
 
-const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => (
-  <View style={styles.progressContainer}>
-    <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-    <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <Pressable key={i} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); navigation.navigate(`Step${i + 1}`); }} style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} />
-      ))}
+const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => {
+  const handleNext = (targetStep: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (step === 2 && targetStep === 3) {
+      Alert.alert(
+        "Potwierdzenie Lokalizacji",
+        "Czy upewniłeś się, że pineska znajduje się w odpowiednim miejscu na mapie?",
+        [
+          { text: "Jeszcze poprawię", style: "cancel" },
+          { text: "Tak, jest ok", onPress: () => navigation.navigate(`Step${targetStep}`) }
+        ]
+      );
+    } else {
+      navigation.navigate(`Step${targetStep}`);
+    }
+  };
+
+  return (
+    <View style={styles.progressContainer}>
+      <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
+      <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
+        {Array.from({ length: total }).map((_, i) => (
+          <Pressable 
+            key={i} 
+            onPress={() => handleNext(i + 1)} 
+            style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} 
+          />
+        ))}
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 const RedNeedlePin = () => {
   const levitateAnim = useRef(new Animated.Value(0)).current;
@@ -162,6 +215,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
           if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
           else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
           else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
+          else if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) finalCity = 'Wrocław';
+          else if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) finalCity = 'Poznań';
+          else if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk') || cityInfo.includes('sopot') || cityInfo.includes('gdynia')) finalCity = 'Trójmiasto';
           
           finalDistrict = getClosestDistrict(latitude, longitude, finalCity);
           if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
@@ -203,6 +259,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
         if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
         else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
         else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
+        else if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) finalCity = 'Wrocław';
+        else if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) finalCity = 'Poznań';
+        else if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk') || cityInfo.includes('sopot') || cityInfo.includes('gdynia')) finalCity = 'Trójmiasto';
         
         const finalDistrict = getClosestDistrict(region.latitude, region.longitude, finalCity);
 
@@ -221,7 +280,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
   const handleCityChange = (city: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
-    const newDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA]; const coords = DISTRICT_COORDS[city] || { lat: 52.0, lng: 19.0 }; 
+    const newDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA]; 
+    const coords = DISTRICT_COORDS[city] || { lat: 52.0, lng: 19.0 }; 
     updateDraft({ city, district: newDistricts[0], lat: coords.lat, lng: coords.lng }); 
     if (city !== 'Reszta Polski') flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
   };
@@ -274,19 +334,22 @@ export default function Step2_Location({ theme }: { theme: any }) {
             </View>
           </View>
 
-          <View style={styles.pickerWrapper}>
-            <View style={styles.pickerColumn}>
-              <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>MIASTO</Text>
-              <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
-                <Picker selectedValue={draft.city || 'Warszawa'} onValueChange={handleCityChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 19, fontWeight: '700' }}>{Object.keys(DISTRICTS_DATA).map(c => <Picker.Item key={c} label={c} value={c} />)}</Picker>
-              </View>
-            </View>
-            <View style={styles.pickerColumn}>
-              <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
-              <View style={[styles.pickerBox, { backgroundColor: inputBg, borderColor }, shadow]}>
-                <Picker selectedValue={draft.district || ''} onValueChange={handleDistrictChange} style={styles.pickerNative} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>{(DISTRICTS_DATA[draft.city as keyof typeof DISTRICTS_DATA] || []).map(d => <Picker.Item key={d} label={d} value={d} />)}</Picker>
-              </View>
-            </View>
+          <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIASTO</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
+            {Object.keys(DISTRICTS_DATA).map(c => (
+              <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, draft.city === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                <Text style={[styles.pillText, draft.city === c && { color: '#FFF' }]}>{c}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 30 }}>
+            {(DISTRICTS_DATA[draft.city as keyof typeof DISTRICTS_DATA] || []).map(d => (
+              <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, draft.district === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                <Text style={[styles.pillText, draft.district === d && { color: '#FFF' }]}>{d}</Text>
+              </Pressable>
+            ))}
           </View>
 
         </View>
@@ -320,6 +383,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 17, fontWeight: '700' }, subLabel: { fontSize: 13, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '800', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1.5 },
   input: { height: 55, paddingHorizontal: 20, fontSize: 17, fontWeight: '600' },
-  pickerWrapper: { flexDirection: 'row', gap: 15, height: 200, marginBottom: 10 }, pickerColumn: { flex: 1, alignItems: 'stretch' }, pickerTitle: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 8, textAlign: 'center', letterSpacing: 1 },
-  pickerBox: { flex: 1, justifyContent: 'center', borderRadius: 22, borderTopWidth: 2, borderBottomWidth: 1, borderWidth: 1 }, pickerNative: { width: '100%', height: 160 },
+  
+  pillBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
+  pillText: { fontSize: 14, fontWeight: '600', color: '#8E8E93' }
 });

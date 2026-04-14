@@ -381,6 +381,12 @@ export default function Radar({ theme }: any) {
                         <View style={styles.cardSpecs}>
                           <View style={styles.specItem}><Ionicons name="resize" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.area} m²</Text></View>
                           {offer.propertyType !== 'PLOT' && <View style={styles.specItem}><Ionicons name="bed" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} pok.</Text></View>}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 6 }}>
+                            {offer.hasGarden && <Ionicons name="leaf" size={14} color="#10b981" />}
+                            {offer.hasParking && <Ionicons name="car-sport" size={14} color="#10b981" />}
+                            {offer.hasBalcony && <Ionicons name="sunny" size={14} color="#10b981" />}
+                            {offer.hasElevator && <Ionicons name="arrow-up-circle" size={14} color="#10b981" />}
+                          </View>
                         </View>
                       </View>
                     </View>

@@ -15,7 +15,7 @@ const initialDraft = {
   description: '',
   transactionType: 'SALE',
   propertyType: 'APARTMENT',
-  condition: 'READY',
+  condition: null,
   city: 'Warszawa',
   district: 'OTHER',
   street: '',

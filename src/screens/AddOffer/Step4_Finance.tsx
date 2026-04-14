@@ -32,14 +32,15 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const isDark = theme.glass === 'dark';
   const isRent = draft.transactionType === 'RENT';
 
-  // 🪄 Te same lśniące tła co w parametrach
   const cardBg = isDark ? '#1a1a1c' : '#ffffff';
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
   const shadowOpacity = isDark ? 0 : 0.06;
 
   const priceNum = parseFloat((draft.price || "").replace(/\s/g, '')) || 0;
   const areaNum = parseFloat((draft.area || "").replace(/\s/g, '').replace(',', '.')) || 0;
-  const rentNum = parseFloat((draft.rent || "").replace(/\s/g, '')) || 0;
+  
+  // W przypadku Sprzedaży (isRent === false) draft.rent przechowuje wpisany "Czynsz Admin."
+  const adminFeeNum = !isRent ? (parseFloat((draft.rent || "").replace(/\s/g, '')) || 0) : 0;
   
   const pricePerSqm = areaNum > 0 ? Math.round(priceNum / areaNum) : 0;
   const avgPrice = draft.city === 'Warszawa' ? 16500 : (draft.city === 'Łódź' ? 8500 : 12000); 
@@ -51,7 +52,16 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   else if (diffPercent >= 5) { statusText = 'ZAWYŻONA'; statusColor = Colors.danger; statusIcon = 'trending-up-outline'; sign = '+'; } 
   else { sign = diffPercent > 0 ? '+' : ''; }
   
-  const annualIncome = rentNum > 0 ? rentNum * 12 : 0;
+  // LOGIKA ROI (Szacowanie przychodów)
+  let estimatedRentPerSqm = 60;
+  if (draft.city === 'Warszawa') estimatedRentPerSqm = 85;
+  else if (draft.city === 'Kraków' || draft.city === 'Wrocław' || draft.city === 'Trójmiasto') estimatedRentPerSqm = 65;
+  else if (draft.city === 'Łódź' || draft.city === 'Poznań') estimatedRentPerSqm = 55;
+
+  const estimatedMonthlyRent = areaNum * estimatedRentPerSqm;
+  const netMonthlyIncome = Math.max(0, estimatedMonthlyRent - adminFeeNum); // Odejmujemy czynsz administracyjny
+  const annualIncome = netMonthlyIncome * 12;
+
   const roi = priceNum > 0 && annualIncome > 0 ? ((annualIncome / priceNum) * 100).toFixed(2) : 0;
 
   const handleIncreaseSqm = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (areaNum > 0) { const step = isRent ? 5 : 100; updateDraft({ price: Math.round(priceNum + (step * areaNum)).toString() }); } };

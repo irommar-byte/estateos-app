@@ -1,3 +1,4 @@
+import FloorPlanViewer from '../components/FloorPlanViewer';
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert } from 'react-native';

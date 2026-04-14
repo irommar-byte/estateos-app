@@ -131,8 +131,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Radar' }] }));
-      setTimeout(() => resetDraft(), 500);
+      Alert.alert(
+        "Gratulacje! 🎉",
+        "Oferta została pomyślnie dodana. Po szybkiej weryfikacji będzie widoczna na radarze.",
+        [{ text: "Super", onPress: () => {
+            navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Radar' }] }));
+            setTimeout(() => resetDraft(), 500);
+        }}]
+      );
 
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
