@@ -425,8 +425,8 @@ export default function Radar({ theme }: any) {
                   {CITIES.map(c => {
                     const isActive = draftFilters.city === c;
                     return (
-                      <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.pillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.5, shadowRadius: 8 }]}>
-                        <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{c}</Text>
+                      <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.cityPillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.7, shadowRadius: 15, elevation: 10 }]}>
+                        <Text style={[styles.cityPillText, isActive && styles.cityPillTextActive]}>{c}</Text>
                       </Pressable>
                     );
                   })}
@@ -456,8 +456,8 @@ export default function Radar({ theme }: any) {
                     <TextInput
                       style={[styles.numberInput, { color: activeColor }]}
                       keyboardType="numeric"
-                      value={inputMaxPrice}
-                      onChangeText={setInputMaxPrice}
+                      value={inputMaxPrice.replace(/\B(?=(\d{3})+(?!\d))/g, " ")}
+                      onChangeText={(val) => setInputMaxPrice(val.replace(/\D/g, ''))}
                       onBlur={handlePriceEndEditing}
                       returnKeyType="done"
                     />
@@ -615,6 +615,9 @@ const styles = StyleSheet.create({
   pillBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
   pillText: { fontSize: 13, color: '#8E8E93', fontWeight: '500' },
   pillTextActive: { color: '#FFF', fontWeight: '700' },
+  cityPillBtn: { paddingHorizontal: 22, paddingVertical: 14, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(150,150,150,0.4)', backgroundColor: 'rgba(150,150,150,0.1)', shadowColor: '#000', shadowOffset: {width: 0, height: 6}, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
+  cityPillText: { fontSize: 16, color: '#8E8E93', fontWeight: '800', letterSpacing: 0.5 },
+  cityPillTextActive: { color: '#FFF', fontWeight: '900' },
   premiumModalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(150,150,150,0.2)' },
   premiumApplyBtn: { borderRadius: 16, paddingVertical: 18, alignItems: 'center', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 15, elevation: 5 },
   premiumApplyBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
