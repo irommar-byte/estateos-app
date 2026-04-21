@@ -5,14 +5,15 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useAuthStore } from '../store/useAuthStore';
+import { PasskeyService } from '../services/passkeyService';
 import { useNavigation } from '@react-navigation/native';
 import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 
 // --- KOMPONENT ADMINA: SZCZEGÓŁY UŻYTKOWNIKA (NOWY) ---
-const AdminUserProfileModal = ({ visible, userId, onClose, theme }: any) => {
-  const [userData, setUserData] = useState<any>(null);
+const AdminUserProfileModal = ({ visible, userId, onClose, theme }) => {
+  const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(false);
   const isDark = theme.glass === 'dark';
 
@@ -31,7 +32,7 @@ const AdminUserProfileModal = ({ visible, userId, onClose, theme }: any) => {
 
   useEffect(() => { if (visible) fetchUserDetails(); }, [visible, userId]);
 
-  const changeOfferStatus = async (offerId: number, newStatus: string) => {
+  const changeOfferStatus = async (offerId, newStatus) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const res = await fetch('https://estateos.pl/api/mobile/v1/admin/offers', {
@@ -45,13 +46,13 @@ const AdminUserProfileModal = ({ visible, userId, onClose, theme }: any) => {
     } catch (e) { Alert.alert("Błąd", "Zmiana statusu nie powiodła się."); }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString) => {
     if (!dateString) return 'Brak danych';
     const date = new Date(dateString);
     return date.toLocaleDateString('pl-PL', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
-  const renderOffer = ({ item }: any) => (
+  const renderOffer = ({ item }) => (
     <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={[styles.offerTitle, { color: theme.text, flex: 1 }]} numberOfLines={1}>{item.title}</Text>
@@ -113,7 +114,7 @@ const AdminUserProfileModal = ({ visible, userId, onClose, theme }: any) => {
             {/* LISTA OFERT TEGO UŻYTKOWNIKA */}
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Ogłoszenia ({userData.offers?.length || 0})</Text>
             {userData.offers && userData.offers.length > 0 ? (
-              userData.offers.map((offer: any) => <React.Fragment key={offer.id}>{renderOffer({ item: offer })}</React.Fragment>)
+              userData.offers.map((offer) => <React.Fragment key={offer.id}>{renderOffer({ item: offer })}</React.Fragment>)
             ) : (
               <Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 20 }}>Ten użytkownik nie posiada jeszcze ofert.</Text>
             )}
@@ -125,9 +126,9 @@ const AdminUserProfileModal = ({ visible, userId, onClose, theme }: any) => {
 };
 
 // --- KOMPONENT ADMINA: BAZA OFERT ---
-const AdminOffersModal = ({ visible, onClose, theme }: any) => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'ACTIVE' | 'ARCHIVED'>('PENDING');
-  const [offers, setOffers] = useState<any[]>([]);
+const AdminOffersModal = ({ visible, onClose, theme }) => {
+  const [activeTab, setActiveTab] = useState('PENDING');
+  const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(false);
   const isDark = theme.glass === 'dark';
 
@@ -143,7 +144,7 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
 
   useEffect(() => { if (visible) fetchOffers(); }, [visible, activeTab]);
 
-  const changeStatus = async (offerId: number, newStatus: string) => {
+  const changeStatus = async (offerId, newStatus) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const res = await fetch('https://estateos.pl/api/mobile/v1/admin/offers', {
@@ -157,7 +158,7 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
     } catch (e) { Alert.alert("Błąd", "Nie udało się zmienić statusu"); }
   };
 
-  const renderOffer = ({ item }: any) => (
+  const renderOffer = ({ item }) => (
     <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
       <Text style={[styles.offerTitle, { color: theme.text }]}>{item.title}</Text>
       <Text style={styles.offerSubtitle}>{item.price} PLN • {item.city}</Text>
@@ -198,8 +199,8 @@ const AdminOffersModal = ({ visible, onClose, theme }: any) => {
 };
 
 // --- KOMPONENT ADMINA: LISTA UŻYTKOWNIKÓW ---
-const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
-  const [users, setUsers] = useState<any[]>([]);
+const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const isDark = theme.glass === 'dark';
 
@@ -215,7 +216,7 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
 
   useEffect(() => { if (visible) fetchUsers(); }, [visible]);
 
-  const deleteUser = (userId: number, email: string) => {
+  const deleteUser = (userId, email) => {
     Alert.alert("Usuń użytkownika", `Czy na pewno chcesz permanentnie usunąć ${email}?`, [
         { text: "Anuluj", style: "cancel" },
         { text: "Usuń", style: "destructive", onPress: async () => {
@@ -230,7 +231,7 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
     ]);
   };
 
-  const renderUser = ({ item }: any) => (
+  const renderUser = ({ item }) => (
     <View style={[styles.userCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
         {item.image ? <Image source={{ uri: item.image }} style={styles.userAvatar} /> : <View style={styles.userAvatarPlaceholder}><Ionicons name="person" size={24} color="#8E8E93" /></View>}
@@ -269,10 +270,10 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }: any) => {
 };
 
 // --- KOMPONENT ZARZĄDZANIA OFERTAMI ---
-const MyOffersModal = ({ visible, onClose, theme }: any) => {
-  const [offers, setOffers] = useState<any[]>([]);
+const MyOffersModal = ({ visible, onClose, theme }) => {
+  const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const { user, token } = useAuthStore() as any;
+  const { user, token } = useAuthStore();
   const isDark = theme.glass === 'dark';
 
   const fetchMyOffers = async () => {
@@ -298,7 +299,7 @@ const MyOffersModal = ({ visible, onClose, theme }: any) => {
     if (visible) fetchMyOffers();
   }, [visible]);
 
-  const renderMyOffer = ({ item }: any) => {
+  const renderMyOffer = ({ item }) => {
     // Sprawdzamy czy pierwsze zdjęcie istnieje i czy jest poprawne
     let imageUri = null;
     try {
@@ -364,11 +365,11 @@ const MyOffersModal = ({ visible, onClose, theme }: any) => {
 };
 
 // --- ELEMENTY UI ---
-const ListGroup = ({ children, isDark }: any) => (
+const ListGroup = ({ children, isDark }) => (
   <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>{children}</View>
 );
 
-const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark, rightElement }: any) => (
+const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark, rightElement }) => (
   <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.listItem, pressed && onPress && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
     <View style={[styles.listIconBox, { backgroundColor: color }]}><Ionicons name={icon} size={20} color="#FFF" /></View>
     <View style={[styles.listContent, !isLast && { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderBottomWidth: StyleSheet.hairlineWidth }]}>
@@ -386,7 +387,7 @@ const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark
 
 const modes = [ { label: 'Jasny', value: 'light' }, { label: 'Auto', value: 'auto' }, { label: 'Ciemny', value: 'dark' } ];
 
-function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }: any) {
+function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }) {
   const [containerWidth, setContainerWidth] = useState(0);
   const segmentWidth = containerWidth > 0 ? containerWidth / 3 : 0;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -410,16 +411,16 @@ function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }: any) {
 }
 
 // --- GŁÓWNY EKRAN PROFILU ---
-export default function ProfileScreen({ theme }: { theme: any }) {
-  const navigation = useNavigation<any>();
-  const { user, logout, updateAvatar, registerPasskey } = useAuthStore() as any;
+export default function ProfileScreen({ theme }) {
+  const navigation = useNavigation();
+  const { user, logout, updateAvatar, registerPasskey } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
   const isDark = theme.glass === 'dark';
   
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
   const [isAdminUsersVisible, setIsAdminUsersVisible] = useState(false);
-  const [adminSelectedUserId, setAdminSelectedUserId] = useState<number | null>(null);
+  const [adminSelectedUserId, setAdminSelectedUserId] = useState(null);
   const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
 
   const [isSmsEnabled, setIsSmsEnabled] = useState(true);
@@ -433,7 +434,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
     }
   }, [user?.role]);
 
-  const toggleSms = async (value: boolean) => {
+  const toggleSms = async (value) => {
     setIsSmsEnabled(value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
@@ -477,7 +478,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
 
         const formData = new FormData();
         formData.append('userId', String(user.id));
-        formData.append('file', { uri: localUri, name: filename, type: 'image/jpeg' } as any);
+        formData.append('file', { uri: localUri, name: filename, type: 'image/jpeg' });
 
         // Wysyłamy fizyczny plik na serwer
         const res = await fetch(`https://estateos.pl/api/mobile/v1/user/avatar`, {
@@ -554,7 +555,22 @@ export default function ProfileScreen({ theme }: { theme: any }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bezpieczeństwo</Text>
           <ListGroup isDark={isDark}>
-            <ListItem icon="key" color="#FF9F0A" title="Dodaj klucz Passkey" subtitle="Loguj się bezpiecznie przez Face ID" onPress={() => {}} isLast={true} isDark={isDark} />
+            <ListItem icon="key" color="#FF9F0A" title="Dodaj klucz Passkey" subtitle="Loguj się bezpiecznie przez Face ID" onPress={() => {
+    Alert.alert("Powiąż Face ID", "Czy chcesz bezpiecznie logować się do EstateOS za pomocą twarzy?", [
+      { text: "Anuluj", style: "cancel" },
+      { text: "Powiąż", onPress: async () => {
+          const state = useAuthStore.getState();
+          if (!state.token || !state.user) return;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          
+          // UDERZENIE DO NASZEGO SERWISU I BAZY DANYCH
+          const success = await PasskeyService.register(state.token, String(state.user.id), state.user.email);
+          if (success) {
+            Alert.alert("Sukces", "Urządzenie zostało powiązane z Twoim kontem! Możesz teraz logować się błyskawicznie.");
+          }
+      }}
+    ]);
+  }} isLast={true} isDark={isDark} />
           </ListGroup>
         </View>
 
@@ -598,7 +614,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
 
       <MyOffersModal visible={isMyOffersVisible} onClose={() => setIsMyOffersVisible(false)} theme={theme} />
       <AdminOffersModal visible={isAdminOffersVisible} onClose={() => setIsAdminOffersVisible(false)} theme={theme} />
-      <AdminUsersModal visible={isAdminUsersVisible} onClose={() => setIsAdminUsersVisible(false)} onOpenUser={(id: number) => setAdminSelectedUserId(id)} theme={theme} />
+      <AdminUsersModal visible={isAdminUsersVisible} onClose={() => setIsAdminUsersVisible(false)} onOpenUser={(id) => setAdminSelectedUserId(id)} theme={theme} />
       
       {/* NOWY MODAL: SZCZEGÓŁY UŻYTKOWNIKA */}
       <AdminUserProfileModal visible={!!adminSelectedUserId} userId={adminSelectedUserId} onClose={() => setAdminSelectedUserId(null)} theme={theme} />

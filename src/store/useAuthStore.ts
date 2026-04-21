@@ -8,6 +8,7 @@ const formatPhone = (p?: string) => {
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
+import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
 
 interface User {
   id: number;
@@ -29,7 +30,7 @@ interface AuthState {
   error: string | null;
   login: (email: string, pass: string) => Promise<boolean>;
   register: (email: string, pass: string, fName: string, lName: string, phone: string, role: string) => Promise<boolean>;
-  loginWithPasskey: (email: string) => Promise<boolean>;
+  loginWithPasskey: () => Promise<boolean>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
   updateAvatar: (base64Image: string) => Promise<void>;
@@ -38,7 +39,6 @@ interface AuthState {
 const normalizeUser = (apiUser: any) => {
   if (!apiUser) return null;
   
-  // Rozdzielamy 'Marian Romanienko' na imię i nazwisko dla luksusowego wyglądu
   const fullDisplayName = apiUser.name || apiUser.contactName || 'Użytkownik';
   const nameParts = fullDisplayName.split(' ');
   
@@ -120,9 +120,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (e) { console.log("Avatar sync error", e); }
   },
 
-  loginWithPasskey: async (email: string) => {
-    Alert.alert("Passkey", "Integracja Apple Passkey wymaga Apple Developer Program.");
-    return false;
+  // 🔥 PRAWDZIWE LOGOWANIE PASSKEY 🔥
+  loginWithPasskey: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      // Wywołujemy nasz niezawodny serwis!
+      const data = await PasskeyService.login();
+      
+      if (data && data.token) {
+        // Mamy sukces z serwera, wyciągamy dane i token!
+        const normUser = normalizeUser(data.user);
+        
+        // Zapisujemy trwale w pamięci telefonu
+        await AsyncStorage.setItem('mobile_token', data.token);
+        await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
+        
+        // Aktualizujemy globalny stan (UI od razu dostaje dane usera)
+        set({ user: normUser, token: data.token, isLoading: false });
+        
+        return true; // ZERO ALERTÓW! Tylko true!
+      }
+      
+      set({ isLoading: false });
+      return false;
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+      return false;
+    }
   },
 
   logout: async () => {
@@ -132,9 +156,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   restoreSession: async () => {
-    await AsyncStorage.clear(); console.log('STORAGE CLEARED');
-    const token = await AsyncStorage.getItem('mobile_token');
-    const userData = await AsyncStorage.getItem('user_data');
-    if (token && userData) set({ token, user: normalizeUser(JSON.parse(userData)) });
+    try {
+      // 🔥 Usunąłem zabójcze "AsyncStorage.clear()", które kasowało sesję!
+      const token = await AsyncStorage.getItem('mobile_token');
+      const userData = await AsyncStorage.getItem('user_data');
+      if (token && userData) {
+        set({ token, user: normalizeUser(JSON.parse(userData)) });
+      }
+    } catch (e) {
+      console.log("Restore session error", e);
+    }
   }
 }));

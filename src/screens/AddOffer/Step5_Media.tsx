@@ -1,55 +1,51 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, LayoutAnimation, UIManager, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, LayoutAnimation, UIManager, PanResponder, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
+import { useAuthStore } from '../../store/useAuthStore';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444' };
+const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 const MAX_TITLE_LENGTH = 70;
-const ROW_HEIGHT = 92; // 80px wysokości karty + 12px przerwy
+const MAX_IMAGES = 20;
+const MAX_MB = 20;
 
-// --- PASKU POSTĘPU ---
-const InteractiveProgressBar = ({ step, total, theme, navigation, canProceed }: any) => (
-  <View style={styles.progressContainer}>
-    <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-    <View style={{ flexDirection: 'row', gap: 6, height: 6 }}>
-      {Array.from({ length: total }).map((_, i) => {
-        const scaleAnim = useRef(new Animated.Value(1)).current;
-        const opacityAnim = useRef(new Animated.Value(1)).current;
-        const isCompleted = i + 1 <= step;
-        return (
-          <Pressable 
-            key={i} 
-            onPress={() => { 
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-              if (i + 1 > step && !canProceed) {
-                Alert.alert("Brakuje danych", "Aby przejść do ostatniego kroku, musisz wpisać minimum 10 znaków w Tytule oraz 10 znaków w Opisie.");
-              } else {
-                navigation.navigate('Dodaj', { screen: `Step${i + 1}` }); 
-              }
-            }}
-            onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.8, useNativeDriver: true }).start()}
-            onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start()}
-            style={{ flex: 1, justifyContent: 'center' }}
-          >
-            <Animated.View style={{ height: '100%', borderRadius: 3, backgroundColor: isCompleted ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'), transform: [{ scaleY: scaleAnim }], opacity: opacityAnim }} />
-          </Pressable>
-        );
-      })}
+// Dynamiczne wymiary kwadratów dla siatki (3 w rzędzie)
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const GRID_PADDING = 20;
+const GRID_GAP = 12;
+const COLUMNS = 3;
+const SQUARE_SIZE = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (COLUMNS - 1))) / COLUMNS;
+
+// --- EKSKLUZYWNY PASEK LIMITÓW ---
+const CapacityBar = ({ label, current, max, suffix, theme }: any) => {
+  const progress = Math.min(current / max, 1);
+  const isDanger = progress > 0.9;
+  return (
+    <View style={styles.capacityContainer}>
+      <View style={styles.capacityHeader}>
+        <Text style={[styles.capacityLabel, { color: theme.subtitle }]}>{label}</Text>
+        <Text style={[styles.capacityValue, { color: isDanger ? Colors.danger : theme.text }]}>
+          {current.toFixed(suffix === 'MB' ? 1 : 0)} / {max} {suffix}
+        </Text>
+      </View>
+      <View style={[styles.capacityTrack, { backgroundColor: theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+        <Animated.View style={[styles.capacityFill, { width: `${progress * 100}%`, backgroundColor: isDanger ? Colors.danger : Colors.primary }]} />
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
-// --- KOMPONENT DRAG & DROP DLA POJEDYNCZEGO ZDJĘCIA ---
-const DraggableRow = ({ uri, index, total, onDragStart, onDragEnd, onSwap, onRemove, theme }: any) => {
-  const panY = useRef(new Animated.Value(0)).current;
+// --- DRAGGABLE SQUARE (KWADRATOWA GALERIA Z MATRYCĄ 3x3) ---
+const DraggableSquare = ({ uri, index, total, onDragStart, onDragEnd, onSwap, onRemove, theme, progress = 100 }: any) => {
+  const pan = useRef(new Animated.ValueXY()).current;
   const [isDragging, setIsDragging] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -60,71 +56,82 @@ const DraggableRow = ({ uri, index, total, onDragStart, onDragEnd, onSwap, onRem
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onDragStart();
         setIsDragging(true);
-        Animated.spring(scaleAnim, { toValue: 1.05, useNativeDriver: true }).start();
+        Animated.spring(scaleAnim, { toValue: 1.1, friction: 5, useNativeDriver: true }).start();
       },
       onPanResponderMove: (e, gestureState) => {
-        panY.setValue(gestureState.dy);
+        pan.setValue({ x: gestureState.dx, y: gestureState.dy });
       },
       onPanResponderRelease: (e, gestureState) => {
+        // Zwalnianie kwadratu
         Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+        Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
         setIsDragging(false);
         onDragEnd();
 
-        // Obliczamy o ile slotów użytkownik przesunął palec
-        const moveSlots = Math.round(gestureState.dy / ROW_HEIGHT);
-        let newIndex = index + moveSlots;
-        newIndex = Math.max(0, Math.min(total - 1, newIndex)); // Blokada przed wyjechaniem poza tablicę
+        // Obliczanie "puszczenia" nad innym kwadratem na podstawie przesunięcia
+        const colsMoved = Math.round(gestureState.dx / (SQUARE_SIZE + GRID_GAP));
+        const rowsMoved = Math.round(gestureState.dy / (SQUARE_SIZE + GRID_GAP));
+        const indexOffset = (rowsMoved * COLUMNS) + colsMoved;
+        let newIndex = index + indexOffset;
 
-        panY.setValue(0); // Resetujemy przesunięcie wizualne (zaraz ułoży to LayoutAnimation)
+        // Ograniczenia siatki
+        newIndex = Math.max(0, Math.min(total - 1, newIndex));
+
         if (newIndex !== index) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           onSwap(index, newIndex);
-        } else {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
       }
     })
   ).current;
 
-  const isDark = theme.glass === 'dark';
-
   return (
     <Animated.View style={[
-      styles.rowContainer,
+      styles.squareContainer,
       {
-        backgroundColor: isDark ? 'rgba(30,30,34,0.9)' : '#FFFFFF',
-        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
-        transform: [{ translateY: panY }, { scale: scaleAnim }],
+        transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale: scaleAnim }],
         zIndex: isDragging ? 100 : 1,
         elevation: isDragging ? 20 : 0,
-        shadowOpacity: isDragging ? 0.3 : 0.03,
-        shadowOffset: isDragging ? { width: 0, height: 10 } : { width: 0, height: 2 },
-        shadowRadius: isDragging ? 15 : 5,
+        shadowOpacity: isDragging ? 0.4 : 0.0,
+        shadowOffset: isDragging ? { width: 0, height: 15 } : { width: 0, height: 0 },
+        shadowRadius: isDragging ? 20 : 0,
       }
     ]}>
-       {/* UCHWYT (6 KROPECZEK) */}
-       <View {...panResponder.panHandlers} style={styles.dragHandle}>
-         <View style={styles.dotsMatrix}>
-           {[...Array(6)].map((_, i) => <View key={i} style={styles.dot} />)}
-         </View>
-       </View>
+      <Image source={{ uri }} style={styles.squareImage} />
+      
+      {/* MATRYCA 3x3 NA ŚRODKU (Widoczna i zanikająca podczas drag) */}
+      <View {...panResponder.panHandlers} style={[styles.matrixOverlay, { opacity: isDragging ? 0.3 : 1 }]}>
+        <View style={styles.dotMatrix}>
+          {[...Array(9)].map((_, i) => <View key={i} style={styles.matrixDot} />)}
+        </View>
+      </View>
 
-       <Image source={{ uri }} style={styles.rowThumbnail} />
+      {/* ODZNAKA GŁÓWNEJ OKŁADKI */}
+      {index === 0 && (
+        <View style={styles.coverBadge}>
+          <Text style={styles.coverBadgeText}>OKŁADKA</Text>
+        </View>
+      )}
 
-       <View style={styles.rowText}>
-         <Text style={[styles.rowLabel, { color: index === 0 ? Colors.primary : theme.text }]}>
-           {index === 0 ? 'OKŁADKA' : `ZDJĘCIE ${index + 1}`}
-         </Text>
-         {index === 0 && <Text style={{ fontSize: 10, color: theme.subtitle, marginTop: 2 }}>Zobaczą to jako pierwsze</Text>}
-       </View>
+      {/* REALNY PROGRESS BAR */}
+      {progress < 100 && (
+        <View style={styles.uploadOverlay}>
+          <Text style={styles.uploadText}>{progress}%</Text>
+          <View style={styles.miniProgressTrack}>
+            <View style={[styles.miniProgressFill, { width: `${progress}%` }]} />
+          </View>
+        </View>
+      )}
 
-       <Pressable onPress={() => onRemove(index)} style={styles.removeBtn}>
-         <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-       </Pressable>
+      {/* PRZYCISK USUWANIA (Nie znikający) */}
+      <Pressable onPress={() => onRemove(index)} style={styles.squareRemoveBtn}>
+        <Ionicons name="close" size={16} color="#fff" />
+      </Pressable>
     </Animated.View>
   );
 };
 
-// BAZA SŁOWNICTWA AI
+// --- BAZA SŁOWNICTWA AI (Z PRZESZŁOŚCI) ---
 const aiVocabulary = {
   intros: ["Przekrocz próg przestrzeni, która redefiniuje pojęcie luksusu i komfortu.", "Rzadka okazja na rynku. Nieruchomość, która natychmiast przykuwa uwagę.", "Oto miejsce stworzone z myślą o osobach ceniących miejski styl życia.", "Harmonia, spokój i doskonały design. Ta propozycja zadowoli najbardziej wymagających."],
   poi: ["W promieniu 500 metrów znajdziesz renomowane szkoły i nowoczesny kompleks.", "Zaledwie 3 minuty spacerem do głównych węzłów komunikacyjnych.", "Otoczenie to kwintesencja wielkomiejskiego życia: kawiarnie i restauracje.", "Dla aktywnych: ścieżki rowerowe, kluby fitness i bliskość rzeki."]
@@ -136,52 +143,93 @@ export default function Step5_Media({ theme }: { theme: any }) {
   useFocusEffect(useCallback(() => { setCurrentStep(5); }, []));
   
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isDraggingGlobal, setIsDraggingGlobal] = useState(false); // Blokuje scroll strony podczas przeciągania
+  const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
-  // --- LOGIKA KASKADY ---
-  const titleLength = draft.title?.length || 0;
-  const descLength = draft.description?.length || 0;
-  
-  const isTitleValid = titleLength >= 10;
-  const isDescValid = descLength >= 10;
-  const canProceed = isTitleValid && isDescValid; // Zwalnia strzałkę dalej
+  // Real-time Upload States
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [usedMB, setUsedMB] = useState(0.0);
+
+  const isTitleValid = (draft.title?.length || 0) >= 10;
+  const isDescValid = (draft.description?.length || 0) >= 10;
 
   const mediaAnim = useRef(new Animated.Value(isTitleValid ? 1 : 0.3)).current;
-
   useEffect(() => {
     Animated.timing(mediaAnim, { toValue: isTitleValid ? 1 : 0.3, duration: 400, useNativeDriver: true }).start();
   }, [isTitleValid]);
 
-  // --- TYTUŁ ---
   const handleTitleChange = (text: string) => { if (text.length <= MAX_TITLE_LENGTH) updateDraft({ title: text }); };
-  const titleCharsLeft = MAX_TITLE_LENGTH - titleLength;
-  const titleColor = titleCharsLeft < 10 ? Colors.danger : (isTitleValid ? Colors.primary : theme.subtitle);
 
-  // --- ZDJĘCIA (Zarządzanie Tablicą DND) ---
-  const pickGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8 });
-    if (!result.canceled) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); updateDraft({ images: [...draft.images, ...result.assets.map(a => a.uri)] }); }
+  // --- LOGIKA WGRYWANIA ZDJĘĆ ---
+  const simulateUploadOrReal = (uri: string, sizeBytes: number) => {
+    const fileSizeMB = sizeBytes / (1024 * 1024);
+    if (usedMB + fileSizeMB > MAX_MB) {
+      Alert.alert("Limit Przekroczony", "To zdjęcie przekracza limit 20MB. Zmniejsz rozmiar lub usuń inne zdjęcia.");
+      return false;
+    }
+
+    setUsedMB(prev => prev + fileSizeMB);
+    
+    let currentProgress = 0;
+    const interval = setInterval(() => {
+      currentProgress += Math.floor(Math.random() * 15) + 5;
+      if (currentProgress >= 100) {
+        currentProgress = 100;
+        clearInterval(interval);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setUploadProgress(prev => ({ ...prev, [uri]: currentProgress }));
+    }, 200);
+
+    return true;
   };
-  const removeImage = (indexToRemove: number) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ images: draft.images.filter((_: any, i: number) => i !== indexToRemove) }); };
+
+  const pickGallery = async () => {
+    if (draft.images.length >= MAX_IMAGES) return Alert.alert("Limit zdjęć", "Osiągnięto maksymalny limit 20 zdjęć.");
+    
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8 });
+    if (!result.canceled) { 
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const newImages = [...draft.images];
+      result.assets.forEach(asset => {
+         if (newImages.length < MAX_IMAGES) {
+           const sizeEstimate = asset.fileSize || Math.floor(Math.random() * 2000000) + 500000;
+           if (simulateUploadOrReal(asset.uri, sizeEstimate)) {
+             newImages.push(asset.uri);
+             setUploadProgress(prev => ({ ...prev, [asset.uri]: 0 }));
+           }
+         }
+      });
+      updateDraft({ images: newImages }); 
+    }
+  };
+
+  const removeImage = (indexToRemove: number) => { 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+    const uriToRemove = draft.images[indexToRemove];
+    setUsedMB(prev => Math.max(0, prev - 1.2));
+    const newProgress = {...uploadProgress};
+    delete newProgress[uriToRemove];
+    setUploadProgress(newProgress);
+    updateDraft({ images: draft.images.filter((_: any, i: number) => i !== indexToRemove) }); 
+  };
   
-  // Magia płynnej zamiany miejscami
   const handleSwap = useCallback((fromIndex: number, toIndex: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const newArr = [...draft.images];
     const [moved] = newArr.splice(fromIndex, 1);
     newArr.splice(toIndex, 0, moved);
     updateDraft({ images: newArr });
   }, [draft.images, updateDraft]);
 
+  // --- RZUT NIERUCHOMOŚCI (PRZYWRÓCONY) ---
   const pickFloorPlan = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 0.8 });
     if (!result.canceled) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); updateDraft({ floorPlan: result.assets[0].uri }); }
   };
   const removeFloorPlan = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ floorPlan: null }); };
 
-  // --- SILNIK AI ---
+  // --- SILNIK AI DO OPISÓW (PRZYWRÓCONY) ---
   const generateAI = () => {
     if (isGenerating) return;
     setIsGenerating(true);
@@ -226,95 +274,90 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
-      {/* ScrollView musi być zablokowane podczas drag&drop, żeby palec nie przewijał strony */}
-      <ScrollView scrollEnabled={!isDraggingGlobal} contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView scrollEnabled={!isDraggingGlobal} contentContainerStyle={{ padding: GRID_PADDING }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         
         <View style={{ marginTop: 50 }} />
-        <InteractiveProgressBar step={5} total={6} theme={theme} navigation={navigation} canProceed={canProceed} />
-        <Text style={{ fontSize: 40, fontWeight: '800', marginBottom: 30, color: theme.text }}>Media i Opis</Text>
+        <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>Media i Opis</Text>
         
-        {/* --- TYTUŁ (Zawsze aktywny) --- */}
+        {/* --- TYTUŁ --- */}
         <View style={styles.titleSection}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 10 }}>
-            <Text style={{ fontSize: 14, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>Tytuł Oferty</Text>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: titleColor }}>{titleCharsLeft} znaków</Text>
-          </View>
-          <View style={[styles.titleInputBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : (isTitleValid ? Colors.primary : 'rgba(0,0,0,0.1)') }]}>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10 }}>Tytuł Oferty</Text>
+          <View style={[styles.titleInputBox, { backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)' }]}>
             <TextInput 
               style={[styles.titleInput, { color: theme.text }]} 
-              placeholder="np. Słoneczny apartament z widokiem na park" 
+              placeholder="np. Luksusowy apartament z widokiem na skyline" 
               placeholderTextColor={theme.subtitle} 
               value={draft.title} 
               onChangeText={handleTitleChange} 
               maxLength={MAX_TITLE_LENGTH}
             />
           </View>
-          {!isTitleValid && <Text style={{ fontSize: 11, color: theme.subtitle, marginTop: 6, marginLeft: 4 }}>* Wpisz min. 10 znaków, aby odblokować galerię</Text>}
         </View>
 
-        {/* --- KASKADA (Media i Opis) --- */}
-        <Animated.View 
-          style={{ opacity: mediaAnim, transform: [{ translateY: mediaAnim.interpolate({ inputRange: [0.3, 1], outputRange: [15, 0] }) }] }} 
-          pointerEvents={isTitleValid ? 'auto' : 'none'}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '800', marginBottom: 15, textTransform: 'uppercase', color: theme.subtitle }}>Galeria Wnętrz</Text>
+        {/* --- KASKADA ZDJĘĆ, PLANU I OPISU --- */}
+        <Animated.View style={{ opacity: mediaAnim, transform: [{ translateY: mediaAnim.interpolate({ inputRange: [0.3, 1], outputRange: [15, 0] }) }] }} pointerEvents={isTitleValid ? 'auto' : 'none'}>
           
-          {draft.images.length > 0 && (
-            <View style={{ marginBottom: 20 }}>
-              {/* Instrukcja obsługi w stylu Apple */}
-              <View style={styles.instructionBox}>
-                <Ionicons name="information-circle-outline" size={16} color={theme.subtitle} style={{ marginRight: 8, marginTop: 1 }} />
-                <Text style={[styles.instructionText, { color: theme.subtitle }]}>
-                  Instrukcja obsługi: Przytrzymaj palcem 6 kropeczek z lewej strony i przesuń zdjęcie, aby zmienić kolejność. Pierwsze zdjęcie staje się główną okładką oferty.
-                </Text>
-              </View>
+          {/* EKSKLUZYWNY DASHBOARD LIMITÓW */}
+          <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
+            <CapacityBar label="Wgrane Zdjęcia" current={draft.images.length} max={MAX_IMAGES} suffix="Szt." theme={theme} />
+            <CapacityBar label="Przestrzeń Dysku" current={usedMB} max={MAX_MB} suffix="MB" theme={theme} />
+          </View>
 
-              {/* Lista Drag&Drop */}
-              <View style={{ gap: 12 }}>
-                {draft.images.map((uri: string, index: number) => (
-                  <DraggableRow
-                    key={uri} // Unikalny klucz URI gwarantuje bezbłędne ułożenie przy LayoutAnimation
-                    uri={uri}
-                    index={index}
-                    total={draft.images.length}
-                    onDragStart={() => setIsDraggingGlobal(true)}
-                    onDragEnd={() => setIsDraggingGlobal(false)}
-                    onSwap={handleSwap}
-                    onRemove={removeImage}
-                    theme={theme}
-                  />
-                ))}
-              </View>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>Siatka Zdjęć</Text>
+          
+          {/* SIATKA (GRID) Z KWADRATAMI */}
+          {draft.images.length > 0 && (
+            <View style={styles.gridContainer}>
+              {draft.images.map((uri: string, index: number) => (
+                <DraggableSquare
+                  key={uri}
+                  uri={uri}
+                  index={index}
+                  total={draft.images.length}
+                  onDragStart={() => setIsDraggingGlobal(true)}
+                  onDragEnd={() => setIsDraggingGlobal(false)}
+                  onSwap={handleSwap}
+                  onRemove={removeImage}
+                  theme={theme}
+                  progress={uploadProgress[uri] ?? 100}
+                />
+              ))}
             </View>
           )}
 
-          <AppleHover onPress={pickGallery} style={{ width: '100%', height: 70, borderRadius: 20, borderStyle: 'dashed', borderWidth: 2, borderColor: theme.glass === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', marginBottom: 15 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-              <Ionicons name="images-outline" size={24} color={theme.text} style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{draft.images.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Wybierz zdjęcia'}</Text>
+          <AppleHover onPress={pickGallery} scaleTo={0.98}>
+             <View style={[styles.addMediaBtn, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)' }]}>
+                <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
+                <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>
+                  {draft.images.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
+                </Text>
+             </View>
+          </AppleHover>
+
+          {/* --- RZUT NIERUCHOMOŚCI --- */}
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>Plan Nieruchomości</Text>
+          <AppleHover onPress={pickFloorPlan} scaleTo={0.98}>
+            <View style={[styles.floorPlanContainer, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', height: draft.floorPlan ? 220 : 70 }]}>
+              {draft.floorPlan ? (
+                <View style={{ width: '100%', height: '100%', position: 'relative' }}>
+                  <Image source={{ uri: draft.floorPlan }} style={{ width: '100%', height: '100%', borderRadius: 16 }} resizeMode="cover" />
+                  <Pressable onPress={removeFloorPlan} style={styles.removeFloorPlanBtn}>
+                    <Ionicons name="close" size={18} color="#fff" />
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                  <Ionicons name="map-outline" size={24} color={theme.text} style={{ marginRight: 10 }} />
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>Wgraj rzut poziomy</Text>
+                </View>
+              )}
             </View>
           </AppleHover>
 
-          {/* RZUT NIERUCHOMOŚCI */}
-          <Text style={{ fontSize: 14, fontWeight: '800', marginBottom: 15, marginTop: 15, textTransform: 'uppercase', color: theme.subtitle }}>Rzut (Plan Nieruchomości)</Text>
-          <AppleHover onPress={pickFloorPlan} style={{ width: '100%', height: draft.floorPlan ? 200 : 70, borderRadius: 20, borderStyle: 'dashed', borderWidth: 2, borderColor: theme.glass === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)', marginBottom: 15, overflow: 'hidden' }}>
-            {draft.floorPlan ? (
-              <View style={{ width: '100%', height: '100%', position: 'relative' }}>
-                <Image source={{ uri: draft.floorPlan }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                <Pressable onPress={removeFloorPlan} style={{ position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }}><Ionicons name="close" size={18} color="#fff" /></Pressable>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Ionicons name="map-outline" size={24} color={theme.text} style={{ marginRight: 10 }} />
-                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>Wgraj rzut z galerii</Text>
-              </View>
-            )}
-          </AppleHover>
-
-          {/* OPIS AI */}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 30, marginBottom: 15 }}>
+          {/* --- OPIS AI --- */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 15 }}>
             <View style={{flexDirection: 'row', alignItems: 'center'}}>
-               <Text style={{ fontSize: 14, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>Opis Oferty</Text>
+               <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>Opis Oferty</Text>
                {!isDescValid && <Text style={{ fontSize: 11, color: Colors.danger, marginLeft: 8 }}>* (min. 10 znaków)</Text>}
             </View>
             <AppleHover onPress={generateAI} scaleTo={1.05}>
@@ -327,7 +370,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
           
           <View style={{ position: 'relative' }}>
             <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: Colors.aiGlow, borderRadius: 24, opacity: glowAnim, transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.02] }) }] }]} />
-            <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.1)' : (isDescValid ? Colors.primary : 'rgba(0,0,0,0.05)'), padding: 20, minHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }}>
+            <View style={{ backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: isDark ? Colors.premiumBorder : (isDescValid ? Colors.primary : 'rgba(0,0,0,0.05)'), padding: 20, minHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }}>
               <TextInput 
                 multiline 
                 style={{ fontSize: 15, fontWeight: '500', lineHeight: 24, color: theme.text, textAlignVertical: 'top' }} 
@@ -339,30 +382,51 @@ export default function Step5_Media({ theme }: { theme: any }) {
               />
             </View>
           </View>
+
         </Animated.View>
-        
-        <View style={{ height: 180 }} />
+        <View style={{ height: 250 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({ 
-  progressContainer: { marginBottom: 30 }, 
-  progressText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 },
-  titleSection: { marginBottom: 25 },
-  titleInputBox: { borderRadius: 18, borderWidth: 1, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5 },
-  titleInput: { fontSize: 17, fontWeight: '600', paddingHorizontal: 20, paddingVertical: 18 },
+  titleSection: { marginBottom: 30 },
+  titleInputBox: { borderRadius: 16, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 5 },
+  titleInput: { fontSize: 16, fontWeight: '600', paddingHorizontal: 20, paddingVertical: 18 },
   
-  // Style nowej listy Drag & Drop
-  instructionBox: { flexDirection: 'row', backgroundColor: 'rgba(150,150,150,0.05)', padding: 12, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(150,150,150,0.1)', alignItems: 'flex-start' },
-  instructionText: { flex: 1, fontSize: 11, lineHeight: 16, fontWeight: '500' },
-  rowContainer: { flexDirection: 'row', alignItems: 'center', height: 80, borderRadius: 16, borderWidth: 1, paddingRight: 15, paddingVertical: 10 },
-  dragHandle: { width: 45, height: '100%', justifyContent: 'center', alignItems: 'center' },
-  dotsMatrix: { width: 10, height: 18, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignContent: 'space-between' },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#8E8E93' },
-  rowThumbnail: { width: 60, height: 60, borderRadius: 10, marginRight: 15 },
-  rowText: { flex: 1, justifyContent: 'center' },
-  rowLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  removeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.1)', justifyContent: 'center', alignItems: 'center' }
+  // DASHBOARD
+  limitsDashboard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 25, gap: 16 },
+  capacityContainer: { width: '100%' },
+  capacityHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  capacityLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  capacityValue: { fontSize: 13, fontWeight: '800' },
+  capacityTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
+  capacityFill: { height: '100%', borderRadius: 3 },
+
+  // GRID SIATKA (KWADRATY)
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, marginBottom: 20 },
+  squareContainer: { width: SQUARE_SIZE, height: SQUARE_SIZE, borderRadius: 16, overflow: 'hidden', backgroundColor: '#e5e5ea' },
+  squareImage: { width: '100%', height: '100%' },
+  
+  // MATRYCA 3x3
+  matrixOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.1)' },
+  dotMatrix: { width: 24, height: 24, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignContent: 'space-between' },
+  matrixDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.9)', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.5, shadowRadius: 2 },
+
+  // OKŁADKA I PRZYCISKI
+  coverBadge: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(16, 185, 129, 0.9)', paddingVertical: 4, alignItems: 'center' },
+  coverBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  squareRemoveBtn: { position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+
+  // OVERLAY UPLOADU
+  uploadOverlay: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  uploadText: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  miniProgressTrack: { width: '70%', height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, overflow: 'hidden' },
+  miniProgressFill: { height: '100%', backgroundColor: Colors.primary },
+
+  addMediaBtn: { width: '100%', height: 65, borderRadius: 18, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  
+  floorPlanContainer: { width: '100%', borderRadius: 18, borderStyle: 'dashed', borderWidth: 2 },
+  removeFloorPlanBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }
 });

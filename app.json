@@ -1,6 +1,7 @@
 {
   "expo": {
-    "name": "apple-style-app",
+    "name": "EstateOS™",
+    "displayName": "EstateOS™",
     "slug": "apple-style-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,7 +15,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.applestyleapp",
+      "bundleIdentifier": "pl.estateos.app",
+      "associatedDomains": ["webcredentials:estateos.pl"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -26,7 +28,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.applestyleapp"
+      "package": "pl.estateos.app"
     },
     "extra": {
       "eas": {

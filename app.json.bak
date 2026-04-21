@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "apple-style-app",
+    "slug": "apple-style-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/app.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.applestyleapp",
+      "associatedDomains": ["webcredentials:estateos.pl"],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.applestyleapp"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f60e36e2-c093-4e91-870b-e4580a058bc2"
+      }
+    }
+  }
+}

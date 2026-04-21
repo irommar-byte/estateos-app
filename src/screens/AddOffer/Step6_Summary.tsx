@@ -113,7 +113,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           formData.append('offerId', String(createdOfferId));
           formData.append('file', { uri: localUri, name: filename, type } as any);
 
-          const uploadRes = await fetch(`${API_URL}/api/upload`, {
+          const uploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
             method: 'POST',
             body: formData,
             headers: { 'Authorization': `Bearer ${token}` }
@@ -146,7 +146,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           fpFormData.append('file', { uri: fpUri, name: fpName, type: 'image/jpeg' } as any);
           fpFormData.append('isFloorPlan', 'true');
 
-          const fpUploadRes = await fetch(`${API_URL}/api/upload`, {
+          const fpUploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
               method: 'POST',
               body: fpFormData,
               headers: { 'Authorization': `Bearer ${token}` }
