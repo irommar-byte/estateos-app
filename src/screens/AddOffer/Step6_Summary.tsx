@@ -67,12 +67,13 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       description: draft.description || '', 
       images: '[]', 
       videoUrl: draft.videoUrl || '',
-      floorPlanUrl: draft.floorPlanUrl || ''
+      floorPlanUrl: ''
     };
 
     try {
       let createdOfferId = null;
       
+      // 1. ZAPIS TEKSTOWY
       const response = await fetch(`${API_URL}/api/mobile/v1/offers`, {
         method: 'POST',
         headers: { 
@@ -83,33 +84,27 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       });
 
       if (!response.ok) {
-        const errData = await response.json();
+        const errData = await response.json().catch(() => ({}));
         throw new Error(errData.message || errData.error || 'Błąd serwera przy tworzeniu oferty');
       }
 
       const data = await response.json();
       createdOfferId = data.offer.id;
 
+      // 2. WGRYWANIE ZDJĘĆ
       if (createdOfferId && draft.images && draft.images.length > 0) {
         for (let i = 0; i < draft.images.length; i++) {
           let localUri = draft.images[i];
           let filename = localUri.split('/').pop() || `image_${i}.jpg`;
           let type = 'image/jpeg';
 
-          // 🔥 MAGIA APPLE: Konwersja HEIC -> JPG w locie! 🔥
           if (localUri.toLowerCase().endsWith('.heic') || localUri.toLowerCase().endsWith('.heif')) {
             setUploadProgressText(`Konwersja zdjęcia ${i + 1} (HEIC ➜ JPG)...`);
-            try {
-              const manipResult = await ImageManipulator.manipulateAsync(
-                localUri,
-                [], // Bez zmiany rozmiaru, tylko zmiana formatu
-                { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 } // Optymalizacja 80% jakości
-              );
-              localUri = manipResult.uri;
-              filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
-            } catch (convErr) {
-              console.log("Błąd konwersji, wysyłam oryginał:", convErr);
-            }
+            const manipResult = await ImageManipulator.manipulateAsync(
+              localUri, [], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+            );
+            localUri = manipResult.uri;
+            filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
           }
 
           setUploadProgressText(`Wysyłanie zdjęcia ${i + 1} z ${draft.images.length}...`);
@@ -118,18 +113,52 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           formData.append('offerId', String(createdOfferId));
           formData.append('file', { uri: localUri, name: filename, type } as any);
 
-          try {
-            await fetch(`${API_URL}/api/upload`, {
-              method: 'POST',
-              body: formData,
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-          } catch (uploadError) {
-            console.error(`Nie udało się wysłać pliku ${i+1}:`, uploadError);
+          const uploadRes = await fetch(`${API_URL}/api/upload`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (!uploadRes.ok) {
+            const errText = await uploadRes.json().catch(() => ({ error: 'Nieznany błąd uploadu' }));
+            throw new Error(`Zdjęcie ${i + 1}: ${errText.error || 'Odrzucone przez serwer'}`);
           }
         }
       }
 
+      // 3. WGRYWANIE RZUTU NIERUCHOMOŚCI
+      if (createdOfferId && draft.floorPlan) {
+          let fpUri = draft.floorPlan;
+          let fpName = fpUri.split('/').pop() || 'floorplan.jpg';
+          
+          if (fpUri.toLowerCase().endsWith('.heic') || fpUri.toLowerCase().endsWith('.heif')) {
+              setUploadProgressText('Konwersja rzutu (HEIC ➜ JPG)...');
+              const manip = await ImageManipulator.manipulateAsync(
+                  fpUri, [], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
+              );
+              fpUri = manip.uri;
+              fpName = fpName.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
+          }
+
+          setUploadProgressText('Wysyłanie rzutu nieruchomości...');
+          const fpFormData = new FormData();
+          fpFormData.append('offerId', String(createdOfferId));
+          fpFormData.append('file', { uri: fpUri, name: fpName, type: 'image/jpeg' } as any);
+          fpFormData.append('isFloorPlan', 'true');
+
+          const fpUploadRes = await fetch(`${API_URL}/api/upload`, {
+              method: 'POST',
+              body: fpFormData,
+              headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (!fpUploadRes.ok) {
+            const errText = await fpUploadRes.json().catch(() => ({ error: 'Nieznany błąd rzutu' }));
+            throw new Error(`Rzut: ${errText.error || 'Odrzucony przez serwer'}`);
+          }
+      }
+
+      // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         "Gratulacje! 🎉",
@@ -142,7 +171,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Błąd publikacji', error.message || 'Brak połączenia');
+      Alert.alert('Błąd', error.message || 'Wystąpił problem z połączeniem.');
     } finally {
       setLoading(false);
       setUploadProgressText('');

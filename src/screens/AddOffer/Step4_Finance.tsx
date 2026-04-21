@@ -98,7 +98,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={[styles.statusTitle, { color: statusColor }]}>{statusText}</Text>
                   <View style={[styles.badge, { backgroundColor: `${statusColor}20` }]}>
-                    <Ionicons name={statusIcon} size={14} color={statusColor} />
+                    <Ionicons name={statusIcon as any} size={14} color={statusColor} />
                     <Text style={[styles.badgeText, { color: statusColor }]}>{sign}{diffPercent}% od średniej</Text>
                   </View>
                 </View>

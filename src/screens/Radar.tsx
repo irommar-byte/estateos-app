@@ -1,5 +1,6 @@
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { Audio } from 'expo-av';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
 import { Marker } from 'react-native-maps';
 import MapView from 'react-native-map-clustering';
@@ -38,6 +39,18 @@ const formatPriceMarker = (price: string | number) => {
 };
 
 export default function Radar({ theme }: any) {
+
+  const playRadarSound = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require("../../assets/radar.mp3")
+      );
+      await sound.playAsync();
+    } catch (e) {
+      console.log("SOUND ERROR", e);
+    }
+  };
+
   const navigation = useNavigation<any>();
   const { user } = useAuthStore() as any;
   const colorScheme = useColorScheme();
@@ -198,6 +211,8 @@ export default function Radar({ theme }: any) {
     
     blip1.setValue(0); blip2.setValue(0); blip3.setValue(0); blip4.setValue(0);
 
+    playRadarSound();
+
     Animated.parallel([
       Animated.loop(Animated.timing(scanSpin, { toValue: 1, duration: 3500, useNativeDriver: true })),
       Animated.loop(Animated.sequence([
@@ -207,6 +222,7 @@ export default function Radar({ theme }: any) {
       ])),
       Animated.sequence([
         Animated.delay(400), 
+
         Animated.parallel([
           Animated.timing(scale3D, { toValue: 0.3, duration: 3500, useNativeDriver: true }),
           Animated.timing(tilt3D, { toValue: 75, duration: 3500, useNativeDriver: true })
@@ -678,9 +694,9 @@ const styles = StyleSheet.create({
   neonRing1: { position: 'absolute', width: 120, height: 120, borderRadius: 60, borderWidth: 5, opacity: 0.5, shadowRadius: 15, shadowOpacity: 1 },
   coreSolid: { position: 'absolute', width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#FFF', shadowRadius: 25, shadowOpacity: 1 },
   corePulse: { position: 'absolute', width: 80, height: 80, borderRadius: 40 },
-  sweeperContainer: { position: 'absolute', width: 380, height: 380, alignItems: 'center' },
-  scannerTrail: { width: 380/2, height: 380/2, position: 'absolute', top: 380/2, left: 380/2, borderBottomLeftRadius: 190 }, 
-  sweeperBeam: { width: 6, height: 190, position: 'absolute', top: 0, borderRadius: 3, shadowRadius: 20, shadowOpacity: 1, elevation: 10 }, 
+  sweeperContainer: { position: 'absolute', width: 380, height: 380, top: 10, left: 10 },
+  scannerTrail: { width: 190, height: 190, position: 'absolute', top: 0, left: 0, borderTopLeftRadius: 190 }, 
+  sweeperBeam: { width: 4, height: 190, position: 'absolute', top: 0, left: 188, borderRadius: 2, shadowRadius: 20, shadowOpacity: 1, elevation: 10 }, 
   blip: { position: 'absolute', width: 14, height: 14, borderRadius: 7, shadowRadius: 10, shadowOpacity: 1, elevation: 5 },
   
   cinematicTextContainer: { position: 'absolute', bottom: 80, alignItems: 'center' },

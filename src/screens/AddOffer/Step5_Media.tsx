@@ -163,7 +163,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8 });
     if (!result.canceled) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); updateDraft({ images: [...draft.images, ...result.assets.map(a => a.uri)] }); }
   };
-  const removeImage = (indexToRemove: number) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ images: draft.images.filter((_, i) => i !== indexToRemove) }); };
+  const removeImage = (indexToRemove: number) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ images: draft.images.filter((_: any, i: number) => i !== indexToRemove) }); };
   
   // Magia płynnej zamiany miejscami
   const handleSwap = useCallback((fromIndex: number, toIndex: number) => {

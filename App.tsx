@@ -1,3 +1,5 @@
+import DealroomChatScreen from './src/screens/DealroomChatScreen';
+import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -31,6 +33,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
+import DealroomListScreen from './src/screens/DealroomListScreen';
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
@@ -112,6 +115,7 @@ function MainTabs() {
   const user = useAuthStore((state) => state.user);
   const restoreSession = useAuthStore(state => state.restoreSession);
   const systemColorScheme = useColorScheme();
+  const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
   
   useEffect(() => { restoreSession(); }, []);
@@ -134,6 +138,7 @@ const AppStack = createNativeStackNavigator();
 
 export default function App() {
   const systemColorScheme = useColorScheme();
+  const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
   
 
@@ -142,6 +147,7 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
       <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
         <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
         <AppStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
@@ -152,6 +158,8 @@ export default function App() {
           <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
           <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
           <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
+          <AppStack.Screen name="DealroomList" component={DealroomListScreen} options={{ headerShown: false }} />
+          <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} options={{ headerShown: false }} />
         </AppStack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>

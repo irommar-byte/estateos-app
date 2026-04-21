@@ -431,7 +431,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
         .then(data => setIsSmsEnabled(data.smsEnabled))
         .catch(() => {});
     }
-  }, [isZarzad]);
+  }, [user?.role]);
 
   const toggleSms = async (value: boolean) => {
     setIsSmsEnabled(value);
@@ -535,6 +535,7 @@ export default function ProfileScreen({ theme }: { theme: any }) {
         </View>
 
         <View style={styles.section}>
+          
           <Text style={styles.sectionTitle}>Dane kontaktowe</Text>
           <ListGroup isDark={isDark}>
             <ListItem icon="call" color="#34C759" title="Telefon" value={user?.phone || 'Brak'} isDark={isDark} />
@@ -545,7 +546,8 @@ export default function ProfileScreen({ theme }: { theme: any }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Twoje Nieruchomości</Text>
           <ListGroup isDark={isDark}>
-            <ListItem icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd i edycja" onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
+            <ListItem icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd i edycja" onPress={() => setIsMyOffersVisible(true)} isLast={false} isDark={isDark} />
+              <ListItem icon="shield-checkmark" color="#10b981" title="Dealroom" subtitle="Centrum bezpiecznych transakcji" onPress={() => navigation.getParent() ? navigation.getParent().navigate('DealroomList') : navigation.navigate('DealroomList')} isLast={true} isDark={isDark} />
           </ListGroup>
         </View>
 

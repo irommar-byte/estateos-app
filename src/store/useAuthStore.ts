@@ -1,3 +1,10 @@
+const formatPhone = (p?: string) => {
+  if (!p) return "Brak numeru";
+  const digits = p.replace(/\D/g, "").replace(/^48/, "");
+  if (digits.length !== 9) return p;
+  return "+48 " + digits.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
+};
+
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
@@ -39,7 +46,7 @@ const normalizeUser = (apiUser: any) => {
     ...apiUser,
     firstName: nameParts[0] || 'Użytkownik',
     lastName: nameParts.slice(1).join(' ') || '',
-    phone: apiUser.phone || apiUser.contactPhone || 'Brak numeru',
+    phone: formatPhone(apiUser.phone || apiUser.contactPhone),
     avatar: apiUser.image || apiUser.avatar || null,
     isVerifiedPhone: apiUser.isVerified === true || apiUser.phoneVerified === true || false
   };
@@ -125,6 +132,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   restoreSession: async () => {
+    await AsyncStorage.clear(); console.log('STORAGE CLEARED');
     const token = await AsyncStorage.getItem('mobile_token');
     const userData = await AsyncStorage.getItem('user_data');
     if (token && userData) set({ token, user: normalizeUser(JSON.parse(userData)) });
