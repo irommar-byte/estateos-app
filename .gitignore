@@ -39,3 +39,14 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# 🚫 build / native
+ios/Pods
+*.ipa
+
+# 🚫 backupy
+*.bak
+
+# 🚫 env
+.env
+
