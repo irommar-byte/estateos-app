@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RadarStatus from '../components/RadarStatus'; // 🔥 IMPORT PIGUŁKI
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -195,7 +196,6 @@ export default function Radar({ theme }: any) {
     navigation.navigate("OfferDetail", { offer: filteredOffers[index] });
   };
 
-  // --- ZMODYFIKOWANA ANIMACJA: ROZKRĘCANIE + ROZBŁYSK ---
   const applyCalibration = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setShowCalibration(false); 
@@ -230,7 +230,6 @@ export default function Radar({ theme }: any) {
       ])
     ]).start();
 
-    // Haptic Ticking - Coraz szybciej (Rozkręca się)
     const ticks = [100, 300, 480, 630, 750, 850, 930, 990, 1040, 1080, 1110, 1130, 1140, 1150];
     ticks.forEach((time, index) => {
       setTimeout(() => {
@@ -238,13 +237,11 @@ export default function Radar({ theme }: any) {
       }, time);
     });
 
-    // Pojawianie się kropeczek w miarę skanowania
     setTimeout(() => Animated.timing(blip1, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 300);
     setTimeout(() => Animated.timing(blip2, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 630);
     setTimeout(() => Animated.timing(blip3, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 850);
     setTimeout(() => Animated.timing(blip4, { toValue: 1, duration: 100, useNativeDriver: true }).start(), 1040);
 
-    // KINOWY FINAŁ (PO 3.8s)
     setTimeout(() => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
@@ -368,6 +365,10 @@ export default function Radar({ theme }: any) {
             {isFilterActive && <View style={[styles.filterActiveDot, { backgroundColor: ThemeColors[filters.transactionType] }]} />}
           </Pressable>
         </BlurView>
+
+        {/* 🔥 PIGUŁKA RADAR STATUS 🔥 */}
+        <RadarStatus isDark={isDark} />
+
       </View>
 
       <View style={styles.bottomCarouselContainer}>

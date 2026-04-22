@@ -1,3 +1,5 @@
+import { usePushNotifications } from "./src/hooks/usePushNotifications";
+import PushOnboardingSheet from "./src/components/PushOnboardingSheet";
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
 import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
@@ -57,7 +59,6 @@ const FloatingNextButton = ({ onPress }: any) => {
   const themeMode = useThemeStore(s => s.themeMode);
   const isDark = themeMode === 'dark';
 
-  // NIEZAWODNE SPRAWDZANIE AKTYWNEJ ZAKŁADKI:
   const activeRouteName = useNavigationState(state => state?.routes[state.index]?.name || 'Radar');
   const isFocused = activeRouteName === 'Dodaj';
 
@@ -79,7 +80,7 @@ const FloatingNextButton = ({ onPress }: any) => {
   const handlePress = (e: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      navigation.navigate('Dodaj'); // Wymusza przejście na zakładkę dodawania
+      navigation.navigate('Dodaj');
       return;
     }
 
@@ -87,9 +88,8 @@ const FloatingNextButton = ({ onPress }: any) => {
       if (!isLoggedIn) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); navigation.navigate('Profil'); }
       else { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPress(e); }
     }
-    else if (currentStep === 6) { }
-    else {
-      if (isValid) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('Dodaj', { screen: `Step${currentStep + 1}` }); }
+    else if (currentStep !== 6) {
+      if (isValid) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('Dodaj', { screen: 'Step' + (currentStep + 1) }); }
       else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); Alert.alert("Brakuje danych", errorMessage); }
     }
   };
@@ -112,56 +112,57 @@ const FloatingNextButton = ({ onPress }: any) => {
 
 const Tab = createBottomTabNavigator();
 function MainTabs() {
-  const user = useAuthStore((state) => state.user);
   const restoreSession = useAuthStore(state => state.restoreSession);
   const systemColorScheme = useColorScheme();
-  const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
   
   useEffect(() => { restoreSession(); }, []);
 
-  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
+  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
   const currentColors = Colors[resolvedTheme];
 
-  
-    return (
-        <Tab.Navigator screenOptions={{ headerShown: false, tabBarShowLabel: true, tabBarActiveTintColor: Colors.primary, tabBarInactiveTintColor: currentColors.subtitle, tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } }}>
-          <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>{() => <Radar theme={currentColors} />}</Tab.Screen>
-          <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>{() => <AddOfferNavigator theme={currentColors} />}</Tab.Screen>
-          <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>{() => <ProfileScreen theme={currentColors} />}</Tab.Screen>
-        </Tab.Navigator>
-    );
-    
+  return (
+    <Tab.Navigator screenOptions={{ headerShown: false, tabBarShowLabel: true, tabBarActiveTintColor: Colors.primary, tabBarInactiveTintColor: currentColors.subtitle, tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } }}>
+      <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>{() => <Radar theme={currentColors} />}</Tab.Screen>
+      <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>{() => <AddOfferNavigator theme={currentColors} />}</Tab.Screen>
+      <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>{() => <ProfileScreen theme={currentColors} />}</Tab.Screen>
+    </Tab.Navigator>
+  );
 }
 
 const AppStack = createNativeStackNavigator();
 
 export default function App() {
+  const { token } = useAuthStore();
+  const { askForPermission } = usePushNotifications(token);
+
   const systemColorScheme = useColorScheme();
   const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
-  
 
-  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme === 'light' ? 'light' : 'dark') : themeMode;
-  const currentColors = Colors[resolvedTheme];
+  const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
-      <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
-        <AppStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-          {/* Tu ładujemy wszystkie zakładki z paskiem na dole */}
-          <AppStack.Screen name="MainTabs" component={MainTabs} />
-          {/* A tu ładujemy nasz potężny ekran na pełnej szerokości */}
-          <AppStack.Screen name="OfferDetail" component={OfferDetail} />
-          <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
-          <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
-          <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
-          <AppStack.Screen name="DealroomList" component={DealroomListScreen} options={{ headerShown: false }} />
-          <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} options={{ headerShown: false }} />
-        </AppStack.Navigator>
-      </NavigationContainer>
-    </GestureHandlerRootView>
+    <>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
+        <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
+          <AppStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+            <AppStack.Screen name="MainTabs" component={MainTabs} />
+            <AppStack.Screen name="OfferDetail" component={OfferDetail} />
+            <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
+            <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
+            <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
+            <AppStack.Screen name="DealroomList" component={DealroomListScreen} options={{ headerShown: false }} />
+            <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} options={{ headerShown: false }} />
+          </AppStack.Navigator>
+        </NavigationContainer>
+      </GestureHandlerRootView>
+
+      {token && !isSplashVisible && (
+        <PushOnboardingSheet onAccept={askForPermission} />
+      )}
+    </>
   );
 }
