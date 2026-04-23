@@ -1,0 +1,436 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  isPro                Boolean                  @default(false)
+  leadsReceived        LeadTransfer[]           @relation("LeadAgency")
+  leadsOwned           LeadTransfer[]           @relation("LeadOwner")
+  id                   Int                      @id @default(autoincrement())
+  email                String                   @unique
+  phone                String?                  @unique
+  password             String?
+  name                 String?
+  image                String?                  @db.Text
+  companyName          String?
+  nip                  String?
+  role                 Role                     @default(USER)
+  planType             PlanType                 @default(NONE)
+  extraListings        Int                      @default(0)
+  proExpiresAt         DateTime?
+  isVerified           Boolean                  @default(false)
+  otpCode              String?
+  otpExpiry            DateTime?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  accounts             Account[]
+  proposedAppointments Appointment[]            @relation("ProposedAppointments")
+  Authenticator        Authenticator[]
+  sentBids             Bid[]                    @relation("SentBids")
+  dealsAsBuyer         Deal[]                   @relation("DealBuyer")
+  dealsAsSeller        Deal[]                   @relation("DealSeller")
+  sentDealMessages     DealMessage[]            @relation("SentDealMessages")
+  offers               Offer[]
+  reviewsReceived      Review[]                 @relation("ReviewsReceived")
+  reviewsGiven         Review[]                 @relation("ReviewsGiven")
+  sessions             Session[]
+  devices              Device[]
+  notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
+}
+
+model Offer {
+  leadTransfers   LeadTransfer[]
+  id              Int            @id @default(autoincrement())
+  title           String
+  description     String?        @db.Text
+  transactionType  TransactionType @default(SELL)
+  propertyType     PropertyType    @default(FLAT)
+  condition        PropertyCondition @default(READY)
+  price           Float
+  pricePerSqm     Float?
+  adminFee        Float?
+  deposit         Float?
+  area            Float
+  plotArea        Float?
+  rooms           Int?
+  floor           Int?
+  totalFloors     Int?
+  yearBuilt       Int?
+  hasBalcony      Boolean        @default(false)
+  hasElevator     Boolean        @default(false)
+  hasStorage      Boolean        @default(false)
+  hasParking      Boolean        @default(false)
+  hasGarden       Boolean        @default(false)
+  isFurnished     Boolean        @default(false)
+  city            String         @default("Warszawa")
+  district        String         @default("OTHER")
+  street          String?
+  buildingNumber  String?
+  lat             Float?
+  lng             Float?
+  isExactLocation Boolean        @default(true)
+  images          String?        @db.Text
+  videoUrl        String?
+  floorPlanUrl    String?
+  status          OfferStatus    @default(ACTIVE)
+  expiresAt       DateTime?
+  promotedUntil   DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  userId          Int
+  deals           Deal[]
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "Offer_userId_fkey")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId], map: "Account_userId_fkey")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       Int
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "Session_userId_fkey")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Authenticator {
+  credentialID         String  @unique
+  userId               Int
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+  user                 User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, credentialID])
+}
+
+model Deal {
+  id            Int           @id @default(autoincrement())
+  offerId       Int
+  buyerId       Int
+  sellerId      Int
+  status        DealStatus    @default(INITIATED)
+  acceptedBidId Int?          @unique
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  appointments  Appointment[]
+  bids          Bid[]         @relation("DealBids")
+  acceptedBid   Bid?          @relation("AcceptedBid", fields: [acceptedBidId], references: [id])
+  buyer         User          @relation("DealBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  offer         Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  seller        User          @relation("DealSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  messages      DealMessage[]
+  reviews       Review[]
+
+  @@unique([offerId, buyerId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([offerId])
+}
+
+model Bid {
+  id             Int       @id @default(autoincrement())
+  dealId         Int
+  senderId       Int
+  amount         Float
+  message        String?   @db.Text
+  status         BidStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+  deal           Deal      @relation("DealBids", fields: [dealId], references: [id], onDelete: Cascade)
+  sender         User      @relation("SentBids", fields: [senderId], references: [id], onDelete: Cascade)
+  acceptedInDeal Deal?     @relation("AcceptedBid")
+
+  @@index([dealId])
+  @@index([senderId])
+}
+
+model DealMessage {
+  id         Int      @id @default(autoincrement())
+  dealId     Int
+  senderId   Int
+  content    String   @db.Text
+  attachment String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  deal       Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  sender     User     @relation("SentDealMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([senderId], map: "DealMessage_senderId_fkey")
+}
+
+model Appointment {
+  id           Int               @id @default(autoincrement())
+  dealId       Int
+  proposedById Int
+  proposedDate DateTime
+  message      String?           @db.Text
+  type         AppointmentType   @default(MEETING)
+  status       AppointmentStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  deal         Deal              @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  proposedBy   User              @relation("ProposedAppointments", fields: [proposedById], references: [id], onDelete: Cascade)
+
+  @@index([dealId])
+  @@index([proposedById], map: "Appointment_proposedById_fkey")
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  dealId     Int
+  reviewerId Int
+  revieweeId Int
+  rating     Int
+  comment    String?  @db.Text
+  createdAt  DateTime @default(now())
+  deal       Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  reviewee   User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+  reviewer   User     @relation("ReviewsGiven", fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, reviewerId])
+  @@index([revieweeId], map: "Review_revieweeId_fkey")
+  @@index([reviewerId], map: "Review_reviewerId_fkey")
+}
+
+enum Role {
+  USER
+  AGENT
+  ADMIN
+}
+
+enum PlanType {
+  NONE
+  PRO
+  AGENCY
+}
+
+enum DealStatus {
+  INITIATED
+  NEGOTIATION
+  AGREED
+  MEETING
+  FINALIZED
+  CANCELLED
+}
+
+enum OfferStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  ARCHIVED
+  SOLD
+  IN_DEAL
+}
+
+enum AppointmentStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  RESCHEDULED
+}
+
+enum AppointmentType {
+  MEETING
+  CALL
+  VIDEO
+}
+
+enum BidStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COUNTER_OFFER
+}
+
+model LeadTransfer {
+  id        Int      @id @default(autoincrement())
+  offerId   Int
+  ownerId   Int
+  agencyId  Int
+  status    String   @default("PENDING") // PENDING | ACCEPTED | REJECTED | COUNTERED
+  price     Float?
+  message   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offer  Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  owner  User  @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  agency User  @relation("LeadAgency", fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@index([offerId])
+  @@index([ownerId])
+  @@index([agencyId])
+}
+
+enum NotificationType {
+  MESSAGE
+  DEAL_UPDATE
+  BID_RECEIVED
+  APPOINTMENT
+  SYSTEM_ALERT
+  AI_RADAR
+  MARKETING
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationDelivery {
+  SILENT
+  STANDARD
+  WAKE_SCREEN
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum NotificationTargetType {
+  OFFER
+  DEAL
+  CHAT
+  USER
+}
+
+enum Platform {
+  IOS
+  ANDROID
+  WEB
+}
+
+model Device {
+  id            String   @id @default(cuid())
+  userId        Int
+  expoPushToken String
+  platform      Platform @default(IOS)
+  deviceModel   String?
+  appVersion    String?
+  isActive      Boolean  @default(true)
+  lastSyncedAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, expoPushToken])
+  @@index([userId])
+}
+
+model Notification {
+  id             String  @id @default(cuid())
+  userId         Int
+  idempotencyKey String?
+
+  title String
+  body  String @db.Text
+
+  type     NotificationType     @default(SYSTEM_ALERT)
+  priority NotificationPriority @default(NORMAL)
+  delivery NotificationDelivery @default(STANDARD)
+  status   NotificationStatus   @default(PENDING)
+
+  // UX CONTROL
+  soundKey String?
+
+  // Deep Linking
+  targetType NotificationTargetType?
+  targetId   String?
+
+  // Lifecycle tracking
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  failedAt      DateTime?
+  failureReason String?   @db.Text
+
+  // System
+  isArchived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, status])
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id     Int              @id @default(autoincrement())
+  userId Int
+  type   NotificationType
+
+  pushEnabled  Boolean @default(true)
+  emailEnabled Boolean @default(true)
+  inAppEnabled Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+}
+
+enum TransactionType {
+  SELL
+  RENT
+}
+
+enum PropertyType {
+  FLAT
+  HOUSE
+  PLOT
+  COMMERCIAL
+}
+
+enum PropertyCondition {
+  READY
+  NEEDS_RENOVATION
+  DEVELOPER_STATE
+  NOT_APPLICABLE
+}

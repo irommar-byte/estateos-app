@@ -1,0 +1,150 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import jwt from 'jsonwebtoken';
+
+function getUserIdFromToken(authHeader: string | null): number | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return null;
+
+    const payload = jwt.verify(token, secret) as any;
+    return Number(payload?.id || payload?.sub) || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  try {
+    const dealId = Number(params.id);
+
+    if (!dealId || isNaN(dealId)) {
+      return NextResponse.json({ error: 'Błędne ID' }, { status: 400 });
+    }
+
+    const userId = getUserIdFromToken(req.headers.get('authorization'));
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { proposedDate, message, type } = body;
+
+    const appointmentDate = new Date(proposedDate);
+
+    if (isNaN(appointmentDate.getTime()) || appointmentDate <= new Date()) {
+      return NextResponse.json({ error: 'Nieprawidłowa data' }, { status: 400 });
+    }
+
+    const safeMessage =
+      typeof message === 'string'
+        ? message.trim().slice(0, 500)
+        : null;
+
+    const validTypes = ['MEETING', 'CALL', 'VIDEO'] as const;
+    const safeType = validTypes.includes(type) ? type : 'MEETING';
+
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId }
+    });
+
+    if (!deal) {
+      return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
+    }
+
+    if (deal.buyerId !== userId && deal.sellerId !== userId) {
+      return NextResponse.json({ error: 'Brak dostępu' }, { status: 403 });
+    }
+
+    // ❗ BLOKADA PO FINALIZACJI / ANULOWANIU
+    if (['FINALIZED', 'CANCELLED'].includes(deal.status)) {
+      return NextResponse.json({
+        error: 'Transakcja jest zamknięta'
+      }, { status: 400 });
+    }
+
+    const receiverId =
+      deal.buyerId === userId ? deal.sellerId : deal.buyerId;
+
+    const result = await prisma.$transaction(async (tx) => {
+
+      // 🔒 LIMIT PENDING (atomic)
+      const pendingCount = await tx.appointment.count({
+        where: { dealId, status: 'PENDING' }
+      });
+
+      if (pendingCount >= 2) {
+        throw new Error('LIMIT_PENDING_APPOINTMENTS');
+      }
+
+      // 🧠 CREATE
+      const appointment = await tx.appointment.create({
+        data: {
+          dealId,
+          proposedById: userId,
+          proposedDate: appointmentDate,
+          message: safeMessage,
+          type: safeType
+        }
+      });
+
+      const formattedDate = appointmentDate.toLocaleString('pl-PL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      // 💬 TIMELINE
+      await tx.dealMessage.create({
+        data: {
+          dealId,
+          senderId: userId,
+          content: `[SYSTEM_APPOINTMENT_PROPOSED:${appointment.id}] ${safeType} → ${formattedDate}${safeMessage ? ` | ${safeMessage}` : ''}`
+        }
+      });
+
+      // 🔄 bump deal
+      await tx.deal.update({
+        where: { id: dealId },
+        data: { updatedAt: new Date() }
+      });
+
+      // 🔔 NOTIFICATION
+      await tx.notification.create({
+        data: {
+          userId: receiverId,
+          type: 'APPOINTMENT_UPDATE',
+          title: '📅 Nowe spotkanie',
+          body: `${formattedDate}`,
+          referenceId: dealId
+        }
+      });
+
+      return appointment;
+    });
+
+    return NextResponse.json({
+      success: true,
+      appointment: result
+    });
+
+  } catch (error: any) {
+    if (error.message === 'LIMIT_PENDING_APPOINTMENTS') {
+      return NextResponse.json({
+        error: 'Za dużo oczekujących spotkań'
+      }, { status: 429 });
+    }
+
+    console.error('❌ CREATE APPOINTMENT ERROR:', error.message);
+
+    return NextResponse.json({
+      error: 'Błąd serwera'
+    }, { status: 500 });
+  }
+}

@@ -1,0 +1,31 @@
+node_modules
+.next
+.env
+*.log
+
+# backups / trash
+*.bak
+*.BAK*
+*.backup*
+*.BROKEN*
+*.swp
+
+# archives / disabled
+_archived_cleanup/
+app__DISABLED_*/
+
+# prisma
+prisma/*.db*
+prisma/*.backup*
+
+# uploads
+public/uploads*
+
+# scripts / local tools
+scripts/
+fix_*.js
+test-*.js
+debug_*.js
+
+# system
+.DS_Store
