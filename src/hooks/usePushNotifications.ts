@@ -7,7 +7,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -19,10 +20,10 @@ export function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
 
   const registerToken = async (showPrompt = false) => {
-    if (!authToken || isRegisteredRef.current || !Device.isDevice) return false;
+    if (isRegisteredRef.current || !Device.isDevice) return false;
 
     try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      console.log("STEP 2 START"); const { status: existingStatus } = await Notifications.getPermissionsAsync(); console.log("PERMISSION:", existingStatus);
       let finalStatus = existingStatus;
 
       if (existingStatus !== 'granted' && showPrompt) {
@@ -47,7 +48,7 @@ export function usePushNotifications(authToken: string | null) {
         return false;
       }
 
-      const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      console.log("STEP 3 START"); const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data; console.log("TOKEN RAW:", pushToken);
       if (!pushToken) return false;
 
       const lastToken = await AsyncStorage.getItem('pushToken');

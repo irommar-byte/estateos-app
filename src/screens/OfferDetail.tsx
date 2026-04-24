@@ -21,7 +21,11 @@ const IMG_HEIGHT = 450;
 const API_URL = 'https://estateos.pl';
 
 export default function OfferDetail({ route, navigation }: any) {
-  const offer = route?.params?.offer;
+  const offerFromParams = route?.params?.offer;
+const idFromParams = route?.params?.id;
+
+// 🔥 FINALNY OBIEKT
+const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
   const theme = route?.params?.theme || { glass: 'light' }; // Dla zgrania kolorystyki
   const [isFavorite, setIsFavorite] = useState(false);
   const heartScale = useSharedValue(1);

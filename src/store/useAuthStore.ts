@@ -1,14 +1,14 @@
+import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
+import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
+
 const formatPhone = (p?: string) => {
   if (!p) return "Brak numeru";
   const digits = p.replace(/\D/g, "").replace(/^48/, "");
   if (digits.length !== 9) return p;
   return "+48 " + digits.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
 };
-
-import { create } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
-import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
 
 interface User {
   id: number;
@@ -28,6 +28,8 @@ interface AuthState {
   token: string | null;
   isLoading: boolean;
   error: string | null;
+  isRadarActive: boolean; // 🔥 Nowość
+  setRadarActive: (isActive: boolean) => Promise<void>; // 🔥 Nowość
   login: (email: string, pass: string) => Promise<boolean>;
   register: (email: string, pass: string, fName: string, lName: string, phone: string, role: string) => Promise<boolean>;
   loginWithPasskey: () => Promise<boolean>;
@@ -57,6 +59,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   isLoading: false,
   error: null,
+  isRadarActive: false, // Domyślnie wyłączony
+
+  // 🔥 NOWA FUNKCJA ZARZĄDZAJĄCA STANEM RADARU
+  setRadarActive: async (isActive: boolean) => {
+    set({ isRadarActive: isActive });
+    try {
+      await AsyncStorage.setItem('@estateos_radar_active', isActive ? '1' : '0');
+    } catch (e) {
+      console.log("Error saving radar state", e);
+    }
+  },
 
   login: async (email: string, pass: string) => {
     set({ isLoading: true, error: null });
@@ -124,21 +137,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginWithPasskey: async () => {
     set({ isLoading: true, error: null });
     try {
-      // Wywołujemy nasz niezawodny serwis!
       const data = await PasskeyService.login();
       
       if (data && data.token) {
-        // Mamy sukces z serwera, wyciągamy dane i token!
         const normUser = normalizeUser(data.user);
-        
-        // Zapisujemy trwale w pamięci telefonu
         await AsyncStorage.setItem('mobile_token', data.token);
         await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
-        
-        // Aktualizujemy globalny stan (UI od razu dostaje dane usera)
         set({ user: normUser, token: data.token, isLoading: false });
-        
-        return true; // ZERO ALERTÓW! Tylko true!
+        return true; 
       }
       
       set({ isLoading: false });
@@ -152,16 +158,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     await AsyncStorage.removeItem('mobile_token');
     await AsyncStorage.removeItem('user_data');
-    set({ user: null, token: null });
+    await AsyncStorage.removeItem('@estateos_radar_active'); // Czyścimy radar
+    set({ user: null, token: null, isRadarActive: false });
   },
 
   restoreSession: async () => {
     try {
-      // 🔥 Usunąłem zabójcze "AsyncStorage.clear()", które kasowało sesję!
       const token = await AsyncStorage.getItem('mobile_token');
       const userData = await AsyncStorage.getItem('user_data');
+      const radarState = await AsyncStorage.getItem('@estateos_radar_active');
+      
       if (token && userData) {
-        set({ token, user: normalizeUser(JSON.parse(userData)) });
+        set({ 
+          token, 
+          user: normalizeUser(JSON.parse(userData)),
+          isRadarActive: radarState === '1'
+        });
       }
     } catch (e) {
       console.log("Restore session error", e);

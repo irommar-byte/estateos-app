@@ -1,3 +1,4 @@
+import * as Device from "expo-device";
 import { usePushNotifications } from "./src/hooks/usePushNotifications";
 import PushOnboardingSheet from "./src/components/PushOnboardingSheet";
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
@@ -8,6 +9,15 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView } from 'react-native';
+
+import * as Notifications from "expo-notifications";
+
+Notifications.addNotificationReceivedListener(notification => {
+  console.log("📩 FULL NOTIFICATION:", JSON.stringify(notification, null, 2));
+});
+
+import { createNavigationContainerRef } from "@react-navigation/native";
+
 import { NavigationContainer, DarkTheme, DefaultTheme, useNavigation, useNavigationState } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -28,14 +38,19 @@ import Step5_Media from './src/screens/AddOffer/Step5_Media';
 import Step6_Summary from './src/screens/AddOffer/Step6_Summary';
 import AuthScreen from './src/screens/AuthScreen';
 
-const Colors = { light: { background: '#f5f5f7', text: '#1d1d1f', subtitle: '#86868b', glass: 'light' as const }, dark: { background: '#000000', text: '#f5f5f7', subtitle: '#86868b', glass: 'dark' as const }, primary: '#10b981' };
-const modes: { label: string; value: ThemeMode }[] = [ { label: 'Jasny', value: 'light' }, { label: 'Auto', value: 'auto' }, { label: 'Ciemny', value: 'dark' } ];
+const Colors = {
+  light: { background: '#f5f5f7', text: '#1d1d1f', subtitle: '#86868b', glass: 'light' as const },
+  dark: { background: '#000000', text: '#f5f5f7', subtitle: '#86868b', glass: 'dark' as const },
+  primary: '#10b981'
+};
 
 import ProfileScreen from './src/screens/ProfileScreen';
 import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
+
+const navigationRef = createNavigationContainerRef();
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
@@ -53,7 +68,8 @@ function AddOfferNavigator({ theme }: { theme: any }) {
 
 const FloatingNextButton = ({ onPress }: any) => {
   const { draft, currentStep } = useOfferStore();
-  const user = useAuthStore(state => state.user); const isLoggedIn = !!user;
+  const user = useAuthStore(state => state.user); 
+  const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const themeMode = useThemeStore(s => s.themeMode);
@@ -62,7 +78,9 @@ const FloatingNextButton = ({ onPress }: any) => {
   const activeRouteName = useNavigationState(state => state?.routes[state.index]?.name || 'Radar');
   const isFocused = activeRouteName === 'Dodaj';
 
-  let isValid = false; let errorMessage = "Wypełnij wszystkie wymagane pola.";
+  let isValid = false;
+  let errorMessage = "Wypełnij wszystkie wymagane pola.";
+
   if (currentStep === 1) { isValid = !!draft.transactionType && !!draft.propertyType && !!draft.condition; }
   else if (currentStep === 2) { isValid = !!draft.city && !!draft.district; errorMessage = "Wybierz Miasto i Dzielnicę"; }
   else if (currentStep === 3) { isValid = !!draft.area; errorMessage = "Wpisz metraż"; }
@@ -71,9 +89,15 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   useEffect(() => {
     if (isValid && currentStep > 0 && currentStep < 6 && isFocused) {
-      Animated.loop(Animated.sequence([ Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }) ])).start();
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+        ])
+      ).start();
     } else {
-      pulseAnim.stopAnimation(); pulseAnim.setValue(1);
+      pulseAnim.stopAnimation();
+      pulseAnim.setValue(1);
     }
   }, [isValid, currentStep, isFocused]);
 
@@ -85,12 +109,21 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
 
     if (currentStep === 0) {
-      if (!isLoggedIn) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); navigation.navigate('Profil'); }
-      else { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPress(e); }
-    }
-    else if (currentStep !== 6) {
-      if (isValid) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('Dodaj', { screen: 'Step' + (currentStep + 1) }); }
-      else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); Alert.alert("Brakuje danych", errorMessage); }
+      if (!isLoggedIn) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        navigation.navigate('Profil');
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onPress(e);
+      }
+    } else if (currentStep !== 6) {
+      if (isValid) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        navigation.navigate('Dodaj', { screen: 'Step' + (currentStep + 1) });
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Brakuje danych", errorMessage);
+      }
     }
   };
 
@@ -102,30 +135,51 @@ const FloatingNextButton = ({ onPress }: any) => {
   return (
     <View style={{ top: -35, justifyContent: 'center', alignItems: 'center' }}>
       <Pressable onPress={handlePress}>
-        <Animated.View style={{ transform: [{ scale: pulseAnim }], width: 80, height: 80, borderRadius: 40, backgroundColor: isReady ? Colors.primary : (isDark ? '#222' : '#e5e5e5'), justifyContent: 'center', alignItems: 'center', borderWidth: 6, borderColor: isDark ? '#111' : '#ffffff', shadowColor: isReady ? Colors.primary : '#000', shadowOpacity: 0.4, shadowOffset: {width:0, height:8}, shadowRadius: 16 }}>
-          <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color={isReady ? "#fff" : (isDark ? "#666" : "#aaa")} />
+        <Animated.View style={{
+          transform: [{ scale: pulseAnim }],
+          width: 80,
+          height: 80,
+          borderRadius: 40,
+          backgroundColor: isReady ? Colors.primary : (isDark ? '#222' : '#e5e5e5'),
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}>
+          <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
         </Animated.View>
       </Pressable>
     </View>
   );
-};
+}
 
 const Tab = createBottomTabNavigator();
+
 function MainTabs() {
   const restoreSession = useAuthStore(state => state.restoreSession);
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
-  
+
   useEffect(() => { restoreSession(); }, []);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
   const currentColors = Colors[resolvedTheme];
 
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false, tabBarShowLabel: true, tabBarActiveTintColor: Colors.primary, tabBarInactiveTintColor: currentColors.subtitle, tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } }}>
-      <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>{() => <Radar theme={currentColors} />}</Tab.Screen>
-      <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>{() => <AddOfferNavigator theme={currentColors} />}</Tab.Screen>
-      <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>{() => <ProfileScreen theme={currentColors} />}</Tab.Screen>
+    <Tab.Navigator screenOptions={{ 
+      headerShown: false, 
+      tabBarShowLabel: true, 
+      tabBarActiveTintColor: Colors.primary, 
+      tabBarInactiveTintColor: currentColors.subtitle, 
+      tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } 
+    }}>
+      <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>
+        {() => <Radar theme={currentColors} />}
+      </Tab.Screen>
+      <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>
+        {() => <AddOfferNavigator theme={currentColors} />}
+      </Tab.Screen>
+      <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>
+        {() => <ProfileScreen theme={currentColors} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }
@@ -135,27 +189,40 @@ const AppStack = createNativeStackNavigator();
 export default function App() {
   const { token } = useAuthStore();
   const { askForPermission } = usePushNotifications(token);
-
   const systemColorScheme = useColorScheme();
   const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
 
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      const offerId = response.notification.request.content.data?.offerId;
+
+      if (offerId && navigationRef.isReady()) {
+        navigationRef.navigate("OfferDetail", {
+        offer: { id: offerId }
+      });
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
+
   return (
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
-        <NavigationContainer theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <NavigationContainer ref={navigationRef} theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
           <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
-          <AppStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          <AppStack.Navigator screenOptions={{ headerShown: false }}>
             <AppStack.Screen name="MainTabs" component={MainTabs} />
             <AppStack.Screen name="OfferDetail" component={OfferDetail} />
             <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
             <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
             <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
-            <AppStack.Screen name="DealroomList" component={DealroomListScreen} options={{ headerShown: false }} />
-            <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} options={{ headerShown: false }} />
+            <AppStack.Screen name="DealroomList" component={DealroomListScreen} />
+            <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} />
           </AppStack.Navigator>
         </NavigationContainer>
       </GestureHandlerRootView>
