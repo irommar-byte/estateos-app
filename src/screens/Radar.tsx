@@ -18,7 +18,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const { width, height } = Dimensions.get('window');
 const API_URL = 'https://estateos.pl';
 
-const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; // Apple Red
+const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; 
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
 
 const CITY_DISTRICTS: Record<string, string[]> = {
@@ -52,7 +52,6 @@ export default function Radar({ theme }: any) {
   };
 
   const navigation = useNavigation<any>();
-  // Pobieramy nowe zmienne z naszego AuthStore
   const { user, isRadarActive, setRadarActive } = useAuthStore() as any;
   const colorScheme = useColorScheme();
   const isDark = theme?.glass === 'dark' || theme?.dark || colorScheme === 'dark';
@@ -71,14 +70,16 @@ export default function Radar({ theme }: any) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
 
+  // 🔥 DODANY matchThreshold do kalibracji (Domyślnie 100% - pełna precyzja)
   const defaultFilters = {
     transactionType: 'SELL' as 'RENT' | 'SELL', 
     propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [] as string[],
     maxPrice: 5000000, minArea: 0, minYear: 1900,
-    requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: false // Domyślnie radar push off w UI przed włączeniem
+    requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, 
+    pushNotifications: false,
+    matchThreshold: 100 
   };
 
-  // Ustawienie draftFilters na podstawie zachowanego stanu Radaru
   const [filters, setFilters] = useState({ ...defaultFilters, pushNotifications: isRadarActive });
   const [draftFilters, setDraftFilters] = useState({ ...defaultFilters, pushNotifications: isRadarActive });
 
@@ -88,7 +89,6 @@ export default function Radar({ theme }: any) {
 
   const activeColor = ThemeColors[draftFilters.transactionType];
 
-  // ANIMACJA RADARU
   const scanSpin = useRef(new Animated.Value(0)).current;
   const scanOpacity = useRef(new Animated.Value(0)).current;
   
@@ -106,14 +106,12 @@ export default function Radar({ theme }: any) {
   const blip3 = useRef(new Animated.Value(0)).current;
   const blip4 = useRef(new Animated.Value(0)).current;
 
-  // Animacja pulsującej czerwonej diody w Top Barze
   const radarIndicatorOpacity = useRef(new Animated.Value(0.3)).current;
 
   React.useEffect(() => {
     if (!user) { setAllOffers([]); setFavorites([]); setActiveTab('ALL'); setRadarActive(false); }
   }, [user]);
 
-  // Efekt pulsującej diody
   useEffect(() => {
     if (isRadarActive) {
       Animated.loop(
@@ -213,48 +211,31 @@ export default function Radar({ theme }: any) {
     navigation.navigate("OfferDetail", { offer: filteredOffers[index] });
   };
 
-  // 🔥 MAGICZNE WYSYŁANIE PREFERENCJI W TLE (INVISIBLE SYNC)
-
-  // 🔥 MAGICZNE WYSYŁANIE PREFERENCJI W TLE (INVISIBLE SYNC)
   const syncRadarPreferencesToBackend = async (payload: any) => {
     if (!user || !user.id) return;
-
     try {
       const body = {
         userId: user.id,
-
         transactionType: payload.transactionType,
-
         propertyType: payload.propertyType === "ALL" ? null : payload.propertyType,
-
         city: payload.city,
-
         selectedDistricts: payload.selectedDistricts || [],
-
         maxPrice: payload.maxPrice ?? null,
         minArea: payload.minArea ?? null,
         minYear: payload.minYear ?? null,
-
         requireBalcony: !!payload.requireBalcony,
         requireGarden: !!payload.requireGarden,
         requireElevator: !!payload.requireElevator,
         requireParking: !!payload.requireParking,
         requireFurnished: !!payload.requireFurnished,
-
-        pushNotifications: payload.pushNotifications !== false
+        pushNotifications: payload.pushNotifications !== false,
+        minMatchThreshold: payload.matchThreshold // 🔥 Wysyłamy próg na serwer
       };
-
-      console.log("RADAR → SEND", body);
-
-      const res = await fetch(`${API_URL}/api/radar/preferences`, {
+      await fetch(`${API_URL}/api/radar/preferences`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-
-      const json = await res.json();
-      console.log("RADAR ← RESPONSE", json);
-
     } catch (e) {
       console.log("Błąd zapisu preferencji radaru", e);
     }
@@ -265,10 +246,7 @@ export default function Radar({ theme }: any) {
     setShowCalibration(false); 
     setIsScanning(true);
     
-    // 1. Aktualizacja globalnego stanu radaru
     setRadarActive(draftFilters.pushNotifications);
-    
-    // 2. WYSYŁKA W TLE (magia dzieje się, gdy użytkownik ogląda animację)
     syncRadarPreferencesToBackend(draftFilters);
 
     scale3D.setValue(3.5); 
@@ -292,7 +270,6 @@ export default function Radar({ theme }: any) {
       ])),
       Animated.sequence([
         Animated.delay(400), 
-
         Animated.parallel([
           Animated.timing(scale3D, { toValue: 0.3, duration: 3500, useNativeDriver: true }),
           Animated.timing(tilt3D, { toValue: 75, duration: 3500, useNativeDriver: true })
@@ -386,6 +363,49 @@ export default function Radar({ theme }: any) {
     setDraftFilters({ ...draftFilters, minYear: raw });
   };
 
+  // 🔥 CUSTOM TOUCH GESTURE DLA NASTAWNIKA RADARU 🔥
+  const handleSliderMove = (evt: any) => {
+    const { pageX } = evt.nativeEvent;
+    // Padding kontenera to 16 z lewej i prawej = 32 marginesu
+    const trackWidth = width - 64; 
+    const rawPct = (pageX - 32) / trackWidth;
+    
+    let val = 50 + Math.round(rawPct * 50);
+    if (val < 50) val = 50;
+    if (val > 100) val = 100;
+
+    if (val !== draftFilters.matchThreshold) {
+      if (val % 2 === 0) Haptics.selectionAsync(); // Wibracja co 2% jak przy kręceniu koronką zegarka
+      setDraftFilters(prev => ({...prev, matchThreshold: val}));
+    }
+  };
+
+  // 🔥 DYNAMICZNE INFO ZALEŻNE OD PROCENTÓW 🔥
+  const getRadarIntelligence = (val: number) => {
+    if (val === 100) return {
+        title: "🎯 Strzał w dziesiątkę",
+        desc: "Ultra-restrykcyjne filtry. Powiadomimy Cię TYLKO, gdy oferta spełni absolutnie 100% Twoich wymagań. Zero kompromisów.",
+        color: "#34C759"
+    };
+    if (val >= 85) return {
+        title: "💎 Idealne trafienie",
+        desc: "Złoty standard. Otrzymasz oferty o ogromnym dopasowaniu, z marginesem na kosmetyczne braki na rynku.",
+        color: "#0A84FF"
+    };
+    if (val >= 70) return {
+        title: "🔥 Świeża okazja",
+        desc: "Szybki radar. Wyłapuje świetne oferty, dając Ci szansę na szybkie negocjacje nawet przy drobnych ustępstwach.",
+        color: "#FF9F0A"
+    };
+    return {
+        title: "👻 Głośne skanowanie",
+        desc: "Szeroki zasięg. Radar poinformuje Cię o każdej nowej ofercie, która choćby ociera się o Twoje ogólne parametry.",
+        color: "#FF3B30"
+    };
+  };
+
+  const currentIntelligence = getRadarIntelligence(draftFilters.matchThreshold);
+
   const spin = scanSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const tilt = tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] });
   const availableDistricts = CITY_DISTRICTS[draftFilters.city] || [];
@@ -422,7 +442,6 @@ export default function Radar({ theme }: any) {
               return (
                 <Pressable key={tab} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }} style={[styles.segmentBtn, isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : '#FFFFFF' }]}>
                   <View style={styles.segmentContent}>
-                    {/* 🔥 INDYKATOR AKTYWNEGO RADARU - pulsująca kropka obok "Radar" */}
                     {tab === 'ALL' && isRadarActive && (
                         <Animated.View style={[styles.activeRadarDot, { opacity: radarIndicatorOpacity }]} />
                     )}
@@ -441,7 +460,6 @@ export default function Radar({ theme }: any) {
         </BlurView>
 
         <RadarStatus isDark={isDark} />
-
       </View>
 
       <View style={styles.bottomCarouselContainer}>
@@ -505,7 +523,7 @@ export default function Radar({ theme }: any) {
 
             <View style={styles.premiumModalHeader}>
               <Text style={[styles.premiumModalTitle, { color: isDark ? '#FFF' : '#000' }]}>Kalibracja Radaru</Text>
-              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDraftFilters({ transactionType: 'SELL', propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [], maxPrice: 5000000, minArea: 0, minYear: 1900, requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: false }); setInputMaxPrice('5000000'); setInputMinArea('0'); setInputMinYear('1900'); }} style={styles.resetBtn}>
+              <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDraftFilters({ transactionType: 'SELL', propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [], maxPrice: 5000000, minArea: 0, minYear: 1900, requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: false, matchThreshold: 100 }); setInputMaxPrice('5000000'); setInputMinArea('0'); setInputMinYear('1900'); }} style={styles.resetBtn}>
                 <Text style={[styles.resetBtnText, { color: activeColor }]}>Wyczyść</Text>
               </Pressable>
             </View>
@@ -626,23 +644,81 @@ export default function Radar({ theme }: any) {
                 <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Tylko umeblowane</Text><Switch value={draftFilters.requireFurnished} onValueChange={v => handleFilterSelect('requireFurnished', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
               </View>
 
-              {/* 🔥 NOWOŚĆ: KILLER FEATURE SWITCH - CZUWANIE RADARU 🔥 */}
-              <Text style={styles.premiumSectionTitle}>DZIAŁANIE W TLE</Text>
-              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', borderColor: BaseColors.danger, borderWidth: draftFilters.pushNotifications ? 1 : 0 }]}>
+              {/* 🔥 NOWOŚĆ: CZUŁOŚĆ RADARU I DZIAŁANIE W TLE 🔥 */}
+              <Text style={styles.premiumSectionTitle}>DZIAŁANIE W TLE I PRECYZJA</Text>
+              
+              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', borderColor: currentIntelligence.color, borderWidth: draftFilters.pushNotifications ? 1 : 0 }]}>
+                
+                {/* 1. Przełącznik główny */}
                 <View style={styles.premiumSwitchRow}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.premiumSwitchTitle, { color: BaseColors.danger, fontWeight: '800' }]}>Aktywny Radar (Push)</Text>
+                    <Text style={[styles.premiumSwitchTitle, { color: draftFilters.pushNotifications ? currentIntelligence.color : (isDark ? '#FFF' : '#000'), fontWeight: '800' }]}>Aktywny Radar (Push)</Text>
                     <Text style={{ color: BaseColors.subtitle, fontSize: 11, marginTop: 4 }}>
-                      Otrzymuj natychmiastowe powiadomienia, gdy na rynku pojawi się oferta spełniająca te kryteria.
+                      Nasłuchuj rynku po wyjściu z aplikacji na wybranym poziomie czułości.
                     </Text>
                   </View>
                   <Switch 
                     value={draftFilters.pushNotifications} 
                     onValueChange={v => handleFilterSelect('pushNotifications', v)} 
-                    trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: BaseColors.danger }} 
+                    trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: currentIntelligence.color }} 
                     thumbColor="#FFFFFF"
                   />
                 </View>
+
+                {/* 2. Apple-Style Kinetic Equalizer (Wybierak) */}
+                {draftFilters.pushNotifications && (
+                  <View style={{ padding: 16, paddingTop: 0 }}>
+                    
+                    <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginBottom: 16 }]} />
+                    
+                    {/* Dynamiczne Opisy */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <View style={{ flex: 1, paddingRight: 16 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: currentIntelligence.color, marginBottom: 4 }}>{currentIntelligence.title}</Text>
+                        <Text style={{ fontSize: 11, color: BaseColors.subtitle, lineHeight: 16 }}>{currentIntelligence.desc}</Text>
+                      </View>
+                      <Text style={{ fontSize: 32, fontWeight: '900', color: currentIntelligence.color, fontVariant: ['tabular-nums'] }}>
+                        {draftFilters.matchThreshold}%
+                      </Text>
+                    </View>
+
+                    {/* Dotykowy Band / Suwak 3D */}
+                    <View 
+                      style={styles.customSliderContainer}
+                      onStartShouldSetResponderCapture={() => true}
+                      onMoveShouldSetResponderCapture={() => true}
+                      onResponderGrant={handleSliderMove}
+                      onResponderMove={handleSliderMove}
+                      onResponderRelease={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
+                    >
+                      {Array.from({length: 25}).map((_, i) => {
+                        const stepVal = 50 + (i * 2);
+                        const isActive = stepVal <= draftFilters.matchThreshold;
+                        const isMajor = stepVal % 10 === 0;
+                        
+                        return (
+                          <View key={i} style={{
+                            width: isMajor ? 3 : 2,
+                            height: isMajor ? 28 : 14,
+                            backgroundColor: isActive ? currentIntelligence.color : (isDark ? '#444' : '#E5E5EA'),
+                            borderRadius: 2,
+                            shadowColor: isActive ? currentIntelligence.color : 'transparent',
+                            shadowOpacity: isActive ? 0.8 : 0,
+                            shadowRadius: 6,
+                            elevation: isActive ? 5 : 0
+                          }} />
+                        );
+                      })}
+                    </View>
+                    
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>50%</Text>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>Skala Dopasowania AI</Text>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>100%</Text>
+                    </View>
+
+                  </View>
+                )}
               </View>
 
               <View style={styles.systemDisclaimerBox}>
@@ -712,7 +788,6 @@ const styles = StyleSheet.create({
   segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
   segmentContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', paddingHorizontal: 2 },
   
-  // 🔥 STYL DLA PULSUJĄCEJ DIODY
   activeRadarDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF3B30', marginRight: 6, shadowColor: '#FF3B30', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 5 },
   
   segmentText: { fontSize: 13, letterSpacing: 0.3 },
@@ -775,6 +850,17 @@ const styles = StyleSheet.create({
   inputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(150,150,150,0.1)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   numberInput: { fontSize: 17, fontWeight: '800', minWidth: 60, textAlign: 'right' },
   inputSuffix: { fontSize: 16, fontWeight: '600', color: '#8E8E93', marginLeft: 8 },
+
+  // 🔥 STYLE DLA DOTYKOWEGO WYBIERAKA RADARU 🔥
+  customSliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 48,
+    width: '100%',
+    paddingVertical: 10,
+    backgroundColor: 'transparent'
+  },
 
   warningDisclaimer: { fontSize: 11, color: BaseColors.subtitle, marginHorizontal: 16, marginTop: 10, lineHeight: 16, textAlign: 'center' },
   systemDisclaimerBox: { marginTop: 30, marginHorizontal: 20, alignItems: 'center', padding: 20, backgroundColor: 'rgba(150,150,150,0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.1)' },
