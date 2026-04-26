@@ -26,6 +26,13 @@ model User {
   isVerified           Boolean                  @default(false)
   otpCode              String?
   otpExpiry            DateTime?
+  searchType            String?
+  searchDistricts       String?
+  searchMaxPrice        Int?
+  searchAreaFrom        Int?
+  searchRooms           Int?
+  searchTransactionType String?
+  searchAmenities       String?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   accounts             Account[]
@@ -42,6 +49,7 @@ model User {
   devices              Device[]
   notifications        Notification[]
   notificationPrefs    NotificationPreference[]
+  radarPreference    RadarPreference?
 }
 
 model Offer {
@@ -434,3 +442,34 @@ enum PropertyCondition {
   DEVELOPER_STATE
   NOT_APPLICABLE
 }
+
+model RadarPreference {
+  minMatchThreshold Int @default(70)
+  id              Int   @id @default(autoincrement())
+  userId          Int   @unique
+
+  transactionType TransactionType?
+  propertyType    PropertyType?
+
+  city            String?
+  districts       Json?
+
+  maxPrice        Float?
+  minArea         Float?
+  minYear         Int?
+
+  requireBalcony  Boolean @default(false)
+  requireGarden   Boolean @default(false)
+  requireElevator Boolean @default(false)
+  requireParking  Boolean @default(false)
+  requireFurnished Boolean @default(false)
+
+  pushNotifications Boolean @default(true)
+
+  lat             Float?
+  lng             Float?
+  radius          Float?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+

@@ -1,0 +1,17 @@
+
+  <svg width="400" height="400" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      .text {
+        fill: white;
+        fill-opacity: 0.25; /* Prawie niewidoczne, 5% przezroczystości */
+        font-family: 'SF Pro Display', sans-serif;
+        font-weight: 900;
+        font-size: 32px;
+        text-transform: uppercase;
+        letter-spacing: 0.2em;
+      }
+    </style>
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" class="text" transform="rotate(-30 200 200)">
+      EstateOS™
+    </text>
+  </svg>

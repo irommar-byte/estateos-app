@@ -1,0 +1,100 @@
+=== START AUDYTU FAZA 4: BEZPIECZEŃSTWO ZAAWANSOWANE I INFRASTRUKTURA ===
+
+[1] BAZA DANYCH - WERYFIKACJA ŚRODOWISKA PRODUKCYJNEGO:
+Poszukiwanie definicji bazy w .env:
+.env:DATABASE_URL="file:./luxestate.db"
+.env.backup:DATABASE_URL="file:./luxestate.db"
+.env.prod.backup:DATABASE_URL="file:./luxestate.db"
+Silnik Prisma (z pliku schema):
+  provider = "prisma-client-js"
+  provider = "sqlite"
+
+[2] LUKI W UPLOADS (Remote Code Execution / Path Traversal):
+import { NextRequest, NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
+import { writeFile } from "fs/promises";
+import sharp from "sharp";
+
+// Zwiększone limity dla zdjęć klasy Premium (np. z najnowszych iPhone'ów)
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB na plik
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
+
+export async function POST(req: NextRequest) {
+--
+    }
+
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
+    const tilePath = path.join(process.cwd(), "lib", "estateos_tile.svg");
+
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+
+--
+    for (const file of files.slice(0, 15)) {
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        return NextResponse.json({ error: `Niedozwolony format: ${file.type}` }, { status: 400 });
+      }
+
+--
+
+      let ext = "jpg";
+      if (file.type === "image/png") ext = "png";
+      if (file.type === "image/webp") ext = "webp";
+
+      const filename = `${Date.now()}-${Math.round(Math.random() * 10000)}.${ext}`;
+      const filepath = path.join(uploadDir, filename);
+
+      // Nakładanie znaku wodnego (jeśli plik SVG istnieje)
+      if (fs.existsSync(tilePath)) {
+        try {
+          const imageMeta = await sharp(buffer).metadata();
+--
+          if (imageMeta.width && imageMeta.width > 300 && imageMeta.height && imageMeta.height > 300) {
+            buffer = await sharp(buffer)
+              .composite([{ input: tilePath, tile: true, blend: 'over' }])
+              .toBuffer();
+          } else {
+--
+      }
+
+      await writeFile(filepath, buffer);
+      savedFiles.push(`/uploads/${filename}`);
+    }
+
+[3] BEZPIECZEŃSTWO PŁATNOŚCI STRIPE (Fałszowanie transakcji):
+import { PrismaClient } from '@prisma/client';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' as any });
+const prisma = new PrismaClient();
+
+export async function POST(req: Request) {
+  try {
+    const payload = await req.text();
+    const sig = req.headers.get('stripe-signature');
+
+    // 🔒 TWARDY WARUNEK — MUSI BYĆ SECRET I PODPIS
+    if (!process.env.STRIPE_WEBHOOK_SECRET || !sig) {
+      return NextResponse.json({ error: 'Webhook nieautoryzowany' }, { status: 400 });
+    }
+
+--
+
+    try {
+      event = stripe.webhooks.constructEvent(
+        payload,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err: any) {
+      console.error('❌ Błąd sygnatury:', err.message);
+
+[4] WALIDACJA WEJŚCIA I RATE LIMITING (Ochrona przed atakami Brute-Force/DDoS):
+
+[5] BEZPIECZEŃSTWO NAGŁÓWKÓW NEXT.JS:
+Brak definicji nagłówków security w konfiguracji Next.js
+
+[6] POSZUKIWANIE UKRYTYCH DŁUGÓW (TODO/FIXME):
+=== KONIEC FAZY 4 ===

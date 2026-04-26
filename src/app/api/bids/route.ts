@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       data: {
         offerId: parseInt(offerId, 10),
         buyerId: parseInt(String(dbUserId || currentUserEmail), 10),
-        sellerId: parseInt(String(offer.userId || currentUserEmail), 10),
+        senderId: parseInt(String(offer.userId || currentUserEmail), 10),
         amount: Number(amount),
         financing: financing,
         status: 'PENDING'

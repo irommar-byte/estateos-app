@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nieprawidłowe hasło' }, { status: 401 });
     }
 
-    const token = signMobileToken({ id: user.id });
+    const token = signMobileToken({ id: user.id, email: user.email, role: user.role });
 
     return NextResponse.json({
       user: {

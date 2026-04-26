@@ -1,0 +1,226 @@
+=== START AUDYTU FAZA 2: LOGIKA, BAZA DANYCH I ZABEZPIECZENIA ===
+
+[1] NAPRAWA UPRAWNIEŃ .env:
+-rw------- 1 rommar rommar 1422 Apr  2 21:50 .env
+-rw------- 1 rommar rommar  675 Mar 17 22:05 .env.backup
+-rw------- 1 rommar rommar  876 Mar 18 01:05 .env.prod.backup
+Uprawnienia zmienione na bezpieczne (600).
+
+[2] STRUKTURA BAZY DANYCH (Schemat ról i subskrypcji):
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./luxestate.db"
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  role          String    @default("user")
+  email         String    @unique
+  password      String? // Opcjonalne! (Dla kont z Google/FaceID)
+  name          String?
+  phone         String?
+  image         String? // Avatar z Google
+--
+  extraListings   Int       @default(0)
+  createdAt       DateTime  @default(now())
+  searchType      String?
+  searchTransactionType String? @default("all")
+  searchDistricts String?
+  searchMaxPrice  Int?
+  searchAreaTo    Int?
+  searchPlotArea  Int?
+  searchAmenities String?
+  financing       String?
+  buyerType       String    @default("private")
+  isVerified      Boolean   @default(false)
+  otpCode         String?
+  otpExpiry       DateTime?
+  isPro           Boolean   @default(false)
+  proExpiresAt    DateTime?
+  planType        PlanType  @default(NONE)
+  searchAreaFrom  Int?
+  searchRooms     Int?
+
+  // Relacje
+  offers        Offer[]
+--
+  id                String  @id @default(cuid())
+  userId            Int
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+--
+  credentialID         String  @unique
+  userId               Int
+  providerAccountId    String
+  credentialPublicKey  String
+  counter              Int
+  credentialDeviceType String
+  credentialBackedUp   Boolean
+  transports           String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+--
+// --- TWOJE ORYGINALNE TABELE POZOSTAJĄ BEZ ZMIAN ---
+
+enum PlanType {
+  NONE
+  INVESTOR
+  AGENCY
+}
+
+--
+  apartmentNumber String?
+  title           String
+  propertyType    String    @default("Mieszkanie")
+  district        String    @default("Śródmieście")
+  price           String
+  area            String
+  description     String?
+  address         String?
+  imageUrl        String    @default("https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop")
+  images          String?
+  status          String    @default("pending_approval")
+  contactName     String?
+  contactPhone    String?
+  lat             Float     @default(52.2297)
+  lng             Float     @default(21.0122)
+  views           Int       @default(0)
+--
+  user            User?     @relation(fields: [userId], references: [id])
+  createdAt       DateTime  @default(now())
+  advertiserType  String    @default("private")
+  agencyName      String?
+  rooms           String?
+  floor           String?
+  heating         String?
+  year            String?
+  plotArea        String?
+  amenities       String?
+  floorPlan       String?
+
+  furnished String?
+
+  // --- NOWE POLA DLA WYNAJMU ---
+  transactionType   String  @default("sale") // "sale" (Sprzedaż) lub "rent" (Wynajem)
+  rentAdminFee      String? // Czynsz administracyjny (np. "800 PLN")
+  deposit           String? // Kaucja zwrotna (np. "4000 PLN")
+  rentMinPeriod     String? // Minimalny okres najmu (np. "12 miesięcy")
+  rentAvailableFrom String? // Dostępne od (np. "Zaraz", "01.07.2026")
+  petsAllowed       Boolean @default(false) // Akceptacja zwierząt
+  rentType          String? // Typ umowy (np. "Najem okazjonalny")
+  // -----------------------------
+
+
+  @@index([userId])
+  @@index([district])
+--
+  id           Int      @id @default(autoincrement())
+  email        String
+  propertyType String   @default("Wszystkie")
+  district     String   @default("Wszystkie")
+  maxPrice     Int
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+--
+  buyerId      Int
+  sellerId     Int
+  status       String   @default("PROPOSED")
+  proposedDate DateTime
+  message      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([offerId])
+--
+  isRead    Boolean  @default(false)
+  link      String?
+  type      String   @default("INFO")
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+}
+--
+  text           String
+  attachmentUrl  String?
+  attachmentType String?
+  createdAt      DateTime @default(now())
+
+  @@index([dealId])
+}
+
+
+[3] WERYFIKACJA MIDDLEWARE (Ochrona endpointów na poziomie serwera):
+Nie znaleziono głównego pliku middleware (middleware.ts lub src/middleware.ts).
+
+[4] SKANOWANIE KRYTYCZNEJ LOGIKI BIZNESOWEJ:
+Wyniki wyszukiwania logiki dostępowej (pierwsze 40 trafień):
+src/contexts/UserModeContext.tsx:34:    const actualRole = currentUser.role === "SELLER" ? "SELLER" : (currentUser.role === "AGENCY" ? "AGENCY" : "BUYER");
+src/contexts/UserModeContext.tsx:35:    setMode(actualRole);
+src/contexts/UserModeContext.tsx:36:    localStorage.setItem("estateos_user_mode", actualRole);
+src/contexts/UserModeContext.tsx:48:    const isAgencyOrAdmin = currentUser.role === "ADMIN" || currentUser.role === "AGENCY";
+src/app/dodaj-oferte/ClientForm.tsx:424:        const isAgency = initialUser?.role === 'AGENCY' || initialUser?.role === 'ADMIN';
+src/app/dodaj-oferte/ClientForm.tsx:432:            alert("Funkcja Premium: Aby wystawiać ogłoszenia jako Agencja/Biuro i uzyskać dostęp do bazy Kupujących (Radar Pro), musisz wykupić pakiet Agencja PRO.");
+src/app/dodaj-oferte/ClientForm.tsx:447:    data.registerRole = data?.advertiserType === 'agency' ? 'AGENCY' : 'SELLER';
+src/app/dodaj-oferte/page.tsx:55:          role: realUser.role,
+src/app/centrala/uzytkownicy/page.tsx:180:                      {u.role === 'ADMIN' && <ShieldCheck size={14} className="text-emerald-500" />}
+src/app/centrala/page.tsx:19:        } else if (data.role !== 'ADMIN') {
+src/app/centrala/page.tsx:20:          setDebugMsg("Odmowa dostępu. Twoja rola to: " + (data.role || "BRAK"));
+src/app/centrala/page.tsx:128:                      Przełącznik wymusza fizyczną weryfikację telefonu przez bramkę <b>SMSPlanet</b> przy zakładaniu konta przez inwestorów. Dezaktywuj ten protokół wyłącznie na czas własnych testów developerskich.
+src/app/oferta/[id]/page.tsx:60:  const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
+src/app/oferta/[id]/page.tsx:239:              <p className="text-white/50 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">Ta nieruchomość jest świeżo dodana i widoczna wyłącznie dla zweryfikowanych Inwestorów PRO i Agencji. Zostanie publicznie odblokowana za:</p>
+src/app/edytuj-oferte/[id]/page.tsx:60:        const isAdmin = auth.user?.role === 'ADMIN';
+src/app/login/page.tsx:45:        window.location.href = data.role === 'ADMIN' ? "/centrala" : "/moje-konto";
+src/app/login/page.tsx:66:        window.location.href = data.role === 'ADMIN' ? "/centrala" : "/moje-konto";
+src/app/login/page.tsx:144:           window.location.href = loginData.role === 'ADMIN' ? "/centrala" : "/moje-konto";
+src/app/moje-konto/crm/page.tsx:47:     agency: { color: 'yellow', text: 'AGENCJA PRO', sub: 'Pełen dostęp. Limit ogłoszeń zniesiony.' },
+src/app/moje-konto/crm/page.tsx:291:  const isPremium = currentUser?.isPro === true || currentUser?.isPro === 'true' || currentUser?.role === 'ADMIN' || currentUser?.role === 'AGENCY' || currentUser?.advertiserType === 'agency';
+src/app/moje-konto/crm/page.tsx:294:    { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:295:    { id: 'usr-s02', role: 'SELLER', firstName: 'Karolina', lastName: 'Wójcik', email: 'k.wojcik@example.com', phone: '+48 500 222 333', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:296:    { id: 'usr-s03', role: 'SELLER', firstName: 'Piotr', lastName: 'Kowalczyk', email: 'p.kowalczyk@example.com', phone: '+48 500 333 444', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:297:    { id: 'usr-s04', role: 'SELLER', firstName: 'Agnieszka', lastName: 'Lewandowska', email: 'a.lewandowska@example.com', phone: '+48 500 444 555', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:298:    { id: 'usr-s05', role: 'SELLER', firstName: 'Tomasz', lastName: 'Kamiński', email: 't.kaminski@example.com', phone: '+48 500 555 666', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:299:    { id: 'usr-s06', role: 'SELLER', firstName: 'Magdalena', lastName: 'Zielińska', email: 'm.zielinska@example.com', phone: '+48 500 666 777', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:300:    { id: 'usr-s07', role: 'SELLER', firstName: 'Krzysztof', lastName: 'Szymański', email: 'k.szymanski@example.com', phone: '+48 500 777 888', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:301:    { id: 'usr-s08', role: 'SELLER', firstName: 'Joanna', lastName: 'Dąbrowska', email: 'j.dabrowska@example.com', phone: '+48 500 888 999', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:302:    { id: 'usr-s09', role: 'SELLER', firstName: 'Marek', lastName: 'Kozłowski', email: 'm.kozlowski@example.com', phone: '+48 500 999 000', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:303:    { id: 'usr-s10', role: 'SELLER', firstName: 'Ewa', lastName: 'Jankowska', email: 'e.jankowska@example.com', phone: '+48 500 000 111', verificationStatus: 'VERIFIED' },
+src/app/moje-konto/crm/page.tsx:304:    { id: 'usr-b01', role: 'BUYER', firstName: 'Robert', lastName: 'Nowak', email: 'r.nowak@invest.com', phone: '+48 600 123 456', 
+src/app/moje-konto/crm/page.tsx:306:    { id: 'usr-b02', role: 'BUYER', firstName: 'Katarzyna', lastName: 'Wiśniewska', email: 'k.wisniewska@capital.com', phone: '+48 600 234 567', 
+src/app/moje-konto/crm/page.tsx:308:    { id: 'usr-b03', role: 'BUYER', firstName: 'Maciej', lastName: 'Włodarczyk', email: 'm.wlodarczyk@fund.com', phone: '+48 600 345 678', 
+src/app/moje-konto/crm/page.tsx:310:    { id: 'usr-b04', role: 'BUYER', firstName: 'Anna', lastName: 'Czarnecka', email: 'a.czarnecka@invest.com', phone: '+48 600 456 789', 
+src/app/moje-konto/crm/page.tsx:312:    { id: 'usr-b05', role: 'BUYER', firstName: 'Grzegorz', lastName: 'Dudek', email: 'g.dudek@capital.com', phone: '+48 600 567 890', 
+src/app/moje-konto/crm/page.tsx:314:    { id: 'usr-b06', role: 'BUYER', firstName: 'Sylwia', lastName: 'Adamczyk', email: 's.adamczyk@fund.com', phone: '+48 600 678 901', 
+src/app/moje-konto/crm/page.tsx:316:    { id: 'usr-b07', role: 'BUYER', firstName: 'Rafał', lastName: 'Kruk', email: 'r.kruk@invest.com', phone: '+48 600 789 012', 
+src/app/moje-konto/crm/page.tsx:318:    { id: 'usr-b08', role: 'BUYER', firstName: 'Aleksandra', lastName: 'Sikora', email: 'a.sikora@capital.com', phone: '+48 600 890 123', 
+src/app/moje-konto/crm/page.tsx:1585:                                <span style={{ display: 'block', fontSize: '14px', fontWeight: '900', color: '#fff' }}>{viewingProfile.buyerType === 'AGENCY' ? 'Agencja' : viewingProfile.buyerType === 'PRO' ? 'PRO' : 'Standard'}</span>
+src/app/api/register/route.ts:9:    const { email, password, name, phone, role } = body;
+
+[5] LOKALNE TESTY HTTP (Wymuszony port 3000):
+Ping API...
+HTTP/1.1 200 OK
+HTTP/1.1 200 OK
+=== KONIEC FAZY 2 ===

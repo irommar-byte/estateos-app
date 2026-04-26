@@ -1,0 +1,191 @@
+=== START AUDYTU FAZA 3: BEZPIECZEŃSTWO ENDPOINTÓW I CRM ===
+
+[1] OCHRONA CENTRALI I API (Brak middleware):
+Brak src/app/centrala/layout.tsx
+import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+export const runtime = "nodejs";
+
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { cookies } from 'next/headers';
+
+export async function GET(req: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const session = cookieStore.get('estateos_session');
+
+    if (!session) {
+      return NextResponse.json({ error: 'Brak sesji' }, { status: 401 });
+    }
+
+    let parsed;
+    try {
+      parsed = decryptSession(session.value);
+    } catch {
+      return NextResponse.json({ error: 'Nieprawidłowa sesja' }, { status: 401 });
+    }
+
+    if (!parsed?.email) {
+      return NextResponse.json({ error: 'Brak danych sesji' }, { status: 401 });
+    }
+
+    const admin = await prisma.user.findUnique({
+      where: { email: parsed.email }
+    });
+
+    if (!admin || admin.role !== 'admin') {
+      return NextResponse.json({ error: 'Brak dostępu' }, { status: 403 });
+    }
+
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const offers = await prisma.offer.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const alerts = await prisma.alert.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return NextResponse.json({ users, offers, alerts });
+
+  } catch (err) {
+    return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
+  }
+}
+
+[2] WERYFIKACJA LOGIKI CRM (Wyciek bazy kupujących):
+291:  const isPremium = currentUser?.isPro === true || currentUser?.isPro === 'true' || currentUser?.role === 'ADMIN' || currentUser?.role === 'AGENCY' || currentUser?.advertiserType === 'agency';
+294:    { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
+295:    { id: 'usr-s02', role: 'SELLER', firstName: 'Karolina', lastName: 'Wójcik', email: 'k.wojcik@example.com', phone: '+48 500 222 333', verificationStatus: 'VERIFIED' },
+296:    { id: 'usr-s03', role: 'SELLER', firstName: 'Piotr', lastName: 'Kowalczyk', email: 'p.kowalczyk@example.com', phone: '+48 500 333 444', verificationStatus: 'VERIFIED' },
+297:    { id: 'usr-s04', role: 'SELLER', firstName: 'Agnieszka', lastName: 'Lewandowska', email: 'a.lewandowska@example.com', phone: '+48 500 444 555', verificationStatus: 'VERIFIED' },
+298:    { id: 'usr-s05', role: 'SELLER', firstName: 'Tomasz', lastName: 'Kamiński', email: 't.kaminski@example.com', phone: '+48 500 555 666', verificationStatus: 'VERIFIED' },
+299:    { id: 'usr-s06', role: 'SELLER', firstName: 'Magdalena', lastName: 'Zielińska', email: 'm.zielinska@example.com', phone: '+48 500 666 777', verificationStatus: 'VERIFIED' },
+300:    { id: 'usr-s07', role: 'SELLER', firstName: 'Krzysztof', lastName: 'Szymański', email: 'k.szymanski@example.com', phone: '+48 500 777 888', verificationStatus: 'VERIFIED' },
+301:    { id: 'usr-s08', role: 'SELLER', firstName: 'Joanna', lastName: 'Dąbrowska', email: 'j.dabrowska@example.com', phone: '+48 500 888 999', verificationStatus: 'VERIFIED' },
+302:    { id: 'usr-s09', role: 'SELLER', firstName: 'Marek', lastName: 'Kozłowski', email: 'm.kozlowski@example.com', phone: '+48 500 999 000', verificationStatus: 'VERIFIED' },
+303:    { id: 'usr-s10', role: 'SELLER', firstName: 'Ewa', lastName: 'Jankowska', email: 'e.jankowska@example.com', phone: '+48 500 000 111', verificationStatus: 'VERIFIED' },
+304:    { id: 'usr-b01', role: 'BUYER', firstName: 'Robert', lastName: 'Nowak', email: 'r.nowak@invest.com', phone: '+48 600 123 456', 
+306:    { id: 'usr-b02', role: 'BUYER', firstName: 'Katarzyna', lastName: 'Wiśniewska', email: 'k.wisniewska@capital.com', phone: '+48 600 234 567', 
+308:    { id: 'usr-b03', role: 'BUYER', firstName: 'Maciej', lastName: 'Włodarczyk', email: 'm.wlodarczyk@fund.com', phone: '+48 600 345 678', 
+310:    { id: 'usr-b04', role: 'BUYER', firstName: 'Anna', lastName: 'Czarnecka', email: 'a.czarnecka@invest.com', phone: '+48 600 456 789', 
+312:    { id: 'usr-b05', role: 'BUYER', firstName: 'Grzegorz', lastName: 'Dudek', email: 'g.dudek@capital.com', phone: '+48 600 567 890', 
+314:    { id: 'usr-b06', role: 'BUYER', firstName: 'Sylwia', lastName: 'Adamczyk', email: 's.adamczyk@fund.com', phone: '+48 600 678 901', 
+316:    { id: 'usr-b07', role: 'BUYER', firstName: 'Rafał', lastName: 'Kruk', email: 'r.kruk@invest.com', phone: '+48 600 789 012', 
+318:    { id: 'usr-b08', role: 'BUYER', firstName: 'Aleksandra', lastName: 'Sikora', email: 'a.sikora@capital.com', phone: '+48 600 890 123', 
+626:        {isPremium && <ProWidget currentUser={currentUser} />}
+
+[3] BEZPIECZEŃSTWO API DANYCH CRM:
+import { decryptSession } from "@/lib/sessionUtils";
+import { cookies } from "next/headers";
+import { NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function GET(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("estateos_session");
+
+    if (!sessionCookie) {
+      return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+    }
+
+    let emailToSearch = sessionCookie.value;
+
+    try {
+      const parsedSession = decryptSession(sessionCookie.value);
+      if (parsedSession && parsedSession.email) {
+        emailToSearch = parsedSession.email;
+      }
+    } catch (e) {}
+
+    const user = await prisma.user.findUnique({
+      where: { email: emailToSearch }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 401 });
+    }
+
+    const finalUserId = user.id;
+
+    // OFERTY
+    const myOffers = await prisma.offer.findMany({
+      where: { userId: finalUserId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const myOfferIds = myOffers.map(o => o.id);
+
+    // SPOTKANIA
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        OR: [
+          { sellerId: finalUserId },
+          { buyerId: finalUserId },
+          { offerId: { in: myOfferIds } }
+        ]
+      },
+      orderBy: { proposedDate: 'asc' }
+    });
+
+    // LEADY
+    const leads = await prisma.leadTransfer.findMany({
+      where: {
+        OR: [
+          { agencyId: finalUserId },
+          { ownerId: finalUserId }
+        ]
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // BIDS
+    const bids = await prisma.bid.findMany({
+      where: {
+        OR: [
+          { sellerId: finalUserId },
+          { buyerId: finalUserId },
+          { offerId: { in: myOfferIds } }
+        ]
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // KONTAKTY
+    const contactIds = new Set<number>();
+
+    appointments.forEach(item => {
+      if (item.buyerId !== finalUserId) contactIds.add(item.buyerId);
+      if (item.sellerId !== finalUserId) contactIds.add(item.sellerId);
+    });
+
+    bids.forEach(item => {
+      if (item.buyerId !== finalUserId) contactIds.add(item.buyerId);
+      if (item.sellerId !== finalUserId) contactIds.add(item.sellerId);
+    });
+
+    const contactsData = await prisma.user.findMany({
+      where: { id: { in: Array.from(contactIds) } },
+      select: { id: true, name: true, image: true, phone: true, buyerType: true, email: true }
+    });
+
+    return NextResponse.json({
+      appointments,
+      bids,
+      leads,
+      offers: myOffers,
+      contacts: contactsData
+    });
+
+  } catch (error) {
+    console.error("CRM Data Error:", error);
+    return NextResponse.json({ error: 'Błąd podczas pobierania danych CRM' }, { status: 500 });
+  }
+}
+=== KONIEC FAZY 3 ===

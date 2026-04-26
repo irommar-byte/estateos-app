@@ -1,4 +1,4 @@
-import { Expo } from 'expo-server-sdk';
+import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { prisma } from '@/lib/prisma';
 
 const expo = new Expo();
@@ -11,30 +11,37 @@ export const notificationService = {
       where: { userId, isActive: true }
     });
 
+    console.log("[PUSH DEBUG] DEVICES:", devices);
+
     if (!devices.length) {
-      console.log(`[PUSH] Brak urządzeń`);
-      return;
+      console.log(`[PUSH] Brak aktywnych urządzeń dla użytkownika ${userId}`);
+      throw new Error('NO_ACTIVE_DEVICES');
     }
 
-    const messages = devices
-      .filter(d => Expo.isExpoPushToken(d.expoPushToken))
-      .map(d => ({
+    const messages: ExpoPushMessage[] = [];
+
+    for (const d of devices) {
+      if (!Expo.isExpoPushToken(d.expoPushToken)) {
+        console.warn(`[PUSH] Niewłaściwy token Expo: ${d.expoPushToken}`);
+        continue;
+      }
+
+      messages.push({
         to: d.expoPushToken,
         sound: 'default',
         title: payload.title,
         body: payload.body,
         data: payload.data || {},
-      }));
+      });
+    }
+
+    if (messages.length === 0) return;
 
     const chunks = expo.chunkPushNotifications(messages);
 
     for (const chunk of chunks) {
-      try {
-        await expo.sendPushNotificationsAsync(chunk);
-        console.log(`[PUSH] OK chunk`);
-      } catch (e: any) {
-        console.error(`[PUSH] ERROR`, e?.message || e);
-      }
+      await expo.sendPushNotificationsAsync(chunk);
+      console.log(`[PUSH] Chunk wysłany poprawnie`);
     }
   }
 };

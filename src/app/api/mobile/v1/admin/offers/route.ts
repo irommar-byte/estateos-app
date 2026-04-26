@@ -28,10 +28,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Brak wymaganych danych' }, { status: 400 });
     }
 
+    const existing = await prisma.offer.findUnique({ where: { id: Number(offerId) } });
+
     const offer = await prisma.offer.update({
       where: { id: Number(offerId) },
       data: { status: newStatus }
     });
+
+    console.log("MOBILE STATUS CHECK:", { before: existing?.status, after: newStatus });
+
+    if (existing?.status !== 'ACTIVE' && newStatus === 'ACTIVE') {
+      const { radarService } = await import("@/lib/services/radar.service");
+      await radarService.matchNewOffer(offer);
+    }
 
     return NextResponse.json({ success: true, offer });
   } catch (error: any) {

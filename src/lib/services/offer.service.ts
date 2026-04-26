@@ -1,4 +1,3 @@
-import { radarService } from './radar.service';
 import { prisma } from '@/lib/prisma';
 import {
   TransactionType,
@@ -48,20 +47,17 @@ function mapStatus(val?: string): OfferStatus {
 }
 
 // =======================
-// CREATE 🔥 (WYMUSZA GEO)
+// CREATE
 // =======================
 export async function createOffer(body: any) {
   const { userId, lat, lng } = body;
 
-  if (!userId) {
-    throw new Error('Brak ID użytkownika');
-  }
-
-  // 🔥 KLUCZOWA WALIDACJA
+  if (!userId) throw new Error('Brak ID użytkownika');
   if (lat === undefined || lng === undefined || lat === null || lng === null) {
     throw new Error('Brak lokalizacji (lat/lng)');
   }
-  const newOffer = await prisma.offer.create({
+
+  return prisma.offer.create({
     data: {
       title: body.title || "Nowa Oferta",
       description: body.description || "",
@@ -72,7 +68,14 @@ export async function createOffer(body: any) {
 
       price: Number(body.price) || 0,
       area: Number(body.area) || 0,
-      rooms: body.rooms ? Number(body.rooms) : null,
+      rooms: body.rooms !== undefined && body.rooms !== null ? Number(body.rooms) : null,
+
+      floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
+      totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
+      yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
+
+      city: body.city || "Warszawa",
+      district: body.district || "OTHER",
 
       lat: Number(lat),
       lng: Number(lng),
@@ -81,19 +84,25 @@ export async function createOffer(body: any) {
         ? body.images
         : JSON.stringify(body.images || []),
 
+      videoUrl: body.videoUrl || null,
+      floorPlanUrl: body.floorPlanUrl || null,
+
+      hasBalcony: !!body.hasBalcony,
+      hasElevator: !!body.hasElevator,
+      hasStorage: !!body.hasStorage,
+      hasParking: !!body.hasParking,
+      hasGarden: !!body.hasGarden,
+      isFurnished: !!body.isFurnished,
+
       status: mapStatus(body.status),
 
       userId: Number(userId)
     }
   });
-
-  await radarService.matchNewOffer(newOffer);
-
-  return newOffer;
 }
 
 // =======================
-// UPDATE (bez zmian GEO)
+// UPDATE
 // =======================
 export async function updateOffer(body: any) {
   const { id, userId } = body;
@@ -140,11 +149,41 @@ export async function updateOffer(body: any) {
         rooms: body.rooms === null ? null : Number(body.rooms)
       }),
 
+      ...(body.floor !== undefined && {
+        floor: body.floor === null ? null : Number(body.floor)
+      }),
+
+      ...(body.totalFloors !== undefined && {
+        totalFloors: body.totalFloors === null ? null : Number(body.totalFloors)
+      }),
+
+      ...(body.yearBuilt !== undefined && {
+        yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
+      }),
+
+      ...(body.city !== undefined && {
+        city: body.city || "Warszawa"
+      }),
+
+      ...(body.district !== undefined && {
+        district: body.district || "OTHER"
+      }),
+
       ...(body.images !== undefined && {
         images: typeof body.images === 'string'
           ? body.images
           : JSON.stringify(body.images)
       }),
+
+      ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl || null }),
+      ...(body.floorPlanUrl !== undefined && { floorPlanUrl: body.floorPlanUrl || null }),
+
+      ...(body.hasBalcony !== undefined && { hasBalcony: !!body.hasBalcony }),
+      ...(body.hasElevator !== undefined && { hasElevator: !!body.hasElevator }),
+      ...(body.hasStorage !== undefined && { hasStorage: !!body.hasStorage }),
+      ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
+      ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
+      ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
 
       ...(body.status !== undefined && {
         status: mapStatus(body.status)

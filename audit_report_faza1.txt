@@ -1,0 +1,146 @@
+=== START AUDYTU FAZA 1: ŚRODOWISKO I BEZPIECZEŃSTWO ===
+
+[1] BŁĘDY RUNTIME PM2 (Ostatnie 50 linii error logu):
+[TAILING] Tailing last 50 lines for [nieruchomosci] process (change the value with --lines option)
+/home/rommar/.pm2/logs/nieruchomosci-error.log last 50 lines:
+0|nierucho |     code: 'MODULE_NOT_FOUND',
+0|nierucho |     requireStack: [
+0|nierucho |       '/home/rommar/apple-style-website/.next/server/chunks/ssr/[turbopack]_runtime.js',
+0|nierucho |       '/home/rommar/apple-style-website/.next/server/app/_global-error/page.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/require.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/load-components.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/utils.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/swc/options.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/swc/index.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/next-config-ts/transpile-config.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/config.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/cli/next-test.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/bin/next'
+0|nierucho |     ]
+0|nierucho |   }
+0|nierucho | }
+0|nierucho | ⨯ unhandledRejection:  Error [ChunkLoadError]: Failed to load chunk server/chunks/ssr/node_modules_next_dist_esm_eedfc1fd._.js from module 97518
+0|nierucho |     at Context.loadChunkAsync [as l] (.next/server/chunks/ssr/[turbopack]_runtime.js:683:27) {
+0|nierucho |   [cause]: Error: Cannot find module '/home/rommar/apple-style-website/.next/server/chunks/ssr/node_modules_next_dist_esm_eedfc1fd._.js'
+0|nierucho |   Require stack:
+0|nierucho |   - /home/rommar/apple-style-website/.next/server/chunks/ssr/[turbopack]_runtime.js
+0|nierucho |   - /home/rommar/apple-style-website/.next/server/app/_global-error/page.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/server/require.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/server/load-components.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/build/utils.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/build/swc/options.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/build/swc/index.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/build/next-config-ts/transpile-config.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/server/config.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/cli/next-test.js
+0|nierucho |   - /home/rommar/apple-style-website/node_modules/next/dist/bin/next
+0|nierucho |       at Context.loadChunkAsync [as l] (.next/server/chunks/ssr/[turbopack]_runtime.js:678:34) {
+0|nierucho |     code: 'MODULE_NOT_FOUND',
+0|nierucho |     requireStack: [
+0|nierucho |       '/home/rommar/apple-style-website/.next/server/chunks/ssr/[turbopack]_runtime.js',
+0|nierucho |       '/home/rommar/apple-style-website/.next/server/app/_global-error/page.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/require.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/load-components.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/utils.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/swc/options.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/swc/index.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/build/next-config-ts/transpile-config.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/server/config.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/cli/next-test.js',
+0|nierucho |       '/home/rommar/apple-style-website/node_modules/next/dist/bin/next'
+0|nierucho |     ]
+0|nierucho |   }
+0|nierucho | }
+0|nierucho | ⨯ Error: Failed to load static file for page: /500 ENOENT: no such file or directory, open '/home/rommar/apple-style-website/.next/server/pages/500.html'
+0|nierucho |     at ignore-listed frames
+
+
+[2] BEZPIECZEŃSTWO KRYTYCZNYCH PLIKÓW (.env):
+-rw-rw-r-- 1 rommar rommar 1422 Apr  2 21:50 .env
+-rw-rw-r-- 1 rommar rommar  675 Mar 17 22:05 .env.backup
+-rw-rw-r-- 1 rommar rommar  876 Mar 18 01:05 .env.prod.backup
+
+[3] ROZMIAR KATALOGÓW I ŚMIECI (Pamięć podręczna Next.js i node_modules):
+1.4M	.next/cache
+1.1G	node_modules
+
+[4] LOKALNE TESTY HTTP (Dostępność kluczowych endpointów):
+Testowanie połączeń lokalnych na porcie: 
+HTTP/1.1 301 Moved Permanently
+HTTP/1.1 301 Moved Permanently
+HTTP/1.1 301 Moved Permanently
+
+[5] LOGI APACHE (Błędy reverse proxy i SSL):
+
+[6] TESTOWANIE ZALEŻNOŚCI (Przestarzałe lub podatne paczki):
+# npm audit report
+
+brace-expansion  <1.1.13 || >=4.0.0 <5.0.5
+Severity: moderate
+brace-expansion: Zero-step sequence causes process hang and memory exhaustion - https://github.com/advisories/GHSA-f886-m6hf-6m8v
+brace-expansion: Zero-step sequence causes process hang and memory exhaustion - https://github.com/advisories/GHSA-f886-m6hf-6m8v
+fix available via `npm audit fix`
+node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion
+node_modules/brace-expansion
+
+effect  <3.20.0
+Severity: high
+Effect `AsyncLocalStorage` context lost/contaminated inside Effect fibers under concurrent load with RPC - https://github.com/advisories/GHSA-38f7-945m-qr2g
+fix available via `npm audit fix`
+node_modules/effect
+  @prisma/config  6.13.0-dev.1 - 6.19.2 || 6.20.0-dev.1 - 7.6.0-integration-feat-prisma-bootstrap.13
+  Depends on vulnerable versions of effect
+  node_modules/@prisma/config
+    prisma  6.13.0-dev.1 - 6.19.2 || 6.20.0-dev.1 - 7.6.0-integration-feat-prisma-bootstrap.13
+    Depends on vulnerable versions of @prisma/config
+    node_modules/prisma
+
+flatted  <=3.4.1
+Severity: high
+Prototype Pollution via parse() in NodeJS flatted - https://github.com/advisories/GHSA-rf6f-7fwh-wjgh
+fix available via `npm audit fix`
+node_modules/flatted
+
+next  16.0.0-beta.0 - 16.1.6
+Severity: moderate
+Next.js: HTTP request smuggling in rewrites - https://github.com/advisories/GHSA-ggv3-7p47-pfv8
+Next.js: Unbounded next/image disk cache growth can exhaust storage - https://github.com/advisories/GHSA-3x4c-7xq6-9pq8
+Next.js: Unbounded postponed resume buffering can lead to DoS - https://github.com/advisories/GHSA-h27x-g6w4-24gq
+Next.js: null origin can bypass Server Actions CSRF checks - https://github.com/advisories/GHSA-mq59-m269-xvcx
+Next.js: null origin can bypass dev HMR websocket CSRF checks - https://github.com/advisories/GHSA-jcc7-9wpm-mj36
+fix available via `npm audit fix --force`
+Will install next@16.2.2, which is outside the stated dependency range
+node_modules/next
+
+nodemailer  <8.0.4
+Nodemailer has SMTP command injection due to unsanitized `envelope.size` parameter - https://github.com/advisories/GHSA-c7w3-x93f-qmm8
+No fix available
+node_modules/nodemailer
+  next-auth  <=0.0.0-semantically-released || 1.1.0 - 1.5.0 || >=2.0.0-beta.0
+  Depends on vulnerable versions of nodemailer
+  node_modules/next-auth
+    @next-auth/prisma-adapter  *
+    Depends on vulnerable versions of next-auth
+    node_modules/@next-auth/prisma-adapter
+
+picomatch  <=2.3.1 || 4.0.0 - 4.0.3
+Severity: high
+Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching - https://github.com/advisories/GHSA-3v7f-55p6-f55p
+Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching - https://github.com/advisories/GHSA-3v7f-55p6-f55p
+Picomatch has a ReDoS vulnerability via extglob quantifiers - https://github.com/advisories/GHSA-c2c7-rcm5-vvqj
+Picomatch has a ReDoS vulnerability via extglob quantifiers - https://github.com/advisories/GHSA-c2c7-rcm5-vvqj
+fix available via `npm audit fix`
+node_modules/micromatch/node_modules/picomatch
+node_modules/picomatch
+
+10 vulnerabilities (3 low, 2 moderate, 5 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible, run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+=== KONIEC FAZY 1 ===

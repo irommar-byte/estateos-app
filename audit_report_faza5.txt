@@ -1,0 +1,19 @@
+=== START SYMULACJI PROCESÓW BIZNESOWYCH ===
+
+[1] AKCJA: Rejestracja nowego użytkownika (audyt_1775212878005@estateos.test)
+-> Status HTTP: 200
+-> Odpowiedź: {"success":true}
+
+[2] AKCJA: Logowanie i pobieranie ciasteczka sesji
+-> Status HTTP: 400
+-> Sesja ustanowiona: NIE (Brak ciasteczka)
+
+[3] AKCJA: Próba dostępu do API CRM (Baza danych) bez pakietu Agencja PRO
+-> Status HTTP: 401
+-> WYNIK: POPRAWNIE. Serwer zablokował dostęp.
+
+[4] AKCJA: Próba włamania do Centrali (Endpoint Admina) ze zwykłego konta
+-> Status HTTP: 401
+-> WYNIK: POPRAWNIE. Serwer zablokował dostęp do panelu Centrali.
+
+=== KONIEC SYMULACJI ===

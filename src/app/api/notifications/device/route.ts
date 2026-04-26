@@ -1,12 +1,28 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import jwt from 'jsonwebtoken';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    // Na ten moment wymuszamy userId = 17, dopóki aplikacja na Macu nie przekaże prawidłowego tokenu z sesji
-    const userId = 17; 
+
+    // 🔥 AUTH
+    const authHeader = req.headers.get("authorization");
+console.log("AUTH HEADER:", authHeader);
+    console.log("BODY:", body);
+
+    if (!authHeader) {
+      return NextResponse.json({ error: 'Brak Authorization header' }, { status: 401 });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.decode(token) as any;
+
+    if (!decoded?.id) {
+      return NextResponse.json({ error: 'Nieprawidłowy token' }, { status: 401 });
+    }
+
+    const userId = decoded.id;
 
     let { expoPushToken, platform = 'IOS', deviceModel = 'Unknown', appVersion = '1.0' } = body;
 
@@ -14,7 +30,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak tokena w body' }, { status: 400 });
     }
 
-    // ⚡ UPSERT (dodaj/zaktualizuj token urządzenia dla uzytkownika 17)
     const device = await prisma.device.upsert({
       where: {
         userId_expoPushToken: {
@@ -36,8 +51,8 @@ export async function POST(req: Request) {
       }
     });
 
-    console.log(`📱 Token zapisany w bazie dla UserID ${userId}: ${expoPushToken.slice(0,25)}...`);
-    
+    console.log(`📱 Token zapisany dla user ${userId}: ${expoPushToken.slice(0,25)}...`);
+
     return NextResponse.json({ success: true, deviceId: device.id });
 
   } catch (error: any) {
