@@ -120,6 +120,175 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const editorRef = useRef<HTMLDivElement>(null);
 
   const updateData = (newData: any) => setData({ ...data, ...newData });
+  const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
+  const finalFloorPlan = floorPlan;
+
+  const handleAddressSearch = (value: string) => {
+    updateData({ address: value });
+    setAddressError('');
+    // Fallback: keep UX stable even when geocoder is unavailable.
+    setAddressSuggestions([]);
+  };
+
+  const selectAddress = (feature: any) => {
+    const coords = feature?.center;
+    updateData({
+      address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
+      lng: Array.isArray(coords) ? coords[0] : data.lng,
+      lat: Array.isArray(coords) ? coords[1] : data.lat,
+    });
+    setAddressSuggestions([]);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+
+    const currentSize = files.reduce((acc, file) => acc + file.size, 0) / (1024 * 1024);
+    setTotalSizeMB((prev) => prev + currentSize);
+
+    const nextUrls = files.map((file) => URL.createObjectURL(file));
+    const nextMap: { [key: string]: File } = {};
+    const nextStats: { [key: string]: { progress: number; error: boolean; sizeMB: number } } = {};
+
+    nextUrls.forEach((url, index) => {
+      nextMap[url] = files[index];
+      nextStats[url] = { progress: 100, error: false, sizeMB: +(files[index].size / (1024 * 1024)).toFixed(2) };
+    });
+
+    setFilesMap((prev) => ({ ...prev, ...nextMap }));
+    setUploadStats((prev) => ({ ...prev, ...nextStats }));
+    setImagesList((prev) => [...prev, ...nextUrls]);
+    e.target.value = '';
+  };
+
+  const handleRemoveImage = (idx: number) => {
+    setImagesList((prev) => {
+      const toRemove = prev[idx];
+      if (toRemove?.startsWith('blob:')) URL.revokeObjectURL(toRemove);
+      const next = prev.filter((_, i) => i !== idx);
+      return next;
+    });
+  };
+
+  const handleFloorPlanUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setFloorPlan(url);
+    setFloorPlanFile(file);
+    e.target.value = '';
+  };
+
+  const execCommand = (command: string) => {
+    if (typeof document === 'undefined') return;
+    document.execCommand(command, false);
+  };
+
+  const handleGenerateAI = async () => {
+    setIsGeneratingAI(true);
+    try {
+      const hint = `${data.propertyType || 'Nieruchomość'} w ${data.district || 'Warszawie'} o metrażu ${data.area || '?'} m2.`;
+      const generated = `Przedstawiamy wyjątkową ofertę: ${hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.`;
+      updateData({ description: generated });
+      if (editorRef.current) editorRef.current.innerHTML = generated;
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const normalized = e.target.value.replace(/[^\d+ ]/g, '');
+    updateData({ contactPhone: normalized });
+    const digits = normalized.replace(/\D/g, '');
+    setPhoneStatus(digits.length >= 9 ? 'available' : 'invalid');
+  };
+
+  useEffect(() => {
+    if (!data.email) {
+      setEmailStatus('idle');
+      return;
+    }
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
+    setEmailStatus(ok ? 'available' : 'invalid');
+  }, [data.email]);
+
+  const handleSubmit = async () => {
+    if (isSubmitting || !canPublish) return;
+    setIsSubmitting(true);
+    setUploadProgress('Wysyłanie oferty...');
+    try {
+      const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
+      const finalDesc = editorRef.current?.innerHTML || data.description || '';
+      let dbPropertyType = 'FLAT';
+      if (data.propertyType === 'Segment' || data.propertyType === 'Dom Wolnostojący') dbPropertyType = 'HOUSE';
+      if (data.propertyType === 'Lokal Użytkowy') dbPropertyType = 'COMMERCIAL';
+      if (data.propertyType === 'Działka') dbPropertyType = 'PLOT';
+      const dbTransactionType = data.transactionType === 'rent' ? 'RENT' : 'SELL';
+      const dbCondition = dbPropertyType === 'PLOT' ? 'NOT_APPLICABLE' : 'READY';
+
+      const payload = {
+        ...data,
+        transactionType: dbTransactionType,
+        propertyType: dbPropertyType,
+        condition: dbCondition,
+        description: finalDesc,
+        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
+        price: cleanPriceValue,
+        area: String(data.area).replace(',', '.'),
+        images: '[]',
+        imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
+        floorPlan: null,
+        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
+      };
+
+      setUploadProgress('Tworzenie oferty...');
+      const response = await fetch('/api/offers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const responseData = await response.json().catch(() => ({}));
+      if (response.ok) {
+        const createdOfferId = responseData?.offer?.id || responseData?.id;
+
+        if (createdOfferId) {
+          const uploadableImages = finalImages.filter((img) => filesMap[img]);
+          for (let i = 0; i < uploadableImages.length; i++) {
+            const blobKey = uploadableImages[i];
+            const file = filesMap[blobKey];
+            if (!file) continue;
+            setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+            const formData = new FormData();
+            formData.append('offerId', String(createdOfferId));
+            formData.append('file', file);
+            const uploadRes = await fetch('/api/upload/mobile', { method: 'POST', body: formData });
+            if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+          }
+
+          if (floorPlanFile) {
+            setUploadProgress('Wysyłanie rzutu nieruchomości...');
+            const fpFormData = new FormData();
+            fpFormData.append('offerId', String(createdOfferId));
+            fpFormData.append('file', floorPlanFile);
+            fpFormData.append('isFloorPlan', 'true');
+            const fpRes = await fetch('/api/upload/mobile', { method: 'POST', body: fpFormData });
+            if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
+          }
+        }
+        setActionModal(responseData.requiresVerification ? 'otp' : 'success');
+      } else {
+        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
+        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
+      }
+    } catch (_error) {
+      setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setActionModal('error');
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress('');
+    }
+  };
 
   const [isProcessingPlus, setIsProcessingPlus] = useState(false);
   const handlePlusPayment = async () => {
