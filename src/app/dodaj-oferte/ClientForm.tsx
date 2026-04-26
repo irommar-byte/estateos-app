@@ -119,23 +119,43 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
-  const updateData = (newData: any) => setData({ ...data, ...newData });
+  const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
 
-  const handleAddressSearch = (value: string) => {
+  const handleAddressSearch = async (value: string) => {
     updateData({ address: value });
     setAddressError('');
-    // Fallback: keep UX stable even when geocoder is unavailable.
-    setAddressSuggestions([]);
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!value || value.trim().length < 3 || !token) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&autocomplete=true&limit=6&language=pl&country=pl`,
+      );
+      const geo = await res.json();
+      setAddressSuggestions(Array.isArray(geo?.features) ? geo.features : []);
+    } catch {
+      setAddressSuggestions([]);
+    }
   };
 
   const selectAddress = (feature: any) => {
     const coords = feature?.center;
+    const contextItems = Array.isArray(feature?.context) ? feature.context : [];
+    const districtFromContext = contextItems.find((item: any) =>
+      String(item?.id || '').includes('place') || String(item?.id || '').includes('locality'),
+    )?.text;
+
     updateData({
       address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
       lng: Array.isArray(coords) ? coords[0] : data.lng,
       lat: Array.isArray(coords) ? coords[1] : data.lat,
+      district: districtFromContext || data.district,
     });
     setAddressSuggestions([]);
   };
@@ -212,6 +232,51 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
     setEmailStatus(ok ? 'available' : 'invalid');
   }, [data.email]);
+
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstance.current) return;
+    if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
+      setAddressError('Brak klucza mapy (NEXT_PUBLIC_MAPBOX_TOKEN).');
+      return;
+    }
+
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: 'mapbox://styles/mapbox/dark-v11',
+      center: [21.0122, 52.2297],
+      zoom: 11.5,
+      attributionControl: false,
+    });
+
+    mapInstance.current = map;
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
+
+    map.on('click', (e) => {
+      const nextLng = +e.lngLat.lng.toFixed(6);
+      const nextLat = +e.lngLat.lat.toFixed(6);
+      setData((prev: any) => ({ ...prev, lng: nextLng, lat: nextLat }));
+    });
+
+    return () => {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      map.remove();
+      mapInstance.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstance.current || !data.lat || !data.lng) return;
+    const lngLat: [number, number] = [Number(data.lng), Number(data.lat)];
+
+    if (!markerRef.current) {
+      markerRef.current = new mapboxgl.Marker({ color: '#10b981' }).setLngLat(lngLat).addTo(mapInstance.current);
+    } else {
+      markerRef.current.setLngLat(lngLat);
+    }
+
+    mapInstance.current.easeTo({ center: lngLat, duration: 500 });
+  }, [data.lat, data.lng]);
 
   const handleSubmit = async () => {
     if (isSubmitting || !canPublish) return;
