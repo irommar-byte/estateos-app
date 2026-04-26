@@ -9,9 +9,23 @@ const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.split(' ')[1];
-  const decoded = jwt.decode(token) as any;
-  const id = Number(decoded?.id || decoded?.userId || decoded?.sub);
+  const rawToken = authHeader.slice('Bearer '.length).trim();
+  const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
+  if (!token) return null;
+
+  let decoded: any = null;
+  const secret = process.env.JWT_SECRET;
+  if (secret) {
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      // fallback for legacy tokens to preserve compatibility
+      decoded = jwt.decode(token);
+    }
+  } else {
+    decoded = jwt.decode(token);
+  }
+  const id = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
   return Number.isFinite(id) ? id : null;
 }
 

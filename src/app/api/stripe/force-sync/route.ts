@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     }
 
     if (plan !== 'pakiet_plus') {
-      const planType = plan === 'agency' ? 'AGENCY' : 'INVESTOR';
+      const planType = plan === 'agency' ? 'AGENCY' : 'PRO';
       const expires = new Date();
       expires.setDate(expires.getDate() + 30);
       

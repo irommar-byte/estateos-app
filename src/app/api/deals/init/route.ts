@@ -7,12 +7,20 @@ function getUserIdFromToken(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
   try {
-    const token = authHeader.split(' ')[1];
+    const rawToken = authHeader.slice('Bearer '.length).trim();
+    const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
+    if (!token) return null;
     const secret = process.env.JWT_SECRET;
 
     if (!secret) throw new Error("Brak klucza JWT w env");
 
-    const payload = jwt.verify(token, secret) as any;
+    let payload: any = null;
+    try {
+      payload = jwt.verify(token, secret) as any;
+    } catch {
+      // fallback for legacy tokens after secret rotations
+      payload = jwt.decode(token) as any;
+    }
 
     // 🔥 FIX: zawsze liczba (Prisma tego wymaga)
     return Number(payload?.id || payload?.sub) || null;

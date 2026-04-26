@@ -7,6 +7,14 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 
 export const dynamic = 'force-dynamic';
 
+function toNumericPrice(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    return parseInt(value.replace(/\D/g, ''), 10) || 0;
+  }
+  return 0;
+}
+
 export async function GET(req: Request) {
   try {
     
@@ -48,7 +56,7 @@ export async function GET(req: Request) {
 
     // 3. Algorytm Swatania (Matchmaking) z Logiką 12-godzinnego Opóźnienia
     const radarResults = myOffers.map(offer => {
-       const offerPrice = parseInt(offer.price.replace(/\D/g, '')) || 0;
+       const offerPrice = toNumericPrice(offer.price);
        
        const matches = allBuyers.filter(buyer => {
           if (buyer.id === user.id) return false; // Nie sprzedajemy samemu sobie

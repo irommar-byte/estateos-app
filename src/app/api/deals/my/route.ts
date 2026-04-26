@@ -16,8 +16,25 @@ export async function GET(req: Request) {
 
     if (!token) return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '');
-    const { payload } = await jwtVerify(token, secret);
+    if (token.startsWith('Bearer ')) {
+      token = token.slice('Bearer '.length).trim();
+    }
+    if (!token) {
+      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+    }
+
+    const secretValue = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '';
+    if (!secretValue) {
+      return NextResponse.json({ success: false, error: 'Brak konfiguracji auth' }, { status: 500 });
+    }
+
+    let payload: any;
+    try {
+      const verified = await jwtVerify(token, new TextEncoder().encode(secretValue));
+      payload = verified.payload;
+    } catch {
+      return NextResponse.json({ success: false, error: 'Nieprawidłowy token' }, { status: 401 });
+    }
     const userId = Number(payload.id || payload.sub);
 
     if (!userId) return NextResponse.json({ success: false, error: 'Nieprawidłowy token' }, { status: 401 });

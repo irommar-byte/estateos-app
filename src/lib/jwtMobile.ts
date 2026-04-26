@@ -15,7 +15,7 @@ export const signMobileToken = (payload: any) => {
 export const verifyMobileToken = (token: string) => {
   try {
     return jwt.verify(token, getJwtSecret());
-  } catch (error) { console.log("VERIFY ERROR:", error);
+  } catch {
     return null;
   }
 };

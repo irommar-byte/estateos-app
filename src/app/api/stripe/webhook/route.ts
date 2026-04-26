@@ -97,7 +97,7 @@ export async function POST(req: Request) {
         if (rawPlanType === 'renewal') {
           console.log(`🛒 Pakiet+: ${customerEmail}`);
         } else {
-          let validPlanType: 'INVESTOR' | 'AGENCY' | 'NONE' = 'INVESTOR';
+          let validPlanType: 'PRO' | 'AGENCY' | 'NONE' = 'PRO';
 
           if (rawPlanType.toUpperCase() === 'AGENCY') {
             validPlanType = 'AGENCY';
