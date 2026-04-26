@@ -1,6 +1,64 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
+import { verifyMobileToken } from '@/lib/jwtMobile';
+
+function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: Date | null }) {
+  const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
+  return Boolean(
+    user.role === 'ADMIN' ||
+    (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
+  );
+}
+
+export async function GET(req: Request) {
+  try {
+    const auth = req.headers.get('authorization');
+    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token) {
+      return NextResponse.json({ success: false, message: 'Brak tokenu' }, { status: 401 });
+    }
+
+    const decoded = verifyMobileToken(token) as any;
+    const userId = Number(decoded?.id || decoded?.userId || decoded?.sub);
+    if (!userId || Number.isNaN(userId)) {
+      return NextResponse.json({ success: false, message: 'Nieprawidłowy token' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        image: true,
+        phone: true,
+        planType: true,
+        isPro: true,
+        proExpiresAt: true,
+        isVerified: true,
+      }
+    });
+
+    if (!user) {
+      return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
+    }
+
+    const isProActive = computeIsProActive(user);
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        ...user,
+        isPro: isProActive,
+      }
+    });
+  } catch (error: any) {
+    console.error("🔥 BŁĄD API AUTH GET:", error.message);
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {

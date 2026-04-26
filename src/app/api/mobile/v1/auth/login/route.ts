@@ -3,6 +3,14 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { signMobileToken } from '@/lib/jwtMobile';
 
+function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: Date | null }) {
+  const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
+  return Boolean(
+    user.role === 'ADMIN' ||
+    (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const { email, password } = await req.json();
@@ -26,6 +34,7 @@ export async function POST(req: Request) {
     }
 
     const token = signMobileToken({ id: user.id, email: user.email, role: user.role });
+    const isProActive = computeIsProActive(user);
 
     return NextResponse.json({
       user: {
@@ -35,7 +44,10 @@ export async function POST(req: Request) {
         role: user.role,
         isVerified: user.isVerified, // 🟢 Dodano status weryfikacji
         image: user.image,
-        phone: user.phone              // 🟢 Dodano avatar
+        phone: user.phone,             // 🟢 Dodano avatar
+        planType: user.planType,
+        isPro: isProActive,
+        proExpiresAt: user.proExpiresAt
       },
       token
     });
