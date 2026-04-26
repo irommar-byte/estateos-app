@@ -12,6 +12,7 @@ import {
 function mapTransactionType(val?: string): TransactionType {
   switch (val) {
     case 'SALE': return TransactionType.SELL;
+    case 'SELL': return TransactionType.SELL;
     case 'RENT': return TransactionType.RENT;
     default: return TransactionType.SELL;
   }
@@ -20,9 +21,11 @@ function mapTransactionType(val?: string): TransactionType {
 function mapPropertyType(val?: string): PropertyType {
   switch (val) {
     case 'APARTMENT': return PropertyType.FLAT;
+    case 'FLAT': return PropertyType.FLAT;
     case 'HOUSE': return PropertyType.HOUSE;
     case 'PLOT': return PropertyType.PLOT;
     case 'COMMERCIAL': return PropertyType.COMMERCIAL;
+    case 'PREMISES': return PropertyType.COMMERCIAL;
     default: return PropertyType.FLAT;
   }
 }
@@ -31,7 +34,10 @@ function mapCondition(val?: string): PropertyCondition {
   switch (val) {
     case 'READY': return PropertyCondition.READY;
     case 'NEEDS_RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
+    case 'RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
     case 'DEVELOPER_STATE': return PropertyCondition.DEVELOPER_STATE;
+    case 'DEVELOPER': return PropertyCondition.DEVELOPER_STATE;
+    case 'NOT_APPLICABLE': return PropertyCondition.NOT_APPLICABLE;
     default: return PropertyCondition.READY;
   }
 }
@@ -68,6 +74,9 @@ export async function createOffer(body: any) {
 
       price: Number(body.price) || 0,
       area: Number(body.area) || 0,
+      adminFee: body.adminFee !== undefined && body.adminFee !== null ? Number(body.adminFee) : null,
+      deposit: body.deposit !== undefined && body.deposit !== null ? Number(body.deposit) : null,
+      plotArea: body.plotArea !== undefined && body.plotArea !== null ? Number(body.plotArea) : null,
       rooms: body.rooms !== undefined && body.rooms !== null ? Number(body.rooms) : null,
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
@@ -76,6 +85,9 @@ export async function createOffer(body: any) {
 
       city: body.city || "Warszawa",
       district: body.district || "OTHER",
+      street: body.street || body.address || null,
+      buildingNumber: body.buildingNumber || null,
+      isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : true,
 
       lat: Number(lat),
       lng: Number(lng),

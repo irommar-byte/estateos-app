@@ -24,14 +24,27 @@ const labelPremium = "flex items-center gap-2 text-[11px] font-black text-zinc-4
 const glassPanel = "bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden transition-all duration-500";
 
 const PROPERTY_TYPES = [
-  { id: "Mieszkanie", icon: Building2 },
-  { id: "Segment", icon: Rows },
-  { id: "Dom Wolnostojący", icon: Castle },
-  { id: "Lokal Użytkowy", icon: Briefcase },
-  { id: "Działka", icon: MapIcon }
+  { id: "FLAT", label: "Mieszkanie", icon: Building2 },
+  { id: "HOUSE", label: "Dom", icon: Castle },
+  { id: "PLOT", label: "Działka", icon: MapIcon },
+  { id: "COMMERCIAL", label: "Lokal", icon: Briefcase }
 ];
 const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 const HEATING_TYPES = ["Miejskie", "Gazowe", "Elektryczne", "Pompa Ciepła", "Węglowe/Pellet", "Inne"];
+const CITY_DISTRICTS: Record<string, string[]> = {
+  Warszawa: ["Mokotów", "Praga-Południe", "Wola", "Ursynów", "Bielany", "Śródmieście", "Targówek", "Bemowo", "Ochota", "Wawer", "Praga-Północ", "Białołęka", "Ursus", "Żoliborz", "Włochy", "Wilanów", "Wesoła", "Rembertów"],
+  Kraków: ["Stare Miasto", "Grzegórzki", "Prądnik Czerwony", "Prądnik Biały", "Krowodrza", "Bronowice", "Zwierzyniec", "Dębniki", "Podgórze", "Czyżyny", "Nowa Huta"],
+  Łódź: ["Bałuty", "Górna", "Polesie", "Śródmieście", "Widzew"],
+  Wrocław: ["Krzyki", "Fabryczna", "Psie Pole", "Śródmieście", "Stare Miasto", "Biskupin", "Gaj", "Ołbin"],
+  Poznań: ["Grunwald", "Jeżyce", "Wilda", "Stare Miasto", "Rataje", "Winogrady", "Naramowice"],
+  Trójmiasto: ["Gdańsk - Śródmieście", "Gdańsk - Wrzeszcz", "Gdańsk - Oliwa", "Gdynia - Śródmieście", "Gdynia - Orłowo", "Sopot - Dolny", "Sopot - Górny"],
+  "Reszta Polski": ["Inna lokalizacja"],
+};
+const CONDITION_TYPES = [
+  { id: "READY", label: "Gotowe" },
+  { id: "RENOVATION", label: "Do remontu" },
+  { id: "DEVELOPER", label: "Deweloperski" }
+];
 
 const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -86,9 +99,9 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const [data, setData] = useState<any>({
-    transactionType: 'sale', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
+    transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
-    locationType: 'exact', address: '', lng: null, lat: null, district: '', apartmentNumber: '', 
+    condition: '', locationType: 'exact', address: '', city: 'Warszawa', lng: null, lat: null, district: '', apartmentNumber: '', 
     price: '', area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
     advertiserType: 'private', agencyName: '',
@@ -113,6 +126,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [uploadProgress, setUploadProgress] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle');
   const [phoneStatus, setPhoneStatus] = useState('idle');
+  const [currentStep, setCurrentStep] = useState(1);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<mapboxgl.Map | null>(null);
@@ -224,6 +238,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     updateData({ contactPhone: normalized });
     const digits = normalized.replace(/\D/g, '');
     setPhoneStatus(digits.length >= 9 ? 'available' : 'invalid');
+  };
+
+  const getAmenityPatch = (item: string, selected: boolean) => {
+    const patch: Record<string, boolean> = {};
+    if (item === 'Balkon') patch.hasBalcony = selected;
+    if (item === 'Garaż/Miejsce park.') patch.hasParking = selected;
+    if (item === 'Piwnica/Pom. gosp.') patch.hasStorage = selected;
+    if (item === 'Ogródek') patch.hasGarden = selected;
+    if (item === 'Winda') patch.hasElevator = selected;
+    if (item === 'Klimatyzacja') patch.airConditioning = selected;
+    return patch;
   };
 
   useEffect(() => {
@@ -374,17 +399,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     try {
       const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
       const finalDesc = editorRef.current?.innerHTML || data.description || '';
-      let dbPropertyType = 'FLAT';
-      if (data.propertyType === 'Segment' || data.propertyType === 'Dom Wolnostojący') dbPropertyType = 'HOUSE';
-      if (data.propertyType === 'Lokal Użytkowy') dbPropertyType = 'COMMERCIAL';
-      if (data.propertyType === 'Działka') dbPropertyType = 'PLOT';
-      const dbTransactionType = data.transactionType === 'rent' ? 'RENT' : 'SELL';
-      const dbCondition = dbPropertyType === 'PLOT' ? 'NOT_APPLICABLE' : 'READY';
+      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
 
       const payload = {
         ...data,
-        transactionType: dbTransactionType,
-        propertyType: dbPropertyType,
+        userId: initialUser?.id,
+        transactionType: data.transactionType,
+        propertyType: data.propertyType,
         condition: dbCondition,
         description: finalDesc,
         title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
@@ -451,19 +472,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const cleanPrice = String(data.price || '').replace(/\D/g, "");
       const finalDesc = editorRef.current?.innerHTML || data.description;
       
-      // --- TRANSLATOR DO BAZY DANYCH (ENUMY) ---
-      let dbPropertyType = 'FLAT';
-      if (data.propertyType === 'Segment' || data.propertyType === 'Dom Wolnostojący') dbPropertyType = 'HOUSE';
-      if (data.propertyType === 'Lokal Użytkowy') dbPropertyType = 'COMMERCIAL';
-      if (data.propertyType === 'Działka') dbPropertyType = 'PLOT';
-
-      const dbTransactionType = data.transactionType === 'rent' ? 'RENT' : 'SELL';
-      const dbCondition = dbPropertyType === 'PLOT' ? 'NOT_APPLICABLE' : 'READY';
+      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
 
       const payload = { 
         ...data, 
-        transactionType: dbTransactionType,
-        propertyType: dbPropertyType,
+        userId: initialUser?.id,
+        transactionType: data.transactionType,
+        propertyType: data.propertyType,
         condition: dbCondition,
         description: finalDesc,
         title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`, 
@@ -503,17 +518,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isTypeSelected = !!data.propertyType;
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
-  const isLocationDone = !!data.lat && !!data.lng && !!data.district && !addressError && hasBuildingNumber && 
-                         (data.propertyType !== 'Mieszkanie' || (data.propertyType === 'Mieszkanie' && !!data.apartmentNumber));
+  const isLocationDone = !!data.lat && !!data.lng && !!data.city && !!data.district && !addressError && hasBuildingNumber && 
+                         (data.propertyType !== 'FLAT' || (data.propertyType === 'FLAT' && !!data.apartmentNumber));
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
   const cleanArea = String(data.area || '').replace(/[^0-9.]/g, "");
   const isFinanceDone = isLocationDone && cleanPrice.length > 0 && cleanArea.length > 0;
   
-  const requiresPlot = ['Dom Wolnostojący', 'Segment', 'Działka'].includes(data.propertyType);
-  const isTechDone = isFinanceDone && (!requiresPlot || (requiresPlot && !!data.plotArea));
+  const requiresPlot = ['HOUSE', 'PLOT'].includes(data.propertyType);
+  const isParameterSetDone = data.propertyType === 'PLOT'
+    ? !!data.area && !!data.plotArea
+    : !!data.area && !!data.rooms && !!data.floor && !!data.buildYear;
+  const isTechDone = isFinanceDone && isParameterSetDone;
   
-  const isMediaDone = isTechDone && imagesList.length > 0;
+  const descriptionText = String(data.description || '').replace(/<[^>]*>/g, '').trim();
+  const isMediaDone = isTechDone && imagesList.length > 0 && String(data.title || '').trim().length >= 10 && descriptionText.length >= 10;
   
   const isContactDone = initialUser?.isLoggedIn ? true : (
     !!data.email && emailStatus === 'available' &&
@@ -523,70 +542,143 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   );
 
   const canPublish = isTypeSelected && isLocationDone && isFinanceDone && isTechDone && isMediaDone && isContactDone;
+  const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
+  const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
+  const isStep2Done = isLocationDone;
+  const isStep3Done = isTechDone;
+  const isStep4Done = isMediaDone;
+  const isStep5Done = initialUser?.isLoggedIn ? true : isContactDone;
+
+  const canAdvanceStep = (step: number) => {
+    if (step === 1) return isStep1Done;
+    if (step === 2) return isStep2Done;
+    if (step === 3) return isStep3Done;
+    if (step === 4) return isStep4Done;
+    if (step === 5) return isStep5Done;
+    return true;
+  };
+
+  const nextStep = () => {
+    if (!canAdvanceStep(currentStep)) return;
+    if (initialUser?.isLoggedIn) {
+      setCurrentStep((prev) => Math.min(5, prev + 1));
+      return;
+    }
+    setCurrentStep((prev) => Math.min(6, prev + 1));
+  };
+
+  const prevStep = () => {
+    setCurrentStep((prev) => Math.max(1, prev - 1));
+  };
+  const stepTransition = {
+    initial: { opacity: 0, y: 14, filter: 'blur(4px)' },
+    animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+    exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
+    transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+  };
 
   return (
-    <main className="min-h-screen bg-[#050505] text-[#f5f5f7] pt-24 pb-40 px-4 md:px-8 font-sans overflow-x-hidden relative selection:bg-[#10b981]/30">
+    <main className="min-h-screen bg-[#050505] text-[#f5f5f7] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-[#10b981]/30">
       
       {/* Dynamiczne Tło */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-[#10b981]/5 to-transparent blur-[150px] pointer-events-none rounded-full" />
 
       <div className="max-w-4xl mx-auto relative z-10">
-        <div className="text-center mb-16">
+        <div className="text-center mb-12">
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-[#f5f5f7] text-xs font-bold tracking-widest mb-6 backdrop-blur-md">
             <Sparkles size={14} className="text-[#10b981]" /> Formularz EstateOS Premium
           </motion.div>
-          <h1 className="text-5xl md:text-7xl font-black mb-6 tracking-tighter text-white">
+          <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-white">
             Dodaj <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-emerald-400 drop-shadow-[0_0_30px_rgba(16,185,129,0.3)]">Ofertę.</span>
           </h1>
         </div>
 
+        <div className="sticky top-24 z-40 mb-8 bg-white/[0.03] border border-white/10 rounded-[1.75rem] px-5 py-4 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-white/45">Krok {currentStep} z {totalSteps}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-emerald-300">{Math.round((currentStep / totalSteps) * 100)}%</span>
+          </div>
+          <div className="flex gap-2 h-1.5 mb-3">
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <button
+                type="button"
+                key={i}
+                onClick={() => {
+                  const target = i + 1;
+                  if (target <= currentStep || canAdvanceStep(currentStep)) setCurrentStep(target);
+                }}
+                className={`flex-1 rounded-full transition-all duration-300 ${i + 1 <= currentStep ? 'bg-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.5)]' : 'bg-white/10'}`}
+              />
+            ))}
+          </div>
+          <p className="text-[10px] text-white/35 tracking-[0.12em] uppercase font-bold">
+            EstateOS Form Experience
+          </p>
+        </div>
+
         {/* NOWY PRZEŁĄCZNIK KUPNO / WYNAJEM */}
-        <div className="flex justify-center mb-12">
+        <div className={`flex justify-center mb-12 ${currentStep === 1 ? '' : 'hidden'}`}>
           <div className="bg-[#111] border border-white/10 rounded-full p-1.5 flex shadow-inner relative w-full max-w-[400px]">
-             <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${data.transactionType === 'rent' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`}></div>
+             <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${data.transactionType === 'RENT' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`}></div>
              
-             <button type="button" onClick={() => updateData({ transactionType: 'sale' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'sale' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
+             <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'SELL' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
                Sprzedaż
              </button>
              
-             <button type="button" onClick={() => updateData({ transactionType: 'rent' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'rent' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
+             <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'RENT' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
                Wynajem
              </button>
           </div>
         </div>
 
 
-        <div className="space-y-8">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={`step-${currentStep}`} className="space-y-6" initial={stepTransition.initial} animate={stepTransition.animate} exit={stepTransition.exit} transition={stepTransition.transition}>
             
             {/* KROK 1: TOŻSAMOŚĆ I RODZAJ */}
-            <section className={glassPanel}>
+            <section className={`${glassPanel} ${currentStep === 1 ? '' : 'hidden'} ring-1 ring-white/5`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTypeSelected ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>1</div>
                 <h2 className="text-2xl font-black uppercase tracking-widest text-white">Rodzaj Nieruchomości</h2>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {PROPERTY_TYPES.map(cat => {
                   const isActive = data.propertyType === cat.id;
                   return (
-                    <button key={cat.id} onClick={() => updateData({ propertyType: cat.id })} 
+                    <button key={cat.id} onClick={() => updateData({ propertyType: cat.id, condition: cat.id === 'PLOT' ? 'NOT_APPLICABLE' : data.condition })} 
                       className={`h-36 rounded-[2rem] flex flex-col items-center justify-center gap-4 transition-all duration-400 relative overflow-hidden group ${isActive ? 'bg-[#10b981] border-2 border-emerald-400 shadow-[0_0_40px_rgba(16,185,129,0.4)] scale-[1.02]' : 'bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20'}`}>
                       <cat.icon size={36} strokeWidth={1.5} className={`transition-colors duration-400 ${isActive ? 'text-black' : 'text-zinc-400 group-hover:text-white'}`} />
-                      <span className={`text-[11px] font-black uppercase tracking-widest transition-colors duration-400 ${isActive ? 'text-black' : 'text-zinc-400 group-hover:text-white'}`}>{cat.id}</span>
+                      <span className={`text-[11px] font-black uppercase tracking-widest transition-colors duration-400 ${isActive ? 'text-black' : 'text-zinc-400 group-hover:text-white'}`}>{cat.label}</span>
                     </button>
                   );
                 })}
               </div>
 
-              <div className="relative">
-                <label className={labelPremium}>Tytuł Ogłoszenia (Opcjonalnie)</label>
-                <input type="text" placeholder="Napisz chwytliwy tytuł (np. Słoneczny apartament z widokiem...)" className={inputPremium} onChange={(e) => updateData({ title: e.target.value })} value={data.title || ''} />
-                <p className="text-[10px] text-zinc-500 mt-2 ml-1">Jeśli zostawisz puste, wygenerujemy tytuł automatycznie na podstawie typu i lokalizacji.</p>
-              </div>
+              {data.propertyType && data.propertyType !== 'PLOT' && (
+                <div className="relative">
+                  <label className={labelPremium}>Stan wykończenia</label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {CONDITION_TYPES.map((condition) => {
+                      const isActive = data.condition === condition.id;
+                      return (
+                        <button
+                          key={condition.id}
+                          type="button"
+                          onClick={() => updateData({ condition: condition.id })}
+                          className={`py-4 rounded-2xl border font-black uppercase tracking-widest text-[10px] transition-all ${isActive ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.25)]' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'}`}
+                        >
+                          {condition.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* KROK 2: LOKALIZACJA I MAPA */}
-            <section className={`${glassPanel} ${isTypeSelected ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+            <section className={`${glassPanel} ${currentStep === 2 ? '' : 'hidden'} ring-1 ring-white/5 ${isTypeSelected ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isLocationDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isLocationDone ? <Check size={24} /> : '2'}
@@ -625,15 +717,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <label className={labelPremium}>Miasto *</label>
+                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || 'Warszawa'} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
+                        {Object.keys(CITY_DISTRICTS).map(city => <option key={city} value={city}>{city}</option>)}
+                      </select>
+                    </div>
+
+                    <div>
                       <label className={labelPremium}>Dzielnica *</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
                         <option value="" disabled>Wybierz...</option>
-                        {["Mokotów", "Praga-Południe", "Wola", "Ursynów", "Bielany", "Śródmieście", "Targówek", "Bemowo", "Ochota", "Wawer", "Praga-Północ", "Białołęka", "Ursus", "Żoliborz", "Włochy", "Wilanów", "Wesoła", "Rembertów", "Poza Warszawą"].map(d => <option key={d} value={d}>{d}</option>)}
+                        {(CITY_DISTRICTS[data.city || 'Warszawa'] || CITY_DISTRICTS.Warszawa).map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
                     </div>
-                    
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mt-4">
                     <AnimatePresence>
-                      {data.propertyType === 'Mieszkanie' && (
+                      {data.propertyType === 'FLAT' && (
                         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
                           <label className={labelPremium}>Nr Lokalu *</label>
                           <input type="text" placeholder="Np. 12" className={`${inputPremium} text-sm`} value={data.apartmentNumber || ''} onChange={(e) => updateData({ apartmentNumber: e.target.value })} />
@@ -651,7 +752,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             </section>
 
             {/* KROK 3: PARAMETRY I FINANSE */}
-            <section className={`${glassPanel} ${isLocationDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+            <section className={`${glassPanel} ${currentStep === 3 ? '' : 'hidden'} ring-1 ring-white/5 ${isLocationDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTechDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isTechDone ? <Check size={24} /> : '3'}
@@ -661,7 +762,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
-                  <label className={labelPremium}>{data.transactionType === 'rent' ? 'Czynsz najmu (miesięcznie) *' : 'Cena (PLN) *'}</label>
+                  <label className={labelPremium}>{data.transactionType === 'RENT' ? 'Czynsz najmu (miesięcznie) *' : 'Cena (PLN) *'}</label>
                   <input type="text" className={inputPremium} placeholder="850 000" value={data.price || ''} 
                     onChange={(e) => updateData({ price: e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ") })} />
                 </div>
@@ -670,8 +771,43 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <input type="text" className={inputPremium} placeholder="45.5" value={data.area || ''} 
                     onChange={(e) => updateData({ area: e.target.value.replace(/[^0-9.,]/g, "").replace(',', '.').slice(0, 7) })} />
                 </div>
+
+                {requiresPlot && (
+                  <div>
+                    <label className={labelPremium}>Powierzchnia działki (m²) *</label>
+                    <input type="text" className={inputPremium} placeholder="450" value={data.plotArea || ''}
+                      onChange={(e) => updateData({ plotArea: e.target.value.replace(/[^0-9.,]/g, "").replace(',', '.').slice(0, 8) })} />
+                  </div>
+                )}
+
+                {data.propertyType !== 'PLOT' && (
+                  <>
+                    <div>
+                      <label className={labelPremium}>Liczba pokoi *</label>
+                      <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.rooms || ''} onChange={(e) => updateData({ rooms: e.target.value })}>
+                        <option value="">-</option>
+                        {Array.from({ length: 10 }, (_, i) => String(i + 1)).map(room => <option key={room} value={room}>{room}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelPremium}>Piętro *</label>
+                      <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.floor || ''} onChange={(e) => updateData({ floor: e.target.value })}>
+                        <option value="">-</option>
+                        <option value="0">Parter</option>
+                        {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(floor => <option key={floor} value={floor}>{floor}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelPremium}>Rok budowy *</label>
+                      <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.buildYear || ''} onChange={(e) => updateData({ buildYear: e.target.value })}>
+                        <option value="">-</option>
+                        {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(year => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </div>
+                  </>
+                )}
                 
-                {data.propertyType !== 'Działka' && (
+                {data.propertyType !== 'PLOT' && (
                   <>
                     <div className={requiresPlot ? 'lg:col-span-2' : ''}>
                       <label className={labelPremium}>Rodzaj Ogrzewania</label>
@@ -685,8 +821,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <div>
                       <label className={labelPremium}>Umeblowane</label>
                       <div className="flex gap-4">
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ furnished: 'Tak' }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.furnished === 'Tak' ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Tak</button>
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ furnished: 'Nie' }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.furnished === 'Nie' ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Nie</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: true }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Tak</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: false }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Nie</button>
                       </div>
                     </div>
 
@@ -727,12 +863,27 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             </section>
 
             {/* KROK 4: GALERIA I PREZENTACJA */}
-            <section className={`${glassPanel} ${isTechDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+            <section className={`${glassPanel} ${currentStep === 4 ? '' : 'hidden'} ring-1 ring-white/5 ${isTechDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isMediaDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isMediaDone ? <Check size={24} /> : '4'}
                 </div>
                 <h2 className="text-2xl font-black uppercase tracking-widest text-white">Galeria i Prezentacja</h2>
+              </div>
+
+              <div className="mb-10">
+                <label className={labelPremium}>Tytuł Oferty *</label>
+                <input
+                  type="text"
+                  placeholder="np. Luksusowy apartament z widokiem na skyline"
+                  className={inputPremium}
+                  maxLength={70}
+                  onChange={(e) => updateData({ title: e.target.value })}
+                  value={data.title || ''}
+                />
+                <p className={`text-[10px] mt-2 ml-1 font-bold ${String(data.title || '').length >= 10 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                  Minimum 10 znaków, tak jak w aplikacji mobilnej.
+                </p>
               </div>
 
               <div className="mb-12">
@@ -806,7 +957,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   
                   {/* --- NOWA SEKCJA: WARUNKI NAJMU --- */}
                   <AnimatePresence>
-                    {data.transactionType === 'rent' && (
+                    {data.transactionType === 'RENT' && (
                       <motion.div 
                         initial={{ opacity: 0, height: 0 }} 
                         animate={{ opacity: 1, height: 'auto' }} 
@@ -851,7 +1002,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       {AMENITIES.map(item => {
                         const isSelected = data.amenities.includes(item);
                         return (
-                          <button key={item} onClick={() => updateData({ amenities: isSelected ? data.amenities.filter((a: string) => a !== item) : [...data.amenities, item] })} 
+                          <button key={item} onClick={() => {
+                            const nextSelected = !isSelected;
+                            updateData({
+                              amenities: isSelected ? data.amenities.filter((a: string) => a !== item) : [...data.amenities, item],
+                              ...getAmenityPatch(item, nextSelected),
+                            });
+                          }} 
                                   className={`px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 ${isSelected ? 'bg-[#10b981] text-black border border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.6)] scale-[1.05]' : 'bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20'}`}>
                             {item}
                           </button>
@@ -865,7 +1022,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
             {/* KROK 5: DANE KONTAKTOWE */}
             {!initialUser?.isLoggedIn && (
-              <section className={`${glassPanel} ${isMediaDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
+              <section className={`${glassPanel} ${currentStep === 5 ? '' : 'hidden'} ring-1 ring-white/5 ${isMediaDone ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
                 <div className="flex items-center gap-5 mb-10">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isContactDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                     {isContactDone ? <Check size={24} /> : '5'}
@@ -923,7 +1080,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             )}
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
-            <div className="pt-16 pb-24 relative z-50">
+            <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
               <button 
                 onClick={handleSubmit} 
                 disabled={isSubmitting || !canPublish} 
@@ -940,7 +1097,34 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               </button>
             </div>
 
-        </div>
+            <div className={`pb-12 ${currentStep === totalSteps ? 'hidden' : ''}`}>
+              <div className="flex gap-3 bg-white/[0.03] border border-white/10 rounded-[1.5rem] p-3 backdrop-blur-xl">
+                <button
+                  type="button"
+                  onClick={prevStep}
+                  disabled={currentStep === 1}
+                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${currentStep === 1 ? 'border-white/10 text-white/25 cursor-not-allowed' : 'border-white/20 text-white/70 hover:bg-white/10'}`}
+                >
+                  Wstecz
+                </button>
+                <button
+                  type="button"
+                  onClick={nextStep}
+                  disabled={!canAdvanceStep(currentStep)}
+                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${canAdvanceStep(currentStep) ? 'border-emerald-300/70 text-black bg-gradient-to-r from-emerald-300 to-emerald-500 hover:brightness-110 shadow-[0_10px_20px_rgba(16,185,129,0.25)]' : 'border-white/10 text-white/25 cursor-not-allowed'}`}
+                >
+                  Dalej
+                </button>
+              </div>
+              {!canAdvanceStep(currentStep) && (
+                <p className="mt-3 text-[10px] text-red-400/80 font-bold uppercase tracking-[0.16em] text-center">
+                  Uzupełnij wymagane pola tego kroku, aby przejść dalej.
+                </p>
+              )}
+            </div>
+
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       

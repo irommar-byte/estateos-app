@@ -49,6 +49,7 @@ export default async function AddOfferPage() {
 
         userData = { 
           isLoggedIn: true, 
+          id: realUser.id,
           name: realUser.name, 
           phone: realUser.phone, 
           email: realUser.email,
