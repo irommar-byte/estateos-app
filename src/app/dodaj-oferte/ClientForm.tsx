@@ -117,6 +117,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const orbitFrameRef = useRef<number | null>(null);
+  const orbitTimeoutRef = useRef<number | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
@@ -244,12 +246,47 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/dark-v11',
       center: [21.0122, 52.2297],
-      zoom: 11.5,
+      zoom: 12.5,
+      pitch: 55,
+      bearing: -20,
+      antialias: true,
       attributionControl: false,
     });
 
     mapInstance.current = map;
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
+    map.on('style.load', () => {
+      map.setFog({
+        range: [0.8, 8],
+        color: '#020617',
+        'high-color': '#0b1220',
+        'space-color': '#000000',
+        'star-intensity': 0.1,
+      } as any);
+
+      const layers = map.getStyle().layers || [];
+      const labelLayerId = layers.find((l) => l.type === 'symbol' && (l.layout as any)?.['text-field'])?.id;
+
+      if (!map.getLayer('estateos-3d-buildings')) {
+        map.addLayer(
+          {
+            id: 'estateos-3d-buildings',
+            source: 'composite',
+            'source-layer': 'building',
+            filter: ['==', 'extrude', 'true'],
+            type: 'fill-extrusion',
+            minzoom: 13,
+            paint: {
+              'fill-extrusion-color': '#1e293b',
+              'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 16, ['get', 'height']],
+              'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 16, ['get', 'min_height']],
+              'fill-extrusion-opacity': 0.85,
+            },
+          } as any,
+          labelLayerId,
+        );
+      }
+    });
 
     map.on('click', (e) => {
       const nextLng = +e.lngLat.lng.toFixed(6);
@@ -260,10 +297,53 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     return () => {
       markerRef.current?.remove();
       markerRef.current = null;
+      if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
+      if (orbitTimeoutRef.current) window.clearTimeout(orbitTimeoutRef.current);
+      orbitFrameRef.current = null;
+      orbitTimeoutRef.current = null;
       map.remove();
       mapInstance.current = null;
     };
   }, []);
+
+  const startLuxuryOrbit = (target: [number, number]) => {
+    const map = mapInstance.current;
+    if (!map) return;
+    if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
+    if (orbitTimeoutRef.current) window.clearTimeout(orbitTimeoutRef.current);
+
+    const start = performance.now();
+    const durationMs = 6500;
+    const initialBearing = map.getBearing();
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / durationMs);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const bearing = initialBearing + eased * 115;
+
+      map.easeTo({
+        center: target,
+        bearing,
+        pitch: 68,
+        zoom: 16.2,
+        duration: 120,
+        easing: (x) => x,
+      });
+
+      if (t < 1) orbitFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    orbitFrameRef.current = requestAnimationFrame(tick);
+    orbitTimeoutRef.current = window.setTimeout(() => {
+      map.easeTo({
+        center: target,
+        zoom: 15.4,
+        pitch: 60,
+        duration: 900,
+      });
+    }, durationMs + 80);
+  };
 
   useEffect(() => {
     if (!mapInstance.current || !data.lat || !data.lng) return;
@@ -275,7 +355,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       markerRef.current.setLngLat(lngLat);
     }
 
-    mapInstance.current.easeTo({ center: lngLat, duration: 500 });
+    mapInstance.current.flyTo({
+      center: lngLat,
+      zoom: 16,
+      pitch: 68,
+      bearing: mapInstance.current.getBearing() + 20,
+      speed: 0.6,
+      curve: 1.5,
+      essential: true,
+    });
+    startLuxuryOrbit(lngLat);
   }, [data.lat, data.lng]);
 
   const handleSubmit = async () => {
