@@ -15,14 +15,17 @@ console.log("AUTH HEADER:", authHeader);
       return NextResponse.json({ error: 'Brak Authorization header' }, { status: 401 });
     }
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.decode(token) as any;
-
-    if (!decoded?.id) {
+    const rawToken = authHeader.split(" ")[1] || '';
+    const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken.trim();
+    if (!token) {
       return NextResponse.json({ error: 'Nieprawidłowy token' }, { status: 401 });
     }
+    const decoded = jwt.decode(token) as any;
 
-    const userId = decoded.id;
+    const userId = Number(decoded?.id || decoded?.userId || decoded?.sub);
+    if (!Number.isFinite(userId)) {
+      return NextResponse.json({ error: 'Nieprawidłowy token' }, { status: 401 });
+    }
 
     let { expoPushToken, platform = 'IOS', deviceModel = 'Unknown', appVersion = '1.0' } = body;
 

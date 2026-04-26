@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import { notificationService } from '@/lib/services/notification.service';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -103,6 +104,15 @@ export async function POST(req: Request) {
           targetId: String(dealId),
         },
       });
+      try {
+        await notificationService.sendPushToUser(receiverId, {
+          title: 'Nowa propozycja ceny',
+          body: `Nowa oferta: ${amount.toLocaleString('pl-PL')} PLN`,
+          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_proposed' },
+        });
+      } catch (pushError) {
+        console.warn('[ACTIONS PUSH WARN][BID_PROPOSE]', pushError);
+      }
 
       await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
@@ -166,6 +176,15 @@ export async function POST(req: Request) {
             },
           });
         });
+        try {
+          await notificationService.sendPushToUser(senderOfOriginalBid, {
+            title: 'Twoja oferta zostala zaakceptowana',
+            body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
+            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_accepted' },
+          });
+        } catch (pushError) {
+          console.warn('[ACTIONS PUSH WARN][BID_ACCEPT]', pushError);
+        }
         return NextResponse.json({ success: true, status: 'ACCEPTED' });
       }
 
@@ -198,6 +217,15 @@ export async function POST(req: Request) {
             },
           });
         });
+        try {
+          await notificationService.sendPushToUser(senderOfOriginalBid, {
+            title: 'Twoja oferta zostala odrzucona',
+            body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
+            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_rejected' },
+          });
+        } catch (pushError) {
+          console.warn('[ACTIONS PUSH WARN][BID_REJECT]', pushError);
+        }
         return NextResponse.json({ success: true, status: 'REJECTED' });
       }
 
@@ -244,6 +272,15 @@ export async function POST(req: Request) {
         });
         return created;
       });
+      try {
+        await notificationService.sendPushToUser(senderOfOriginalBid, {
+          title: 'Nowa kontroferta ceny',
+          body: `${counterAmount.toLocaleString('pl-PL')} PLN`,
+          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_countered' },
+        });
+      } catch (pushError) {
+        console.warn('[ACTIONS PUSH WARN][BID_COUNTER]', pushError);
+      }
 
       return NextResponse.json({ success: true, bidId: counterBid.id, status: 'PENDING' });
     }
@@ -293,6 +330,15 @@ export async function POST(req: Request) {
           targetId: String(dealId),
         },
       });
+      try {
+        await notificationService.sendPushToUser(receiverId, {
+          title: 'Nowa propozycja terminu',
+          body: proposedDate.toLocaleString('pl-PL'),
+          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_proposed' },
+        });
+      } catch (pushError) {
+        console.warn('[ACTIONS PUSH WARN][APPOINTMENT_PROPOSE]', pushError);
+      }
 
       await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
@@ -350,6 +396,15 @@ export async function POST(req: Request) {
             },
           });
         });
+        try {
+          await notificationService.sendPushToUser(senderOfOriginalAppointment, {
+            title: 'Termin zostal zaakceptowany',
+            body: appointment.proposedDate.toLocaleString('pl-PL'),
+            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_accepted' },
+          });
+        } catch (pushError) {
+          console.warn('[ACTIONS PUSH WARN][APPOINTMENT_ACCEPT]', pushError);
+        }
         return NextResponse.json({ success: true, status: 'ACCEPTED' });
       }
 
@@ -382,6 +437,15 @@ export async function POST(req: Request) {
             },
           });
         });
+        try {
+          await notificationService.sendPushToUser(senderOfOriginalAppointment, {
+            title: 'Termin zostal odrzucony',
+            body: appointment.proposedDate.toLocaleString('pl-PL'),
+            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_declined' },
+          });
+        } catch (pushError) {
+          console.warn('[ACTIONS PUSH WARN][APPOINTMENT_DECLINE]', pushError);
+        }
         return NextResponse.json({ success: true, status: 'DECLINED' });
       }
 
@@ -429,6 +493,15 @@ export async function POST(req: Request) {
         });
         return created;
       });
+      try {
+        await notificationService.sendPushToUser(senderOfOriginalAppointment, {
+          title: 'Nowa kontroferta terminu',
+          body: counterDate.toLocaleString('pl-PL'),
+          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_countered' },
+        });
+      } catch (pushError) {
+        console.warn('[ACTIONS PUSH WARN][APPOINTMENT_COUNTER]', pushError);
+      }
 
       return NextResponse.json({ success: true, appointmentId: counterAppointment.id, status: 'PENDING' });
     }
