@@ -8,14 +8,14 @@ export default function PremiumModeToggle({ currentUser }: { currentUser?: any }
   const { mode, selectMode, forceMode } = useUserMode();
 
   return (
-    <div className="flex flex-col items-center justify-center pointer-events-auto relative z-50 w-full max-w-[600px] mx-auto">
+    <div className="flex flex-col items-center justify-center pointer-events-none relative z-50 w-auto max-w-[calc(100vw-112px)] sm:max-w-[95vw] sm:w-full sm:max-w-[600px] mx-auto">
       
       
   
       
       
       {/* KONTENER PRZYCISKÓW - APPLE GLASSMORPHISM */}
-      <div className="relative inline-flex items-center p-1.5 sm:p-2 bg-black/60 backdrop-blur-2xl border border-white/5 rounded-full shadow-[inset_0_2px_12px_rgba(0,0,0,1),_0_20px_40px_rgba(0,0,0,0.8)]">
+      <div className="relative inline-flex items-center p-1.5 sm:p-2 bg-black/60 backdrop-blur-2xl border border-white/5 rounded-full shadow-[inset_0_2px_12px_rgba(0,0,0,1),_0_20px_40px_rgba(0,0,0,0.8)] pointer-events-auto">
         
         {/* PRZYCISK 1: INWESTOR */}
         <button 

@@ -54,7 +54,7 @@ export default function Navbar() {
 
   return (
     <nav className="fixed top-0 w-full z-50 bg-black/60 backdrop-blur-2xl border-b border-white/5 font-sans">
-      <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-20 flex items-center justify-between">
+      <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-24 sm:h-20 flex items-start sm:items-center justify-between pt-2 sm:pt-0">
         
         {/* LOGO */}
         <div onClick={() => router.push('/')} className="cursor-pointer group flex-shrink-0 relative z-20 hidden sm:block">
@@ -71,14 +71,14 @@ export default function Navbar() {
         </div>
 
         {/* MOBILE LOGO CENTERED */}
-        <div className="sm:hidden absolute left-1/2 -translate-x-1/2 top-1 z-[101]">
+        <div className="sm:hidden absolute left-1/2 -translate-x-1/2 top-1 z-[15] pointer-events-none">
           <span className="text-lg font-black tracking-tighter uppercase italic text-white relative overflow-hidden shimmer-logo">
             <span className="text-[#10b981]">E</span>state<span className="text-[#10b981]">OS</span>&trade;
           </span>
         </div>
 
         {/* CENTRALNY PRZEŁĄCZNIK (ZAWSZE WIDOCZNY) */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center z-[100] top-1 md:top-2">
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center z-[12] top-9 sm:top-1 md:top-2">
           <PremiumModeToggle currentUser={user} />
         </div>
 
@@ -103,9 +103,9 @@ export default function Navbar() {
         </div>
 
         {/* WYZWALACZ MOBILNY */}
-        <div className="flex items-center gap-2 lg:hidden relative z-20">
+        <div className="flex items-center gap-2 lg:hidden relative z-40 mt-0.5">
           {user && <NotificationCenter />}
-          <button onClick={() => setIsOpen(!isOpen)} className="text-white p-2 hover:text-emerald-500 transition-colors">
+          <button onClick={() => setIsOpen(!isOpen)} className="text-white p-2 hover:text-emerald-500 transition-colors bg-black/35 rounded-xl border border-white/10">
              {isOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
