@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
   try {
-    const { targetId, rating, comment } = await req.json();
+    const { targetId, rating, comment, dealId } = await req.json();
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('luxestate_user') || cookieStore.get('estateos_session');
     if (!sessionCookie) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
@@ -19,8 +19,9 @@ export async function POST(req: Request) {
 
     const review = await prisma.review.create({
       data: {
+        dealId: Number(dealId),
         reviewerId: Number(reviewerId),
-        targetId: Number(targetId),
+        revieweeId: Number(targetId),
         rating: Number(rating),
         comment
       }
@@ -31,8 +32,8 @@ export async function POST(req: Request) {
        data: {
          userId: Number(targetId),
          title: `⭐ Otrzymałeś nową opinię: ${rating}/5`,
-         message: comment ? `"${comment}"` : "Użytkownik ocenił współpracę pozytywnie.",
-         type: "INFO"
+         body: comment ? `"${comment}"` : "Użytkownik ocenił współpracę pozytywnie.",
+         type: "SYSTEM_ALERT"
        }
     });
 

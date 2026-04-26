@@ -81,8 +81,15 @@ export async function GET(req: NextRequest) {
         return true;
       });
     }
+    const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
+    const isProActive = Boolean(
+      user.role === 'ADMIN' ||
+      (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
+    );
+
     return NextResponse.json({
       ...user,
+      isPro: isProActive,
       matchedOffers
     });
 

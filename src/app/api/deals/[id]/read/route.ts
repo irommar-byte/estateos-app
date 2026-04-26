@@ -3,9 +3,14 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 
-export async function POST(req, { params }) {
+const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
+
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const resolvedParams = await params;
+    const resolvedParams = await context.params;
     const dealId = Number(resolvedParams.id);
 
     const cookieStore = await cookies();
@@ -30,11 +35,12 @@ export async function POST(req, { params }) {
       data: { isRead: true }
     });
 
-    if (global.sseClients) {
-        global.sseClients.forEach(c => c.send({ type: 'READ', payload: { dealId } }));
+    if (globalAny.sseClients) {
+      globalAny.sseClients.forEach((c) => c.send({ type: 'READ', payload: { dealId } }));
     }
     return NextResponse.json({ success: true });
-  } catch (e) {
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

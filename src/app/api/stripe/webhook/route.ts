@@ -3,11 +3,17 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' as any });
- 
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error('Missing STRIPE_SECRET_KEY');
+  }
+  return new Stripe(secretKey, { apiVersion: '2023-10-16' as any });
+}
 
 export async function POST(req: Request) {
   try {
+    const stripe = getStripeClient();
     const payload = await req.text();
     const sig = req.headers.get('stripe-signature');
 

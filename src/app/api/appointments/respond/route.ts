@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 async function handlePingPong(req: Request) {
   try {
     const body = await req.json();
-    const id = body.id || body.appointmentId;
-    const status = body.status;
+    const id = Number(body.id || body.appointmentId);
+    const status = String(body.status || '').toUpperCase();
     const incomingDate = body.newDate || body.date || body.proposedDate;
     const message = body.message;
 
@@ -29,7 +29,10 @@ async function handlePingPong(req: Request) {
        if (u) dbUserId = u.id;
     }
 
-    const appointment = await prisma.appointment.findUnique({ where: { id: String(id) } });
+    const appointment = await prisma.appointment.findUnique({
+      where: { id },
+      include: { deal: true },
+    });
     if (!appointment) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
 
     let finalDate = appointment.proposedDate;
@@ -38,35 +41,45 @@ async function handlePingPong(req: Request) {
       if (!isNaN(parsed.getTime())) finalDate = parsed;
     }
 
+    const statusMap: Record<string, 'ACCEPTED' | 'DECLINED' | 'RESCHEDULED'> = {
+      ACCEPTED: 'ACCEPTED',
+      DECLINED: 'DECLINED',
+      COUNTER: 'RESCHEDULED',
+      RESCHEDULED: 'RESCHEDULED',
+    };
+    const nextStatus = statusMap[status];
+    if (!nextStatus) return NextResponse.json({ error: 'Nieznany status' }, { status: 400 });
+
     const updatedAppt = await prisma.appointment.update({
-      where: { id: String(id) },
+      where: { id },
       data: {
-        status: status || appointment.status,
+        status: nextStatus,
         proposedDate: finalDate,
         message: message !== undefined ? String(message) : appointment.message
       }
     });
 
-    const isBuyer = String(appointment.buyerId) === String(dbUserId) || appointment.buyerId === currentUserEmail;
-    const targetUserId = isBuyer ? appointment.sellerId : appointment.buyerId;
+    const actorId = Number(dbUserId);
+    const isBuyer = appointment.deal.buyerId === actorId;
+    const targetUserId = isBuyer ? appointment.deal.sellerId : appointment.deal.buyerId;
 
     let notifTitle = ''; let notifMsg = '';
 
-    if (status === 'ACCEPTED') { notifTitle = 'Termin Zatwierdzony!'; notifMsg = `Druga strona zaakceptowała spotkanie.`; } 
-    else if (status === 'COUNTER') { notifTitle = 'Nowa propozycja terminu'; notifMsg = `Druga strona zaproponowała alternatywny termin.`; } 
+    if (nextStatus === 'ACCEPTED') { notifTitle = 'Termin Zatwierdzony!'; notifMsg = `Druga strona zaakceptowała spotkanie.`; } 
+    else if (nextStatus === 'RESCHEDULED') { notifTitle = 'Nowa propozycja terminu'; notifMsg = `Druga strona zaproponowała alternatywny termin.`; } 
     // KRYTYCZNA POPRAWKA: Przekazanie powodu odrzucenia
-    else if (status === 'DECLINED') { notifTitle = 'Spotkanie odrzucone'; notifMsg = message ? `Powód: ${message}` : 'Druga strona zrezygnowała z propozycji.'; } 
-    else if (status === 'CANCELED') { notifTitle = 'Prezentacja Odwołana!'; notifMsg = `Powód: ${message}`; } 
-    else if (status === 'COMPLETED') {
-      notifTitle = 'Prezentacja Zakończona'; notifMsg = 'Druga strona potwierdziła spotkanie.';
-      if (body.rating && targetUserId) {
-        await prisma.review.create({ data: { reviewerId: Number(dbUserId), targetId: Number(targetUserId), rating: Number(body.rating), comment: body.reviewComment || '' } });
-      }
-    }
+    else if (nextStatus === 'DECLINED') { notifTitle = 'Spotkanie odrzucone'; notifMsg = message ? `Powód: ${message}` : 'Druga strona zrezygnowała z propozycji.'; } 
 
     if (notifTitle && targetUserId) {
       await prisma.notification.create({
-        data: { userId: Number(targetUserId), title: notifTitle, message: notifMsg, type: 'APPOINTMENT', link: `/moje-konto/crm?appId=${updatedAppt.id}` }
+        data: {
+          userId: Number(targetUserId),
+          title: notifTitle,
+          body: notifMsg,
+          type: 'APPOINTMENT',
+          targetType: 'DEAL',
+          targetId: String(appointment.dealId),
+        }
       });
     }
 

@@ -29,12 +29,15 @@ export async function GET() {
       sessionData.id ? String(sessionData.id) : null
     ].filter(Boolean) as string[];
 
+    const numericUserIds = userIds.map(Number).filter((n) => !Number.isNaN(n));
     const appointments = await prisma.appointment.findMany({
       where: {
-        OR: [
-          { sellerId: { in: userIds.map(Number) } },
-          { buyerId: { in: userIds.map(Number) } }
-        ]
+        deal: {
+          OR: [
+            { sellerId: { in: numericUserIds } },
+            { buyerId: { in: numericUserIds } }
+          ]
+        }
       },
       orderBy: { proposedDate: 'asc' }
     });

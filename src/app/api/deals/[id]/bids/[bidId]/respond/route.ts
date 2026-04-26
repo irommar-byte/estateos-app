@@ -23,11 +23,12 @@ function getUserIdFromToken(authHeader: string | null): number | null {
 // ================================
 export async function POST(
   req: Request,
-  { params }: { params: { id: string; bidId: string } }
+  context: { params: Promise<{ id: string; bidId: string }> }
 ) {
   try {
-    const dealId = Number(params.id);
-    const bidId = Number(params.bidId);
+    const { id, bidId: rawBidId } = await context.params;
+    const dealId = Number(id);
+    const bidId = Number(rawBidId);
 
     // ❗ WALIDACJA ID
     if (!dealId || isNaN(dealId) || !bidId || isNaN(bidId)) {
@@ -139,10 +140,11 @@ export async function POST(
         await tx.notification.create({
           data: {
             userId: senderOfBid,
-            type: 'BID_UPDATE',
+            type: 'BID_RECEIVED',
             title: '✅ Oferta zaakceptowana',
             body: `Twoja oferta ${bid.amount} PLN została przyjęta.`,
-            referenceId: dealId
+            targetType: 'DEAL',
+            targetId: String(dealId),
           }
         });
 
@@ -167,10 +169,11 @@ export async function POST(
         await tx.notification.create({
           data: {
             userId: senderOfBid,
-            type: 'BID_UPDATE',
+            type: 'BID_RECEIVED',
             title: '❌ Oferta odrzucona',
             body: `Twoja oferta ${bid.amount} PLN została odrzucona.`,
-            referenceId: dealId
+            targetType: 'DEAL',
+            targetId: String(dealId),
           }
         });
 

@@ -22,6 +22,11 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({ where: { email: emailToSearch } });
     if (!user) return NextResponse.json({ loggedIn: false });
+    const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
+    const isProActive = Boolean(
+      user.role === 'ADMIN' ||
+      (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
+    );
 
     return NextResponse.json({ 
       loggedIn: true, 
@@ -31,8 +36,11 @@ export async function GET() {
         name: user.name, 
         phone: user.phone, 
         image: user.image,
-        advertiserType: user.buyerType || 'private',
-        role: user.role 
+        advertiserType: user.planType === 'AGENCY' ? 'agency' : 'private',
+        role: user.role,
+        isPro: isProActive,
+        planType: user.planType,
+        proExpiresAt: user.proExpiresAt
       } 
     });
   } catch (error) {

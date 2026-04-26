@@ -10,14 +10,14 @@ export async function POST(req: Request) {
     if (notificationIds && Array.isArray(notificationIds)) {
       await prisma.notification.updateMany({
         where: { id: { in: notificationIds } },
-        data: { isRead: true }
+        data: { readAt: new Date(), status: 'READ' }
       });
     } 
     // Odznacz tylko jedno
     else if (notificationId) {
       await prisma.notification.update({
         where: { id: String(notificationId) },
-        data: { isRead: true }
+        data: { readAt: new Date(), status: 'READ' }
       });
     }
 

@@ -19,11 +19,12 @@ function getUserIdFromToken(authHeader: string | null): number | null {
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string; appointmentId: string } }
+  context: { params: Promise<{ id: string; appointmentId: string }> }
 ) {
   try {
-    const dealId = Number(params.id);
-    const appointmentId = Number(params.appointmentId);
+    const { id, appointmentId: rawAppointmentId } = await context.params;
+    const dealId = Number(id);
+    const appointmentId = Number(rawAppointmentId);
 
     if (!dealId || isNaN(dealId) || !appointmentId || isNaN(appointmentId)) {
       return NextResponse.json({ error: 'Nieprawidłowe ID' }, { status: 400 });
@@ -43,7 +44,7 @@ export async function POST(
         ? message.trim().slice(0, 500)
         : null;
 
-    const actionMap: Record<string, string> = {
+    const actionMap: Record<string, 'ACCEPTED' | 'DECLINED' | 'RESCHEDULED'> = {
       ACCEPT: 'ACCEPTED',
       DECLINE: 'DECLINED',
       RESCHEDULE: 'RESCHEDULED'
@@ -86,7 +87,6 @@ export async function POST(
         },
         data: {
           status: actionMap[action],
-          updatedAt: new Date()
         }
       });
 
@@ -129,10 +129,11 @@ export async function POST(
       await tx.notification.create({
         data: {
           userId: senderOfProposal,
-          type: 'APPOINTMENT_UPDATE',
+          type: 'APPOINTMENT',
           title: notifTitle,
           body: notifBody,
-          referenceId: dealId
+          targetType: 'DEAL',
+          targetId: String(dealId),
         }
       });
 

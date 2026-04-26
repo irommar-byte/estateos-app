@@ -49,9 +49,10 @@ export async function POST(req: Request) {
           data: {
             userId: Number(buyer.id),
             title: "🔥 Gorąca Oferta z Radaru!",
-            message: `Znaleźliśmy nieruchomość "${offer.title}", która pasuje do Twoich parametrów.`,
-            type: "SYSTEM",
-            link: `/oferta/${offerId}`
+            body: `Znaleźliśmy nieruchomość "${offer.title}", która pasuje do Twoich parametrów.`,
+            type: "AI_RADAR",
+            targetType: "OFFER",
+            targetId: String(offerId),
           }
         });
 

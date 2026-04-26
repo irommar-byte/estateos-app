@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const sessionCookie = cookieStore.get("estateos_session");
 
     if (!sessionCookie) {
-      console.log("🔥 WYSYLAM DO CRM. Pokoje (deals):", typeof deals !== "undefined" ? deals?.length : "BŁĄD: Zmienna deals nie istnieje w tym miejscu!"); return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
+      return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
     }
 
     let emailToSearch = sessionCookie.value;
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     });
 
     if (!user) {
-      console.log("🔥 WYSYLAM DO CRM. Pokoje (deals):", typeof deals !== "undefined" ? deals?.length : "BŁĄD: Zmienna deals nie istnieje w tym miejscu!"); return NextResponse.json({ error: "User not found" }, { status: 401 });
+      return NextResponse.json({ error: "User not found" }, { status: 401 });
     }
 
     const finalUserId = user.id;
@@ -51,7 +51,8 @@ export async function GET(req: Request) {
           { buyerId: finalUserId }
         ]
       },
-      select: { id: true }
+      include: { offer: true, buyer: true, seller: true },
+      orderBy: { createdAt: 'desc' }
     });
 
     const dealIds = deals.map(d => d.id);
@@ -88,11 +89,12 @@ export async function GET(req: Request) {
     const bids = await prisma.bid.findMany({
       where: {
         OR: [
-          { sellerId: finalUserId },
-          { buyerId: finalUserId },
-          { offerId: { in: myOfferIds } }
+          { senderId: finalUserId },
+          { deal: { sellerId: finalUserId } },
+          { deal: { buyerId: finalUserId } },
         ]
       },
+      include: { deal: true },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -107,25 +109,18 @@ export async function GET(req: Request) {
     });
 
     bids.forEach(item => {
-      if (item.buyerId !== finalUserId) contactIds.add(item.buyerId);
-      if (item.sellerId !== finalUserId) contactIds.add(item.sellerId);
+      if (item.deal.buyerId !== finalUserId) contactIds.add(item.deal.buyerId);
+      if (item.deal.sellerId !== finalUserId) contactIds.add(item.deal.sellerId);
+      if (item.senderId !== finalUserId) contactIds.add(item.senderId);
     });
 
     const contactsData = await prisma.user.findMany({
       where: { id: { in: Array.from(contactIds) } },
-      select: { id: true, name: true, image: true, phone: true, buyerType: true, email: true }
+      select: { id: true, name: true, image: true, phone: true, email: true }
     });
 
-    console.log("🔥 WYSYLAM DO CRM. Pokoje (deals):", typeof deals !== "undefined" ? deals?.length : "BŁĄD: Zmienna deals nie istnieje w tym miejscu!"); let finalDeals = [];
-    try {
-      const rawDeals = await prisma.deal.findMany({
-        where: { OR: [{ sellerId: finalUserId }, { buyerId: finalUserId }] },
-        include: { offer: true, buyer: true, seller: true },
-        orderBy: { createdAt: 'desc' }
-      });
-      // Frontend używa zmiennej dealId (a baza daje po prostu id). Łączymy to!
-      finalDeals = rawDeals.map(d => ({ ...d, dealId: d.id }));
-    } catch(e) { console.error('Błąd pobierania pokoi:', e); }
+    // Frontend używa zmiennej dealId (a baza daje po prostu id). Łączymy to.
+    const finalDeals = deals.map((d) => ({ ...d, dealId: d.id }));
 
     return NextResponse.json({
       deals: finalDeals,
@@ -139,6 +134,6 @@ export async function GET(req: Request) {
 
   } catch (error) {
     console.error("CRM Data Error:", error);
-    console.log("🔥 WYSYLAM DO CRM. Pokoje (deals):", typeof deals !== "undefined" ? deals?.length : "BŁĄD: Zmienna deals nie istnieje w tym miejscu!"); return NextResponse.json({ error: 'Błąd podczas pobierania danych CRM' }, { status: 500 });
+    return NextResponse.json({ error: 'Błąd podczas pobierania danych CRM' }, { status: 500 });
   }
 }

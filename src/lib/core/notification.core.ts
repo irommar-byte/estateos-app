@@ -1,5 +1,6 @@
 import { notificationService } from '@/lib/services/notification.service';
 import { prisma } from '@/lib/prisma';
+import { NotificationType as PrismaNotificationType } from '@prisma/client';
 
 export type NotificationType =
   | 'NEW_OFFER'
@@ -16,18 +17,18 @@ interface SendNotificationParams {
 }
 
 // 🔥 MAPOWANIE CORE → PRISMA (adapter)
-function mapTypeToDb(type: NotificationType): string {
+function mapTypeToDb(type: NotificationType): PrismaNotificationType {
   switch (type) {
     case 'RADAR_MATCH':
-      return 'AI_RADAR';
+      return 'AI_RADAR' as PrismaNotificationType;
     case 'NEW_OFFER':
-      return 'SYSTEM_ALERT';
+      return 'SYSTEM_ALERT' as PrismaNotificationType;
     case 'CRM_EVENT':
-      return 'DEAL_UPDATE';
+      return 'DEAL_UPDATE' as PrismaNotificationType;
     case 'CHAT_MESSAGE':
-      return 'MESSAGE';
+      return 'MESSAGE' as PrismaNotificationType;
     default:
-      return 'SYSTEM_ALERT';
+      return 'SYSTEM_ALERT' as PrismaNotificationType;
   }
 }
 

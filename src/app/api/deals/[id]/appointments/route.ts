@@ -17,9 +17,13 @@ function getUserIdFromToken(authHeader: string | null): number | null {
   }
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const dealId = Number(params.id);
+    const { id } = await context.params;
+    const dealId = Number(id);
 
     if (!dealId || isNaN(dealId)) {
       return NextResponse.json({ error: 'Błędne ID' }, { status: 400 });
@@ -119,10 +123,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       await tx.notification.create({
         data: {
           userId: receiverId,
-          type: 'APPOINTMENT_UPDATE',
+          type: 'APPOINTMENT',
           title: '📅 Nowe spotkanie',
           body: `${formattedDate}`,
-          referenceId: dealId
+          targetType: 'DEAL',
+          targetId: String(dealId),
         }
       });
 

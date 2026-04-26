@@ -25,15 +25,10 @@ export async function POST(req: Request) {
        if (u) dbUserId = u.id;
     }
 
-    const finalBuyerId = String(dbUserId || currentUserEmail);
-
-    // KULOODPORNA BLOKADA: Sprawdzamy czy klient już nie zapytał o tę ofertę
-    const existing = await prisma.appointment.findFirst({
-      where: { offerId: parseInt(offerId, 10), buyerId: parseInt(String(finalBuyerId), 10) }
-    });
-
-    if (existing) {
-      return NextResponse.json({ error: 'Masz już aktywne zapytanie do tej nieruchomości.' }, { status: 400 });
+    const buyerId = Number(dbUserId);
+    const parsedOfferId = Number(offerId);
+    if (!buyerId || Number.isNaN(parsedOfferId)) {
+      return NextResponse.json({ error: 'Nieprawidłowe dane użytkownika/oferty' }, { status: 400 });
     }
 
     // Zabezpieczenie przed błędem 500 (Invalid Date)
@@ -42,14 +37,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nieprawidłowy format daty.' }, { status: 400 });
     }
 
+    const offer = await prisma.offer.findUnique({ where: { id: parsedOfferId }, select: { userId: true } });
+    if (!offer) return NextResponse.json({ error: 'Nie znaleziono oferty' }, { status: 404 });
+    const resolvedSellerId = Number(sellerId) || offer.userId;
+
+    const deal = await prisma.deal.upsert({
+      where: { offerId_buyerId: { offerId: parsedOfferId, buyerId } },
+      create: { offerId: parsedOfferId, buyerId, sellerId: resolvedSellerId, status: 'NEGOTIATION' },
+      update: {},
+    });
+
+    const existingPending = await prisma.appointment.findFirst({
+      where: { dealId: deal.id, proposedById: buyerId, status: 'PENDING' },
+    });
+    if (existingPending) {
+      return NextResponse.json({ error: 'Masz już aktywne zapytanie do tej nieruchomości.' }, { status: 400 });
+    }
+
     const appointment = await prisma.appointment.create({
       data: {
-        offerId: parseInt(offerId, 10),
-        buyerId: parseInt(String(finalBuyerId), 10),
-        sellerId: parseInt(String(sellerId), 10),
+        dealId: deal.id,
+        proposedById: buyerId,
         proposedDate: parsedDate,
         message: message ? String(message) : null,
-        status: 'PROPOSED'
       }
     });
     
@@ -57,10 +67,9 @@ export async function POST(req: Request) {
     try {
         await prisma.dealMessage.create({
             data: {
-                dealId: `${offerId}_${finalBuyerId}`,
-                senderId: 'SYSTEM',
-                senderName: 'EstateOS AI',
-                text: `📅 Zaproponowano termin spotkania: ${parsedDate.toLocaleDateString('pl-PL')} o ${parsedDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}`
+                dealId: deal.id,
+                senderId: buyerId,
+                content: `📅 Zaproponowano termin spotkania: ${parsedDate.toLocaleDateString('pl-PL')} o ${parsedDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}`
             }
         });
     } catch(e) { console.log('DealMessage err', e); }
@@ -68,11 +77,12 @@ export async function POST(req: Request) {
 
     await prisma.notification.create({
       data: {
-        userId: Number(sellerId),
+        userId: resolvedSellerId,
         title: 'Nowe zapytanie z Lejka!',
-        message: 'Klient chce obejrzeć Twoją nieruchomość.',
+        body: 'Klient chce obejrzeć Twoją nieruchomość.',
         type: 'APPOINTMENT',
-        link: `/moje-konto/crm?appId=${appointment.id}`
+        targetType: 'DEAL',
+        targetId: String(deal.id),
       }
     });
 
@@ -92,7 +102,7 @@ export async function POST(req: Request) {
       tls: { rejectUnauthorized: false }
     });
 
-    const seller = await prisma.user.findUnique({ where: { id: Number(sellerId) }, select: { email: true } });
+    const seller = await prisma.user.findUnique({ where: { id: resolvedSellerId }, select: { email: true } });
     if (seller && seller.email) {
       try {
         await transporter.sendMail({

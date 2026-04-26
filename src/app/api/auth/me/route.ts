@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
 
     // fallback jeśli nie masz firstName/lastName w DB
     const nameParts = (user.name || "").split(" ");
-    const firstName = user.firstName || nameParts[0] || "";
-    const lastName = user.lastName || nameParts.slice(1).join(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ");
 
     return NextResponse.json({
       success: true,

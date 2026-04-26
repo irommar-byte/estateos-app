@@ -12,11 +12,13 @@ export async function POST(req: Request) {
     const sessionCookie = cookieStore.get('estateos_session');
     if (!sessionCookie) return NextResponse.json({ error: 'Brak sesji' });
 
-    let email = null;
-    try { email = decryptSession(sessionCookie.value).email; } 
-    catch (e) { email = sessionCookie.value; }
+    const sessionData = decryptSession(sessionCookie.value);
+    const email = sessionData?.email || null;
+    if (!email) {
+      return NextResponse.json({ error: 'Nieprawidłowa sesja' }, { status: 401 });
+    }
 
-    if (email && plan !== 'pakiet_plus') {
+    if (plan !== 'pakiet_plus') {
       const planType = plan === 'agency' ? 'AGENCY' : 'INVESTOR';
       const expires = new Date();
       expires.setDate(expires.getDate() + 30);

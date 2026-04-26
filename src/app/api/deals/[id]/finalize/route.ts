@@ -17,9 +17,13 @@ function getUserIdFromToken(authHeader: string | null): number | null {
   }
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const dealId = Number(params.id);
+    const { id } = await context.params;
+    const dealId = Number(id);
 
     if (!dealId || isNaN(dealId)) {
       return NextResponse.json({ error: 'Błędne ID' }, { status: 400 });
@@ -95,17 +99,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         data: [
           {
             userId: deal.buyerId,
-            type: 'INFO',
+            type: 'SYSTEM_ALERT',
             title: '🎉 Transakcja zakończona',
             body: 'Zakup został sfinalizowany.',
-            referenceId: dealId
+            targetType: 'DEAL',
+            targetId: String(dealId),
           },
           {
             userId: deal.sellerId,
-            type: 'INFO',
+            type: 'SYSTEM_ALERT',
             title: '🎉 Transakcja zakończona',
             body: 'Sprzedaż została zakończona sukcesem.',
-            referenceId: dealId
+            targetType: 'DEAL',
+            targetId: String(dealId),
           }
         ]
       });
@@ -139,10 +145,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         await tx.notification.createMany({
           data: otherDeals.map(d => ({
             userId: d.buyerId,
-            type: 'INFO',
+            type: 'SYSTEM_ALERT',
             title: '❌ Oferta niedostępna',
             body: 'Nieruchomość została sprzedana innemu klientowi.',
-            referenceId: d.id
+            targetType: 'DEAL',
+            targetId: String(d.id),
           }))
         });
 

@@ -16,50 +16,39 @@ export async function POST(req: Request) {
     if (!user) return NextResponse.json({ error: "Nieautoryzowany" }, { status: 401 });
 
     const data = await req.json();
-    const { dealId, text, attachmentUrl, attachmentType } = data;
+    const { dealId, text, attachmentUrl } = data;
 
-    if (!dealId || (!text && !attachmentUrl)) {
+    const numericDealId = Number(dealId);
+    if (!numericDealId || (!text && !attachmentUrl)) {
       return NextResponse.json({ error: "Brak wymaganych danych" }, { status: 400 });
     }
 
     // 1. Zapis wiadomości
     const message = await prisma.dealMessage.create({
       data: {
-        dealId,
-        senderId: String(user.id),
-        senderName: user.name || user.email.split('@')[0],
-        text: text || "Załączono plik",
-        attachmentUrl,
-        attachmentType
+        dealId: numericDealId,
+        senderId: user.id,
+        content: text || "Załączono plik",
+        attachment: attachmentUrl || null,
       }
     });
 
     // 2. WYZWALACZ POWIADOMIEŃ (The Nervous System)
-    // Identyfikujemy partnera z ID deala (Format: offerId_partnerId)
-    const parts = dealId.split('_');
-    const offerId = parts[0];
-    const partnerIdFromDeal = parts[1];
-    
-    // Ustalanie kto jest kim w tej transakcji, by powiadomić właściwą osobę
-    const offer = await prisma.offer.findUnique({ where: { id: parseInt(offerId) } });
-    let targetUserId = "";
-
-    if (offer && String(offer.userId) === String(user.id)) {
-        // Jeśli ja jestem właścicielem oferty, powiadomienie idzie do partnera (kupującego)
-        targetUserId = partnerIdFromDeal;
-    } else if (offer) {
-        // Jeśli nie jestem właścicielem, to powiadomienie idzie do właściciela (sprzedającego)
-        targetUserId = String(offer.userId);
+    const deal = await prisma.deal.findUnique({ where: { id: numericDealId } });
+    let targetUserId: number | null = null;
+    if (deal) {
+      targetUserId = deal.buyerId === user.id ? deal.sellerId : deal.buyerId;
     }
 
     // Zapisujemy powiadomienie w bazie, aby dzwoneczek u góry się zaświecił
     if (targetUserId) {
         await prisma.notification.create({
             data: {
-                userId: Number(targetUserId),
+                userId: targetUserId,
                 title: "Nowa aktywność w Deal Room",
-                message: `Otrzymałeś nową wiadomość od ${user.name || 'użytkownika'} w sprawie oferty.`,
-                link: `/dealroom/${dealId}`,
+                body: `Otrzymałeś nową wiadomość od ${user.name || 'użytkownika'} w sprawie oferty.`,
+                targetType: 'DEAL',
+                targetId: String(numericDealId),
                 type: "DEAL_UPDATE"
             }
         });
@@ -77,10 +66,11 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const dealId = searchParams.get('dealId');
 
-    if (!dealId) return NextResponse.json({ error: "Brak ID deala" }, { status: 400 });
+    const numericDealId = Number(dealId);
+    if (!numericDealId) return NextResponse.json({ error: "Brak ID deala" }, { status: 400 });
 
     const messages = await prisma.dealMessage.findMany({
-      where: { dealId },
+      where: { dealId: numericDealId },
       orderBy: { createdAt: 'asc' }
     });
 

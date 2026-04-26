@@ -3,6 +3,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ShieldCheck, Lock, Check, CheckCheck, Loader2, Building2 } from 'lucide-react';
 
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function parseDealEvent(content?: string) {
+  if (!content || !content.startsWith(EVENT_PREFIX)) return null;
+  try {
+    return JSON.parse(content.slice(EVENT_PREFIX.length));
+  } catch {
+    return null;
+  }
+}
+
 export default function DealRoom({ dealId, currentUserId }: { dealId: number, currentUserId: number }) {
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -207,6 +218,41 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
         <AnimatePresence initial={false}>
           {deal.messages?.map((msg: any, i: number) => {
             const isMe = msg.senderId === currentUserId;
+            const eventPayload = parseDealEvent(msg.content);
+
+            if (eventPayload?.entity === 'BID') {
+              return (
+                <div key={msg.id || i} className="flex justify-center my-10">
+                  <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-emerald-500/30 rounded-[2.5rem] p-8 max-w-sm w-full shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_0_20px_rgba(16,185,129,0.07)] text-center relative overflow-hidden">
+                    <p className="text-[9px] uppercase tracking-[0.4em] font-black text-emerald-500/80 mb-3 relative z-10">Negocjacja Ceny</p>
+                    <p className="text-xl font-black text-white relative z-10">
+                      {eventPayload.action === 'ACCEPTED' ? 'Oferta zaakceptowana' : eventPayload.action === 'REJECTED' ? 'Oferta odrzucona' : eventPayload.action === 'COUNTERED' ? 'Kontroferta' : 'Nowa propozycja'}
+                    </p>
+                    <p className="text-3xl font-black text-emerald-400 relative z-10 mt-2">
+                      {Number(eventPayload.amount || 0).toLocaleString('pl-PL')} PLN
+                    </p>
+                    {eventPayload.note ? <p className="text-xs text-white/50 mt-3">{eventPayload.note}</p> : null}
+                  </div>
+                </div>
+              );
+            }
+
+            if (eventPayload?.entity === 'APPOINTMENT') {
+              return (
+                <div key={msg.id || i} className="flex justify-center my-10">
+                  <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-blue-500/30 rounded-[2.5rem] p-8 max-w-sm w-full shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_0_20px_rgba(59,130,246,0.07)] text-center relative overflow-hidden">
+                    <p className="text-[9px] uppercase tracking-[0.4em] font-black text-blue-400/80 mb-3 relative z-10">Negocjacja Terminu</p>
+                    <p className="text-xl font-black text-white relative z-10">
+                      {eventPayload.action === 'ACCEPTED' ? 'Termin zaakceptowany' : eventPayload.action === 'DECLINED' ? 'Termin odrzucony' : eventPayload.action === 'COUNTERED' ? 'Kontroferta terminu' : 'Nowa propozycja'}
+                    </p>
+                    <p className="text-sm font-black text-blue-300 relative z-10 mt-2">
+                      {eventPayload.proposedDate ? new Date(eventPayload.proposedDate).toLocaleString('pl-PL') : '-'}
+                    </p>
+                    {eventPayload.note ? <p className="text-xs text-white/50 mt-3">{eventPayload.note}</p> : null}
+                  </div>
+                </div>
+              );
+            }
             
             if (msg.content.startsWith('[SYSTEM_BID:')) {
               const amount = msg.content.replace(/\D/g, '');

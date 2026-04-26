@@ -26,13 +26,21 @@ export async function POST(req: Request) {
     const offer = await prisma.offer.findUnique({ where: { id: Number(offerId) } });
     if (!offer) return NextResponse.json({ error: 'Brak oferty' }, { status: 404 });
 
+    const buyerId = Number(dbUserId);
+    if (!buyerId) return NextResponse.json({ error: 'Brak użytkownika' }, { status: 401 });
+
+    const deal = await prisma.deal.upsert({
+      where: { offerId_buyerId: { offerId: Number(offerId), buyerId } },
+      create: { offerId: Number(offerId), buyerId, sellerId: offer.userId, status: 'NEGOTIATION' },
+      update: {},
+    });
+
     const bid = await prisma.bid.create({
       data: {
-        offerId: parseInt(offerId, 10),
-        buyerId: parseInt(String(dbUserId || currentUserEmail), 10),
-        senderId: parseInt(String(offer.userId || currentUserEmail), 10),
+        dealId: deal.id,
+        senderId: buyerId,
         amount: Number(amount),
-        financing: financing,
+        message: financing ? `Finansowanie: ${String(financing)}` : null,
         status: 'PENDING'
       }
     });
@@ -41,10 +49,9 @@ export async function POST(req: Request) {
     try {
         await prisma.dealMessage.create({
             data: {
-                dealId: `${offerId}_${dbUserId}`,
-                senderId: 'SYSTEM',
-                senderName: 'EstateOS AI',
-                text: `💰 Złożono oficjalną ofertę zakupu na kwotę: ${Number(amount).toLocaleString('pl-PL')} PLN. Finansowanie: ${financing}`
+                dealId: deal.id,
+                senderId: buyerId,
+                content: `💰 Złożono oficjalną ofertę zakupu na kwotę: ${Number(amount).toLocaleString('pl-PL')} PLN. Finansowanie: ${financing}`
             }
         });
     } catch(e) { console.log('DealMessage err', e); }
@@ -55,9 +62,10 @@ export async function POST(req: Request) {
       data: {
         userId: Number(offer.userId),
         title: '💎 Nowa Oferta Zakupu!',
-        message: `Kupiec złożył oficjalną ofertę w kwocie ${Number(amount).toLocaleString('pl-PL')} PLN (${financing === 'CASH' ? 'Gotówka' : 'Kredyt Bankowy'}) za Twoją nieruchomość. Wejdź w Lejek CRM.`,
-        type: 'BID',
-        link: `/moje-konto/crm?tab=offers`
+        body: `Kupiec złożył oficjalną ofertę w kwocie ${Number(amount).toLocaleString('pl-PL')} PLN (${financing === 'CASH' ? 'Gotówka' : 'Kredyt Bankowy'}) za Twoją nieruchomość. Wejdź w Lejek CRM.`,
+        type: 'BID_RECEIVED',
+        targetType: 'DEAL',
+        targetId: String(deal.id)
       }
     });
 

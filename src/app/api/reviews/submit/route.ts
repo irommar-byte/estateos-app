@@ -15,17 +15,18 @@ export async function POST(req: Request) {
     const user = await prisma.user.findUnique({ where: { email: session.email } });
     if (!user) return NextResponse.json({ error: "Nieautoryzowany" }, { status: 401 });
 
-    const { targetId, rating, comment } = await req.json();
+    const { targetId, rating, comment, dealId } = await req.json();
 
-    if (!targetId || !rating) {
+    if (!targetId || !rating || !dealId) {
       return NextResponse.json({ error: "Brak wymaganych danych" }, { status: 400 });
     }
 
     // 1. Zapis opinii do bazy
     const newReview = await prisma.review.create({
       data: {
+        dealId: Number(dealId),
         reviewerId: Number(user.id),
-        targetId: Number(targetId),
+        revieweeId: Number(targetId),
         rating: parseInt(rating),
         comment: comment || null
       }
@@ -36,8 +37,8 @@ export async function POST(req: Request) {
       data: {
         userId: Number(targetId),
         title: "Otrzymałeś nową opinię 💎",
-        message: `Uczestnik spotkania ocenił Cię na ${rating}/5 gwiazdek.`,
-        type: "INFO"
+        body: `Uczestnik spotkania ocenił Cię na ${rating}/5 gwiazdek.`,
+        type: "SYSTEM_ALERT"
       }
     });
 

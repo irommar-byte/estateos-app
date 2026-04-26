@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // POBIERANIE WIADOMOŚCI (GET)
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const dealId = parseInt(params.id);
+    const { id } = await context.params;
+    const dealId = parseInt(id);
     if (isNaN(dealId)) {
         return NextResponse.json({ success: false, error: 'Nieprawidłowe ID transakcji' }, { status: 400 });
     }
@@ -24,9 +26,13 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 }
 
 // WYSYŁANIE WIADOMOŚCI (POST)
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    const dealId = parseInt(params.id);
+    const { id } = await context.params;
+    const dealId = parseInt(id);
     const body = await req.json();
     const { content, senderId } = body;
 

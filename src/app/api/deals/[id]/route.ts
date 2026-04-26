@@ -3,10 +3,13 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 
-export async function GET(req, { params }) {
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
     // Next.js 15+ wymaga await na params
-    const resolvedParams = await params;
+    const resolvedParams = await context.params;
     const dealId = Number(resolvedParams.id);
     
     if (!dealId) return NextResponse.json({ success: false, error: 'Brak ID' }, { status: 400 });
@@ -40,7 +43,8 @@ export async function GET(req, { params }) {
     if (deal.buyerId !== userId && deal.sellerId !== userId) return NextResponse.json({ success: false, error: 'Odmowa dostępu' }, { status: 403 });
 
     return NextResponse.json({ success: true, deal });
-  } catch (e) {
-    return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+  } catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

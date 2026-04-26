@@ -55,8 +55,6 @@ export const radarService = {
                  score >= 70 ? '🔥 Świeża okazja' :
                                '🎯 Właśnie wpadła',
           body: `${offer.title} • ${offer.price} PLN`,
-          targetType: 'OFFER',
-          targetId: String(offer.id),
           data: { targetType: 'OFFER', targetId: String(offer.id) },
         });
 

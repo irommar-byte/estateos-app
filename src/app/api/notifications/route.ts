@@ -55,8 +55,8 @@ export async function PATCH(req: Request) {
     if (isNaN(userIdNum)) return NextResponse.json({ success: false });
 
     await prisma.notification.updateMany({
-      where: { userId: userIdNum, isRead: false },
-      data: { isRead: true }
+      where: { userId: userIdNum, readAt: null },
+      data: { readAt: new Date(), status: 'READ' }
     });
 
     return NextResponse.json({ success: true });
@@ -72,7 +72,7 @@ export async function PUT(req: Request) {
     
     await prisma.notification.update({
       where: { id },
-      data: { isRead: true }
+      data: { readAt: new Date(), status: 'READ' }
     });
     return NextResponse.json({ success: true });
   } catch (e) {

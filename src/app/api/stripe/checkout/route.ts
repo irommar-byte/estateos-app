@@ -1,18 +1,30 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { prisma } from '@/lib/prisma';
+import { cookies } from 'next/headers';
+import { decryptSession } from '@/lib/sessionUtils';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2023-10-16' as any });
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error('Missing STRIPE_SECRET_KEY');
+  }
+  return new Stripe(secretKey, { apiVersion: '2023-10-16' as any });
+}
 
 export async function POST(req: Request) {
   try {
+    const stripe = getStripeClient();
     const body = await req.json();
     const { returnUrl, cancelUrl, plan, offerPayload, offerId } = body;
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('estateos_session');
 
     // Pobieramy poprawne linki z Frontendu, by Stripe się nie wysypał
     const origin = req.headers.get('origin') || 'https://estateos.pl';
     const finalReturnUrl = returnUrl || `${origin}/moje-konto/crm`;
     const finalCancelUrl = cancelUrl || `${origin}/dodaj-oferte`;
+    const sessionData = sessionCookie ? decryptSession(sessionCookie.value) : null;
+    const customerEmail = sessionData?.email || undefined;
 
     let productName = 'EstateOS Agencja PRO';
     let productDesc = 'Nielimitowane ogłoszenia, Import XML, Zlecenia Concierge i Radar Inwestorski.';
@@ -52,6 +64,7 @@ export async function POST(req: Request) {
       }],
       mode: 'payment',
       metadata: metadata,
+      customer_email: customerEmail,
       success_url: `${finalReturnUrl}?payment_success=true&plan_activated=${plan}`,
       cancel_url: finalCancelUrl,
     });

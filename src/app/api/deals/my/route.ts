@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 
-export async function GET(req) {
+export async function GET(req: Request) {
   try {
     const cookieStore = await cookies();
     // Szukamy naszych nowych, mocnych ciasteczek
@@ -37,8 +37,9 @@ export async function GET(req) {
     }));
 
     return NextResponse.json({ success: true, deals: formattedDeals });
-  } catch (e) {
+  } catch (e: unknown) {
     console.error("🔥 BŁĄD API POKOI:", e);
-    return NextResponse.json({ success: false, error: 'Błąd serwera: ' + e.message }, { status: 500 });
+    const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: 'Błąd serwera: ' + errorMessage }, { status: 500 });
   }
 }

@@ -20,18 +20,19 @@ export async function GET() {
       where: {
         status: 'ACCEPTED',
         proposedDate: { lt: new Date() },
-        OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }]
+        deal: { OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }] }
       },
+      include: { deal: true },
       orderBy: { proposedDate: 'desc' },
       take: 5 // Sprawdzamy 5 ostatnich
     });
 
     for (const app of pastAppointments) {
-      const targetId = app.buyerId === Number(user.id) ? app.sellerId : app.buyerId;
+      const targetId = app.deal.buyerId === Number(user.id) ? app.deal.sellerId : app.deal.buyerId;
       
       // Sprawdzamy, czy użytkownik już wystawił opinię za to spotkanie
       const existingReview = await prisma.review.findFirst({
-        where: { reviewerId: Number(user.id), targetId: Number(targetId) }
+        where: { reviewerId: Number(user.id), dealId: app.dealId }
       });
 
       if (!existingReview) {
@@ -41,6 +42,7 @@ export async function GET() {
           return NextResponse.json({
             pending: {
               appId: app.id,
+              dealId: app.dealId,
               targetId: Number(targetId),
               targetName: targetUser.name || targetUser.email.split('@')[0],
               date: app.proposedDate

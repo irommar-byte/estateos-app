@@ -24,9 +24,8 @@ export async function POST(req: Request) {
       select: { id: true, phone: true, searchType: true, searchDistricts: true, searchMaxPrice: true, searchAreaFrom: true, searchAmenities: true }
     });
 
-    const offerPrice = Number(String(offer.price || '0').replace(/\D/g, ''));
-    const offerArea = Number(String(offer.area || '0').replace(/,/g, '.').replace(/[^0-9.]/g, ''));
-    const offerAmenities = offer.amenities ? offer.amenities.split(',').map(a => a.trim()) : [];
+    const offerPrice = Number(offer.price || 0);
+    const offerArea = Number(offer.area || 0);
 
     let sentCount = 0;
 
@@ -39,11 +38,8 @@ export async function POST(req: Request) {
       }
       if (radar.searchMaxPrice && offerPrice > radar.searchMaxPrice) continue;
       if (radar.searchAreaFrom && offerArea < radar.searchAreaFrom) continue;
-      if (radar.searchAmenities && radar.searchAmenities.length > 0) {
-         const reqAmenities = radar.searchAmenities.split(',').map(a => a.trim());
-         const hasAll = reqAmenities.every(a => offerAmenities.includes(a));
-         if (!hasAll) continue;
-      }
+      // Schema oferty ma flagi boolean zamiast pola amenities CSV.
+      // Na tym etapie pomijamy twarde filtrowanie amenities, by nie blokować matchingu.
 
       // MATCH! Wysyłamy SMS
       if (radar.phone) {
@@ -58,7 +54,7 @@ export async function POST(req: Request) {
           await fetch('https://api2.smsplanet.pl/sms', {
             method: 'POST',
             headers: {
-              'Authorization': 'Bearer BW936z97108280b73b5343b99b67b8d87488c529',
+              'Authorization': `Bearer ${process.env.SMSPLANET_BEARER || ''}`,
               'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: params

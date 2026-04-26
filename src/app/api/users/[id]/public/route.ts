@@ -13,7 +13,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // 1. Pobieranie użytkownika (User.id to Int)
         const user = await prisma.user.findFirst({
             where: { id: userIdNum },
-            select: { id: true, name: true, buyerType: true, createdAt: true, email: true }
+            select: { id: true, name: true, planType: true, createdAt: true, email: true }
         });
 
         if (!user) return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
@@ -21,18 +21,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // 2. Pobieranie ofert (Offer.userId to Int)
         const offers = await prisma.offer.findMany({
             where: { userId: user.id },
-            select: { id: true, title: true, price: true, images: true, address: true, district: true }
+            select: { id: true, title: true, price: true, images: true, district: true, city: true, street: true, buildingNumber: true }
         });
 
-        // 3. Pobieranie opinii (Review.targetId to String)
+        // 3. Pobieranie opinii
         const reviews = await prisma.review.findMany({
-            where: { targetId: Number(user.id) },
+            where: { revieweeId: Number(user.id) },
             orderBy: { createdAt: 'desc' }
         });
 
-        // 4. Pobieranie statystyk (Appointment.buyerId / sellerId to String)
+        // 4. Pobieranie statystyk
         const appointments = await prisma.appointment.findMany({
-            where: { OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }] },
+            where: { deal: { OR: [{ buyerId: Number(user.id) }, { sellerId: Number(user.id) }] } },
             select: { status: true }
         });
 
@@ -40,16 +40,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             user: {
                 id: user.id,
                 name: user.name || (user.email ? user.email.split('@')[0] : 'Użytkownik'),
-                type: user.buyerType,
+                type: user.planType === 'AGENCY' ? 'agency' : 'private',
                 memberSince: user.createdAt
             },
             offers,
             reviews,
             stats: {
                 totalAppointments: appointments.length,
-                completed: appointments.filter(a => a.status === 'COMPLETED').length,
-                excused: appointments.filter(a => ['CANCELED', 'DECLINED'].includes(a.status)).length,
-                noShow: appointments.filter(a => a.status === 'NO_SHOW').length
+                completed: appointments.filter(a => a.status === 'ACCEPTED').length,
+                excused: appointments.filter(a => a.status === 'DECLINED').length,
+                noShow: 0
             }
         });
     } catch (e) {

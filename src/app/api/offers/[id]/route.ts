@@ -19,14 +19,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const sessionCookie = cookieStore.get('estateos_session');
 
     if (sessionCookie) {
-      try { loggedInEmail = decryptSession(sessionCookie.value).email; } 
-      catch (e) { loggedInEmail = sessionCookie.value; }
+      const sessionData = decryptSession(sessionCookie.value);
+      loggedInEmail = sessionData?.email || null;
     }
 
     if (loggedInEmail) {
       const realUser = await prisma.user.findUnique({ where: { email: loggedInEmail } });
       if (realUser) {
-        isRealPro = realUser.isPro || realUser.role === 'ADMIN';
+        const proExpiresAt = realUser.proExpiresAt ? new Date(realUser.proExpiresAt) : null;
+        isRealPro = Boolean(
+          realUser.role === 'ADMIN' ||
+          (realUser.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
+        );
       }
     }
 
