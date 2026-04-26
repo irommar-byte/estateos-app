@@ -392,6 +392,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     startLuxuryOrbit(lngLat);
   }, [data.lat, data.lng]);
 
+  useEffect(() => {
+    if (currentStep !== 2 || !mapInstance.current) return;
+    const id = window.setTimeout(() => {
+      mapInstance.current?.resize();
+      if (data.lat && data.lng) {
+        mapInstance.current?.easeTo({
+          center: [Number(data.lng), Number(data.lat)],
+          zoom: 14.8,
+          pitch: 62,
+          duration: 700,
+        });
+      }
+    }, 120);
+    return () => window.clearTimeout(id);
+  }, [currentStep, data.lat, data.lng]);
+
   const handleSubmit = async () => {
     if (isSubmitting || !canPublish) return;
     setIsSubmitting(true);
@@ -1111,7 +1127,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   type="button"
                   onClick={nextStep}
                   disabled={!canAdvanceStep(currentStep)}
-                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${canAdvanceStep(currentStep) ? 'border-emerald-300/70 text-black bg-gradient-to-r from-emerald-300 to-emerald-500 hover:brightness-110 shadow-[0_10px_20px_rgba(16,185,129,0.25)]' : 'border-white/10 text-white/25 cursor-not-allowed'}`}
+                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
+                    canAdvanceStep(currentStep)
+                      ? 'border-emerald-300/70 text-black bg-gradient-to-r from-emerald-300 to-emerald-500 hover:from-emerald-400 hover:to-emerald-500 hover:shadow-[0_0_24px_rgba(16,185,129,0.45)] hover:-translate-y-[1px]'
+                      : 'border-white/20 text-white/55 bg-white/5 cursor-not-allowed'
+                  }`}
                 >
                   Dalej
                 </button>
