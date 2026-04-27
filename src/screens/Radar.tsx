@@ -39,7 +39,7 @@ const formatPriceMarker = (price: string | number) => {
   return num.toString();
 };
 
-export default function Radar({ theme }: any) {
+export default function Radar({ theme, route }: any) {
   const playRadarSound = async () => {
     try {
       const { sound } = await Audio.Sound.createAsync(
@@ -124,6 +124,13 @@ export default function Radar({ theme }: any) {
       radarIndicatorOpacity.setValue(0);
     }
   }, [isRadarActive]);
+
+  useEffect(() => {
+    if (!route?.params?.openCalibration) return;
+    setDraftFilters(filters);
+    setShowCalibration(true);
+    navigation.setParams?.({ openCalibration: false });
+  }, [route?.params?.openCalibration, filters, navigation]);
 
   const fetchOffers = async () => {
     setLoading(true);

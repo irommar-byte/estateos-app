@@ -20,6 +20,8 @@ interface User {
   avatar?: string;
   role: string;
   planType: string | null;
+  isPro?: boolean;
+  proExpiresAt?: string | null;
   isVerifiedPhone?: boolean;
 }
 
@@ -33,6 +35,7 @@ interface AuthState {
   login: (email: string, pass: string) => Promise<boolean>;
   register: (email: string, pass: string, fName: string, lName: string, phone: string, role: string) => Promise<boolean>;
   loginWithPasskey: () => Promise<boolean>;
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
   updateAvatar: (base64Image: string) => Promise<void>;
@@ -52,6 +55,13 @@ const normalizeUser = (apiUser: any) => {
     avatar: apiUser.image || apiUser.avatar || null,
     isVerifiedPhone: apiUser.isVerified === true || apiUser.phoneVerified === true || false
   };
+};
+
+const normalizeToken = (rawToken: string | null | undefined) => {
+  if (!rawToken) return null;
+  const trimmed = String(rawToken).trim();
+  if (!trimmed) return null;
+  return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -83,9 +93,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!response.ok) throw new Error(data.error || 'Błąd logowania');
       
       const normUser = normalizeUser(data.user);
-      await AsyncStorage.setItem('mobile_token', data.token);
+      const normalizedToken = normalizeToken(data.token);
+      if (!normalizedToken) throw new Error('Nie otrzymano poprawnego tokena logowania');
+      await AsyncStorage.setItem('mobile_token', normalizedToken);
       await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
-      set({ user: normUser, token: data.token, isLoading: false });
+      set({ user: normUser, token: normalizedToken, isLoading: false });
+      await get().refreshUser();
       return true;
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
@@ -141,9 +154,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       
       if (data && data.token) {
         const normUser = normalizeUser(data.user);
-        await AsyncStorage.setItem('mobile_token', data.token);
+        const normalizedToken = normalizeToken(data.token);
+        if (!normalizedToken) throw new Error('Nie otrzymano poprawnego tokena passkey');
+        await AsyncStorage.setItem('mobile_token', normalizedToken);
         await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
-        set({ user: normUser, token: data.token, isLoading: false });
+        set({ user: normUser, token: normalizedToken, isLoading: false });
+        await get().refreshUser();
         return true; 
       }
       
@@ -152,6 +168,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
       return false;
+    }
+  },
+
+  refreshUser: async () => {
+    const { token, user } = get();
+    if (!token || !user?.id) return;
+    try {
+      const res = await fetch('https://estateos.pl/api/mobile/v1/auth', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok && data?.user) {
+        const refreshed = normalizeUser(data.user);
+        set({ user: refreshed });
+        await AsyncStorage.setItem('user_data', JSON.stringify(refreshed));
+      }
+    } catch (e) {
+      console.log('Refresh user error', e);
     }
   },
 
@@ -164,7 +199,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   restoreSession: async () => {
     try {
-      const token = await AsyncStorage.getItem('mobile_token');
+      const token = normalizeToken(await AsyncStorage.getItem('mobile_token'));
       const userData = await AsyncStorage.getItem('user_data');
       const radarState = await AsyncStorage.getItem('@estateos_radar_active');
       
@@ -174,6 +209,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: normalizeUser(JSON.parse(userData)),
           isRadarActive: radarState === '1'
         });
+        await get().refreshUser();
       }
     } catch (e) {
       console.log("Restore session error", e);

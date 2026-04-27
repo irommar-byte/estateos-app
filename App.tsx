@@ -30,6 +30,7 @@ import { useAuthStore } from './src/store/useAuthStore';
 import AppleHover from './src/components/AppleHover';
 
 import Radar from './src/screens/Radar';
+import RadarHomeScreen from './src/screens/RadarHomeScreen';
 import Step1_Type from './src/screens/AddOffer/Step1_Type';
 import Step2_Location from './src/screens/AddOffer/Step2_Location';
 import Step3_Parameters from './src/screens/AddOffer/Step3_Parameters';
@@ -153,7 +154,7 @@ const FloatingNextButton = ({ onPress }: any) => {
 
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
+function MainTabs({ splashDone }: { splashDone: boolean }) {
   const restoreSession = useAuthStore(state => state.restoreSession);
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
@@ -172,10 +173,23 @@ function MainTabs() {
       tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } 
     }}>
       <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>
-        {() => <Radar theme={currentColors} />}
+        {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
+      </Tab.Screen>
+      <Tab.Screen
+        name="Ulubione"
+        initialParams={{ favoritesOnly: true }}
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
+      >
+        {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>
       <Tab.Screen name="Dodaj" options={{ tabBarLabel: '', tabBarButton: (props) => <FloatingNextButton {...props} /> }}>
         {() => <AddOfferNavigator theme={currentColors} />}
+      </Tab.Screen>
+      <Tab.Screen
+        name="Wiadomości"
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="chatbubble-ellipses" size={23} color={color} /> }}
+      >
+        {() => <DealroomListScreen />}
       </Tab.Screen>
       <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>
         {() => <ProfileScreen theme={currentColors} />}
@@ -216,7 +230,12 @@ export default function App() {
         <NavigationContainer ref={navigationRef} theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
           <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
           <AppStack.Navigator screenOptions={{ headerShown: false }}>
-            <AppStack.Screen name="MainTabs" component={MainTabs} />
+            <AppStack.Screen name="MainTabs">
+              {() => <MainTabs splashDone={!isSplashVisible} />}
+            </AppStack.Screen>
+            <AppStack.Screen name="RadarLegacy">
+              {(props) => <Radar {...props} theme={Colors[resolvedTheme]} />}
+            </AppStack.Screen>
             <AppStack.Screen name="OfferDetail" component={OfferDetail} />
             <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
             <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />

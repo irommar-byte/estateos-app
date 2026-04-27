@@ -32,6 +32,31 @@ const StatusIcon = ({ status }: { status: string }) => {
   );
 };
 
+/** Ikona oka — przełącza podgląd wpisywanego hasła (logowanie, rejestracja, reset). */
+function PasswordEyeToggle({
+  revealed,
+  onToggle,
+  iconColor,
+}: {
+  revealed: boolean;
+  onToggle: () => void;
+  iconColor: string;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.selectionAsync();
+        onToggle();
+      }}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      accessibilityRole="button"
+      accessibilityLabel={revealed ? 'Ukryj hasło' : 'Pokaż hasło'}
+    >
+      <Ionicons name={revealed ? 'eye-off-outline' : 'eye-outline'} size={22} color={iconColor} />
+    </Pressable>
+  );
+}
+
 // --- ANIMOWANY CHECKBOX Z EFEKTEM GLOW ---
 const PremiumCheckbox = ({ checked, onPress, onReadTerms, theme }: any) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -68,6 +93,7 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newPasswordVisible, setNewPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const isDark = theme.glass === 'dark';
@@ -75,7 +101,13 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
   const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
 
   useEffect(() => {
-    if (!visible) { setStep(1); setEmail(''); setOtp(''); setNewPassword(''); }
+    if (!visible) {
+      setStep(1);
+      setEmail('');
+      setOtp('');
+      setNewPassword('');
+      setNewPasswordVisible(false);
+    }
   }, [visible]);
 
   const handleSendEmailCode = async () => {
@@ -146,8 +178,20 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
                 </View>
                 <View style={[styles.divider, { backgroundColor: cardBorder }]} />
                 <View style={styles.inputRow}>
-                  <Ionicons name="key-outline" size={20} color={theme.subtitle} style={{marginRight: 10}} />
-                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Nowe hasło" secureTextEntry placeholderTextColor={theme.subtitle} value={newPassword} onChangeText={setNewPassword} />
+                  <Ionicons name="key-outline" size={20} color={theme.subtitle} style={{ marginRight: 10 }} />
+                  <TextInput
+                    style={[styles.input, { color: theme.text, flex: 1 }]}
+                    placeholder="Nowe hasło"
+                    secureTextEntry={!newPasswordVisible}
+                    placeholderTextColor={theme.subtitle}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                  />
+                  <PasswordEyeToggle
+                    revealed={newPasswordVisible}
+                    onToggle={() => setNewPasswordVisible((v) => !v)}
+                    iconColor={theme.subtitle}
+                  />
                 </View>
               </View>
               <Pressable onPress={handleFinalReset} style={[styles.mainButton, { backgroundColor: '#10b981', marginTop: 20 }]}>
@@ -169,6 +213,7 @@ export default function AuthScreen({ theme }: { theme: any }) {
   const [role, setRole] = useState<'PRIVATE' | 'PARTNER'>('PRIVATE');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -246,6 +291,10 @@ export default function AuthScreen({ theme }: { theme: any }) {
     }, 600);
     return () => clearTimeout(timer);
   }, [phone, isLogin]);
+
+  useEffect(() => {
+    setPasswordVisible(false);
+  }, [isLogin]);
 
   const handleSubmit = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -424,7 +473,21 @@ export default function AuthScreen({ theme }: { theme: any }) {
             </View>
             <View style={[styles.divider, { backgroundColor: dividerColor }]} />
             <View style={styles.inputRow}>
-              <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Hasło" secureTextEntry placeholderTextColor={theme.subtitle} value={password} onChangeText={setPassword} />
+              <TextInput
+                style={[styles.input, { color: theme.text, flex: 1 }]}
+                placeholder="Hasło"
+                secureTextEntry={!passwordVisible}
+                placeholderTextColor={theme.subtitle}
+                value={password}
+                onChangeText={setPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <PasswordEyeToggle
+                revealed={passwordVisible}
+                onToggle={() => setPasswordVisible((v) => !v)}
+                iconColor={theme.subtitle}
+              />
             </View>
           </View>
 

@@ -1,0 +1,1305 @@
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  interpolate,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
+
+const { width, height } = Dimensions.get('window');
+
+const RR_BLACK = '#040405';
+const RR_GRAPHITE = '#101014';
+const RR_GOLD = '#c9b07d';
+const RR_GOLD_SOFT = 'rgba(201, 176, 125, 0.45)';
+const RR_IVORY = '#ebe7df';
+
+const RADAR_SIZE = Math.min(width, height) * 0.44;
+
+/** Fazy: skan → błysk → liczba → komunikat → trybiki (spin → zazębienie) → marka → 2 s → kinowe wyjście */
+const PHASE_SCAN_MS = 4600;
+const COUNT_SHOW_DELAY_MS = 160;
+const MESSAGE_AFTER_COUNT_MS = 1500;
+const GEARS_AFTER_MSG_MS = 380;
+
+const GEARS_SPIN_MS = 1600;
+const GEARS_MERGE_MS = 780;
+const GEAR_LOCK_PAD_MS = 140;
+const BRAND_REVEAL_AFTER_LOCK_MS = 160;
+const BRAND_HOLD_MS = 2000;
+const CINEMATIC_OUT_MS = 720;
+
+const GEARS_PHASE_START_MS =
+  PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS + GEARS_AFTER_MSG_MS;
+
+/** Kiedy pojawia się zielony blok EstateOS / Status (ms od startu rytuału). */
+const BRAND_VISIBLE_AT_MS =
+  GEARS_PHASE_START_MS +
+  GEARS_SPIN_MS +
+  GEARS_MERGE_MS +
+  GEAR_LOCK_PAD_MS +
+  BRAND_REVEAL_AFTER_LOCK_MS;
+
+const STATUS_GREEN = '#34C759';
+
+/** Złoto pod trybiki (Ionicons + cień — efekt „błysku”). */
+const GOLD_COG = '#F4E8CC';
+const GOLD_COG_SHADOW = '#C9A227';
+
+/** ~1 obrót na czas skanu — snop trafia w rozmieszczone „celowniki”. */
+const SWEEP_MS_PER_TURN = 5200;
+
+/** Szerokość śladu kolistego (stopnie). */
+const TRAIL_SECTOR_DEG = 40;
+
+const BLIP_COUNT = 8;
+
+/**
+ * Nierównomierne „radarowe” rozmieszczenie — nie jak indeksy zegara.
+ * distMul × (promień tarczy) = odległość od środka (losowy rozrzut).
+ */
+const BLIP_SCATTER: { angleDeg: number; distMul: number }[] = [
+  { angleDeg: 43, distMul: 0.74 },
+  { angleDeg: 118, distMul: 0.66 },
+  { angleDeg: 171, distMul: 0.81 },
+  { angleDeg: 229, distMul: 0.69 },
+  { angleDeg: 287, distMul: 0.77 },
+  { angleDeg: 338, distMul: 0.64 },
+  { angleDeg: 89, distMul: 0.84 },
+  { angleDeg: 204, distMul: 0.71 },
+];
+
+/** Kąty detekcji snopa (deg) — zsynchronizowane z BLIP_SCATTER */
+const BLIP_DETECT_ANGLES = BLIP_SCATTER.map((b) => b.angleDeg);
+
+const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+function polarFromTop(cx: number, cy: number, r: number, deg: number) {
+  const rad = (deg * Math.PI) / 180;
+  return {
+    x: cx + r * Math.sin(rad),
+    y: cy - r * Math.cos(rad),
+  };
+}
+
+/** Sektor „kawałek tortu”: kąty od góry (12:00), rośnie zgodnie ze snopem. */
+function sectorPiePath(cx: number, cy: number, r: number, degStart: number, degEnd: number): string {
+  const p1 = polarFromTop(cx, cy, r, degStart);
+  const p2 = polarFromTop(cx, cy, r, degEnd);
+  let sweep = degEnd - degStart;
+  while (sweep <= 0) sweep += 360;
+  while (sweep > 360) sweep -= 360;
+  const largeArc = sweep > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+}
+
+type Props = {
+  visible: boolean;
+  cityLabel: string;
+  transactionType: 'RENT' | 'SELL';
+  matchingOffersCount: number;
+  onComplete: () => void;
+};
+
+const STAR_SEEDS = Array.from({ length: 56 }, (_, i) => ({
+  id: i,
+  x: ((i * 9301 + 49297) % 233280) / 233280,
+  y: ((i * 7919 + 15485863) % 233280) / 233280,
+  s: 0.6 + (((i * 17) % 40) / 100),
+}));
+
+function Star({
+  x,
+  y,
+  size,
+  phase,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  phase: SharedValue<number>;
+}) {
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      phase.value,
+      [0, 0.35, 0.7, 1],
+      [0, 0.12 + (x + y) * 0.15, 0.45 + x * 0.2, 0.18],
+      'clamp'
+    ),
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.starDot,
+        {
+          left: x * width,
+          top: y * height * 0.72,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+function RadarTicks({ radius }: { radius: number }) {
+  const tickLen = radius * 0.44;
+  const tickTop = radius * 0.06;
+  return (
+    <View style={[styles.tickLayer, { width: radius, height: radius }]} pointerEvents="none">
+      {TICK_DEGREES.map((deg) => (
+        <View
+          key={deg}
+          style={[
+            styles.tickArm,
+            {
+              width: radius,
+              height: radius,
+              transform: [{ rotate: `${deg}deg` }],
+            },
+          ]}
+        >
+          <View style={[styles.tickMark, { height: tickLen, marginTop: tickTop }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Ślad kolisty (sektor SVG), obracany razem ze snopem — nie prostokąt. */
+function GoldGearIcon({ size = 46 }: { size?: number }) {
+  return (
+    <View style={[styles.goldCogStack, { width: size + 8, height: size + 8 }]} pointerEvents="none">
+      <Ionicons
+        name="cog"
+        size={size}
+        color="rgba(40,32,18,0.55)"
+        style={[styles.goldCogLayer, { transform: [{ translateX: 1.2 }, { translateY: 1.4 }] }]}
+      />
+      <Ionicons
+        name="cog"
+        size={size}
+        color={GOLD_COG}
+        style={[
+          styles.goldCogLayer,
+          {
+            textShadowColor: GOLD_COG_SHADOW,
+            textShadowOffset: { width: 0, height: 0 },
+            textShadowRadius: 14,
+          },
+        ]}
+      />
+    </View>
+  );
+}
+
+function SweepTrailPie({
+  radarSize,
+  accentMid,
+  accentBright,
+}: {
+  radarSize: number;
+  accentMid: string;
+  accentBright: string;
+}) {
+  const cx = radarSize / 2;
+  const cy = radarSize / 2;
+  const rr = radarSize / 2 - 8;
+  const d = sectorPiePath(cx, cy, rr, -TRAIL_SECTOR_DEG, 0);
+  return (
+    <Svg width={radarSize} height={radarSize} style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient
+          id="trailPieCalibGrad"
+          x1={cx}
+          y1={cy}
+          x2={cx + rr * 0.85}
+          y2={cy - rr * 0.85}
+          gradientUnits="userSpaceOnUse"
+        >
+          <Stop offset="0" stopColor={accentBright} stopOpacity={0.95} />
+          <Stop offset="0.45" stopColor={accentMid} stopOpacity={0.5} />
+          <Stop offset="1" stopColor={accentBright} stopOpacity={0} />
+        </SvgLinearGradient>
+      </Defs>
+      <Path d={d} fill="url(#trailPieCalibGrad)" />
+    </Svg>
+  );
+}
+
+function RadarBlip({
+  center,
+  angleDeg,
+  dist,
+  opacitySv,
+}: {
+  center: number;
+  angleDeg: number;
+  dist: number;
+  opacitySv: SharedValue<number>;
+}) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const left = center + dist * Math.sin(rad) - 6;
+  const top = center - dist * Math.cos(rad) - 6;
+  const style = useAnimatedStyle(() => ({
+    opacity: opacitySv.value,
+    transform: [{ scale: interpolate(opacitySv.value, [0, 1], [0.25, 1]) }],
+  }));
+  return (
+    <Animated.View style={[styles.blipWrap, { left, top }, style]} pointerEvents="none">
+      <View style={styles.blipGlow} />
+      <View style={styles.blipCore} />
+    </Animated.View>
+  );
+}
+
+function OfferCount3D({
+  count,
+  accentHex,
+  scale,
+  opacity,
+}: {
+  count: number;
+  accentHex: string;
+  scale: SharedValue<number>;
+  opacity: SharedValue<number>;
+}) {
+  const wrapStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+  const label = String(Math.max(0, count));
+  const fs = label.length > 2 ? 76 : 96;
+  const textW = width;
+  return (
+    <Animated.View style={[styles.countStage, wrapStyle]}>
+      <Text style={[styles.countDeep, { fontSize: fs, width: textW, textAlign: 'center' }]}>{label}</Text>
+      <Text style={[styles.countShadow, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
+      <Text style={[styles.countBody, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
+      <Text style={[styles.countSheen, { fontSize: fs * 0.92, width: textW, textAlign: 'center' }]}>{label}</Text>
+      <Text style={[styles.countCaption, { width: textW, textAlign: 'center' }]}>ofert na mapie</Text>
+    </Animated.View>
+  );
+}
+
+export default function RadarCalibrationRitualOverlay({
+  visible,
+  cityLabel,
+  transactionType,
+  matchingOffersCount,
+  onComplete,
+}: Props) {
+  const completeRef = useRef(onComplete);
+  completeRef.current = onComplete;
+  const radarSoundRef = useRef<Audio.Sound | null>(null);
+
+  const sweep = useSharedValue(0);
+  const pulse = useSharedValue(0);
+  const vignette = useSharedValue(0);
+  const line1 = useSharedValue(0);
+  const line2 = useSharedValue(0);
+  const line3 = useSharedValue(0);
+  const phase = useSharedValue(0);
+
+  const scanActive = useSharedValue(0);
+  const dotMask = useSharedValue(0);
+  const dotOp0 = useSharedValue(0);
+  const dotOp1 = useSharedValue(0);
+  const dotOp2 = useSharedValue(0);
+  const dotOp3 = useSharedValue(0);
+  const dotOp4 = useSharedValue(0);
+  const dotOp5 = useSharedValue(0);
+  const dotOp6 = useSharedValue(0);
+  const dotOp7 = useSharedValue(0);
+
+  const radarGroupOpacity = useSharedValue(1);
+  const flashOpacity = useSharedValue(0);
+  const dustOpacity = useSharedValue(0);
+  const countScale = useSharedValue(0.12);
+  const countOpacity = useSharedValue(0);
+  const calibMsgOpacity = useSharedValue(0);
+  const gearsOpacity = useSharedValue(0);
+  const gearRotL = useSharedValue(0);
+  const gearRotR = useSharedValue(0);
+  const gearSepL = useSharedValue(0);
+  const gearSepR = useSharedValue(0);
+  const brandOpacity = useSharedValue(0);
+  const exitOpacity = useSharedValue(1);
+  const exitScale = useSharedValue(1);
+
+  const accentHex = transactionType === 'RENT' ? '#0A84FF' : '#34C759';
+  const trailB = transactionType === 'RENT' ? 'rgba(10,132,255,0.55)' : 'rgba(52,199,89,0.58)';
+  const trailC = transactionType === 'RENT' ? 'rgba(40,160,255,0.95)' : 'rgba(80,230,125,0.95)';
+
+  const triggerBlip = useCallback((idx: number) => {
+    Haptics.selectionAsync();
+    const ops = [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7];
+    const op = ops[idx];
+    if (op) op.value = withSpring(1, { damping: 15, stiffness: 280 });
+  }, [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7]);
+
+  useAnimatedReaction(
+    () => sweep.value,
+    (sv) => {
+      if (scanActive.value === 0) return;
+      const ang = ((sv % 360) + 360) % 360;
+      for (let i = 0; i < BLIP_COUNT; i++) {
+        const target = BLIP_DETECT_ANGLES[i];
+        const diff = Math.abs(ang - target);
+        const dist = Math.min(diff, 360 - diff);
+        const bit = 1 << i;
+        if (dist < 5.5 && (dotMask.value & bit) === 0) {
+          dotMask.value |= bit;
+          runOnJS(triggerBlip)(i);
+        }
+      }
+    },
+    [triggerBlip]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      sweep.value = 0;
+      pulse.value = 0;
+      vignette.value = 0;
+      line1.value = 0;
+      line2.value = 0;
+      line3.value = 0;
+      phase.value = 0;
+      scanActive.value = 0;
+      dotMask.value = 0;
+      dotOp0.value = 0;
+      dotOp1.value = 0;
+      dotOp2.value = 0;
+      dotOp3.value = 0;
+      dotOp4.value = 0;
+      dotOp5.value = 0;
+      dotOp6.value = 0;
+      dotOp7.value = 0;
+      radarGroupOpacity.value = 1;
+      flashOpacity.value = 0;
+      dustOpacity.value = 0;
+      countScale.value = 0.12;
+      countOpacity.value = 0;
+      calibMsgOpacity.value = 0;
+      gearsOpacity.value = 0;
+      gearRotL.value = 0;
+      gearRotR.value = 0;
+      gearSepL.value = 0;
+      gearSepR.value = 0;
+      brandOpacity.value = 0;
+      exitOpacity.value = 1;
+      exitScale.value = 1;
+      cancelAnimation(sweep);
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+    scanActive.value = 1;
+    dotMask.value = 0;
+    dotOp0.value = 0;
+    dotOp1.value = 0;
+    dotOp2.value = 0;
+    dotOp3.value = 0;
+    dotOp4.value = 0;
+    dotOp5.value = 0;
+    dotOp6.value = 0;
+    dotOp7.value = 0;
+
+    sweep.value = 0;
+    sweep.value = withRepeat(
+      withTiming(360, { duration: SWEEP_MS_PER_TURN, easing: Easing.linear }),
+      -1,
+      false
+    );
+
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 2200, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }),
+        withTiming(0.35, { duration: 2600, easing: Easing.bezier(0.22, 0.01, 0.2, 1) })
+      ),
+      -1,
+      true
+    );
+    vignette.value = withTiming(1, { duration: 900, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+    phase.value = withTiming(1, { duration: PHASE_SCAN_MS, easing: Easing.linear });
+
+    line1.value = withDelay(200, withTiming(1, { duration: 900, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
+    line2.value = withDelay(800, withTiming(1, { duration: 1000, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
+    line3.value = withDelay(1500, withTiming(1, { duration: 800, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
+
+    const tScanEnd = setTimeout(() => {
+      scanActive.value = 0;
+      cancelAnimation(sweep);
+      radarGroupOpacity.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
+
+      flashOpacity.value = withSequence(
+        withTiming(1, { duration: 70 }),
+        withTiming(1, { duration: 120 }),
+        withTiming(0.72, { duration: 280 }),
+        withTiming(0, { duration: 420 })
+      );
+
+      dustOpacity.value = withSequence(
+        withDelay(80, withTiming(0.55, { duration: 220 })),
+        withTiming(0.22, { duration: 380 }),
+        withTiming(0, { duration: 420 })
+      );
+
+      countOpacity.value = withDelay(160, withTiming(1, { duration: 140 }));
+      countScale.value = 0.14;
+      countScale.value = withDelay(
+        160,
+        withSpring(1, { damping: 13.5, stiffness: 210, mass: 0.82 })
+      );
+    }, PHASE_SCAN_MS);
+
+    const tImpact = setTimeout(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, PHASE_SCAN_MS + 520);
+
+    const tCalibMsg = setTimeout(() => {
+      calibMsgOpacity.value = withTiming(1, {
+        duration: 520,
+        easing: Easing.bezier(0.22, 0.01, 0.2, 1),
+      });
+    }, PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS);
+
+    const tGearsSpin = setTimeout(() => {
+      gearsOpacity.value = withTiming(1, { duration: 340 });
+      gearSepL.value = -27;
+      gearSepR.value = 27;
+      gearRotL.value = 0;
+      gearRotR.value = 0;
+      gearRotL.value = withTiming(3120, {
+        duration: GEARS_SPIN_MS,
+        easing: Easing.linear,
+      });
+      gearRotR.value = withTiming(-3120, {
+        duration: GEARS_SPIN_MS,
+        easing: Easing.linear,
+      });
+    }, GEARS_PHASE_START_MS);
+
+    const tGearsMerge = setTimeout(() => {
+      gearSepL.value = withSpring(-5, { damping: 16, stiffness: 220, mass: 0.65 });
+      gearSepR.value = withSpring(5, { damping: 16, stiffness: 220, mass: 0.65 });
+      gearRotL.value = withSpring(3240, { damping: 20, stiffness: 280 });
+      gearRotR.value = withSpring(-3255, { damping: 20, stiffness: 280 });
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      Haptics.selectionAsync();
+    }, GEARS_PHASE_START_MS + GEARS_SPIN_MS);
+
+    const tBrand = setTimeout(() => {
+      brandOpacity.value = withTiming(1, {
+        duration: 480,
+        easing: Easing.bezier(0.22, 0.01, 0.2, 1),
+      });
+    }, BRAND_VISIBLE_AT_MS);
+
+    const tCurtain = setTimeout(() => {
+      exitScale.value = withTiming(1.07, {
+        duration: CINEMATIC_OUT_MS * 0.55,
+        easing: Easing.out(Easing.cubic),
+      });
+      exitOpacity.value = withTiming(0, {
+        duration: CINEMATIC_OUT_MS,
+        easing: Easing.in(Easing.cubic),
+      });
+    }, BRAND_VISIBLE_AT_MS + BRAND_HOLD_MS);
+
+    const tDone = setTimeout(() => {
+      completeRef.current();
+    }, BRAND_VISIBLE_AT_MS + BRAND_HOLD_MS + CINEMATIC_OUT_MS);
+
+    return () => {
+      clearTimeout(tScanEnd);
+      clearTimeout(tImpact);
+      clearTimeout(tCalibMsg);
+      clearTimeout(tGearsSpin);
+      clearTimeout(tGearsMerge);
+      clearTimeout(tBrand);
+      clearTimeout(tCurtain);
+      clearTimeout(tDone);
+    };
+  }, [
+    visible,
+    sweep,
+    pulse,
+    vignette,
+    line1,
+    line2,
+    line3,
+    phase,
+    scanActive,
+    dotMask,
+    dotOp0,
+    dotOp1,
+    dotOp2,
+    dotOp3,
+    dotOp4,
+    dotOp5,
+    dotOp6,
+    dotOp7,
+    radarGroupOpacity,
+    flashOpacity,
+    dustOpacity,
+    countScale,
+    countOpacity,
+    calibMsgOpacity,
+    gearsOpacity,
+    gearRotL,
+    gearRotR,
+    gearSepL,
+    gearSepR,
+    brandOpacity,
+    exitOpacity,
+    exitScale,
+  ]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    let cancelled = false;
+
+    const playRadarCalibrationSound = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          allowsRecordingIOS: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+        const { sound } = await Audio.Sound.createAsync(require('../../assets/radar.mp3'), {
+          shouldPlay: false,
+          volume: 1,
+          isLooping: false,
+        });
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        radarSoundRef.current = sound;
+        await sound.playAsync();
+      } catch {
+        // brak pliku — OK
+      }
+    };
+
+    playRadarCalibrationSound();
+
+    return () => {
+      cancelled = true;
+      const s = radarSoundRef.current;
+      radarSoundRef.current = null;
+      if (s) {
+        s.stopAsync().catch(() => {});
+        s.unloadAsync().catch(() => {});
+      }
+    };
+  }, [visible]);
+
+  const sweepStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${sweep.value}deg` }],
+  }));
+
+  const ring1Style = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse.value, [0.35, 1], [0.22, 0.5], 'clamp'),
+    transform: [{ scale: interpolate(pulse.value, [0.35, 1], [0.96, 1.02], 'clamp') }],
+  }));
+  const ring2Style = useAnimatedStyle(() => ({
+    opacity: interpolate(pulse.value, [0.35, 1], [0.12, 0.28], 'clamp'),
+    transform: [{ scale: interpolate(pulse.value, [0.35, 1], [0.92, 1.05], 'clamp') }],
+  }));
+
+  const lineAStyle = useAnimatedStyle(() => ({
+    opacity: line1.value * radarGroupOpacity.value,
+    transform: [{ translateY: interpolate(line1.value, [0, 1], [12, 0], 'clamp') }],
+  }));
+  const lineBStyle = useAnimatedStyle(() => ({
+    opacity: line2.value * radarGroupOpacity.value,
+    transform: [{ translateY: interpolate(line2.value, [0, 1], [12, 0], 'clamp') }],
+  }));
+  const lineCStyle = useAnimatedStyle(() => ({
+    opacity: line3.value * radarGroupOpacity.value,
+    transform: [{ translateY: interpolate(line3.value, [0, 1], [10, 0], 'clamp') }],
+  }));
+
+  const vignetteStyle = useAnimatedStyle(() => ({ opacity: vignette.value * 0.95 }));
+  const radarFadeStyle = useAnimatedStyle(() => ({ opacity: radarGroupOpacity.value }));
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
+  const dustStyle = useAnimatedStyle(() => ({ opacity: dustOpacity.value }));
+  const calibMsgStyle = useAnimatedStyle(() => ({ opacity: calibMsgOpacity.value }));
+  const gearLAnim = useAnimatedStyle(() => ({
+    opacity: gearsOpacity.value,
+    transform: [{ translateX: gearSepL.value }, { rotate: `${gearRotL.value}deg` }],
+  }));
+  const gearRAnim = useAnimatedStyle(() => ({
+    opacity: gearsOpacity.value,
+    transform: [{ translateX: gearSepR.value }, { rotate: `${gearRotR.value}deg` }],
+  }));
+  const brandStyle = useAnimatedStyle(() => ({
+    opacity: brandOpacity.value,
+    transform: [{ translateY: interpolate(brandOpacity.value, [0, 1], [10, 0]) }],
+  }));
+  const finaleRootStyle = useAnimatedStyle(() => ({
+    opacity: exitOpacity.value,
+    transform: [{ scale: exitScale.value }],
+  }));
+
+  const stars = useMemo(() => STAR_SEEDS, []);
+
+  const blipOpacityByIndex = [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7];
+
+  if (!visible) return null;
+
+  const cityText = cityLabel.trim() ? cityLabel : 'Wybrana metropolia';
+  const cx = RADAR_SIZE / 2;
+
+  return (
+    <Animated.View style={[styles.fill, finaleRootStyle]} pointerEvents="auto">
+      <LinearGradient
+        colors={[RR_BLACK, RR_GRAPHITE, '#060608', RR_BLACK]}
+        locations={[0, 0.38, 0.72, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {stars.map((st) => (
+        <Star key={st.id} x={st.x} y={st.y} size={st.s} phase={phase} />
+      ))}
+
+      <Animated.View style={[styles.vignette, vignetteStyle]} pointerEvents="none">
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.88)']}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      <Animated.View style={[styles.flashBurst, flashStyle]} pointerEvents="none">
+        <LinearGradient
+          colors={['rgba(255,255,255,1)', 'rgba(250,250,252,0.96)', 'rgba(255,255,255,0.88)']}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+
+      <Animated.View style={[styles.dustLayer, dustStyle]} pointerEvents="none">
+        {STAR_SEEDS.slice(0, 24).map((st) => (
+          <View
+            key={`d-${st.id}`}
+            style={[
+              styles.dustMote,
+              {
+                left: st.x * width,
+                top: st.y * height * 0.85,
+                width: 2 + (st.id % 4),
+                height: 2 + (st.id % 4),
+                opacity: 0.35 + (st.id % 7) / 30,
+              },
+            ]}
+          />
+        ))}
+      </Animated.View>
+
+      <View style={styles.topRule}>
+        <View style={styles.ruleGold} />
+      </View>
+
+      <View style={styles.centerBlock}>
+        <Animated.View style={[radarFadeStyle, { alignItems: 'center' }]}>
+          <Text style={styles.mark}>ESTATEOS</Text>
+
+          <View style={[styles.radarPedestal, { width: RADAR_SIZE + 52, height: RADAR_SIZE + 52 }]}>
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 34 : 22}
+              tint="dark"
+              experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
+              style={[styles.radarBlurUnder, { borderRadius: (RADAR_SIZE + 52) / 2 }]}
+            />
+            <LinearGradient
+              colors={['rgba(45,42,36,0.95)', 'rgba(12,12,16,1)', 'rgba(8,8,10,1)']}
+              style={[styles.radarBezelOuter, { width: RADAR_SIZE + 44, height: RADAR_SIZE + 44, borderRadius: (RADAR_SIZE + 44) / 2 }]}
+            >
+              <View style={[styles.radarWrap, { width: RADAR_SIZE + 38, height: RADAR_SIZE + 38 }]}>
+                <Animated.View
+                  style={[
+                    styles.ringOuter,
+                    ring2Style,
+                    {
+                      width: RADAR_SIZE + 36,
+                      height: RADAR_SIZE + 36,
+                      borderRadius: (RADAR_SIZE + 36) / 2,
+                    },
+                  ]}
+                />
+                <Animated.View
+                  style={[
+                    styles.ringMid,
+                    ring1Style,
+                    {
+                      width: RADAR_SIZE + 14,
+                      height: RADAR_SIZE + 14,
+                      borderRadius: (RADAR_SIZE + 14) / 2,
+                    },
+                  ]}
+                />
+
+                <LinearGradient
+                  colors={['#4a453c', '#2c2a26', '#18181c']}
+                  start={{ x: 0.2, y: 0 }}
+                  end={{ x: 0.85, y: 1 }}
+                  style={[
+                    styles.metalBezel,
+                    {
+                      width: RADAR_SIZE + 10,
+                      height: RADAR_SIZE + 10,
+                      borderRadius: (RADAR_SIZE + 10) / 2,
+                    },
+                  ]}
+                >
+                  <View style={[styles.radarDisk, { width: RADAR_SIZE, height: RADAR_SIZE, borderRadius: RADAR_SIZE / 2 }]}>
+                    <LinearGradient
+                      colors={[
+                        'rgba(210,195,155,0.14)',
+                        'rgba(22,22,28,0.97)',
+                        'rgba(6,6,9,1)',
+                        RR_GRAPHITE,
+                      ]}
+                      locations={[0, 0.35, 0.72, 1]}
+                      start={{ x: 0.35, y: 0 }}
+                      end={{ x: 0.65, y: 1 }}
+                      style={[StyleSheet.absoluteFill, { borderRadius: RADAR_SIZE / 2 }]}
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.62)']}
+                      locations={[0, 0.45, 1]}
+                      style={[StyleSheet.absoluteFill, { borderRadius: RADAR_SIZE / 2 }]}
+                      pointerEvents="none"
+                    />
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.11)', 'transparent', 'transparent']}
+                      locations={[0, 0.35, 1]}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 0.55 }}
+                      style={[styles.rimLight, { borderRadius: RADAR_SIZE / 2 }]}
+                      pointerEvents="none"
+                    />
+                    <RadarTicks radius={RADAR_SIZE} />
+
+                    {BLIP_SCATTER.map((b, i) => (
+                      <RadarBlip
+                        key={`blip-${b.angleDeg}-${i}`}
+                        center={cx}
+                        angleDeg={b.angleDeg}
+                        dist={(RADAR_SIZE / 2) * b.distMul}
+                        opacitySv={blipOpacityByIndex[i]}
+                      />
+                    ))}
+
+                    <Animated.View
+                      style={[
+                        sweepStyle,
+                        styles.sweepSpinner,
+                        {
+                          width: RADAR_SIZE,
+                          height: RADAR_SIZE,
+                        },
+                      ]}
+                    >
+                      <SweepTrailPie radarSize={RADAR_SIZE} accentMid={trailB} accentBright={trailC} />
+                    </Animated.View>
+
+                    <Animated.View
+                      style={[
+                        sweepStyle,
+                        styles.sweepSpinner,
+                        {
+                          width: RADAR_SIZE,
+                          height: RADAR_SIZE,
+                        },
+                      ]}
+                    >
+                      <LinearGradient
+                        colors={['transparent', 'rgba(201,176,125,0.1)', 'rgba(201,176,125,0.04)', 'transparent']}
+                        start={{ x: 0.12, y: 1 }}
+                        end={{ x: 0.88, y: 0 }}
+                        style={{
+                          marginTop: RADAR_SIZE * 0.024,
+                          width: RADAR_SIZE * 0.38,
+                          height: RADAR_SIZE * 0.44,
+                          borderRadius: 8,
+                          opacity: 0.75,
+                        }}
+                      />
+                    </Animated.View>
+                    <Animated.View
+                      style={[
+                        sweepStyle,
+                        styles.sweepSpinner,
+                        {
+                          width: RADAR_SIZE,
+                          height: RADAR_SIZE,
+                        },
+                      ]}
+                    >
+                      <LinearGradient
+                        colors={['transparent', RR_GOLD_SOFT, 'rgba(255,250,240,0.55)', 'transparent']}
+                        start={{ x: 0.5, y: 1 }}
+                        end={{ x: 0.5, y: 0 }}
+                        style={[
+                          styles.sweepCore,
+                          {
+                            marginTop: RADAR_SIZE * 0.026,
+                            width: Math.max(2.5, RADAR_SIZE * 0.036),
+                            height: RADAR_SIZE * 0.46,
+                          },
+                        ]}
+                      />
+                    </Animated.View>
+                    <View
+                      style={[
+                        styles.centerDot,
+                        {
+                          position: 'absolute',
+                          left: RADAR_SIZE / 2 - 5,
+                          top: RADAR_SIZE / 2 - 5,
+                          width: 10,
+                          height: 10,
+                          borderRadius: 5,
+                        },
+                      ]}
+                    />
+                    <View
+                      pointerEvents="none"
+                      style={[
+                        styles.centerDotInner,
+                        {
+                          position: 'absolute',
+                          left: RADAR_SIZE / 2 - 2,
+                          top: RADAR_SIZE / 2 - 2,
+                          width: 4,
+                          height: 4,
+                          borderRadius: 2,
+                        },
+                      ]}
+                    />
+                  </View>
+                </LinearGradient>
+              </View>
+            </LinearGradient>
+          </View>
+        </Animated.View>
+
+        <Animated.View style={lineAStyle}>
+          <Text style={styles.headline}>Kalibracja przestrzeni</Text>
+        </Animated.View>
+        <Animated.View style={lineBStyle}>
+          <Text style={styles.subline}>{cityText}</Text>
+        </Animated.View>
+        <Animated.View style={lineCStyle}>
+          <Text style={styles.whisper}>Nasłuchiwanie rynku w toku</Text>
+        </Animated.View>
+
+        <View style={styles.countOverlay} pointerEvents="none">
+          <OfferCount3D count={matchingOffersCount} accentHex={accentHex} scale={countScale} opacity={countOpacity} />
+          <Animated.View style={[styles.calibMsgWrap, calibMsgStyle]}>
+            <Text style={styles.calibMsgTitle}>
+              Radar został poprawnie skalibrowany i jest gotowy do natychmiastowego informowania. Tryb czuwania został
+              załączony.
+            </Text>
+          </Animated.View>
+          <View style={styles.gearsRow}>
+            <Animated.View style={[styles.gearIcon, gearLAnim]}>
+              <GoldGearIcon size={48} />
+            </Animated.View>
+            <Animated.View style={[styles.gearIcon, gearRAnim]}>
+              <GoldGearIcon size={48} />
+            </Animated.View>
+          </View>
+          <Animated.View style={[styles.brandBlock, brandStyle]}>
+            <Text style={styles.brandTitle}>EstateOS™ Radar</Text>
+            <Text style={styles.brandStatus}>Status: Aktywowany</Text>
+          </Animated.View>
+        </View>
+      </View>
+
+      <View style={styles.bottomMark} pointerEvents="none">
+        <Text style={styles.bottomText}>PRECYZJA W CISZY · RADAR ESTATEOS</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  fill: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1000,
+    backgroundColor: RR_BLACK,
+  },
+  flashBurst: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1500,
+  },
+  dustLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1510,
+  },
+  dustMote: {
+    position: 'absolute',
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  starDot: {
+    position: 'absolute',
+    backgroundColor: GOLD_COG,
+    shadowColor: GOLD_COG_SHADOW,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
+    shadowRadius: 5,
+  },
+  topRule: {
+    paddingTop: Platform.OS === 'ios' ? 64 : 40,
+    alignItems: 'center',
+  },
+  ruleGold: {
+    width: 56,
+    height: 1,
+    backgroundColor: RR_GOLD,
+    opacity: 0.85,
+  },
+  centerBlock: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    marginTop: -24,
+  },
+  countOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: height * 0.07,
+    paddingHorizontal: 20,
+    zIndex: 1600,
+  },
+  calibMsgWrap: {
+    marginTop: 14,
+    maxWidth: width - 44,
+  },
+  calibMsgTitle: {
+    color: RR_IVORY,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  calibMsgAccent: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  gearsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    gap: 4,
+  },
+  gearIcon: {
+    paddingHorizontal: 6,
+  },
+  goldCogStack: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goldCogLayer: {
+    position: 'absolute',
+  },
+  brandBlock: {
+    marginTop: 18,
+    alignItems: 'center',
+  },
+  brandTitle: {
+    color: STATUS_GREEN,
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+  },
+  brandStatus: {
+    marginTop: 8,
+    color: STATUS_GREEN,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  countStage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width,
+    minHeight: 200,
+  },
+  countDeep: {
+    position: 'absolute',
+    fontWeight: '900',
+    color: 'rgba(0,0,0,0.45)',
+    letterSpacing: -3,
+    transform: [{ translateX: 5 }, { translateY: 7 }],
+  },
+  countShadow: {
+    position: 'absolute',
+    fontWeight: '900',
+    letterSpacing: -3,
+    opacity: 0.35,
+    transform: [{ translateX: 3 }, { translateY: 4 }],
+  },
+  countBody: {
+    position: 'absolute',
+    fontWeight: '900',
+    letterSpacing: -4,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 6 },
+    textShadowRadius: 18,
+  },
+  countSheen: {
+    position: 'absolute',
+    fontWeight: '900',
+    color: 'rgba(255,255,255,0.38)',
+    letterSpacing: -3,
+    transform: [{ translateX: -1.5 }, { translateY: -2 }],
+  },
+  countCaption: {
+    marginTop: 96,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 3,
+    color: 'rgba(235,231,223,0.55)',
+    textTransform: 'uppercase',
+  },
+  mark: {
+    color: RR_GOLD,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 5,
+    marginBottom: 28,
+    opacity: 0.9,
+  },
+  radarPedestal: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 36,
+    position: 'relative',
+  },
+  radarBlurUnder: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  radarBezelOuter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.58,
+    shadowRadius: 32,
+    elevation: 24,
+  },
+  metalBezel: {
+    padding: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 14,
+  },
+  radarWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rimLight: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '56%',
+  },
+  sweepSpinner: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  sweepFan: {
+    borderRadius: 7,
+    opacity: 0.94,
+  },
+  sweepCore: {
+    borderRadius: 2,
+    shadowColor: RR_GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.85,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  tickLayer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  tickArm: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  tickMark: {
+    width: 1.5,
+    backgroundColor: 'rgba(201,176,125,0.28)',
+    borderRadius: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.65,
+    shadowRadius: 2,
+  },
+  blipWrap: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  blipGlow: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,59,48,0.35)',
+  },
+  blipCore: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#FF3B30',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,220,218,0.95)',
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.95,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  centerDotInner: {
+    backgroundColor: 'rgba(255,252,245,0.95)',
+    shadowColor: '#fff',
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+  },
+  ringOuter: {
+    position: 'absolute',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(201,176,125,0.2)',
+  },
+  ringMid: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(201,176,125,0.35)',
+  },
+  radarDisk: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(235,231,223,0.22)',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    elevation: 16,
+  },
+  centerDot: {
+    backgroundColor: RR_GOLD,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,250,240,0.35)',
+    shadowColor: RR_GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.75,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  headline: {
+    color: RR_IVORY,
+    fontSize: 22,
+    fontWeight: '500',
+    letterSpacing: 1.2,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+    textShadowColor: 'rgba(0,0,0,0.65)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 14,
+  },
+  subline: {
+    marginTop: 12,
+    color: RR_GOLD,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 3,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
+  whisper: {
+    marginTop: 18,
+    color: 'rgba(235,231,223,0.42)',
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 2,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  bottomMark: {
+    paddingBottom: Platform.OS === 'ios' ? 48 : 32,
+    alignItems: 'center',
+  },
+  bottomText: {
+    color: 'rgba(235,231,223,0.22)',
+    fontSize: 9,
+    letterSpacing: 2.8,
+    fontWeight: '600',
+  },
+});

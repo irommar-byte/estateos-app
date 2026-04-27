@@ -113,5 +113,41 @@ export const PasskeyService = {
       }
       return null;
     }
-  }
+  },
+
+  revoke: async (token: string, userId: string) => {
+    const endpoints = [
+      `${API_URL}/revoke`,
+      `${API_URL}/register/revoke`,
+      `${API_URL}/delete`,
+    ];
+
+    let lastError: any = null;
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetchWithTimeout(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ userId }),
+        });
+
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : {};
+
+        if (response.ok && (data?.success !== false)) {
+          return true;
+        }
+
+        lastError = new Error(data?.error || `Revoke failed (${response.status})`);
+      } catch (e: any) {
+        lastError = e;
+      }
+    }
+
+    throw lastError || new Error('Nie udało się usunąć klucza passkey z serwera.');
+  },
 };

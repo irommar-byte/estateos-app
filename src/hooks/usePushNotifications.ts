@@ -19,8 +19,15 @@ const API_URL = 'https://estateos.pl/api/notifications/device';
 export function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
 
+  const normalizedAuthToken =
+    authToken && authToken.trim()
+      ? authToken.trim().startsWith('Bearer ')
+        ? authToken.trim().slice('Bearer '.length).trim()
+        : authToken.trim()
+      : null;
+
   const registerToken = async (showPrompt = false) => {
-    if (isRegisteredRef.current || !Device.isDevice) return false;
+    if (isRegisteredRef.current || !Device.isDevice || !normalizedAuthToken) return false;
 
     try {
       console.log("STEP 2 START"); const { status: existingStatus } = await Notifications.getPermissionsAsync(); console.log("PERMISSION:", existingStatus);
@@ -51,14 +58,6 @@ export function usePushNotifications(authToken: string | null) {
       console.log("STEP 3 START"); const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data; console.log("TOKEN RAW:", pushToken);
       if (!pushToken) return false;
 
-      const lastToken = await AsyncStorage.getItem('pushToken');
-      if (lastToken === pushToken) {
-        isRegisteredRef.current = true;
-        return true;
-      }
-
-      await AsyncStorage.setItem('pushToken', pushToken);
-
       const payload = {
         expoPushToken: pushToken,
         platform: Platform.OS.toUpperCase(),
@@ -66,17 +65,20 @@ export function usePushNotifications(authToken: string | null) {
         appVersion: Constants.expoConfig?.version ?? '1.0',
       };
 
-      fetch(API_URL, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
+          Authorization: `Bearer ${normalizedAuthToken}`,
         },
         body: JSON.stringify(payload),
-      }).catch(() => {
-        console.log('⚠️ Błąd wysyłki tokena');
       });
+      if (!response.ok) {
+        console.log('⚠️ Błąd wysyłki tokena');
+        return false;
+      }
 
+      await AsyncStorage.setItem('pushToken', pushToken);
       console.log('🚀 Push token registered');
       isRegisteredRef.current = true;
       return true;
@@ -89,7 +91,7 @@ export function usePushNotifications(authToken: string | null) {
 
   useEffect(() => {
     registerToken(false);
-  }, [authToken]);
+  }, [normalizedAuthToken]);
 
   return { askForPermission: () => registerToken(true) };
 }

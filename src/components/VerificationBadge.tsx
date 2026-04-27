@@ -18,7 +18,7 @@ export const VerificationBadge = ({ isVerified, onPress, isDark }: any) => {
 
   if (isVerified) {
     return (
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, maxWidth: '100%' }}>
         <View style={{ 
           flexDirection: 'row', 
           alignItems: 'center', 
@@ -37,7 +37,7 @@ export const VerificationBadge = ({ isVerified, onPress, isDark }: any) => {
   }
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 12 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, columnGap: 10, rowGap: 8, flexWrap: 'wrap', maxWidth: '100%' }}>
       <Animated.View style={{ 
         transform: [{ scale: pulseAnim }], 
         flexDirection: 'row', 
@@ -47,13 +47,26 @@ export const VerificationBadge = ({ isVerified, onPress, isDark }: any) => {
         paddingVertical: 5, 
         borderRadius: 10, 
         borderWidth: 1, 
-        borderColor: 'rgba(239, 68, 68, 0.3)'
+        borderColor: 'rgba(239, 68, 68, 0.3)',
+        maxWidth: '100%'
       }}>
         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#ef4444', marginRight: 6 }} />
-        <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '800' }}>NIEZWERYFIKOWANY</Text>
+        <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '800' }} numberOfLines={1}>NIEZWERYFIKOWANY</Text>
       </Animated.View>
-      <Pressable onPress={onPress} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 14 }]}>
-        <Text style={{ color: '#10b981', fontSize: 13, fontWeight: '800' }}>Zweryfikuj SMS</Text>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          { opacity: pressed ? 0.6 : 1 },
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+            paddingHorizontal: 14,
+            paddingVertical: 6,
+            borderRadius: 14,
+            alignSelf: 'flex-start'
+          }
+        ]}
+      >
+        <Text style={{ color: '#10b981', fontSize: 13, fontWeight: '800' }} numberOfLines={1}>Zweryfikuj SMS</Text>
       </Pressable>
     </View>
   );

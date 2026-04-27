@@ -1,42 +1,191 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, FlatList, Platform, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, FlatList, Platform, Pressable, ScrollView, Linking, ActivityIndicator } from 'react-native';
 import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
   useAnimatedStyle,
   interpolate,
   Extrapolation,
-  withSpring
+  withSpring,
+  withTiming,
+  withSequence
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Bath, Layers, Calendar, Pencil, X } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import BidActionModal from '../components/dealroom/BidActionModal';
+import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
 const API_URL = 'https://estateos.pl';
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function parseDealEvent(content?: string) {
+  if (!content || !content.startsWith(EVENT_PREFIX)) return null;
+  try {
+    return JSON.parse(content.slice(EVENT_PREFIX.length));
+  } catch {
+    return null;
+  }
+}
+
+function isNegotiationPending(action?: string) {
+  const normalized = String(action || '').toUpperCase();
+  return normalized === 'PROPOSED' || normalized === 'COUNTERED';
+}
+
+function getDealActionLabel(action?: string) {
+  const normalized = String(action || '').toUpperCase();
+  if (normalized === 'ACCEPTED') return 'Zaakceptowano';
+  if (normalized === 'REJECTED' || normalized === 'DECLINED') return 'Odrzucono';
+  if (normalized === 'COUNTERED') return 'Kontroferta';
+  return 'Propozycja';
+}
 
 export default function OfferDetail({ route, navigation }: any) {
   const offerFromParams = route?.params?.offer;
-const idFromParams = route?.params?.id;
+  const idFromParams = route?.params?.id;
+  const [hydratedOffer, setHydratedOffer] = useState<any>(null);
 
-// 🔥 FINALNY OBIEKT
-const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
-  const theme = route?.params?.theme || { glass: 'light' }; // Dla zgrania kolorystyki
+  // 🔥 FINALNY OBIEKT
+  const offer = hydratedOffer || offerFromParams || (idFromParams ? { id: idFromParams } : null);
+  const theme = route?.params?.theme || { glass: 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
   const heartScale = useSharedValue(1);
-  const { user } = useAuthStore() as any;
+  const { user, token } = useAuthStore() as any;
   const isOwner = user?.id && offer?.userId === user?.id;
+  const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
+  const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
+  const isProUser = Boolean(
+    (user?.isPro && isProStillActive) ||
+    user?.role === 'ADMIN' ||
+    user?.planType === 'PRO' ||
+    user?.planType === 'AGENCY'
+  );
+  const [timeLeftMs, setTimeLeftMs] = useState(0);
+
+  const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : null;
+  const unlockAtMs = createdAtMs ? createdAtMs + (24 * 60 * 60 * 1000) : null;
+  const isOffMarketLocked = Boolean(unlockAtMs && Date.now() < unlockAtMs && !isProUser && !isOwner);
+
+  useEffect(() => {
+    if (!unlockAtMs || !isOffMarketLocked) {
+      setTimeLeftMs(0);
+      return;
+    }
+
+    const tick = () => {
+      const diff = Math.max(0, unlockAtMs - Date.now());
+      setTimeLeftMs(diff);
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [unlockAtMs, isOffMarketLocked]);
+
+  const countdownParts = (() => {
+    const totalSec = Math.max(0, Math.floor(timeLeftMs / 1000));
+    const hours = Math.floor(totalSec / 3600);
+    const minutes = Math.floor((totalSec % 3600) / 60);
+    const seconds = totalSec % 60;
+    return {
+      hours: String(hours).padStart(2, '0'),
+      minutes: String(minutes).padStart(2, '0'),
+      seconds: String(seconds).padStart(2, '0'),
+    };
+  })();
+
+  useEffect(() => {
+    const shouldHydrate = !!idFromParams && (!offerFromParams || !offerFromParams?.title || !offerFromParams?.price);
+    if (!shouldHydrate) return;
+    let mounted = true;
+    const run = async () => {
+      try {
+        const id = Number(idFromParams);
+        const [mobileRes, webRes] = await Promise.allSettled([
+          fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          }),
+          fetch(`${API_URL}/api/offers/${id}`),
+        ]);
+
+        let candidate: any = null;
+        if (mobileRes.status === 'fulfilled' && mobileRes.value.ok) {
+          const mobileJson = await mobileRes.value.json();
+          const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
+          candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
+        }
+
+        if (!candidate && webRes.status === 'fulfilled' && webRes.value.ok) {
+          const webJson = await webRes.value.json();
+          candidate = webJson?.offer || webJson?.data || (webJson?.id ? webJson : null);
+        }
+
+        if (mounted && candidate) {
+          setHydratedOffer(candidate);
+        }
+      } catch {
+        // noop
+      } finally {
+        // noop
+      }
+    };
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, [idFromParams, offerFromParams, token]);
+
+  const handleBecomePro = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await Linking.openURL('https://estateos.pl/cennik');
+    } catch (_error) {
+      Alert.alert('EstateOS', 'Nie udało się otworzyć strony cennika PRO.');
+    }
+  };
 
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [initialGalleryIndex, setInitialGalleryIndex] = useState(0);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
   const galleryRef = useRef<FlatList>(null);
+  const [dealId, setDealId] = useState<number | null>(null);
+  const [isBidModalOpen, setIsBidModalOpen] = useState(false);
+  const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [bidModalConfig, setBidModalConfig] = useState<any>({
+    mode: 'create',
+    bidId: null,
+    initialAmount: null,
+    eventAction: null,
+    quickAccept: false,
+    history: [],
+  });
+  const [appointmentModalConfig, setAppointmentModalConfig] = useState<any>({
+    mode: 'create',
+    appointmentId: null,
+    eventAction: null,
+    proposedDate: null,
+    history: [],
+  });
+  const [dealSyncLoading, setDealSyncLoading] = useState(false);
+  const [dealNegotiationState, setDealNegotiationState] = useState<any>(null);
+  const [ownerProfile, setOwnerProfile] = useState<any>(null);
+  const [isOwnerProfileOpen, setIsOwnerProfileOpen] = useState(false);
+  const [ownerProfileLoading, setOwnerProfileLoading] = useState(false);
+  const [activeProfileData, setActiveProfileData] = useState<any>(null);
+  const [activeProfileLoading, setActiveProfileLoading] = useState(false);
+  const [activeProfileUserId, setActiveProfileUserId] = useState<number | null>(null);
+  const [reviewerNameCache, setReviewerNameCache] = useState<Record<number, string>>({});
+  const [profileHistory, setProfileHistory] = useState<number[]>([]);
+  const bidBtnScale = useSharedValue(1);
+  const apptBtnScale = useSharedValue(1);
 
   useEffect(() => {
     const checkFavorite = async () => {
@@ -135,6 +284,359 @@ const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
     if (viewableItems.length > 0) setCurrentGalleryIndex(viewableItems[0].index);
   }).current;
 
+  const ensureDeal = async () => {
+    if (!offer?.id) return null;
+    if (!token) {
+      Alert.alert('EstateOS', 'Zaloguj się, aby rozpocząć negocjacje.');
+      return null;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/deals/init`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ offerId: offer.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.deal?.id) {
+        Alert.alert('EstateOS', data?.error || 'Nie udało się otworzyć dealroomu.');
+        return null;
+      }
+      const createdDealId = Number(data.deal.id);
+      setDealId(createdDealId);
+      return createdDealId;
+    } catch (_e) {
+      Alert.alert('EstateOS', 'Błąd połączenia z serwerem.');
+      return null;
+    }
+  };
+
+  const openBidFlow = async () => {
+    const ensuredDealId = dealId || await ensureDeal();
+    if (!ensuredDealId) return;
+    setDealId(ensuredDealId);
+    const latestBid = dealNegotiationState?.latestBid;
+    const latestBidAction = String(latestBid?.action || '').toUpperCase();
+    const bidPending = isNegotiationPending(latestBidAction);
+    const bidAccepted = latestBidAction === 'ACCEPTED';
+    const bidByMe = Number(latestBid?.senderId || 0) === Number(user?.id || 0);
+    if (bidPending && bidByMe) {
+      Alert.alert(
+        'Negocjacje ceny trwają',
+        'Twoja propozycja została wysłana. Oczekujemy na decyzję właściciela — szczegóły znajdziesz w dealroomie.'
+      );
+      return;
+    }
+    if (bidAccepted) {
+      Alert.alert(
+        'Warunki cenowe potwierdzone',
+        `Uzgodniona kwota: ${Number(latestBid?.amount || 0).toLocaleString('pl-PL')} PLN. Dalsze ustalenia kontynuuj w dealroomie.`
+      );
+      return;
+    }
+    if (latestBid?.bidId && bidPending && !bidByMe) {
+      setBidModalConfig({
+        mode: 'respond',
+        bidId: latestBid.bidId,
+        initialAmount: latestBid.amount || null,
+        eventAction: latestBid.action || null,
+        quickAccept: false,
+        history: dealNegotiationState?.bidHistory || [],
+      });
+    } else {
+      setBidModalConfig({
+        mode: 'create',
+        bidId: null,
+        initialAmount: Number(String(offer?.price || '').replace(/[^\d]/g, '')) || null,
+        eventAction: null,
+        quickAccept: false,
+        history: dealNegotiationState?.bidHistory || [],
+      });
+    }
+    setIsBidModalOpen(true);
+  };
+
+  const openAppointmentFlow = async () => {
+    const ensuredDealId = dealId || await ensureDeal();
+    if (!ensuredDealId) return;
+    setDealId(ensuredDealId);
+    const latestAppointment = dealNegotiationState?.latestAppointment;
+    const latestAppointmentAction = String(latestAppointment?.action || '').toUpperCase();
+    const appointmentPending = isNegotiationPending(latestAppointmentAction);
+    const appointmentAccepted = latestAppointmentAction === 'ACCEPTED';
+    const appointmentByMe = Number(latestAppointment?.senderId || 0) === Number(user?.id || 0);
+    if (appointmentPending && appointmentByMe) {
+      Alert.alert(
+        'Ustalanie terminu w toku',
+        'Termin został wysłany. Oczekujemy na odpowiedź właściciela — aktualizacje pojawią się w dealroomie.'
+      );
+      return;
+    }
+    if (appointmentAccepted) {
+      const dateLabel = latestAppointment?.proposedDate
+        ? new Date(latestAppointment.proposedDate).toLocaleString('pl-PL')
+        : '-';
+      Alert.alert(
+        'Termin spotkania potwierdzony',
+        `Spotkanie zostało umówione na: ${dateLabel}.`
+      );
+      return;
+    }
+    if (latestAppointment?.appointmentId && appointmentPending && !appointmentByMe) {
+      setAppointmentModalConfig({
+        mode: 'respond',
+        appointmentId: latestAppointment.appointmentId,
+        eventAction: latestAppointment.action || null,
+        proposedDate: latestAppointment.proposedDate || null,
+        history: dealNegotiationState?.appointmentHistory || [],
+      });
+    } else {
+      setAppointmentModalConfig({
+        mode: 'create',
+        appointmentId: null,
+        eventAction: null,
+        proposedDate: null,
+        history: dealNegotiationState?.appointmentHistory || [],
+      });
+    }
+    setIsAppointmentModalOpen(true);
+  };
+
+  const openDealroom = () => {
+    if (!dealId) return;
+    navigation.navigate('DealroomChat', {
+      dealId,
+      title: offer?.title || `Transakcja #${dealId}`,
+    });
+  };
+
+  useEffect(() => {
+    const loadDealState = async () => {
+      if (!token || !offer?.id || isOwner) {
+        setDealNegotiationState(null);
+        return;
+      }
+      setDealSyncLoading(true);
+      try {
+        const dealsRes = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dealsJson = await dealsRes.json();
+        const deals = Array.isArray(dealsJson)
+          ? dealsJson
+          : Array.isArray(dealsJson?.deals)
+            ? dealsJson.deals
+            : Array.isArray(dealsJson?.items)
+              ? dealsJson.items
+              : Array.isArray(dealsJson?.data?.deals)
+                ? dealsJson.data.deals
+                : Array.isArray(dealsJson?.data?.items)
+                  ? dealsJson.data.items
+                  : [];
+        const matchingDeal = deals.find((d: any) => Number(
+          d?.offerId || d?.offer?.id || d?.listingId || d?.propertyId || 0
+        ) === Number(offer.id));
+        if (!matchingDeal?.id) {
+          setDealNegotiationState(null);
+          return;
+        }
+        const existingDealId = Number(matchingDeal.id);
+        setDealId(existingDealId);
+        const messagesRes = await fetch(`${API_URL}/api/mobile/v1/deals/${existingDealId}/messages?t=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const messagesJson = await messagesRes.json();
+        const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+        const eventMessages = messages
+          .map((msg: any) => {
+            const event = parseDealEvent(msg?.content);
+            return event ? { ...event, senderId: msg?.senderId, createdAt: msg?.createdAt } : null;
+          })
+          .filter(Boolean);
+        const bidHistory = eventMessages.filter((e: any) => e.entity === 'BID');
+        const appointmentHistory = eventMessages.filter((e: any) => e.entity === 'APPOINTMENT');
+        const latestBid = bidHistory.length > 0 ? bidHistory[bidHistory.length - 1] : null;
+        const latestAppointment = appointmentHistory.length > 0 ? appointmentHistory[appointmentHistory.length - 1] : null;
+        setDealNegotiationState({
+          dealId: existingDealId,
+          bidHistory,
+          appointmentHistory,
+          latestBid,
+          latestAppointment,
+        });
+      } catch {
+        // noop
+      } finally {
+        setDealSyncLoading(false);
+      }
+    };
+    loadDealState();
+  }, [token, offer?.id, isOwner]);
+
+  useEffect(() => {
+    const loadOwnerProfile = async () => {
+      if (!offer?.userId) return;
+      setOwnerProfileLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/users/${offer.userId}/public`);
+        const data = await res.json();
+        if (res.ok && !data?.error) {
+          setOwnerProfile(data);
+        }
+      } catch (_e) {
+        // noop
+      } finally {
+        setOwnerProfileLoading(false);
+      }
+    };
+    loadOwnerProfile();
+  }, [offer?.userId]);
+
+  const ownerReviews = Array.isArray(ownerProfile?.reviews) ? ownerProfile.reviews : [];
+  const ownerAverageRating = ownerReviews.length > 0
+    ? ownerReviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) / ownerReviews.length
+    : 0;
+
+  const fetchPublicProfile = async (userId: number) => {
+    const res = await fetch(`${API_URL}/api/users/${userId}/public`);
+    const data = await res.json();
+    if (!res.ok || data?.error) {
+      throw new Error(data?.error || 'Nie udało się pobrać profilu.');
+    }
+    return data;
+  };
+
+  const openOwnerProfileModal = () => {
+    Haptics.selectionAsync();
+    setProfileHistory([]);
+    if (ownerProfile?.user?.id) {
+      setActiveProfileUserId(Number(ownerProfile.user.id));
+      setActiveProfileData(ownerProfile);
+      setActiveProfileLoading(false);
+    } else if (offer?.userId) {
+      setActiveProfileUserId(Number(offer.userId));
+      setActiveProfileData(null);
+      setActiveProfileLoading(true);
+    }
+    setIsOwnerProfileOpen(true);
+  };
+
+  const openReviewerProfileInModal = async (reviewerId: number) => {
+    if (!reviewerId) return;
+    Haptics.selectionAsync();
+    if (activeProfileUserId === reviewerId && activeProfileData) return;
+    if (activeProfileUserId) {
+      setProfileHistory(prev => [...prev, activeProfileUserId]);
+    }
+    setActiveProfileUserId(reviewerId);
+    setActiveProfileData(null);
+    setActiveProfileLoading(true);
+    try {
+      const profile = await fetchPublicProfile(reviewerId);
+      setActiveProfileData(profile);
+    } catch (_e) {
+      Alert.alert('EstateOS', 'Nie udało się pobrać profilu autora opinii.');
+    } finally {
+      setActiveProfileLoading(false);
+    }
+  };
+
+  const handleProfileBack = async () => {
+    if (profileHistory.length === 0) return;
+    Haptics.selectionAsync();
+    const previousId = profileHistory[profileHistory.length - 1];
+    setProfileHistory(prev => prev.slice(0, -1));
+    setActiveProfileUserId(previousId);
+    setActiveProfileData(null);
+    setActiveProfileLoading(true);
+    try {
+      if (ownerProfile?.user?.id && Number(ownerProfile.user.id) === Number(previousId)) {
+        setActiveProfileData(ownerProfile);
+      } else {
+        const profile = await fetchPublicProfile(previousId);
+        setActiveProfileData(profile);
+      }
+    } catch (_e) {
+      Alert.alert('EstateOS', 'Nie udało się wrócić do poprzedniego profilu.');
+    } finally {
+      setActiveProfileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const seedOwnerAsActive = async () => {
+      if (!isOwnerProfileOpen) return;
+      const ownerUserId = Number(ownerProfile?.user?.id || offer?.userId || 0);
+      if (!ownerUserId) return;
+      if (activeProfileUserId && activeProfileData) return;
+      setActiveProfileUserId(ownerUserId);
+      if (ownerProfile?.user?.id) {
+        setActiveProfileData(ownerProfile);
+        setActiveProfileLoading(false);
+        return;
+      }
+      setActiveProfileLoading(true);
+      try {
+        const profile = await fetchPublicProfile(ownerUserId);
+        setActiveProfileData(profile);
+      } catch (_e) {
+        // noop
+      } finally {
+        setActiveProfileLoading(false);
+      }
+    };
+    seedOwnerAsActive();
+  }, [isOwnerProfileOpen, ownerProfile, offer?.userId]);
+
+  useEffect(() => {
+    const preloadReviewerNames = async () => {
+      const reviews = Array.isArray(activeProfileData?.reviews) ? activeProfileData.reviews : [];
+      const ids: number[] = Array.from(new Set<number>(
+        reviews
+          .map((r: any) => Number(r?.reviewerId || 0))
+          .filter((id: number) => id > 0 && !reviewerNameCache[id])
+      ));
+      if (ids.length === 0) return;
+      const next: Record<number, string> = {};
+      await Promise.all(ids.map(async (id) => {
+        try {
+          const profile = await fetchPublicProfile(id);
+          next[id] = profile?.user?.name || `Użytkownik #${id}`;
+        } catch {
+          next[id] = `Użytkownik #${id}`;
+        }
+      }));
+      setReviewerNameCache(prev => ({ ...prev, ...next }));
+    };
+    preloadReviewerNames();
+  }, [activeProfileData, reviewerNameCache]);
+
+  const bidBtnAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bidBtnScale.value }],
+  }));
+
+  const apptBtnAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: apptBtnScale.value }],
+  }));
+
+  const animateBidButton = () => {
+    bidBtnScale.value = withSequence(
+      withTiming(0.95, { duration: 90 }),
+      withSpring(1.06, { damping: 7, stiffness: 240 }),
+      withSpring(1, { damping: 9, stiffness: 220 })
+    );
+  };
+
+  const animateAppointmentButton = () => {
+    apptBtnScale.value = withSequence(
+      withTiming(0.95, { duration: 90 }),
+      withSpring(1.05, { damping: 7, stiffness: 220 }),
+      withSpring(1, { damping: 9, stiffness: 220 })
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.imageContainer, imageAnimatedStyle]}>
@@ -163,7 +665,7 @@ const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
         </View>
       </View>
 
-      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 150 }}>
+      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 160 }}>
         <View style={styles.contentSheet}>
           <Text style={styles.price}>{displayOffer.price}</Text>
           <Text style={styles.title}>{displayOffer.title}</Text>
@@ -194,7 +696,7 @@ const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
             <View style={[styles.detailRow, { borderBottomWidth: 0 }]}><Text style={styles.detailLabel}>Na rynku od</Text><Text style={styles.detailValue}>{formatDate(offer?.createdAt)}</Text></View>
           </View>
 
-          {/* RZUT NIERUCHOMOŚCI - Wstawiony profesjonalnie za Szczegółami */}
+          {/* RZUT NIERUCHOMOŚCI */}
           <FloorPlanViewer 
             imageUrl={offer?.floorPlanUrl ? (offer.floorPlanUrl.startsWith('/uploads') ? `${API_URL}${offer.floorPlanUrl}` : offer.floorPlanUrl) : 'https://images.unsplash.com/photo-1600607686527-6fb886090705?q=80&w=800&auto=format&fit=crop'} 
             theme={theme} 
@@ -223,36 +725,141 @@ const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
           </ScrollView>
 
           <Text style={styles.offerIdText}>ID Oferty: {offer?.id}</Text>
+          {!isOwner && !dealSyncLoading && dealNegotiationState?.latestAppointment && (
+            <View
+              style={[
+                styles.negotiationMemoryBox,
+                String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                  ? styles.negotiationMemoryBoxConfirmed
+                  : styles.negotiationMemoryBoxPending
+              ]}
+            >
+              <Text style={styles.negotiationMemoryLabel}>TERMIN SPOTKANIA</Text>
+              <Text style={styles.negotiationMemoryTitle}>
+                {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                  ? 'Spotkanie zostało potwierdzone'
+                  : 'Ustalanie terminu jest aktywne'}
+              </Text>
+              <Text style={styles.negotiationMemoryText}>
+                {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
+                  ? `Potwierdzony termin: ${dealNegotiationState.latestAppointment?.proposedDate ? new Date(dealNegotiationState.latestAppointment.proposedDate).toLocaleString('pl-PL') : '-'}`
+                  : Number(dealNegotiationState.latestAppointment?.senderId || 0) === Number(user?.id || 0)
+                    ? 'Twoja propozycja została wysłana. Czekamy na decyzję właściciela.'
+                    : `Nowa odpowiedź właściciela (${getDealActionLabel(dealNegotiationState.latestAppointment.action)}). Możesz kontynuować z przycisku Spotkanie.`}
+              </Text>
+            </View>
+          )}
+          {!isOwner && !dealSyncLoading && dealNegotiationState?.latestBid && (
+            <View
+              style={[
+                styles.negotiationMemoryBox,
+                String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
+                  ? styles.negotiationMemoryBoxConfirmed
+                  : styles.negotiationMemoryBoxPending
+              ]}
+            >
+              <Text style={styles.negotiationMemoryLabel}>NEGOCJACJE CENOWE</Text>
+              <Text style={styles.negotiationMemoryTitle}>
+                {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
+                  ? 'Cena została potwierdzona'
+                  : 'Negocjacje cenowe są aktywne'}
+              </Text>
+              <Text style={styles.negotiationMemoryText}>
+                {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
+                  ? `Uzgodniona kwota: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN`
+                  : Number(dealNegotiationState.latestBid?.senderId || 0) === Number(user?.id || 0)
+                    ? `Twoja propozycja: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN. Oczekujemy na decyzję właściciela.`
+                    : `Ostatnia propozycja właściciela: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN. Możesz kontynuować z przycisku Negocjuj cenę.`}
+              </Text>
+            </View>
+          )}
         </View>
       </Animated.ScrollView>
 
+      {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
       <View style={styles.bottomBarContainer}>
-        <BlurView intensity={90} tint="light" style={styles.bottomBar}>
-          <View>
-            <Text style={styles.bottomBarPrice}>{displayOffer.price}</Text>
-            <Text style={styles.bottomBarSub}>{isOwner ? 'Twój panel zarządzania' : 'Kontakt błyskawiczny'}</Text>
+        <BlurView intensity={95} tint="light" style={styles.bottomBar}>
+          
+          {/* TOP ROW: Cena i Użytkownik */}
+          <View style={styles.bottomBarTopRow}>
+            <View>
+              <Text style={styles.bottomBarPriceLabel}>Cena ofertowa</Text>
+              <Text style={styles.bottomBarPrice}>{displayOffer.price}</Text>
+            </View>
+
+            {isOwner ? (
+              <View style={styles.ownerCompactPill}>
+                <Text style={styles.ownerPillName}>Twój panel zarządzania</Text>
+              </View>
+            ) : (
+              <Pressable 
+                onPress={openOwnerProfileModal} 
+                style={({ pressed }) => [styles.ownerCompactPill, pressed && { opacity: 0.7 }]}
+              >
+                <View style={styles.ownerAvatarMock}>
+                  <ShieldCheck size={12} color="#fff" />
+                </View>
+                <View style={styles.ownerPillInfo}>
+                  <Text numberOfLines={1} style={styles.ownerPillName}>
+                    {ownerProfile?.user?.name?.split(' ')[0] || offer?.userName || 'Sprzedawca'}
+                  </Text>
+                  <View style={styles.ownerStarsRowMini}>
+                    <Star size={10} color="#f59e0b" fill="#f59e0b" />
+                    <Text style={styles.ownerPillRatingText}>
+                      {ownerProfileLoading ? '-' : (ownerAverageRating || 0).toFixed(1)}
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            )}
           </View>
-          {isOwner ? (
-            <TouchableOpacity style={[styles.buyButton, { backgroundColor: '#1d1d1f' }]} onPress={handleEdit}><Text style={styles.buyButtonText}>Edytuj ofertę</Text></TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.buyButton} onPress={() => Alert.alert("EstateOS", "Trwa łączenie z agentem...")}><Text style={styles.buyButtonText}>Umów wizytę</Text></TouchableOpacity>
-          )}
+
+          {/* BOTTOM ROW: Akcje */}
+          <View style={styles.bottomActionsRow}>
+            {isOwner ? (
+              <TouchableOpacity style={[styles.primaryAppleButton, { backgroundColor: '#1d1d1f', flex: 1 }]} onPress={handleEdit}>
+                <Pencil size={18} color="#fff" />
+                <Text style={styles.primaryAppleButtonText}>Edytuj ofertę</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <Animated.View style={[styles.actionFlexWrap, apptBtnAnimatedStyle]}>
+                  <TouchableOpacity
+                    style={styles.secondaryAppleButton}
+                    onPress={() => { animateAppointmentButton(); openAppointmentFlow(); }}
+                    activeOpacity={0.8}
+                  >
+                    <CalendarClock size={16} color="#1d1d1f" />
+                    <Text style={styles.secondaryAppleButtonText}>Spotkanie</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+
+                <Animated.View style={[styles.actionFlexWrap, bidBtnAnimatedStyle]}>
+                  <TouchableOpacity
+                    style={styles.primaryAppleButton}
+                    onPress={() => { animateBidButton(); openBidFlow(); }}
+                    activeOpacity={0.8}
+                  >
+                    <Handshake size={16} color="#fff" />
+                    <Text style={styles.primaryAppleButtonText}>Negocjuj cenę</Text>
+                  </TouchableOpacity>
+                </Animated.View>
+              </>
+            )}
+          </View>
+
         </BlurView>
       </View>
 
       {/* --- PEŁNOEKRANOWA GALERIA ZDJĘĆ W STYLU APPLE --- */}
       <Modal visible={isGalleryOpen} transparent={true} animationType="fade" onRequestClose={closeGallery}>
         <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill}>
-          
-          {/* Header Galerii */}
           <View style={styles.galleryHeader}>
             <Text style={styles.galleryCounter}>{currentGalleryIndex + 1} z {imagesToShow.length}</Text>
             <TouchableOpacity onPress={closeGallery} style={styles.galleryCloseBtn} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
               <X color="#FFF" size={24} />
             </TouchableOpacity>
           </View>
-
-          {/* Szybki ScrollView / FlatList */}
           <FlatList
             ref={galleryRef}
             data={imagesToShow}
@@ -270,7 +877,195 @@ const offer = offerFromParams || (idFromParams ? { id: idFromParams } : null);
               </View>
             )}
           />
+        </BlurView>
+      </Modal>
 
+      <BidActionModal
+        visible={isBidModalOpen}
+        mode={bidModalConfig.mode}
+        dealId={dealId}
+        token={token || null}
+        bidId={bidModalConfig.bidId}
+        initialAmount={bidModalConfig.initialAmount}
+        eventAction={bidModalConfig.eventAction}
+        quickAccept={bidModalConfig.quickAccept}
+        history={bidModalConfig.history}
+        title="Negocjacja ceny"
+        onClose={() => setIsBidModalOpen(false)}
+        onDone={openDealroom}
+      />
+
+      <AppointmentActionModal
+        visible={isAppointmentModalOpen}
+        mode={appointmentModalConfig.mode}
+        dealId={dealId}
+        token={token || null}
+        appointmentId={appointmentModalConfig.appointmentId}
+        eventAction={appointmentModalConfig.eventAction}
+        proposedDate={appointmentModalConfig.proposedDate}
+        history={appointmentModalConfig.history}
+        title="Negocjacja terminu prezentacji"
+        onClose={() => setIsAppointmentModalOpen(false)}
+        onDone={openDealroom}
+      />
+
+      {/* --- MODALE --- */}
+      <Modal visible={isOwnerProfileOpen} transparent animationType="fade" onRequestClose={() => setIsOwnerProfileOpen(false)}>
+        <View style={styles.profileOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setIsOwnerProfileOpen(false);
+              setProfileHistory([]);
+            }}
+          />
+          <View style={styles.profileCard}>
+            <View style={styles.profileHeaderRow}>
+              <View style={styles.profileHeaderLeft}>
+                {profileHistory.length > 0 ? (
+                  <TouchableOpacity onPress={handleProfileBack} style={styles.profileBackBtn}>
+                    <ChevronLeft size={16} color="#fff" />
+                    <Text style={styles.profileBackText}>Wróć</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.profileBackPlaceholder} />
+                )}
+                <Text style={styles.profileTitle}>Profil użytkownika</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsOwnerProfileOpen(false);
+                  setProfileHistory([]);
+                }}
+                style={styles.profileCloseBtn}
+              >
+                <X size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {activeProfileLoading ? (
+              <View style={styles.profileLoaderWrap}>
+                <ActivityIndicator color="#f59e0b" />
+                <Text style={styles.profileMuted}>Ładowanie profilu...</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.profileName}>{activeProfileData?.user?.name || 'Użytkownik'}</Text>
+                <Text style={styles.profileMeta}>ID: {activeProfileData?.user?.id || activeProfileUserId || offer?.userId || '-'}</Text>
+
+                <View style={styles.profileRatingBox}>
+                  <Text style={styles.profileRatingValue}>
+                    {(
+                      (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
+                        ? (
+                            activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
+                            activeProfileData.reviews.length
+                          )
+                        : 0
+                    ).toFixed(1)}
+                  </Text>
+                  <View style={styles.profileStarsRow}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        size={14}
+                        color={s <= Math.round(
+                          (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
+                            ? (
+                                activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
+                                activeProfileData.reviews.length
+                              )
+                            : 0
+                        ) ? '#f59e0b' : '#4b5563'}
+                        fill={s <= Math.round(
+                          (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
+                            ? (
+                                activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
+                                activeProfileData.reviews.length
+                              )
+                            : 0
+                        ) ? '#f59e0b' : 'transparent'}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.profileMuted}>{Array.isArray(activeProfileData?.reviews) ? activeProfileData.reviews.length : 0} opinii</Text>
+                </View>
+
+                <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
+                  {!Array.isArray(activeProfileData?.reviews) || activeProfileData.reviews.length === 0 ? (
+                    <Text style={styles.profileMuted}>Brak opinii dla tego użytkownika.</Text>
+                  ) : activeProfileData.reviews.slice(0, 12).map((r: any) => (
+                    <View key={r.id} style={styles.reviewItem}>
+                      <View style={styles.reviewTop}>
+                        <View style={{ flex: 1 }}>
+                          <Pressable onPress={() => openReviewerProfileInModal(Number(r?.reviewerId || 0))} style={({ pressed }) => [styles.reviewAuthorBtn, pressed && { opacity: 0.7 }]}>
+                            <Text style={styles.reviewAuthorText}>
+                              {reviewerNameCache[Number(r?.reviewerId || 0)] || `Użytkownik #${r?.reviewerId || '-'}`}
+                            </Text>
+                            <ChevronRight size={12} color="#9ca3af" />
+                          </Pressable>
+                          <View style={styles.reviewStars}>
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <Star
+                                key={s}
+                                size={10}
+                                color={s <= Number(r?.rating || 0) ? '#f59e0b' : '#6b7280'}
+                                fill={s <= Number(r?.rating || 0) ? '#f59e0b' : 'transparent'}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                        <Text style={styles.reviewDate}>{new Date(r.createdAt).toLocaleDateString('pl-PL')}</Text>
+                      </View>
+                      <Text style={styles.reviewText}>{r.comment || 'Bez komentarza.'}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- OFF MARKET: BLOKADA 24H DLA NIE-PRO --- */}
+      <Modal visible={isOffMarketLocked} transparent animationType="fade">
+        <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill}>
+          <View style={styles.offMarketBackdrop} />
+          <View style={styles.offMarketOverlay}>
+            <View style={styles.offMarketCard}>
+              <View style={styles.offMarketTopStripe} />
+              <View style={styles.offMarketIconWrap}>
+                <Lock color="#D4AF37" size={30} />
+              </View>
+              <Text style={styles.offMarketTitle}>Oferta Off-Market</Text>
+              <Text style={styles.offMarketSub}>
+                Ta ekskluzywna oferta zadebiutowała w systemie. Zostanie odblokowana dla zwykłych użytkowników za:
+              </Text>
+              <View style={styles.countdownRow}>
+                <View style={styles.countdownUnit}>
+                  <Text style={styles.countdownValue}>{countdownParts.hours}</Text>
+                  <Text style={styles.countdownLabel}>GODZ</Text>
+                </View>
+                <Text style={styles.countdownColon}>:</Text>
+                <View style={styles.countdownUnit}>
+                  <Text style={styles.countdownValue}>{countdownParts.minutes}</Text>
+                  <Text style={styles.countdownLabel}>MIN</Text>
+                </View>
+                <Text style={styles.countdownColon}>:</Text>
+                <View style={styles.countdownUnit}>
+                  <Text style={styles.countdownValueAccent}>{countdownParts.seconds}</Text>
+                  <Text style={styles.countdownLabelAccent}>SEK</Text>
+                </View>
+              </View>
+              <TouchableOpacity activeOpacity={0.9} style={styles.offMarketPrimaryButton} onPress={handleBecomePro}>
+                <Crown color="#0a0a0a" size={16} />
+                <Text style={styles.offMarketPrimaryButtonText}>Zostań PRO i zobacz</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.9} style={styles.offMarketSecondaryButton} onPress={() => navigation?.goBack()}>
+                <Text style={styles.offMarketSecondaryButtonText}>Poczekam cierpliwie</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </BlurView>
       </Modal>
 
@@ -308,16 +1103,156 @@ const styles = StyleSheet.create({
   galleryContainer: { paddingRight: 24 },
   galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16 },
   
+  // --- ZMIENIONA SEKCJA BOTTOM BAR ---
   bottomBarContainer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
-  bottomBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.3)' },
-  bottomBarPrice: { fontSize: 18, fontWeight: '700', color: '#1d1d1f' },
-  bottomBarSub: { fontSize: 12, color: '#86868b', marginTop: 2 },
-  buyButton: { backgroundColor: '#0071e3', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 24 },
-  buyButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  bottomBar: { 
+    paddingHorizontal: 20, 
+    paddingTop: 16, 
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24, 
+    borderTopWidth: 1, 
+    borderTopColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  bottomBarPriceLabel: { fontSize: 11, fontWeight: '700', color: '#86868b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  bottomBarPrice: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5 },
+  
+  ownerCompactPill: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#ffffff', 
+    borderRadius: 24, 
+    padding: 6, 
+    paddingRight: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    maxWidth: '45%' // Zabezpieczenie dla małych ekranów
+  },
+  ownerAvatarMock: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
+  ownerPillInfo: { marginLeft: 8, justifyContent: 'center' },
+  ownerPillName: { color: '#1d1d1f', fontSize: 12, fontWeight: '700' },
+  ownerStarsRowMini: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
+  ownerPillRatingText: { color: '#6b7280', fontSize: 10, fontWeight: '700', marginLeft: 4 },
+  
+  bottomActionsRow: { flexDirection: 'row', gap: 12 },
+  actionFlexWrap: { flex: 1 },
+  
+  secondaryAppleButton: { 
+    flex: 1,
+    backgroundColor: '#f5f5f7', 
+    borderRadius: 24, 
+    paddingVertical: 14, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
+  },
+  secondaryAppleButtonText: { color: '#1d1d1f', fontSize: 14, fontWeight: '700' },
+  
+  primaryAppleButton: { 
+    flex: 1,
+    backgroundColor: '#0071e3', 
+    borderRadius: 24, 
+    paddingVertical: 14, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 6,
+    shadowColor: '#0071e3',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 5
+  },
+  primaryAppleButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  // --- KONIEC ZMIENIONEJ SEKCJI ---
+
   editButtonSubtle: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0, 113, 227, 0.08)', alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginBottom: 24, gap: 8 },
   editButtonSubtleText: { color: '#0071e3', fontSize: 14, fontWeight: '700' },
 
   galleryHeader: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, zIndex: 10 },
   galleryCounter: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
-  galleryCloseBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' }
+  galleryCloseBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+
+  offMarketBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.80)' },
+  offMarketOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  offMarketCard: { width: '100%', maxWidth: 440, backgroundColor: '#0a0a0a', borderRadius: 32, borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', paddingVertical: 32, paddingHorizontal: 24, alignItems: 'center', position: 'relative', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 20, shadowOffset: { width: 0, height: 16 }, elevation: 30 },
+  offMarketTopStripe: { position: 'absolute', top: 0, left: 0, right: 0, height: 4, backgroundColor: '#D4AF37' },
+  offMarketIconWrap: { width: 62, height: 62, borderRadius: 31, marginTop: 6, marginBottom: 18, backgroundColor: 'rgba(212,175,55,0.12)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.35)', alignItems: 'center', justifyContent: 'center' },
+  offMarketTitle: { color: '#fff', fontSize: 30, fontWeight: '900', marginBottom: 10, textAlign: 'center', letterSpacing: -0.5 },
+  offMarketSub: { color: 'rgba(255,255,255,0.52)', fontSize: 14, textAlign: 'center', lineHeight: 21, marginBottom: 30, paddingHorizontal: 4 },
+  countdownRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 28 },
+  countdownUnit: { alignItems: 'center', minWidth: 72 },
+  countdownValue: { color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: 0.2 },
+  countdownValueAccent: { color: '#D4AF37', fontSize: 38, fontWeight: '900', letterSpacing: 0.2 },
+  countdownLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontWeight: '800', letterSpacing: 2.1, marginTop: 2 },
+  countdownLabelAccent: { color: 'rgba(212,175,55,0.6)', fontSize: 10, fontWeight: '800', letterSpacing: 2.1, marginTop: 2 },
+  countdownColon: { color: 'rgba(255,255,255,0.24)', fontSize: 30, fontWeight: '900', marginHorizontal: 6, marginTop: 2 },
+  offMarketPrimaryButton: { width: '100%', borderRadius: 18, paddingVertical: 16, backgroundColor: '#D4AF37', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, shadowColor: '#D4AF37', shadowOpacity: 0.25, shadowRadius: 10, elevation: 10 },
+  offMarketPrimaryButtonText: { color: '#0a0a0a', fontSize: 13, fontWeight: '900', letterSpacing: 1.4, textTransform: 'uppercase' },
+  offMarketSecondaryButton: { width: '100%', borderRadius: 18, paddingVertical: 15, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center' },
+  offMarketSecondaryButtonText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '800', letterSpacing: 1.3, textTransform: 'uppercase' },
+  
+  profileOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', paddingHorizontal: 16 },
+  profileCard: { backgroundColor: '#0a0a0a', borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 18, maxHeight: '80%' },
+  profileHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  profileHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  profileBackBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 14, paddingHorizontal: 8, paddingVertical: 6, marginRight: 8 },
+  profileBackText: { color: '#fff', fontSize: 11, fontWeight: '700', marginLeft: 2 },
+  profileBackPlaceholder: { width: 8, marginRight: 0 },
+  profileTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  profileCloseBtn: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
+  profileName: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  profileMeta: { color: '#9ca3af', fontSize: 12, marginTop: 2, marginBottom: 10 },
+  profileRatingBox: { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: 12, alignItems: 'center', marginBottom: 12 },
+  profileRatingValue: { color: '#f59e0b', fontSize: 36, fontWeight: '900' },
+  profileStarsRow: { flexDirection: 'row', gap: 4, marginVertical: 4 },
+  profileLoaderWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 8 },
+  profileMuted: { color: '#9ca3af', fontSize: 13, textAlign: 'center' },
+  reviewItem: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', padding: 10, marginBottom: 8 },
+  reviewTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  reviewAuthorBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 4, gap: 4 },
+  reviewAuthorText: { color: '#e5e7eb', fontSize: 11, fontWeight: '700' },
+  reviewStars: { flexDirection: 'row', gap: 2 },
+  reviewDate: { color: '#6b7280', fontSize: 10 },
+  reviewText: { color: '#e5e7eb', fontSize: 12, lineHeight: 17 },
+  negotiationMemoryBox: {
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  negotiationMemoryBoxPending: {
+    borderColor: 'rgba(250, 204, 21, 0.55)',
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+  },
+  negotiationMemoryBoxConfirmed: {
+    borderColor: 'rgba(16, 185, 129, 0.5)',
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  negotiationMemoryLabel: {
+    color: '#6b7280',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  negotiationMemoryTitle: {
+    color: '#1d1d1f',
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  negotiationMemoryText: {
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+    lineHeight: 18,
+  },
 });
