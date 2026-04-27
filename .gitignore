@@ -51,3 +51,13 @@ ios/Pods
 .env
 
 *.bak_*
+
+# Szkice / wklejki (nie commituj)
+tmp_*
+tmp-*
+* copy.*
+* copy-*
+*~
+
+# Osobna kopia serwera w tym repo — nie mieszaj z appką w statusie (commituj tylko celowo)
+estateos-server/
