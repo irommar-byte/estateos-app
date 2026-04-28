@@ -47,6 +47,15 @@ function getDealActionLabel(action?: string) {
   return 'Propozycja';
 }
 
+function formatFloorStat(f: unknown): string {
+  if (f === null || f === undefined || f === '') return '-';
+  const n = Number(f);
+  if (Number.isFinite(n) && n === 0) return 'parter';
+  if (Number.isFinite(n)) return String(n);
+  const s = String(f).trim();
+  return s ? s : '-';
+}
+
 export default function OfferDetail({ route, navigation }: any) {
   const offerFromParams = route?.params?.offer;
   const idFromParams = route?.params?.id;
@@ -685,7 +694,7 @@ export default function OfferDetail({ route, navigation }: any) {
           <View style={styles.statsGrid}>
             <View style={styles.statBox}><BedDouble color="#1d1d1f" size={24} /><Text style={styles.statText}>{displayOffer.stats.beds} Pokoje</Text></View>
             <View style={styles.statBox}><Maximize color="#1d1d1f" size={24} /><Text style={styles.statText}>{displayOffer.stats.size}</Text></View>
-            <View style={styles.statBox}><Layers color="#1d1d1f" size={24} /><Text style={styles.statText}>Piętro {offer?.floor ?? '-'}</Text></View>
+            <View style={styles.statBox}><Layers color="#1d1d1f" size={24} /><Text style={styles.statText}>Piętro {formatFloorStat(offer?.floor)}</Text></View>
             <View style={styles.statBox}><Calendar color="#1d1d1f" size={24} /><Text style={styles.statText}>Rok {offer?.yearBuilt || offer?.buildYear || offer?.year || '-'}</Text></View>
           </View>
 

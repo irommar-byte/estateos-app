@@ -1,5 +1,21 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Platform, Pressable, FlatList, useWindowDimensions, TextInput, ActivityIndicator, Alert, Modal, ScrollView } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Platform,
+  Pressable,
+  FlatList,
+  useWindowDimensions,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  ScrollView,
+  Keyboard,
+  TouchableOpacity,
+  InteractionManager,
+} from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
 import MapViewCore, { Marker } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
@@ -32,6 +48,10 @@ function clusterBubbleDimensions(points: number) {
   return { diameter: 38, halo: 52, fontSize: 15 };
 }
 
+function hasFiniteCoords(lat: unknown, lng: unknown): boolean {
+  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+}
+
 function formatClusterCount(n: number) {
   if (n >= 10000) return `${Math.round(n / 1000)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
@@ -39,6 +59,36 @@ function formatClusterCount(n: number) {
 }
 
 const API_URL = 'https://estateos.pl';
+const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
+
+const RECENT_SEARCH_KEY = '@estateos_home_search_recent';
+const MAX_RECENT_SEARCHES = 8;
+
+const QUICK_CITIES = ['Warszawa', 'Kraków', 'Wrocław', 'Poznań', 'Gdańsk', 'Łódź', 'Katowice', 'Szczecin'];
+
+/** Normalizacja pod wyszukiwanie (małe litery, bez polskich diakrytyków). */
+function normalizeSearchText(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+}
+
+function pluralOffers(n: number) {
+  const abs = Math.abs(n);
+  if (abs === 1) return 'oferta';
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'oferty';
+  return 'ofert';
+}
+
+type RankedSuggestion = {
+  key: string;
+  value: string;
+  category: string;
+  count: number;
+};
 const DEFAULT_REGION = {
   latitude: 52.2297,
   longitude: 21.0122,
@@ -67,6 +117,7 @@ type AdvancedFilters = {
   minArea: number | null;
   maxArea: number | null;
   city: string;
+  districts: string[];
   propertyType: 'ALL' | 'FLAT' | 'HOUSE' | 'PLOT' | 'COMMERCIAL';
 };
 
@@ -96,13 +147,16 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
 };
 
 export default function RadarHomeScreen({ navigation, route, splashDone }: any) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const themeMode = useThemeStore((s) => s.themeMode);
   const isDark = themeMode === 'dark';
   const { user, isRadarActive, setRadarActive } = useAuthStore() as any;
 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
+  const searchInputRef = useRef<TextInput | null>(null);
+  /** Po wyborze podpowiedzi / Szukaj — po odświeżeniu listy ustawiamy widok mapy na pasujące pinezki. */
+  const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [isRadarEnabled, setIsRadarEnabled] = useState(!!isRadarActive);
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,6 +170,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [showCalibration, setShowCalibration] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
     transactionType: 'SELL',
     minPrice: null,
@@ -123,6 +178,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     minArea: null,
     maxArea: null,
     city: '',
+    districts: [],
     propertyType: 'ALL',
   });
   const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<AdvancedFilters>({
@@ -132,6 +188,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     minArea: null,
     maxArea: null,
     city: '',
+    districts: [],
     propertyType: 'ALL',
   });
   const [pendingMapFocusAfterApply, setPendingMapFocusAfterApply] = useState(false);
@@ -180,22 +237,153 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }, [route?.params?.favoritesOnly])
   );
 
-  const searchSuggestions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q || q.length < 2) return [];
-    const buckets = new Set<string>();
-    offers.forEach((o) => {
-      const street = String(o.raw?.street || o.raw?.address || '').trim();
-      const district = String(o.raw?.district || '').trim();
-      const city = String(o.raw?.city || '').trim();
-      const title = String(o.raw?.title || '').trim();
-      [street, district, city, title].forEach((value) => {
-        if (!value) return;
-        if (value.toLowerCase().includes(q)) buckets.add(value);
-      });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECENT_SEARCH_KEY);
+        if (!cancelled && raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setRecentSearches(parsed.filter((x) => typeof x === 'string').slice(0, MAX_RECENT_SEARCHES));
+        }
+      } catch {
+        /* noop */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistRecentSearch = useCallback(async (phrase: string) => {
+    const t = phrase.trim();
+    if (t.length < 2) return;
+    setRecentSearches((prev) => {
+      const next = [t, ...prev.filter((x) => x !== t)].slice(0, MAX_RECENT_SEARCHES);
+      AsyncStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
     });
-    return Array.from(buckets).slice(0, 8);
+  }, []);
+
+  /** Zamknięcie panelu dopiero tu; po odświeżeniu listy mapa jedzie do pasujących pinezek. */
+  const finalizeSearchChoice = useCallback(
+    (phrase: string) => {
+      const t = phrase.trim();
+      setSearchQuery(phrase);
+      if (t.length >= 2) pendingSearchMapFocusRef.current = t;
+      else pendingSearchMapFocusRef.current = null;
+      void persistRecentSearch(phrase);
+      setIsSearchFocused(false);
+      Keyboard.dismiss();
+      Haptics.selectionAsync();
+    },
+    [persistRecentSearch]
+  );
+
+  const haystackForOffer = useCallback((o: MapOffer) => {
+    return normalizeSearchText(
+      [
+        o.type,
+        String(o.raw?.city ?? ''),
+        String(o.raw?.district ?? ''),
+        String(o.raw?.street ?? ''),
+        String(o.raw?.address ?? ''),
+        String(o.raw?.title ?? ''),
+      ].join(' ')
+    );
+  }, []);
+
+  const normalizedSearchTokens = useMemo(() => {
+    const t = normalizeSearchText(searchQuery.trim());
+    return t.split(/\s+/).filter(Boolean);
+  }, [searchQuery]);
+
+  /** Podpowiedzi z unikalnych pól ofert — ranking po trafieniu i liczbie ogłoszeń. */
+  const rankedPlaceSuggestions = useMemo((): RankedSuggestion[] => {
+    const rawQ = searchQuery.trim();
+    if (rawQ.length < 2) return [];
+    const qFold = normalizeSearchText(rawQ);
+    if (!qFold) return [];
+
+    type Acc = { value: string; category: string; count: number; score: number };
+    const map = new Map<string, Acc>();
+
+    const bump = (value: string | undefined | null, categoryPl: string) => {
+      if (!value || typeof value !== 'string') return;
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      const vFold = normalizeSearchText(trimmed);
+      if (!vFold.includes(qFold)) return;
+      const key = `${categoryPl}|${trimmed}`;
+      const vStarts = vFold.startsWith(qFold) ? 12 : 0;
+      const shortBonus = Math.max(0, 24 - Math.min(24, trimmed.length));
+      const score = vStarts + shortBonus;
+      const cur = map.get(key);
+      if (cur) {
+        cur.count += 1;
+        cur.score = Math.max(cur.score, score);
+      } else {
+        map.set(key, { value: trimmed, category: categoryPl, count: 1, score });
+      }
+    };
+
+    offers.forEach((o) => {
+      bump(o.raw?.city, 'Miasto');
+      bump(o.raw?.district, 'Dzielnica');
+      bump(o.raw?.street, 'Ulica');
+      bump(o.raw?.address, 'Adres');
+      const title = String(o.raw?.title ?? '').trim();
+      if (title && normalizeSearchText(title).includes(qFold)) {
+        const key = `Tytuł|${title}`;
+        const vFold = normalizeSearchText(title);
+        const vStarts = vFold.startsWith(qFold) ? 12 : 0;
+        const cur = map.get(key);
+        const sc = vStarts + Math.max(0, 12 - Math.min(12, title.length));
+        if (cur) {
+          cur.count += 1;
+          cur.score = Math.max(cur.score, sc);
+        } else {
+          map.set(key, { value: title, category: 'Oferta', count: 1, score: sc });
+        }
+      }
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.score - a.score || b.count - a.count || a.value.localeCompare(b.value, 'pl'))
+      .slice(0, 14)
+      .map((x, i) => ({
+        key: `${x.category}-${x.value}-${i}`,
+        value: x.value,
+        category: x.category,
+        count: x.count,
+      }));
   }, [offers, searchQuery]);
+
+  const backendCities = useMemo(() => {
+    const set = new Set<string>();
+    offers.forEach((o) => {
+      const city = String(o.raw?.city || '').trim();
+      if (city) set.add(city);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [offers]);
+
+  const backendDistrictsForDraftCity = useMemo(() => {
+    const selectedCity = draftAdvancedFilters.city.trim().toLowerCase();
+    if (!selectedCity) return [] as string[];
+    const set = new Set<string>();
+    offers.forEach((o) => {
+      const city = String(o.raw?.city || '').trim().toLowerCase();
+      const district = String(o.raw?.district || '').trim();
+      if (city === selectedCity && district) set.add(district);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [offers, draftAdvancedFilters.city]);
+
+  const searchOnlyMatchCount = useMemo(() => {
+    if (normalizedSearchTokens.length === 0) return offers.length;
+    return offers.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok))).length;
+  }, [offers, normalizedSearchTokens, haystackForOffer]);
 
   const hasAdvancedFiltersActive = useMemo(() => {
     return Boolean(
@@ -205,11 +393,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       advancedFilters.minArea !== null ||
       advancedFilters.maxArea !== null ||
       advancedFilters.city.trim() ||
+      advancedFilters.districts.length > 0 ||
       advancedFilters.propertyType !== 'ALL'
     );
   }, [advancedFilters]);
 
-  const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
   const modeAccentColor = advancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
   const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
 
@@ -219,9 +407,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const { geometry, properties, onPress, clusterColor } = clusterData;
       const count = Number(properties.point_count ?? 0);
       const coords = {
-        longitude: geometry.coordinates[0],
-        latitude: geometry.coordinates[1],
+        longitude: Number(geometry?.coordinates?.[0]),
+        latitude: Number(geometry?.coordinates?.[1]),
       };
+      if (!hasFiniteCoords(coords.latitude, coords.longitude)) return null;
       const accent = (clusterColor as string) || modeAccentColor;
       const luxColors = markerLuxuryGradient(accent);
       const { diameter, halo, fontSize } = clusterBubbleDimensions(count);
@@ -406,11 +595,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   const filteredOffers = useMemo(() => {
-    const q = normalizedSearchQuery;
     const matchesAdvancedFilters = (offer: MapOffer) => {
       const rawPrice = Number(String(offer.raw?.price ?? '').replace(/[^\d]/g, '')) || 0;
       const rawArea = Number(String(offer.raw?.area ?? '').replace(',', '.')) || 0;
       const rawCity = String(offer.raw?.city || '').toLowerCase();
+      const rawDistrict = String(offer.raw?.district || '').toLowerCase();
       const rawPropertyType = String(offer.raw?.propertyType || '').toUpperCase();
       const rawTransactionType = String(offer.raw?.transactionType || '').toUpperCase();
       if (rawTransactionType !== advancedFilters.transactionType) return false;
@@ -419,23 +608,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (advancedFilters.minArea !== null && rawArea < advancedFilters.minArea) return false;
       if (advancedFilters.maxArea !== null && rawArea > advancedFilters.maxArea) return false;
       if (advancedFilters.city.trim() && rawCity !== advancedFilters.city.trim().toLowerCase()) return false;
+      if (
+        advancedFilters.districts.length > 0 &&
+        !advancedFilters.districts.some((d) => d.trim().toLowerCase() === rawDistrict)
+      ) return false;
       if (advancedFilters.propertyType !== 'ALL' && rawPropertyType !== advancedFilters.propertyType) return false;
       return true;
     };
     const favoriteOffers = offers.filter((o) => favorites.includes(Number(o.id)));
-    const queryFiltered = q
-      ? offers.filter((o) => {
-          const haystack = [
-            o.type,
-            String(o.raw?.city || ''),
-            String(o.raw?.district || ''),
-            String(o.raw?.street || ''),
-            String(o.raw?.address || ''),
-            String(o.raw?.title || ''),
-          ].join(' ').toLowerCase();
-          return haystack.includes(q);
-        })
-      : offers;
+    const queryFiltered =
+      normalizedSearchTokens.length === 0
+        ? offers
+        : offers.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)));
     const advancedFiltered = queryFiltered.filter(matchesAdvancedFilters);
     if (showOnlyFavorites) {
       const favAndAdvanced = favoriteOffers.filter(matchesAdvancedFilters);
@@ -466,7 +650,16 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (!pinned.some((o) => Number(o.id) === Number(fav.id))) pinned.push(fav);
     });
     return pinned;
-  }, [offers, normalizedSearchQuery, showOnlyFavorites, favorites, userLocation, advancedFilters, hasAdvancedFiltersActive]);
+  }, [
+    offers,
+    normalizedSearchTokens,
+    haystackForOffer,
+    showOnlyFavorites,
+    favorites,
+    userLocation,
+    advancedFilters,
+    hasAdvancedFiltersActive,
+  ]);
 
   const activeOffers = filteredOffers;
 
@@ -484,12 +677,37 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       );
       return;
     }
-    const coords = items.map((o) => ({ latitude: o.lat, longitude: o.lng }));
+    const coords = items
+      .map((o) => ({ latitude: Number(o.lat), longitude: Number(o.lng) }))
+      .filter((c) => hasFiniteCoords(c.latitude, c.longitude));
+    if (coords.length === 0) return;
     mapRef.current.fitToCoordinates(coords, {
       edgePadding: { top: 120, right: 80, bottom: 280, left: 80 },
       animated: true,
     });
   }, []);
+
+  useEffect(() => {
+    const pending = pendingSearchMapFocusRef.current;
+    if (pending === null) return;
+    if (normalizeSearchText(searchQuery.trim()) !== normalizeSearchText(pending)) return;
+    pendingSearchMapFocusRef.current = null;
+
+    let cancelled = false;
+    InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      setTimeout(() => {
+        if (cancelled) return;
+        if (activeOffers.length === 0) return;
+        focusMapToOffers(activeOffers);
+        setActiveIndex(0);
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, Platform.OS === 'ios' ? 120 : 80);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery, activeOffers, focusMapToOffers]);
 
   const openRadarCalibration = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -511,6 +729,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       minArea: null,
       maxArea: null,
       city: '',
+      districts: [],
       propertyType: 'ALL',
     };
     setDraftAdvancedFilters(reset);
@@ -656,7 +875,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   return (
     <View style={styles.container}>
-      <ClusteredMapView
+      <RadarMapComponent
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={DEFAULT_REGION}
@@ -664,24 +883,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         showsUserLocation
         showsCompass={false}
-        radius={56}
-        maxZoom={20}
-        minZoom={1}
-        minPoints={2}
-        extent={512}
-        animationEnabled
-        clusterColor={modeAccentColor}
-        clusterTextColor="#FFFFFF"
-        renderCluster={renderLuxuryCluster}
-        spiralEnabled
+        {...(Platform.OS === 'ios'
+          ? {}
+          : {
+              radius: 56,
+              maxZoom: 20,
+              minZoom: 1,
+              minPoints: 2,
+              extent: 512,
+              animationEnabled: true,
+              clusterColor: modeAccentColor,
+              clusterTextColor: '#FFFFFF',
+              renderCluster: renderLuxuryCluster,
+              spiralEnabled: true,
+            })}
       >
         {activeOffers.map((offer, idx) => {
           const isSelected = activeIndex === idx;
           const luxColors = markerLuxuryGradient(modeAccentColor);
+          const lat = Number(offer.lat);
+          const lng = Number(offer.lng);
+          if (!hasFiniteCoords(lat, lng)) return null;
           return (
             <Marker
-              key={String(offer.id)}
-              coordinate={{ latitude: offer.lat, longitude: offer.lng }}
+              key={String(offer.id ?? idx)}
+              coordinate={{ latitude: lat, longitude: lng }}
               tracksViewChanges={isSelected}
               onPress={() => {
                 Haptics.selectionAsync();
@@ -710,21 +936,52 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             </Marker>
           );
         })}
-      </ClusteredMapView>
+      </RadarMapComponent>
+
+      {/* Zamknięcie przez tap na mapie — bez tego panel nie znika przy blur (scroll chipów nie zabiera fokusu przez ukrywanie UI) */}
+      {isSearchFocused && (
+        <Pressable
+          style={styles.searchBackdrop}
+          onPress={() => {
+            Keyboard.dismiss();
+            setIsSearchFocused(false);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Zamknij pole wyszukiwania"
+        />
+      )}
 
       <View style={[styles.topBarContainer, { top: Platform.OS === 'ios' ? 55 : 40 }]}>
         <BlurView intensity={isDark ? 80 : 90} tint={isDark ? 'dark' : 'light'} style={styles.searchGlass}>
           <Ionicons name="search" size={20} color={isDark ? '#FFF' : '#1C1C1E'} style={{ marginLeft: 16 }} />
           <TextInput
+            ref={searchInputRef}
             style={[styles.searchInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-            placeholder="Gdzie szukasz nieruchomości?"
+            placeholder="Miasto, dzielnica, ulica…"
             placeholderTextColor="#8E8E93"
             value={searchQuery}
             onChangeText={setSearchQuery}
             onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setTimeout(() => setIsSearchFocused(false), 120)}
             returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="never"
+            onSubmitEditing={() => finalizeSearchChoice(searchQuery)}
           />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSearchQuery('');
+                searchInputRef.current?.focus();
+              }}
+              hitSlop={10}
+              style={styles.searchClearBtn}
+              accessibilityLabel="Wyczyść wyszukiwanie"
+            >
+              <Ionicons name="close-circle" size={22} color="#8E8E93" />
+            </Pressable>
+          )}
         </BlurView>
 
         <Pressable
@@ -752,25 +1009,129 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </BlurView>
         </Pressable>
       </View>
-      {isSearchFocused && searchSuggestions.length > 0 && (
+      {isSearchFocused && (
         <View style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}>
-          <BlurView intensity={isDark ? 85 : 95} tint={isDark ? 'dark' : 'light'} style={styles.suggestionsGlass}>
-            {searchSuggestions.map((s, idx) => (
-              <Pressable
-                key={`${s}_${idx}`}
-                onPress={() => {
-                  setSearchQuery(s);
-                  setIsSearchFocused(false);
-                  Haptics.selectionAsync();
-                }}
-                style={styles.suggestionRow}
-              >
-                <Ionicons name="location-outline" size={14} color="#8E8E93" />
-                <Text style={[styles.suggestionText, { color: isDark ? '#FFF' : '#1C1C1E' }]} numberOfLines={1}>
-                  {s}
+          <BlurView
+            intensity={isDark ? 85 : 95}
+            tint={isDark ? 'dark' : 'light'}
+            style={[styles.suggestionsGlass, { maxHeight: Math.min(height * 0.52, 440) }]}
+          >
+            <ScrollView
+              keyboardShouldPersistTaps="always"
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              {searchQuery.trim().length === 0 && (
+                <>
+                  <Text style={[styles.smartSectionTitle, { color: '#8E8E93' }]}>Ostatnie wyszukiwania</Text>
+                  {recentSearches.length === 0 ? (
+                    <Text style={[styles.smartHint, { color: isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93' }]}>
+                      Zapisujemy tu miasta i adresy, które wybierzesz z listy poniżej.
+                    </Text>
+                  ) : (
+                    recentSearches.map((s) => (
+                      <TouchableOpacity
+                        key={`r-${s}`}
+                        activeOpacity={0.65}
+                        onPress={() => finalizeSearchChoice(s)}
+                        style={styles.suggestionRowTouchable}
+                      >
+                        <Ionicons name="time-outline" size={18} color="#8E8E93" />
+                        <Text style={[styles.suggestionText, { color: isDark ? '#FFF' : '#1C1C1E' }]} numberOfLines={1}>
+                          {s}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
+                      </TouchableOpacity>
+                    ))
+                  )}
+                  <Text style={[styles.smartSectionTitle, { color: '#8E8E93', marginTop: 6 }]}>Szybki wybór miasta</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator
+                    keyboardShouldPersistTaps="always"
+                    contentContainerStyle={styles.cityChipsRow}
+                  >
+                    {QUICK_CITIES.map((city) => (
+                      <Pressable
+                        key={city}
+                        onPress={() => finalizeSearchChoice(city)}
+                        style={[styles.cityChip, { borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.08)' }]}
+                      >
+                        <Text style={[styles.cityChipText, { color: isDark ? '#FFF' : '#1C1C1E' }]}>{city}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                  <Text style={[styles.smartFootnote, { color: isDark ? 'rgba(255,255,255,0.35)' : '#8E8E93' }]}>
+                    Zacznij wpisywać — pokażemy dopasowania z ofert (ulica, dzielnica, tytuł) oraz liczbę pasujących ogłoszeń.
+                  </Text>
+                </>
+              )}
+
+              {searchQuery.trim().length === 1 && (
+                <Text style={[styles.smartHint, { color: isDark ? 'rgba(255,255,255,0.55)' : '#636366', paddingVertical: 8 }]}>
+                  Wpisz jeszcze jedną literę, aby pojawiły się inteligentne podpowiedzi z aktualnych ofert.
                 </Text>
-              </Pressable>
-            ))}
+              )}
+
+              {searchQuery.trim().length >= 2 && (
+                <>
+                  {rankedPlaceSuggestions.length === 0 ? (
+                    <View style={styles.smartEmptyBlock}>
+                      <Ionicons name="search-outline" size={28} color="#8E8E93" />
+                      <Text style={[styles.smartEmptyTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                        Brak dopasowań w tekstach ofert
+                      </Text>
+                      <Text style={[styles.smartHint, { color: '#8E8E93', textAlign: 'center' }]}>
+                        Spróbuj innej frazy albo użyj filtrów (ikonka opcji). Możesz podać kilka słów naraz, np. „mokotów 3 pok”.
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={[styles.smartSectionTitle, { color: '#8E8E93' }]}>Podpowiedzi z ofert</Text>
+                      {rankedPlaceSuggestions.map((item) => (
+                        <TouchableOpacity
+                          key={item.key}
+                          activeOpacity={0.65}
+                          onPress={() => finalizeSearchChoice(item.value)}
+                          style={styles.suggestionRowTouchable}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${item.category}: ${item.value}`}
+                        >
+                          <Ionicons name="navigate-outline" size={18} color={modeAccentColor} />
+                          <View style={styles.suggestionMain}>
+                            <Text style={[styles.suggestionText, { color: isDark ? '#FFF' : '#1C1C1E' }]} numberOfLines={2}>
+                              {item.value}
+                            </Text>
+                            <Text style={[styles.suggestionCategory, { color: '#8E8E93' }]}>{item.category}</Text>
+                          </View>
+                          <View style={[styles.countBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}>
+                            <Text style={[styles.countBadgeText, { color: isDark ? '#FFF' : '#1C1C1E' }]}>{item.count}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+
+              {(normalizedSearchTokens.length > 0 || searchQuery.trim().length >= 2) && (
+                <View
+                  style={[
+                    styles.smartFooter,
+                    { borderTopColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' },
+                  ]}
+                >
+                  <Ionicons name="map-outline" size={16} color={modeAccentColor} />
+                  <Text style={[styles.smartFooterText, { color: isDark ? 'rgba(255,255,255,0.75)' : '#636366' }]}>
+                    W bazie ogłoszeń:{' '}
+                    <Text style={{ fontWeight: '700', color: isDark ? '#FFF' : '#1C1C1E' }}>
+                      {searchOnlyMatchCount} {pluralOffers(searchOnlyMatchCount)}
+                    </Text>{' '}
+                    pasuje do wpisanego tekstu
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
           </BlurView>
         </View>
       )}
@@ -852,15 +1213,61 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
               <Text style={styles.advancedSection}>Miasto</Text>
               <View style={styles.advancedRow}>
-                {['', 'Warszawa', 'Kraków', 'Wrocław', 'Poznań', 'Łódź', 'Trójmiasto'].map((city) => {
+                {['', ...backendCities].map((city) => {
                   const active = draftAdvancedFilters.city === city;
                   return (
-                    <Pressable key={city || 'all'} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, city }))}>
+                    <Pressable key={city || 'all'} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, city, districts: [] }))}>
                       <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{city || 'Wszystkie'}</Text>
                     </Pressable>
                   );
                 })}
               </View>
+
+              <Text style={styles.advancedSection}>Dzielnica</Text>
+              <View style={styles.advancedRow}>
+                {(() => {
+                  const selectedCity = draftAdvancedFilters.city.trim();
+                  const chips = selectedCity ? backendDistrictsForDraftCity : [];
+                  return chips.map((district) => {
+                    const active = draftAdvancedFilters.districts.includes(district);
+                    return (
+                      <Pressable
+                        key={district}
+                        style={[
+                          styles.advancedChip,
+                          active && styles.advancedChipActive,
+                          active && {
+                            borderColor: draftModeAccentColor,
+                            backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)',
+                          },
+                          !selectedCity && { opacity: 0.5 },
+                        ]}
+                        disabled={!selectedCity}
+                        onPress={() =>
+                          setDraftAdvancedFilters((p) => ({
+                            ...p,
+                            districts: p.districts.includes(district)
+                              ? p.districts.filter((d) => d !== district)
+                              : [...p.districts, district],
+                          }))
+                        }
+                      >
+                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>
+                          {district}
+                        </Text>
+                      </Pressable>
+                    );
+                  });
+                })()}
+              </View>
+              {draftAdvancedFilters.districts.length > 0 && (
+                <Pressable
+                  onPress={() => setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))}
+                  style={{ alignSelf: 'flex-start', marginBottom: 8 }}
+                >
+                  <Text style={{ color: '#8E8E93', fontWeight: '700' }}>Wyczyść dzielnice</Text>
+                </Pressable>
+              )}
 
               <Text style={styles.advancedSection}>Typ nieruchomości</Text>
               <View style={styles.advancedRow}>
@@ -930,13 +1337,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  /** Nad mapą, pod kartami i paskiem wyszukiwania — tap zamyka panel (nie używamy już onBlur). */
+  searchBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    zIndex: 8,
+  },
   topBarContainer: {
     position: 'absolute',
     left: 20,
     right: 20,
     flexDirection: 'row',
     gap: 12,
-    zIndex: 10,
+    zIndex: 50,
   },
   searchGlass: {
     flex: 1,
@@ -958,6 +1371,96 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
     paddingHorizontal: 10,
+  },
+  searchClearBtn: {
+    paddingRight: 14,
+    justifyContent: 'center',
+  },
+  smartSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  smartHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+  },
+  smartFootnote: {
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    paddingTop: 4,
+  },
+  cityChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    flexWrap: 'wrap',
+  },
+  cityChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: 'rgba(128,128,128,0.08)',
+  },
+  cityChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  suggestionMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  suggestionCategory: {
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  countBadge: {
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  smartFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  smartFooterText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  smartEmptyBlock: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    gap: 8,
+  },
+  smartEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   filterButtonWrap: {
     width: 50,
@@ -992,7 +1495,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 20,
     right: 82,
-    zIndex: 25,
+    zIndex: 52,
   },
   suggestionsGlass: {
     borderRadius: 16,
@@ -1006,6 +1509,16 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(150,150,150,0.2)',
+  },
+  suggestionRowTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 52,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(150,150,150,0.2)',
   },
@@ -1104,7 +1617,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 240 : 220,
     alignSelf: 'center',
-    zIndex: 10,
+    zIndex: 22,
+    elevation: 22,
   },
   radarBtnWrapper: {
     borderRadius: 24,
@@ -1134,6 +1648,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 20,
+    elevation: 20,
   },
   offerCard: {
     flexDirection: 'row',

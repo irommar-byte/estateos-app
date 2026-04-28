@@ -4,30 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
+import AddOfferStepper from '../../components/AddOfferStepper';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const Colors = { primary: '#10b981' };
-
-const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => (
-  <View style={styles.progressContainer}>
-    <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-    <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <Pressable 
-          key={i} 
-          onPress={() => { 
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-            navigation.navigate(`Step${i + 1}`); 
-          }} 
-          style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : 'rgba(255,255,255,0.1)' }} 
-        />
-      ))}
-    </View>
-  </View>
-);
 
 export default function Step1_Type({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
@@ -95,7 +78,7 @@ export default function Step1_Type({ theme }: { theme: any }) {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={{ marginTop: 50 }} />
-        <InteractiveProgressBar step={1} total={6} theme={theme} navigation={navigation} />
+        <AddOfferStepper currentStep={1} draft={draft} theme={theme} navigation={navigation} />
         
         <Text style={styles.header}>
           <Text style={{ color: Colors.primary }}>Dodaj </Text>
@@ -154,8 +137,6 @@ export default function Step1_Type({ theme }: { theme: any }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 24 },
-  progressContainer: { marginBottom: 30 },
-  progressText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8, textTransform: 'uppercase' },
   header: { fontSize: 42, fontWeight: '900', marginBottom: 40, letterSpacing: -1.5 },
   section: { marginBottom: 40 },
   sectionTitle: { fontSize: 13, fontWeight: '800', marginBottom: 18, textTransform: 'uppercase', letterSpacing: 1.2, marginLeft: 4 },

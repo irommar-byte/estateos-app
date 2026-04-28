@@ -1,39 +1,18 @@
 import React, { useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Platform, KeyboardAvoidingView, Alert, Animated, UIManager } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Platform, KeyboardAvoidingView, Animated, UIManager } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
+import AddOfferStepper from '../../components/AddOfferStepper';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const Colors = { primary: '#10b981' };
-
-const InteractiveProgressBar = ({ step, total, theme, navigation, canProceed }: any) => (
-  <View style={styles.progressContainer}>
-    <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-    <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <Pressable 
-          key={i} 
-          onPress={() => { 
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-            if (i + 1 > step && !canProceed) {
-              Alert.alert("Wymagane dane", "Wypełnij po kolei wszystkie wymagane parametry (metraż, pokoje, piętro, rok), by przejść dalej.");
-            } else {
-              navigation.navigate('Dodaj', { screen: `Step${i + 1}` }); 
-            }
-          }} 
-          style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} 
-        />
-      ))}
-    </View>
-  </View>
-);
 
 const ROOMS = ['', ...Array.from({length: 10}, (_, i) => (i + 1).toString())];
 const FLOORS = ['', 'Parter', ...Array.from({length: 30}, (_, i) => (i + 1).toString())];
@@ -59,10 +38,9 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const isYearUnlocked = isPlot ? false : (isFloorUnlocked && !!draft.floor);
   
   // Udogodnienia odkrywają się na SAMYM KOŃCU (dla działki robi to metraż)
-  const isAmenitiesUnlocked = isPlot ? isAreaFilled : (isYearUnlocked && !!draft.buildYear);
-
-  // Blokada przejścia dalej - możliwa TYLKO gdy na ekranie wyłonią się udogodnienia
-  const canProceed = isAmenitiesUnlocked;
+  const isAmenitiesUnlocked = isPlot
+    ? isAreaFilled
+    : isYearUnlocked && !!(draft.yearBuilt || draft.buildYear);
 
   const roomsAnim = useRef(new Animated.Value(isRoomsUnlocked ? 1 : 0.3)).current;
   const floorAnim = useRef(new Animated.Value(isFloorUnlocked ? 1 : 0.3)).current;
@@ -104,7 +82,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{ marginTop: 50 }} />
-        <InteractiveProgressBar step={3} total={6} theme={theme} navigation={navigation} canProceed={canProceed} />
+        <AddOfferStepper currentStep={3} draft={draft} theme={theme} navigation={navigation} />
         
         <Text style={[styles.header, { color: theme.text }]}>Parametry</Text>
         
@@ -148,7 +126,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               <Animated.View style={[styles.pickerColumn, { opacity: yearAnim }]} pointerEvents={isYearUnlocked ? 'auto' : 'none'}>
                 <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>ROK</Text>
                 <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
-                  <Picker selectedValue={draft.buildYear || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({buildYear: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
+                  <Picker selectedValue={draft.yearBuilt || draft.buildYear || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ buildYear: v, yearBuilt: v }); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
                     {YEARS.map(y => <Picker.Item key={y} label={y === '' ? '-' : y} value={y} />)}
                   </Picker>
                 </View>
@@ -182,7 +160,6 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, content: { padding: 20 },
-  progressContainer: { marginBottom: 30 }, progressText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 },
   header: { fontSize: 40, fontWeight: '800', marginBottom: 30, letterSpacing: -1.2 }, sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 4 },
   areaBox: { borderRadius: 28, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', height: 130, paddingBottom: 25 }, 
   areaInput: { fontSize: 65, fontWeight: '800', textAlign: 'center', height: 85, minWidth: 100 }, areaUnit: { fontSize: 24, fontWeight: '700', marginBottom: 15, marginLeft: 5 },

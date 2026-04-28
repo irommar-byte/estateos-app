@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -14,6 +14,7 @@ import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
+import { openStripeCheckoutForPlan } from '../utils/listingQuota';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -21,12 +22,25 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const { height } = Dimensions.get('window');
 
+/** API / DB często zwraca status małymi literami (np. pending); filtry zakładały wyłącznie UPPERCASE. */
+function normalizeOfferTabStatus(raw) {
+  const s = String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+  if (['ACTIVE', 'PUBLISHED', 'LIVE', 'APPROVED'].includes(s)) return 'ACTIVE';
+  if (['PENDING', 'DRAFT', 'WAITING', 'UNDER_REVIEW', 'REVIEW', 'IN_REVIEW', 'NEW'].includes(s)) return 'PENDING';
+  if (['ARCHIVED', 'CLOSED', 'REJECTED', 'EXPIRED', 'INACTIVE', 'CANCELLED', 'CANCELED', 'SOLD', 'OFF_MARKET'].includes(s)) return 'ARCHIVED';
+  return s;
+}
+
 const AnimatedStatusDot = ({ status }) => {
-  const animOpacity = useRef(new Animated.Value(status === 'PENDING' ? 0 : 0.4)).current;
+  const animOpacity = useRef(new Animated.Value(normalizeOfferTabStatus(status) === 'PENDING' ? 0 : 0.4)).current;
   const animScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (status === 'ACTIVE') {
+    const st = normalizeOfferTabStatus(status);
+    if (st === 'ACTIVE') {
       Animated.loop(
         Animated.parallel([
           Animated.sequence([
@@ -39,7 +53,7 @@ const AnimatedStatusDot = ({ status }) => {
           ])
         ])
       ).start();
-    } else if (status === 'PENDING') {
+    } else if (st === 'PENDING') {
       Animated.loop(
         Animated.sequence([
           Animated.timing(animOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -52,7 +66,8 @@ const AnimatedStatusDot = ({ status }) => {
     }
   }, [status]);
 
-  const color = status === 'ACTIVE' ? '#34C759' : status === 'PENDING' ? '#FF9F0A' : '#FF3B30';
+  const st = normalizeOfferTabStatus(status);
+  const color = st === 'ACTIVE' ? '#34C759' : st === 'PENDING' ? '#FF9F0A' : '#FF3B30';
 
   return (
     <View style={styles.ledContainer}>
@@ -146,6 +161,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ACTIVE');
   const [selectedOffer, setSelectedOffer] = useState(null);
+  const [pendingReactivationOfferId, setPendingReactivationOfferId] = useState<number | null>(null);
+  const [reactivating, setReactivating] = useState(false);
   
   const { user, token } = useAuthStore();
   const isDark = theme.glass === 'dark';
@@ -155,8 +172,9 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
-      const data = await res.json();
-      if (data.success && data.offers) setOffers(data.offers);
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.offers) ? data.offers : [];
+      if (res.ok) setOffers(list);
     } catch (e) {} finally { setLoading(false); }
   };
 
@@ -166,6 +184,17 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       setSelectedOffer(null);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!pendingReactivationOfferId || !visible) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const offerId = pendingReactivationOfferId;
+      setPendingReactivationOfferId(null);
+      void finalizeOfferReactivation(offerId);
+    });
+    return () => sub.remove();
+  }, [pendingReactivationOfferId, visible]);
 
   const handleOpenManagement = (offer) => {
     Haptics.selectionAsync();
@@ -179,7 +208,47 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     setSelectedOffer(null);
   };
 
-    const handleAction = async (actionType) => {
+  const finalizeOfferReactivation = async (offerId: number) => {
+    if (!token) return;
+    setReactivating(true);
+    try {
+      await fetch(`${API_URL}/api/stripe/force-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      }).catch(() => null);
+
+      const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          offerId,
+          newStatus: 'ACTIVE',
+          renewDays: 30,
+          extendDays: 30,
+          reactivationPaid: true,
+          reactivateAsNew: true,
+          refreshCreatedAt: true,
+          notifyRadar: true,
+        }),
+      });
+      if (!res.ok) throw new Error('Serwer odrzucił reaktywację.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await fetchMyOffers();
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setSelectedOffer(null);
+      setActiveTab('ACTIVE');
+      Alert.alert('Oferta aktywowana', 'Ogłoszenie zostało aktywowane ponownie na kolejne 30 dni.');
+    } catch {
+      Alert.alert(
+        'Nie udało się aktywować',
+        'Po opłaceniu pakietu wróć tutaj i ponów aktywację. Jeśli płatność była przed chwilą, synchronizacja może potrwać chwilę.'
+      );
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  const handleAction = async (actionType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (actionType === 'PREVIEW') {
       onClose();
@@ -187,23 +256,24 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } else if (actionType === 'EDIT') {
       Alert.alert("Edycja", "Funkcja edycji zostanie udostępniona wkrótce.");
     } else if (actionType === 'BUMP') {
-      Alert.alert("Podbij ofertę", "Twoja oferta wskoczy na samą górę wyników wyszukiwania.", [
-        { text: "Anuluj", style: "cancel" },
-        { text: "Podbij", onPress: async () => {
-          try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ offerId: selectedOffer.id, newStatus: 'ACTIVE' })
-            });
-            if (res.ok) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              await fetchMyOffers();
-              handleGoBack();
-            }
-          } catch(e) { Alert.alert("Błąd", "Nie udało się podbić oferty."); }
-        }}
-      ]);
+      if (!selectedOffer?.id || !token || reactivating) return;
+      Alert.alert(
+        "Odśwież ofertę (+30 dni)",
+        "Podbicie działa jak odnowienie: po płatności oferta dostaje kolejne 30 dni, wraca do aktywnych i może być promowana jak nowa na radarze.",
+        [
+          { text: "Anuluj", style: "cancel" },
+          {
+            text: "Przejdź do płatności",
+            onPress: async () => {
+              const opened = await openStripeCheckoutForPlan(API_URL, token, 'renewal', {
+                offerId: Number(selectedOffer.id),
+                metadata: { action: 'bump_as_renew_30d' },
+              });
+              if (opened) setPendingReactivationOfferId(selectedOffer.id);
+            },
+          },
+        ]
+      );
     } else if (actionType === 'ARCHIVE') {
       Alert.alert("Zakończ ogłoszenie", "Czy na pewno chcesz wycofać ofertę do archiwum?", [
         { text: "Anuluj", style: "cancel" },
@@ -222,13 +292,33 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           } catch(e) { Alert.alert("Błąd", "Nie udało się wycofać oferty."); }
         }}
       ]);
+    } else if (actionType === 'REACTIVATE_30D') {
+      if (!selectedOffer?.id || !token || reactivating) return;
+      Alert.alert(
+        'Aktywuj ponownie na 30 dni',
+        'Aby ponownie aktywować zakończone ogłoszenie na 30 dni, przejdź do płatności Stripe. Po powrocie aplikacja spróbuje automatycznie odnowić ofertę.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          {
+            text: 'Przejdź do Stripe',
+            onPress: async () => {
+              const opened = await openStripeCheckoutForPlan(API_URL, token, 'renewal', {
+                offerId: Number(selectedOffer.id),
+                metadata: { action: 'reactivate_offer_30d' },
+              });
+              if (opened) setPendingReactivationOfferId(selectedOffer.id);
+            },
+          },
+        ]
+      );
     }
   };
 
-  const filteredOffers = offers.filter(o => {
-    if (activeTab === 'ACTIVE') return o.status === 'ACTIVE';
-    if (activeTab === 'PENDING') return o.status === 'PENDING';
-    if (activeTab === 'ARCHIVED') return o.status === 'ARCHIVED' || o.status === 'REJECTED';
+  const filteredOffers = offers.filter((o) => {
+    const st = normalizeOfferTabStatus(o.status);
+    if (activeTab === 'ACTIVE') return st === 'ACTIVE';
+    if (activeTab === 'PENDING') return st === 'PENDING';
+    if (activeTab === 'ARCHIVED') return st === 'ARCHIVED';
     return false;
   });
 
@@ -238,6 +328,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       const parsedImages = typeof item.images === 'string' ? JSON.parse(item.images) : item.images;
       if (parsedImages && parsedImages.length > 0) imageUri = parsedImages[0].startsWith('/') ? `https://estateos.pl${parsedImages[0]}` : parsedImages[0];
     } catch (e) {}
+
+    const rowStatus = normalizeOfferTabStatus(item.status);
 
     return (
       <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
@@ -252,8 +344,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', paddingTop: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <AnimatedStatusDot status={item.status} />
-            <Text style={{ fontSize: 12, fontWeight: '700', marginLeft: 8, color: item.status === 'ACTIVE' ? '#34C759' : item.status === 'PENDING' ? '#FF9F0A' : '#FF3B30' }}>
-              {item.status === 'ACTIVE' ? 'AKTYWNE' : item.status === 'PENDING' ? 'OCZEKUJĄCE' : 'ZAKOŃCZONE'}
+            <Text style={{ fontSize: 12, fontWeight: '700', marginLeft: 8, color: rowStatus === 'ACTIVE' ? '#34C759' : rowStatus === 'PENDING' ? '#FF9F0A' : '#FF3B30' }}>
+              {rowStatus === 'ACTIVE' ? 'AKTYWNE' : rowStatus === 'PENDING' ? 'OCZEKUJĄCE' : 'ZAKOŃCZONE'}
             </Text>
           </View>
           <Pressable onPress={() => handleOpenManagement(item)} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', borderRadius: 12 }}>
@@ -266,6 +358,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
 
   const renderManagementView = () => {
     if (!selectedOffer) return null;
+    const selSt = normalizeOfferTabStatus(selectedOffer.status);
     const expiryDate = selectedOffer.expiresAt ? new Date(selectedOffer.expiresAt) : null;
     const fallbackExpiryDate = selectedOffer.createdAt
       ? new Date(new Date(selectedOffer.createdAt).getTime() + 30 * 24 * 60 * 60 * 1000)
@@ -309,8 +402,21 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title="Podgląd" subtitle="Z perspektywy klienta" theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title="Edytuj" subtitle="Zmień parametry" theme={theme} isDark={isDark} />
-          <PremiumActionButton isPrimary={true} disabled={selectedOffer.status !== 'ACTIVE'} onPress={() => handleAction('BUMP')} icon="rocket" color={{ bg: selectedOffer.status === 'ACTIVE' ? 'rgba(52,199,89,0.15)' : 'rgba(142,142,147,0.1)', icon: selectedOffer.status === 'ACTIVE' ? '#34C759' : '#8E8E93' }} title="Podbij" subtitle="Na szczyt listy" theme={theme} isDark={isDark} />
-          <PremiumActionButton disabled={selectedOffer.status === 'ARCHIVED'} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selectedOffer.status === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selectedOffer.status === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title="Wycofaj" subtitle="Zakończ ofertę" theme={theme} isDark={isDark} />
+          <PremiumActionButton isPrimary={true} disabled={selSt !== 'ACTIVE' || reactivating} onPress={() => handleAction('BUMP')} icon="rocket" color={{ bg: selSt === 'ACTIVE' ? 'rgba(52,199,89,0.15)' : 'rgba(142,142,147,0.1)', icon: selSt === 'ACTIVE' ? '#34C759' : '#8E8E93' }} title={reactivating && selSt === 'ACTIVE' ? 'Odświeżanie...' : 'Podbij (+30 dni)'} subtitle="Płatne odnowienie (renew)" theme={theme} isDark={isDark} />
+          <PremiumActionButton disabled={selSt === 'ARCHIVED'} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title="Wycofaj" subtitle="Zakończ ofertę" theme={theme} isDark={isDark} />
+          {selSt === 'ARCHIVED' && (
+            <PremiumActionButton
+              isPrimary={true}
+              disabled={reactivating}
+              onPress={() => handleAction('REACTIVATE_30D')}
+              icon="refresh-circle"
+              color={{ bg: 'rgba(59,130,246,0.15)', icon: '#3b82f6' }}
+              title={reactivating ? 'Aktywowanie...' : 'Aktywuj ponownie'}
+              subtitle="30 dni po płatności Stripe"
+              theme={theme}
+              isDark={isDark}
+            />
+          )}
         </View>
       </ScrollView>
     );
@@ -352,7 +458,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         {loading ? (
            <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
         ) : (
-           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} keyExtractor={item => item.id.toString()} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej sekcji.</Text>} />
+           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={activeTab} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej sekcji.</Text>} />
         )}
       </View>
     </Modal>

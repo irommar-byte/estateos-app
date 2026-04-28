@@ -16,7 +16,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "pl.estateos.app",
-      "associatedDomains": ["webcredentials:estateos.pl"],
+      "associatedDomains": [
+        "webcredentials:estateos.pl"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -33,7 +35,19 @@
     "extra": {
       "eas": {
         "projectId": "f60e36e2-c093-4e91-870b-e4580a058bc2"
-      }
-    }
+      },
+      "iapPakietPlusProductId": "pl.estateos.app.pakiet_plus_30d"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.2.0"
+          }
+        }
+      ],
+      "react-native-iap"
+    ]
   }
 }

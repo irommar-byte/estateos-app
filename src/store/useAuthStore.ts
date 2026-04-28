@@ -22,6 +22,7 @@ interface User {
   planType: string | null;
   isPro?: boolean;
   proExpiresAt?: string | null;
+  plusExpiresAt?: string | null;
   isVerifiedPhone?: boolean;
 }
 

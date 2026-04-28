@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
+import AddOfferStepper from '../../components/AddOfferStepper';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -74,39 +75,6 @@ const DISTRICTS_DATA = {
   'Poznań': ['Antoninek', 'Chartowo', 'Dębiec', 'Górczyn', 'Grunwald', 'Jeżyce', 'Junikowo', 'Łazarz', 'Naramowice', 'Nowe Miasto POZ', 'Ogrody', 'Piątkowo', 'Podolany', 'Rataje', 'Sołacz', 'Stare Miasto POZ', 'Strzeszyn', 'Świerczewo', 'Wilda', 'Winogrady', 'Winiary'],
   'Trójmiasto': ['Gdańsk - Śródmieście', 'Gdańsk - Wrzeszcz', 'Gdańsk - Oliwa', 'Gdańsk - Przymorze', 'Gdańsk - Zaspa', 'Gdańsk - Osowa', 'Gdańsk - Chełm', 'Gdańsk - Jasień', 'Gdynia - Śródmieście', 'Gdynia - Orłowo', 'Gdynia - Redłowo', 'Gdynia - Chylonia', 'Sopot - Dolny', 'Sopot - Górny'],
   'Reszta Polski': ['Inna lokalizacja']
-};
-
-const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => {
-  const handleNext = (targetStep: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (step === 2 && targetStep === 3) {
-      Alert.alert(
-        "Potwierdzenie Lokalizacji",
-        "Czy upewniłeś się, że pineska znajduje się w odpowiednim miejscu na mapie?",
-        [
-          { text: "Jeszcze poprawię", style: "cancel" },
-          { text: "Tak, jest ok", onPress: () => navigation.navigate(`Step${targetStep}`) }
-        ]
-      );
-    } else {
-      navigation.navigate(`Step${targetStep}`);
-    }
-  };
-
-  return (
-    <View style={styles.progressContainer}>
-      <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-      <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
-        {Array.from({ length: total }).map((_, i) => (
-          <Pressable 
-            key={i} 
-            onPress={() => handleNext(i + 1)} 
-            style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} 
-          />
-        ))}
-      </View>
-    </View>
-  );
 };
 
 const RedNeedlePin = () => {
@@ -313,7 +281,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
       </View>
 
       <ScrollView style={styles.controlsContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <InteractiveProgressBar step={2} total={6} theme={theme} navigation={navigation} />
+        <AddOfferStepper currentStep={2} draft={draft} theme={theme} navigation={navigation} />
         
         <Text style={[styles.header, { color: theme.text }]}>Lokalizacja</Text>
         
@@ -362,7 +330,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  progressContainer: { marginBottom: 15 }, progressText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 },
   mapContainer: { height: '42%', width: '100%', position: 'relative' },
   map: { flex: 1 },
   mapGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, borderTopLeftRadius: 30, borderTopRightRadius: 30 },

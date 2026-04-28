@@ -2,8 +2,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
-import { Marker } from 'react-native-maps';
-import MapView from 'react-native-map-clustering';
+import MapViewCore, { Marker } from 'react-native-maps';
+import ClusteredMapView from 'react-native-map-clustering';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -17,6 +17,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const { width, height } = Dimensions.get('window');
 const API_URL = 'https://estateos.pl';
+const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
 
 const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; 
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
@@ -38,6 +39,9 @@ const formatPriceMarker = (price: string | number) => {
   if (num >= 1000) return Math.floor(num / 1000) + 'k';
   return num.toString();
 };
+
+const hasFiniteCoords = (lat: unknown, lng: unknown) =>
+  Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 
 export default function Radar({ theme, route }: any) {
   const playRadarSound = async () => {
@@ -173,7 +177,7 @@ export default function Radar({ theme, route }: any) {
 
   const filteredOffers = useMemo(() => {
     return (allOffers || []).filter(offer => {
-      if (!offer.lat || !offer.lng || isNaN(parseFloat(offer.lat))) return false;
+      if (!hasFiniteCoords(offer?.lat, offer?.lng)) return false;
       if (activeTab === 'MINE') return offer.userId === user?.id;
       if (activeTab === 'FAV') return favorites.includes(offer.id);
       return matchesFilters(offer, filters);
@@ -196,8 +200,10 @@ export default function Radar({ theme, route }: any) {
   }, [filteredOffers.length]));
 
   const flyToMarker = (offer: any) => {
-    if (offer?.lat && offer?.lng && mapRef.current) {
-      mapRef.current.animateCamera({ center: { latitude: parseFloat(offer.lat), longitude: parseFloat(offer.lng) }, pitch: 45, altitude: 3000, zoom: 14 }, { duration: 1000 });
+    const lat = Number(offer?.lat);
+    const lng = Number(offer?.lng);
+    if (hasFiniteCoords(lat, lng) && mapRef.current) {
+      mapRef.current.animateCamera({ center: { latitude: lat, longitude: lng }, pitch: 45, altitude: 3000, zoom: 14 }, { duration: 1000 });
     }
   };
 
@@ -421,23 +427,39 @@ export default function Radar({ theme, route }: any) {
 
   return (
     <View style={styles.container}>
-      <MapView
-        mapType={mapType} clusterColor={ThemeColors[filters.transactionType]} clusterTextColor="#FFFFFF" animationEnabled={false} radius={45} ref={mapRef}
-        mapPadding={{ top: 40, right: 0, bottom: 180, left: 0 }} style={StyleSheet.absoluteFillObject}
-        userInterfaceStyle={isDark ? "dark" : "light"} showsUserLocation={true} showsBuildings={true} pitchEnabled={true}
+      <RadarMapComponent
+        mapType={mapType}
+        ref={mapRef}
+        mapPadding={{ top: 40, right: 0, bottom: 180, left: 0 }}
+        style={StyleSheet.absoluteFillObject}
+        userInterfaceStyle={isDark ? "dark" : "light"}
+        showsUserLocation={true}
+        showsBuildings={true}
+        pitchEnabled={true}
         initialRegion={{ latitude: 52.2297, longitude: 21.0122, latitudeDelta: 0.1, longitudeDelta: 0.1 }}
+        {...(Platform.OS === 'ios'
+          ? {}
+          : {
+              clusterColor: ThemeColors[filters.transactionType],
+              clusterTextColor: '#FFFFFF',
+              animationEnabled: false,
+              radius: 45,
+            })}
       >
         {filteredOffers.map((offer, index) => {
           const isSelected = activeIndex === index;
+          const lat = Number(offer?.lat);
+          const lng = Number(offer?.lng);
+          if (!hasFiniteCoords(lat, lng)) return null;
           return (
-            <Marker key={offer.id || index} coordinate={{ latitude: parseFloat(offer.lat), longitude: parseFloat(offer.lng) }} onPress={() => handleMarkerPress(index)} style={{ zIndex: isSelected ? 10 : 1 }} tracksViewChanges={isSelected}>
+            <Marker key={offer.id || index} coordinate={{ latitude: lat, longitude: lng }} onPress={() => handleMarkerPress(index)} style={{ zIndex: isSelected ? 10 : 1 }} tracksViewChanges={isSelected}>
               <View style={[styles.markerPill, { backgroundColor: offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL, borderColor: (offer.user?.role === 'AGENT' || offer.role === 'AGENT') ? '#FF9F0A' : '#FFFFFF', borderWidth: 2, shadowColor: isSelected ? (offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL) : '#000', shadowOpacity: isSelected ? 0.8 : 0.3, shadowRadius: isSelected ? 12 : 5 }, isSelected && { transform: [{ scale: 1.15 }] }]}>
                 <Text style={[styles.markerText, { color: '#FFF' }]}>{formatPriceMarker(offer.price)}</Text>
               </View>
             </Marker>
           );
         })}
-      </MapView>
+      </RadarMapComponent>
 
       <View style={styles.topSafeArea}>
         <BlurView intensity={isDark ? 50 : 80} tint={isDark ? "dark" : "light"} style={styles.topBarContainer}>

@@ -4,19 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
+import AddOfferStepper from '../../components/AddOfferStepper';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
-
-const InteractiveProgressBar = ({ step, total, theme, navigation }: any) => (
-  <View style={styles.progressContainer}>
-    <Text style={[styles.progressText, { color: theme.subtitle }]}>KROK {step} Z {total}</Text>
-    <View style={{ flexDirection: 'row', gap: 6, height: 4 }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <Pressable key={i} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); navigation.navigate('Dodaj', { screen: `Step${i + 1}` }); }} style={{ flex: 1, borderRadius: 2, backgroundColor: i + 1 <= step ? Colors.primary : (theme.glass === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)') }} />
-      ))}
-    </View>
-  </View>
-);
 
 const formatNumber = (val: any) => {
   if (!val) return "";
@@ -72,7 +62,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         
         <View style={{ marginTop: 50 }} />
-        <InteractiveProgressBar step={4} total={6} theme={theme} navigation={navigation} />
+        <AddOfferStepper currentStep={4} draft={draft} theme={theme} navigation={navigation} />
         <Text style={[styles.header, { color: theme.text }]}>Finanse</Text>
 
         <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{isRent ? 'Czynsz Najmu (zł)' : 'Cena Całkowita (zł)'}</Text>
@@ -137,7 +127,6 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, content: { padding: 20 },
-  progressContainer: { marginBottom: 30 }, progressText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5, marginBottom: 8 },
   header: { fontSize: 40, fontWeight: '800', marginBottom: 30, letterSpacing: -1.2 }, sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 4 },
   mainInputBox: { height: 100, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 28, borderWidth: 1 }, mainInput: { fontSize: 40, fontWeight: '800', textAlign: 'left' },
   splitInputs: { flexDirection: 'row', gap: 15, marginTop: 30 }, halfCol: { flex: 1 }, smallInputBox: { height: 70, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 24, borderWidth: 1 }, smallInput: { fontSize: 24, fontWeight: '700' },

@@ -38,6 +38,7 @@ import Step4_Finance from './src/screens/AddOffer/Step4_Finance';
 import Step5_Media from './src/screens/AddOffer/Step5_Media';
 import Step6_Summary from './src/screens/AddOffer/Step6_Summary';
 import AuthScreen from './src/screens/AuthScreen';
+import { getStepBlockMessage, isStepValid } from './src/screens/AddOffer/flow';
 
 const Colors = {
   light: { background: '#f5f5f7', text: '#1d1d1f', subtitle: '#86868b', glass: 'light' as const },
@@ -80,13 +81,11 @@ const FloatingNextButton = ({ onPress }: any) => {
   const isFocused = activeRouteName === 'Dodaj';
 
   let isValid = false;
-  let errorMessage = "Wypełnij wszystkie wymagane pola.";
-
-  if (currentStep === 1) { isValid = !!draft.transactionType && !!draft.propertyType && !!draft.condition; }
-  else if (currentStep === 2) { isValid = !!draft.city && !!draft.district; errorMessage = "Wybierz Miasto i Dzielnicę"; }
-  else if (currentStep === 3) { isValid = !!draft.area; errorMessage = "Wpisz metraż"; }
-  else if (currentStep === 4) { isValid = !!draft.price; errorMessage = "Wpisz cenę nieruchomości"; }
-  else if (currentStep === 5) { isValid = draft.images.length > 0; errorMessage = "Dodaj minimum 1 zdjęcie"; }
+  let errorMessage = getStepBlockMessage(currentStep);
+  if (currentStep >= 1 && currentStep <= 5) {
+    isValid = isStepValid(currentStep, draft);
+    errorMessage = getStepBlockMessage(currentStep);
+  }
 
   useEffect(() => {
     if (isValid && currentStep > 0 && currentStep < 6 && isFocused) {
