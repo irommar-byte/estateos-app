@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Animated,
   Platform,
   Pressable,
   FlatList,
@@ -17,7 +18,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
-import MapViewCore, { Marker } from 'react-native-maps';
+import MapViewCore, { Marker, Region } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -29,6 +30,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
+import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
 function markerLuxuryGradient(accentHex: string): [string, string, string] {
   if (accentHex === '#0A84FF') {
@@ -64,7 +66,7 @@ const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMa
 const RECENT_SEARCH_KEY = '@estateos_home_search_recent';
 const MAX_RECENT_SEARCHES = 8;
 
-const QUICK_CITIES = ['Warszawa', 'Kraków', 'Wrocław', 'Poznań', 'Gdańsk', 'Łódź', 'Katowice', 'Szczecin'];
+const QUICK_CITIES = [...STRICT_CITIES];
 
 /** Normalizacja pod wyszukiwanie (małe litery, bez polskich diakrytyków). */
 function normalizeSearchText(s: string) {
@@ -119,6 +121,12 @@ type AdvancedFilters = {
   city: string;
   districts: string[];
   propertyType: 'ALL' | 'FLAT' | 'HOUSE' | 'PLOT' | 'COMMERCIAL';
+};
+type RadarAreaDraft = {
+  center: { latitude: number; longitude: number };
+  radiusKm: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
 };
 
 const toAbsoluteImage = (img: string | null | undefined) => {
@@ -209,6 +217,41 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     matchThreshold: 100,
   };
   const [radarFilters, setRadarFilters] = useState(defaultRadarFilters);
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
+  const [areaPickerDraft, setAreaPickerDraft] = useState<RadarAreaDraft>({
+    center: { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude },
+    radiusKm: 8,
+    latitudeDelta: DEFAULT_REGION.latitudeDelta,
+    longitudeDelta: DEFAULT_REGION.longitudeDelta,
+  });
+  const [areaSummary, setAreaSummary] = useState<string>('');
+  const areaMoveHapticTsRef = useRef(0);
+  const areaRadiusStepRef = useRef(Math.round(8 * 10));
+  const wasAreaPickerOpenRef = useRef(false);
+  const areaStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const areaLensFrostOpacity = useRef(new Animated.Value(0.18)).current;
+  const areaLensFocusScale = useRef(new Animated.Value(1)).current;
+
+  const pulseHaptic = useCallback(async (style: Haptics.ImpactFeedbackStyle | 'selection' | 'success') => {
+    try {
+      if (style === 'selection') {
+        await Haptics.selectionAsync();
+      } else if (style === 'success') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        await Haptics.impactAsync(style);
+      }
+    } catch {
+      // noop
+    }
+  }, []);
+
+  const AREA_RETICLE_DIAMETER = Math.min(width * 0.48, 240);
+  const areaReticleDiameter = useMemo(() => {
+    return AREA_RETICLE_DIAMETER;
+  }, [AREA_RETICLE_DIAMETER]);
+  const areaLensLeft = useMemo(() => Math.round(Math.max(0, (width - areaReticleDiameter) / 2)), [width, areaReticleDiameter]);
+  const areaLensTop = useMemo(() => Math.round(Math.max(0, (height - areaReticleDiameter) / 2)), [height, areaReticleDiameter]);
 
   const locateUserAndCenterMap = useCallback(async () => {
     try {
@@ -360,7 +403,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   }, [offers, searchQuery]);
 
   const backendCities = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(STRICT_CITIES);
     offers.forEach((o) => {
       const city = String(o.raw?.city || '').trim();
       if (city) set.add(city);
@@ -369,11 +412,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   }, [offers]);
 
   const backendDistrictsForDraftCity = useMemo(() => {
-    const selectedCity = draftAdvancedFilters.city.trim().toLowerCase();
+    const selectedCity = draftAdvancedFilters.city.trim();
     if (!selectedCity) return [] as string[];
+    const strictDistricts = STRICT_CITY_DISTRICTS[selectedCity] || [];
+    if (strictDistricts.length > 0) {
+      return [...strictDistricts].sort((a, b) => a.localeCompare(b, 'pl'));
+    }
     const set = new Set<string>();
     offers.forEach((o) => {
-      const city = String(o.raw?.city || '').trim().toLowerCase();
+      const city = String(o.raw?.city || '').trim();
       const district = String(o.raw?.district || '').trim();
       if (city === selectedCity && district) set.add(district);
     });
@@ -595,11 +642,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   const filteredOffers = useMemo(() => {
+    const cityMatches = (rawCityNorm: string, selectedCityNorm: string) => {
+      if (rawCityNorm === selectedCityNorm) return true;
+      // Backward compatibility for legacy records grouped as "Trójmiasto".
+      if (rawCityNorm === 'trojmiasto' && ['gdansk', 'gdynia', 'sopot'].includes(selectedCityNorm)) return true;
+      return false;
+    };
+
     const matchesAdvancedFilters = (offer: MapOffer) => {
       const rawPrice = Number(String(offer.raw?.price ?? '').replace(/[^\d]/g, '')) || 0;
       const rawArea = Number(String(offer.raw?.area ?? '').replace(',', '.')) || 0;
-      const rawCity = String(offer.raw?.city || '').toLowerCase();
-      const rawDistrict = String(offer.raw?.district || '').toLowerCase();
+      const rawCity = normalizeSearchText(String(offer.raw?.city || '').trim());
+      const rawDistrict = normalizeSearchText(String(offer.raw?.district || '').trim());
       const rawPropertyType = String(offer.raw?.propertyType || '').toUpperCase();
       const rawTransactionType = String(offer.raw?.transactionType || '').toUpperCase();
       if (rawTransactionType !== advancedFilters.transactionType) return false;
@@ -607,10 +661,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (advancedFilters.maxPrice !== null && rawPrice > advancedFilters.maxPrice) return false;
       if (advancedFilters.minArea !== null && rawArea < advancedFilters.minArea) return false;
       if (advancedFilters.maxArea !== null && rawArea > advancedFilters.maxArea) return false;
-      if (advancedFilters.city.trim() && rawCity !== advancedFilters.city.trim().toLowerCase()) return false;
+      const selectedCity = normalizeSearchText(advancedFilters.city.trim());
+      if (selectedCity && !cityMatches(rawCity, selectedCity)) return false;
       if (
         advancedFilters.districts.length > 0 &&
-        !advancedFilters.districts.some((d) => d.trim().toLowerCase() === rawDistrict)
+        !advancedFilters.districts.some((d) => normalizeSearchText(d.trim()) === rawDistrict)
       ) return false;
       if (advancedFilters.propertyType !== 'ALL' && rawPropertyType !== advancedFilters.propertyType) return false;
       return true;
@@ -793,6 +848,155 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const handleMapRegionChangeComplete = (region: Region) => {
+    if (!showAreaPicker) return;
+    const metersPerPixel = (region.latitudeDelta * 111_320) / Math.max(1, height);
+    const radiusKm = Math.max(0.3, ((AREA_RETICLE_DIAMETER / 2) * metersPerPixel) / 1000);
+    const roundedRadius = Math.round(radiusKm * 10) / 10;
+    setAreaPickerDraft((prev) => ({
+      ...prev,
+      center: { latitude: region.latitude, longitude: region.longitude },
+      radiusKm: roundedRadius,
+      latitudeDelta: region.latitudeDelta,
+      longitudeDelta: region.longitudeDelta,
+    }));
+    if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
+    areaStopTimerRef.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(areaLensFrostOpacity, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.timing(areaLensFocusScale, {
+            toValue: 1.012,
+            duration: 130,
+            useNativeDriver: true,
+          }),
+          Animated.timing(areaLensFocusScale, {
+            toValue: 1,
+            duration: 130,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    }, 120);
+    const now = Date.now();
+    if (now - areaMoveHapticTsRef.current > 450) {
+      areaMoveHapticTsRef.current = now;
+      void pulseHaptic('selection');
+    }
+    const nextStep = Math.round(roundedRadius * 10);
+    if (Math.abs(nextStep - areaRadiusStepRef.current) >= 3) {
+      areaRadiusStepRef.current = nextStep;
+      void pulseHaptic(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleMapRegionChange = () => {
+    if (!showAreaPicker) return;
+    if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
+    Animated.timing(areaLensFrostOpacity, {
+      toValue: 0.18,
+      duration: 130,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(areaLensFocusScale, {
+      toValue: 1,
+      duration: 80,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const openAreaPickerFromCalibration = (currentFilters: RadarFilters) => {
+    setRadarFilters(currentFilters);
+    const baseCenter = userLocation || areaPickerDraft.center;
+    setAreaPickerDraft((prev) => ({
+      ...prev,
+      center: baseCenter,
+      latitudeDelta: 0.16,
+      longitudeDelta: 0.12,
+    }));
+    setShowCalibration(false);
+    setShowAreaPicker(true);
+    mapRef.current?.animateToRegion(
+      {
+        latitude: baseCenter.latitude,
+        longitude: baseCenter.longitude,
+        latitudeDelta: 0.16,
+        longitudeDelta: 0.12,
+      },
+      550
+    );
+    void pulseHaptic(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const applyAreaSelectionToRadar = async () => {
+    const center = areaPickerDraft.center;
+    const radius = areaPickerDraft.radiusKm;
+    const offersInArea = offers.filter((o) => distanceKm(center.latitude, center.longitude, o.lat, o.lng) <= radius);
+
+    const cityCount = new Map<string, number>();
+    for (const offer of offersInArea) {
+      const city = String(offer.raw?.city || '').trim();
+      if (!city) continue;
+      cityCount.set(city, (cityCount.get(city) || 0) + 1);
+    }
+
+    let selectedCity =
+      cityCount.size > 0
+        ? Array.from(cityCount.entries()).sort((a, b) => b[1] - a[1])[0][0]
+        : radarFilters.city;
+
+    if (cityCount.size === 0) {
+      try {
+        const reverse = await Location.reverseGeocodeAsync(center);
+        const place = reverse?.[0];
+        const cityGuess = String(place?.city || place?.subregion || place?.region || '').trim();
+        if (cityGuess) selectedCity = cityGuess;
+      } catch {
+        // noop
+      }
+    }
+
+    const districtsSet = new Set<string>();
+    for (const offer of offersInArea) {
+      const city = String(offer.raw?.city || '').trim();
+      const district = String(offer.raw?.district || '').trim();
+      if (city === selectedCity && district) districtsSet.add(district);
+    }
+
+    const selectedDistricts = Array.from(districtsSet).sort((a, b) => a.localeCompare(b, 'pl'));
+    const updated: RadarFilters = {
+      ...radarFilters,
+      city: selectedCity,
+      selectedDistricts,
+    };
+
+    setRadarFilters(updated);
+    setAreaSummary(
+      `${selectedCity} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
+    );
+    setShowAreaPicker(false);
+    setShowCalibration(true);
+    void pulseHaptic('success');
+  };
+
+  useEffect(() => {
+    if (showAreaPicker && !wasAreaPickerOpenRef.current) {
+      areaRadiusStepRef.current = Math.round(areaPickerDraft.radiusKm * 10);
+      void pulseHaptic(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    wasAreaPickerOpenRef.current = showAreaPicker;
+  }, [showAreaPicker, areaPickerDraft.radiusKm, pulseHaptic]);
+
+  useEffect(() => {
+    return () => {
+      if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
+    };
+  }, []);
+
   const toggleFavorite = async (offerId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const next = favorites.includes(offerId)
@@ -879,6 +1083,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={DEFAULT_REGION}
+        onRegionChange={handleMapRegionChange}
+        onRegionChangeComplete={handleMapRegionChangeComplete}
         mapType={mapType}
         userInterfaceStyle={isDark ? 'dark' : 'light'}
         showsUserLocation
@@ -1181,9 +1387,135 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         isDark={isDark}
         initialFilters={radarFilters}
         matchingOffersCount={activeOffers.length}
+        areaSummary={areaSummary}
         onClose={() => setShowCalibration(false)}
         onApply={applyRadarCalibration}
+        onOpenAreaPicker={openAreaPickerFromCalibration}
       />
+      {showAreaPicker && (
+        <View style={styles.areaPickerOverlay} pointerEvents="box-none">
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[styles.areaBackdropBlur, { top: 0, left: 0, right: 0, height: areaLensTop }]}
+            pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[
+              styles.areaBackdropBlur,
+              {
+                top: areaLensTop + areaReticleDiameter,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: undefined,
+              },
+            ]}
+            pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[
+              styles.areaBackdropBlur,
+              {
+                top: areaLensTop,
+                left: 0,
+                width: areaLensLeft,
+                height: areaReticleDiameter,
+                right: undefined,
+                bottom: undefined,
+              },
+            ]}
+            pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[
+              styles.areaBackdropBlur,
+              {
+                top: areaLensTop,
+                right: 0,
+                width: areaLensLeft,
+                height: areaReticleDiameter,
+                left: undefined,
+                bottom: undefined,
+              },
+            ]}
+            pointerEvents="none"
+          />
+
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.areaLensFrost,
+              {
+                width: areaReticleDiameter,
+                height: areaReticleDiameter,
+                left: areaLensLeft,
+                top: areaLensTop,
+                opacity: areaLensFrostOpacity,
+                transform: [{ scale: areaLensFocusScale }],
+              },
+            ]}
+          />
+
+          <View pointerEvents="none" style={styles.areaReticleWrap}>
+            <View
+              style={[
+                styles.areaReticle,
+                {
+                  width: areaReticleDiameter,
+                  height: areaReticleDiameter,
+                },
+              ]}
+            />
+            <View style={styles.areaCenterDot} />
+          </View>
+
+          <View style={styles.areaPickerTop} pointerEvents="box-none">
+            <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
+              <Text style={styles.areaPickerTitle}>Zaznacz obszar radaru</Text>
+              <Text style={styles.areaPickerSubtitle}>
+                Przesuń mapę pod znacznik i ustaw promień. Wykryjemy miasto i dzielnice automatycznie.
+              </Text>
+            </BlurView>
+          </View>
+
+          <View style={styles.areaPickerBottom} pointerEvents="box-none">
+            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
+              <View style={styles.areaRadiusHeader}>
+                <Text style={styles.areaRadiusLabel}>Promień obszaru</Text>
+                <Text style={styles.areaRadiusValue}>{areaPickerDraft.radiusKm.toFixed(1)} km</Text>
+              </View>
+              <View style={styles.areaZoomHintRow}>
+                <Ionicons name="resize-outline" size={16} color="#10b981" />
+                <Text style={styles.areaZoomHintText}>
+                  Ustaw promień gestem szczypania na mapie (zoom in/out).
+                </Text>
+              </View>
+              <View style={styles.areaActionRow}>
+                <Pressable
+                  style={styles.areaGhostBtn}
+                  onPress={() => {
+                    setShowAreaPicker(false);
+                    setShowCalibration(true);
+                    void pulseHaptic(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
+                  <Text style={styles.areaGhostText}>Wróć</Text>
+                </Pressable>
+                <Pressable style={styles.areaApplyBtn} onPress={() => { void applyAreaSelectionToRadar(); }}>
+                  <Text style={styles.areaApplyText}>Zastosuj obszar</Text>
+                </Pressable>
+              </View>
+            </BlurView>
+          </View>
+        </View>
+      )}
       <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
         <View style={styles.advancedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdvancedSearch(false)} />
@@ -1706,6 +2038,148 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  areaPickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    justifyContent: 'space-between',
+  },
+  areaBackdropBlur: { position: 'absolute' },
+  areaLensFrost: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  areaReticleWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  areaReticle: {
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(16,185,129,0.9)',
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+  },
+  areaCenterDot: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#10b981',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#10b981',
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+  },
+  areaPickerTop: {
+    paddingTop: Platform.OS === 'ios' ? 56 : 26,
+    paddingHorizontal: 16,
+  },
+  areaPickerTopGlass: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  areaPickerTitle: {
+    color: '#FFF',
+    fontSize: 17,
+    fontWeight: '800',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  areaPickerSubtitle: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  areaPickerBottom: {
+    paddingHorizontal: 16,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
+  },
+  areaPickerBottomGlass: {
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  areaRadiusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  areaRadiusLabel: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+  },
+  areaRadiusValue: {
+    color: '#10b981',
+    fontSize: 20,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  areaZoomHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  areaZoomHintText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  areaActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  areaGhostBtn: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(142,142,147,0.24)',
+  },
+  areaGhostText: {
+    color: '#D1D1D6',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  areaApplyBtn: {
+    flex: 1.2,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+  },
+  areaApplyText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   advancedOverlay: {
     flex: 1,

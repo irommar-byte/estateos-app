@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager } from 'react-native';
+import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager, Modal } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -8,6 +8,7 @@ import * as Location from 'expo-location';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import { STRICT_CITY_DISTRICTS } from '../../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -63,19 +64,38 @@ const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
   'Gdańsk - Chełm': { lat: 54.335, lng: 18.620 }, 'Gdańsk - Jasień': { lat: 54.335, lng: 18.565 },
   'Gdynia - Śródmieście': { lat: 54.518, lng: 18.530 }, 'Gdynia - Orłowo': { lat: 54.480, lng: 18.560 }, 'Gdynia - Redłowo': { lat: 54.495, lng: 18.540 }, 'Gdynia - Chylonia': { lat: 54.535, lng: 18.470 },
   'Sopot - Dolny': { lat: 54.445, lng: 18.565 }, 'Sopot - Górny': { lat: 54.440, lng: 18.550 },
+
+  // LUBLIN
+  'Lublin': { lat: 51.2465, lng: 22.5684 }, 'Śródmieście LUB': { lat: 51.2465, lng: 22.5684 }, 'Czechów': { lat: 51.2710, lng: 22.5530 },
+  'LSM': { lat: 51.2360, lng: 22.5350 }, 'Czuby': { lat: 51.2190, lng: 22.5200 }, 'Węglin': { lat: 51.2310, lng: 22.4890 },
+  'Kalinowszczyzna': { lat: 51.2610, lng: 22.5850 }, 'Felin': { lat: 51.2360, lng: 22.6260 }, 'Tatary': { lat: 51.2520, lng: 22.6000 },
+
+  // ZAMOŚĆ
+  'Zamość': { lat: 50.7231, lng: 23.2519 }, 'Stare Miasto ZAM': { lat: 50.7231, lng: 23.2519 }, 'Nowe Miasto ZAM': { lat: 50.7200, lng: 23.2700 },
+  'Karolówka': { lat: 50.7300, lng: 23.2300 }, 'Planty ZAM': { lat: 50.7150, lng: 23.2500 },
+
+  // POZOSTAŁE MIASTA Z BACKENDU
+  'Gdańsk': { lat: 54.3520, lng: 18.6466 },
+  'Gdynia': { lat: 54.5189, lng: 18.5305 },
+  'Sopot': { lat: 54.4416, lng: 18.5601 },
+  'Katowice': { lat: 50.2649, lng: 19.0238 },
+  'Rybnik': { lat: 50.0971, lng: 18.5418 },
+  'Białystok': { lat: 53.1325, lng: 23.1688 },
   
   'Inna lokalizacja': { lat: 52.0, lng: 19.0 }
 };
 
-const DISTRICTS_DATA = {
-  'Warszawa': ['Bemowo', 'Białołęka', 'Bielany', 'Mokotów', 'Ochota', 'Praga-Południe', 'Praga-Północ', 'Rembertów', 'Śródmieście', 'Targówek', 'Ursus', 'Ursynów', 'Wawer', 'Wesoła', 'Wilanów', 'Włochy', 'Wola', 'Żoliborz'],
-  'Kraków': ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
-  'Łódź': ['Bałuty', 'Górna', 'Polesie', 'Śródmieście', 'Widzew'],
-  'Wrocław': ['Biskupin', 'Borek', 'Fabryczna', 'Gaj', 'Gądów Mały', 'Grabiszyn', 'Huby', 'Jagodno', 'Karłowice', 'Kozanów', 'Krzyki', 'Leśnica', 'Maślice', 'Muchobór', 'Nadodrze', 'Ołbin', 'Oporów', 'Popowice', 'Psie Pole', 'Stare Miasto WRO', 'Szczepin', 'Śródmieście WRO', 'Tarnogaj'],
-  'Poznań': ['Antoninek', 'Chartowo', 'Dębiec', 'Górczyn', 'Grunwald', 'Jeżyce', 'Junikowo', 'Łazarz', 'Naramowice', 'Nowe Miasto POZ', 'Ogrody', 'Piątkowo', 'Podolany', 'Rataje', 'Sołacz', 'Stare Miasto POZ', 'Strzeszyn', 'Świerczewo', 'Wilda', 'Winogrady', 'Winiary'],
-  'Trójmiasto': ['Gdańsk - Śródmieście', 'Gdańsk - Wrzeszcz', 'Gdańsk - Oliwa', 'Gdańsk - Przymorze', 'Gdańsk - Zaspa', 'Gdańsk - Osowa', 'Gdańsk - Chełm', 'Gdańsk - Jasień', 'Gdynia - Śródmieście', 'Gdynia - Orłowo', 'Gdynia - Redłowo', 'Gdynia - Chylonia', 'Sopot - Dolny', 'Sopot - Górny'],
-  'Reszta Polski': ['Inna lokalizacja']
+const DISTRICTS_DATA: Record<string, string[]> = {
+  ...STRICT_CITY_DISTRICTS,
+  'Reszta Polski': ['Inna lokalizacja'],
 };
+
+const DISTRICT_CITY_USAGE = Object.values(STRICT_CITY_DISTRICTS).reduce<Record<string, number>>((acc, districts) => {
+  districts.forEach((district) => {
+    acc[district] = (acc[district] || 0) + 1;
+  });
+  return acc;
+}, {});
 
 const RedNeedlePin = () => {
   const levitateAnim = useRef(new Animated.Value(0)).current;
@@ -129,15 +149,70 @@ const getClosestDistrict = (lat: number, lng: number, city: string) => {
   return closest;
 };
 
+const detectCityFromText = (raw: string) => {
+  const cityInfo = (raw || '').toLowerCase();
+  if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) return 'Warszawa';
+  if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) return 'Kraków';
+  if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) return 'Łódź';
+  if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) return 'Wrocław';
+  if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) return 'Poznań';
+  if (cityInfo.includes('lublin')) return 'Lublin';
+  if (cityInfo.includes('zamość') || cityInfo.includes('zamosc')) return 'Zamość';
+  if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk')) return 'Gdańsk';
+  if (cityInfo.includes('gdynia')) return 'Gdynia';
+  if (cityInfo.includes('sopot')) return 'Sopot';
+  if (cityInfo.includes('katowice')) return 'Katowice';
+  if (cityInfo.includes('rybnik')) return 'Rybnik';
+  if (cityInfo.includes('białystok') || cityInfo.includes('bialystok')) return 'Białystok';
+  return 'Reszta Polski';
+};
+
+const getOutsideLocationLabel = (place: any) => {
+  const locality = [place?.city, place?.subregion, place?.region]
+    .map((v: unknown) => String(v || '').trim())
+    .find((v) => v.length > 0);
+  if (locality) return locality;
+  const postalCode = String(place?.postalCode || '').trim();
+  if (postalCode) return `Kod ${postalCode}`;
+  return 'Reszta Polski';
+};
+
+const getOutsideDistrictLabel = (place: any) => {
+  const districtLike = [place?.district, place?.subregion, place?.name]
+    .map((v: unknown) => String(v || '').trim())
+    .find((v) => v.length > 0);
+  if (districtLike) return districtLike;
+  const postalCode = String(place?.postalCode || '').trim();
+  if (postalCode) return `Kod ${postalCode}`;
+  return 'Inna lokalizacja';
+};
+
 export default function Step2_Location({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const [streetInput, setStreetInput] = useState(draft.street || '');
+  const [showLocationConfirm, setShowLocationConfirm] = useState(false);
+  const [pendingTargetStep, setPendingTargetStep] = useState<number | null>(null);
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
   
   const isProgrammaticMove = useRef(false);
+  const geoCacheRef = useRef<Record<string, { lat: number; lng: number }>>({});
+  const allowStep3NavigationRef = useRef(false);
   
   useFocusEffect(useCallback(() => { setCurrentStep(2); }, []));
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (event: any) => {
+      const action = event?.data?.action;
+      const targetStepName = action?.payload?.name;
+      const isStep3Navigation = action?.type === 'NAVIGATE' && targetStepName === 'Step3';
+      if (!isStep3Navigation || allowStep3NavigationRef.current) return;
+      event.preventDefault();
+      setPendingTargetStep(3);
+      setShowLocationConfirm(true);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const isDark = theme.glass === 'dark';
   const cardBg = isDark ? 'rgba(30,30,34,0.65)' : '#ffffff';
@@ -160,6 +235,55 @@ export default function Step2_Location({ theme }: { theme: any }) {
     setTimeout(() => { isProgrammaticMove.current = false; }, 2600);
   };
 
+  const resolvePlaceCoords = useCallback(async (query: string) => {
+    const normalized = query.trim();
+    if (!normalized) return null;
+    if (geoCacheRef.current[normalized]) return geoCacheRef.current[normalized];
+    const result = await Location.geocodeAsync(`${normalized}, Polska`);
+    if (!result.length) return null;
+    const coords = { lat: result[0].latitude, lng: result[0].longitude };
+    geoCacheRef.current[normalized] = coords;
+    return coords;
+  }, []);
+
+  useEffect(() => {
+    const initFromDeviceLocation = async () => {
+      if (draft.lat && draft.lng) return;
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') return;
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        let finalCity = 'Reszta Polski';
+        let finalDistrict = 'Inna lokalizacja';
+        let newStreet = '';
+        if (reverse.length > 0) {
+          const place = reverse[0];
+          const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
+          finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
+          finalDistrict = strictCity === 'Reszta Polski'
+            ? getOutsideDistrictLabel(place)
+            : getClosestDistrict(latitude, longitude, strictCity);
+          if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
+          else if (place.street) newStreet = place.street;
+          else if (place.name) newStreet = place.name;
+        }
+        if (newStreet && !streetInput) setStreetInput(newStreet);
+        updateDraft({
+          lat: latitude,
+          lng: longitude,
+          city: finalCity,
+          district: finalDistrict,
+          ...(newStreet ? { street: newStreet } : {}),
+        });
+        flyTo(latitude, longitude, draft.isExactLocation ?? true);
+      } catch (_e) {}
+    };
+    initFromDeviceLocation();
+  }, [draft.lat, draft.lng, draft.isExactLocation, resolvePlaceCoords, streetInput, updateDraft]);
+
   const handleAddressSearch = async () => {
     if (streetInput.length < 3) return;
     if (!/\d/.test(streetInput)) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); Alert.alert("Brak numeru", "Proszę podać dokładny adres z numerem, np. 'Wolska 56'."); return; }
@@ -178,16 +302,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
         
         if (reverse.length > 0) {
           const place = reverse[0];
-          const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
-          
-          if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
-          else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
-          else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
-          else if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) finalCity = 'Wrocław';
-          else if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) finalCity = 'Poznań';
-          else if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk') || cityInfo.includes('sopot') || cityInfo.includes('gdynia')) finalCity = 'Trójmiasto';
-          
-          finalDistrict = getClosestDistrict(latitude, longitude, finalCity);
+          const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
+          finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
+          finalDistrict = strictCity === 'Reszta Polski'
+            ? getOutsideDistrictLabel(place)
+            : getClosestDistrict(latitude, longitude, strictCity);
           if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
         }
         
@@ -221,19 +340,17 @@ export default function Step2_Location({ theme }: { theme: any }) {
           newStreet = place.name;
         }
 
-        const cityInfo = (place.city || place.subregion || place.region || "").toLowerCase();
-        let finalCity = 'Reszta Polski';
-        
-        if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) finalCity = 'Warszawa';
-        else if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) finalCity = 'Kraków';
-        else if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) finalCity = 'Łódź';
-        else if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) finalCity = 'Wrocław';
-        else if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) finalCity = 'Poznań';
-        else if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk') || cityInfo.includes('sopot') || cityInfo.includes('gdynia')) finalCity = 'Trójmiasto';
-        
-        const finalDistrict = getClosestDistrict(region.latitude, region.longitude, finalCity);
+        const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
+        const finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
+        const finalDistrict = strictCity === 'Reszta Polski'
+          ? getOutsideDistrictLabel(place)
+          : getClosestDistrict(region.latitude, region.longitude, strictCity);
+        const shouldUpdate =
+          newStreet !== streetInput ||
+          finalCity !== draft.city ||
+          finalDistrict !== draft.district;
 
-        if (newStreet !== streetInput) {
+        if (shouldUpdate) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           
@@ -246,19 +363,53 @@ export default function Step2_Location({ theme }: { theme: any }) {
     }
   };
 
-  const handleCityChange = (city: string) => { 
+  const handleCityChange = async (city: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
     const newDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA]; 
-    const coords = DISTRICT_COORDS[city] || { lat: 52.0, lng: 19.0 }; 
+    const coords = DISTRICT_COORDS[city] || await resolvePlaceCoords(city) || { lat: 52.0, lng: 19.0 }; 
     updateDraft({ city, district: newDistricts[0], lat: coords.lat, lng: coords.lng }); 
     if (city !== 'Reszta Polski') flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
   };
   
-  const handleDistrictChange = (district: string) => { 
+  const handleDistrictChange = async (district: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
     updateDraft({ district }); 
-    const coords = DISTRICT_COORDS[district]; 
-    if (coords) flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
+    const selectedCity = draft.city || 'Reszta Polski';
+    const isAmbiguousDistrict = (DISTRICT_CITY_USAGE[district] || 0) > 1;
+    const coords =
+      await resolvePlaceCoords(`${district}, ${selectedCity}`) ||
+      (!isAmbiguousDistrict ? DISTRICT_COORDS[district] : null) ||
+      await resolvePlaceCoords(district);
+    if (coords) {
+      updateDraft({ lat: coords.lat, lng: coords.lng });
+      flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
+    } else {
+      Alert.alert('Nie znaleziono dzielnicy', `Nie udało się zlokalizować: ${district}, ${selectedCity}.`);
+    }
+  };
+
+  const handleBeforeStepChange = (targetStep: number) => {
+    if (targetStep !== 3) return true;
+    setPendingTargetStep(targetStep);
+    setShowLocationConfirm(true);
+    return false;
+  };
+
+  const locationCityDistrict = [draft.city, draft.district].filter(Boolean).join(', ');
+  const locationStreet = streetInput?.trim() || draft.street || 'Brak dokładnego adresu';
+
+  const confirmAndGoNext = () => {
+    if (streetInput?.trim()) updateDraft({ street: streetInput.trim() });
+    const step = pendingTargetStep;
+    setShowLocationConfirm(false);
+    setPendingTargetStep(null);
+    if (step) {
+      allowStep3NavigationRef.current = true;
+      navigation.navigate(`Step${step}`);
+      setTimeout(() => {
+        allowStep3NavigationRef.current = false;
+      }, 0);
+    }
   };
 
   const currentIsExact = draft.isExactLocation !== undefined ? draft.isExactLocation : true;
@@ -281,13 +432,21 @@ export default function Step2_Location({ theme }: { theme: any }) {
       </View>
 
       <ScrollView style={styles.controlsContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <AddOfferStepper currentStep={2} draft={draft} theme={theme} navigation={navigation} />
+        <AddOfferStepper currentStep={2} draft={draft} theme={theme} navigation={navigation} onBeforeStepChange={handleBeforeStepChange} />
         
         <Text style={[styles.header, { color: theme.text }]}>Lokalizacja</Text>
         
         <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Wyszukaj adres</Text>
         <View style={[styles.insetSlot, { backgroundColor: inputBg, borderColor }, shadow]}>
           <TextInput style={[styles.input, { color: theme.text }]} placeholder="np. Wolska 56" placeholderTextColor={theme.subtitle} value={streetInput} onChangeText={setStreetInput} onSubmitEditing={handleAddressSearch} returnKeyType="search" selectionColor="#dc2626" />
+        </View>
+
+        <View style={[styles.hintCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(16,185,129,0.08)', borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(16,185,129,0.25)' }]}>
+          <Ionicons name="hand-left-outline" size={16} color={Colors.primary} style={{ marginTop: 1 }} />
+          <Text style={[styles.hintText, { color: theme.subtitle }]}>
+            Możesz wybrać miasto i dzielnicę, ale najważniejsze jest ustawienie pinezki w dokładnym miejscu.
+            Sprawdź, czy pole adresu zgadza się z pozycją pinezki, albo wpisz dokładny adres i potwierdź na mapie.
+          </Text>
         </View>
 
         <View pointerEvents={hasAddress ? "auto" : "none"} style={{ opacity: hasAddress ? 1 : 0.35 }}>
@@ -324,6 +483,36 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         <View style={{ height: 200 }} />
       </ScrollView>
+
+      <Modal visible={showLocationConfirm} transparent animationType="fade" onRequestClose={() => setShowLocationConfirm(false)}>
+        <View style={styles.confirmOverlay}>
+          <BlurView intensity={36} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <View style={[styles.confirmCard, { backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : 'rgba(255,255,255,0.96)' }]}>
+            <Text style={[styles.confirmTitle, { color: theme.text }]}>Potwierdź lokalizację</Text>
+            <Text style={[styles.confirmSubtitle, { color: theme.subtitle }]}>
+              Upewnij się, że pinezka wskazuje właściwe miejsce oferty.
+            </Text>
+
+            <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Miasto i dzielnica</Text>
+              <Text style={[styles.confirmValue, { color: theme.text }]}>{locationCityDistrict || 'Brak'}</Text>
+            </View>
+            <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Adres</Text>
+              <Text style={[styles.confirmValue, { color: theme.text }]}>{locationStreet}</Text>
+            </View>
+
+            <View style={styles.confirmActions}>
+              <Pressable style={[styles.confirmBtn, styles.confirmSecondary]} onPress={() => { setShowLocationConfirm(false); setPendingTargetStep(null); }}>
+                <Text style={styles.confirmSecondaryText}>Popraw</Text>
+              </Pressable>
+              <Pressable style={[styles.confirmBtn, styles.confirmPrimary]} onPress={confirmAndGoNext}>
+                <Text style={styles.confirmPrimaryText}>Zatwierdź</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -350,6 +539,101 @@ const styles = StyleSheet.create({
   label: { fontSize: 17, fontWeight: '700' }, subLabel: { fontSize: 13, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '800', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1.5 },
   input: { height: 55, paddingHorizontal: 20, fontSize: 17, fontWeight: '600' },
+  hintCard: {
+    flexDirection: 'row',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  hintText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  confirmOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+  },
+  confirmCard: {
+    width: '100%',
+    borderRadius: 26,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  confirmTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: 6,
+  },
+  confirmSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  confirmRow: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  confirmLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  confirmValue: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  confirmBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmSecondary: {
+    backgroundColor: 'rgba(142,142,147,0.18)',
+  },
+  confirmPrimary: {
+    backgroundColor: '#10b981',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  confirmSecondaryText: {
+    color: '#8E8E93',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  confirmPrimaryText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
   
   pillBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
   pillText: { fontSize: 14, fontWeight: '600', color: '#8E8E93' }

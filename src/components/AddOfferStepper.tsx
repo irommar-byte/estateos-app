@@ -8,9 +8,10 @@ type AddOfferStepperProps = {
   draft: any;
   theme: any;
   navigation: any;
+  onBeforeStepChange?: (targetStep: number) => boolean;
 };
 
-export default function AddOfferStepper({ currentStep, draft, theme, navigation }: AddOfferStepperProps) {
+export default function AddOfferStepper({ currentStep, draft, theme, navigation, onBeforeStepChange }: AddOfferStepperProps) {
   const canMoveForward = isStepValid(currentStep, draft);
   const completedStep = currentStep > 1 && isStepValid(currentStep - 1, draft);
 
@@ -28,6 +29,10 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation 
 
     if (!canMoveForward) {
       Alert.alert('Uzupełnij dane', getStepBlockMessage(currentStep));
+      return;
+    }
+
+    if (onBeforeStepChange && !onBeforeStepChange(targetStep)) {
       return;
     }
 

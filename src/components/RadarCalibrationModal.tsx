@@ -4,17 +4,11 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import RadarCalibrationRitualOverlay from './RadarCalibrationRitualOverlay';
+import { STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
 const { width, height } = Dimensions.get('window');
 
-const CITY_DISTRICTS: Record<string, string[]> = {
-  Warszawa: ['Bemowo', 'Białołęka', 'Bielany', 'Mokotów', 'Ochota', 'Śródmieście', 'Ursynów', 'Wola', 'Żoliborz'],
-  Kraków: ['Stare Miasto', 'Krowodrza', 'Podgórze', 'Nowa Huta'],
-  Łódź: ['Bałuty', 'Górna', 'Polesie', 'Śródmieście', 'Widzew'],
-  Wrocław: ['Fabryczna', 'Krzyki', 'Psie Pole', 'Śródmieście'],
-  Trójmiasto: ['Gdańsk', 'Sopot', 'Gdynia'],
-  Poznań: ['Stare Miasto', 'Nowe Miasto', 'Jeżyce', 'Grunwald', 'Wilda'],
-};
+const CITY_DISTRICTS: Record<string, string[]> = STRICT_CITY_DISTRICTS;
 const CITIES = Object.keys(CITY_DISTRICTS);
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' } as const;
 const BaseColors = { subtitle: '#8E8E93' };
@@ -42,8 +36,10 @@ type Props = {
   initialFilters: RadarFilters;
   /** Liczba ofert aktualnie na mapie (do animacji końcowej). */
   matchingOffersCount: number;
+  areaSummary?: string;
   onClose: () => void;
   onApply: (filters: RadarFilters) => Promise<void> | void;
+  onOpenAreaPicker: (currentFilters: RadarFilters) => void;
 };
 
 export default function RadarCalibrationModal({
@@ -51,8 +47,10 @@ export default function RadarCalibrationModal({
   isDark,
   initialFilters,
   matchingOffersCount,
+  areaSummary,
   onClose,
   onApply,
+  onOpenAreaPicker,
 }: Props) {
   const [showApplyRitual, setShowApplyRitual] = useState(false);
   const pendingFiltersRef = useRef<RadarFilters | null>(null);
@@ -247,6 +245,36 @@ export default function RadarCalibrationModal({
               </ScrollView>
             </View>
 
+            <Text style={styles.premiumSectionTitle}>OBSZAR NA MAPIE</Text>
+            <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
+              <Pressable
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onOpenAreaPicker(draftFilters);
+                }}
+                style={({ pressed }) => [
+                  styles.areaPickerBtn,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+                ]}
+              >
+                <View style={styles.areaPickerLeft}>
+                  <View style={[styles.areaPickerIcon, { backgroundColor: `${activeColor}22` }]}>
+                    <Ionicons name="scan-circle-outline" size={18} color={activeColor} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.areaPickerTitle, { color: isDark ? '#FFF' : '#000' }]}>
+                      Zaznacz obszar na mapie
+                    </Text>
+                    <Text style={styles.areaPickerSub}>
+                      Przesuń mapę, ustaw promień i automatycznie uzupełnij miasto + dzielnice.
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#8E8E93" />
+              </Pressable>
+              {!!areaSummary && <Text style={styles.areaSummaryText}>Obecnie: {areaSummary}</Text>}
+            </View>
+
             <Text style={styles.premiumSectionTitle}>PRECYZYJNE WYMIARY</Text>
             <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 5 }]}>
               <View style={styles.inputRow}>
@@ -390,4 +418,45 @@ const styles = StyleSheet.create({
   customSliderContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 48, width: '100%', paddingVertical: 10, backgroundColor: 'transparent' },
   systemDisclaimerBox: { marginTop: 30, marginHorizontal: 20, alignItems: 'center', padding: 20, backgroundColor: 'rgba(150,150,150,0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.1)' },
   systemDisclaimerText: { fontSize: 12, color: '#8E8E93', textAlign: 'center', lineHeight: 18, fontWeight: '500' },
+  areaPickerBtn: {
+    margin: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(142,142,147,0.2)',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: 'rgba(142,142,147,0.08)',
+  },
+  areaPickerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  areaPickerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  areaPickerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  areaPickerSub: {
+    fontSize: 11,
+    color: '#8E8E93',
+    lineHeight: 15,
+  },
+  areaSummaryText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+  },
 });
