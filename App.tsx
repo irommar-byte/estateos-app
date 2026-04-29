@@ -6,7 +6,7 @@ import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView } from 'react-native';
 
@@ -199,34 +199,194 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
 
 const AppStack = createNativeStackNavigator();
 
+type PushNavigationTarget =
+  | {
+      screen: 'OfferDetail';
+      params: { offer: { id: number | string } };
+    }
+  | {
+      screen: 'DealroomChat';
+      params: { dealId: number | string; offerId?: number | string; title?: string };
+    };
+
+const parseMaybeJson = (value: unknown): Record<string, any> => {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
+
+const parseNumericOrStringId = (value: unknown): number | string | null => {
+  if (value === undefined || value === null) return null;
+  const asString = String(value).trim();
+  if (!asString) return null;
+  const asNumber = Number(asString);
+  return Number.isFinite(asNumber) ? asNumber : asString;
+};
+
+const parsePushTargetFromResponse = (
+  response: Notifications.NotificationResponse | null
+): PushNavigationTarget | null => {
+  const baseData = parseMaybeJson(response?.notification?.request?.content?.data);
+  const nestedData = {
+    ...parseMaybeJson(baseData.payload),
+    ...parseMaybeJson(baseData.data),
+    ...parseMaybeJson(baseData.meta),
+    ...parseMaybeJson(baseData.custom),
+  };
+  const data = { ...baseData, ...nestedData };
+
+  const routeHint = String(
+    firstDefined(
+      data.target,
+      data.type,
+      data.action,
+      data.screen,
+      data.route,
+      data.notificationType,
+      data.entity
+    ) || ''
+  ).toLowerCase();
+
+  const deeplink = String(firstDefined(data.deeplink, data.deepLink, data.link, data.url) || '');
+  const deeplinkOfferMatch = deeplink.match(/offer\/(\d+)/i);
+  const deeplinkDealMatch = deeplink.match(/deal(?:room)?\/(\d+)/i) || deeplink.match(/chat\/(\d+)/i);
+
+  const offerId = parseNumericOrStringId(
+    firstDefined(
+      data.offerId,
+      data.offer_id,
+      data.listingId,
+      data.propertyId,
+      data?.offer?.id,
+      deeplinkOfferMatch?.[1]
+    )
+  );
+
+  const dealId = parseNumericOrStringId(
+    firstDefined(
+      data.dealId,
+      data.deal_id,
+      data.chatId,
+      data.threadId,
+      data.conversationId,
+      data?.deal?.id,
+      deeplinkDealMatch?.[1]
+    )
+  );
+
+  const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
+  const looksLikeDealOrChat =
+    routeHint.includes('deal') || routeHint.includes('chat') || routeHint.includes('dealroom');
+
+  if ((looksLikeOffer || (!!offerId && !looksLikeDealOrChat)) && offerId) {
+    return {
+      screen: 'OfferDetail',
+      params: { offer: { id: offerId } },
+    };
+  }
+
+  if ((looksLikeDealOrChat || !!dealId) && dealId) {
+    const offerIdForDeal = parseNumericOrStringId(
+      firstDefined(data.offerId, data.offer_id, data.listingId, data.propertyId, data?.offer?.id)
+    );
+    const title = String(firstDefined(data.title, data.dealTitle, data.chatTitle) || '').trim();
+    return {
+      screen: 'DealroomChat',
+      params: {
+        dealId,
+        ...(offerIdForDeal ? { offerId: offerIdForDeal } : {}),
+        ...(title ? { title } : {}),
+      },
+    };
+  }
+
+  return null;
+};
+
 export default function App() {
   const { token } = useAuthStore();
   const { askForPermission } = usePushNotifications(token);
   const systemColorScheme = useColorScheme();
   const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
+  const pendingPushTargetRef = useRef<PushNavigationTarget | null>(null);
+  const handledResponseKeysRef = useRef<Record<string, number>>({});
+  const lastNavigationKeyRef = useRef<{ key: string; at: number } | null>(null);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
 
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(response => {
-      const offerId = response.notification.request.content.data?.offerId;
+  const navigateFromPushTarget = useCallback((target: PushNavigationTarget | null) => {
+    if (!target || !navigationRef.isReady()) return false;
 
-      if (offerId && navigationRef.isReady()) {
-        navigationRef.navigate("OfferDetail", {
-        offer: { id: offerId }
-      });
+    const navigationKey = `${target.screen}:${JSON.stringify(target.params)}`;
+    const now = Date.now();
+    if (
+      lastNavigationKeyRef.current &&
+      lastNavigationKeyRef.current.key === navigationKey &&
+      now - lastNavigationKeyRef.current.at < 1800
+    ) {
+      return false;
+    }
+
+    lastNavigationKeyRef.current = { key: navigationKey, at: now };
+    (navigationRef as any).navigate(target.screen, target.params);
+    return true;
+  }, []);
+
+  const handleNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+
+      const requestIdentifier = String(response.notification?.request?.identifier || '');
+      const actionIdentifier = String(response.actionIdentifier || '');
+      const dedupeKey = `${requestIdentifier}:${actionIdentifier}`;
+      const now = Date.now();
+      const handledAt = handledResponseKeysRef.current[dedupeKey];
+      if (handledAt && now - handledAt < 10 * 60 * 1000) return;
+      handledResponseKeysRef.current[dedupeKey] = now;
+
+      const target = parsePushTargetFromResponse(response);
+      if (!target) return;
+
+      const navigated = navigateFromPushTarget(target);
+      if (!navigated) {
+        pendingPushTargetRef.current = target;
       }
+    },
+    [navigateFromPushTarget]
+  );
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+    void Notifications.getLastNotificationResponseAsync().then((lastResponse) => {
+      handleNotificationResponse(lastResponse);
     });
 
     return () => sub.remove();
-  }, []);
+  }, [handleNotificationResponse]);
 
   return (
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
-        <NavigationContainer ref={navigationRef} theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <NavigationContainer
+          ref={navigationRef}
+          theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}
+          onReady={() => {
+            if (!pendingPushTargetRef.current) return;
+            const pendingTarget = pendingPushTargetRef.current;
+            pendingPushTargetRef.current = null;
+            navigateFromPushTarget(pendingTarget);
+          }}
+        >
           <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
           <AppStack.Navigator screenOptions={{ headerShown: false }}>
             <AppStack.Screen name="MainTabs">

@@ -32,6 +32,76 @@ import { LinearGradient } from 'expo-linear-gradient';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
+// --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
+const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, isDark: boolean, diameter: number }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const focusHapticAtRef = useRef(0);
+
+  useEffect(() => {
+    if (isMoving) {
+      // 1. FAZA SZUKANIA (Rozszerzenie i utrata ostrości)
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1.08, friction: 7, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 0.72, duration: 140, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
+      ]).start();
+    } else {
+      // 2. FAZA ŁAPANIA OSTROŚCI: wyraźniejsza soczewka + pojedynczy, kontrolowany klik.
+      const now = Date.now();
+      if (now - focusHapticAtRef.current > 900) {
+        focusHapticAtRef.current = now;
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      Animated.parallel([
+        Animated.sequence([
+          Animated.spring(scaleAnim, { toValue: 0.96, friction: 7, useNativeDriver: true }),
+          Animated.spring(scaleAnim, { toValue: 1, friction: 9, useNativeDriver: true })
+        ]),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 360, useNativeDriver: true })
+        ])
+      ]).start();
+    }
+  }, [isMoving]);
+
+  return (
+    <View style={[styles.lensWrapper, { width: diameter, height: diameter }]} pointerEvents="none">
+      {/* Animowany zielony rozbłysk */}
+      <Animated.View style={[
+        styles.lensGlow,
+        {
+          width: diameter, height: diameter, borderRadius: diameter / 2,
+          opacity: glowAnim,
+          transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) }]
+        }
+      ]} />
+
+      {/* Główna soczewka */}
+      <Animated.View style={[
+        styles.lensCore,
+        {
+          width: diameter, height: diameter, borderRadius: diameter / 2,
+          opacity: opacityAnim,
+          transform: [{ scale: scaleAnim }],
+          borderColor: isMoving ? 'rgba(142,142,147,0.48)' : '#10f08a',
+          borderWidth: isMoving ? 2 : 3.5,
+        }
+      ]}>
+        <BlurView intensity={isMoving ? 18 : 4} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFillObject} />
+        <View style={[styles.lensDot, { backgroundColor: isMoving ? '#8E8E93' : '#10b981' }]} />
+        <View style={[styles.crosshair, styles.crosshairTop]} />
+        <View style={[styles.crosshair, styles.crosshairBottom]} />
+        <View style={[styles.crosshair, styles.crosshairLeft]} />
+        <View style={[styles.crosshair, styles.crosshairRight]} />
+      </Animated.View>
+    </View>
+  );
+};
+
 function markerLuxuryGradient(accentHex: string): [string, string, string] {
   if (accentHex === '#0A84FF') {
     return ['#8ECBFF', '#3DA3FF', '#0066CC'];
@@ -39,7 +109,6 @@ function markerLuxuryGradient(accentHex: string): [string, string, string] {
   return ['#6EE7B7', '#22C993', '#0A9F6E'];
 }
 
-/** Rozmiary „apple-style” dla klastra (jak domyślny supercluster helper). */
 function clusterBubbleDimensions(points: number) {
   if (points >= 50) return { diameter: 64, halo: 82, fontSize: 19 };
   if (points >= 25) return { diameter: 58, halo: 76, fontSize: 18 };
@@ -65,10 +134,8 @@ const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMa
 
 const RECENT_SEARCH_KEY = '@estateos_home_search_recent';
 const MAX_RECENT_SEARCHES = 8;
-
 const QUICK_CITIES = [...STRICT_CITIES];
 
-/** Normalizacja pod wyszukiwanie (małe litery, bez polskich diakrytyków). */
 function normalizeSearchText(s: string) {
   return s
     .normalize('NFD')
@@ -142,6 +209,27 @@ const formatMarkerPrice = (price: string) => {
   return `${Math.round(raw / 1000)}k`;
 };
 
+const getTransactionBadge = (rawTransactionType: unknown) => {
+  const normalized = String(rawTransactionType || '').toUpperCase();
+  if (normalized === 'RENT') {
+    return { label: 'WYNAJEM', color: '#0A84FF' };
+  }
+  return { label: 'SPRZEDAŻ', color: '#10b981' };
+};
+
+const formatOfferPublishDate = (raw: any) => {
+  const value =
+    raw?.publishedAt ||
+    raw?.published_at ||
+    raw?.publicationDate ||
+    raw?.createdAt ||
+    raw?.created_at;
+  if (!value) return 'Publikacja: -';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Publikacja: -';
+  return `Publikacja: ${date.toLocaleDateString('pl-PL')}`;
+};
+
 const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -154,6 +242,101 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   return R * c;
 };
 
+/** Max price: przy 100% sztywny limit kalibracji; przy niższej skali do +10% tolerancji (liniowo). */
+function radarPriceCap(maxPrice: number, matchThreshold: number): number {
+  const t = Math.max(50, Math.min(100, matchThreshold));
+  // Normalizacja po faktycznym zakresie suwaka 50..100.
+  const normalizedRelax = Math.max(0, Math.min(1, (100 - t) / 50));
+  const slack = normalizedRelax * 0.1;
+  return maxPrice * (1 + slack);
+}
+
+/** Promień geograficzny: przy 100% dokładnie zaznaczony krąg; niżej stopniowo szerzej (do ~2× przy 50%). */
+function radarGeoRadiusLimitKm(baseRadiusKm: number, matchThreshold: number): number {
+  const t = Math.max(50, Math.min(100, matchThreshold));
+  // Normalizacja po faktycznym zakresie suwaka 50..100.
+  const normalizedRelax = Math.max(0, Math.min(1, (100 - t) / 50));
+  const relax = normalizedRelax * 1.0;
+  return baseRadiusKm * (1 + relax);
+}
+
+function radarCityMatches(rawCityNorm: string, selectedCityNorm: string) {
+  if (!selectedCityNorm) return true;
+  if (rawCityNorm === selectedCityNorm) return true;
+  if (rawCityNorm === 'trojmiasto' && ['gdansk', 'gdynia', 'sopot'].includes(selectedCityNorm)) return true;
+  return false;
+}
+
+type RadarMapBounds = {
+  centerLat: number;
+  centerLng: number;
+  radiusKm: number;
+};
+
+function matchesRadarCalibration(
+  offer: MapOffer,
+  rf: RadarFilters,
+  bounds: RadarMapBounds | null
+): boolean {
+  const raw = offer.raw;
+  if (String(raw.transactionType || '').toUpperCase() !== rf.transactionType) return false;
+  if (rf.propertyType !== 'ALL' && String(raw.propertyType || '').toUpperCase() !== rf.propertyType) return false;
+
+  if (rf.calibrationMode === 'CITY') {
+    const rawCity = normalizeSearchText(String(raw.city || '').trim());
+    const selCity = normalizeSearchText(rf.city.trim());
+    if (selCity && !radarCityMatches(rawCity, selCity)) return false;
+
+    if (rf.selectedDistricts.length > 0) {
+      const d = normalizeSearchText(String(raw.district || '').trim());
+      if (!rf.selectedDistricts.some((x) => normalizeSearchText(String(x).trim()) === d)) return false;
+    }
+  }
+
+  const rawPrice = Number(String(raw.price ?? '').replace(/[^\d]/g, '')) || 0;
+  if (rawPrice > radarPriceCap(rf.maxPrice, rf.matchThreshold)) return false;
+
+  const rawArea = Number(String(raw.area ?? '').replace(',', '.')) || 0;
+  if (rawArea < rf.minArea) return false;
+
+  const yearRaw = raw.yearBuilt != null ? parseInt(String(raw.yearBuilt), 10) : 1900;
+  const year = Number.isFinite(yearRaw) ? yearRaw : 1900;
+  if (year < rf.minYear) return false;
+
+  if (rf.requireBalcony && !raw.hasBalcony) return false;
+  if (rf.requireGarden && !raw.hasGarden) return false;
+  if (rf.requireElevator && !raw.hasElevator) return false;
+  if (rf.requireParking && !raw.hasParking) return false;
+  if (rf.requireFurnished && !raw.isFurnished) return false;
+
+  if (rf.calibrationMode === 'MAP' && bounds) {
+    const dKm = distanceKm(bounds.centerLat, bounds.centerLng, offer.lat, offer.lng);
+    const maxKm = radarGeoRadiusLimitKm(bounds.radiusKm, rf.matchThreshold);
+    if (dKm > maxKm) return false;
+  }
+
+  return true;
+}
+
+function isRadarFactoryDefaults(f: RadarFilters): boolean {
+  return (
+    f.calibrationMode === 'MAP' &&
+    f.transactionType === 'SELL' &&
+    f.propertyType === 'ALL' &&
+    f.city === 'Warszawa' &&
+    f.selectedDistricts.length === 0 &&
+    f.maxPrice === 5000000 &&
+    f.minArea === 0 &&
+    f.minYear === 1900 &&
+    !f.requireBalcony &&
+    !f.requireGarden &&
+    !f.requireElevator &&
+    !f.requireParking &&
+    !f.requireFurnished &&
+    f.matchThreshold === 100
+  );
+}
+
 export default function RadarHomeScreen({ navigation, route, splashDone }: any) {
   const { width, height } = useWindowDimensions();
   const themeMode = useThemeStore((s) => s.themeMode);
@@ -163,7 +346,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
   const searchInputRef = useRef<TextInput | null>(null);
-  /** Po wyborze podpowiedzi / Szukaj — po odświeżeniu listy ustawiamy widok mapy na pasujące pinezki. */
   const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [isRadarEnabled, setIsRadarEnabled] = useState(!!isRadarActive);
@@ -176,9 +358,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   const [showCalibration, setShowCalibration] = useState(false);
+  const [calibrationSessionId, setCalibrationSessionId] = useState(0);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  
+  const [isMapMoving, setIsMapMoving] = useState(false);
+
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
     transactionType: 'SELL',
     minPrice: null,
@@ -201,6 +387,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   });
   const [pendingMapFocusAfterApply, setPendingMapFocusAfterApply] = useState(false);
   const defaultRadarFilters: RadarFilters = {
+    calibrationMode: 'MAP',
     transactionType: 'SELL' as 'RENT' | 'SELL',
     propertyType: 'ALL',
     city: 'Warszawa',
@@ -217,6 +404,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     matchThreshold: 100,
   };
   const [radarFilters, setRadarFilters] = useState(defaultRadarFilters);
+  /** Po kalibracji / zaznaczeniu obszaru filtry radaru (cena, skala %, krąg mapy) mają wpływać na listę i mapę. */
+  const [mapUsesRadarFilters, setMapUsesRadarFilters] = useState(false);
+  /** Środek i promień zaznaczone na mapie — przy 100% skali tylko oferty wewnątrz tego kręgu. */
+  const [radarMapBounds, setRadarMapBounds] = useState<RadarMapBounds | null>(null);
   const [showAreaPicker, setShowAreaPicker] = useState(false);
   const [areaPickerDraft, setAreaPickerDraft] = useState<RadarAreaDraft>({
     center: { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude },
@@ -225,12 +416,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     longitudeDelta: DEFAULT_REGION.longitudeDelta,
   });
   const [areaSummary, setAreaSummary] = useState<string>('');
-  const areaMoveHapticTsRef = useRef(0);
-  const areaRadiusStepRef = useRef(Math.round(8 * 10));
-  const wasAreaPickerOpenRef = useRef(false);
-  const areaStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const areaLensFrostOpacity = useRef(new Animated.Value(0.18)).current;
-  const areaLensFocusScale = useRef(new Animated.Value(1)).current;
 
   const pulseHaptic = useCallback(async (style: Haptics.ImpactFeedbackStyle | 'selection' | 'success') => {
     try {
@@ -246,10 +431,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
   }, []);
 
-  const AREA_RETICLE_DIAMETER = Math.min(width * 0.48, 240);
-  const areaReticleDiameter = useMemo(() => {
-    return AREA_RETICLE_DIAMETER;
-  }, [AREA_RETICLE_DIAMETER]);
+  const BASE_AREA_RETICLE_DIAMETER = Math.min(width * 0.48, 240);
+  const [areaReticleDiameter, setAreaReticleDiameter] = useState(BASE_AREA_RETICLE_DIAMETER);
+  useEffect(() => {
+    setAreaReticleDiameter(BASE_AREA_RETICLE_DIAMETER);
+  }, [BASE_AREA_RETICLE_DIAMETER]);
   const areaLensLeft = useMemo(() => Math.round(Math.max(0, (width - areaReticleDiameter) / 2)), [width, areaReticleDiameter]);
   const areaLensTop = useMemo(() => Math.round(Math.max(0, (height - areaReticleDiameter) / 2)), [height, areaReticleDiameter]);
 
@@ -308,7 +494,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
   }, []);
 
-  /** Zamknięcie panelu dopiero tu; po odświeżeniu listy mapa jedzie do pasujących pinezek. */
   const finalizeSearchChoice = useCallback(
     (phrase: string) => {
       const t = phrase.trim();
@@ -341,7 +526,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return t.split(/\s+/).filter(Boolean);
   }, [searchQuery]);
 
-  /** Podpowiedzi z unikalnych pól ofert — ranking po trafieniu i liczbie ogłoszeń. */
   const rankedPlaceSuggestions = useMemo((): RankedSuggestion[] => {
     const rawQ = searchQuery.trim();
     if (rawQ.length < 2) return [];
@@ -448,7 +632,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const modeAccentColor = advancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
   const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
 
-  /** Marker clustering (Supercluster): przy oddaleniu grupuje pinezki w luksusowy krążek z liczbą. */
   const renderLuxuryCluster = useCallback(
     (clusterData: any) => {
       const { geometry, properties, onPress, clusterColor } = clusterData;
@@ -644,7 +827,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const filteredOffers = useMemo(() => {
     const cityMatches = (rawCityNorm: string, selectedCityNorm: string) => {
       if (rawCityNorm === selectedCityNorm) return true;
-      // Backward compatibility for legacy records grouped as "Trójmiasto".
       if (rawCityNorm === 'trojmiasto' && ['gdansk', 'gdynia', 'sopot'].includes(selectedCityNorm)) return true;
       return false;
     };
@@ -676,8 +858,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         ? offers
         : offers.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)));
     const advancedFiltered = queryFiltered.filter(matchesAdvancedFilters);
+
+    const applyRadar = (list: MapOffer[]) =>
+      mapUsesRadarFilters ? list.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds)) : list;
+    const radarFiltered = applyRadar(advancedFiltered);
+
     if (showOnlyFavorites) {
-      const favAndAdvanced = favoriteOffers.filter(matchesAdvancedFilters);
+      const favAndAdvanced = applyRadar(favoriteOffers.filter(matchesAdvancedFilters));
       if (!userLocation) return favAndAdvanced;
       const sortedFavorites = favAndAdvanced
         .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
@@ -685,16 +872,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         .map((x) => x.offer);
       return sortedFavorites;
     }
+    
     if (!userLocation) {
-      if (hasAdvancedFiltersActive) return advancedFiltered;
-      const pinned = [...advancedFiltered];
+      if (hasAdvancedFiltersActive) return radarFiltered;
+      const pinned = [...radarFiltered];
       favoriteOffers.forEach((fav) => {
         if (!pinned.some((o) => Number(o.id) === Number(fav.id))) pinned.push(fav);
       });
       return pinned;
     }
 
-    const withDistance = advancedFiltered
+    const withDistance = radarFiltered
       .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
       .sort((a, b) => a.distance - b.distance);
     const nearby = withDistance.filter((x) => x.distance <= 25).map((x) => x.offer);
@@ -714,6 +902,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     userLocation,
     advancedFilters,
     hasAdvancedFiltersActive,
+    mapUsesRadarFilters,
+    radarFilters,
+    radarMapBounds,
   ]);
 
   const activeOffers = filteredOffers;
@@ -766,6 +957,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const openRadarCalibration = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setCalibrationSessionId((prev) => prev + 1);
     setShowCalibration(true);
   };
 
@@ -841,6 +1033,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const applyRadarCalibration = async (filtersToApply: RadarFilters) => {
     setRadarFilters(filtersToApply);
+    if (isRadarFactoryDefaults(filtersToApply)) {
+      setMapUsesRadarFilters(false);
+      setRadarMapBounds(null);
+      setAreaSummary('');
+    } else {
+      setMapUsesRadarFilters(true);
+    }
     await setRadarActive(filtersToApply.pushNotifications);
     setIsRadarEnabled(filtersToApply.pushNotifications);
     await syncRadarPreferencesToBackend(filtersToApply);
@@ -848,11 +1047,43 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const getAreaSummaryPreview = useCallback(
+    (filters: RadarFilters): string | undefined => {
+      const offersInPreview = offers.filter((offer) => matchesRadarCalibration(offer, filters, radarMapBounds));
+      if (filters.calibrationMode === 'CITY') {
+        const districtLabel =
+          filters.selectedDistricts.length > 0
+            ? `${filters.selectedDistricts.length} dzielnic`
+            : 'wszystkie dzielnice';
+        return `${filters.city} • ${districtLabel} • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
+      }
+      if (!radarMapBounds) return areaSummary || undefined;
+      const radiusKm = radarGeoRadiusLimitKm(radarMapBounds.radiusKm, filters.matchThreshold);
+      return `${filters.city} • ${radiusKm.toFixed(1)} km • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
+    },
+    [radarMapBounds, areaSummary, offers]
+  );
+
+  const getMatchingOffersCountPreview = useCallback(
+    (filters: RadarFilters): number => {
+      return offers.filter((offer) => matchesRadarCalibration(offer, filters, radarMapBounds)).length;
+    },
+    [offers, radarMapBounds]
+  );
+
   const handleMapRegionChangeComplete = (region: Region) => {
     if (!showAreaPicker) return;
     const metersPerPixel = (region.latitudeDelta * 111_320) / Math.max(1, height);
-    const radiusKm = Math.max(0.3, ((AREA_RETICLE_DIAMETER / 2) * metersPerPixel) / 1000);
-    const roundedRadius = Math.round(radiusKm * 10) / 10;
+    const baseRadiusKm = ((BASE_AREA_RETICLE_DIAMETER / 2) * metersPerPixel) / 1000;
+    // Twardy limit obszaru kalibracji: maksymalnie 10 km.
+    const effectiveRadiusKm = Math.max(0.3, Math.min(10, baseRadiusKm));
+    const effectiveDiameterPx = Math.min(
+      BASE_AREA_RETICLE_DIAMETER,
+      (effectiveRadiusKm * 1000 * 2) / Math.max(0.0001, metersPerPixel)
+    );
+    const roundedRadius = Math.round(effectiveRadiusKm * 10) / 10;
+    setAreaReticleDiameter(Math.max(40, Math.round(effectiveDiameterPx)));
+    
     setAreaPickerDraft((prev) => ({
       ...prev,
       center: { latitude: region.latitude, longitude: region.longitude },
@@ -860,53 +1091,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       latitudeDelta: region.latitudeDelta,
       longitudeDelta: region.longitudeDelta,
     }));
-    if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
-    areaStopTimerRef.current = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(areaLensFrostOpacity, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.sequence([
-          Animated.timing(areaLensFocusScale, {
-            toValue: 1.012,
-            duration: 130,
-            useNativeDriver: true,
-          }),
-          Animated.timing(areaLensFocusScale, {
-            toValue: 1,
-            duration: 130,
-            useNativeDriver: true,
-          }),
-        ]),
-      ]).start();
-    }, 120);
-    const now = Date.now();
-    if (now - areaMoveHapticTsRef.current > 450) {
-      areaMoveHapticTsRef.current = now;
-      void pulseHaptic('selection');
-    }
-    const nextStep = Math.round(roundedRadius * 10);
-    if (Math.abs(nextStep - areaRadiusStepRef.current) >= 3) {
-      areaRadiusStepRef.current = nextStep;
-      void pulseHaptic(Haptics.ImpactFeedbackStyle.Light);
-    }
+    
+    setIsMapMoving(false); // <--- Odpala luksusową animację soczewki
   };
 
   const handleMapRegionChange = () => {
     if (!showAreaPicker) return;
-    if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
-    Animated.timing(areaLensFrostOpacity, {
-      toValue: 0.18,
-      duration: 130,
-      useNativeDriver: true,
-    }).start();
-    Animated.timing(areaLensFocusScale, {
-      toValue: 1,
-      duration: 80,
-      useNativeDriver: true,
-    }).start();
+    if (!isMapMoving) setIsMapMoving(true); // <--- Rozmywa i powiększa soczewkę
   };
 
   const openAreaPickerFromCalibration = (currentFilters: RadarFilters) => {
@@ -960,6 +1151,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
     }
 
+    const strictDistrictsForCity = Object.entries(STRICT_CITY_DISTRICTS).find(
+      ([cityName]) => normalizeSearchText(cityName) === normalizeSearchText(selectedCity)
+    )?.[1] ?? [];
+
     const districtsSet = new Set<string>();
     for (const offer of offersInArea) {
       const city = String(offer.raw?.city || '').trim();
@@ -967,14 +1162,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (city === selectedCity && district) districtsSet.add(district);
     }
 
-    const selectedDistricts = Array.from(districtsSet).sort((a, b) => a.localeCompare(b, 'pl'));
+    const selectedDistricts = (strictDistrictsForCity.length > 0 ? strictDistrictsForCity : Array.from(districtsSet))
+      .slice()
+      .sort((a, b) => a.localeCompare(b, 'pl'));
     const updated: RadarFilters = {
       ...radarFilters,
+      calibrationMode: 'MAP',
       city: selectedCity,
       selectedDistricts,
     };
 
     setRadarFilters(updated);
+    setRadarMapBounds({
+      centerLat: center.latitude,
+      centerLng: center.longitude,
+      radiusKm: radius,
+    });
+    setMapUsesRadarFilters(true);
     setAreaSummary(
       `${selectedCity} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
     );
@@ -982,20 +1186,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setShowCalibration(true);
     void pulseHaptic('success');
   };
-
-  useEffect(() => {
-    if (showAreaPicker && !wasAreaPickerOpenRef.current) {
-      areaRadiusStepRef.current = Math.round(areaPickerDraft.radiusKm * 10);
-      void pulseHaptic(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    wasAreaPickerOpenRef.current = showAreaPicker;
-  }, [showAreaPicker, areaPickerDraft.radiusKm, pulseHaptic]);
-
-  useEffect(() => {
-    return () => {
-      if (areaStopTimerRef.current) clearTimeout(areaStopTimerRef.current);
-    };
-  }, []);
 
   const toggleFavorite = async (offerId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1061,6 +1251,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             />
           </Pressable>
         </View>
+        <View style={styles.cardMetaRow}>
+          <View style={[styles.transactionBadge, { backgroundColor: getTransactionBadge(item.raw?.transactionType).color }]}>
+            <Text style={styles.transactionBadgeText}>{getTransactionBadge(item.raw?.transactionType).label}</Text>
+          </View>
+        </View>
         <Text style={styles.cardSubtitle} numberOfLines={1}>{item.type}</Text>
 
         <View style={styles.cardBadgesRow}>
@@ -1072,6 +1267,44 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <Ionicons name="bed" size={12} color="#8E8E93" />
             <Text style={[styles.badgeText, { color: isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
           </View>
+        </View>
+
+        <View style={styles.amenitiesRow}>
+          {[
+            { key: 'garden', icon: 'leaf', enabled: !!item.raw?.hasGarden },
+            { key: 'parking', icon: 'car', enabled: !!item.raw?.hasParking },
+            { key: 'balcony', icon: 'sunny', enabled: !!item.raw?.hasBalcony },
+            { key: 'elevator', icon: 'arrow-up', enabled: !!item.raw?.hasElevator },
+            { key: 'furnished', icon: 'cube', enabled: !!item.raw?.isFurnished },
+          ].map((amenity) => (
+            <View
+              key={amenity.key}
+              style={[
+                styles.amenityIconWrap,
+                {
+                  backgroundColor: amenity.enabled
+                    ? (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)')
+                    : 'transparent',
+                  borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)',
+                },
+              ]}
+            >
+              <Ionicons
+                name={amenity.icon as any}
+                size={12}
+                color={
+                  amenity.enabled
+                    ? (isDark ? '#FFF' : '#1C1C1E')
+                    : '#8E8E93'
+                }
+              />
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.cardFooterRow}>
+          <Text style={styles.offerIdText}>ID: {item.id}</Text>
+          <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw)}</Text>
         </View>
       </View>
     </Pressable>
@@ -1144,7 +1377,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         })}
       </RadarMapComponent>
 
-      {/* Zamknięcie przez tap na mapie — bez tego panel nie znika przy blur (scroll chipów nie zabiera fokusu przez ukrywanie UI) */}
       {isSearchFocused && (
         <Pressable
           style={styles.searchBackdrop}
@@ -1215,6 +1447,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </BlurView>
         </Pressable>
       </View>
+      
       {isSearchFocused && (
         <View style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}>
           <BlurView
@@ -1384,96 +1617,39 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       <RadarCalibrationModal
         visible={showCalibration}
+        calibrationSessionId={calibrationSessionId}
         isDark={isDark}
         initialFilters={radarFilters}
         matchingOffersCount={activeOffers.length}
         areaSummary={areaSummary}
+        getAreaSummaryPreview={getAreaSummaryPreview}
+        getMatchingOffersCountPreview={getMatchingOffersCountPreview}
         onClose={() => setShowCalibration(false)}
         onApply={applyRadarCalibration}
         onOpenAreaPicker={openAreaPickerFromCalibration}
       />
+      
       {showAreaPicker && (
         <View style={styles.areaPickerOverlay} pointerEvents="box-none">
-          <BlurView
-            intensity={26}
-            tint="dark"
-            style={[styles.areaBackdropBlur, { top: 0, left: 0, right: 0, height: areaLensTop }]}
+          
+          {/* --- PERFEKCYJNIE OKRĄGŁE WYCIĘCIE TŁA (SZTUCZKA Z GIGANTYCZNĄ RAMKĄ) --- */}
+          <View
             pointerEvents="none"
-          />
-          <BlurView
-            intensity={26}
-            tint="dark"
-            style={[
-              styles.areaBackdropBlur,
-              {
-                top: areaLensTop + areaReticleDiameter,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: undefined,
-              },
-            ]}
-            pointerEvents="none"
-          />
-          <BlurView
-            intensity={26}
-            tint="dark"
-            style={[
-              styles.areaBackdropBlur,
-              {
-                top: areaLensTop,
-                left: 0,
-                width: areaLensLeft,
-                height: areaReticleDiameter,
-                right: undefined,
-                bottom: undefined,
-              },
-            ]}
-            pointerEvents="none"
-          />
-          <BlurView
-            intensity={26}
-            tint="dark"
-            style={[
-              styles.areaBackdropBlur,
-              {
-                top: areaLensTop,
-                right: 0,
-                width: areaLensLeft,
-                height: areaReticleDiameter,
-                left: undefined,
-                bottom: undefined,
-              },
-            ]}
-            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: areaLensTop - 2000,
+              left: areaLensLeft - 2000,
+              width: areaReticleDiameter + 4000,
+              height: areaReticleDiameter + 4000,
+              borderRadius: (areaReticleDiameter + 4000) / 2,
+              borderWidth: 2000,
+              borderColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.65)',
+            }}
           />
 
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.areaLensFrost,
-              {
-                width: areaReticleDiameter,
-                height: areaReticleDiameter,
-                left: areaLensLeft,
-                top: areaLensTop,
-                opacity: areaLensFrostOpacity,
-                transform: [{ scale: areaLensFocusScale }],
-              },
-            ]}
-          />
-
-          <View pointerEvents="none" style={styles.areaReticleWrap}>
-            <View
-              style={[
-                styles.areaReticle,
-                {
-                  width: areaReticleDiameter,
-                  height: areaReticleDiameter,
-                },
-              ]}
-            />
-            <View style={styles.areaCenterDot} />
+          {/* ZASTOSOWANA SOCZEWKA KALIBRACJI W MIEJSCU STAREGO RETICLE */}
+          <View pointerEvents="none" style={[styles.areaReticleWrap, { left: areaLensLeft, top: areaLensTop, width: areaReticleDiameter, height: areaReticleDiameter }]}>
+            <CalibrationLens isMoving={isMapMoving} isDark={isDark} diameter={areaReticleDiameter} />
           </View>
 
           <View style={styles.areaPickerTop} pointerEvents="box-none">
@@ -1516,6 +1692,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </View>
         </View>
       )}
+      
       <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
         <View style={styles.advancedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdvancedSearch(false)} />
@@ -1669,7 +1846,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  /** Nad mapą, pod kartami i paskiem wyszukiwania — tap zamyka panel (nie używamy już onBlur). */
+  
+  // --- STYL LUKSUSOWEJ SOCZEWKI KALIBRACJI ---
+  lensWrapper: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  lensCore: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  lensGlow: {
+    position: 'absolute',
+    backgroundColor: 'rgba(16, 185, 129, 0.25)',
+  },
+  lensDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  crosshair: {
+    position: 'absolute',
+    backgroundColor: '#10b981',
+    borderRadius: 2,
+  },
+  crosshairTop: { width: 2.5, height: 12, top: 0 },
+  crosshairBottom: { width: 2.5, height: 12, bottom: 0 },
+  crosshairLeft: { width: 12, height: 2.5, left: 0 },
+  crosshairRight: { width: 12, height: 2.5, right: 0 },
+
   searchBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.38)',
@@ -2020,7 +2237,22 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontWeight: '600',
     marginTop: 2,
-    marginBottom: 10,
+    marginBottom: 8,
+  },
+  cardMetaRow: {
+    flexDirection: 'row',
+    marginTop: 6,
+  },
+  transactionBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  transactionBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
   cardBadgesRow: {
     flexDirection: 'row',
@@ -2039,43 +2271,45 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  amenitiesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  amenityIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardFooterRow: {
+    marginTop: 8,
+  },
+  offerIdText: {
+    fontSize: 11,
+    color: '#8E8E93',
+    fontWeight: '700',
+  },
+  publishDateText: {
+    fontSize: 10,
+    color: '#8E8E93',
+    marginTop: 2,
+    fontWeight: '500',
+  },
   areaPickerOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 120,
     justifyContent: 'space-between',
   },
   areaBackdropBlur: { position: 'absolute' },
-  areaLensFrost: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
+  
   areaReticleWrap: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  areaReticle: {
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: 'rgba(16,185,129,0.9)',
-    backgroundColor: 'rgba(16,185,129,0.12)',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
-  },
-  areaCenterDot: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#10b981',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#10b981',
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
   },
   areaPickerTop: {
     paddingTop: Platform.OS === 'ios' ? 56 : 26,
