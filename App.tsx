@@ -207,16 +207,94 @@ export default function App() {
   const themeMode = useThemeStore((state) => state.themeMode);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
+  const pendingNotificationRoute = useRef<any>(null);
+  const handledNotificationIdsRef = useRef<Set<string>>(new Set());
+
+  const toInt = (value: any): number => {
+    const parsed = Number(String(value ?? '').replace(/[^\d]/g, ''));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  };
+
+  const extractIdFromLink = (rawLink: string | null | undefined, kind: 'deal' | 'offer'): number => {
+    const link = String(rawLink || '').trim();
+    if (!link) return 0;
+    if (kind === 'deal') {
+      const q = link.match(/[?&]dealId=(\d+)/i);
+      if (q?.[1]) return toInt(q[1]);
+      const p = link.match(/\/dealroom\/(\d+)/i);
+      if (p?.[1]) return toInt(p[1]);
+      return 0;
+    }
+    const p = link.match(/\/oferta\/(\d+)/i) || link.match(/\/offers?\/(\d+)/i);
+    if (p?.[1]) return toInt(p[1]);
+    const q = link.match(/[?&](offerId|id)=(\d+)/i);
+    if (q?.[2]) return toInt(q[2]);
+    return 0;
+  };
+
+  const navigateFromNotificationData = (rawData: any, notificationId?: string) => {
+    if (notificationId && handledNotificationIdsRef.current.has(notificationId)) {
+      return;
+    }
+
+    // Czasem payload wpada jako data.data (zależnie od providera/platformy)
+    const data = (rawData && typeof rawData === 'object' && rawData.data && typeof rawData.data === 'object')
+      ? { ...rawData, ...rawData.data }
+      : rawData || {};
+
+    const typeLabel = String(data?.targetType || data?.type || data?.kind || '').toUpperCase();
+    const kindLabel = String(data?.kind || '').toUpperCase();
+    const targetId = data?.targetId ?? data?.id ?? data?.entityId;
+    const link = String(data?.link || data?.url || '').trim();
+
+    const explicitDealId = toInt(data?.dealId || data?.chatId || data?.roomId);
+    const dealIdFromTarget = (typeLabel.includes('DEAL') || typeLabel.includes('CHAT') || typeLabel.includes('MESSAGE') || kindLabel.includes('BID') || kindLabel.includes('APPOINTMENT') || kindLabel.includes('DEAL'))
+      ? toInt(targetId)
+      : 0;
+    const dealIdFromLink = extractIdFromLink(link, 'deal');
+    const dealId = explicitDealId || dealIdFromTarget || dealIdFromLink;
+
+    const explicitOfferId = toInt(data?.offerId || data?.listingId || data?.propertyId);
+    const offerIdFromTarget = (typeLabel.includes('OFFER') || typeLabel.includes('RADAR'))
+      ? toInt(targetId)
+      : 0;
+    const offerIdFromLink = extractIdFromLink(link, 'offer');
+    const offerId = explicitOfferId || offerIdFromTarget || offerIdFromLink;
+
+    const notificationTitle =
+      typeof data?.title === 'string' ? data.title : `Transakcja #${dealId || '...'}`;
+
+    if (dealId > 0) {
+      const route = {
+        name: 'DealroomChat',
+        params: {
+          dealId,
+          title: notificationTitle,
+        },
+      };
+      if (navigationRef.isReady()) navigationRef.navigate(route.name as never, route.params as never);
+      else pendingNotificationRoute.current = route;
+      if (notificationId) handledNotificationIdsRef.current.add(notificationId);
+      return;
+    }
+
+    if (offerId > 0) {
+      const route = { name: 'OfferDetail', params: { id: offerId, offer: { id: offerId } } };
+      if (navigationRef.isReady()) navigationRef.navigate(route.name as never, route.params as never);
+      else pendingNotificationRoute.current = route;
+      if (notificationId) handledNotificationIdsRef.current.add(notificationId);
+    }
+  };
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
-      const offerId = response.notification.request.content.data?.offerId;
-
-      if (offerId && navigationRef.isReady()) {
-        navigationRef.navigate("OfferDetail", {
-        offer: { id: offerId }
-      });
-      }
+      const notification = response.notification;
+      const notificationId = String(
+        notification?.request?.identifier ||
+        notification?.request?.content?.data?.notificationId ||
+        ''
+      ).trim();
+      navigateFromNotificationData(notification?.request?.content?.data, notificationId || undefined);
     });
 
     return () => sub.remove();
@@ -226,7 +304,29 @@ export default function App() {
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
-        <NavigationContainer ref={navigationRef} theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <NavigationContainer
+          ref={navigationRef}
+          theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}
+          onReady={async () => {
+            const pending = pendingNotificationRoute.current;
+            if (pending) {
+              pendingNotificationRoute.current = null;
+              navigationRef.navigate(pending.name as never, pending.params as never);
+              return;
+            }
+
+            const lastResponse = await Notifications.getLastNotificationResponseAsync();
+            if (lastResponse) {
+              const notification = lastResponse.notification;
+              const notificationId = String(
+                notification?.request?.identifier ||
+                notification?.request?.content?.data?.notificationId ||
+                ''
+              ).trim();
+              navigateFromNotificationData(notification?.request?.content?.data, notificationId || undefined);
+            }
+          }}
+        >
           <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
           <AppStack.Navigator screenOptions={{ headerShown: false }}>
             <AppStack.Screen name="MainTabs">

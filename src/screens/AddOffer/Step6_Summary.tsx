@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import type { Camera } from 'react-native-maps';
@@ -148,15 +148,19 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
+  const publishLockRef = useRef(false);
+  const publishRequestIdRef = useRef<string | null>(null);
   const isDark = Boolean(theme?.dark || theme?.glass === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
 
   useFocusEffect(useCallback(() => { setCurrentStep(6); }, []));
 
   const handlePublish = async (forceBypass = false) => {
-    if (loading) return;
+    if (loading || publishLockRef.current) return;
+    publishLockRef.current = true;
     
     if (!user || !user.id || !token) {
+      publishLockRef.current = false;
       Alert.alert("Błąd autoryzacji", "Zaloguj się ponownie, aby opublikować ofertę.");
       return;
     }
@@ -225,7 +229,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     setUploadProgressText('Tworzenie oferty w bazie...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
+    if (!publishRequestIdRef.current) {
+      publishRequestIdRef.current = `${user.id}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
     const offerData = {
+      clientRequestId: publishRequestIdRef.current,
       userId: user.id, 
       lat: draft.lat || 52.2297,
       lng: draft.lng || 21.0122,
@@ -365,6 +374,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Błąd', error.message || 'Wystąpił problem z połączeniem.');
     } finally {
+      publishLockRef.current = false;
       setLoading(false);
       setUploadProgressText('');
     }
