@@ -134,6 +134,13 @@ const formatMarkerPrice = (price: string) => {
   return `${Math.round(raw / 1000)}k`;
 };
 
+const formatPublishedDate = (createdAt: unknown) => {
+  if (!createdAt) return '';
+  const d = new Date(String(createdAt));
+  if (Number.isNaN(d.getTime())) return '';
+  return `Publikacja: ${d.toLocaleDateString('pl-PL')}`;
+};
+
 const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -834,13 +841,25 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         },
       ]}
     >
-      {item.image ? (
-        <Image source={{ uri: item.image }} style={styles.cardImage} contentFit="cover" transition={200} />
-      ) : (
-        <View style={[styles.cardImage, { backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
-          <Ionicons name="home" size={22} color="#8E8E93" />
+      <View style={styles.cardImageWrap}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.cardImage} contentFit="cover" transition={200} />
+        ) : (
+          <View style={[styles.cardImage, { backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
+            <Ionicons name="home" size={22} color="#8E8E93" />
+          </View>
+        )}
+        <View
+          style={[
+            styles.transactionTag,
+            { backgroundColor: item.raw?.transactionType === 'RENT' ? '#0A84FF' : '#34C759' },
+          ]}
+        >
+          <Text style={styles.transactionTagText}>
+            {item.raw?.transactionType === 'RENT' ? 'WYNAJEM' : 'SPRZEDAŻ'}
+          </Text>
         </View>
-      )}
+      </View>
       <View style={styles.cardInfo}>
         <View style={styles.cardTopRow}>
           <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#1C1C1E' }]} numberOfLines={1}>
@@ -858,6 +877,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </Pressable>
         </View>
         <Text style={styles.cardSubtitle} numberOfLines={1}>{item.type}</Text>
+        <Text style={styles.offerIdText}>ID oferty #{item.id}</Text>
+        <Text style={styles.publishedAtText}>
+          {formatPublishedDate(item.raw?.createdAt)}
+        </Text>
 
         <View style={styles.cardBadgesRow}>
           <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
@@ -867,6 +890,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={[styles.badge, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
             <Ionicons name="bed" size={12} color="#8E8E93" />
             <Text style={[styles.badgeText, { color: isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
+          </View>
+          <View style={styles.amenitiesRow}>
+            {item.raw?.hasGarden && <Ionicons name="leaf" size={13} color="#10b981" />}
+            {item.raw?.hasParking && <Ionicons name="car-sport" size={13} color="#10b981" />}
+            {item.raw?.hasBalcony && <Ionicons name="sunny" size={13} color="#10b981" />}
+            {item.raw?.hasElevator && <Ionicons name="arrow-up-circle" size={13} color="#10b981" />}
+            {item.raw?.isFurnished && <Ionicons name="cube" size={13} color="#10b981" />}
           </View>
         </View>
       </View>
@@ -1668,6 +1698,13 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 16,
   },
+  cardImageWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
   cardInfo: {
     flex: 1,
     marginLeft: 14,
@@ -1688,7 +1725,21 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontWeight: '600',
     marginTop: 2,
-    marginBottom: 10,
+    marginBottom: 3,
+  },
+  offerIdText: {
+    fontSize: 10,
+    color: '#8E8E93',
+    fontWeight: '700',
+    marginBottom: 3,
+    letterSpacing: 0.2,
+  },
+  publishedAtText: {
+    fontSize: 9,
+    color: '#8E8E93',
+    fontWeight: '500',
+    marginBottom: 8,
+    opacity: 0.9,
   },
   cardBadgesRow: {
     flexDirection: 'row',
@@ -1706,6 +1757,26 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  transactionTag: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  transactionTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  amenitiesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 2,
   },
   advancedOverlay: {
     flex: 1,
