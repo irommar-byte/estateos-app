@@ -141,6 +141,17 @@ const formatPublishedDate = (createdAt: unknown) => {
   return `Publikacja: ${d.toLocaleDateString('pl-PL')}`;
 };
 
+const isPartnerOffer = (rawOffer: any) => {
+  const role = String(rawOffer?.user?.role || rawOffer?.role || '').toUpperCase();
+  const planType = String(rawOffer?.user?.planType || rawOffer?.planType || '').toUpperCase();
+  return (
+    role === 'AGENT' ||
+    planType === 'AGENCY' ||
+    Boolean(rawOffer?.user?.isPro) ||
+    Boolean(rawOffer?.isPro)
+  );
+};
+
 const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -931,6 +942,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         {activeOffers.map((offer, idx) => {
           const isSelected = activeIndex === idx;
           const luxColors = markerLuxuryGradient(modeAccentColor);
+          const isPartner = isPartnerOffer(offer.raw);
           const lat = Number(offer.lat);
           const lng = Number(offer.lng);
           if (!hasFiniteCoords(lat, lng)) return null;
@@ -950,7 +962,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   colors={luxColors}
                   start={{ x: 0.12, y: 0 }}
                   end={{ x: 0.88, y: 1 }}
-                  style={[styles.markerCapsule, isSelected && styles.markerCapsuleSelected]}
+                  style={[
+                    styles.markerCapsule,
+                    isPartner && styles.markerCapsulePartner,
+                    isSelected && styles.markerCapsuleSelected,
+                  ]}
                 >
                   <LinearGradient
                     colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)', 'transparent']}
@@ -1579,6 +1595,10 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  markerCapsulePartner: {
+    borderWidth: 1.5,
+    borderColor: '#FFB020',
   },
   markerCapsuleSelected: {
     paddingHorizontal: 14,

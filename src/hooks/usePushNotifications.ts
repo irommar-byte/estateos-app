@@ -18,6 +18,7 @@ const API_URL = 'https://estateos.pl/api/notifications/device';
 
 export function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
+  const lastAuthTokenRef = useRef<string | null>(null);
 
   const normalizedAuthToken =
     authToken && authToken.trim()
@@ -27,7 +28,8 @@ export function usePushNotifications(authToken: string | null) {
       : null;
 
   const registerToken = async (showPrompt = false) => {
-    if (isRegisteredRef.current || !Device.isDevice || !normalizedAuthToken) return false;
+    if (!Device.isDevice || !normalizedAuthToken) return false;
+    if (isRegisteredRef.current && lastAuthTokenRef.current === normalizedAuthToken) return false;
 
     try {
       console.log("STEP 2 START"); const { status: existingStatus } = await Notifications.getPermissionsAsync(); console.log("PERMISSION:", existingStatus);
@@ -81,6 +83,7 @@ export function usePushNotifications(authToken: string | null) {
       await AsyncStorage.setItem('pushToken', pushToken);
       console.log('🚀 Push token registered');
       isRegisteredRef.current = true;
+      lastAuthTokenRef.current = normalizedAuthToken;
       return true;
 
     } catch (e) {
@@ -90,6 +93,11 @@ export function usePushNotifications(authToken: string | null) {
   };
 
   useEffect(() => {
+    // Ważne: po zmianie konta/tokenu wymuszamy ponowną rejestrację push,
+    // żeby token urządzenia nie został przypisany do poprzedniego użytkownika.
+    if (lastAuthTokenRef.current !== normalizedAuthToken) {
+      isRegisteredRef.current = false;
+    }
     registerToken(false);
   }, [normalizedAuthToken]);
 

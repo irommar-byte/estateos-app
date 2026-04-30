@@ -330,6 +330,8 @@ export default function AuthScreen({ theme }: { theme: any }) {
             Alert.alert("Sukces", "Konto założone! Zaloguj się swoimi danymi.");
             setIsLogin(true);
           }
+        } else {
+          Alert.alert("Rejestracja nie powiodła się", store.error || "Podany e-mail lub numer telefonu jest już zajęty.");
         }
       }
     } catch (e: any) { Alert.alert('Błąd', e.message); }

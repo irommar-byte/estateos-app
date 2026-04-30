@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -89,6 +89,25 @@ const BLIP_SCATTER: { angleDeg: number; distMul: number }[] = [
 const BLIP_DETECT_ANGLES = BLIP_SCATTER.map((b) => b.angleDeg);
 
 const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+/** Precyzyjne zęby trybika: 10 zębów, gładki profil. */
+function makePrecisionGearPath(cx: number, cy: number, rOut: number, rIn: number, teeth = 10): string {
+  const step = (2 * Math.PI) / teeth;
+  const toothFrac = 0.42;
+  const fmt = (n: number) => n.toFixed(2);
+  let d = '';
+  for (let i = 0; i < teeth; i++) {
+    const base = i * step;
+    const p = (r: number, a: number) => `${fmt(cx + r * Math.cos(a))} ${fmt(cy + r * Math.sin(a))}`;
+    const prefix = i === 0 ? 'M' : 'L';
+    d += ` ${prefix}${p(rIn, base - step * 0.05)}`;
+    d += ` L${p(rOut, base + step * toothFrac * 0.18)}`;
+    d += ` L${p(rOut, base + step * toothFrac * 0.82)}`;
+    d += ` L${p(rIn, base + step * 0.5 - step * 0.05)}`;
+    d += ` L${p(rIn, base + step * 0.5 + step * 0.05)}`;
+  }
+  return d.trim() + ' Z';
+}
 
 function polarFromTop(cx: number, cy: number, r: number, deg: number) {
   const rad = (deg * Math.PI) / 180;
@@ -186,28 +205,38 @@ function RadarTicks({ radius }: { radius: number }) {
 }
 
 /** Ślad kolisty (sektor SVG), obracany razem ze snopem — nie prostokąt. */
-function GoldGearIcon({ size = 46 }: { size?: number }) {
+function PrecisionGear({ size = 46, gradId = 'pg' }: { size?: number; gradId?: string }) {
+  const c = size / 2;
+  const rOut = size * 0.445;
+  const rIn  = size * 0.295;
+  const gearD = makePrecisionGearPath(c, c, rOut, rIn, 10);
   return (
-    <View style={[styles.goldCogStack, { width: size + 8, height: size + 8 }]} pointerEvents="none">
-      <Ionicons
-        name="cog"
-        size={size}
-        color="rgba(40,32,18,0.55)"
-        style={[styles.goldCogLayer, { transform: [{ translateX: 1.2 }, { translateY: 1.4 }] }]}
-      />
-      <Ionicons
-        name="cog"
-        size={size}
-        color={GOLD_COG}
-        style={[
-          styles.goldCogLayer,
-          {
-            textShadowColor: GOLD_COG_SHADOW,
-            textShadowOffset: { width: 0, height: 0 },
-            textShadowRadius: 14,
-          },
-        ]}
-      />
+    <View
+      pointerEvents="none"
+      style={{
+        width: size + 10,
+        height: size + 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: RR_GOLD,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.65,
+        shadowRadius: 12,
+        elevation: 6,
+      }}
+    >
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Defs>
+          <SvgLinearGradient id={gradId} x1={c * 0.25} y1={0} x2={c * 1.75} y2={size} gradientUnits="userSpaceOnUse">
+            <Stop offset="0"   stopColor="#F8EDCA" stopOpacity={1} />
+            <Stop offset="0.4" stopColor={RR_GOLD}  stopOpacity={1} />
+            <Stop offset="1"   stopColor="#7A5810"  stopOpacity={1} />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d={gearD} fill={`url(#${gradId})`} />
+        <SvgCircle cx={c} cy={c} r={size * 0.14} fill={RR_GRAPHITE} />
+        <SvgCircle cx={c} cy={c} r={size * 0.066} fill={RR_GOLD} opacity={0.85} />
+      </Svg>
     </View>
   );
 }
@@ -288,15 +317,24 @@ function OfferCount3D({
     transform: [{ scale: scale.value }],
   }));
   const label = String(Math.max(0, count));
-  const fs = label.length > 2 ? 76 : 96;
+  const fs = label.length > 2 ? 78 : 100;
   const textW = width;
   return (
     <Animated.View style={[styles.countStage, wrapStyle]}>
-      <Text style={[styles.countDeep, { fontSize: fs, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countShadow, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countBody, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countSheen, { fontSize: fs * 0.92, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countCaption, { width: textW, textAlign: 'center' }]}>ofert na mapie</Text>
+      {/* Warstwa głębi / cień */}
+      <Text style={[styles.countDeep, { fontSize: fs, width: textW }]}>{label}</Text>
+      {/* Kolorowy cień */}
+      <Text style={[styles.countShadow, { fontSize: fs, color: accentHex, width: textW }]}>{label}</Text>
+      {/* Główna cyfra */}
+      <Text style={[styles.countBody, { fontSize: fs, color: accentHex, width: textW }]}>{label}</Text>
+      {/* Połysk */}
+      <Text style={[styles.countSheen, { fontSize: fs * 0.93, width: textW }]}>{label}</Text>
+      {/* Podpis */}
+      <View style={styles.countCaptionRow}>
+        <View style={styles.countCaptionLine} />
+        <Text style={styles.countCaption}>OFERT NA MAPIE</Text>
+        <View style={styles.countCaptionLine} />
+      </View>
     </Animated.View>
   );
 }
@@ -922,23 +960,45 @@ export default function RadarCalibrationRitualOverlay({
 
         <View style={styles.countOverlay} pointerEvents="none">
           <OfferCount3D count={matchingOffersCount} accentHex={accentHex} scale={countScale} opacity={countOpacity} />
+
+          {/* Krótka informacja o kalibracji */}
           <Animated.View style={[styles.calibMsgWrap, calibMsgStyle]}>
-            <Text style={styles.calibMsgTitle}>
-              Radar został poprawnie skalibrowany i jest gotowy do natychmiastowego informowania. Tryb czuwania został
-              załączony.
-            </Text>
+            <Text style={styles.calibMsgCity}>{cityText.toUpperCase()}</Text>
+            <Text style={styles.calibMsgLine}>Kalibracja zakończona · radar aktywny</Text>
           </Animated.View>
+
+          {/* Trybiki precyzji */}
           <View style={styles.gearsRow}>
             <Animated.View style={[styles.gearIcon, gearLAnim]}>
-              <GoldGearIcon size={48} />
+              <PrecisionGear size={44} gradId="pgL" />
             </Animated.View>
+            <View style={styles.gearsDiamond}>
+              <View style={styles.gearsDiamondInner} />
+            </View>
             <Animated.View style={[styles.gearIcon, gearRAnim]}>
-              <GoldGearIcon size={48} />
+              <PrecisionGear size={44} gradId="pgR" />
             </Animated.View>
           </View>
+
+          {/* Brand card — panel instrumentów */}
           <Animated.View style={[styles.brandBlock, brandStyle]}>
-            <Text style={styles.brandTitle}>EstateOS™ Radar</Text>
-            <Text style={styles.brandStatus}>Status: Aktywowany</Text>
+            <View style={styles.brandCard}>
+              <LinearGradient
+                colors={['rgba(201,176,125,0.14)', 'rgba(10,10,15,0.97)', 'rgba(4,4,7,0.99)']}
+                locations={[0, 0.28, 1]}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.brandCardBorder} />
+              {/* Górna złota linia */}
+              <View style={styles.brandTopRule} />
+              <Text style={styles.brandLiveLabel}>LIVE INTELLIGENCE</Text>
+              <Text style={styles.brandName}>EstateOS™ Radar</Text>
+              <View style={styles.brandCardDivider} />
+              <View style={styles.brandStatusRow}>
+                <View style={styles.statusDot} />
+                <Text style={styles.brandStatusText}>STATUS · AKTYWNY</Text>
+              </View>
+            </View>
           </Animated.View>
         </View>
       </View>
@@ -1010,101 +1070,208 @@ const styles = StyleSheet.create({
     zIndex: 1600,
   },
   calibMsgWrap: {
-    marginTop: 14,
+    marginTop: 18,
+    alignItems: 'center',
     maxWidth: width - 44,
   },
-  calibMsgTitle: {
-    color: RR_IVORY,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  calibMsgAccent: {
-    marginTop: 10,
-    fontSize: 13,
+  calibMsgCity: {
+    color: RR_GOLD,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 5.5,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    opacity: 0.85,
+    marginBottom: 7,
+    textShadowColor: 'rgba(201,176,125,0.55)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  calibMsgLine: {
+    color: 'rgba(235,231,223,0.52)',
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.4,
     textAlign: 'center',
   },
   gearsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 14,
-    gap: 4,
+    marginTop: 22,
+    gap: 6,
   },
   gearIcon: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 2,
   },
-  goldCogStack: {
+  gearsDiamond: {
+    width: 12,
+    height: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    transform: [{ rotate: '45deg' }],
+    borderWidth: 1,
+    borderColor: 'rgba(201,176,125,0.6)',
   },
-  goldCogLayer: {
-    position: 'absolute',
+  gearsDiamondInner: {
+    width: 4,
+    height: 4,
+    backgroundColor: RR_GOLD,
+    opacity: 0.9,
+    shadowColor: RR_GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
   },
   brandBlock: {
-    marginTop: 18,
+    marginTop: 20,
     alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: 28,
   },
-  brandTitle: {
-    color: STATUS_GREEN,
-    fontSize: 17,
+  brandCard: {
+    width: '100%',
+    borderRadius: 18,
+    overflow: 'hidden',
+    paddingHorizontal: 28,
+    paddingVertical: 22,
+    alignItems: 'center',
+    shadowColor: RR_GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.26,
+    shadowRadius: 28,
+    elevation: 14,
+  },
+  brandCardBorder: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(201,176,125,0.38)',
+  },
+  brandTopRule: {
+    width: 48,
+    height: 1,
+    backgroundColor: RR_GOLD,
+    opacity: 0.6,
+    marginBottom: 14,
+    shadowColor: RR_GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 8,
+  },
+  brandLiveLabel: {
+    color: RR_GOLD,
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 0.4,
-    textAlign: 'center',
+    letterSpacing: 5.5,
+    textTransform: 'uppercase',
+    opacity: 0.72,
+    marginBottom: 10,
   },
-  brandStatus: {
-    marginTop: 8,
-    color: STATUS_GREEN,
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.3,
+  brandName: {
+    color: RR_IVORY,
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.4,
     textAlign: 'center',
+    marginBottom: 14,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 8,
+  },
+  brandCardDivider: {
+    width: '60%',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(201,176,125,0.32)',
+    marginBottom: 14,
+  },
+  brandStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: STATUS_GREEN,
+    shadowColor: STATUS_GREEN,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 7,
+    elevation: 4,
+  },
+  brandStatusText: {
+    color: STATUS_GREEN,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(52,199,89,0.45)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   countStage: {
     alignItems: 'center',
     justifyContent: 'center',
     width,
-    minHeight: 200,
+    minHeight: 180,
   },
   countDeep: {
     position: 'absolute',
     fontWeight: '900',
-    color: 'rgba(0,0,0,0.45)',
+    color: 'rgba(0,0,0,0.5)',
     letterSpacing: -3,
-    transform: [{ translateX: 5 }, { translateY: 7 }],
+    textAlign: 'center',
+    transform: [{ translateX: 5 }, { translateY: 8 }],
   },
   countShadow: {
     position: 'absolute',
     fontWeight: '900',
     letterSpacing: -3,
-    opacity: 0.35,
+    textAlign: 'center',
+    opacity: 0.32,
     transform: [{ translateX: 3 }, { translateY: 4 }],
   },
   countBody: {
     position: 'absolute',
     fontWeight: '900',
     letterSpacing: -4,
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 6 },
-    textShadowRadius: 18,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 8 },
+    textShadowRadius: 22,
   },
   countSheen: {
     position: 'absolute',
     fontWeight: '900',
-    color: 'rgba(255,255,255,0.38)',
+    color: 'rgba(255,255,255,0.36)',
     letterSpacing: -3,
-    transform: [{ translateX: -1.5 }, { translateY: -2 }],
+    textAlign: 'center',
+    transform: [{ translateX: -1.5 }, { translateY: -2.5 }],
+  },
+  countCaptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 90,
+  },
+  countCaptionLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    maxWidth: 32,
+    backgroundColor: 'rgba(235,231,223,0.3)',
   },
   countCaption: {
-    marginTop: 96,
-    fontSize: 13,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 3,
-    color: 'rgba(235,231,223,0.55)',
+    letterSpacing: 4.5,
+    color: 'rgba(235,231,223,0.45)',
     textTransform: 'uppercase',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   mark: {
     color: RR_GOLD,

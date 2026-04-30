@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, Linking } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ChevronLeft, Send, Paperclip, Check, CheckCheck, FileText, Play, Pause } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
@@ -90,56 +91,138 @@ export default function DealroomChatScreen() {
   }, [offerId]);
 
   const resolveAttachmentFromMessage = (msg: any) => {
-    const raw =
-      msg?.attachment ||
-      msg?.file ||
-      msg?.document ||
+    const rawBlob =
+      msg?.attachment ??
+      msg?.file ??
+      msg?.document ??
       (Array.isArray(msg?.attachments) ? msg.attachments[0] : null);
-    const parsedFromContent = parseDealAttachment(msg?.content);
-    const effective = raw || parsedFromContent;
-    if (!effective) return null;
 
-    const rawUrl = effective?.url || effective?.uri || effective?.path || effective?.fileUrl || effective?.filePath || null;
-    const url = rawUrl
-      ? (String(rawUrl).startsWith('http') ? String(rawUrl) : `${API_URL}${String(rawUrl)}`)
-      : null;
-    if (!url) return null;
+    const parsedFromContent = parseDealAttachment(msg?.content);
+
+    let rawUrl: string | null = null;
+    const meta: Record<string, any> =
+      parsedFromContent && typeof parsedFromContent === 'object' ? { ...parsedFromContent } : {};
+
+    const fromParsed =
+      parsedFromContent && typeof parsedFromContent === 'object'
+        ? String(
+            parsedFromContent.url ||
+              parsedFromContent.uri ||
+              parsedFromContent.path ||
+              parsedFromContent.fileUrl ||
+              parsedFromContent.filePath ||
+              '',
+          ).trim()
+        : '';
+
+    if (fromParsed) {
+      rawUrl = fromParsed;
+    }
+
+    if (typeof rawBlob === 'string' && rawBlob.trim()) {
+      rawUrl = rawBlob.trim();
+    } else if (rawBlob && typeof rawBlob === 'object' && !Array.isArray(rawBlob)) {
+      const u = String(
+        rawBlob.url ||
+          rawBlob.uri ||
+          rawBlob.path ||
+          rawBlob.fileUrl ||
+          rawBlob.filePath ||
+          '',
+      ).trim();
+      if (u) rawUrl = u;
+      Object.assign(meta, rawBlob);
+    }
+
+    if (!rawUrl) return null;
+
+    const absoluteUrl =
+      rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+        ? rawUrl
+        : `${API_URL}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
 
     const nameFromUrl = (() => {
       try {
-        const clean = url.split('?')[0];
-        return decodeURIComponent(clean.substring(clean.lastIndexOf('/') + 1));
+        const pathOnly = absoluteUrl.split('?')[0];
+        const last = pathOnly.substring(pathOnly.lastIndexOf('/') + 1);
+        return decodeURIComponent(last);
       } catch {
         return null;
       }
     })();
 
-    const normalizedName = String(effective?.name || effective?.fileName || nameFromUrl || '').trim();
+    const emojiTitle = /^📎\s*(.+)$/u.exec(String(msg?.content || '').trim())?.[1]?.trim();
+
+    const normalizedBase = String(
+      meta?.name || meta?.fileName || emojiTitle || nameFromUrl || '',
+    ).trim();
+
+    let mimeFromExt = '';
+    const lowerGuess = normalizedBase.toLowerCase();
+    if (lowerGuess.endsWith('.pdf')) mimeFromExt = 'application/pdf';
+    else if (/\.(jpe?g)$/i.test(lowerGuess)) mimeFromExt = 'image/jpeg';
+    else if (lowerGuess.endsWith('.png')) mimeFromExt = 'image/png';
+    else if (lowerGuess.endsWith('.webp')) mimeFromExt = 'image/webp';
+    else if (lowerGuess.endsWith('.gif')) mimeFromExt = 'image/gif';
+    else if (/\.(m4a|mp3|aac|wav|ogg)$/i.test(lowerGuess)) mimeFromExt = 'audio/mpeg';
+
+    let mimeType = String(meta?.mimeType || meta?.type || mimeFromExt || '').trim();
+
     const ensureExt = (name: string, mime: string) => {
       const lower = name.toLowerCase();
+      if (!name) return 'zalacznik';
       if (lower.includes('.')) return name;
-      if (mime.includes('pdf')) return `${name || 'dokument'}.pdf`;
-      if (mime.startsWith('audio/')) {
-        const ext = mime.split('/')[1] || 'm4a';
-        return `${name || 'audio'}.${ext}`;
+      if (mime.includes('pdf')) return `${name}.pdf`;
+      if (mime.startsWith('image/')) {
+        const hit = /\.(jpg|jpeg|png|webp|gif)$/i.exec(absoluteUrl) || /\.(jpg|jpeg|png|webp|gif)$/i.exec(rawUrl || '');
+        return hit ? `${name}${hit[0]}` : `${name}.jpg`;
       }
-      return name || 'zalacznik.bin';
+      if (mime.startsWith('audio/')) {
+        const ext = mime.split('/')[1]?.split(';')[0] || 'm4a';
+        return `${name}.${ext}`;
+      }
+      return `${name}`;
     };
 
+    const displayName = ensureExt(normalizedBase, mimeType || 'application/octet-stream');
+    const finalMime =
+      mimeType && mimeType !== 'application/octet-stream'
+        ? mimeType
+        : mimeFromExt || 'application/octet-stream';
+
     return {
-      url,
-      name: ensureExt(normalizedName, String(effective?.mimeType || effective?.type || '')),
-      mimeType: effective?.mimeType || effective?.type || 'application/octet-stream',
-      size: Number(effective?.size ?? effective?.sizeBytes ?? effective?.fileSize ?? 0) || 0,
+      url: absoluteUrl,
+      name: displayName,
+      mimeType: finalMime,
+      size: Number(meta?.size ?? meta?.sizeBytes ?? meta?.fileSize ?? 0) || 0,
     };
   };
 
   const getAttachmentKind = (attachment: any) => {
     const mime = String(attachment?.mimeType || '').toLowerCase();
     const name = String(attachment?.name || '').toLowerCase();
+    const url = String(attachment?.url || '').toLowerCase();
+    if (
+      mime.startsWith('image/') ||
+      /\.(jpe?g|png|gif|webp|heic)$/i.test(name) ||
+      /\.(jpe?g|png|gif|webp|heic)(?:\?|$)/i.test(url)
+    ) {
+      return 'image';
+    }
     if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
     if (mime.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg)$/i.test(name)) return 'audio';
     return 'file';
+  };
+
+  const openDealAttachmentUrl = async (href: string) => {
+    try {
+      await Linking.openURL(href);
+    } catch {
+      Alert.alert(
+        'Błąd',
+        `Nie udało się otworzyć pliku. Jeśli używasz emulatora lub sieci LTE, sprawdź czy adres jest dostępny.`,
+      );
+    }
   };
 
   const handleToggleAudioPreview = async (url: string) => {
@@ -665,24 +748,30 @@ export default function DealroomChatScreen() {
                     const attachment = resolveAttachmentFromMessage(msg);
                     if (!attachment) return null;
                     const kind = getAttachmentKind(attachment);
+                    const typeLabel =
+                      kind === 'audio' ? 'Audio' : kind === 'pdf' ? 'Dokument PDF' : kind === 'image' ? 'Obraz' : 'Załącznik';
+                    const sizePart = attachment.size ? ` • ${formatBytes(attachment.size)}` : '';
                     return (
                       <Pressable
                         style={[
                           styles.attachmentBubble,
                           kind === 'pdf' && styles.attachmentBubblePdf,
                           kind === 'audio' && styles.attachmentBubbleAudio,
+                          kind === 'image' && styles.attachmentBubbleImage,
                         ]}
                         onPress={async () => {
                           if (kind === 'audio') return;
-                          const canOpen = await Linking.canOpenURL(attachment.url);
-                          if (!canOpen) {
-                            Alert.alert('Błąd', 'Nie można otworzyć załącznika.');
-                            return;
-                          }
-                          await Linking.openURL(attachment.url);
+                          await openDealAttachmentUrl(attachment.url);
                         }}
                       >
-                        {kind === 'pdf' ? (
+                        {kind === 'image' ? (
+                          <Image
+                            source={{ uri: attachment.url }}
+                            style={styles.imageThumb}
+                            contentFit="cover"
+                            accessibilityLabel={attachment.name}
+                          />
+                        ) : kind === 'pdf' ? (
                           <View style={styles.pdfThumb}>
                             <FileText size={18} color="#fff" />
                             <Text style={styles.pdfThumbLabel}>PDF</Text>
@@ -699,7 +788,8 @@ export default function DealroomChatScreen() {
                             {kind === 'pdf' ? `PDF: ${attachment.name}` : attachment.name}
                           </Text>
                           <Text style={styles.attachmentMeta}>
-                            {kind === 'audio' ? 'Audio' : kind === 'pdf' ? 'Dokument PDF' : 'Załącznik'} • {formatBytes(attachment.size)}
+                            {typeLabel}
+                            {sizePart}
                           </Text>
                         </View>
                         {kind === 'audio' && (
@@ -715,14 +805,9 @@ export default function DealroomChatScreen() {
                         )}
                         {kind === 'pdf' && (
                           <Pressable
-                            onPress={async (e) => {
+                            onPress={(e) => {
                               e.stopPropagation();
-                              const canOpen = await Linking.canOpenURL(attachment.url);
-                              if (!canOpen) {
-                                Alert.alert('Błąd', 'Nie można otworzyć dokumentu PDF.');
-                                return;
-                              }
-                              await Linking.openURL(attachment.url);
+                              void openDealAttachmentUrl(attachment.url);
                             }}
                             style={styles.pdfOpenBtn}
                           >
@@ -730,15 +815,6 @@ export default function DealroomChatScreen() {
                           </Pressable>
                         )}
                       </Pressable>
-                    );
-                  })()}
-                  {(() => {
-                    const attachment = resolveAttachmentFromMessage(msg);
-                    if (!attachment) return null;
-                    return (
-                      <Text style={styles.attachmentFileNameBottom} numberOfLines={1}>
-                        {attachment.name}
-                      </Text>
                     );
                   })()}
                 </View>
@@ -874,6 +950,16 @@ const styles = StyleSheet.create({
   attachmentBubbleAudio: {
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
+  attachmentBubbleImage: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  imageThumb: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   pdfThumb: {
     width: 42,
     height: 42,
@@ -901,13 +987,6 @@ const styles = StyleSheet.create({
   attachmentName: { color: '#fff', fontSize: 12, fontWeight: '700', flex: 1 },
   attachmentSize: { color: '#d1d5db', fontSize: 11, fontWeight: '600' },
   attachmentMeta: { color: '#d1d5db', fontSize: 10, fontWeight: '600', marginTop: 2 },
-  attachmentFileNameBottom: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.92)',
-    fontSize: 11,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
   audioPreviewBtn: {
     width: 26,
     height: 26,

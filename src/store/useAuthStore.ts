@@ -122,7 +122,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Błąd rejestracji');
+      if (!response.ok) throw new Error(data.message || data.error || 'Błąd rejestracji');
       set({ isLoading: false });
       return true;
     } catch (err: any) {
@@ -194,6 +194,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     await AsyncStorage.removeItem('mobile_token');
     await AsyncStorage.removeItem('user_data');
+    await AsyncStorage.removeItem('pushToken');
     await AsyncStorage.removeItem('@estateos_radar_active'); // Czyścimy radar
     set({ user: null, token: null, isRadarActive: false });
   },

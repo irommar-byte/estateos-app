@@ -19,11 +19,21 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
 const API_URL = 'https://estateos.pl';
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
+const VIEW_DEVICE_ID_KEY = '@estateos_view_device_id';
+
+async function getOrCreateViewDeviceId() {
+  const current = await AsyncStorage.getItem(VIEW_DEVICE_ID_KEY);
+  if (current) return current;
+  const generated = `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  await AsyncStorage.setItem(VIEW_DEVICE_ID_KEY, generated);
+  return generated;
+}
 
 function parseDealEvent(content?: string) {
   if (!content || !content.startsWith(EVENT_PREFIX)) return null;
@@ -66,7 +76,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const theme = route?.params?.theme || { glass: 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
   const heartScale = useSharedValue(1);
-  const { user, token } = useAuthStore() as any;
+  const { user, token, refreshUser } = useAuthStore() as any;
   const isOwner = user?.id && offer?.userId === user?.id;
   const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
@@ -109,6 +119,13 @@ export default function OfferDetail({ route, navigation }: any) {
       seconds: String(seconds).padStart(2, '0'),
     };
   })();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Po powrocie z płatności (Stripe/cennik) odświeżamy status PRO.
+      void refreshUser();
+    }, [refreshUser])
+  );
 
   useEffect(() => {
     const shouldHydrate = !!idFromParams && (!offerFromParams || !offerFromParams?.title || !offerFromParams?.price);
@@ -629,6 +646,33 @@ export default function OfferDetail({ route, navigation }: any) {
   const apptBtnAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: apptBtnScale.value }],
   }));
+
+  useEffect(() => {
+    if (!offer?.id) return;
+    let cancelled = false;
+
+    const trackOfferView = async () => {
+      try {
+        const deviceId = await getOrCreateViewDeviceId();
+        if (cancelled) return;
+        await fetch(`${API_URL}/api/offers/${offer.id}/view`, {
+          method: 'POST',
+          headers: {
+            'x-client-source': 'mobile',
+            'x-device-id': deviceId,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        });
+      } catch {
+        // Licznik nie może blokować UX oferty.
+      }
+    };
+
+    trackOfferView();
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.id, token]);
 
   const animateBidButton = () => {
     bidBtnScale.value = withSequence(

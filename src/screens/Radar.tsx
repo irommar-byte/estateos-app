@@ -10,6 +10,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
+import { fetchLocationCatalog, getFallbackLocationCatalog } from '../services/locationCatalog';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -21,16 +22,6 @@ const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMa
 
 const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; 
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
-
-const CITY_DISTRICTS: Record<string, string[]> = {
-  "Warszawa": ["Bemowo", "Białołęka", "Bielany", "Mokotów", "Ochota", "Praga-Południe", "Praga-Północ", "Rembertów", "Śródmieście", "Targówek", "Ursus", "Ursynów", "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz"],
-  "Kraków": ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
-  "Łódź": ["Bałuty", "Górna", "Polesie", "Śródmieście", "Widzew"],
-  "Wrocław": ["Fabryczna", "Krzyki", "Psie Pole", "Stare Miasto WRO", "Śródmieście WRO"],
-  "Trójmiasto": ["Gdańsk", "Sopot", "Gdynia"],
-  "Poznań": ["Stare Miasto POZ", "Nowe Miasto POZ", "Jeżyce", "Grunwald", "Wilda"]
-};
-const CITIES = Object.keys(CITY_DISTRICTS);
 
 const formatPriceMarker = (price: string | number) => {
   const num = typeof price === 'string' ? parseFloat(price) : price;
@@ -44,6 +35,21 @@ const hasFiniteCoords = (lat: unknown, lng: unknown) =>
   Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 
 export default function Radar({ theme, route }: any) {
+  const [strictCities, setStrictCities] = useState<string[]>(getFallbackLocationCatalog().strictCities);
+  const [strictCityDistricts, setStrictCityDistricts] = useState<Record<string, string[]>>(getFallbackLocationCatalog().strictCityDistricts);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadCatalog = async () => {
+      const catalog = await fetchLocationCatalog();
+      if (!mounted) return;
+      setStrictCities(catalog.strictCities);
+      setStrictCityDistricts(catalog.strictCityDistricts);
+    };
+    loadCatalog();
+    return () => { mounted = false; };
+  }, []);
+
   const playRadarSound = async () => {
     try {
       const { sound } = await Audio.Sound.createAsync(
@@ -421,7 +427,7 @@ export default function Radar({ theme, route }: any) {
 
   const spin = scanSpin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const tilt = tilt3D.interpolate({ inputRange: [0, 75], outputRange: ['0deg', '75deg'] });
-  const availableDistricts = CITY_DISTRICTS[draftFilters.city] || [];
+  const availableDistricts = strictCityDistricts[draftFilters.city] || [];
   
   const isFilterActive = JSON.stringify(filters) !== JSON.stringify(defaultFilters);
 
@@ -588,7 +594,7 @@ export default function Radar({ theme, route }: any) {
               <Text style={styles.premiumSectionTitle}>METROPOLIA</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
-                  {CITIES.map(c => {
+                  {strictCities.map(c => {
                     const isActive = draftFilters.city === c;
                     return (
                       <Pressable key={c} onPress={() => handleCitySelect(c)} style={[styles.cityPillBtn, isActive && { backgroundColor: activeColor, borderColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.6, shadowRadius: 12, elevation: 8 }]}>
