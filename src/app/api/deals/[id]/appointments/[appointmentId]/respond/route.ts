@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import { notificationService } from '@/lib/services/notification.service';
+import { verifyMobileToken } from '@/lib/jwtMobile';
 
 function getUserIdFromToken(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
   try {
     const token = authHeader.split(' ')[1];
+    const verified = verifyMobileToken(token) as any;
+    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
+    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
+
     const secret = process.env.JWT_SECRET;
     if (!secret) return null;
 
@@ -144,6 +150,33 @@ export async function POST(
       });
 
     });
+
+    const pushTitle =
+      action === 'ACCEPT'
+        ? 'Termin zostal zaakceptowany'
+        : action === 'DECLINE'
+          ? 'Termin zostal odrzucony'
+          : 'Zmiana terminu';
+    const pushBody =
+      action === 'ACCEPT'
+        ? 'Spotkanie zostalo potwierdzone.'
+        : action === 'DECLINE'
+          ? 'Twoja propozycja zostala odrzucona.'
+          : 'Poproszono o nowy termin spotkania.';
+    try {
+      await notificationService.sendPushToUser(senderOfProposal, {
+        title: pushTitle,
+        body: pushBody,
+        data: {
+          targetType: 'DEAL',
+          targetId: String(dealId),
+          dealId: String(dealId),
+          kind: `appointment_${String(action).toLowerCase()}`
+        }
+      });
+    } catch (pushError) {
+      console.warn('[WEB APPOINTMENT PUSH WARN]', pushError);
+    }
 
     return NextResponse.json({
       success: true,

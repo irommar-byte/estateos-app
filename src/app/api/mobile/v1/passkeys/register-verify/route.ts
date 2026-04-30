@@ -26,15 +26,16 @@ export async function POST(req: Request) {
         });
 
         if (verification.verified && verification.registrationInfo) {
-            const { credentialID, credentialPublicKey, counter, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+            const info = verification.registrationInfo;
+            const cred = info.credential;
             
             await prisma.authenticator.create({
                 data: {
-                    credentialID: Buffer.from(credentialID).toString('base64url'),
-                    credentialPublicKey: Buffer.from(credentialPublicKey).toString('base64url'),
-                    counter,
-                    credentialDeviceType,
-                    credentialBackedUp,
+                    credentialID: cred.id,
+                    credentialPublicKey: Buffer.from(cred.publicKey).toString('base64url'),
+                    counter: cred.counter,
+                    credentialDeviceType: info.credentialDeviceType,
+                    credentialBackedUp: info.credentialBackedUp,
                     providerAccountId: 'passkey',
                     userId: user.id
                 }

@@ -11,7 +11,7 @@ export async function GET(req: Request, context: any) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, email: true, phone: true, buyerType: true, createdAt: true }
+      select: { id: true, name: true, email: true, phone: true, role: true, planType: true, buyerType: true, createdAt: true }
     });
 
     if (!user) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
@@ -22,7 +22,7 @@ export async function GET(req: Request, context: any) {
     });
 
     const reviews = await prisma.review.findMany({
-      where: { targetId: Number(userId) },
+      where: { revieweeId: Number(userId) },
       orderBy: { createdAt: 'desc' }
     });
 

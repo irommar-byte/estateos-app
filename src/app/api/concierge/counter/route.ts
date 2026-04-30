@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(req: Request) {
@@ -17,9 +18,10 @@ export async function POST(req: Request) {
       data: {
         userId: transfer.agencyId,
         title: '⚡ Klient negocjuje warunki',
-        message: `Klient przesłał kontrpropozycję. Oczekuje ${new Intl.NumberFormat('pl-PL').format(clientNetto)} PLN na rękę ze sprzedaży.`,
-        type: 'SYSTEM',
-        link: '/moje-konto/crm'
+        body:
+          `Klient przesłał kontrpropozycję. Oczekuje ${new Intl.NumberFormat('pl-PL').format(clientNetto)} PLN na rękę ze sprzedaży. ` +
+          'Szczegóły: https://estateos.pl/moje-konto/crm',
+        type: NotificationType.SYSTEM_ALERT,
       }
     });
 

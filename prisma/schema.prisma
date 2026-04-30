@@ -30,7 +30,10 @@ model User {
   searchDistricts       String?
   searchMaxPrice        Int?
   searchAreaFrom        Int?
+  searchAreaTo          Int?
+  searchPlotArea        Int?
   searchRooms           Int?
+  buyerType             String?
   searchTransactionType String?
   searchAmenities       String?
   createdAt            DateTime                 @default(now())
@@ -50,6 +53,61 @@ model User {
   notifications        Notification[]
   notificationPrefs    NotificationPreference[]
   radarPreference    RadarPreference?
+  calendarNotes      CalendarNote[]
+}
+
+model Alert {
+  id           Int      @id @default(autoincrement())
+  email        String
+  propertyType String   @db.Text
+  district     String   @db.Text
+  maxPrice     Int
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+model CalendarNote {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  date   String @db.VarChar(32)
+  text   String @db.Text
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+/// Logi unikalnych wyświetleń ofert (web/app). Bez tego wpisu Prisma mogła usuwać tabelę przy `db push`.
+model OfferViewLog {
+  id          BigInt   @id @default(autoincrement())
+  offerId     Int
+  visitorKey  String   @db.VarChar(128)
+  source      String   @default("web") @db.VarChar(16)
+  ip          String?  @db.VarChar(64)
+  userAgent   String?  @db.VarChar(255)
+  hits        Int      @default(1)
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([offerId, visitorKey], map: "OfferViewLog_offerId_visitorKey_key")
+  @@index([offerId, lastSeenAt], map: "OfferViewLog_offerId_lastSeenAt_idx")
+}
+
+/// Logi wizyt stron www (deduplikacja po hash + ścieżce). Bez tego wpisu Prisma mogła usuwać tabelę przy `db push`.
+model PageVisitLog {
+  id           BigInt   @id @default(autoincrement())
+  visitorHash  String   @db.VarChar(64)
+  ip           String   @db.VarChar(64)
+  country      String   @default("PL") @db.VarChar(8)
+  path         String   @default("/") @db.VarChar(191)
+  userAgent    String?  @db.VarChar(255)
+  createdAt    DateTime @default(now())
+
+  @@index([path, createdAt], map: "PageVisitLog_path_createdAt_idx")
+  @@index([visitorHash, createdAt], map: "PageVisitLog_hash_createdAt_idx")
 }
 
 model Offer {
@@ -248,6 +306,7 @@ enum PlanType {
   NONE
   PRO
   AGENCY
+  INVESTOR
 }
 
 enum DealStatus {
@@ -296,6 +355,8 @@ model LeadTransfer {
   status    String   @default("PENDING") // PENDING | ACCEPTED | REJECTED | COUNTERED
   price     Float?
   message   String?  @db.Text
+  commissionRate  Float?
+  commissionTerms String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

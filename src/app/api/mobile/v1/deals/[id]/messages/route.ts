@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
+import { verifyMobileToken } from '@/lib/jwtMobile';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -11,19 +12,45 @@ if (typeof globalAny.typingStore === 'undefined') {
   globalAny.typingStore = {};
 }
 
+function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const rawToken = authHeader.slice('Bearer '.length).trim();
+  const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
+  if (!token) return null;
+
+  const verified = verifyMobileToken(token) as any;
+  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
+  if (Number.isFinite(verifiedId) && verifiedId > 0) {
+    return verifiedId;
+  }
+
+  // Fallback dla starszych / niestandardowych tokenów w aplikacji.
+  const decoded = jwt.decode(token) as any;
+  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
+  if (Number.isFinite(decodedId) && decodedId > 0) {
+    return decodedId;
+  }
+
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
     const match = req.url.match(/\/deals\/(\d+)\/messages/);
     if (!match) return NextResponse.json({ error: 'Bad URL' }, { status: 400 });
     const dealIdInt = parseInt(match[1], 10);
 
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.split(' ')[1];
-    if (!token) return NextResponse.json({ error: 'No token' }, { status: 401 });
-
-    const decoded = jwt.decode(token) as any;
-    const userId = Number(decoded?.id || decoded?.userId);
+    const userId = parseUserIdFromAuthHeader(req.headers.get('authorization'));
     if (!userId) return NextResponse.json({ error: 'Bad token' }, { status: 401 });
+
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealIdInt },
+      select: { id: true, buyerId: true, sellerId: true }
+    });
+    if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 });
+    if (deal.buyerId !== userId && deal.sellerId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     await prisma.dealMessage.updateMany({
       where: { dealId: dealIdInt, senderId: { not: userId }, isRead: false },
@@ -59,10 +86,7 @@ export async function POST(req: Request) {
     const dealIdInt = parseInt(match[1], 10);
 
     const body = await req.json();
-    const authHeader = req.headers.get('authorization');
-    const token = authHeader?.split(' ')[1];
-    const decoded = jwt.decode(token as string) as any;
-    const userId = Number(decoded?.id || decoded?.userId);
+    const userId = parseUserIdFromAuthHeader(req.headers.get('authorization'));
 
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -105,6 +129,7 @@ export async function POST(req: Request) {
         data: {
           targetType: 'DEAL',
           targetId: String(dealIdInt),
+          dealId: String(dealIdInt),
           kind: 'deal_message'
         }
       });

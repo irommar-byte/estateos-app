@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { decryptSession } from '@/lib/sessionUtils';
 
 const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
 
@@ -14,16 +15,36 @@ export async function POST(
     const dealId = Number(resolvedParams.id);
 
     const cookieStore = await cookies();
-    let token = cookieStore.get('deal_token')?.value || cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value;
+    const dealToken = cookieStore.get('deal_token')?.value;
+    const sessionToken = cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value;
+    let token = dealToken;
     if (!token) {
        const authHeader = req.headers.get("authorization");
        if (authHeader && authHeader.startsWith("Bearer ")) token = authHeader.split(" ")[1];
     }
-    if (!token) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+    let userId: number | null = null;
+    const secretRaw = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '';
+    if (token && secretRaw) {
+      try {
+        const secret = new TextEncoder().encode(secretRaw);
+        const { payload } = await jwtVerify(token, secret);
+        userId = Number(payload.id || payload.sub);
+      } catch {
+        // fallback to session cookie
+      }
+    }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '');
-    const { payload } = await jwtVerify(token, secret);
-    const userId = Number(payload.id || payload.sub);
+    if (!userId && sessionToken) {
+      const session = decryptSession(sessionToken);
+      if (session?.id) {
+        userId = Number(session.id);
+      } else if (session?.email) {
+        const user = await prisma.user.findFirst({ where: { email: String(session.email) }, select: { id: true } });
+        userId = user?.id ?? null;
+      }
+    }
+
+    if (!userId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
 
     // Zmieniamy status wszystkich nieprzeczytanych wiadomości OD DRUGIEJ STRONY na "Odczytano"
     await prisma.dealMessage.updateMany({

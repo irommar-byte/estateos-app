@@ -1,11 +1,29 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
+import type { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const resolvedParams = await params;
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS OfferViewLog (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        offerId INT NOT NULL,
+        visitorKey VARCHAR(128) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'web',
+        ip VARCHAR(64) NULL,
+        userAgent VARCHAR(255) NULL,
+        hits INT NOT NULL DEFAULT 1,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        lastSeenAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY OfferViewLog_offerId_visitorKey_key (offerId, visitorKey),
+        KEY OfferViewLog_offerId_lastSeenAt_idx (offerId, lastSeenAt)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     const offer = await prisma.offer.findUnique({ 
       where: { id: Number(resolvedParams.id) },
       include: { user: true }
@@ -34,7 +52,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    return NextResponse.json({ ...offer, _viewerIsPro: isRealPro });
+    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT COUNT(*) as total FROM OfferViewLog WHERE offerId = ?`,
+      Number(resolvedParams.id)
+    );
+    const viewsCount = Number(viewsRows?.[0]?.total || 0);
+
+    return NextResponse.json({ ...offer, _viewerIsPro: isRealPro, views: viewsCount, viewsCount });
 
   } catch (error) {
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
@@ -55,23 +79,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
        return NextResponse.json({ error: "Oferta nie istnieje" }, { status: 404 });
     }
 
-    // 1. Definiujemy, które pola traktujemy jako "bezpieczne" do zmiany bez utraty weryfikacji
-    const newPrice = String(body.price || '0');
-    
-    // 2. Sprawdzamy czy COKOLWIEK poza ceną uległo zmianie.
-    // Ignorujemy pola takie jak 'updatedAt', 'views' itp.
     let requireReverification = false;
     
     const sensitiveFields = [
-      'title', 'propertyType', 'district', 'area', 'description', 'address',
-      'imageUrl', 'images', 'contactName', 'lat', 'lng', 'advertiserType',
-      'agencyName', 'rooms', 'floor', 'heating', 'year', 'plotArea', 'floorPlan', 'amenities'
+      'title', 'description', 'district', 'area', 'images', 'propertyType',
+      'rooms', 'floor', 'yearBuilt', 'plotArea', 'floorPlanUrl', 'street', 'buildingNumber',
+      'lat', 'lng', 'transactionType'
     ];
 
     for (const field of sensitiveFields) {
-       // Konwertujemy wszystko na stringi dla bezpiecznego porównania
-       const currentVal = String(currentOffer[field as keyof typeof currentOffer] || '').trim();
-       const newVal = String(body[field] || '').trim();
+       const currentVal = String(currentOffer[field as keyof typeof currentOffer] ?? '').trim();
+       const newVal = String(body[field] ?? '').trim();
        
        if (currentVal !== newVal) {
            requireReverification = true;
@@ -80,35 +98,60 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
        }
     }
 
-    // 3. Określamy nowy status
-    let newStatus = currentOffer.status;
+    let newStatus: OfferStatus = currentOffer.status;
     if (requireReverification && currentOffer.status === 'ACTIVE') {
-        newStatus = 'pending_approval'; // Cofa do weryfikacji!
+        newStatus = 'PENDING';
     }
 
-    // 4. Aktualizujemy w bazie (NIE pozwalamy z zewnątrz nadpisać telefonu i adresu)
+    const parsedPrice = parseFloat(String(body.price ?? currentOffer.price).replace(',', '.'));
+    const parsedArea = parseFloat(String(body.area ?? currentOffer.area).replace(',', '.'));
+    const parsedRooms =
+      body.rooms !== undefined && String(body.rooms).trim() !== ''
+        ? parseInt(String(body.rooms), 10)
+        : currentOffer.rooms;
+    const parsedFloor =
+      body.floor !== undefined && String(body.floor).trim() !== ''
+        ? parseInt(String(body.floor), 10)
+        : currentOffer.floor;
+    const parsedPlot =
+      body.plotArea !== undefined && String(body.plotArea).trim() !== ''
+        ? parseFloat(String(body.plotArea).replace(',', '.'))
+        : currentOffer.plotArea;
+    const parsedYear =
+      body.year !== undefined || body.buildYear !== undefined
+        ? (() => {
+            const raw = body.year ?? body.buildYear;
+            const n = parseInt(String(raw), 10);
+            return Number.isFinite(n) ? n : currentOffer.yearBuilt;
+          })()
+        : currentOffer.yearBuilt;
+
     const updatedOffer = await prisma.offer.update({
       where: { id: Number(resolvedParams.id) },
       data: {
-        title: body.title,
-        propertyType: body.propertyType,
-        district: body.district,
-        price: newPrice,
-        area: String(body.area || '0'),
-        description: body.description,
-        // Celowo OMIJAMY zapisywanie address, lat, lng, contactPhone (zablokowane na froncie)
-        imageUrl: body.imageUrl,
-        images: body.images,
-        contactName: body.contactName,
-        agencyName: body.agencyName,
-        rooms: String(body.rooms || ''),
-        floor: String(body.floor || ''),
-        heating: body.heating,
-        year: String(body.year || body.buildYear || ''),
-        plotArea: String(body.plotArea || ''),
-        floorPlan: body.floorPlan,
-        amenities: body.amenities,
-        status: newStatus // Zapisujemy nowy (lub stary) status
+        title: body.title != null ? String(body.title) : currentOffer.title,
+        description: body.description != null ? String(body.description) : currentOffer.description,
+        propertyType: body.propertyType ?? currentOffer.propertyType,
+        district: body.district != null ? String(body.district) : currentOffer.district,
+        price: Number.isFinite(parsedPrice) ? parsedPrice : currentOffer.price,
+        area: Number.isFinite(parsedArea) ? parsedArea : currentOffer.area,
+        images:
+          body.images != null
+            ? typeof body.images === 'string'
+              ? body.images
+              : JSON.stringify(body.images)
+            : currentOffer.images,
+        rooms: parsedRooms ?? null,
+        floor: parsedFloor ?? null,
+        yearBuilt: parsedYear ?? null,
+        plotArea: parsedPlot ?? null,
+        floorPlanUrl:
+          body.floorPlanUrl != null
+            ? String(body.floorPlanUrl)
+            : body.floorPlan != null
+              ? String(body.floorPlan)
+              : currentOffer.floorPlanUrl,
+        status: newStatus,
       }
     });
     

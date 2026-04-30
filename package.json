@@ -6,6 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:prod": "NODE_ENV=production next start -p 3000",
+    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:reload": "pm2 startOrReload ecosystem.config.cjs --env production",
+    "pm2:save": "pm2 save",
+    "deploy:prod": "npm ci && npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check"

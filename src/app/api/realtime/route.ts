@@ -1,8 +1,15 @@
 export const dynamic = 'force-dynamic';
 
-if (!global.sseClients) global.sseClients = new Set();
+type SseClient = { id: string; send: (data: unknown) => void };
 
-export async function GET(req) {
+type GlobalWithSse = typeof globalThis & {
+  sseClients?: Set<SseClient>;
+};
+
+const globalWithSse = globalThis as GlobalWithSse;
+if (!globalWithSse.sseClients) globalWithSse.sseClients = new Set<SseClient>();
+
+export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get('userId');
   if (!userId) return new Response('Bad Request', { status: 400 });
@@ -10,21 +17,21 @@ export async function GET(req) {
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
-      const send = (data) => {
-        try { 
-            controller.enqueue(encoder.encode('data: ' + JSON.stringify(data) + '\n\n')); 
-        } catch(e) {}
+      const send = (data: unknown) => {
+        try {
+            controller.enqueue(encoder.encode('data: ' + JSON.stringify(data) + '\n\n'));
+        } catch {}
       };
       
-      const client = { id: userId, send };
-      global.sseClients.add(client);
+      const client: SseClient = { id: userId, send };
+      globalWithSse.sseClients!.add(client);
       send({ type: 'PING' }); 
       
       const iv = setInterval(() => send({ type: 'PING' }), 10000);
       
       req.signal.addEventListener('abort', () => { 
           clearInterval(iv); 
-          global.sseClients.delete(client); 
+          globalWithSse.sseClients!.delete(client); 
       });
     }
   });
@@ -39,12 +46,11 @@ export async function GET(req) {
   });
 }
 
-export function sendToUsers(userIds, payload) {
-  if (global.sseClients) {
-    global.sseClients.forEach(client => {
-      if (userIds.map(String).includes(String(client.id))) {
+export function sendToUsers(userIds: Array<string | number>, payload: unknown) {
+  const ids = userIds.map(String);
+  globalWithSse.sseClients?.forEach((client) => {
+      if (ids.includes(String(client.id))) {
         client.send(payload);
       }
-    });
-  }
+  });
 }

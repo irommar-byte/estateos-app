@@ -4,7 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Crown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }) {
+type OffMarketModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  offerCreatedAt?: string | Date | null;
+};
+
+export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }: OffMarketModalProps) {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
 

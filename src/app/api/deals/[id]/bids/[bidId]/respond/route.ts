@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import { notificationService } from '@/lib/services/notification.service';
+import { verifyMobileToken } from '@/lib/jwtMobile';
 
 // ================================
 // AUTH HELPER
@@ -9,6 +11,10 @@ function getUserIdFromToken(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
   try {
     const token = authHeader.split(' ')[1];
+    const verified = verifyMobileToken(token) as any;
+    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
+    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
+
     const secret = process.env.JWT_SECRET;
     if (!secret) return null;
     const payload = jwt.verify(token, secret) as any;
@@ -42,9 +48,9 @@ export async function POST(
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
-    const { action } = await req.json(); // 'ACCEPT' | 'REJECT'
+    const { action, counterAmount, message } = await req.json(); // 'ACCEPT' | 'REJECT' | 'COUNTER'
 
-    if (action !== 'ACCEPT' && action !== 'REJECT') {
+    if (action !== 'ACCEPT' && action !== 'REJECT' && action !== 'COUNTER') {
       return NextResponse.json({ error: 'Nieznana akcja' }, { status: 400 });
     }
 
@@ -96,11 +102,14 @@ export async function POST(
 
       if (action === 'ACCEPT') {
 
-        // A. Akceptacja
-        await tx.bid.update({
-          where: { id: bidId },
+        // A. Akceptacja, atomicznie tylko dla nadal oczekującej propozycji.
+        const updatedBid = await tx.bid.updateMany({
+          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
           data: { status: 'ACCEPTED' }
         });
+        if (updatedBid.count === 0) {
+          throw new Error('BID_ALREADY_HANDLED');
+        }
 
         // 🔥 Zamknięcie wszystkich innych ofert
         await tx.bid.updateMany({
@@ -148,13 +157,16 @@ export async function POST(
           }
         });
 
-      } else {
+      } else if (action === 'REJECT') {
 
-        // A. Odrzucenie
-        await tx.bid.update({
-          where: { id: bidId },
+        // A. Odrzucenie, atomicznie tylko dla nadal oczekującej propozycji.
+        const updatedBid = await tx.bid.updateMany({
+          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
           data: { status: 'REJECTED' }
         });
+        if (updatedBid.count === 0) {
+          throw new Error('BID_ALREADY_HANDLED');
+        }
 
         // B. SYSTEM MESSAGE
         await tx.dealMessage.create({
@@ -177,15 +189,94 @@ export async function POST(
           }
         });
 
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { updatedAt: new Date() }
+        });
+
+      } else {
+        const numericCounter = Number(counterAmount);
+        if (!Number.isFinite(numericCounter) || numericCounter <= 0) {
+          throw new Error('INVALID_COUNTER');
+        }
+
+        const updatedBid = await tx.bid.updateMany({
+          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
+          data: { status: 'COUNTER_OFFER', amount: numericCounter }
+        });
+        if (updatedBid.count === 0) {
+          throw new Error('BID_ALREADY_HANDLED');
+        }
+
+        await tx.dealMessage.create({
+          data: {
+            dealId,
+            senderId: userId,
+            content: `[[DEAL_EVENT]]${JSON.stringify({
+              entity: 'BID',
+              action: 'COUNTERED',
+              amount: numericCounter,
+              note: typeof message === 'string' ? message.trim().slice(0, 200) : null,
+            })}`
+          }
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: senderOfBid,
+            type: 'BID_RECEIVED',
+            title: '🔁 Otrzymałeś kontrofertę',
+            body: `Nowa kwota: ${numericCounter.toLocaleString('pl-PL')} PLN`,
+            targetType: 'DEAL',
+            targetId: String(dealId),
+          }
+        });
+
+        await tx.deal.update({
+          where: { id: dealId },
+          data: { updatedAt: new Date() }
+        });
       }
     });
 
+    try {
+      await notificationService.sendPushToUser(senderOfBid, {
+        title: action === 'ACCEPT' ? 'Oferta zaakceptowana' : action === 'REJECT' ? 'Oferta odrzucona' : 'Nowa kontroferta',
+        body: action === 'ACCEPT'
+          ? `Twoja oferta ${bid.amount} PLN została przyjęta.`
+          : action === 'REJECT'
+            ? `Twoja oferta ${bid.amount} PLN została odrzucona.`
+            : `Nowa kwota: ${Number(counterAmount || 0).toLocaleString('pl-PL')} PLN`,
+        data: {
+          targetType: 'DEAL',
+          targetId: String(dealId),
+          dealId: String(dealId),
+          kind: action === 'ACCEPT' ? 'bid_accepted' : action === 'REJECT' ? 'bid_rejected' : 'bid_countered'
+        }
+      });
+    } catch (pushError) {
+      console.warn('[WEB BID PUSH WARN]', pushError);
+    }
+
     return NextResponse.json({
       success: true,
-      message: action === 'ACCEPT' ? 'Oferta zaakceptowana' : 'Oferta odrzucona'
+      message: action === 'ACCEPT' ? 'Oferta zaakceptowana' : action === 'REJECT' ? 'Oferta odrzucona' : 'Kontroferta wysłana'
     });
 
   } catch (error: any) {
+    if (error.message === 'INVALID_COUNTER') {
+      return NextResponse.json(
+        { error: 'Podaj poprawną kwotę kontroferty' },
+        { status: 400 }
+      );
+    }
+    if (error.message === 'BID_ALREADY_HANDLED') {
+      return NextResponse.json(
+        { error: 'Ta propozycja została już rozpatrzona' },
+        { status: 409 }
+      );
+    }
+
     console.error('❌ RESPOND BID ERROR:', error.message);
 
     return NextResponse.json(

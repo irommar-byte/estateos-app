@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Star, X, CheckCircle2, ShieldCheck, Send } from "lucide-react";
 
 export default function ReviewPrompt() {
+  // Temporary hard-disable to avoid any header overlap issues on production.
+  return null;
+
   const [pendingReview, setPendingReview] = useState<any>(null);
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -61,18 +64,18 @@ export default function ReviewPrompt() {
 
   return (
     <AnimatePresence>
-      <motion.div 
-         initial={{ opacity: 0 }} 
-         animate={{ opacity: 1 }} 
-         exit={{ opacity: 0 }} 
-         className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-md flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 sm:p-6"
+      <motion.div
+         initial={{ opacity: 0 }}
+         animate={{ opacity: 1 }}
+         exit={{ opacity: 0 }}
+         className="fixed bottom-3 right-3 sm:bottom-5 sm:right-5 z-[120] pointer-events-none"
       >
         <motion.div 
            initial={{ scale: 0.9, y: 50 }} 
            animate={{ scale: 1, y: 0 }} 
            exit={{ scale: 0.9, y: 50 }} 
            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-           className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.8)] relative text-center"
+           className="pointer-events-auto bg-[#0a0a0a]/95 border border-white/10 rounded-[2rem] w-[min(92vw,34rem)] max-h-[calc(100vh-7rem)] overflow-y-auto shadow-[0_20px_50px_rgba(0,0,0,0.6)] relative text-center"
         >
            {/* Złota poświata */}
            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-yellow-500/10 rounded-full blur-[80px] pointer-events-none"></div>
@@ -81,7 +84,7 @@ export default function ReviewPrompt() {
              <X size={16} />
            </button>
 
-           <div className="p-8 md:p-10 relative z-10">
+           <div className="p-6 sm:p-8 relative z-10">
               <div className="w-16 h-16 rounded-2xl bg-[#111] border border-yellow-500/30 flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(234,179,8,0.15)]">
                  <ShieldCheck size={28} className="text-yellow-500" />
               </div>

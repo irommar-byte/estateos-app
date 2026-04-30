@@ -354,8 +354,13 @@ export default function CRMDashboard() {
   }, [crmData]);
   
   const [activeTab, setActiveTab] = useState<'radar' | 'offers' | 'planowanie' | 'transakcje'>('radar');
+  const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
+  const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
+  const [profileModalUser, setProfileModalUser] = useState<any>(null);
+  const [profileModalLoading, setProfileModalLoading] = useState(false);
+  const [profileModalData, setProfileModalData] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
   const [radarResults, setRadarResults] = useState<any[]>([]);
@@ -380,6 +385,25 @@ export default function CRMDashboard() {
       };
       if (currentUser?.id) { loadDeals(); const i = setInterval(loadDeals, 10000); return () => clearInterval(i); }
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('crm_pinned_deals');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setPinnedDealIds(parsed.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+      }
+    } catch {
+      // ignore invalid local storage
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('crm_pinned_deals', JSON.stringify(pinnedDealIds));
+  }, [pinnedDealIds]);
   // ===================================================================
 
   
@@ -519,6 +543,13 @@ export default function CRMDashboard() {
             setActiveTab(t as any);
         }
     }
+    if (sParams && sParams.get('dealId')) {
+      const dealIdFromUrl = Number(sParams.get('dealId'));
+      if (Number.isFinite(dealIdFromUrl) && dealIdFromUrl > 0) {
+        setActiveTab('transakcje');
+        setSelectedDealId(dealIdFromUrl);
+      }
+    }
     // Odpalamy liniowe ładowanie danych!
     const cleanup = initCrm();
     
@@ -585,6 +616,89 @@ export default function CRMDashboard() {
     );
   }
 
+  const displayName = currentUser?.firstName
+    ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+    : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Witaj'));
+  const avatarSrcRaw = currentUser?.image || '';
+  const avatarSrc = avatarSrcRaw
+    ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
+    : '';
+  const avatarInitial = (displayName || 'U').trim().charAt(0).toUpperCase();
+  const sortedIsolatedDeals = [...isolatedDeals].sort((a: any, b: any) => {
+    const aPinned = pinnedDealIds.includes(Number(a.dealId));
+    const bPinned = pinnedDealIds.includes(Number(b.dealId));
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+    const aTs = new Date(a.lastMessageAt || a.updatedAt || a.createdAt || 0).getTime();
+    const bTs = new Date(b.lastMessageAt || b.updatedAt || b.createdAt || 0).getTime();
+    return bTs - aTs;
+  });
+
+  const togglePinDeal = (dealId: number) => {
+    setPinnedDealIds((prev) =>
+      prev.includes(dealId) ? prev.filter((id) => id !== dealId) : [dealId, ...prev]
+    );
+  };
+
+  const openUserProfileModal = async (user: any) => {
+    if (!user?.id) return;
+    setProfileModalUser(user);
+    setProfileModalLoading(true);
+    setProfileModalData(null);
+    try {
+      const res = await fetch(`/api/users/${user.id}/public`);
+      const data = await res.json();
+      if (res.ok) setProfileModalData(data);
+    } catch {
+      // ignore
+    } finally {
+      setProfileModalLoading(false);
+    }
+  };
+
+  const baseOffersForView = mode === 'BUYER'
+    ? (crmData.offers || []).filter((o: any) => likedOfferIds.includes(String(o.id)))
+    : (crmData.offers || []);
+
+  const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
+    const now = new Date();
+    const status = String(offer?.status || '').toUpperCase();
+    const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
+    const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < now.getTime();
+    const isPending = ['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status);
+    const isCompleted = isExpired || ['ARCHIVED', 'SOLD', 'REJECTED', 'EXPIRED', 'INACTIVE', 'PAUSED', 'CANCELLED'].includes(status);
+    if (isPending) return 'PENDING';
+    if (isCompleted) return 'COMPLETED';
+    return 'ACTIVE';
+  };
+
+  const sortOffersBySection = (offers: any[]) => {
+    const withTs = (offer: any) => {
+      const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : 0;
+      const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : 0;
+      return { createdAtMs, expiresAtMs };
+    };
+
+    return [...offers].sort((a: any, b: any) => {
+      const sectionA = classifyOfferSection(a);
+      const sectionB = classifyOfferSection(b);
+      const tsA = withTs(a);
+      const tsB = withTs(b);
+
+      if (sectionA === 'COMPLETED' && sectionB === 'COMPLETED') {
+        return tsB.expiresAtMs - tsA.expiresAtMs;
+      }
+      return tsB.createdAtMs - tsA.createdAtMs;
+    });
+  };
+
+  const offersBySection = {
+    ACTIVE: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'ACTIVE')),
+    PENDING: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'PENDING')),
+    COMPLETED: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'COMPLETED')),
+  };
+
+  const offersVisibleInSection = offersBySection[offerSectionFilter];
+
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white p-6 pt-32 pb-40 font-sans relative">
         <ProStatusBar user={currentUser} />
@@ -600,11 +714,22 @@ export default function CRMDashboard() {
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">Panel Inwestora</p>
             <div className="flex items-center gap-4 flex-wrap">
+              <div className="w-14 h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
+                {avatarSrc ? (
+                  <img
+                    src={avatarSrc}
+                    alt={`Awatar ${displayName}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-sm font-black text-emerald-400">
+                    {avatarInitial}
+                  </div>
+                )}
+              </div>
               <h1 className="text-3xl md:text-5xl font-black tracking-tighter text-white">
-              {currentUser?.firstName 
-                ? `${currentUser.firstName} ${currentUser.lastName || ''}` 
-                : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Witaj'))}
-            </h1>
+                {displayName}
+              </h1>
               {currentUser?.id && (
                 <div className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
                    <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">ID Użytkownika</span>
@@ -1017,12 +1142,62 @@ export default function CRMDashboard() {
         )}
 
         {activeTab === 'offers' && (
+          <>
+          {mode === 'SELLER' && (
+            <div className="mb-6">
+              <div className="flex bg-[#111] border border-white/10 rounded-full p-1.5 shadow-inner relative w-full max-w-[560px]">
+                <div
+                  className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    offerSectionFilter === 'ACTIVE'
+                      ? 'translate-x-0'
+                      : offerSectionFilter === 'PENDING'
+                        ? 'translate-x-[calc(100%+4px)]'
+                        : 'translate-x-[calc(200%+8px)]'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setOfferSectionFilter('ACTIVE')}
+                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
+                    offerSectionFilter === 'ACTIVE' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                  }`}
+                >
+                  Aktywne ({offersBySection.ACTIVE.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferSectionFilter('PENDING')}
+                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
+                    offerSectionFilter === 'PENDING' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                  }`}
+                >
+                  Oczekujące ({offersBySection.PENDING.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferSectionFilter('COMPLETED')}
+                  className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
+                    offerSectionFilter === 'COMPLETED' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                  }`}
+                >
+                  Zakończone ({offersBySection.COMPLETED.length})
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(!crmData.offers || (mode === 'BUYER' ? crmData.offers.filter((o:any) => likedOfferIds.includes(o.id.toString())) : crmData.offers).length === 0) ? (
+            {(offersVisibleInSection.length === 0) ? (
               <div className="col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
-                  {mode === 'BUYER' ? 'Nie obserwujesz jeszcze żadnych ofert.' : 'Nie masz jeszcze żadnych ogłoszeń.'}
+                  {mode === 'BUYER'
+                    ? 'Nie obserwujesz jeszcze żadnych ofert.'
+                    : offerSectionFilter === 'ACTIVE'
+                      ? 'Brak aktywnych ogłoszeń.'
+                      : offerSectionFilter === 'PENDING'
+                        ? 'Brak ogłoszeń oczekujących.'
+                        : 'Brak zakończonych ogłoszeń.'}
                 </p>
                 {mode === 'SELLER' && (
                   <motion.button
@@ -1039,7 +1214,7 @@ export default function CRMDashboard() {
                 )}
               </div>
             ) : (
-              [...(mode === 'SELLER' ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...(mode === 'BUYER' ? crmData.offers.filter((o:any) => likedOfferIds.includes(o.id.toString())) : crmData.offers)].map((offer: any) => {
+              [...(mode === 'SELLER' ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
                 if (offer.isDummy) return (
                   <motion.div 
                     key="add-new-btn"
@@ -1057,7 +1232,9 @@ export default function CRMDashboard() {
                 const now = new Date();
                 const expiresAt = new Date(offer.expiresAt);
                 const createdAt = new Date(offer.createdAt || now);
-                const isArchived = expiresAt.getTime() < now.getTime();
+                const status = String(offer?.status || '').toUpperCase();
+                const isPending = ['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status);
+                const isArchived = classifyOfferSection(offer) === 'COMPLETED';
                 const diffTime = Math.abs(expiresAt.getTime() - now.getTime());
                 const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 const isNew = (now.getTime() - createdAt.getTime()) < (1000 * 60 * 60 * 24);
@@ -1099,7 +1276,7 @@ export default function CRMDashboard() {
                           <div className="shrink-0">
                             {isArchived ? (
                               <span className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-500/20">Wygasło</span>
-                            ) : (offer.status === 'pending_approval') ? (
+                            ) : isPending ? (
                               <span className="bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.4)] animate-pulse">W Weryfikacji</span>
                             ) : isNew ? (
                               <span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.3)] animate-pulse">Nowe!</span>
@@ -1222,6 +1399,7 @@ export default function CRMDashboard() {
               })
             )}
           </div>
+          </>
         )}
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
         {activeTab === 'transakcje' && (
@@ -1244,23 +1422,72 @@ export default function CRMDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {isolatedDeals.map((deal: any) => (
+                {sortedIsolatedDeals.map((deal: any) => (
                   <div key={deal.dealId} onClick={() => setSelectedDealId(deal.dealId)} className="cursor-pointer block">
                     <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-white/10 hover:border-amber-500/30 rounded-[2rem] p-6 transition-all duration-300 group cursor-pointer shadow-xl hover:shadow-[0_10px_30px_rgba(245,158,11,0.1)]">
-                      <div className="flex gap-4 items-center mb-4">
-                        <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-white/5 group-hover:border-amber-500/50 transition-colors">
-                           <img src={((Array.isArray(deal.offer?.images) ? deal.offer.images[0] : typeof deal.offer?.images === 'string' && deal.offer.images.startsWith('[') ? JSON.parse(deal.offer.images)[0] : deal.offer?.images) || deal.offer?.imageUrl || '/placeholder.jpg')} className="w-full h-full object-cover" alt="Oferta" />
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex gap-4 items-center min-w-0">
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-white/5 group-hover:border-amber-500/50 transition-colors">
+                            <img src={((Array.isArray(deal.offer?.images) ? deal.offer.images[0] : typeof deal.offer?.images === 'string' && deal.offer.images.startsWith('[') ? JSON.parse(deal.offer.images)[0] : deal.offer?.images) || deal.offer?.imageUrl || '/placeholder.jpg')} className="w-full h-full object-cover" alt="Oferta" />
+                          </div>
+                          <div className="flex flex-col justify-center min-w-0">
+                            <p className="text-white font-bold text-sm truncate">{deal.offer?.title || 'Nieruchomość'}</p>
+                            <p className="text-emerald-500 font-black text-xs">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} PLN</p>
+                            <p className="text-[9px] text-white/35 uppercase tracking-widest font-black mt-1">Deal #{deal.dealId}</p>
+                          </div>
                         </div>
-                        <div className="flex flex-col justify-center">
-                          <p className="text-white font-bold text-sm truncate">{deal.offer?.title || 'Nieruchomość'}</p>
-                          <p className="text-emerald-500 font-black text-xs">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} PLN</p>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {deal.unreadCount > 0 && (
+                            <span className="px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                              +{deal.unreadCount} nieodczytane
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); togglePinDeal(Number(deal.dealId)); }}
+                            className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                              pinnedDealIds.includes(Number(deal.dealId))
+                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                : 'bg-white/5 border-white/10 text-white/40 hover:text-white/80'
+                            }`}
+                          >
+                            {pinnedDealIds.includes(Number(deal.dealId)) ? 'Przypięte' : 'Przypnij'}
+                          </button>
                         </div>
                       </div>
                       <div className="bg-black/50 rounded-xl p-4 border border-white/5 relative overflow-hidden">
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50 group-hover:bg-amber-500 transition-colors" />
-                        <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">Ostatnia wiadomość</p>
-                        <p className="text-white/60 text-xs truncate ml-2">{deal.lastMessage}</p>
+                        <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
+                          Ostatnia wiadomość {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
+                        </p>
+                        <p className="text-white/70 text-xs truncate ml-2">{deal.lastMessage}</p>
+                        <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-white/40 uppercase tracking-widest font-black">
+                          <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (
+                            <span className="text-emerald-400">
+                              {deal.pendingBidCount > 0 ? `${deal.pendingBidCount} oczek. ofert` : ''}{deal.pendingBidCount > 0 && deal.pendingAppointmentCount > 0 ? ' • ' : ''}{deal.pendingAppointmentCount > 0 ? `${deal.pendingAppointmentCount} oczek. terminów` : ''}
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      {deal.otherParty?.id && (
+                        <div className="mt-3 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openUserProfileModal(deal.otherParty); }}
+                            className="text-[10px] uppercase tracking-widest font-black text-blue-300 hover:text-white transition-colors"
+                          >
+                            Profil: {deal.otherParty.name}
+                          </button>
+                          <Link
+                            href={`/profil/${deal.otherParty.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[10px] uppercase tracking-widest font-black text-white/45 hover:text-white transition-colors"
+                          >
+                            Otwórz profil
+                          </Link>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1647,6 +1874,73 @@ export default function CRMDashboard() {
               </motion.div>
             )}
           </AnimatePresence>
+
+      <AnimatePresence>
+        {profileModalUser && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 12 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 max-w-2xl w-full shadow-2xl relative">
+              <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+              <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || 'Profil użytkownika'}</h3>
+              <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-6">ID: {profileModalUser.id}</p>
+
+              {profileModalLoading ? (
+                <div className="py-12 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>
+              ) : profileModalData ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Średnia ocen</p>
+                      <p className="text-lg font-black text-amber-300">
+                        {Array.isArray(profileModalData.reviews) && profileModalData.reviews.length
+                          ? (profileModalData.reviews.reduce((a: number, r: any) => a + Number(r.rating || 0), 0) / profileModalData.reviews.length).toFixed(1)
+                          : '0.0'} ★
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Komentarze</p>
+                      <p className="text-lg font-black text-white">{Array.isArray(profileModalData.reviews) ? profileModalData.reviews.length : 0}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Inne oferty</p>
+                      <p className="text-lg font-black text-emerald-400">{Array.isArray(profileModalData.offers) ? profileModalData.offers.length : 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-3">Ostatnie komentarze</p>
+                    <div className="space-y-2 max-h-40 overflow-auto">
+                      {(profileModalData.reviews || []).slice(0, 5).map((r: any) => (
+                        <div key={r.id} className="rounded-lg bg-black/40 border border-white/5 p-3">
+                          <p className="text-xs text-amber-300 font-black">{Number(r.rating || 0)} ★</p>
+                          <p className="text-xs text-white/70">{r.comment || 'Bez komentarza'}</p>
+                        </div>
+                      ))}
+                      {(!profileModalData.reviews || profileModalData.reviews.length === 0) && <p className="text-xs text-white/35">Brak komentarzy.</p>}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-white/5 border border-white/10 p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-3">Pozostałe oferty użytkownika</p>
+                    <div className="space-y-2 max-h-40 overflow-auto">
+                      {(profileModalData.offers || []).slice(0, 10).map((o: any) => (
+                        <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-white/5 p-3 hover:border-emerald-500/30 transition-colors">
+                          <p className="text-xs text-white font-bold truncate">{o.title || `Oferta #${o.id}`}</p>
+                          <p className="text-[10px] text-emerald-400 font-black">{Number(String(o.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</p>
+                        </Link>
+                      ))}
+                      {(!profileModalData.offers || profileModalData.offers.length === 0) && <p className="text-xs text-white/35">Brak innych ofert.</p>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-white/40 text-sm">Nie udało się pobrać profilu.</p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {offerToArchive && (

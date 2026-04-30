@@ -49,6 +49,7 @@ const processChartData = (period: string, timeline: any) => {
 
   const assignToBucket = (dateStr: string, callback: (bucket: any) => void) => {
     const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return;
     let match: any;
     if (period === 'Godziny Szczytu') match = buckets.find(b => b.hourMatch === d.getHours());
     else if (period === 'Dni Szczytu') match = buckets.find(b => b.dayMatch === d.getDay());
@@ -100,7 +101,7 @@ export default function Statystyki() {
     if (!stats?.timeline?.offers) return null;
     
     // Bierzemy tylko aktywne lub weryfikowane oferty
-    let filtered = stats.timeline.offers.filter((o: any) => o.status !== 'rejected');
+    let filtered = stats.timeline.offers.filter((o: any) => String(o.status || '').toUpperCase() !== 'REJECTED');
     if (marketFilter !== 'Wszystkie') filtered = filtered.filter((o: any) => o.propertyType === marketFilter);
 
     let totalWarsawPrice = 0;
@@ -108,8 +109,8 @@ export default function Statystyki() {
     const districtMap = new Map();
 
     filtered.forEach((o: any) => {
-      const price = parseInt((o.price || '0').replace(/\D/g, '')) || 0;
-      const areaStr = (o.area || '0').replace(',', '.').replace(/[^\d.]/g, '');
+      const price = parseInt(String(o.price || '0').replace(/\D/g, '')) || 0;
+      const areaStr = String(o.area || '0').replace(',', '.').replace(/[^\d.]/g, '');
       const area = parseFloat(areaStr) || 0;
 
       if (price > 0 && area > 0) {
@@ -300,7 +301,7 @@ export default function Statystyki() {
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 10, fontWeight: 900, fontFamily: 'monospace' }} tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}/>
                 <Tooltip content={({ active, payload, label }: any) => {
                   if (active && payload && payload.length) return (
-                    <div className="bg-[#050505]/80 backdrop-blur-xl border border-white/10 p-5 rounded-2xl"><p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{label}</p><p className="text-white text-3xl font-black tracking-tight">{payload[0].value.toLocaleString('pl-PL')}<span className="text-[10px] font-bold text-gray-500 ml-2 uppercase tracking-widest">{activeTab.label}</span></p></div>
+                    <div className="bg-[#050505]/80 backdrop-blur-xl border border-white/10 p-5 rounded-2xl"><p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{label}</p><p className="text-white text-3xl font-black tracking-tight">{Number(payload[0]?.value || 0).toLocaleString('pl-PL')}<span className="text-[10px] font-bold text-gray-500 ml-2 uppercase tracking-widest">{activeTab.label}</span></p></div>
                   );
                   return null;
                 }} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1, strokeDasharray: '4 4' }} />

@@ -2,56 +2,116 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
+import { decryptSession } from '@/lib/sessionUtils';
 
 export async function GET(req: Request) {
   try {
     const cookieStore = await cookies();
-    // Szukamy naszych nowych, mocnych ciasteczek
-    let token = cookieStore.get('deal_token')?.value || cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value;
+    const dealToken = cookieStore.get('deal_token')?.value;
+    const sessionToken = cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value;
+    let authToken = dealToken;
 
-    if (!token) {
+    if (!authToken) {
        const authHeader = req.headers.get("authorization");
-       if (authHeader && authHeader.startsWith("Bearer ")) token = authHeader.split(" ")[1];
+       if (authHeader && authHeader.startsWith("Bearer ")) authToken = authHeader.split(" ")[1];
     }
 
-    if (!token) return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
-
-    if (token.startsWith('Bearer ')) {
-      token = token.slice('Bearer '.length).trim();
-    }
-    if (!token) {
-      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+    if (authToken?.startsWith('Bearer ')) {
+      authToken = authToken.slice('Bearer '.length).trim();
     }
 
-    const secretValue = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '';
-    if (!secretValue) {
-      return NextResponse.json({ success: false, error: 'Brak konfiguracji auth' }, { status: 500 });
+    let userId: number | null = null;
+    if (authToken) {
+      const secretValue = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || '';
+      if (secretValue) {
+        try {
+          const verified = await jwtVerify(authToken, new TextEncoder().encode(secretValue));
+          userId = Number(verified.payload.id || verified.payload.sub);
+        } catch {
+          // fallback do sesji poniżej
+        }
+      }
     }
 
-    let payload: any;
-    try {
-      const verified = await jwtVerify(token, new TextEncoder().encode(secretValue));
-      payload = verified.payload;
-    } catch {
-      return NextResponse.json({ success: false, error: 'Nieprawidłowy token' }, { status: 401 });
+    if (!userId && sessionToken) {
+      const session = decryptSession(sessionToken);
+      if (session?.id) {
+        userId = Number(session.id);
+      } else if (session?.email) {
+        const user = await prisma.user.findFirst({ where: { email: String(session.email) }, select: { id: true } });
+        userId = user?.id ?? null;
+      }
     }
-    const userId = Number(payload.id || payload.sub);
 
-    if (!userId) return NextResponse.json({ success: false, error: 'Nieprawidłowy token' }, { status: 401 });
+    if (!userId) return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
 
-    // Wyciągamy pokoje z bazy (Omijamy błąd 'sellerId' z messages, pobierając czyste pokoje)
+    // Pełny kontekst pokoi: wiadomości, propozycje, statusy i strony transakcji.
     const deals = await prisma.deal.findMany({
       where: { OR: [{ sellerId: userId }, { buyerId: userId }] },
-      include: { offer: true, buyer: true, seller: true },
-      orderBy: { createdAt: 'desc' }
+      include: {
+        offer: true,
+        buyer: true,
+        seller: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: {
+            sender: {
+              select: { id: true, name: true }
+            }
+          }
+        },
+        bids: {
+          where: { status: { in: ['PENDING', 'COUNTER_OFFER'] } },
+          orderBy: { createdAt: 'desc' },
+          take: 5
+        },
+        appointments: {
+          where: { status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+          take: 5
+        }
+      },
+      orderBy: { updatedAt: 'desc' }
     });
 
-    // Formatujemy dla Twojego Reacta (wymaga dealId zamiast id)
-    const formattedDeals = deals.map(d => ({
+    const unreadCounters = await Promise.all(
+      deals.map(async (deal) => {
+        const unread = await prisma.dealMessage.count({
+          where: {
+            dealId: deal.id,
+            senderId: { not: userId },
+            isRead: false,
+          }
+        });
+        return [deal.id, unread] as const;
+      })
+    );
+    const unreadMap = new Map<number, number>(unreadCounters);
+
+    // Formatujemy pod listę transakcji.
+    const formattedDeals = deals.map((d) => {
+      const lastMsg = d.messages?.[0];
+      const otherParty = d.buyerId === userId ? d.seller : d.buyer;
+      return {
         ...d,
         dealId: d.id,
-        lastMessage: 'Otwórz Deal Room, aby rozpocząć negocjacje' // Fallback wiadomości
-    }));
+        unreadCount: unreadMap.get(d.id) || 0,
+        lastMessage: lastMsg?.content || 'Otwórz Deal Room, aby rozpocząć negocjacje',
+        lastMessageAt: lastMsg?.createdAt || d.updatedAt || d.createdAt,
+        lastMessageSenderName: lastMsg?.sender?.name || null,
+        otherParty: otherParty
+          ? {
+              id: otherParty.id,
+              name: otherParty.name || (otherParty.email ? otherParty.email.split('@')[0] : 'Użytkownik'),
+              email: otherParty.email || null,
+              image: otherParty.image || null,
+            }
+          : null,
+        pendingBidCount: d.bids?.length || 0,
+        pendingAppointmentCount: d.appointments?.length || 0,
+      };
+    });
 
     return NextResponse.json({ success: true, deals: formattedDeals });
   } catch (e: unknown) {

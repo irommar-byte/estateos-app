@@ -31,20 +31,16 @@ const PROPERTY_TYPES = [
 ];
 const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 const HEATING_TYPES = ["Miejskie", "Gazowe", "Elektryczne", "Pompa Ciepła", "Węglowe/Pellet", "Inne"];
-const CITY_DISTRICTS: Record<string, string[]> = {
-  Warszawa: ["Mokotów", "Praga-Południe", "Wola", "Ursynów", "Bielany", "Śródmieście", "Targówek", "Bemowo", "Ochota", "Wawer", "Praga-Północ", "Białołęka", "Ursus", "Żoliborz", "Włochy", "Wilanów", "Wesoła", "Rembertów"],
-  Kraków: ["Stare Miasto", "Grzegórzki", "Prądnik Czerwony", "Prądnik Biały", "Krowodrza", "Bronowice", "Zwierzyniec", "Dębniki", "Podgórze", "Czyżyny", "Nowa Huta"],
-  Łódź: ["Bałuty", "Górna", "Polesie", "Śródmieście", "Widzew"],
-  Wrocław: ["Krzyki", "Fabryczna", "Psie Pole", "Śródmieście", "Stare Miasto", "Biskupin", "Gaj", "Ołbin"],
-  Poznań: ["Grunwald", "Jeżyce", "Wilda", "Stare Miasto", "Rataje", "Winogrady", "Naramowice"],
-  Trójmiasto: ["Gdańsk - Śródmieście", "Gdańsk - Wrzeszcz", "Gdańsk - Oliwa", "Gdynia - Śródmieście", "Gdynia - Orłowo", "Sopot - Dolny", "Sopot - Górny"],
-  "Reszta Polski": ["Inna lokalizacja"],
-};
 const CONDITION_TYPES = [
   { id: "READY", label: "Gotowe" },
   { id: "RENOVATION", label: "Do remontu" },
   { id: "DEVELOPER", label: "Deweloperski" }
 ];
+
+type DistrictCatalogResponse = {
+  strictCities: string[];
+  strictCityDistricts: Record<string, string[]>;
+};
 
 const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -127,6 +123,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [emailStatus, setEmailStatus] = useState('idle');
   const [phoneStatus, setPhoneStatus] = useState('idle');
   const [currentStep, setCurrentStep] = useState(1);
+  const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<mapboxgl.Map | null>(null);
@@ -136,6 +133,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const editorRef = useRef<HTMLDivElement>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
+  const strictCities = locationCatalog.strictCities || [];
+  const cityOptions = strictCities.includes(data.city) ? strictCities : [data.city, ...strictCities].filter(Boolean);
+  const districtOptions = locationCatalog.strictCityDistricts[data.city] || [];
+  const isStrictCity = strictCities.includes(data.city);
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
 
@@ -160,20 +161,40 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
   };
 
+  const resolveLocationFromCoordinates = async (lat: number, lng: number, fallbackAddress?: string) => {
+    try {
+      const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const reverse = await response.json();
+
+      updateData({
+        lat,
+        lng,
+        city: reverse.city || data.city,
+        district: reverse.district || '',
+        address: reverse.addressLabel || fallbackAddress || data.address,
+        street: reverse.street || data.street || null,
+      });
+    } catch {
+      // no-op, manual selection still available
+    }
+  };
+
   const selectAddress = (feature: any) => {
     const coords = feature?.center;
-    const contextItems = Array.isArray(feature?.context) ? feature.context : [];
-    const districtFromContext = contextItems.find((item: any) =>
-      String(item?.id || '').includes('place') || String(item?.id || '').includes('locality'),
-    )?.text;
+    const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
+    const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
 
     updateData({
       address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
-      lng: Array.isArray(coords) ? coords[0] : data.lng,
-      lat: Array.isArray(coords) ? coords[1] : data.lat,
-      district: districtFromContext || data.district,
+      lng: nextLng,
+      lat: nextLat,
     });
     setAddressSuggestions([]);
+
+    if (nextLat && nextLng) {
+      void resolveLocationFromCoordinates(nextLat, nextLng, feature?.place_name_pl || feature?.place_name || feature?.text);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -261,6 +282,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, [data.email]);
 
   useEffect(() => {
+    const loadDistrictCatalog = async () => {
+      try {
+        const response = await fetch('/api/location/districts', { cache: 'no-store' });
+        if (!response.ok) return;
+        const catalog = await response.json();
+        setLocationCatalog(catalog);
+        if (!data.city && Array.isArray(catalog?.strictCities) && catalog.strictCities.length > 0) {
+          updateData({ city: catalog.strictCities[0] });
+        }
+      } catch {
+        // fallback to manual text flow
+      }
+    };
+
+    void loadDistrictCatalog();
+  }, []);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapInstance.current) return;
     if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
       setAddressError('Brak klucza mapy (NEXT_PUBLIC_MAPBOX_TOKEN).');
@@ -317,6 +356,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const nextLng = +e.lngLat.lng.toFixed(6);
       const nextLat = +e.lngLat.lat.toFixed(6);
       setData((prev: any) => ({ ...prev, lng: nextLng, lat: nextLat }));
+      void resolveLocationFromCoordinates(nextLat, nextLng);
     });
 
     return () => {
@@ -534,7 +574,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isTypeSelected = !!data.propertyType;
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
-  const isLocationDone = !!data.lat && !!data.lng && !!data.city && !!data.district && !addressError && hasBuildingNumber && 
+  const districtRequirementMet = isStrictCity ? !!data.district : true;
+  const isLocationDone = !!data.lat && !!data.lng && !!data.city && districtRequirementMet && !addressError && hasBuildingNumber && 
                          (data.propertyType !== 'FLAT' || (data.propertyType === 'FLAT' && !!data.apartmentNumber));
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
@@ -734,17 +775,27 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={labelPremium}>Miasto *</label>
-                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || 'Warszawa'} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
-                        {Object.keys(CITY_DISTRICTS).map(city => <option key={city} value={city}>{city}</option>)}
+                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || ''} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
+                        {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
                       </select>
                     </div>
 
                     <div>
-                      <label className={labelPremium}>Dzielnica *</label>
-                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
-                        <option value="" disabled>Wybierz...</option>
-                        {(CITY_DISTRICTS[data.city || 'Warszawa'] || CITY_DISTRICTS.Warszawa).map(d => <option key={d} value={d}>{d}</option>)}
-                      </select>
+                      <label className={labelPremium}>{isStrictCity ? "Dzielnica *" : "Obszar / osiedle"}</label>
+                      {isStrictCity ? (
+                        <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
+                          <option value="" disabled>Wybierz...</option>
+                          {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          className={inputPremium}
+                          placeholder="Np. osiedle / sołectwo / część miasta"
+                          value={data.district || ''}
+                          onChange={(e) => updateData({ district: e.target.value })}
+                        />
+                      )}
                     </div>
                   </div>
 

@@ -27,10 +27,16 @@ export async function POST(req: Request) {
             expectedChallenge: user.otpCode,
             expectedOrigin,
             expectedRPID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
-            authenticator: {
-                credentialID: Buffer.from(authenticator.credentialID, 'base64url'),
-                credentialPublicKey: Buffer.from(authenticator.credentialPublicKey, 'base64url'),
-                counter: authenticator.counter,
+            credential: {
+              id: authenticator.credentialID,
+              publicKey: (() => {
+                try {
+                  const fromUrl = new Uint8Array(Buffer.from(authenticator.credentialPublicKey, 'base64url'));
+                  if (fromUrl.byteLength) return fromUrl;
+                } catch {}
+                return new Uint8Array(Buffer.from(authenticator.credentialPublicKey, 'base64'));
+              })(),
+              counter: authenticator.counter,
             },
         });
 

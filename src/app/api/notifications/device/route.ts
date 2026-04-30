@@ -1,62 +1,87 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { verifyMobileToken } from '@/lib/jwtMobile';
 import jwt from 'jsonwebtoken';
+
+function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const rawToken = authHeader.slice('Bearer '.length).trim();
+  const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
+  if (!token) return null;
+
+  const verified = verifyMobileToken(token) as any;
+  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
+  if (Number.isFinite(verifiedId) && verifiedId > 0) {
+    return verifiedId;
+  }
+
+  // Fallback dla tokenów podpisanych innym sekretem (np. część flow passkey).
+  const decoded = jwt.decode(token) as any;
+  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
+  if (Number.isFinite(decodedId) && decodedId > 0) {
+    return decodedId;
+  }
+
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // 🔥 AUTH
     const authHeader = req.headers.get("authorization");
-console.log("AUTH HEADER:", authHeader);
-    console.log("BODY:", body);
-
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Brak Authorization header' }, { status: 401 });
-    }
-
-    const rawToken = authHeader.split(" ")[1] || '';
-    const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken.trim();
-    if (!token) {
-      return NextResponse.json({ error: 'Nieprawidłowy token' }, { status: 401 });
-    }
-    const decoded = jwt.decode(token) as any;
-
-    const userId = Number(decoded?.id || decoded?.userId || decoded?.sub);
-    if (!Number.isFinite(userId)) {
+    const userId = parseUserIdFromAuthHeader(authHeader);
+    if (!userId) {
       return NextResponse.json({ error: 'Nieprawidłowy token' }, { status: 401 });
     }
 
     let { expoPushToken, platform = 'IOS', deviceModel = 'Unknown', appVersion = '1.0' } = body;
+    expoPushToken = String(expoPushToken || '').replace(/\s+/g, '').trim();
 
     if (!expoPushToken) {
       return NextResponse.json({ error: 'Brak tokena w body' }, { status: 400 });
     }
 
-    const device = await prisma.device.upsert({
-      where: {
-        userId_expoPushToken: {
+    await prisma.$transaction(async (tx) => {
+      // Jeden fizyczny token urządzenia ma należeć tylko do jednego konta.
+      await tx.device.updateMany({
+        where: {
+          expoPushToken,
+          userId: { not: userId },
+        },
+        data: {
+          isActive: false,
+        },
+      });
+
+      await tx.device.upsert({
+        where: {
+          userId_expoPushToken: {
+            userId,
+            expoPushToken
+          }
+        },
+        update: {
+          isActive: true,
+          platform,
+          deviceModel,
+          appVersion,
+          lastSyncedAt: new Date()
+        },
+        create: {
           userId,
-          expoPushToken
+          expoPushToken,
+          platform,
+          deviceModel,
+          appVersion,
+          isActive: true
         }
-      },
-      update: {
-        isActive: true,
-        lastSyncedAt: new Date()
-      },
-      create: {
-        userId,
-        expoPushToken,
-        platform,
-        deviceModel,
-        appVersion,
-        isActive: true
-      }
+      });
     });
 
     console.log(`📱 Token zapisany dla user ${userId}: ${expoPushToken.slice(0,25)}...`);
 
-    return NextResponse.json({ success: true, deviceId: device.id });
+    return NextResponse.json({ success: true });
 
   } catch (error: any) {
     console.error('❌ Błąd zapisu urządzenia:', error?.message || error);

@@ -20,6 +20,29 @@ export default function NotificationCenter() {
     } catch (e) {}
   };
 
+  const groupedNotifications = (() => {
+    const grouped = new Map<string, any>();
+    for (const notif of notifications) {
+      const key = notif.groupKey || `single:${notif.id}`;
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          ...notif,
+          ids: [notif.id],
+          count: 1,
+          isRead: !!notif.isRead,
+        });
+      } else {
+        existing.ids.push(notif.id);
+        existing.count += 1;
+        existing.isRead = existing.isRead && !!notif.isRead;
+      }
+    }
+    return Array.from(grouped.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  })();
+
   useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 15000);
@@ -42,22 +65,25 @@ export default function NotificationCenter() {
   }, [isOpen]);
 
   const handleNotificationClick = async (notif: any) => {
+    const idsToRead = Array.isArray(notif.ids) ? notif.ids : [notif.id];
     if (!notif.isRead) {
-      await fetch('/api/notifications', { method: 'PUT', body: JSON.stringify({ id: notif.id }) });
-      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
+      await fetch('/api/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notificationIds: idsToRead }),
+      });
+      setNotifications(prev => prev.map((n) => idsToRead.includes(n.id) ? { ...n, isRead: true } : n));
     }
     setIsOpen(false);
-    
-    // Inteligentny system routingu - sam wyciąga ID z treści, jeśli brakuje oficjalnego linku
-    let finalLink = notif.link;
-    if (notif.link?.includes('/dealroom/') || notif.link?.includes('appId=')) {
-        finalLink = notif.link;
-    } else if (notif.title.includes('Nowa Oferta Zakupu') || notif.title.includes('💎')) {
-       // Sprytne przekierowanie dla starych i nowych ofert
-       finalLink = notif.link || '/moje-konto/crm';
+    if (notif.link) {
+      if (notif.link.includes('/moje-konto/crm?tab=transakcje&dealId=')) {
+        window.location.href = notif.link;
+        return;
+      }
+      router.push(notif.link);
+      return;
     }
-    
-    if (finalLink) router.push(finalLink);
+    router.push('/moje-konto/crm');
   };
 
     const handleMarkAllAsRead = async () => {
@@ -113,11 +139,11 @@ export default function NotificationCenter() {
             </div>
 
             <div className="max-h-[400px] overflow-y-auto custom-scrollbar bg-[#0a0a0a]">
-              {notifications.length === 0 ? (
+              {groupedNotifications.length === 0 ? (
                 <div className="p-8 text-center text-white/30 text-xs font-medium">Brak nowych wiadomości.</div>
               ) : (
                 <div className="flex flex-col">
-                  {notifications.map((notif) => {
+                  {groupedNotifications.map((notif) => {
                     const style = getIconAndColor(notif.title, notif.type);
                     return (
                       <div 
@@ -138,6 +164,11 @@ export default function NotificationCenter() {
                             )}
                           </h4>
                             <p className="text-xs text-white/50 leading-relaxed line-clamp-2">{notif.message}</p>
+                            {notif.count > 1 && (
+                              <span className="mt-2 inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                                {notif.count} wiadomości
+                              </span>
+                            )}
                             <span className="text-[9px] font-black uppercase tracking-widest text-white/20 mt-3 block">
                               {new Date(notif.createdAt).toLocaleDateString('pl-PL')} • {new Date(notif.createdAt).toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}
                             </span>

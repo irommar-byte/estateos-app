@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import { getWebFormData } from '@/lib/requestFormData';
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const MAX_OFFER_STORAGE = 20 * 1024 * 1024;
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
 
   let formData;
   try {
-    formData = await req.formData();
+    formData = await getWebFormData(req);
   } catch {
     return NextResponse.json({ error: 'Błąd formularza.' }, { status: 400 });
   }

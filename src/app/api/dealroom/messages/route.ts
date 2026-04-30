@@ -71,10 +71,28 @@ export async function GET(req: Request) {
 
     const messages = await prisma.dealMessage.findMany({
       where: { dealId: numericDealId },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: {
+          select: { id: true, name: true }
+        }
+      }
     });
 
-    return NextResponse.json(messages);
+    const normalized = messages.map((m) => ({
+      id: m.id,
+      dealId: m.dealId,
+      senderId: m.senderId,
+      senderName: m.sender?.name || 'Uczestnik',
+      text: m.content,
+      content: m.content,
+      attachmentUrl: m.attachment || null,
+      attachmentType: m.attachment?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : null,
+      isRead: m.isRead,
+      createdAt: m.createdAt,
+    }));
+
+    return NextResponse.json(normalized);
   } catch (error) {
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }

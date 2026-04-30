@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(req: Request) {
@@ -25,9 +26,10 @@ export async function POST(req: Request) {
          data: {
            userId: lead.ownerId,
            title: '🔥 Nowa propozycja od Agencji',
-           message: `Ekspert przeanalizował Twoją ofertę i zaproponował ${commissionRate}% prowizji. Sprawdź szczegóły i zaakceptuj warunki w swoim panelu.`,
-           type: 'SYSTEM',
-           link: '/moje-konto'
+           body:
+             `Ekspert przeanalizował Twoją ofertę i zaproponował ${commissionRate}% prowizji. Sprawdź szczegóły i zaakceptuj warunki w swoim panelu. ` +
+             'https://estateos.pl/moje-konto',
+           type: NotificationType.SYSTEM_ALERT,
          }
        });
     }

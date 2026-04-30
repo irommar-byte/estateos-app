@@ -5,6 +5,7 @@ import {
   PropertyCondition,
   OfferStatus
 } from '@prisma/client';
+import { validateCityDistrict } from '@/lib/location/locationCatalog';
 
 // =======================
 // MAPOWANIA
@@ -63,6 +64,11 @@ export async function createOffer(body: any) {
     throw new Error('Brak lokalizacji (lat/lng)');
   }
 
+  const locationValidation = validateCityDistrict(body.city, body.district);
+  if (!locationValidation.valid) {
+    throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
+  }
+
   return prisma.offer.create({
     data: {
       title: body.title || "Nowa Oferta",
@@ -83,8 +89,8 @@ export async function createOffer(body: any) {
       totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
       yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
 
-      city: body.city || "Warszawa",
-      district: body.district || "OTHER",
+      city: locationValidation.city,
+      district: locationValidation.district,
       street: body.street || body.address || null,
       buildingNumber: body.buildingNumber || null,
       isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : true,
@@ -131,6 +137,15 @@ export async function updateOffer(body: any) {
     throw new Error('Brak uprawnień');
   }
 
+  const shouldValidateLocation = body.city !== undefined || body.district !== undefined;
+  const locationValidation = shouldValidateLocation
+    ? validateCityDistrict(body.city ?? existing.city, body.district ?? existing.district)
+    : null;
+
+  if (locationValidation && !locationValidation.valid) {
+    throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
+  }
+
   return prisma.offer.update({
     where: { id: Number(id) },
     data: {
@@ -174,11 +189,11 @@ export async function updateOffer(body: any) {
       }),
 
       ...(body.city !== undefined && {
-        city: body.city || "Warszawa"
+        city: locationValidation?.city
       }),
 
       ...(body.district !== undefined && {
-        district: body.district || "OTHER"
+        district: locationValidation?.district
       }),
 
       ...(body.images !== undefined && {

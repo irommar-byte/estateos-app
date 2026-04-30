@@ -14,12 +14,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const offer = await prisma.offer.findUnique({
       where: { id: Number(offerId) },
-      select: { floorPlan: true } // <--- Zgodnie z podpowiedzią bazy!
+      select: { floorPlanUrl: true }
     });
 
-    if (!offer || !offer.floorPlan) return NextResponse.json({ url: null });
+    if (!offer || !offer.floorPlanUrl) return NextResponse.json({ url: null });
 
-    return NextResponse.json({ url: offer.floorPlan });
+    return NextResponse.json({ url: offer.floorPlanUrl });
   } catch (error) {
     return NextResponse.json({ url: null });
   }

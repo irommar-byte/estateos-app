@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import jwt from 'jsonwebtoken';
 
 function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: Date | null }) {
   const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
@@ -9,6 +10,23 @@ function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: 
     user.role === 'ADMIN' ||
     (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
   );
+}
+
+function parseUserIdFromAuthToken(token: string): number | null {
+  const verified = verifyMobileToken(token) as any;
+  const verifiedUserId = Number(verified?.id || verified?.userId || verified?.sub);
+  if (verifiedUserId && !Number.isNaN(verifiedUserId)) {
+    return verifiedUserId;
+  }
+
+  // Fallback dla tokenów logowania passkey (mogą być podpisane innym sekretem).
+  const decoded = jwt.decode(token) as any;
+  const decodedUserId = Number(decoded?.id || decoded?.userId || decoded?.sub);
+  if (decodedUserId && !Number.isNaN(decodedUserId)) {
+    return decodedUserId;
+  }
+
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -19,9 +37,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: 'Brak tokenu' }, { status: 401 });
     }
 
-    const decoded = verifyMobileToken(token) as any;
-    const userId = Number(decoded?.id || decoded?.userId || decoded?.sub);
-    if (!userId || Number.isNaN(userId)) {
+    const userId = parseUserIdFromAuthToken(token);
+    if (!userId) {
       return NextResponse.json({ success: false, message: 'Nieprawidłowy token' }, { status: 401 });
     }
 

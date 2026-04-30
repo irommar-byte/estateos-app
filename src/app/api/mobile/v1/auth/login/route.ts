@@ -27,6 +27,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nieprawidłowy login' }, { status: 401 });
     }
 
+    if (!user.password) {
+      return NextResponse.json({ error: 'Zaloguj się przez Passkey lub zresetuj hasło' }, { status: 401 });
+    }
+
     const isValid = await bcrypt.compare(password, user.password);
 
     if (!isValid) {

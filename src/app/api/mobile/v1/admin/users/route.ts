@@ -30,7 +30,7 @@ const resolveSort = (searchParams: URLSearchParams) => {
     case 'role':
       return { orderBy: { [sortBy]: sortDir } };
     case 'offersCount':
-      return { orderBy: { offers: { _count: sortDir } } };
+      return { orderBy: { offers: { _count: sortDir as 'asc' | 'desc' } } };
     default:
       return { orderBy: { createdAt: 'desc' as const } };
   }

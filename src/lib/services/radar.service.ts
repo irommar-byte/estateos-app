@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/core/notification.core';
+import { normalizeText } from '@/lib/location/locationCatalog';
 
 export const radarService = {
   async matchNewOffer(offer: any) {
@@ -82,7 +83,7 @@ export const radarService = {
     }
 
     if (pref.city && offer.city) {
-      if (pref.city.toLowerCase() === offer.city.toLowerCase()) score += 30;
+      if (normalizeText(pref.city) === normalizeText(offer.city)) score += 30;
       else score -= 10;
     }
 
@@ -93,15 +94,13 @@ export const radarService = {
         : pref.districts;
 
       if (Array.isArray(raw)) {
-        districts = raw.map((d: any) => String(d).toLowerCase().trim());
+        districts = raw.map((d: any) => normalizeText(String(d)));
       }
     } catch (e) {
       console.error("[RADAR] districts parse error:", e);
     }
 
-    const offerDistrict = offer.district
-      ? String(offer.district).toLowerCase().trim()
-      : null;
+    const offerDistrict = offer.district ? normalizeText(String(offer.district)) : null;
 
     if (districts.length > 0 && offerDistrict) {
       if (districts.includes(offerDistrict)) score += 20;

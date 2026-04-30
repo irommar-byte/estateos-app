@@ -8,7 +8,7 @@ export async function GET() {
     // Pobieramy wszystkie AKTYWNE mieszkania
     const offers = await prisma.offer.findMany({
       where: { 
-        propertyType: { in: ['Mieszkanie', 'mieszkanie', 'Apartament', 'apartament'] }, 
+        propertyType: { in: ['FLAT'] },
         status: { in: ['ACTIVE'] },
         expiresAt: { gt: new Date() } // Gilotyna czasu (tylko ważne)
       },

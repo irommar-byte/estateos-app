@@ -51,6 +51,7 @@ export async function GET(req: Request) {
 
       return {
         id: deal.id,
+        offerId: deal.offerId,
         title: `Transakcja #${deal.offerId}`, // Jeśli masz relację do nazwy nieruchomości, można to tu wpiąć
         status: deal.status,
         lastMessage: lastMsg ? lastMsg.content : 'Deal otwarty. Brak nowych wiadomości.',

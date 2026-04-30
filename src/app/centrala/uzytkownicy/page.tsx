@@ -299,7 +299,9 @@ export default function AdminUsers() {
                           <div key={off.id} className="group/item flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl hover:border-white/20 transition-all">
                              <div className="truncate pr-4">
                                 <p className="text-xs font-bold truncate group-hover/item:text-white transition-colors">{off.title}</p>
-                                <p className="text-[9px] text-white/30 font-black uppercase mt-0.5">{off.status === 'active' ? '● Aktywne' : '○ Weryfikacja'}</p>
+                                <p className="text-[9px] text-white/30 font-black uppercase mt-0.5">
+                                  {off.status === 'ACTIVE' ? '● Aktywne' : off.status === 'ARCHIVED' ? '◌ Archiwum' : '○ Weryfikacja'}
+                                </p>
                              </div>
                              <Link href={`/oferta/${off.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white hover:text-black transition-all">
                                 <ExternalLink size={12}/>

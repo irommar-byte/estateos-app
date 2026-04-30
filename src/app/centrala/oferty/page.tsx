@@ -10,13 +10,20 @@ export default function OfertyAdmin() {
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<'pending_approval' | 'active' | 'archived'>('pending_approval');
+  const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'archived'>('pending');
 
   const fetchOffers = async () => {
     try {
       const res = await fetch("/api/admin/offers");
       const data = await res.json();
-      if (data.success) setOffers(data.offers);
+      if (data?.success && Array.isArray(data.offers)) {
+        setOffers(data.offers);
+      } else if (Array.isArray(data)) {
+        // Fallback dla starszego formatu odpowiedzi API.
+        setOffers(data);
+      } else {
+        setOffers([]);
+      }
     } catch (error) { console.error(error); }
     finally { setLoading(false); }
   };
@@ -48,7 +55,7 @@ export default function OfertyAdmin() {
     await fetch(`/api/admin/offers`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: 'archived' })
+      body: JSON.stringify({ id, status: 'ARCHIVED' })
     });
     
     fetchOffers();
@@ -68,10 +75,10 @@ export default function OfertyAdmin() {
   };
 
   const filteredOffers = offers.filter(offer => {
-    const isExpired = offer.status === 'archived' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
+    const isExpired = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
     if (activeTab === 'archived') return isExpired;
-    if (activeTab === 'active') return offer.status === 'active' && !isExpired;
-    if (activeTab === 'pending_approval') return offer.status === 'pending_approval' && !isExpired;
+    if (activeTab === 'active') return offer.status === 'ACTIVE' && !isExpired;
+    if (activeTab === 'pending') return offer.status === 'PENDING' && !isExpired;
     return true;
   });
 
@@ -86,8 +93,8 @@ export default function OfertyAdmin() {
       <div className="mb-10 w-full max-w-xl">
         <div className="flex bg-[#111] p-1.5 rounded-full border border-white/5 relative z-10">
           <button 
-            onClick={() => { setActiveTab('pending_approval'); setSelectedOffer(null); }} 
-            className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-full transition-colors duration-300 z-10 ${activeTab === 'pending_approval' ? 'text-black' : 'text-white/40 hover:text-white'}`}
+            onClick={() => { setActiveTab('pending'); setSelectedOffer(null); }} 
+            className={`flex-1 py-3 text-xs font-black uppercase tracking-widest rounded-full transition-colors duration-300 z-10 ${activeTab === 'pending' ? 'text-black' : 'text-white/40 hover:text-white'}`}
           >
             Weryfikacja
           </button>
@@ -107,7 +114,7 @@ export default function OfertyAdmin() {
           {/* Płynna szklana pigułka (podświetlenie) */}
           <div 
             className={`absolute top-1.5 bottom-1.5 w-[calc(33.33%-4px)] rounded-full transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0 shadow-lg ${
-               activeTab === 'pending_approval' ? 'left-1.5 bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 
+               activeTab === 'pending' ? 'left-1.5 bg-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.4)]' : 
                activeTab === 'active' ? 'left-[calc(33.33%+1.5px)] bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 
                'left-[calc(66.66%)] bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)]'
             }`} 
@@ -121,8 +128,8 @@ export default function OfertyAdmin() {
           filteredOffers.length === 0 ? (
             <div className="text-white/40 text-[10px] font-black uppercase tracking-widest p-12 text-center border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a]">Brak ofert w tym widoku.</div>
           ) : filteredOffers.map(offer => {
-            const isArchived = offer.status === 'archived' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
-            const isActive = offer.status === 'active' && !isArchived;
+            const isArchived = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
+            const isActive = offer.status === 'ACTIVE' && !isArchived;
             
             return (
             <motion.div 
@@ -155,10 +162,10 @@ export default function OfertyAdmin() {
               <div className="flex flex-col gap-3 mb-10">
                 <div className="flex gap-3">
                   <button 
-                    onClick={() => handleUpdateStatus(selectedOffer.id, selectedOffer.status === 'active' ? 'pending_approval' : 'active')} 
-                    className={`flex-1 py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest transition-all border shadow-lg ${selectedOffer.status === 'active' ? 'border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10' : 'border-white/20 text-white hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10'}`}
+                    onClick={() => handleUpdateStatus(selectedOffer.id, selectedOffer.status === 'ACTIVE' ? 'PENDING' : 'ACTIVE')} 
+                    className={`flex-1 py-5 rounded-2xl font-black text-[10px] md:text-xs uppercase tracking-widest transition-all border shadow-lg ${selectedOffer.status === 'ACTIVE' ? 'border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10' : 'border-white/20 text-white hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10'}`}
                   >
-                    {selectedOffer.status === 'active' ? 'Cofnij Publikację' : 'Zatwierdź Ofertę'}
+                    {selectedOffer.status === 'ACTIVE' ? 'Cofnij Publikację' : 'Zatwierdź Ofertę'}
                   </button>
                   <button onClick={() => router.push(`/edytuj-oferte/${selectedOffer.id}?from=admin`)} className="p-5 border border-white/20 text-white hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-2xl transition-all flex items-center justify-center group shadow-lg shrink-0">
                     <Edit3 size={20} className="group-hover:rotate-12 transition-transform"/>
@@ -166,7 +173,7 @@ export default function OfertyAdmin() {
                 </div>
                 
                 {/* 🔥 Przycisk Ręcznej Archiwizacji */}
-                {!(selectedOffer.status === 'archived' || (selectedOffer.expiresAt && new Date(selectedOffer.expiresAt).getTime() < Date.now())) && (
+                {!(selectedOffer.status === 'ARCHIVED' || (selectedOffer.expiresAt && new Date(selectedOffer.expiresAt).getTime() < Date.now())) && (
                   <button onClick={() => handleForceArchive(selectedOffer.id)} className="w-full py-4 border border-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg">
                     <ArchiveX size={16}/> Wymuś Archiwizację (Zakończ Czas)
                   </button>

@@ -107,33 +107,25 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
     // Sekcje Specyfikacji Luksusowej
   
-  const [isInitiatingDeal, setIsInitiatingDeal] = useState(false);
-  const handleInitiateDeal = async (e: React.MouseEvent) => {
+  const ensureAuthenticated = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!currentUser) {
       alert('Musisz być zalogowany, aby rozpocząć negocjacje.');
       window.location.href = '/login';
-      return;
+      return false;
     }
-    setIsInitiatingDeal(true);
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/deals', {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ offerId: offer.id || offer._id })
-      });
-      const data = await res.json();
-      if (data.success || data.deal) {
-        window.location.href = `/moje-konto/crm?tab=transakcje&dealId=${data.deal.id}`;
-      } else {
-        if (res.status === 401) { window.location.href = '/wyloguj'; return; } alert(data.error || 'Błąd inicjalizacji');
-        setIsInitiatingDeal(false);
-      }
-    } catch(e) {
-      alert('Błąd połączenia z serwerem');
-      setIsInitiatingDeal(false);
-    }
+    return true;
+  };
+
+  const openBidFlow = (e: React.MouseEvent) => {
+    if (!ensureAuthenticated(e)) return;
+    setIsBiddingOpen(true);
+  };
+
+  const openAppointmentFlow = (e: React.MouseEvent) => {
+    if (!ensureAuthenticated(e)) return;
+    setIsModalOpen(true);
   };
 
   const locationParams = [
@@ -411,23 +403,23 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 ) : (
                   <>
-                    <button 
-                    onClick={handleInitiateDeal} disabled={isInitiatingDeal} 
+                    <button
+                    onClick={openBidFlow}
                     style={{ backgroundColor: '#ffffff', color: '#000000' }}
                     className="relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.03] active:scale-[0.98] shadow-[0_15px_40px_rgba(255,255,255,0.15)] hover:shadow-[0_20px_60px_rgba(255,255,255,0.3)] cursor-pointer"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                     
                     <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight" style={{ color: '#000000' }}>
-                      {isInitiatingDeal ? "⏳ OTWIERANIE DEAL ROOMU..." : <><Briefcase size={22} style={{ color: "#000000" }} /> Złóż Ofertę / Negocjuj</>}
+                      <><Briefcase size={22} style={{ color: "#000000" }} /> Złóż Ofertę / Negocjuj</>
                     </span>
                     <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] mt-0.5" style={{ color: 'rgba(0,0,0,0.6)' }}>
                       Rozpocznij Negocjacje
                     </span>
                   </button>
 
-                  <button 
-                    onClick={() => setIsModalOpen(true)} 
+                  <button
+                    onClick={openAppointmentFlow}
                     className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer !bg-[#0a0a0a] hover:!bg-emerald-950/40 !border-emerald-500/30 hover:!border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"></div>
@@ -568,7 +560,10 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
       const id = resolvedParams.id;
       if (!id) return;
       try {
-        fetch(`/api/offers/${id}/view`, { method: 'POST' }).catch(()=>console.log("View count error")); 
+        fetch(`/api/offers/${id}/view`, {
+          method: 'POST',
+          headers: { 'x-client-source': 'web' }
+        }).catch(() => console.log("View count error"));
         const res = await fetch(`/api/offers/${id}`);
         if(res.ok) {
            const data = await res.json();

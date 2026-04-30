@@ -4,7 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { CalendarDays, Handshake, X, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export default function OfferActions({ offerId, currentUserId }) {
+type OfferActionsProps = {
+  offerId: number;
+  currentUserId?: number | null;
+};
+
+export default function OfferActions({ offerId, currentUserId }: OfferActionsProps) {
   const router = useRouter();
   const [activeModal, setActiveModal] = useState<'none' | 'visit' | 'bid'>('none');
   const [loading, setLoading] = useState(false);

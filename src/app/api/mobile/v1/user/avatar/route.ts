@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { prisma } from '@/lib/prisma';
+import { getWebFormData } from '@/lib/requestFormData';
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
+    const formData = await getWebFormData(req);
     const file = formData.get('file') as File;
     const userId = formData.get('userId') as string;
 

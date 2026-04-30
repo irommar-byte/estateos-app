@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
+import { verifyMobileToken } from '@/lib/jwtMobile';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -14,20 +15,16 @@ function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   const token = rawToken.startsWith('Bearer ') ? rawToken.slice('Bearer '.length).trim() : rawToken;
   if (!token) return null;
 
-  let decoded: any = null;
-  const secret = process.env.JWT_SECRET;
-  if (secret) {
-    try {
-      decoded = jwt.verify(token, secret);
-    } catch {
-      // fallback for legacy tokens to preserve compatibility
-      decoded = jwt.decode(token);
-    }
-  } else {
-    decoded = jwt.decode(token);
+  const verified = verifyMobileToken(token) as any;
+  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
+  if (Number.isFinite(verifiedId) && verifiedId > 0) {
+    return verifiedId;
   }
+
+  // fallback for legacy tokens to preserve compatibility
+  const decoded = jwt.decode(token) as any;
   const id = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
-  return Number.isFinite(id) ? id : null;
+  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 function buildEventContent(payload: Record<string, unknown>) {
@@ -92,6 +89,7 @@ export async function POST(req: Request) {
       await prisma.dealMessage.create({
         data: { dealId, senderId: actorId, content: eventContent, isRead: false },
       });
+      await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       const receiverId = deal.buyerId === actorId ? deal.sellerId : deal.buyerId;
       await prisma.notification.create({
@@ -108,13 +106,11 @@ export async function POST(req: Request) {
         await notificationService.sendPushToUser(receiverId, {
           title: 'Nowa propozycja ceny',
           body: `Nowa oferta: ${amount.toLocaleString('pl-PL')} PLN`,
-          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_proposed' },
+          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_proposed' },
         });
       } catch (pushError) {
         console.warn('[ACTIONS PUSH WARN][BID_PROPOSE]', pushError);
       }
-
-      await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       return NextResponse.json({ success: true, bidId: bid.id });
     }
@@ -139,12 +135,20 @@ export async function POST(req: Request) {
       if (bid.senderId === actorId) {
         return NextResponse.json({ error: 'Nie mozesz odpowiedziec na swoja oferte' }, { status: 403 });
       }
+      if (bid.status !== 'PENDING') {
+        return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
+      }
 
       const senderOfOriginalBid = bid.senderId;
 
       if (decision === 'ACCEPT') {
-        await prisma.$transaction(async (tx) => {
-          await tx.bid.update({ where: { id: bidId }, data: { status: 'ACCEPTED' } });
+        const accepted = await prisma.$transaction(async (tx) => {
+          const updatedBid = await tx.bid.updateMany({
+            where: { id: bidId, dealId, status: 'PENDING' },
+            data: { status: 'ACCEPTED' }
+          });
+          if (updatedBid.count === 0) return false;
+
           await tx.bid.updateMany({ where: { dealId, id: { not: bidId }, status: { in: ['PENDING', 'COUNTER_OFFER'] } }, data: { status: 'REJECTED' } });
           await tx.deal.update({
             where: { id: dealId },
@@ -175,12 +179,17 @@ export async function POST(req: Request) {
               targetId: String(dealId),
             },
           });
+          return true;
         });
+        if (!accepted) {
+          return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
+        }
+        await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
         try {
           await notificationService.sendPushToUser(senderOfOriginalBid, {
             title: 'Twoja oferta zostala zaakceptowana',
             body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_accepted' },
+            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_accepted' },
           });
         } catch (pushError) {
           console.warn('[ACTIONS PUSH WARN][BID_ACCEPT]', pushError);
@@ -189,8 +198,13 @@ export async function POST(req: Request) {
       }
 
       if (decision === 'REJECT') {
-        await prisma.$transaction(async (tx) => {
-          await tx.bid.update({ where: { id: bidId }, data: { status: 'REJECTED' } });
+        const rejected = await prisma.$transaction(async (tx) => {
+          const updatedBid = await tx.bid.updateMany({
+            where: { id: bidId, dealId, status: 'PENDING' },
+            data: { status: 'REJECTED' }
+          });
+          if (updatedBid.count === 0) return false;
+
           await tx.dealMessage.create({
             data: {
               dealId,
@@ -216,12 +230,17 @@ export async function POST(req: Request) {
               targetId: String(dealId),
             },
           });
+          return true;
         });
+        if (!rejected) {
+          return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
+        }
+        await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
         try {
           await notificationService.sendPushToUser(senderOfOriginalBid, {
             title: 'Twoja oferta zostala odrzucona',
             body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_rejected' },
+            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_rejected' },
           });
         } catch (pushError) {
           console.warn('[ACTIONS PUSH WARN][BID_REJECT]', pushError);
@@ -234,7 +253,14 @@ export async function POST(req: Request) {
       }
 
       const counterBid = await prisma.$transaction(async (tx) => {
-        await tx.bid.update({ where: { id: bidId }, data: { status: 'COUNTER_OFFER' } });
+        const updatedBid = await tx.bid.updateMany({
+          where: { id: bidId, dealId, status: 'PENDING' },
+          data: { status: 'COUNTER_OFFER' }
+        });
+        if (updatedBid.count === 0) {
+          throw new Error('BID_ALREADY_HANDLED');
+        }
+
         const created = await tx.bid.create({
           data: {
             dealId,
@@ -272,11 +298,12 @@ export async function POST(req: Request) {
         });
         return created;
       });
+      await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
       try {
         await notificationService.sendPushToUser(senderOfOriginalBid, {
           title: 'Nowa kontroferta ceny',
           body: `${counterAmount.toLocaleString('pl-PL')} PLN`,
-          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'bid_countered' },
+          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_countered' },
         });
       } catch (pushError) {
         console.warn('[ACTIONS PUSH WARN][BID_COUNTER]', pushError);
@@ -318,6 +345,7 @@ export async function POST(req: Request) {
           }),
         },
       });
+      await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       const receiverId = deal.buyerId === actorId ? deal.sellerId : deal.buyerId;
       await prisma.notification.create({
@@ -334,13 +362,11 @@ export async function POST(req: Request) {
         await notificationService.sendPushToUser(receiverId, {
           title: 'Nowa propozycja terminu',
           body: proposedDate.toLocaleString('pl-PL'),
-          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_proposed' },
+          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_proposed' },
         });
       } catch (pushError) {
         console.warn('[ACTIONS PUSH WARN][APPOINTMENT_PROPOSE]', pushError);
       }
-
-      await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       return NextResponse.json({ success: true, appointmentId: appointment.id });
     }
@@ -365,11 +391,19 @@ export async function POST(req: Request) {
       if (appointment.proposedById === actorId) {
         return NextResponse.json({ error: 'Nie mozesz odpowiedziec na swoja propozycje' }, { status: 403 });
       }
+      if (appointment.status !== 'PENDING') {
+        return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+      }
 
       const senderOfOriginalAppointment = appointment.proposedById;
       if (decision === 'ACCEPT') {
-        await prisma.$transaction(async (tx) => {
-          await tx.appointment.update({ where: { id: appointmentId }, data: { status: 'ACCEPTED' } });
+        const accepted = await prisma.$transaction(async (tx) => {
+          const updatedAppointment = await tx.appointment.updateMany({
+            where: { id: appointmentId, dealId, status: 'PENDING' },
+            data: { status: 'ACCEPTED' }
+          });
+          if (updatedAppointment.count === 0) return false;
+
           await tx.dealMessage.create({
             data: {
               dealId,
@@ -395,12 +429,17 @@ export async function POST(req: Request) {
               targetId: String(dealId),
             },
           });
+          return true;
         });
+        if (!accepted) {
+          return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+        }
+        await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
         try {
           await notificationService.sendPushToUser(senderOfOriginalAppointment, {
             title: 'Termin zostal zaakceptowany',
             body: appointment.proposedDate.toLocaleString('pl-PL'),
-            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_accepted' },
+            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_accepted' },
           });
         } catch (pushError) {
           console.warn('[ACTIONS PUSH WARN][APPOINTMENT_ACCEPT]', pushError);
@@ -409,8 +448,13 @@ export async function POST(req: Request) {
       }
 
       if (decision === 'DECLINE') {
-        await prisma.$transaction(async (tx) => {
-          await tx.appointment.update({ where: { id: appointmentId }, data: { status: 'DECLINED' } });
+        const declined = await prisma.$transaction(async (tx) => {
+          const updatedAppointment = await tx.appointment.updateMany({
+            where: { id: appointmentId, dealId, status: 'PENDING' },
+            data: { status: 'DECLINED' }
+          });
+          if (updatedAppointment.count === 0) return false;
+
           await tx.dealMessage.create({
             data: {
               dealId,
@@ -436,12 +480,17 @@ export async function POST(req: Request) {
               targetId: String(dealId),
             },
           });
+          return true;
         });
+        if (!declined) {
+          return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+        }
+        await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
         try {
           await notificationService.sendPushToUser(senderOfOriginalAppointment, {
             title: 'Termin zostal odrzucony',
             body: appointment.proposedDate.toLocaleString('pl-PL'),
-            data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_declined' },
+            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_declined' },
           });
         } catch (pushError) {
           console.warn('[ACTIONS PUSH WARN][APPOINTMENT_DECLINE]', pushError);
@@ -455,7 +504,14 @@ export async function POST(req: Request) {
       }
 
       const counterAppointment = await prisma.$transaction(async (tx) => {
-        await tx.appointment.update({ where: { id: appointmentId }, data: { status: 'RESCHEDULED' } });
+        const updatedAppointment = await tx.appointment.updateMany({
+          where: { id: appointmentId, dealId, status: 'PENDING' },
+          data: { status: 'RESCHEDULED' }
+        });
+        if (updatedAppointment.count === 0) {
+          throw new Error('APPOINTMENT_ALREADY_HANDLED');
+        }
+
         const created = await tx.appointment.create({
           data: {
             dealId,
@@ -493,11 +549,12 @@ export async function POST(req: Request) {
         });
         return created;
       });
+      await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
       try {
         await notificationService.sendPushToUser(senderOfOriginalAppointment, {
           title: 'Nowa kontroferta terminu',
           body: counterDate.toLocaleString('pl-PL'),
-          data: { targetType: 'DEAL', targetId: String(dealId), kind: 'appointment_countered' },
+          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_countered' },
         });
       } catch (pushError) {
         console.warn('[ACTIONS PUSH WARN][APPOINTMENT_COUNTER]', pushError);
@@ -508,6 +565,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: 'Nieobslugiwany typ akcji' }, { status: 400 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'BID_ALREADY_HANDLED') {
+      return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === 'APPOINTMENT_ALREADY_HANDLED') {
+      return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+    }
     console.error('MOBILE DEAL ACTIONS ERROR:', error);
     return NextResponse.json({ error: 'Blad serwera' }, { status: 500 });
   }

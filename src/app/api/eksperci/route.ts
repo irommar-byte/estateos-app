@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const experts = await prisma.user.findMany({
-      where: { buyerType: "agency" },
+      where: { OR: [{ role: 'AGENT' }, { planType: 'AGENCY' }] },
       select: { id: true, name: true, email: true, phone: true, createdAt: true }
     });
 

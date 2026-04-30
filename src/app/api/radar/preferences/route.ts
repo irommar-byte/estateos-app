@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from '@/lib/location/locationCatalog';
 
 export async function POST(req: Request) {
   try {
@@ -29,13 +30,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Brak userId' });
     }
 
+    const normalizedCity = city ? canonicalizeCity(String(city)) : null;
+    const strictCity = isStrictCity(normalizedCity);
+    const normalizedDistricts = Array.isArray(selectedDistricts)
+      ? selectedDistricts
+          .map((district) => canonicalizeDistrict(normalizedCity || "", String(district)))
+          .filter((district) => {
+            if (!district) return false;
+            if (!strictCity) return true;
+            const allowed = getDistrictsForCity(normalizedCity || "");
+            return allowed.some((entry) => entry.toLowerCase() === district.toLowerCase());
+          })
+      : [];
+
     const pref = await prisma.radarPreference.upsert({
       where: { userId: Number(userId) },
       update: {
         transactionType,
         propertyType,
-        city,
-        districts: selectedDistricts || [],
+        city: normalizedCity,
+        districts: normalizedDistricts,
         maxPrice: maxPrice ? Number(maxPrice) : null,
         minArea: minArea ? Number(minArea) : null,
         minYear: minYear ? Number(minYear) : null,
@@ -54,8 +68,8 @@ export async function POST(req: Request) {
         userId: Number(userId),
         transactionType,
         propertyType,
-        city,
-        districts: selectedDistricts || [],
+        city: normalizedCity,
+        districts: normalizedDistricts,
         maxPrice: maxPrice ? Number(maxPrice) : null,
         minArea: minArea ? Number(minArea) : null,
         minYear: minYear ? Number(minYear) : null,

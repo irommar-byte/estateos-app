@@ -3,29 +3,41 @@ node_modules
 .env
 *.log
 
-# backups / trash
+# TypeScript incremental (regenerowany lokalnie)
+*.tsbuildinfo
+
+# kopie zapasowe / śmieci edytorów / łaty
 *.bak
+*.bak.*
 *.BAK*
+*.BACKUP*
 *.backup*
 *.BROKEN*
 *.swp
+*~
 
-# archives / disabled
-_archived_cleanup/
+# archiwalia wyłączone przy deploy
 app__DISABLED_*/
+_archived_cleanup/
+.hotfix_backup_*/
 
-# prisma
+# Prisma — lokalne bazy SQLite, nie prod MySQL
 prisma/*.db*
-prisma/*.backup*
+prisma/**/*.db*
 
-# uploads
+# uploads serwowane przez app (binary)
 public/uploads*
 
-# scripts / local tools
-scripts/
+# Jednorazowe skrypty łatek w korzeniu projektu
 fix_*.js
-test-*.js
+test_*.js
 debug_*.js
 
-# system
+# Przypadkowe grafiki testowe w korzeniu
+/test.jpg
+/test_out.jpg
+
+# Notatki audytowe w korzeniu
+audyt*.txt
+
 .DS_Store

@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
+import { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+
+const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status') || 'PENDING';
+    const rawStatus = searchParams.get('status') || 'PENDING';
+    const status = (OFFER_ADMIN_STATUSES.includes(rawStatus as OfferStatus) ? rawStatus : 'PENDING') as OfferStatus;
 
     const offers = await prisma.offer.findMany({
       where: { status },

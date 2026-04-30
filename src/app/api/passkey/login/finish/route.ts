@@ -23,68 +23,69 @@ export async function POST(req: Request) {
         credID = assertion.id; 
     }
 
-    const auth = await prisma.authenticator.findFirst({
-      where: { credentialID: credID }
-    });
+    const authRecord =
+      (await prisma.authenticator.findFirst({
+      where: { credentialID: credID },
+    })) ??
+      (await prisma.authenticator.findFirst({
+        where: { credentialID: assertion.id },
+      }));
 
-    if (!auth) {
-      const fallbackAuth = await prisma.authenticator.findFirst({
-         where: { credentialID: assertion.id }
-      });
-      if (!fallbackAuth) {
-         return NextResponse.json({ error: "Nieznany klucz biometryczny." }, { status: 400 });
-      }
-      Object.assign(auth || {}, fallbackAuth);
+    if (!authRecord) {
+      return NextResponse.json({ error: "Nieznany klucz biometryczny." }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: auth.userId }
+      where: { id: authRecord.userId },
     });
 
     if (!user) {
       return NextResponse.json({ error: "Użytkownik nie istnieje" }, { status: 400 });
     }
 
-    const authArgs: any = {
+    let publicKeyBytes: Uint8Array<ArrayBuffer>;
+    try {
+      const bufUrl = Buffer.from(authRecord.credentialPublicKey, 'base64url');
+      publicKeyBytes = new Uint8Array(bufUrl.byteLength ? bufUrl : Buffer.from(authRecord.credentialPublicKey, 'base64'));
+    } catch {
+      publicKeyBytes = new Uint8Array(Buffer.from(authRecord.credentialPublicKey, 'base64'));
+    }
+
+    const verification = await verifyAuthenticationResponse({
       response: assertion,
       expectedChallenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      authenticator: {
-        credentialID: new Uint8Array(Buffer.from(auth.credentialID, 'base64url')),
-        credentialPublicKey: new Uint8Array(Buffer.from(auth.credentialPublicKey, 'base64')),
-        counter: auth.counter,
-      },
       credential: {
-        id: auth.credentialID,
-        publicKey: new Uint8Array(Buffer.from(auth.credentialPublicKey, 'base64')),
-        counter: auth.counter,
-      }
-    };
-
-    const verification = await verifyAuthenticationResponse(authArgs);
+        id: authRecord.credentialID,
+        publicKey: publicKeyBytes,
+        counter: authRecord.counter,
+      },
+    });
 
     if (verification.verified) {
       await prisma.authenticator.update({
-        where: { credentialID: auth.credentialID },
-        data: { counter: verification.authenticationInfo.newCounter }
+        where: { credentialID: authRecord.credentialID },
+        data: { counter: verification.authenticationInfo.newCounter },
       });
 
       activeChallenges.delete(sessionId);
 
       const jwtSecret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        return NextResponse.json({ error: 'Brak konfiguracji JWT' }, { status: 500 });
+      }
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role },
         jwtSecret,
         { expiresIn: '30d' }
       );
 
-      // 🔥 FIX: Zwracamy wszystkie dane z bazy (bez ukrytego hasła), żeby aplikacja miała co wyświetlić!
-      const { password, ...safeUser } = user as any;
+      const { password: _omit, ...safeUser } = user as typeof user & { password?: string | null };
 
       return NextResponse.json({
         token,
-        user: safeUser
+        user: safeUser,
       });
     }
 

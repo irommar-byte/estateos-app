@@ -14,16 +14,17 @@ export async function POST(req: Request) {
         const options = await generateAuthenticationOptions({
             rpID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
             allowCredentials: authenticators.map(auth => ({
-                id: new Uint8Array(Buffer.from(auth.credentialID, 'base64url')),
-                type: 'public-key',
+                id: auth.credentialID as `${string}`,
+                type: 'public-key' as const,
             })),
             userVerification: 'preferred',
         });
 
         await prisma.user.update({ where: { id: user.id }, data: { otpCode: options.challenge } });
         return NextResponse.json(options);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 export async function GET() {
@@ -34,13 +35,14 @@ export async function GET() {
             rpID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
             userVerification: 'preferred',
             allowCredentials: authenticators.map(auth => ({
-                id: new Uint8Array(Buffer.from(auth.credentialID, 'base64url')),
-                type: 'public-key',
+                id: auth.credentialID as `${string}`,
+                type: 'public-key' as const,
             })),
         });
 
         return NextResponse.json(options);
-    } catch (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

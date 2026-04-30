@@ -7,7 +7,6 @@ import { Search, Building2, SlidersHorizontal, MapPin, Maximize, Lock, UserCheck
 import OffMarketModal from "@/components/OffMarketModal";
 import { AnimatePresence, motion } from "framer-motion";
 
-const ALL_DISTRICTS = ["Bemowo", "Białołęka", "Bielany", "Mokotów", "Ochota", "Praga-Południe", "Praga-Północ", "Rembertów", "Śródmieście", "Targówek", "Ursus", "Ursynów", "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz"];
 const PROPERTY_TYPES = ["Mieszkanie", "Segment", "Dom Wolnostojący", "Lokal Użytkowy", "Działka"];
 
 export default function InteractiveMap() {
@@ -45,6 +44,7 @@ export default function InteractiveMap() {
   useEffect(() => {
     fetch('/api/user/profile').then(res => res.json()).then(user => { if (user && user.email) { setIsLoggedIn(true); setIsPro(user.role === 'PRO' || user.role === 'ADMIN' || user.plan === 'PRO'); } }).catch(() => setIsLoggedIn(false));
   }, []);
+  const availableDistricts = Array.from(new Set(allOffers.map((offer: any) => String(offer.district || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pl'));
 
   useEffect(() => {
     fetch('/api/offers?t=' + new Date().getTime(), { cache: 'no-store' }).then(res => res.json()).then(data => {
@@ -241,7 +241,7 @@ export default function InteractiveMap() {
                <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-1 pointer-events-none">Dzielnica</p>
                <select className="bg-transparent text-white font-bold text-lg w-full cursor-pointer outline-none appearance-none" value={filterDistrict} onChange={(e) => setFilterDistrict(e.target.value)}>
                  <option className="bg-black text-white/50" value="Wybierz" disabled>Wybierz</option><option className="bg-black" value="Wszystkie">Wszystkie</option>
-                 {ALL_DISTRICTS.map(d => <option key={d} value={d} className="bg-black">{d}</option>)}
+                 {availableDistricts.map(d => <option key={d} value={d} className="bg-black">{d}</option>)}
                </select>
             </div>
           </div>

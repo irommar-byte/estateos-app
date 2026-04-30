@@ -9,10 +9,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const offerId = resolvedParams.id;
 
     // Szukamy tylko aktywnych negocjacji (Nowa propozycja lub Odbijanie piłeczki)
-    const activeNegotiationsCount = await prisma.appointment.count({
-      where: { 
-        offerId: Number(offerId),
-        status: { in: ['PROPOSED', 'COUNTER'] }
+    const activeNegotiationsCount = await prisma.bid.count({
+      where: {
+        status: { in: ['PENDING', 'COUNTER_OFFER'] },
+        deal: { offerId: Number(offerId) },
       }
     });
 

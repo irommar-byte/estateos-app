@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from '@/lib/prisma';
 import bcrypt from "bcrypt";
 import { encryptSession } from "@/lib/sessionUtils";
+import { Role } from "@prisma/client";
+import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from "@/lib/location/locationCatalog";
 
  
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password, phone, type, districts, maxPrice, areaFrom, areaTo, plotArea, buyerType, amenities, rooms } = await req.json();
+    const { name, email, password, phone, type, city, districts, maxPrice, areaFrom, areaTo, plotArea, buyerType, amenities, rooms } = await req.json();
 
     // 1. NORMALIZACJA NUMERU I BLOKADA DUPLIKATÓW
     const cleanPhone = phone.replace(/\D/g, '');
@@ -35,6 +37,23 @@ export async function POST(req: Request) {
       isSmsEnabled = !envContent.includes('ENABLE_SMS_VERIFICATION=false');
     } catch(e) {}
     
+    const normalizedCity = canonicalizeCity(city || "Warszawa");
+    const strictCity = isStrictCity(normalizedCity);
+    const allowedDistricts = getDistrictsForCity(normalizedCity);
+    const normalizedDistricts = Array.isArray(districts)
+      ? districts
+          .map((district: string) => canonicalizeDistrict(normalizedCity, district))
+          .filter((district: string) => {
+            if (!district) return false;
+            if (!strictCity) return true;
+            return allowedDistricts.some((entry) => entry.toLowerCase() === district.toLowerCase());
+          })
+      : [];
+
+    if (strictCity && normalizedDistricts.length === 0) {
+      return NextResponse.json({ error: `Wybierz dzielnicę z listy dla miasta ${normalizedCity}.` }, { status: 400 });
+    }
+
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = new Date(Date.now() + 15 * 60 * 1000);
     const parsedMaxPrice = maxPrice ? parseInt(String(maxPrice).replace(/\D/g, '')) : null;
@@ -48,14 +67,14 @@ export async function POST(req: Request) {
       update: { 
         isVerified: !isSmsEnabled, otpCode, otpExpiry, 
         name, phone: finalPhone, password: hashed, 
-        searchType: type, searchDistricts: districts.join(','), 
-        searchMaxPrice: parsedMaxPrice, buyerType, searchAmenities: amenities ? amenities.join(",") : null, searchAreaFrom: areaFrom ? parseInt(String(areaFrom), 10) : null, searchRooms: rooms ? parseInt(String(rooms), 10) : null 
+        searchType: type, searchDistricts: normalizedDistricts.join(','), 
+        searchMaxPrice: parsedMaxPrice, buyerType, searchAmenities: amenities ? amenities.join(",") : null, searchAreaFrom: areaFrom ? parseInt(String(areaFrom), 10) : null, searchAreaTo: areaTo ? parseInt(String(areaTo), 10) : null, searchRooms: rooms ? parseInt(String(rooms), 10) : null 
       },
       create: { 
         isVerified: !isSmsEnabled, otpCode, otpExpiry, 
-        email, password: hashed, role: "BUYER", name, phone: finalPhone, 
-        searchType: type, searchDistricts: districts.join(','), 
-        searchMaxPrice: parsedMaxPrice, buyerType, searchAmenities: amenities ? amenities.join(",") : null, searchAreaFrom: areaFrom ? parseInt(String(areaFrom), 10) : null, searchRooms: rooms ? parseInt(String(rooms), 10) : null 
+        email, password: hashed, role: Role.USER, name, phone: finalPhone, 
+        searchType: type, searchDistricts: normalizedDistricts.join(','), 
+        searchMaxPrice: parsedMaxPrice, buyerType, searchAmenities: amenities ? amenities.join(",") : null, searchAreaFrom: areaFrom ? parseInt(String(areaFrom), 10) : null, searchAreaTo: areaTo ? parseInt(String(areaTo), 10) : null, searchRooms: rooms ? parseInt(String(rooms), 10) : null 
       }
     });
 

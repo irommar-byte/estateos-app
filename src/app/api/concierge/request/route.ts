@@ -1,5 +1,6 @@
 import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
+import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 
@@ -21,8 +22,10 @@ export async function POST(req: Request) {
       data: {
         userId: Number(agencyId),
         title: '💎 Nowy Gorący Lead (Concierge)',
-        message: `Zapytanie Concierge: Prywatny inwestor prosi o wycenę i przejęcie oferty. Zaproponuj swoją prowizję w panelu CRM.`,
-        type: 'SYSTEM', link: `/moje-konto/crm`
+        body:
+          'Zapytanie Concierge: Prywatny inwestor prosi o wycenę i przejęcie oferty. Zaproponuj swoją prowizję w panelu CRM. ' +
+          'https://estateos.pl/moje-konto/crm',
+        type: NotificationType.SYSTEM_ALERT,
       }
     });
 

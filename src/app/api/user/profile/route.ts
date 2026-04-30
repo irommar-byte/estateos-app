@@ -1,9 +1,25 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../auth/[...nextauth]/route';
+
+function serializeOfferAmenityTokens(offer: {
+  hasBalcony?: boolean | null;
+  hasElevator?: boolean | null;
+  hasParking?: boolean | null;
+  hasGarden?: boolean | null;
+  isFurnished?: boolean | null;
+  hasStorage?: boolean | null;
+}) {
+  const parts: string[] = [];
+  if (offer.hasBalcony) parts.push('balkon');
+  if (offer.hasElevator) parts.push('winda');
+  if (offer.hasParking) parts.push('parking');
+  if (offer.hasGarden) parts.push('ogród');
+  if (offer.hasStorage) parts.push('komórka');
+  if (offer.isFurnished) parts.push('umeblowanie');
+  return parts.join(',');
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -71,7 +87,7 @@ export async function GET(req: NextRequest) {
         // 6. Absolutne Priorytety (Udogodnienia)
         if (user.searchAmenities && user.searchAmenities.trim() !== '') {
           const reqAmenities = user.searchAmenities.split(',').map(normalize);
-          const offerAmenities = normalize(String(offer.amenities || ''));
+          const offerAmenities = normalize(serializeOfferAmenityTokens(offer));
           for (const req of reqAmenities) {
             if (req !== '' && !offerAmenities.includes(req)) {
               return false; // Oferta zostaje brutalnie odrzucona

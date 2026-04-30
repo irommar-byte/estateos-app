@@ -2,6 +2,38 @@ import { radarService } from '@/lib/services/radar.service';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import type { PropertyType, TransactionType } from '@prisma/client';
+
+function coercePropertyType(raw: unknown): PropertyType {
+  const s = String(raw || '').toLowerCase();
+  if (s.includes('dom') || s.includes('house')) return 'HOUSE';
+  if (s.includes('grunt') || s.includes('dział') || s.includes('plot')) return 'PLOT';
+  if (s.includes('lokal') || s.includes('komercyj') || s.includes('commercial')) return 'COMMERCIAL';
+  return 'FLAT';
+}
+
+function coerceTransactionType(raw: unknown): TransactionType {
+  const s = String(raw || 'sale').toLowerCase();
+  return s.includes('rent') || s.includes('wynaj') ? 'RENT' : 'SELL';
+}
+
+function coerceImagesPayload(payload: Record<string, unknown>): string | undefined {
+  const raw = payload.images ?? payload.imageUrl;
+  if (raw == null) return undefined;
+  if (typeof raw === 'string') {
+    try {
+      JSON.parse(raw);
+      return raw;
+    } catch {
+      return JSON.stringify([raw]);
+    }
+  }
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return undefined;
+  }
+}
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -53,37 +85,54 @@ export async function POST(req: Request) {
           const user = customerEmail ? await prisma.user.findUnique({ where: { email: customerEmail } }) : null;
 
           if (user) {
+            const p = payload as Record<string, unknown>;
+            const price = Number.parseFloat(String(p.price ?? '0')) || 0;
+            const area = Number.parseFloat(String(p.area ?? '0')) || 0;
+            const roomsRaw = p.rooms;
+            const floorRaw = p.floor;
+
             await prisma.offer.create({
               data: {
                 userId: user.id,
-                title: payload.title,
-                propertyType: payload.propertyType || "Mieszkanie",
-                district: payload.district || "Śródmieście",
-                price: String(payload.price || "0"),
-                area: String(payload.area || "0"),
-                description: payload.description || "",
-                address: payload.address || "",
-                imageUrl: payload.imageUrl || "",
-                images: payload.images || "",
-                contactName: payload.contactName || "",
-                contactPhone: payload.contactPhone || "",
-                status: "ACTIVE",
-                lat: parseFloat(payload.lat) || 52.2297,
-                lng: parseFloat(payload.lng) || 21.0122,
-                advertiserType: payload.advertiserType || "private",
-                rooms: String(payload.rooms || ""),
-                floor: String(payload.floor || ""),
-                year: String(payload.buildYear || ""),
-                amenities: payload.amenities || "",
-                floorPlan: payload.floorPlan || null,
-                transactionType: payload.transactionType || "sale",
-                rentAdminFee: payload.rentAdminFee || null,
-                deposit: payload.deposit || null,
-                rentMinPeriod: payload.rentMinPeriod || null,
-                rentAvailableFrom: payload.rentAvailableFrom || null,
-                rentType: payload.rentType || null,
-                expiresAt
-              }
+                title: String(p.title ?? 'Nowa oferta'),
+                description: p.description ? String(p.description) : '',
+                propertyType: coercePropertyType(p.propertyType),
+                district: String(p.district || 'OTHER'),
+                price,
+                area,
+                city: String(p.city || 'Warszawa'),
+                street: typeof p.address === 'string' && p.address.includes(',') ? String(p.address).split(',')[0]?.trim() || null : (p.street ? String(p.street) : null),
+                images: coerceImagesPayload(p),
+                floorPlanUrl: p.floorPlanUrl ? String(p.floorPlanUrl) : p.floorPlan ? String(p.floorPlan) : null,
+                status: 'ACTIVE',
+                lat: Number.parseFloat(String(p.lat)) || 52.2297,
+                lng: Number.parseFloat(String(p.lng)) || 21.0122,
+                rooms:
+                  roomsRaw !== undefined && roomsRaw !== null && String(roomsRaw).trim() !== ''
+                    ? Number.parseInt(String(roomsRaw), 10)
+                    : null,
+                floor:
+                  floorRaw !== undefined && floorRaw !== null && String(floorRaw).trim() !== ''
+                    ? Number.parseInt(String(floorRaw), 10)
+                    : null,
+                yearBuilt:
+                  p.buildYear || p.year
+                    ? (() => {
+                        const n = Number.parseInt(String(p.buildYear ?? p.year), 10);
+                        return Number.isFinite(n) ? n : null;
+                      })()
+                    : null,
+                deposit:
+                  p.deposit != null && String(p.deposit).trim() !== ''
+                    ? Number.parseFloat(String(p.deposit))
+                    : null,
+                adminFee:
+                  p.rentAdminFee != null && String(p.rentAdminFee).trim() !== ''
+                    ? Number.parseFloat(String(p.rentAdminFee))
+                    : null,
+                transactionType: coerceTransactionType(p.transactionType),
+                expiresAt,
+              },
             });
           }
         } catch (e) {

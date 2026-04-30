@@ -5,9 +5,13 @@ import { Search, Loader2, CheckCircle, BellRing, Phone, Lock, User, Sparkles, Sh
 import Link from "next/link";
 import RadarActivationEffect from "@/components/RadarActivationEffect";
 
-const ALL_DISTRICTS = ["Bemowo", "Białołęka", "Bielany", "Mokotów", "Ochota", "Praga-Południe", "Praga-Północ", "Rembertów", "Śródmieście", "Targówek", "Ursus", "Ursynów", "Wawer", "Wesoła", "Wilanów", "Włochy", "Wola", "Żoliborz"];
 const PROPERTY_TYPES = ["Mieszkanie", "Segment", "Dom Wolnostojący", "Lokal Użytkowy", "Działka"];
 const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda"];
+
+type DistrictCatalogResponse = {
+  strictCities: string[];
+  strictCityDistricts: Record<string, string[]>;
+};
 
 export default function SzukajNieruchomosci() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -15,8 +19,9 @@ export default function SzukajNieruchomosci() {
   
   const [formData, setFormData] = useState({
     name: "", email: "", password: "", phone: "", type: "Mieszkanie",
-    districts: [] as string[], maxPrice: "", areaFrom: "", areaTo: "", plotArea: "", buyerType: "private", amenities: [] as string[], rooms: "",
+    city: "Warszawa", districts: [] as string[], maxPrice: "", areaFrom: "", areaTo: "", plotArea: "", buyerType: "private", amenities: [] as string[], rooms: "",
   });
+  const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
   
   // LIVE VERIFICATION STATES
   const [emailStatus, setEmailStatus] = useState<'idle'|'checking'|'available'|'taken'>('idle');
@@ -31,6 +36,7 @@ export default function SzukajNieruchomosci() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const districtOptions = locationCatalog.strictCityDistricts[formData.city] || [];
 
   useEffect(() => {
     fetch('/api/user/profile').then(res => res.json()).then(data => {
@@ -54,6 +60,21 @@ export default function SzukajNieruchomosci() {
       }
       setIsLoadingSession(false);
     }).catch(() => setIsLoadingSession(false));
+  }, []);
+
+  useEffect(() => {
+    const loadDistrictCatalog = async () => {
+      try {
+        const response = await fetch('/api/location/districts', { cache: 'no-store' });
+        if (!response.ok) return;
+        const catalog = await response.json();
+        setLocationCatalog(catalog);
+      } catch {
+        // keep defaults
+      }
+    };
+
+    void loadDistrictCatalog();
   }, []);
 
   // LIVE E-MAIL CHECK
@@ -277,9 +298,19 @@ export default function SzukajNieruchomosci() {
               )}
 
               <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 md:col-span-2 mt-4">
+                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-4">Miasto</label>
+                <select
+                  className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-4 text-white font-bold outline-none mb-6"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value, districts: [] })}
+                >
+                  {(locationCatalog.strictCities || []).map((city) => (
+                    <option key={city} className="bg-[#050505] text-white" value={city}>{city}</option>
+                  ))}
+                </select>
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-5">Zaznacz dzielnice</label>
                 <div className="flex flex-wrap gap-2">
-                  {ALL_DISTRICTS.map(d => (
+                  {districtOptions.map(d => (
                     <div key={d} onClick={() => toggleDistrict(d)} className={`px-5 py-3 rounded-full text-[11px] font-bold uppercase tracking-widest cursor-pointer transition-all border ${formData.districts.includes(d) ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'bg-transparent text-white/30 border-white/10 hover:border-white/30 hover:text-white'}`}>{d}</div>
                   ))}
                 </div>

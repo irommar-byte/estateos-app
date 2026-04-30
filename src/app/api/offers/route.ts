@@ -13,12 +13,52 @@ export const dynamic = 'force-dynamic';
 // =======================
 export async function GET() {
   try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS OfferViewLog (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        offerId INT NOT NULL,
+        visitorKey VARCHAR(128) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'web',
+        ip VARCHAR(64) NULL,
+        userAgent VARCHAR(255) NULL,
+        hits INT NOT NULL DEFAULT 1,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        lastSeenAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY OfferViewLog_offerId_visitorKey_key (offerId, visitorKey),
+        KEY OfferViewLog_offerId_lastSeenAt_idx (offerId, lastSeenAt)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     const offers = await prisma.offer.findMany({
       where: { status: { in: ["ACTIVE"] } },
       orderBy: { createdAt: "desc" }
     });
 
-    return NextResponse.json(offers);
+    const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    if (!offerIds.length) {
+      return NextResponse.json(offers);
+    }
+
+    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+      `
+        SELECT offerId, COUNT(*) AS total
+        FROM OfferViewLog
+        WHERE offerId IN (${offerIds.join(',')})
+        GROUP BY offerId
+      `
+    );
+
+    const viewsMap = new Map<number, number>(
+      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
+    );
+
+    return NextResponse.json(
+      offers.map((offer: any) => {
+        const viewsCount = viewsMap.get(Number(offer.id)) || 0;
+        return { ...offer, views: viewsCount, viewsCount };
+      })
+    );
 
   } catch (error) {
     console.error('OFFERS ERROR:', error);

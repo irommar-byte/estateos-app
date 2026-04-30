@@ -20,6 +20,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -155,7 +156,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
     setIsSending(true);
     const token = getToken();
-    const tempMsg = { id: Date.now(), senderId: currentUserId, content: inputText, createdAt: new Date().toISOString(), pending: true, isRead: false };
+    const tempId = Date.now();
+    const typedContent = inputText.trim();
+    const tempMsg = { id: tempId, senderId: currentUserId, content: typedContent, createdAt: new Date().toISOString(), pending: true, isRead: false };
 
     setDeal((prev: any) => ({ ...prev, messages: [...(prev?.messages || []), tempMsg] }));
     setInputText('');
@@ -164,13 +167,80 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
     try {
-      await fetch(`/api/deals/${dealId}/messages`, {
+      const res = await fetch(`/api/deals/${dealId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: tempMsg.content })
+        body: JSON.stringify({ content: typedContent, senderId: currentUserId })
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Nie udało się wysłać wiadomości');
+      }
       fetchDeal();
-    } catch (e) {} finally { setIsSending(false); }
+    } catch (e) {
+      setDeal((prev: any) => ({
+        ...prev,
+        messages: (prev?.messages || []).filter((m: any) => m.id !== tempId),
+      }));
+      setInputText(typedContent);
+    } finally { setIsSending(false); }
+  };
+
+  const respondBid = async (bidId: number, action: 'ACCEPT' | 'REJECT' | 'COUNTER') => {
+    const token = getToken();
+    if (!token) return;
+    let payload: any = { action };
+    if (action === 'COUNTER') {
+      const value = prompt('Podaj kwotę kontroferty (PLN):');
+      if (!value) return;
+      const numeric = Number(String(value).replace(/[^\d.,]/g, '').replace(',', '.'));
+      if (!Number.isFinite(numeric) || numeric <= 0) {
+        alert('Nieprawidłowa kwota kontroferty.');
+        return;
+      }
+      payload.counterAmount = numeric;
+    }
+    setActionLoading(`bid-${bidId}-${action}`);
+    try {
+      const res = await fetch(`/api/deals/${dealId}/bids/${bidId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Błąd odpowiedzi na ofertę');
+      fetchDeal();
+    } catch (err: any) {
+      alert(err.message || 'Nie udało się wykonać akcji.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const respondAppointment = async (appointmentId: number, action: 'ACCEPT' | 'DECLINE' | 'RESCHEDULE') => {
+    const token = getToken();
+    if (!token) return;
+    let payload: any = { action };
+    if (action === 'RESCHEDULE') {
+      const note = prompt('Podaj kontrofertę terminu (np. "Jutro 18:30"):');
+      if (!note) return;
+      payload.message = note;
+    }
+    setActionLoading(`appointment-${appointmentId}-${action}`);
+    try {
+      const res = await fetch(`/api/deals/${dealId}/appointments/${appointmentId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Błąd odpowiedzi na termin');
+      fetchDeal();
+    } catch (err: any) {
+      alert(err.message || 'Nie udało się wykonać akcji.');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   if (loading) return <div className="w-full h-[600px] flex justify-center items-center"><Loader2 className="animate-spin text-emerald-500" size={32} /></div>;
@@ -178,6 +248,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
   const isBuyer = deal.buyerId === currentUserId;
+  const actionableBids = (deal.bids || []).filter((b: any) => (b.status === 'PENDING' || b.status === 'COUNTER_OFFER') && b.senderId !== currentUserId);
+  const actionableAppointments = (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId);
 
   return (
     <div className="flex flex-col h-[750px] bg-[#080808] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.8),inset_0_0_80px_rgba(0,0,0,0.6)] relative isolate font-sans">
@@ -205,6 +277,31 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       {/* CZAT (Z inteligentnym scrollem i statusem iMessage) */}
       <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 custom-scrollbar relative z-10 scroll-smooth">
+        {(actionableBids.length > 0 || actionableAppointments.length > 0) && (
+          <div className="space-y-4">
+            {actionableBids.map((bid: any) => (
+              <div key={`action-bid-${bid.id}`} className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+                <p className="text-[10px] uppercase tracking-widest font-black text-amber-300 mb-2">Oferta ceny od {bid.sender?.name || 'użytkownika'}: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => respondBid(bid.id, 'ACCEPT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
+                  <button onClick={() => respondBid(bid.id, 'COUNTER')} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
+                  <button onClick={() => respondBid(bid.id, 'REJECT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
+                </div>
+              </div>
+            ))}
+            {actionableAppointments.map((app: any) => (
+              <div key={`action-app-${app.id}`} className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4">
+                <p className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-2">Propozycja terminu od {app.proposedBy?.name || 'użytkownika'}: {new Date(app.proposedDate).toLocaleString('pl-PL')}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => respondAppointment(app.id, 'ACCEPT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
+                  <button onClick={() => respondAppointment(app.id, 'RESCHEDULE')} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
+                  <button onClick={() => respondAppointment(app.id, 'DECLINE')} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {(!deal.messages || deal.messages.length === 0) && (
           <div className="flex flex-col items-center justify-center h-full opacity-50 mt-10">
             <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
@@ -217,8 +314,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
         <AnimatePresence initial={false}>
           {deal.messages?.map((msg: any, i: number) => {
+            const msgContent = String(msg?.content || '');
             const isMe = msg.senderId === currentUserId;
-            const eventPayload = parseDealEvent(msg.content);
+            const eventPayload = parseDealEvent(msgContent);
 
             if (eventPayload?.entity === 'BID') {
               return (
@@ -254,8 +352,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
               );
             }
             
-            if (msg.content.startsWith('[SYSTEM_BID:')) {
-              const amount = msg.content.replace(/\D/g, '');
+            if (msgContent.startsWith('[SYSTEM_BID:')) {
+              const amount = msgContent.replace(/\D/g, '');
               return (
                 <div key={msg.id || i} className="flex justify-center my-10">
                   <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-amber-500/30 rounded-[2.5rem] p-8 max-w-sm w-full shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_0_20px_rgba(245,158,11,0.05)] text-center relative overflow-hidden group">
@@ -277,7 +375,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   )}
                   
                   <div className={`px-6 py-4 shadow-xl ${isMe ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-black rounded-[1.8rem] rounded-br-[0.5rem] shadow-[0_10px_25px_rgba(16,185,129,0.2)]' : 'bg-white/5 border border-white/10 text-white/90 rounded-[1.8rem] rounded-bl-[0.5rem] backdrop-blur-md'}`}>
-                    <p className={`text-[15px] leading-relaxed tracking-wide ${isMe ? 'font-semibold' : 'font-normal'}`}>{msg.content}</p>
+                    <p className={`text-[15px] leading-relaxed tracking-wide ${isMe ? 'font-semibold' : 'font-normal'}`}>{msgContent}</p>
                   </div>
                 </div>
                 
