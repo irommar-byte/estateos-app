@@ -1,10 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, Linking } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { 
+  StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, 
+  Platform, ScrollView, ActivityIndicator, Alert, Linking 
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ChevronLeft, Send, Paperclip, Check, CheckCheck, FileText, Play, Pause } from 'lucide-react-native';
+import { 
+  ChevronLeft, Send, Paperclip, Check, CheckCheck, 
+  FileText, Play, Pause, CalendarClock, HandCoins 
+} from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withRepeat, withTiming, withSequence, withDelay } from 'react-native-reanimated';
+import Animated, { 
+  FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, 
+  withRepeat, withTiming, withSequence, withDelay 
+} from 'react-native-reanimated';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio } from 'expo-av';
 import { useAuthStore } from '../store/useAuthStore';
@@ -12,52 +21,364 @@ import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import { API_URL } from '../config/network';
 
+// ==========================================
+// CONSTANTS & HELPERS
+// ==========================================
+
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 const ATTACHMENT_PREFIX = '[[DEAL_ATTACHMENT]]';
+const ATTACHMENT_PREFIX_LEGACY = '[[deal_attachment]]';
 const DEALROOM_ATTACHMENT_LIMIT_BYTES = 50 * 1024 * 1024;
 
-function parseDealEvent(content?: string) {
+// Złagodzona, natywna paleta iOS Dark Mode
+const COLORS = {
+  background: '#000000',
+  surface: '#1C1C1E',
+  surfaceElevated: '#2C2C2E',
+  primary: '#34C759', // Klasyczny, czysty zielony z iOS
+  primaryDimmed: 'rgba(52, 199, 89, 0.15)',
+  textBase: '#FFFFFF',
+  textSecondary: '#EBEBF5',
+  textMuted: 'rgba(235, 235, 245, 0.6)',
+  border: 'rgba(255, 255, 255, 0.1)',
+  danger: '#FF453A',
+};
+
+const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
+
+const parseJsonMaybe = (value: unknown): Record<string, any> => {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const parseIntMaybe = (value: unknown) => {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(String(value).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+};
+
+const parseCurrencyMaybe = (value: unknown) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const normalized = value.replace(/\s/g, '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const n = Number(normalized);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  const intOnly = Number(value.replace(/[^\d]/g, ''));
+  return Number.isFinite(intOnly) && intOnly > 0 ? intOnly : null;
+};
+
+const parseLegacyPolishDate = (rawDate: string) => {
+  const trimmed = rawDate.trim();
+  const dotMatch = trimmed.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})(?:\s*(?:o|godz\.?)?\s*(\d{1,2})[:.](\d{2}))?/i);
+  if (dotMatch) {
+    const day = Number(dotMatch[1]);
+    const month = Number(dotMatch[2]);
+    const yearRaw = Number(dotMatch[3]);
+    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    const hour = Number(dotMatch[4] ?? 0);
+    const minute = Number(dotMatch[5] ?? 0);
+    const dt = new Date(year, month - 1, day, hour, minute, 0, 0);
+    if (!Number.isNaN(dt.getTime())) return dt.toISOString();
+  }
+  const fallback = new Date(trimmed.replace(' o ', ' ').replace(/\./g, '-'));
+  return Number.isNaN(fallback.getTime()) ? null : fallback.toISOString();
+};
+
+function parseDealEvent(input?: string | any) {
+  const rawMessage = typeof input === 'string' ? null : input;
+  const content = typeof input === 'string' ? input : String(input?.content || '');
+  if (!content && !rawMessage) return null;
+
+  const payloadFromMessage = {
+    ...parseJsonMaybe(rawMessage?.payload),
+    ...parseJsonMaybe(rawMessage?.eventPayload),
+    ...parseJsonMaybe(rawMessage?.meta),
+    ...parseJsonMaybe(rawMessage?.metadata),
+    ...parseJsonMaybe(rawMessage?.data),
+    ...(rawMessage?.event && typeof rawMessage.event === 'object' ? rawMessage.event : {}),
+    ...(rawMessage?.dealEvent && typeof rawMessage.dealEvent === 'object' ? rawMessage.dealEvent : {}),
+  };
+
+  const messageRefs = {
+    bidId: parseIntMaybe(firstDefined(rawMessage?.bidId, rawMessage?.bid?.id, payloadFromMessage.bidId, payloadFromMessage.bid?.id, payloadFromMessage.id)),
+    appointmentId: parseIntMaybe(firstDefined(rawMessage?.appointmentId, rawMessage?.appointment?.id, payloadFromMessage.appointmentId, payloadFromMessage.appointment?.id, payloadFromMessage.id)),
+    note: String(firstDefined(rawMessage?.note, payloadFromMessage.note, payloadFromMessage.message) || '').trim(),
+  };
+
   if (!content) return null;
   if (content.startsWith(EVENT_PREFIX)) {
     try {
-      return JSON.parse(content.slice(EVENT_PREFIX.length));
+      const parsed = JSON.parse(content.slice(EVENT_PREFIX.length));
+      if (parsed && typeof parsed === 'object') {
+        return {
+          ...parsed,
+          bidId: parsed.bidId ?? messageRefs.bidId ?? null,
+          appointmentId: parsed.appointmentId ?? messageRefs.appointmentId ?? null,
+        };
+      }
+      return null;
     } catch {
       return null;
     }
   }
-  const legacyMatch = content.match(/Zaproponowano termin spotkania:\s*(.+)$/i);
-  if (legacyMatch) {
-    const raw = legacyMatch[1]?.trim();
-    const normalized = raw?.replace(' o ', ' ');
-    const parsed = normalized ? new Date(normalized.replace(/\./g, '-')) : null;
+
+  const appointmentLegacyMatch = content.match(/(?:zaproponowano|nowy)\s+termin(?:\s+spotkania)?[:\s-]*(.+)$/i) || content.match(/termin(?:\s+spotkania)?[:\s-]*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}(?:\s*(?:o|godz\.?)?\s*\d{1,2}[:.]\d{2})?)/i);
+  if (appointmentLegacyMatch) {
+    const raw = String(appointmentLegacyMatch[1] || '').trim();
+    const proposedDate = raw ? parseLegacyPolishDate(raw) : null;
     return {
-      entity: 'APPOINTMENT',
-      action: 'PROPOSED',
-      proposedDate: parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null,
-      note: 'Wiadomość z wcześniejszego formatu',
-      status: 'PENDING',
-      legacy: true,
+      entity: 'APPOINTMENT', action: 'PROPOSED', appointmentId: messageRefs.appointmentId,
+      proposedDate, note: messageRefs.note || 'Wiadomość z wcześniejszego formatu', status: 'PENDING', legacy: true,
     };
   }
+
+  const upper = content.toUpperCase();
+  const isBidMessage = /(?:cena|oferta cenowa|propozycja cenowa|kontroferta|counteroffer)/i.test(content) || (upper.includes('BID') && /\d/.test(content));
+
+  if (isBidMessage) {
+    const amountFromText = parseCurrencyMaybe(content.match(/(?:za|na|:)\s*([\d\s.,]+)\s*(?:PLN|ZŁ)?/i)?.[1]) || parseCurrencyMaybe(content.match(/([\d\s.,]+)\s*(?:PLN|ZŁ)\b/i)?.[1]);
+    const amount = amountFromText ?? parseIntMaybe(firstDefined(rawMessage?.amount, payloadFromMessage.amount));
+    let action: 'PROPOSED' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' = 'PROPOSED';
+    if (/kontrofert|counter/i.test(content)) action = 'COUNTERED';
+    if (/zaakceptowan|accepted/i.test(content)) action = 'ACCEPTED';
+    if (/odrzucon|reject|declin/i.test(content)) action = 'REJECTED';
+
+    return {
+      entity: 'BID', action, bidId: messageRefs.bidId, amount: amount || 0,
+      note: messageRefs.note || 'Wiadomość z wcześniejszego formatu',
+      status: action === 'ACCEPTED' ? 'ACCEPTED' : action === 'REJECTED' ? 'REJECTED' : 'PENDING', legacy: true,
+    };
+  }
+
   return null;
 }
 
-function parseDealAttachment(content?: string) {
-  if (!content || !content.startsWith(ATTACHMENT_PREFIX)) return null;
+function normalizeDealEvent(raw: any) {
+  if (!raw || typeof raw !== 'object') return null;
+  const entity = String(raw.entity || '').toUpperCase();
+  const action = String(raw.action || '').toUpperCase();
+  const status = String(raw.status || '').toUpperCase();
+  const amount = parseCurrencyMaybe(raw.amount) || 0;
+  const appointmentId = parseIntMaybe(raw.appointmentId);
+  const bidId = parseIntMaybe(raw.bidId);
+
+  let proposedDate: string | null = null;
+  if (raw.proposedDate) {
+    const parsed = new Date(raw.proposedDate);
+    if (!Number.isNaN(parsed.getTime())) proposedDate = parsed.toISOString();
+  } else if (raw.date) {
+    const parsed = new Date(raw.date);
+    if (!Number.isNaN(parsed.getTime())) proposedDate = parsed.toISOString();
+  }
+
+  return {
+    ...raw,
+    entity,
+    action,
+    status,
+    amount,
+    appointmentId,
+    bidId,
+    proposedDate,
+  };
+}
+
+function normalizeMediaUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+  if (s.startsWith('/')) return `${API_URL}${s}`;
+  return `${API_URL}/${s.replace(/^\//, '')}`;
+}
+
+function fileNameFromUrl(url: string): string | null {
   try {
-    return JSON.parse(content.slice(ATTACHMENT_PREFIX.length));
+    const clean = url.split('?')[0];
+    return decodeURIComponent(clean.substring(clean.lastIndexOf('/') + 1));
   } catch {
     return null;
   }
 }
 
+function guessMimeFromFilename(name: string): string {
+  const lower = String(name || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (/\.(mp3|m4a|aac|wav|ogg|flac)$/i.test(lower)) return 'audio/mpeg';
+  return 'application/octet-stream';
+}
+
+function ensureAttachmentFileName(name: string, mime: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes('.')) return name;
+  const m = String(mime || '').toLowerCase();
+  if (m.includes('pdf')) return `${name || 'dokument'}.pdf`;
+  if (m.startsWith('audio/')) return `${name || 'audio'}.${m.split('/')[1] || 'm4a'}`;
+  return name || 'zalacznik.bin';
+}
+
+function extractJsonObjectFromSlice(rest: string): string | null {
+  const braceIdx = rest.indexOf('{');
+  if (braceIdx < 0) return null;
+  let depth = 0;
+  for (let i = braceIdx; i < rest.length; i += 1) {
+    const ch = rest[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return rest.slice(braceIdx, i + 1);
+    }
+  }
+  return null;
+}
+
+function parseDealAttachmentFromContent(content?: string): Record<string, any> | null {
+  if (!content) return null;
+  const markers = [ATTACHMENT_PREFIX, ATTACHMENT_PREFIX_LEGACY];
+  const lower = content.toLowerCase();
+  const matches = markers
+    .map((marker) => ({ marker, idx: lower.indexOf(marker.toLowerCase()) }))
+    .filter((x) => x.idx >= 0)
+    .sort((a, b) => a.idx - b.idx);
+  if (matches.length === 0) return null;
+  const cut = matches[0];
+  const tail = content.slice(cut.idx + cut.marker.length).trim();
+  try {
+    const parsed = JSON.parse(tail);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, any>;
+  } catch {
+    const chunk = extractJsonObjectFromSlice(tail);
+    if (chunk) {
+      try {
+        const parsed = JSON.parse(chunk);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, any>;
+      } catch {
+        // noop
+      }
+    }
+  }
+  return null;
+}
+
+function pickUrlFromAttachmentPayload(obj: any): string | null {
+  if (!obj || typeof obj !== 'object') return null;
+  const keys = ['url', 'uri', 'path', 'fileUrl', 'filePath', 'href', 'src', 'downloadUrl', 'publicUrl', 'link', 'location', 'previewUrl', 'resourceUrl', 'storageUrl', 'key', 'Key'];
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (v && typeof v === 'object' && k === 'file') {
+      const nested = pickUrlFromAttachmentPayload(v);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+type DealroomResolvedAttachment = { url: string; name: string; mimeType: string; size: number; };
+
+function buildResolvedAttachment(effective: Record<string, any>, resolvedUrl: string): DealroomResolvedAttachment | null {
+  const url = normalizeMediaUrl(resolvedUrl);
+  if (!url) return null;
+  const nameFallback = fileNameFromUrl(url);
+  const normalizedName = String(effective?.name || effective?.fileName || nameFallback || '').trim();
+  const mimeType = String(effective?.mimeType || effective?.type || guessMimeFromFilename(normalizedName));
+  const size = Number(effective?.size ?? effective?.sizeBytes ?? effective?.fileSize ?? 0) || 0;
+  return { url, name: ensureAttachmentFileName(normalizedName || nameFallback || 'zalacznik', mimeType), mimeType, size };
+}
+
+function resolveAttachmentFromMessage(msg: any): DealroomResolvedAttachment | null {
+  if (!msg) return null;
+  const content = String(msg.content ?? '').trim();
+
+  if (content.startsWith('{')) {
+    const whole = parseJsonMaybe(content);
+    if (whole && pickUrlFromAttachmentPayload(whole)) {
+      const rec = buildResolvedAttachment(whole as Record<string, any>, pickUrlFromAttachmentPayload(whole)!);
+      if (rec) return rec;
+    }
+  }
+
+  const candidates: Record<string, any>[] = [];
+  const push = (x: any) => {
+    if (!x) return;
+    if (typeof x === 'string') candidates.push({ url: x });
+    else if (typeof x === 'object' && !Array.isArray(x)) candidates.push(x as Record<string, any>);
+  };
+
+  const embeddedFromContent = parseDealAttachmentFromContent(content);
+  if (embeddedFromContent) candidates.push(embeddedFromContent);
+  push(msg.attachment);
+  if (Array.isArray(msg.attachments)) msg.attachments.forEach(push);
+  if (Array.isArray(msg.messageAttachments)) msg.messageAttachments.forEach(push);
+  push(msg.file);
+  if (Array.isArray(msg.files)) msg.files.forEach(push);
+  push(msg.document);
+  push(msg.media);
+  const payloadObj = parseJsonMaybe(msg.payload);
+  push(payloadObj?.attachment);
+  const metaObj = parseJsonMaybe(msg.metadata);
+  push(metaObj?.attachment);
+  const dataObj = parseJsonMaybe(msg.data);
+  push(dataObj?.attachment);
+  push(dataObj?.file);
+
+  for (const c of candidates) {
+    const rawUrl = pickUrlFromAttachmentPayload(c);
+    if (rawUrl) {
+      const rec = buildResolvedAttachment(c, rawUrl);
+      if (rec) return rec;
+    }
+  }
+  
+  const topBlob = {
+    url: firstDefined(msg.fileUrl, msg.attachmentUrl, msg.downloadUrl, msg.documentUrl, msg.mediaUrl, msg.path),
+    name: firstDefined(msg.fileName, msg.attachmentName, msg.name),
+    mimeType: firstDefined(msg.mimeType, msg.contentType),
+    size: msg.fileSize ?? msg.size,
+  };
+  const topUrl = pickUrlFromAttachmentPayload(topBlob);
+  if (topUrl) return buildResolvedAttachment(topBlob as Record<string, any>, topUrl);
+
+  return null;
+}
+
+function stripChatAttachmentDecorations(rawContent: string | undefined, attachment: DealroomResolvedAttachment | null): string {
+  if (!attachment) return String(rawContent || '');
+  let text = String(rawContent || '');
+  if (text.trim().startsWith('{') && /"url"\s*:/i.test(text.trim())) return '';
+  text = text.replace(/\[\[(?:deal_attachment|DEAL_ATTACHMENT)\]\].*/i, '').trim();
+  text = text.replace(/Załącznik:\s*[^\n\r]+/gi, '').trim();
+  const esc = attachment.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  text = text.replace(new RegExp(esc, 'gi'), '').trim();
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// ==========================================
+// SUBCOMPONENTS
+// ==========================================
+
 const TypingDot = ({ delay }: { delay: number }) => {
   const translateY = useSharedValue(0);
   useEffect(() => {
-    translateY.value = withRepeat(withDelay(delay, withSequence(withTiming(-5, { duration: 300 }), withTiming(0, { duration: 300 }), withTiming(0, { duration: 600 }))), -1, true);
-  }, []);
+    translateY.value = withRepeat(
+      withDelay(delay, withSequence(withTiming(-4, { duration: 300 }), withTiming(0, { duration: 300 }), withTiming(0, { duration: 600 }))),
+      -1, true
+    );
+  }, [delay, translateY]);
   return <Animated.View style={[styles.typingDot, useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] } ))]} />;
 };
+
+// ==========================================
+// MAIN SCREEN
+// ==========================================
 
 export default function DealroomChatScreen() {
   const navigation = useNavigation();
@@ -72,12 +393,22 @@ export default function DealroomChatScreen() {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPartnerTyping, setIsPartnerTyping] = useState(false);
+  
+  // Modals & Context State
   const [selectedBidEvent, setSelectedBidEvent] = useState<any>(null);
   const [selectedBidHistory, setSelectedBidHistory] = useState<any[]>([]);
   const [selectedAppointmentEvent, setSelectedAppointmentEvent] = useState<any>(null);
   const [selectedAppointmentHistory, setSelectedAppointmentHistory] = useState<any[]>([]);
+  
+  // Upload State
   const [pendingAttachment, setPendingAttachment] = useState<any>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [roomAttachmentBytes, setRoomAttachmentBytes] = useState(0);
+  
+  // UI Expand State
+  const [appointmentSectionExpanded, setAppointmentSectionExpanded] = useState(false);
+  const [priceSectionExpanded, setPriceSectionExpanded] = useState(false);
+  
   const [resolvedOfferId, setResolvedOfferId] = useState<any>(offerId || null);
   const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
   
@@ -85,177 +416,26 @@ export default function DealroomChatScreen() {
   const lastTypingTime = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
 
+  // Animations
+  const attachmentUploadPulse = useSharedValue(0);
+  const uploadingPillAnim = useAnimatedStyle(() => ({
+    opacity: 0.8 + attachmentUploadPulse.value * 0.2,
+    transform: [{ scale: 0.995 + attachmentUploadPulse.value * 0.005 }],
+  }));
+
+  useEffect(() => {
+    if (isUploadingAttachment) {
+      attachmentUploadPulse.value = withRepeat(withSequence(withTiming(1, { duration: 600 }), withTiming(0, { duration: 600 })), -1, false);
+    } else {
+      attachmentUploadPulse.value = 0;
+    }
+  }, [isUploadingAttachment, attachmentUploadPulse]);
+
   useEffect(() => {
     if (offerId) setResolvedOfferId(offerId);
   }, [offerId]);
 
-  const resolveAttachmentFromMessage = (msg: any) => {
-    const raw =
-      msg?.attachment ||
-      msg?.file ||
-      msg?.document ||
-      (Array.isArray(msg?.attachments) ? msg.attachments[0] : null);
-    const parsedFromContent = parseDealAttachment(msg?.content);
-    const effective = raw || parsedFromContent;
-    if (!effective) return null;
-
-    const rawUrl = effective?.url || effective?.uri || effective?.path || effective?.fileUrl || effective?.filePath || null;
-    const url = rawUrl
-      ? (String(rawUrl).startsWith('http') ? String(rawUrl) : `${API_URL}${String(rawUrl)}`)
-      : null;
-    if (!url) return null;
-
-    const nameFromUrl = (() => {
-      try {
-        const clean = url.split('?')[0];
-        return decodeURIComponent(clean.substring(clean.lastIndexOf('/') + 1));
-      } catch {
-        return null;
-      }
-    })();
-
-    const normalizedName = String(effective?.name || effective?.fileName || nameFromUrl || '').trim();
-    const ensureExt = (name: string, mime: string) => {
-      const lower = name.toLowerCase();
-      if (lower.includes('.')) return name;
-      if (mime.includes('pdf')) return `${name || 'dokument'}.pdf`;
-      if (mime.startsWith('audio/')) {
-        const ext = mime.split('/')[1] || 'm4a';
-        return `${name || 'audio'}.${ext}`;
-      }
-      return name || 'zalacznik.bin';
-    };
-
-    return {
-      url,
-      name: ensureExt(normalizedName, String(effective?.mimeType || effective?.type || '')),
-      mimeType: effective?.mimeType || effective?.type || 'application/octet-stream',
-      size: Number(effective?.size ?? effective?.sizeBytes ?? effective?.fileSize ?? 0) || 0,
-    };
-  };
-
-  const getAttachmentKind = (attachment: any) => {
-    const mime = String(attachment?.mimeType || '').toLowerCase();
-    const name = String(attachment?.name || '').toLowerCase();
-    if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
-    if (mime.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg)$/i.test(name)) return 'audio';
-    return 'file';
-  };
-
-  const handleToggleAudioPreview = async (url: string) => {
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-
-      if (playingAudioUrl === url && soundRef.current) {
-        const status: any = await soundRef.current.getStatusAsync();
-        if (status?.isLoaded && status?.isPlaying) {
-          await soundRef.current.pauseAsync();
-          setPlayingAudioUrl(null);
-          return;
-        }
-      }
-
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: url },
-        { shouldPlay: false, progressUpdateIntervalMillis: 200 },
-        (status: any) => {
-          if (status?.didJustFinish) {
-            setPlayingAudioUrl(null);
-          }
-        }
-      );
-      await sound.playAsync();
-      soundRef.current = sound;
-      setPlayingAudioUrl(url);
-    } catch {
-      try {
-        const canOpen = await Linking.canOpenURL(url);
-        if (canOpen) {
-          await Linking.openURL(url);
-          return;
-        }
-      } catch {
-        // noop
-      }
-      Alert.alert('Błąd', 'Nie udało się odtworzyć ani otworzyć pliku audio.');
-      setPlayingAudioUrl(null);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
-      }
-    };
-  }, []);
-
-  const formatBytes = (bytes: number) => {
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let value = bytes;
-    let unitIndex = 0;
-    while (value >= 1024 && unitIndex < units.length - 1) {
-      value /= 1024;
-      unitIndex += 1;
-    }
-    return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-  };
-
-  // KULOODPORNE POBIERANIE (GET + ANTI-CACHE)
-  const fetchMessages = useCallback(async () => {
-    if (!token || !dealId) return;
-    try {
-      const url = `https://estateos.pl/api/mobile/v1/deals/${dealId}/messages?t=${Date.now()}`;
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-        }
-      });
-      
-      const text = await res.text();
-      if (!text) return; // Chroni przed "Unexpected end of input"
-      
-      const data = JSON.parse(text);
-      if (data.messages) {
-        setMessages(data.messages);
-        const usedBytes = data.messages.reduce((sum: number, msg: any) => {
-          const attachment = resolveAttachmentFromMessage(msg);
-          return sum + (attachment?.size || 0);
-        }, 0);
-        setRoomAttachmentBytes(usedBytes);
-      }
-      if (data.isTyping !== undefined) {
-        setIsPartnerTyping(data.isTyping);
-      }
-    } catch (e) {
-      console.log('Ciche zignorowanie błędu odświeżania:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [dealId, token]);
-
-  // POLLING CO 2.5 SEKUNDY
-  useEffect(() => {
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 2500);
-    return () => clearInterval(interval);
-  }, [fetchMessages]);
-
-  const resolveOfferIdForUpload = async () => {
+  const resolveOfferIdForUpload = useCallback(async () => {
     if (resolvedOfferId) return resolvedOfferId;
     if (!dealId || !token) return null;
     try {
@@ -276,13 +456,13 @@ export default function DealroomChatScreen() {
                 ? json.data.items
                 : [];
       const current = deals.find((d: any) => String(d?.id) === String(dealId));
-      const nextOfferId =
-        current?.offerId ||
-        current?.offer?.id ||
-        current?.offer?.offerId ||
-        current?.listingId ||
-        current?.propertyId ||
-        null;
+      const nextOfferId = firstDefined(
+        current?.offerId,
+        current?.offer?.id,
+        current?.offer?.offerId,
+        current?.listingId,
+        current?.propertyId
+      );
       if (nextOfferId) {
         setResolvedOfferId(nextOfferId);
         return nextOfferId;
@@ -291,53 +471,128 @@ export default function DealroomChatScreen() {
     } catch {
       return null;
     }
+  }, [dealId, resolvedOfferId, token]);
+
+  useEffect(() => {
+    return () => {
+      if (soundRef.current) soundRef.current.unloadAsync().catch(() => {});
+    };
+  }, []);
+
+  // --- Methods ---
+
+  const getAttachmentKind = (attachment: any) => {
+    const mime = String(attachment?.mimeType || '').toLowerCase();
+    const name = String(attachment?.name || '').toLowerCase();
+    if (mime.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+    if (mime.startsWith('audio/') || /\.(mp3|m4a|aac|wav|ogg)$/i.test(name)) return 'audio';
+    return 'file';
   };
+
+  const handleToggleAudioPreview = async (url: string) => {
+    try {
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      if (playingAudioUrl === url && soundRef.current) {
+        const status: any = await soundRef.current.getStatusAsync();
+        if (status?.isLoaded && status?.isPlaying) {
+          await soundRef.current.pauseAsync();
+          setPlayingAudioUrl(null);
+          return;
+        }
+      }
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url }, { shouldPlay: false },
+        (status: any) => { if (status?.didJustFinish) setPlayingAudioUrl(null); }
+      );
+      await sound.playAsync();
+      soundRef.current = sound;
+      setPlayingAudioUrl(url);
+    } catch {
+      Alert.alert('Błąd', 'Nie udało się odtworzyć dźwięku.');
+      setPlayingAudioUrl(null);
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = bytes;
+    let u = 0;
+    while (value >= 1024 && u < units.length - 1) { value /= 1024; u += 1; }
+    return `${value.toFixed(u === 0 ? 0 : 1)} ${units[u]}`;
+  };
+
+  const fetchMessages = useCallback(async () => {
+    if (!token || !dealId) return;
+    try {
+      const url = `${API_URL}/api/mobile/v1/deals/${dealId}/messages?t=${Date.now()}`;
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Cache-Control': 'no-cache' }
+      });
+      const text = await res.text();
+      if (!text) return;
+      
+      const data = JSON.parse(text);
+      if (data.messages) {
+        setMessages(data.messages);
+        setRoomAttachmentBytes(data.messages.reduce((sum: number, msg: any) => sum + (resolveAttachmentFromMessage(msg)?.size || 0), 0));
+      }
+      if (data.isTyping !== undefined) setIsPartnerTyping(data.isTyping);
+    } catch (e) {
+      // Ciche ignorowanie w tle
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId, token]);
+
+  useEffect(() => {
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 2500);
+    return () => clearInterval(interval);
+  }, [fetchMessages]);
 
   const handleTyping = (text: string) => {
     setMessage(text);
     const now = Date.now();
     if (text.length > 0 && now - lastTypingTime.current > 1500) {
       lastTypingTime.current = now;
-      fetch(`https://estateos.pl/api/mobile/v1/deals/${dealId}/typing`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+      fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/typing`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
       }).catch(() => {});
     }
   };
 
   const handleSend = async () => {
-    if ((!message.trim() && !pendingAttachment) || !token || !user) return;
+    if ((!message.trim() && !pendingAttachment) || !token || !user || isUploadingAttachment) return;
     const content = message.trim();
     const attachmentForSend = pendingAttachment;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const tempId = Date.now();
     setMessage('');
     if (!attachmentForSend) {
       setMessages(prev => [...prev, {
-        id: tempId,
-        senderId: user.id,
-        content,
-        createdAt: new Date().toISOString(),
-        isRead: false,
-        attachment: null,
+        id: Date.now(), senderId: user.id, content, createdAt: new Date().toISOString(), isRead: false, attachment: null,
       }]);
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
     }
 
     try {
-      let res;
       if (attachmentForSend) {
+        setIsUploadingAttachment(true);
         const uploadOfferId = await resolveOfferIdForUpload();
         const uploadIdentifier = uploadOfferId || dealId;
         if (!uploadIdentifier) {
-          Alert.alert('Brak identyfikatora', 'Nie udało się ustalić identyfikatora transakcji/oferty dla uploadu.');
+          Alert.alert('Brak identyfikatora', 'Nie udało się ustalić identyfikatora oferty/transakcji dla uploadu.');
           return;
         }
 
         const baseFile = {
           uri: attachmentForSend.uri,
-          name: attachmentForSend.name,
+          name: attachmentForSend.name || `zalacznik_${Date.now()}`,
           type: attachmentForSend.mimeType || 'application/octet-stream',
         } as any;
 
@@ -358,7 +613,7 @@ export default function DealroomChatScreen() {
           uploadData.append(attempt.fileField, baseFile);
           const uploadRes = await fetch(attempt.endpoint, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${token}` },
             body: uploadData,
           });
           const uploadText = await uploadRes.text();
@@ -380,24 +635,30 @@ export default function DealroomChatScreen() {
         }
 
         if (!uploadedPath) {
-          const msgForm = new FormData();
-          msgForm.append('content', content || `Załącznik: ${attachmentForSend.name}`);
-          msgForm.append('offerId', String(uploadIdentifier));
-          msgForm.append('dealId', String(dealId));
-          msgForm.append('file', baseFile);
-
-          const directRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: msgForm,
-          });
-
-          if (!directRes.ok) {
-            const directErr = await directRes.text();
-            Alert.alert('Błąd uploadu', directErr || lastUploadError || 'Błąd serwera przy wysyłce załącznika.');
+          const directAttempts: Array<'file' | 'attachment' | 'document'> = ['file', 'attachment', 'document'];
+          let directSuccess = false;
+          let directErrText = '';
+          for (const directField of directAttempts) {
+            const msgForm = new FormData();
+            msgForm.append('content', content || `Załącznik: ${baseFile.name}`);
+            msgForm.append('offerId', String(uploadIdentifier));
+            msgForm.append('dealId', String(dealId));
+            msgForm.append(directField, baseFile);
+            const directRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+              body: msgForm,
+            });
+            if (directRes.ok) {
+              directSuccess = true;
+              break;
+            }
+            directErrText = await directRes.text();
+          }
+          if (!directSuccess) {
+            Alert.alert('Błąd uploadu', directErrText || lastUploadError || 'Błąd serwera przy wysyłce załącznika.');
             return;
           }
-
           setPendingAttachment(null);
           fetchMessages();
           return;
@@ -405,77 +666,56 @@ export default function DealroomChatScreen() {
 
         const payloadAttachment = {
           url: uploadedPath,
-          name: attachmentForSend.name,
-          mimeType: attachmentForSend.mimeType || 'application/octet-stream',
-          size: attachmentForSend.size,
+          name: baseFile.name,
+          mimeType: baseFile.type,
+          size: Number(attachmentForSend.size || 0),
         };
-        const payloadContent = content?.trim()
-          ? `${content.trim()}\n${ATTACHMENT_PREFIX}${JSON.stringify(payloadAttachment)}`
-          : `${ATTACHMENT_PREFIX}${JSON.stringify(payloadAttachment)}`;
-
-        res = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
+        const payloadContent =
+          content
+            ? `${content}\n${ATTACHMENT_PREFIX_LEGACY}${JSON.stringify(payloadAttachment)}`
+            : `${ATTACHMENT_PREFIX_LEGACY}${JSON.stringify(payloadAttachment)}`;
+        const sendRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: payloadContent }),
         });
+        if (!sendRes.ok) {
+          const errBody = await sendRes.text();
+          Alert.alert('Błąd wysyłki', errBody || 'Nie udało się wysłać wiadomości z załącznikiem.');
+          return;
+        }
+        setPendingAttachment(null);
       } else {
-        res = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
+        const textRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),
         });
-      }
-
-      if (!res.ok) {
-        const errorBody = await res.text();
-        const fallbackMsg = attachmentForSend
-          ? 'Nie udało się wysłać załącznika. Plik został zachowany, możesz spróbować ponownie.'
-          : 'Nie udało się wysłać wiadomości.';
-        Alert.alert('Błąd wysyłki', errorBody || fallbackMsg);
-        if (!attachmentForSend) {
+        if (!textRes.ok) {
+          const errBody = await textRes.text();
+          Alert.alert('Błąd wysyłki', errBody || 'Nie udało się wysłać wiadomości.');
           setMessage(content);
+          return;
         }
-        return;
-      }
-
-      if (attachmentForSend) {
-        setPendingAttachment(null);
       }
       fetchMessages();
     } catch (e) {
-      console.log('Błąd wysyłania:', e);
-      Alert.alert(
-        'Błąd połączenia',
-        attachmentForSend
-          ? 'Nie udało się wysłać załącznika. Plik został zachowany, spróbuj ponownie.'
-          : 'Nie udało się wysłać wiadomości.'
-      );
-      if (!attachmentForSend) {
-        setMessage(content);
-      }
+      Alert.alert('Błąd', attachmentForSend ? 'Nie udało się wysłać załącznika.' : 'Nie udało się wysłać wiadomości.');
+      if (!attachmentForSend) setMessage(content);
+    } finally {
+      setIsUploadingAttachment(false);
     }
   };
 
   const handlePickAttachment = async () => {
+    if (isUploadingAttachment) return;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        copyToCacheDirectory: true,
-        multiple: false,
-        type: '*/*',
-      });
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, type: '*/*' });
       if (result.canceled || !result.assets?.[0]) return;
 
       const file = result.assets[0];
-      const fileSize = Number(file.size || 0);
-      if (!fileSize) {
-        Alert.alert('Brak rozmiaru pliku', 'Nie udało się odczytać rozmiaru załącznika.');
-        return;
-      }
-      if (roomAttachmentBytes + fileSize > DEALROOM_ATTACHMENT_LIMIT_BYTES) {
-        Alert.alert(
-          'Przekroczony limit dealroomu',
-          `Ten dealroom ma limit 50 MB załączników. Wykorzystane: ${formatBytes(roomAttachmentBytes)}.`
-        );
+      if (roomAttachmentBytes + (file.size || 0) > DEALROOM_ATTACHMENT_LIMIT_BYTES) {
+        Alert.alert('Przekroczony limit', 'Ten dealroom osiągnął limit rozmiaru plików (50 MB).');
         return;
       }
 
@@ -483,19 +723,91 @@ export default function DealroomChatScreen() {
         uri: file.uri,
         name: file.name || `zalacznik_${Date.now()}`,
         mimeType: file.mimeType || 'application/octet-stream',
-        size: fileSize,
+        size: Number(file.size || 0),
       });
       Haptics.selectionAsync();
-      Alert.alert('Załącznik dodany', 'Plik został dodany do wiadomości. Kliknij wyślij.');
     } catch (e) {
       Alert.alert('Błąd', 'Nie udało się wybrać pliku.');
     }
   };
 
+  // --- Derived State (Negotiations) ---
+  const negotiationEvents = useMemo(() => {
+    return messages
+      .map((msg) => ({ msg, event: normalizeDealEvent(parseDealEvent(msg)) }))
+      .filter((e) => e.event?.entity)
+      .sort((a, b) => {
+        const ta = new Date(a.msg?.createdAt || 0).getTime();
+        const tb = new Date(b.msg?.createdAt || 0).getTime();
+        return ta - tb;
+      });
+  }, [messages]);
+  const bidEvents = useMemo(() => negotiationEvents.filter(e => e.event?.entity === 'BID'), [negotiationEvents]);
+  const appointmentEvents = useMemo(() => negotiationEvents.filter(e => e.event?.entity === 'APPOINTMENT'), [negotiationEvents]);
+
+  const latestBid = bidEvents[bidEvents.length - 1] || null;
+  const latestAppointment = appointmentEvents[appointmentEvents.length - 1] || null;
+
+  const latestActionableBidFromOther = useMemo(
+    () =>
+      [...bidEvents]
+        .reverse()
+        .find(
+          (e) =>
+            e.msg?.senderId !== user?.id &&
+            ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
+            Number(e.event?.amount || 0) > 0
+        ) || null,
+    [bidEvents, user?.id]
+  );
+
+  const latestActionableAppointmentFromOther = useMemo(
+    () =>
+      [...appointmentEvents]
+        .reverse()
+        .find(
+          (e) =>
+            e.msg?.senderId !== user?.id &&
+            ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
+            !!e.event?.proposedDate
+        ) || null,
+    [appointmentEvents, user?.id]
+  );
+
+  const acceptedAppointment = useMemo(
+    () =>
+      [...appointmentEvents]
+        .reverse()
+        .find((e) => String(e.event?.action || '').toUpperCase() === 'ACCEPTED' && !!e.event?.proposedDate) || null,
+    [appointmentEvents]
+  );
+
+  const isAppointmentProposalLocked = useMemo(() => {
+    const rawDate = acceptedAppointment?.event?.proposedDate;
+    if (!rawDate) return false;
+    const ts = new Date(rawDate).getTime();
+    return Number.isFinite(ts) && ts > Date.now();
+  }, [acceptedAppointment]);
+
+  const acceptedPrice = useMemo(
+    () =>
+      [...bidEvents]
+        .reverse()
+        .find((e) => String(e.event?.action || '').toUpperCase() === 'ACCEPTED' && Number(e.event?.amount || 0) > 0)
+        ?.event?.amount || 0,
+    [bidEvents]
+  );
+
+  const latestNegotiatedPrice = useMemo(
+    () =>
+      [...bidEvents].reverse().find((e) => Number(e.event?.amount || 0) > 0)?.event?.amount || 0,
+    [bidEvents]
+  );
+
   const handleAcceptAppointment = async (event: any) => {
     if (!token || !dealId || !event?.appointmentId) return;
     try {
-      await fetch(`https://estateos.pl/api/mobile/v1/deals/${dealId}/actions`, {
+      const res = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/actions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -508,22 +820,31 @@ export default function DealroomChatScreen() {
           message: 'Akceptuję termin',
         }),
       });
+      if (!res.ok) {
+        const body = await res.text();
+        Alert.alert('Błąd', body || 'Nie udało się zaakceptować terminu.');
+        return;
+      }
       fetchMessages();
     } catch {
-      // noop
+      Alert.alert('Błąd', 'Nie udało się zaakceptować terminu.');
     }
   };
 
+  // ==========================================
+  // RENDER
+  // ==========================================
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <Pressable
           onPress={() => { Haptics.selectionAsync(); navigation.goBack(); }}
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
-          android_ripple={{ color: 'rgba(255,255,255,0.12)', borderless: true }}
         >
-          <ChevronLeft size={28} color="#ffffff" />
+          <ChevronLeft size={28} color={COLORS.textBase} />
         </Pressable>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerSubtitle}>DEALROOM #{dealId}</Text>
@@ -532,273 +853,209 @@ export default function DealroomChatScreen() {
       </View>
 
       {loading ? (
-        <View style={styles.loaderCenter}><ActivityIndicator color="#10b981" /></View>
+        <View style={styles.loaderCenter}><ActivityIndicator color={COLORS.primary} /></View>
       ) : (
-        <ScrollView 
-          ref={scrollViewRef}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-          contentContainerStyle={styles.chatArea} 
-          showsVerticalScrollIndicator={false}
-        >
-          {messages.map((msg, index) => {
-            const isMe = msg.senderId === user?.id;
-            const dealEvent = parseDealEvent(msg.content);
+        <>
+          {/* Negotiation Sticky Panel */}
+          <View style={styles.negotiationPanel}>
+            
+            {/* Terminy */}
+            <Pressable style={styles.negotiationRow} onPress={() => { Haptics.selectionAsync(); setAppointmentSectionExpanded(!appointmentSectionExpanded); }}>
+              <View style={styles.negotiationIconWrap}><CalendarClock size={16} color={COLORS.primary} /></View>
+              <View style={styles.negotiationTextWrap}>
+                <Text style={styles.negotiationTitle}>TERMIN PREZENTACJI</Text>
+                <Text style={styles.negotiationState}>
+                  {acceptedAppointment
+                    ? `Zaakceptowany: ${new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL')}`
+                    : latestAppointment
+                      ? 'W trakcie ustaleń'
+                      : 'Brak ustaleń'}
+                </Text>
+              </View>
+              <Text style={styles.negotiationCaret}>{appointmentSectionExpanded ? '−' : '+'}</Text>
+            </Pressable>
+            
+            {appointmentSectionExpanded && (
+              <View style={styles.negotiationExpanded}>
+                <Text style={styles.negotiationExpandedText}>
+                  {latestAppointment?.event?.proposedDate
+                    ? `Proponowana data: ${new Date(latestAppointment.event.proposedDate).toLocaleString('pl-PL')}`
+                    : 'Brak aktywnej daty.'}
+                </Text>
+                {latestActionableAppointmentFromOther && !isAppointmentProposalLocked && (
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      style={[styles.actionBtn, styles.actionPrimary]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        void handleAcceptAppointment(latestActionableAppointmentFromOther.event);
+                      }}
+                    >
+                      <Text style={styles.actionPrimaryTxt}>Akceptuj</Text>
+                    </Pressable>
+                    <Pressable 
+                      style={[styles.actionBtn, styles.actionSecondary]} 
+                      onPress={() => { setSelectedAppointmentEvent(latestActionableAppointmentFromOther.event); setSelectedAppointmentHistory(appointmentEvents.map(e => e.event)); }}
+                    >
+                      <Text style={styles.actionSecondaryTxt}>Zmień</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
 
-            if (dealEvent?.entity === 'BID') {
-              const isAccepted = dealEvent.action === 'ACCEPTED';
-              const isNegotiable = dealEvent.action === 'PROPOSED' || dealEvent.action === 'COUNTERED';
-              const bidHistory = messages
-                .map((m) => parseDealEvent(m.content))
-                .filter((e) => e?.entity === 'BID');
+            <View style={styles.negotiationDivider} />
+
+            {/* Ceny */}
+            <Pressable style={styles.negotiationRow} onPress={() => { Haptics.selectionAsync(); setPriceSectionExpanded(!priceSectionExpanded); }}>
+              <View style={styles.negotiationIconWrap}><HandCoins size={16} color={COLORS.primary} /></View>
+              <View style={styles.negotiationTextWrap}>
+                <Text style={styles.negotiationTitle}>USTALENIA CENOWE</Text>
+                <Text style={styles.negotiationState}>
+                  {acceptedPrice > 0
+                    ? `Cena zaakceptowana: ${acceptedPrice.toLocaleString('pl-PL')} PLN`
+                    : latestBid
+                      ? 'Negocjacje w toku'
+                      : 'Brak ofert'}
+                </Text>
+              </View>
+              <Text style={styles.negotiationCaret}>{priceSectionExpanded ? '−' : '+'}</Text>
+            </Pressable>
+
+            {priceSectionExpanded && (
+              <View style={styles.negotiationExpanded}>
+                <Text style={styles.negotiationExpandedText}>
+                  Propozycja: <Text style={{fontWeight: '700', color: COLORS.textBase}}>{latestNegotiatedPrice > 0 ? `${latestNegotiatedPrice.toLocaleString('pl-PL')} PLN` : 'brak'}</Text>
+                </Text>
+                {latestActionableBidFromOther && acceptedPrice === 0 && (
+                  <View style={styles.actionRow}>
+                    <Pressable 
+                      style={[styles.actionBtn, styles.actionPrimary]} 
+                      onPress={() => { setSelectedBidEvent({ ...latestActionableBidFromOther.event, quickAccept: true }); setSelectedBidHistory(bidEvents.map(e => e.event)); }}
+                    >
+                      <Text style={styles.actionPrimaryTxt}>Zgoda</Text>
+                    </Pressable>
+                    <Pressable 
+                      style={[styles.actionBtn, styles.actionSecondary]} 
+                      onPress={() => { setSelectedBidEvent(latestActionableBidFromOther.event); setSelectedBidHistory(bidEvents.map(e => e.event)); }}
+                    >
+                      <Text style={styles.actionSecondaryTxt}>Kontroferta</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          {/* Chat Messages */}
+          <ScrollView
+            ref={scrollViewRef}
+            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+            contentContainerStyle={styles.chatArea}
+            showsVerticalScrollIndicator={false}
+          >
+            {messages.map((msg, index) => {
+              const isMe = msg.senderId === user?.id;
+              const dealEvent = parseDealEvent(msg);
+              if (dealEvent?.entity === 'BID' || dealEvent?.entity === 'APPOINTMENT') return null;
+              
+              const attachment = resolveAttachmentFromMessage(msg);
+              const visibleText = stripChatAttachmentDecorations(msg.content, attachment);
+              const kind = attachment ? getAttachmentKind(attachment) : null;
+
               return (
-                <Animated.View key={msg.id} entering={FadeInDown.delay(index * 15).springify()} style={styles.eventCard}>
-                  <Text style={styles.eventLabel}>NEGOCJACJA CENY</Text>
-                  <Text style={styles.eventTitle}>
-                    {dealEvent.action === 'ACCEPTED'
-                      ? 'Oferta zaakceptowana'
-                      : dealEvent.action === 'REJECTED'
-                        ? 'Oferta odrzucona'
-                        : dealEvent.action === 'COUNTERED'
-                          ? 'Kontroferta'
-                          : 'Nowa propozycja'}
-                  </Text>
-                  <Text style={styles.eventValue}>
-                    {Number(dealEvent.amount || 0).toLocaleString('pl-PL')} PLN
-                  </Text>
-                  {isAccepted && (
-                    <View style={styles.acceptedBadge}>
-                      <Text style={styles.acceptedBadgeIcon}>🔒</Text>
-                      <Text style={styles.acceptedBadgeText}>ZAAKCEPTOWANA CENA</Text>
-                    </View>
-                  )}
-                  {!!dealEvent.note && <Text style={styles.eventNote}>{dealEvent.note}</Text>}
-                  {isNegotiable && isMe && (
-                    <Text style={styles.pendingOwnerText}>Oczekuję na odpowiedź drugiej strony</Text>
-                  )}
-                  {isNegotiable && !isMe && (
-                    <View style={styles.eventActionsRow}>
+                <Animated.View key={msg.id} entering={FadeInDown.delay(index * 15).springify()} style={[styles.msgWrapper, isMe ? styles.msgMe : styles.msgThem]}>
+                  <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleThem]}>
+                    {visibleText ? <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{visibleText}</Text> : null}
+                    
+                    {attachment && (
                       <Pressable
-                        style={[styles.eventActionBtn, styles.eventPrimary]}
-                        onPress={() => {
-                          setSelectedBidEvent({ ...dealEvent, quickAccept: true });
-                          setSelectedBidHistory(bidHistory);
-                        }}
-                      >
-                        <Text style={[styles.eventActionTxt, styles.eventPrimaryTxt]}>Akceptuj cenę</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.eventActionBtn, styles.eventSecondary]}
-                        onPress={() => {
-                          setSelectedBidEvent(dealEvent);
-                          setSelectedBidHistory(bidHistory);
-                        }}
-                      >
-                        <Text style={[styles.eventActionTxt, styles.eventSecondaryTxt]}>Zaproponuj swoją cenę</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </Animated.View>
-              );
-            }
-
-            if (dealEvent?.entity === 'APPOINTMENT') {
-              const dateTxt = dealEvent.proposedDate ? new Date(dealEvent.proposedDate).toLocaleString('pl-PL') : '';
-              const isAccepted = dealEvent.action === 'ACCEPTED';
-              const isNegotiable = dealEvent.action === 'PROPOSED' || dealEvent.action === 'COUNTERED';
-              const appointmentHistory = messages
-                .map((m) => parseDealEvent(m.content))
-                .filter((e) => e?.entity === 'APPOINTMENT');
-              return (
-                <Animated.View key={msg.id} entering={FadeInDown.delay(index * 15).springify()} style={styles.eventCard}>
-                  <Text style={styles.eventLabel}>NEGOCJACJA TERMINU</Text>
-                  <Text style={styles.eventTitle}>
-                    {dealEvent.action === 'ACCEPTED'
-                      ? 'Termin zaakceptowany'
-                      : dealEvent.action === 'DECLINED'
-                        ? 'Termin odrzucony'
-                        : dealEvent.action === 'COUNTERED'
-                          ? 'Kontroferta terminu'
-                          : 'Nowa propozycja terminu'}
-                  </Text>
-                  <Text style={styles.eventValueSmall}>{dateTxt}</Text>
-                  {isAccepted && (
-                    <View style={styles.acceptedBadge}>
-                      <Text style={styles.acceptedBadgeIcon}>🔒</Text>
-                      <Text style={styles.acceptedBadgeText}>ZAAKCEPTOWANY TERMIN</Text>
-                    </View>
-                  )}
-                  {!!dealEvent.note && <Text style={styles.eventNote}>{dealEvent.note}</Text>}
-                  {isNegotiable && isMe && (
-                    <Text style={styles.pendingOwnerText}>Oczekuję na odpowiedź właściciela</Text>
-                  )}
-                  {isNegotiable && !isMe && !dealEvent.legacy && (
-                    <View style={styles.eventActionsRow}>
-                      <Pressable style={[styles.eventActionBtn, styles.eventPrimary]} onPress={() => handleAcceptAppointment(dealEvent)}>
-                        <Text style={[styles.eventActionTxt, styles.eventPrimaryTxt]}>Akceptuj termin</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.eventActionBtn, styles.eventSecondary]}
-                        onPress={() => {
-                          setSelectedAppointmentEvent(dealEvent);
-                          setSelectedAppointmentHistory(appointmentHistory);
-                        }}
-                      >
-                        <Text style={[styles.eventActionTxt, styles.eventSecondaryTxt]}>Zaproponuj swój termin</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </Animated.View>
-              );
-            }
-
-            return (
-              <Animated.View key={msg.id} entering={FadeInDown.delay(index * 15).springify()} style={[styles.messageWrapper, isMe ? styles.messageWrapperMe : styles.messageWrapperThem]}>
-                <View style={[styles.messageBubble, isMe ? styles.messageBubbleMe : styles.messageBubbleThem]}>
-                  {(() => {
-                    const dealAttachment = parseDealAttachment(msg.content);
-                    const visibleText = dealAttachment
-                      ? String(msg.content || '').split(ATTACHMENT_PREFIX)[0].trim()
-                      : msg.content;
-                    return visibleText ? <Text style={styles.messageText}>{visibleText}</Text> : null;
-                  })()}
-                  {(() => {
-                    const attachment = resolveAttachmentFromMessage(msg);
-                    if (!attachment) return null;
-                    const kind = getAttachmentKind(attachment);
-                    return (
-                      <Pressable
-                        style={[
-                          styles.attachmentBubble,
-                          kind === 'pdf' && styles.attachmentBubblePdf,
-                          kind === 'audio' && styles.attachmentBubbleAudio,
-                        ]}
+                        style={styles.attachmentBox}
                         onPress={async () => {
                           if (kind === 'audio') return;
-                          const canOpen = await Linking.canOpenURL(attachment.url);
-                          if (!canOpen) {
-                            Alert.alert('Błąd', 'Nie można otworzyć załącznika.');
-                            return;
-                          }
-                          await Linking.openURL(attachment.url);
+                          await Linking.openURL(attachment.url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć pliku.'));
                         }}
                       >
-                        {kind === 'pdf' ? (
-                          <View style={styles.pdfThumb}>
-                            <FileText size={18} color="#fff" />
-                            <Text style={styles.pdfThumbLabel}>PDF</Text>
-                          </View>
-                        ) : kind === 'audio' ? (
-                          <View style={styles.audioThumb}>
-                            <Paperclip size={14} color="#fff" />
-                          </View>
-                        ) : (
-                          <Paperclip size={14} color="#fff" />
-                        )}
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.attachmentName} numberOfLines={1}>
-                            {kind === 'pdf' ? `PDF: ${attachment.name}` : attachment.name}
-                          </Text>
-                          <Text style={styles.attachmentMeta}>
-                            {kind === 'audio' ? 'Audio' : kind === 'pdf' ? 'Dokument PDF' : 'Załącznik'} • {formatBytes(attachment.size)}
-                          </Text>
+                        <View style={[styles.attachmentIconBox, kind === 'pdf' ? styles.pdfBg : styles.fileBg]}>
+                          {kind === 'pdf' ? <FileText size={16} color="#FFF" /> : kind === 'audio' ? <Paperclip size={16} color="#FFF" /> : <Paperclip size={16} color="#FFF" />}
+                        </View>
+                        <View style={styles.attachmentInfo}>
+                          <Text style={styles.attachmentName} numberOfLines={1}>{attachment.name}</Text>
+                          <Text style={styles.attachmentMeta}>{formatBytes(attachment.size)}</Text>
                         </View>
                         {kind === 'audio' && (
-                          <Pressable
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleToggleAudioPreview(attachment.url);
-                            }}
-                            style={styles.audioPreviewBtn}
-                          >
+                          <Pressable onPress={(e) => { e.stopPropagation(); handleToggleAudioPreview(attachment.url); }} style={styles.audioBtn}>
                             {playingAudioUrl === attachment.url ? <Pause size={14} color="#fff" /> : <Play size={14} color="#fff" />}
                           </Pressable>
                         )}
-                        {kind === 'pdf' && (
-                          <Pressable
-                            onPress={async (e) => {
-                              e.stopPropagation();
-                              const canOpen = await Linking.canOpenURL(attachment.url);
-                              if (!canOpen) {
-                                Alert.alert('Błąd', 'Nie można otworzyć dokumentu PDF.');
-                                return;
-                              }
-                              await Linking.openURL(attachment.url);
-                            }}
-                            style={styles.pdfOpenBtn}
-                          >
-                            <Text style={styles.pdfOpenBtnTxt}>Podgląd</Text>
-                          </Pressable>
-                        )}
                       </Pressable>
-                    );
-                  })()}
-                  {(() => {
-                    const attachment = resolveAttachmentFromMessage(msg);
-                    if (!attachment) return null;
-                    return (
-                      <Text style={styles.attachmentFileNameBottom} numberOfLines={1}>
-                        {attachment.name}
-                      </Text>
-                    );
-                  })()}
-                </View>
-                <View style={[styles.messageFooter, isMe ? styles.messageFooterMe : styles.messageFooterThem]}>
-                  <Text style={styles.timeText}>{new Date(msg.createdAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</Text>
-                  {isMe && (
-                    <View style={styles.readReceipt}>
-                      {msg.isRead ? <CheckCheck size={15} color="#10b981" /> : <Check size={15} color="#86868b" />}
-                    </View>
-                  )}
+                    )}
+                  </View>
+                  <View style={styles.msgFooter}>
+                    <Text style={styles.msgTime}>{new Date(msg.createdAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</Text>
+                    {isMe && <View style={{marginLeft: 4}}>{msg.isRead ? <CheckCheck size={14} color={COLORS.primary} /> : <Check size={14} color={COLORS.textMuted} />}</View>}
+                  </View>
+                </Animated.View>
+              );
+            })}
+
+            {isPartnerTyping && (
+              <Animated.View entering={FadeIn} style={[styles.msgWrapper, styles.msgThem]}>
+                <View style={[styles.msgBubble, styles.msgBubbleThem, styles.typingBubble]}>
+                  <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
                 </View>
               </Animated.View>
-            );
-          })}
-          
-          {isPartnerTyping && (
-            <Animated.View entering={FadeIn} style={styles.typingContainer}>
-              <View style={styles.typingBubble}>
-                <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
-              </View>
-            </Animated.View>
-          )}
-        </ScrollView>
+            )}
+          </ScrollView>
+        </>
       )}
 
+      {/* Input Area */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-        <BlurView intensity={90} tint="dark" style={styles.inputContainer}>
-          <Pressable
-            style={({ pressed }) => [styles.attachButton, pressed && styles.attachButtonPressed]}
-            onPress={handlePickAttachment}
-          >
-            <Paperclip
-              size={22}
-              color={pendingAttachment ? '#10b981' : '#86868b'}
-            />
-          </Pressable>
+        <BlurView intensity={80} tint="dark" style={styles.inputArea}>
+          
           {pendingAttachment && (
-            <View style={styles.pendingAttachmentPill}>
-              <Text style={styles.pendingAttachmentText} numberOfLines={1}>
-                {pendingAttachment.name} ({formatBytes(pendingAttachment.size)})
-              </Text>
-              <Pressable onPress={() => setPendingAttachment(null)} hitSlop={10}>
-                <Text style={styles.pendingAttachmentRemove}>x</Text>
-              </Pressable>
-            </View>
+            <Animated.View style={[styles.pendingPill, isUploadingAttachment && uploadingPillAnim]}>
+              <View style={styles.pendingInfo}>
+                <Paperclip size={14} color={COLORS.primary} style={{marginRight: 6}} />
+                <Text style={styles.pendingText} numberOfLines={1}>{pendingAttachment.name}</Text>
+              </View>
+              {isUploadingAttachment ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <Pressable onPress={() => setPendingAttachment(null)} hitSlop={15} style={styles.pendingClose}>
+                  <Text style={styles.pendingCloseTxt}>×</Text>
+                </Pressable>
+              )}
+            </Animated.View>
           )}
-          <TextInput
-            style={styles.textInput}
-            placeholder="Napisz wiadomość..."
-            placeholderTextColor="#666666"
-            value={message}
-            onChangeText={handleTyping}
-            multiline
-          />
-          <Pressable style={[styles.sendButton, (message.trim() || pendingAttachment) && styles.sendButtonActive]} onPress={handleSend}>
-            <Send size={18} color={(message.trim() || pendingAttachment) ? '#fff' : '#444'} />
-          </Pressable>
+
+          <View style={styles.inputRow}>
+            <Pressable style={styles.attachBtn} onPress={handlePickAttachment} disabled={isUploadingAttachment}>
+              <Paperclip size={22} color={pendingAttachment ? COLORS.primary : COLORS.textMuted} />
+            </Pressable>
+            
+            <TextInput
+              style={styles.textInput}
+              placeholder="Napisz wiadomość..."
+              placeholderTextColor={COLORS.textMuted}
+              value={message}
+              onChangeText={handleTyping}
+              multiline
+            />
+            
+            <Pressable 
+              style={[styles.sendBtn, (message.trim() || pendingAttachment) && styles.sendBtnActive]} 
+              onPress={handleSend} 
+              disabled={isUploadingAttachment}
+            >
+              {isUploadingAttachment ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color={(message.trim() || pendingAttachment) ? '#fff' : 'rgba(255,255,255,0.4)'} />}
+            </Pressable>
+          </View>
         </BlurView>
       </KeyboardAvoidingView>
 
+      {/* Modals */}
       <BidActionModal
         visible={!!selectedBidEvent}
         mode="respond"
@@ -809,7 +1066,7 @@ export default function DealroomChatScreen() {
         eventAction={selectedBidEvent?.action || null}
         quickAccept={Boolean(selectedBidEvent?.quickAccept)}
         history={selectedBidHistory}
-        title="Odpowiedz na ofertę ceny"
+        title="Ustalenia cenowe"
         onClose={() => setSelectedBidEvent(null)}
         onDone={fetchMessages}
       />
@@ -823,7 +1080,7 @@ export default function DealroomChatScreen() {
         eventAction={selectedAppointmentEvent?.action || null}
         proposedDate={selectedAppointmentEvent?.proposedDate || null}
         history={selectedAppointmentHistory}
-        title="Odpowiedz na termin prezentacji"
+        title="Termin prezentacji"
         onClose={() => setSelectedAppointmentEvent(null)}
         onDone={fetchMessages}
       />
@@ -831,160 +1088,108 @@ export default function DealroomChatScreen() {
   );
 }
 
+// ==========================================
+// STYLES
+// ==========================================
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -4,
-    zIndex: 20,
+  container: { flex: 1, backgroundColor: COLORS.background },
+  
+  // Header
+  header: { 
+    flexDirection: 'row', alignItems: 'center', 
+    paddingTop: Platform.OS === 'ios' ? 60 : 40, 
+    paddingHorizontal: 16, paddingBottom: 16, 
+    borderBottomWidth: 0.5, borderBottomColor: COLORS.border 
   },
-  backButtonPressed: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  backButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginLeft: -8 },
+  backButtonPressed: { backgroundColor: 'rgba(255,255,255,0.1)' },
   headerTextContainer: { flex: 1, marginLeft: 8 },
-  headerSubtitle: { color: '#10b981', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  headerTitle: { color: '#fff', fontSize: 17, fontWeight: '600' },
-  loaderCenter: { flex: 1, justifyContent: 'center' },
-  chatArea: { padding: 16, paddingBottom: 30 },
-  messageWrapper: { marginBottom: 16, maxWidth: '85%' },
-  messageWrapperMe: { alignSelf: 'flex-end' },
-  messageWrapperThem: { alignSelf: 'flex-start' },
-  messageBubble: { padding: 12, borderRadius: 18 },
-  messageBubbleMe: { backgroundColor: '#10b981', borderBottomRightRadius: 2 },
-  messageBubbleThem: { backgroundColor: '#1C1C1E', borderBottomLeftRadius: 2 },
-  messageText: { color: '#fff', fontSize: 16, lineHeight: 21 },
-  attachmentBubble: {
-    marginTop: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  headerSubtitle: { color: COLORS.primary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
+  headerTitle: { color: COLORS.textBase, fontSize: 18, fontWeight: '600', letterSpacing: 0.3 },
+  loaderCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  
+  // Sticky Panel (Premium Apple Look)
+  negotiationPanel: {
+    marginHorizontal: 16, marginTop: 16, marginBottom: 4,
+    borderRadius: 16, backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.surfaceElevated,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
   },
-  attachmentBubblePdf: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+  negotiationRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+  negotiationDivider: { height: 1, backgroundColor: COLORS.surfaceElevated, marginHorizontal: 14 },
+  negotiationIconWrap: { 
+    width: 32, height: 32, borderRadius: 10, 
+    backgroundColor: COLORS.primaryDimmed, 
+    alignItems: 'center', justifyContent: 'center', marginRight: 12 
   },
-  attachmentBubbleAudio: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
+  negotiationTextWrap: { flex: 1 },
+  negotiationTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  negotiationState: { color: COLORS.textBase, fontSize: 14, fontWeight: '600', marginTop: 2 },
+  negotiationCaret: { color: COLORS.textMuted, fontSize: 22, fontWeight: '300', paddingHorizontal: 8 },
+  negotiationExpanded: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 },
+  negotiationExpandedText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  
+  // Buttons in Panel
+  actionRow: { flexDirection: 'row', marginTop: 12, gap: 8 },
+  actionBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  actionPrimary: { backgroundColor: COLORS.primary },
+  actionSecondary: { backgroundColor: COLORS.surfaceElevated },
+  actionPrimaryTxt: { color: '#000', fontWeight: '700', fontSize: 13 },
+  actionSecondaryTxt: { color: COLORS.textBase, fontWeight: '600', fontSize: 13 },
+
+  // Chat Area
+  chatArea: { padding: 16, paddingBottom: 40 },
+  msgWrapper: { marginBottom: 16, maxWidth: '82%' },
+  msgMe: { alignSelf: 'flex-end' },
+  msgThem: { alignSelf: 'flex-start' },
+  msgBubble: { padding: 12, borderRadius: 20 },
+  msgBubbleMe: { backgroundColor: COLORS.primary, borderBottomRightRadius: 4 },
+  msgBubbleThem: { backgroundColor: COLORS.surfaceElevated, borderBottomLeftRadius: 4 },
+  msgText: { color: COLORS.textBase, fontSize: 16, lineHeight: 22 },
+  msgTextMe: { color: '#000000', fontWeight: '500' }, // Ciemny tekst na zielonym dymku dla wyższego kontrastu
+  msgFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 4, alignSelf: 'flex-end' },
+  msgTime: { color: COLORS.textMuted, fontSize: 11, fontWeight: '500' },
+  
+  // Attachments in Chat
+  attachmentBox: { 
+    marginTop: 8, borderRadius: 12, padding: 8, 
+    backgroundColor: 'rgba(0,0,0,0.15)', // Uniwersalny półprzezroczysty dla obu dymków
+    flexDirection: 'row', alignItems: 'center', gap: 10 
   },
-  pdfThumb: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+  attachmentIconBox: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  pdfBg: { backgroundColor: COLORS.danger },
+  fileBg: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  attachmentInfo: { flex: 1 },
+  attachmentName: { color: COLORS.textBase, fontSize: 13, fontWeight: '600' },
+  attachmentMeta: { color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 },
+  audioBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  
+  // Typing Indicator
+  typingBubble: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+  typingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.textMuted, marginHorizontal: 2 },
+  
+  // Input Area
+  inputArea: { paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 34 : 16, paddingHorizontal: 12 },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  attachBtn: { padding: 10, paddingBottom: 8 },
+  textInput: { 
+    flex: 1, minHeight: 40, maxHeight: 120, 
+    backgroundColor: COLORS.surfaceElevated, 
+    borderRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, 
+    color: COLORS.textBase, fontSize: 16 
   },
-  pdfThumbLabel: {
-    position: 'absolute',
-    bottom: 3,
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
+  sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
+  sendBtnActive: { backgroundColor: COLORS.primary },
+  
+  // Pending Attachment Pill
+  pendingPill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceElevated, borderRadius: 12,
+    padding: 10, marginBottom: 12, marginHorizontal: 8,
+    borderWidth: 1, borderColor: COLORS.border
   },
-  audioThumb: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  attachmentName: { color: '#fff', fontSize: 12, fontWeight: '700', flex: 1 },
-  attachmentSize: { color: '#d1d5db', fontSize: 11, fontWeight: '600' },
-  attachmentMeta: { color: '#d1d5db', fontSize: 10, fontWeight: '600', marginTop: 2 },
-  attachmentFileNameBottom: {
-    marginTop: 6,
-    color: 'rgba(255,255,255,0.92)',
-    fontSize: 11,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
-  },
-  audioPreviewBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pdfOpenBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  pdfOpenBtnTxt: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  messageFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  messageFooterMe: { justifyContent: 'flex-end' },
-  messageFooterThem: { justifyContent: 'flex-start' },
-  timeText: { color: '#666', fontSize: 10, fontWeight: '600' },
-  readReceipt: { marginLeft: 4 },
-  typingContainer: { alignSelf: 'flex-start', marginBottom: 16 },
-  typingBubble: { backgroundColor: '#1C1C1E', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 18, borderBottomLeftRadius: 2, flexDirection: 'row', alignItems: 'center' },
-  typingDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#86868b', marginHorizontal: 2 },
-  inputContainer: { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 35 : 15, flexWrap: 'wrap' },
-  attachButton: { padding: 10 },
-  attachButtonPressed: { opacity: 0.7 },
-  pendingAttachmentPill: {
-    width: '100%',
-    marginBottom: 8,
-    marginHorizontal: 8,
-    borderRadius: 10,
-    backgroundColor: 'rgba(16,185,129,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.45)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pendingAttachmentText: { color: '#d1fae5', fontSize: 12, fontWeight: '700', flex: 1, marginRight: 8 },
-  pendingAttachmentRemove: { color: '#10b981', fontWeight: '900', fontSize: 15, lineHeight: 16 },
-  textInput: { flex: 1, minHeight: 40, maxHeight: 120, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 22, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 10, color: '#fff', fontSize: 16, marginHorizontal: 8 },
-  sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center' },
-  sendButtonActive: { backgroundColor: '#10b981' },
-  eventCard: { backgroundColor: '#0f0f0f', borderWidth: 1, borderColor: 'rgba(16,185,129,0.35)', borderRadius: 18, padding: 14, marginBottom: 14 },
-  eventLabel: { color: '#10b981', fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
-  eventTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 4 },
-  eventValue: { color: '#fff', fontSize: 22, fontWeight: '800', marginTop: 4 },
-  eventValueSmall: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 4 },
-  eventNote: { color: '#bfbfbf', marginTop: 6, fontSize: 13, lineHeight: 18 },
-  eventActionsRow: { flexDirection: 'row', marginTop: 10 },
-  eventActionBtn: { borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14 },
-  eventPrimary: { backgroundColor: '#10b981' },
-  eventSecondary: { backgroundColor: '#1f2937', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', marginLeft: 8 },
-  eventActionTxt: { fontWeight: '800', textTransform: 'uppercase', fontSize: 12 },
-  eventPrimaryTxt: { color: '#000' },
-  eventSecondaryTxt: { color: '#d1d5db' },
-  pendingOwnerText: { marginTop: 8, color: '#facc15', fontWeight: '700', fontSize: 12 },
-  acceptedBadge: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.55)',
-    backgroundColor: 'rgba(16,185,129,0.14)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  acceptedBadgeIcon: { fontSize: 12 },
-  acceptedBadgeText: { color: '#10b981', fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
+  pendingInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
+  pendingText: { color: COLORS.textBase, fontSize: 13, fontWeight: '500' },
+  pendingClose: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  pendingCloseTxt: { color: COLORS.textBase, fontSize: 16, fontWeight: '600', lineHeight: 18 },
 });

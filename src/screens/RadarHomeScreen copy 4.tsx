@@ -17,7 +17,6 @@ import {
   KeyboardAvoidingView,
   TouchableOpacity,
   InteractionManager,
-  Dimensions,
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
 import MapViewCore, { Marker, Region } from 'react-native-maps';
@@ -278,27 +277,6 @@ function getStrictDistrictsForCity(cityLabel: string): string[] {
   return direct ? [...direct].sort((a, b) => a.localeCompare(b, 'pl')) : [];
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function approxKmPerPixel(region: Region, mapWidthPx: number, mapHeightPx: number) {
-  const latKmVisible = region.latitudeDelta * 111.32;
-  const lngKmVisible =
-    region.longitudeDelta *
-    111.32 *
-    Math.cos((region.latitude * Math.PI) / 180);
-  const kmPerPxLat = latKmVisible / Math.max(1, mapHeightPx);
-  const kmPerPxLng = lngKmVisible / Math.max(1, mapWidthPx);
-  return {
-    kmPerPxAvg: (kmPerPxLat + kmPerPxLng) / 2,
-  };
-}
-
-function formatRadiusLabel(km: number) {
-  return `${Math.round(km * 10) / 10} km`;
-}
-
 const clampScore = (value: number) => Math.max(0, Math.min(100, value));
 
 const numericOfferValue = (value: unknown) => {
@@ -505,11 +483,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     latitudeDelta: DEFAULT_REGION.latitudeDelta,
     longitudeDelta: DEFAULT_REGION.longitudeDelta,
   });
-  const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 });
-  const areaRegionRef = useRef<Region | null>(null);
-  const areaReticleScale = useRef(new Animated.Value(1)).current;
-  const areaReticleOpacity = useRef(new Animated.Value(0.92)).current;
-  const areaHaloOpacity = useRef(new Animated.Value(0.28)).current;
   const [areaSummary, setAreaSummary] = useState<string>('');
   const isTablet = width >= 768;
   const topBarTop = useMemo(
@@ -647,10 +620,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (typeof route?.params?.favoritesOnly === 'boolean') {
         setShowOnlyFavorites(route.params.favoritesOnly);
       }
-      if (route?.params?.favoritesScope === 'FAVORITES' || route?.params?.favoritesScope === 'MINE') {
-        setFavoritesMapScope(route.params.favoritesScope);
-      }
-    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope])
+    }, [route?.params?.favoritesOnly])
   );
 
   useEffect(() => {
@@ -1282,97 +1252,33 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     [offers, radarMapBounds]
   );
 
-  const handleMapRegionChange = (region: Region) => {
-    if (!showAreaPicker) return;
-    areaRegionRef.current = region;
-    if (!isMapMoving) {
-      setIsMapMoving(true);
-      Animated.parallel([
-        Animated.spring(areaReticleScale, {
-          toValue: 1.06,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.timing(areaReticleOpacity, {
-          toValue: 0.78,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-        Animated.timing(areaHaloOpacity, {
-          toValue: 0.12,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-    if (!mapLayout.width || !mapLayout.height) return;
-    const { kmPerPxAvg } = approxKmPerPixel(
-      region,
-      mapLayout.width,
-      mapLayout.height
-    );
-    const nextRadius = clamp(
-      (areaReticleDiameter / 2) * kmPerPxAvg,
-      0.3,
-      10
-    );
-    setAreaPickerDraft((prev) => ({
-      ...prev,
-      center: {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
-      radiusKm: Math.round(nextRadius * 10) / 10,
-      latitudeDelta: region.latitudeDelta,
-      longitudeDelta: region.longitudeDelta,
-    }));
-  };
-
   const handleMapRegionChangeComplete = (region: Region) => {
     if (!showAreaPicker) return;
-    areaRegionRef.current = region;
-    if (!mapLayout.width || !mapLayout.height) {
-      setIsMapMoving(false);
-      return;
-    }
-    const { kmPerPxAvg } = approxKmPerPixel(
-      region,
-      mapLayout.width,
-      mapLayout.height
+    const metersPerPixel = (region.latitudeDelta * 111_320) / Math.max(1, height);
+    const baseRadiusKm = ((BASE_AREA_RETICLE_DIAMETER / 2) * metersPerPixel) / 1000;
+    // Twardy limit obszaru kalibracji: maksymalnie 10 km.
+    const effectiveRadiusKm = Math.max(0.3, Math.min(10, baseRadiusKm));
+    const effectiveDiameterPx = Math.min(
+      BASE_AREA_RETICLE_DIAMETER,
+      (effectiveRadiusKm * 1000 * 2) / Math.max(0.0001, metersPerPixel)
     );
-    const nextRadius = clamp(
-      (areaReticleDiameter / 2) * kmPerPxAvg,
-      0.3,
-      10
-    );
+    const roundedRadius = Math.round(effectiveRadiusKm * 10) / 10;
+    setAreaReticleDiameter(Math.max(40, Math.round(effectiveDiameterPx)));
+    
     setAreaPickerDraft((prev) => ({
       ...prev,
-      center: {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
-      radiusKm: Math.round(nextRadius * 10) / 10,
+      center: { latitude: region.latitude, longitude: region.longitude },
+      radiusKm: roundedRadius,
       latitudeDelta: region.latitudeDelta,
       longitudeDelta: region.longitudeDelta,
     }));
-    setIsMapMoving(false);
-    Animated.parallel([
-      Animated.spring(areaReticleScale, {
-        toValue: 1,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.timing(areaReticleOpacity, {
-        toValue: 0.95,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(areaHaloOpacity, {
-        toValue: 0.26,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    
+    setIsMapMoving(false); // <--- Odpala luksusową animację soczewki
+  };
+
+  const handleMapRegionChange = () => {
+    if (!showAreaPicker) return;
+    if (!isMapMoving) setIsMapMoving(true); // <--- Rozmywa i powiększa soczewkę
   };
 
   const openAreaPickerFromCalibration = (currentFilters: RadarFilters) => {
@@ -1430,11 +1336,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(selectedCity)) ||
       STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(radarFilters.city)) ||
       STRICT_CITIES[0];
+    const strictDistrictsForCity = getStrictDistrictsForCity(strictMatchCity);
+
+    const selectedDistricts = [...strictDistrictsForCity].sort((a, b) => a.localeCompare(b, 'pl'));
     const updated: RadarFilters = {
       ...radarFilters,
       calibrationMode: 'MAP',
       city: strictMatchCity,
-      selectedDistricts: [],
+      selectedDistricts,
     };
 
     setRadarFilters(updated);
@@ -1562,10 +1471,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <RadarMapComponent
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
-        onLayout={(e: any) => {
-          const { width: w, height: h } = e.nativeEvent.layout;
-          setMapLayout({ width: w, height: h });
-        }}
         initialRegion={DEFAULT_REGION}
         onRegionChange={handleMapRegionChange}
         onRegionChangeComplete={handleMapRegionChangeComplete}
@@ -1673,6 +1578,77 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               </Pressable>
             )}
           </BlurView>
+          {showOnlyFavorites && (
+            <View pointerEvents="box-none" style={styles.favorCalibrationOverlay}>
+              <View style={styles.radarHeroWrap}>
+                {isFavoritesRadarEnabled && (
+                  <View pointerEvents="none" style={styles.radarPulseLayer}>
+                    <Animated.View
+                      style={[
+                        styles.favoritesAuraWave,
+                        {
+                          borderColor: 'rgba(235,112,168,0.48)',
+                          opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0] }),
+                          transform: [{ scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
+                        },
+                      ]}
+                    />
+                    {[
+                      { x: -72, y: -8, size: 10 },
+                      { x: -44, y: -28, size: 8 },
+                      { x: -16, y: -36, size: 9 },
+                      { x: 20, y: -34, size: 10 },
+                      { x: 52, y: -18, size: 8 },
+                      { x: 74, y: 2, size: 9 },
+                      { x: -68, y: 20, size: 8 },
+                      { x: 48, y: 22, size: 8 },
+                    ].map((heart, idx) => (
+                      <Animated.View
+                        key={`fav-heart-${idx}`}
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          top: '50%',
+                          transform: [
+                            { translateX: heart.x },
+                            { translateY: heart.y },
+                            { scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] }) },
+                          ],
+                          opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.08] }),
+                        }}
+                      >
+                        <Ionicons name="heart" size={heart.size} color="rgba(247,117,172,0.72)" />
+                      </Animated.View>
+                    ))}
+                  </View>
+                )}
+                <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
+                  <BlurView
+                    intensity={95}
+                    tint={isDark ? 'dark' : 'light'}
+                    style={[
+                      styles.radarPill,
+                      {
+                        backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
+                      },
+                    ]}
+                  >
+                    <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
+                      <Ionicons
+                        name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
+                        size={18}
+                        color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
+                      />
+                    </Animated.View>
+                    <View style={styles.radarPillTextWrap}>
+                      <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>EstateOS™ Favor</Text>
+                      <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? 'Status: LOVE LIVE' : 'Status: NIEAKTYWNY'}</Text>
+                    </View>
+                  </BlurView>
+                </Pressable>
+              </View>
+            </View>
+          )}
         </View>
 
         <Pressable
@@ -1700,78 +1676,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </BlurView>
         </Pressable>
       </View>
-
-      {showOnlyFavorites && (
-        <View style={[styles.favorFloatingIslandWrap, { top: topBarTop + (isTablet ? 66 : 60) }]}>
-          <View style={styles.radarHeroWrap}>
-            {isFavoritesRadarEnabled && (
-              <View pointerEvents="none" style={styles.radarPulseLayer}>
-                <Animated.View
-                  style={[
-                    styles.favoritesAuraWave,
-                    {
-                      borderColor: 'rgba(235,112,168,0.48)',
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0] }),
-                      transform: [{ scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
-                    },
-                  ]}
-                />
-                {[
-                  { x: -72, y: -8, size: 10 },
-                  { x: -44, y: -28, size: 8 },
-                  { x: -16, y: -36, size: 9 },
-                  { x: 20, y: -34, size: 10 },
-                  { x: 52, y: -18, size: 8 },
-                  { x: 74, y: 2, size: 9 },
-                  { x: -68, y: 20, size: 8 },
-                  { x: 48, y: 22, size: 8 },
-                ].map((heart, idx) => (
-                  <Animated.View
-                    key={`fav-heart-${idx}`}
-                    style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      transform: [
-                        { translateX: heart.x },
-                        { translateY: heart.y },
-                        { scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] }) },
-                      ],
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.08] }),
-                    }}
-                  >
-                    <Ionicons name="heart" size={heart.size} color="rgba(247,117,172,0.72)" />
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-            <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-              <BlurView
-                intensity={95}
-                tint={isDark ? 'dark' : 'light'}
-                style={[
-                  styles.radarPill,
-                  {
-                    backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
-                  },
-                ]}
-              >
-                <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
-                  <Ionicons
-                    name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
-                    size={18}
-                    color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
-                  />
-                </Animated.View>
-                <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>EstateOS™ Favor</Text>
-                  <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? 'Status: LOVE LIVE' : 'Status: NIEAKTYWNY'}</Text>
-                </View>
-              </BlurView>
-            </Pressable>
-          </View>
-        </View>
-      )}
       
       {isSearchFocused && (
         <View style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}>
@@ -2058,66 +1962,46 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       
       {showAreaPicker && (
         <View style={styles.areaPickerOverlay} pointerEvents="box-none">
-          {/* PRZYCIEMNIENIE TŁA */}
-          <View style={styles.areaDimLayer} pointerEvents="none" />
-          {/* SOCZEWKA */}
+          
+          {/* --- PERFEKCYJNIE OKRĄGŁE WYCIĘCIE TŁA (SZTUCZKA Z GIGANTYCZNĄ RAMKĄ) --- */}
           <View
             pointerEvents="none"
-            style={[
-              styles.areaReticleWrap,
-              {
-                left: areaLensLeft,
-                top: areaLensTop,
-                width: areaReticleDiameter,
-                height: areaReticleDiameter,
-              },
-            ]}
-          >
-            <Animated.View
-              style={{
-                width: areaReticleDiameter,
-                height: areaReticleDiameter,
-                borderRadius: areaReticleDiameter / 2,
-                transform: [{ scale: areaReticleScale }],
-                opacity: areaReticleOpacity,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  width: areaReticleDiameter,
-                  height: areaReticleDiameter,
-                  borderRadius: areaReticleDiameter / 2,
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(16,185,129,0.4)',
-                  opacity: areaHaloOpacity,
-                }}
-              />
-              <CalibrationLens
-                isMoving={isMapMoving}
-                isDark={isDark}
-                diameter={areaReticleDiameter}
-              />
-            </Animated.View>
+            style={{
+              position: 'absolute',
+              top: areaLensTop - 2000,
+              left: areaLensLeft - 2000,
+              width: areaReticleDiameter + 4000,
+              height: areaReticleDiameter + 4000,
+              borderRadius: (areaReticleDiameter + 4000) / 2,
+              borderWidth: 2000,
+              borderColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.65)',
+            }}
+          />
+
+          {/* ZASTOSOWANA SOCZEWKA KALIBRACJI W MIEJSCU STAREGO RETICLE */}
+          <View pointerEvents="none" style={[styles.areaReticleWrap, { left: areaLensLeft, top: areaLensTop, width: areaReticleDiameter, height: areaReticleDiameter }]}>
+            <CalibrationLens isMoving={isMapMoving} isDark={isDark} diameter={areaReticleDiameter} />
           </View>
-          {/* GÓRA */}
+
           <View style={styles.areaPickerTop} pointerEvents="box-none">
-            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
+            <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
               <Text style={styles.areaPickerTitle}>Zaznacz obszar radaru</Text>
               <Text style={styles.areaPickerSubtitle}>
-                Promień liczony jest na podstawie rzeczywistego widoku mapy.
+                Przesuń mapę pod znacznik i ustaw promień. Wykryjemy miasto i dzielnice automatycznie.
               </Text>
             </BlurView>
           </View>
-          {/* DÓŁ */}
+
           <View style={styles.areaPickerBottom} pointerEvents="box-none">
-            <BlurView intensity={92} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
+            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
               <View style={styles.areaRadiusHeader}>
-                <Text style={styles.areaRadiusLabel}>Promień</Text>
-                <Text style={styles.areaRadiusValue}>
-                  {formatRadiusLabel(areaPickerDraft.radiusKm)}
+                <Text style={styles.areaRadiusLabel}>Promień obszaru</Text>
+                <Text style={styles.areaRadiusValue}>{areaPickerDraft.radiusKm.toFixed(1)} km</Text>
+              </View>
+              <View style={styles.areaZoomHintRow}>
+                <Ionicons name="resize-outline" size={16} color="#10b981" />
+                <Text style={styles.areaZoomHintText}>
+                  Ustaw promień gestem szczypania na mapie (zoom in/out).
                 </Text>
               </View>
               <View style={styles.areaActionRow}>
@@ -2126,12 +2010,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   onPress={() => {
                     setShowAreaPicker(false);
                     setShowCalibration(true);
+                    void pulseHaptic(Haptics.ImpactFeedbackStyle.Light);
                   }}
                 >
                   <Text style={styles.areaGhostText}>Wróć</Text>
                 </Pressable>
-                <Pressable style={styles.areaApplyBtn} onPress={() => applyAreaSelectionToRadar()}>
-                  <Text style={styles.areaApplyText}>Zastosuj</Text>
+                <Pressable style={styles.areaApplyBtn} onPress={() => { void applyAreaSelectionToRadar(); }}>
+                  <Text style={styles.areaApplyText}>Zastosuj obszar</Text>
                 </Pressable>
               </View>
             </BlurView>
@@ -2370,11 +2255,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 52,
   },
-  favorFloatingIslandWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 48,
-    elevation: 48,
+  favorCalibrationOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 4,
   },
   searchGlass: {
     flex: 1,
@@ -2868,10 +2753,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 120,
     justifyContent: 'space-between',
-  },
-  areaDimLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   areaBackdropBlur: { position: 'absolute' },
   

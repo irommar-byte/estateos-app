@@ -8,7 +8,7 @@ import * as Location from 'expo-location';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
-import { STRICT_CITY_DISTRICTS } from '../../constants/locationEcosystem';
+import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -58,7 +58,6 @@ const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
   'Świerczewo': { lat: 52.365, lng: 16.890 }, 'Wilda': { lat: 52.388, lng: 16.922 }, 'Winogrady': { lat: 52.435, lng: 16.925 }, 'Winiary': { lat: 52.430, lng: 16.910 },
 
   // TRÓJMIASTO
-  'Trójmiasto': { lat: 54.4000, lng: 18.5700 }, 
   'Gdańsk - Śródmieście': { lat: 54.352, lng: 18.646 }, 'Gdańsk - Wrzeszcz': { lat: 54.380, lng: 18.605 }, 'Gdańsk - Oliwa': { lat: 54.409, lng: 18.563 },
   'Gdańsk - Przymorze': { lat: 54.410, lng: 18.595 }, 'Gdańsk - Zaspa': { lat: 54.395, lng: 18.605 }, 'Gdańsk - Osowa': { lat: 54.425, lng: 18.460 },
   'Gdańsk - Chełm': { lat: 54.335, lng: 18.620 }, 'Gdańsk - Jasień': { lat: 54.335, lng: 18.565 },
@@ -81,14 +80,13 @@ const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
   'Katowice': { lat: 50.2649, lng: 19.0238 },
   'Rybnik': { lat: 50.0971, lng: 18.5418 },
   'Białystok': { lat: 53.1325, lng: 23.1688 },
-  
-  'Inna lokalizacja': { lat: 52.0, lng: 19.0 }
 };
 
 const DISTRICTS_DATA: Record<string, string[]> = {
   ...STRICT_CITY_DISTRICTS,
-  'Reszta Polski': ['Inna lokalizacja'],
 };
+const STRICT_CITY_SET = new Set<string>(STRICT_CITIES as unknown as string[]);
+const DEFAULT_STRICT_CITY = STRICT_CITIES[0];
 
 const DISTRICT_CITY_USAGE = Object.values(STRICT_CITY_DISTRICTS).reduce<Record<string, number>>((acc, districts) => {
   districts.forEach((district) => {
@@ -137,7 +135,10 @@ const BreathingCircle = () => {
 
 const getClosestDistrict = (lat: number, lng: number, city: string) => {
   const cityDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA];
-  if (!cityDistricts || city === 'Reszta Polski') return 'Inna lokalizacja';
+  if (!cityDistricts || cityDistricts.length === 0) {
+    const fallbackDistricts = DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [];
+    return fallbackDistricts[0] || '';
+  }
   let closest = cityDistricts[0]; let minDistance = Infinity;
   for (const district of cityDistricts) {
     const coords = DISTRICT_COORDS[district];
@@ -164,27 +165,18 @@ const detectCityFromText = (raw: string) => {
   if (cityInfo.includes('katowice')) return 'Katowice';
   if (cityInfo.includes('rybnik')) return 'Rybnik';
   if (cityInfo.includes('białystok') || cityInfo.includes('bialystok')) return 'Białystok';
-  return 'Reszta Polski';
+  return null;
 };
 
-const getOutsideLocationLabel = (place: any) => {
-  const locality = [place?.city, place?.subregion, place?.region]
-    .map((v: unknown) => String(v || '').trim())
-    .find((v) => v.length > 0);
-  if (locality) return locality;
-  const postalCode = String(place?.postalCode || '').trim();
-  if (postalCode) return `Kod ${postalCode}`;
-  return 'Reszta Polski';
-};
-
-const getOutsideDistrictLabel = (place: any) => {
-  const districtLike = [place?.district, place?.subregion, place?.name]
-    .map((v: unknown) => String(v || '').trim())
-    .find((v) => v.length > 0);
-  if (districtLike) return districtLike;
-  const postalCode = String(place?.postalCode || '').trim();
-  if (postalCode) return `Kod ${postalCode}`;
-  return 'Inna lokalizacja';
+const normalizeStrictLocation = (cityCandidate: string | null | undefined, districtCandidate?: string | null) => {
+  const city = STRICT_CITY_SET.has(String(cityCandidate || ''))
+    ? String(cityCandidate)
+    : DEFAULT_STRICT_CITY;
+  const districts = DISTRICTS_DATA[city] || [];
+  const district = districts.includes(String(districtCandidate || ''))
+    ? String(districtCandidate)
+    : (districts[0] || '');
+  return { city, district };
 };
 
 export default function Step2_Location({ theme }: { theme: any }) {
@@ -221,6 +213,17 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.03)';
 
   const hasAddress = !!draft.street && draft.street.length > 2;
+  const safeDraftCity = STRICT_CITY_SET.has(String(draft.city || '')) ? String(draft.city) : DEFAULT_STRICT_CITY;
+  const safeDraftDistricts = DISTRICTS_DATA[safeDraftCity] || [];
+  const safeDraftDistrict = safeDraftDistricts.includes(String(draft.district || ''))
+    ? String(draft.district)
+    : (safeDraftDistricts[0] || '');
+
+  useEffect(() => {
+    if (safeDraftCity !== draft.city || safeDraftDistrict !== draft.district) {
+      updateDraft({ city: safeDraftCity, district: safeDraftDistrict });
+    }
+  }, [draft.city, draft.district, safeDraftCity, safeDraftDistrict, updateDraft]);
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
     isProgrammaticMove.current = true;
@@ -256,16 +259,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-        let finalCity = 'Reszta Polski';
-        let finalDistrict = 'Inna lokalizacja';
+        let finalCity = DEFAULT_STRICT_CITY;
+        let finalDistrict = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
         let newStreet = '';
         if (reverse.length > 0) {
           const place = reverse[0];
           const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-          finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
-          finalDistrict = strictCity === 'Reszta Polski'
-            ? getOutsideDistrictLabel(place)
-            : getClosestDistrict(latitude, longitude, strictCity);
+          const normalized = normalizeStrictLocation(strictCity, strictCity ? getClosestDistrict(latitude, longitude, strictCity) : null);
+          finalCity = normalized.city;
+          finalDistrict = normalized.district;
           if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
           else if (place.street) newStreet = place.street;
           else if (place.name) newStreet = place.name;
@@ -297,16 +299,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
         
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
         let newStreet = streetInput;
-        let finalCity = 'Reszta Polski';
-        let finalDistrict = 'Inna lokalizacja';
+        let finalCity = DEFAULT_STRICT_CITY;
+        let finalDistrict = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
         
         if (reverse.length > 0) {
           const place = reverse[0];
           const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-          finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
-          finalDistrict = strictCity === 'Reszta Polski'
-            ? getOutsideDistrictLabel(place)
-            : getClosestDistrict(latitude, longitude, strictCity);
+          const normalized = normalizeStrictLocation(strictCity, strictCity ? getClosestDistrict(latitude, longitude, strictCity) : null);
+          finalCity = normalized.city;
+          finalDistrict = normalized.district;
           if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
         }
         
@@ -341,10 +342,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
         }
 
         const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-        const finalCity = strictCity === 'Reszta Polski' ? getOutsideLocationLabel(place) : strictCity;
-        const finalDistrict = strictCity === 'Reszta Polski'
-          ? getOutsideDistrictLabel(place)
-          : getClosestDistrict(region.latitude, region.longitude, strictCity);
+        const normalized = normalizeStrictLocation(strictCity, strictCity ? getClosestDistrict(region.latitude, region.longitude, strictCity) : null);
+        const finalCity = normalized.city;
+        const finalDistrict = normalized.district;
         const shouldUpdate =
           newStreet !== streetInput ||
           finalCity !== draft.city ||
@@ -365,26 +365,28 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
   const handleCityChange = async (city: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
-    const newDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA]; 
-    const coords = DISTRICT_COORDS[city] || await resolvePlaceCoords(city) || { lat: 52.0, lng: 19.0 }; 
-    updateDraft({ city, district: newDistricts[0], lat: coords.lat, lng: coords.lng }); 
-    if (city !== 'Reszta Polski') flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true); 
+    const normalized = normalizeStrictLocation(city, null);
+    const newDistricts = DISTRICTS_DATA[normalized.city as keyof typeof DISTRICTS_DATA];
+    const coords = DISTRICT_COORDS[normalized.city] || await resolvePlaceCoords(normalized.city) || { lat: 52.0, lng: 19.0 };
+    updateDraft({ city: normalized.city, district: normalized.district || newDistricts[0], lat: coords.lat, lng: coords.lng });
+    flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
   };
   
   const handleDistrictChange = async (district: string) => { 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
-    updateDraft({ district }); 
-    const selectedCity = draft.city || 'Reszta Polski';
+    const selectedCity = STRICT_CITY_SET.has(String(draft.city || '')) ? String(draft.city) : DEFAULT_STRICT_CITY;
+    const normalized = normalizeStrictLocation(selectedCity, district);
+    updateDraft({ city: normalized.city, district: normalized.district });
     const isAmbiguousDistrict = (DISTRICT_CITY_USAGE[district] || 0) > 1;
     const coords =
-      await resolvePlaceCoords(`${district}, ${selectedCity}`) ||
-      (!isAmbiguousDistrict ? DISTRICT_COORDS[district] : null) ||
-      await resolvePlaceCoords(district);
+      await resolvePlaceCoords(`${normalized.district}, ${normalized.city}`) ||
+      (!isAmbiguousDistrict ? DISTRICT_COORDS[normalized.district] : null) ||
+      await resolvePlaceCoords(normalized.district);
     if (coords) {
       updateDraft({ lat: coords.lat, lng: coords.lng });
       flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
     } else {
-      Alert.alert('Nie znaleziono dzielnicy', `Nie udało się zlokalizować: ${district}, ${selectedCity}.`);
+      Alert.alert('Nie znaleziono dzielnicy', `Nie udało się zlokalizować: ${normalized.district}, ${normalized.city}.`);
     }
   };
 
@@ -395,7 +397,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
     return false;
   };
 
-  const locationCityDistrict = [draft.city, draft.district].filter(Boolean).join(', ');
+  const locationCityDistrict = [safeDraftCity, safeDraftDistrict].filter(Boolean).join(', ');
   const locationStreet = streetInput?.trim() || draft.street || 'Brak dokładnego adresu';
 
   const confirmAndGoNext = () => {
@@ -463,18 +465,18 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
           <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIASTO</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
-            {Object.keys(DISTRICTS_DATA).map(c => (
-              <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, draft.city === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
-                <Text style={[styles.pillText, draft.city === c && { color: '#FFF' }]}>{c}</Text>
+            {STRICT_CITIES.map(c => (
+              <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                <Text style={[styles.pillText, safeDraftCity === c && { color: '#FFF' }]}>{c}</Text>
               </Pressable>
             ))}
           </ScrollView>
 
           <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 30 }}>
-            {(DISTRICTS_DATA[draft.city as keyof typeof DISTRICTS_DATA] || []).map(d => (
-              <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, draft.district === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
-                <Text style={[styles.pillText, draft.district === d && { color: '#FFF' }]}>{d}</Text>
+            {(DISTRICTS_DATA[safeDraftCity as keyof typeof DISTRICTS_DATA] || []).map(d => (
+              <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, safeDraftDistrict === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                <Text style={[styles.pillText, safeDraftDistrict === d && { color: '#FFF' }]}>{d}</Text>
               </Pressable>
             ))}
           </View>

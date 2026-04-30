@@ -10,7 +10,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
-import { STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -24,7 +24,7 @@ const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', dan
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
 
 const CITY_DISTRICTS: Record<string, string[]> = STRICT_CITY_DISTRICTS;
-const CITIES = Object.keys(CITY_DISTRICTS);
+const CITIES = [...STRICT_CITIES];
 
 const formatPriceMarker = (price: string | number) => {
   const num = typeof price === 'string' ? parseFloat(price) : price;
@@ -346,7 +346,11 @@ export default function Radar({ theme, route }: any) {
   const handleCitySelect = (city: string) => {
     Haptics.selectionAsync();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setDraftFilters({ ...draftFilters, city: city, selectedDistricts: [] });
+    setDraftFilters({
+      ...draftFilters,
+      city: city,
+      selectedDistricts: [...(CITY_DISTRICTS[city] || [])],
+    });
   };
 
   const handlePriceEndEditing = () => {
@@ -553,6 +557,69 @@ export default function Radar({ theme, route }: any) {
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 150 }}>
 
+              <Text style={[styles.premiumSectionTitle, styles.premiumSectionTitleFirst]}>DZIAŁANIE W TLE I PRECYZJA</Text>
+              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', borderColor: currentIntelligence.color, borderWidth: draftFilters.pushNotifications ? 1 : 0 }]}>
+                <View style={styles.premiumSwitchRow}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    <Text style={[styles.premiumSwitchTitle, { color: draftFilters.pushNotifications ? currentIntelligence.color : (isDark ? '#FFF' : '#000'), fontWeight: '800' }]}>Aktywny Radar (Push)</Text>
+                    <Text style={{ color: BaseColors.subtitle, fontSize: 11, marginTop: 4 }}>
+                      Nasłuchuj rynku po wyjściu z aplikacji na wybranym poziomie czułości.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={draftFilters.pushNotifications}
+                    onValueChange={v => handleFilterSelect('pushNotifications', v)}
+                    trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: currentIntelligence.color }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+                {draftFilters.pushNotifications && (
+                  <View style={{ padding: 16, paddingTop: 0 }}>
+                    <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginBottom: 16 }]} />
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <View style={{ flex: 1, paddingRight: 16 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: currentIntelligence.color, marginBottom: 4 }}>{currentIntelligence.title}</Text>
+                        <Text style={{ fontSize: 11, color: BaseColors.subtitle, lineHeight: 16 }}>{currentIntelligence.desc}</Text>
+                      </View>
+                      <Text style={{ fontSize: 32, fontWeight: '900', color: currentIntelligence.color, fontVariant: ['tabular-nums'] }}>
+                        {draftFilters.matchThreshold}%
+                      </Text>
+                    </View>
+                    <View
+                      style={styles.customSliderContainer}
+                      onStartShouldSetResponderCapture={() => true}
+                      onMoveShouldSetResponderCapture={() => true}
+                      onResponderGrant={handleSliderMove}
+                      onResponderMove={handleSliderMove}
+                      onResponderRelease={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
+                    >
+                      {Array.from({ length: 25 }).map((_, i) => {
+                        const stepVal = 50 + (i * 2);
+                        const isActive = stepVal <= draftFilters.matchThreshold;
+                        const isMajor = stepVal % 10 === 0;
+                        return (
+                          <View key={i} style={{
+                            width: isMajor ? 3 : 2,
+                            height: isMajor ? 28 : 14,
+                            backgroundColor: isActive ? currentIntelligence.color : (isDark ? '#444' : '#E5E5EA'),
+                            borderRadius: 2,
+                            shadowColor: isActive ? currentIntelligence.color : 'transparent',
+                            shadowOpacity: isActive ? 0.8 : 0,
+                            shadowRadius: 6,
+                            elevation: isActive ? 5 : 0
+                          }} />
+                        );
+                      })}
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>50%</Text>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>Skala Dopasowania AI</Text>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>100%</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
               <Text style={styles.premiumSectionTitle}>PRZEZNACZENIE I TYP</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
                 <View style={styles.premiumSegmentContainer}>
@@ -667,83 +734,6 @@ export default function Radar({ theme, route }: any) {
                 <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Tylko umeblowane</Text><Switch value={draftFilters.requireFurnished} onValueChange={v => handleFilterSelect('requireFurnished', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
               </View>
 
-              {/* 🔥 NOWOŚĆ: CZUŁOŚĆ RADARU I DZIAŁANIE W TLE 🔥 */}
-              <Text style={styles.premiumSectionTitle}>DZIAŁANIE W TLE I PRECYZJA</Text>
-              
-              <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', borderColor: currentIntelligence.color, borderWidth: draftFilters.pushNotifications ? 1 : 0 }]}>
-                
-                {/* 1. Przełącznik główny */}
-                <View style={styles.premiumSwitchRow}>
-                  <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.premiumSwitchTitle, { color: draftFilters.pushNotifications ? currentIntelligence.color : (isDark ? '#FFF' : '#000'), fontWeight: '800' }]}>Aktywny Radar (Push)</Text>
-                    <Text style={{ color: BaseColors.subtitle, fontSize: 11, marginTop: 4 }}>
-                      Nasłuchuj rynku po wyjściu z aplikacji na wybranym poziomie czułości.
-                    </Text>
-                  </View>
-                  <Switch 
-                    value={draftFilters.pushNotifications} 
-                    onValueChange={v => handleFilterSelect('pushNotifications', v)} 
-                    trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: currentIntelligence.color }} 
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-
-                {/* 2. Apple-Style Kinetic Equalizer (Wybierak) */}
-                {draftFilters.pushNotifications && (
-                  <View style={{ padding: 16, paddingTop: 0 }}>
-                    
-                    <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginBottom: 16 }]} />
-                    
-                    {/* Dynamiczne Opisy */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <View style={{ flex: 1, paddingRight: 16 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '800', color: currentIntelligence.color, marginBottom: 4 }}>{currentIntelligence.title}</Text>
-                        <Text style={{ fontSize: 11, color: BaseColors.subtitle, lineHeight: 16 }}>{currentIntelligence.desc}</Text>
-                      </View>
-                      <Text style={{ fontSize: 32, fontWeight: '900', color: currentIntelligence.color, fontVariant: ['tabular-nums'] }}>
-                        {draftFilters.matchThreshold}%
-                      </Text>
-                    </View>
-
-                    {/* Dotykowy Band / Suwak 3D */}
-                    <View 
-                      style={styles.customSliderContainer}
-                      onStartShouldSetResponderCapture={() => true}
-                      onMoveShouldSetResponderCapture={() => true}
-                      onResponderGrant={handleSliderMove}
-                      onResponderMove={handleSliderMove}
-                      onResponderRelease={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}
-                    >
-                      {Array.from({length: 25}).map((_, i) => {
-                        const stepVal = 50 + (i * 2);
-                        const isActive = stepVal <= draftFilters.matchThreshold;
-                        const isMajor = stepVal % 10 === 0;
-                        
-                        return (
-                          <View key={i} style={{
-                            width: isMajor ? 3 : 2,
-                            height: isMajor ? 28 : 14,
-                            backgroundColor: isActive ? currentIntelligence.color : (isDark ? '#444' : '#E5E5EA'),
-                            borderRadius: 2,
-                            shadowColor: isActive ? currentIntelligence.color : 'transparent',
-                            shadowOpacity: isActive ? 0.8 : 0,
-                            shadowRadius: 6,
-                            elevation: isActive ? 5 : 0
-                          }} />
-                        );
-                      })}
-                    </View>
-                    
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>50%</Text>
-                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>Skala Dopasowania AI</Text>
-                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>100%</Text>
-                    </View>
-
-                  </View>
-                )}
-              </View>
-
               <View style={styles.systemDisclaimerBox}>
                 <Ionicons name="shield-checkmark" size={24} color={BaseColors.subtitle} style={{ marginBottom: 8 }} />
                 <Text style={styles.systemDisclaimerText}>Radar to integralny rdzeń ekosystemu EstateOS™. Obecnie wspieramy wybrane metropolie, a nasz zasięg nieustannie rośnie.</Text>
@@ -847,6 +837,7 @@ const styles = StyleSheet.create({
   resetBtn: { padding: 4 },
   resetBtnText: { fontSize: 16, fontWeight: '600' },
   premiumSectionTitle: { fontSize: 13, color: '#8E8E93', marginLeft: 16, marginBottom: 8, marginTop: 24, fontWeight: '600', letterSpacing: 0.5 },
+  premiumSectionTitleFirst: { marginTop: 0 },
   premiumFilterGroup: { borderRadius: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 1 },
   premiumSegmentContainer: { flexDirection: 'row', padding: 3, marginHorizontal: 12, marginVertical: 8, backgroundColor: 'rgba(150,150,150,0.12)', borderRadius: 10 },
   premiumSegmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },

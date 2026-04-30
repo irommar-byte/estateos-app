@@ -29,3 +29,16 @@ export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
   Białystok: ['Centrum', 'Białostoczek', 'Bojary', 'Dziesięciny I', 'Dziesięciny II', 'Antoniuk', 'Piaski', 'Przydworcowe', 'Sienkiewicza', 'Młodych', 'Starosielce', 'Nowe Miasto', 'Wysoki Stoczek', 'Zielone Wzgórza', 'Słoneczny Stok', 'Leśna Dolina', 'Bacieczki', 'Jaroszówka', 'Dojlidy', 'Skorupy', 'Zawady'],
   Zamość: ['Stare Miasto', 'Nowe Miasto', 'Planty', 'Janowice', 'Karolówka', 'Promyk', 'Powiatowa', 'Rataja', 'Zamczysko', 'Słoneczny Stok'],
 };
+
+const cityKeys = Object.keys(STRICT_CITY_DISTRICTS);
+const missingInDistrictMap = STRICT_CITIES.filter((city) => !cityKeys.includes(city));
+const extraInDistrictMap = cityKeys.filter((city) => !STRICT_CITIES.includes(city as any));
+if (missingInDistrictMap.length > 0 || extraInDistrictMap.length > 0) {
+  throw new Error(
+    `[locationEcosystem] Niespójne miasta/dzielnice. Braki: ${missingInDistrictMap.join(', ') || '-'}; Nadmiarowe: ${extraInDistrictMap.join(', ') || '-'}`
+  );
+}
+
+Object.freeze(STRICT_CITIES);
+cityKeys.forEach((city) => Object.freeze(STRICT_CITY_DISTRICTS[city]));
+Object.freeze(STRICT_CITY_DISTRICTS);

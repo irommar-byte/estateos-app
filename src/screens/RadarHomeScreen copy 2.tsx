@@ -14,10 +14,8 @@ import {
   Modal,
   ScrollView,
   Keyboard,
-  KeyboardAvoidingView,
   TouchableOpacity,
   InteractionManager,
-  Dimensions,
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
 import MapViewCore, { Marker, Region } from 'react-native-maps';
@@ -31,7 +29,6 @@ import * as Location from 'expo-location';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
@@ -40,32 +37,29 @@ const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, is
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
-  const focusHapticAtRef = useRef(0);
 
   useEffect(() => {
     if (isMoving) {
       // 1. FAZA SZUKANIA (Rozszerzenie i utrata ostrości)
       Animated.parallel([
-        Animated.spring(scaleAnim, { toValue: 1.08, friction: 7, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 0.72, duration: 140, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1.15, friction: 6, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 0.5, duration: 150, useNativeDriver: true }),
         Animated.timing(glowAnim, { toValue: 0, duration: 100, useNativeDriver: true }),
       ]).start();
     } else {
-      // 2. FAZA ŁAPANIA OSTROŚCI: wyraźniejsza soczewka + pojedynczy, kontrolowany klik.
-      const now = Date.now();
-      if (now - focusHapticAtRef.current > 900) {
-        focusHapticAtRef.current = now;
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
+      // 2. FAZA ŁAPANIA OSTROŚCI (Zatrzask, błysk lasera i uderzenie Haptic)
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); 
+      setTimeout(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success), 50); // Podwójny "mechaniczny" klik
+
       Animated.parallel([
         Animated.sequence([
-          Animated.spring(scaleAnim, { toValue: 0.96, friction: 7, useNativeDriver: true }),
-          Animated.spring(scaleAnim, { toValue: 1, friction: 9, useNativeDriver: true })
+          Animated.spring(scaleAnim, { toValue: 0.92, friction: 5, useNativeDriver: true }),
+          Animated.spring(scaleAnim, { toValue: 1, friction: 7, useNativeDriver: true })
         ]),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
         Animated.sequence([
-          Animated.timing(glowAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
-          Animated.timing(glowAnim, { toValue: 0, duration: 360, useNativeDriver: true })
+          Animated.timing(glowAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 400, useNativeDriver: true })
         ])
       ]).start();
     }
@@ -90,11 +84,11 @@ const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, is
           width: diameter, height: diameter, borderRadius: diameter / 2,
           opacity: opacityAnim,
           transform: [{ scale: scaleAnim }],
-          borderColor: isMoving ? 'rgba(142,142,147,0.48)' : '#10f08a',
-          borderWidth: isMoving ? 2 : 3.5,
+          borderColor: isMoving ? 'rgba(150,150,150,0.5)' : '#10b981',
+          borderWidth: isMoving ? 2 : 3,
         }
       ]}>
-        <BlurView intensity={isMoving ? 18 : 4} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFillObject} />
+        <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFillObject} />
         <View style={[styles.lensDot, { backgroundColor: isMoving ? '#8E8E93' : '#10b981' }]} />
         <View style={[styles.crosshair, styles.crosshairTop]} />
         <View style={[styles.crosshair, styles.crosshairBottom]} />
@@ -212,27 +206,6 @@ const formatMarkerPrice = (price: string) => {
   return `${Math.round(raw / 1000)}k`;
 };
 
-const getTransactionBadge = (rawTransactionType: unknown) => {
-  const normalized = String(rawTransactionType || '').toUpperCase();
-  if (normalized === 'RENT') {
-    return { label: 'WYNAJEM', color: '#0A84FF' };
-  }
-  return { label: 'SPRZEDAŻ', color: '#10b981' };
-};
-
-const formatOfferPublishDate = (raw: any) => {
-  const value =
-    raw?.publishedAt ||
-    raw?.published_at ||
-    raw?.publicationDate ||
-    raw?.createdAt ||
-    raw?.created_at;
-  if (!value) return 'Publikacja: -';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Publikacja: -';
-  return `Publikacja: ${date.toLocaleDateString('pl-PL')}`;
-};
-
 const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   const R = 6371;
   const dLat = ((bLat - aLat) * Math.PI) / 180;
@@ -245,181 +218,8 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   return R * c;
 };
 
-/** Max price: przy 100% sztywny limit kalibracji; przy niższej skali do +10% tolerancji (liniowo). */
-function radarPriceCap(maxPrice: number, matchThreshold: number): number {
-  const t = Math.max(50, Math.min(100, matchThreshold));
-  // Normalizacja po faktycznym zakresie suwaka 50..100.
-  const normalizedRelax = Math.max(0, Math.min(1, (100 - t) / 50));
-  const slack = normalizedRelax * 0.1;
-  return maxPrice * (1 + slack);
-}
-
-/** Promień geograficzny: przy 100% dokładnie zaznaczony krąg; niżej stopniowo szerzej (do ~2× przy 50%). */
-function radarGeoRadiusLimitKm(baseRadiusKm: number, matchThreshold: number): number {
-  const t = Math.max(50, Math.min(100, matchThreshold));
-  // Normalizacja po faktycznym zakresie suwaka 50..100.
-  const normalizedRelax = Math.max(0, Math.min(1, (100 - t) / 50));
-  const relax = normalizedRelax * 1.0;
-  return baseRadiusKm * (1 + relax);
-}
-
-function radarCityMatches(rawCityNorm: string, selectedCityNorm: string) {
-  if (!selectedCityNorm) return true;
-  if (rawCityNorm === selectedCityNorm) return true;
-  return false;
-}
-
-function getStrictDistrictsForCity(cityLabel: string): string[] {
-  const selectedCityNorm = normalizeSearchText(String(cityLabel || '').trim());
-  if (!selectedCityNorm) return [];
-  const direct = Object.entries(STRICT_CITY_DISTRICTS).find(
-    ([cityName]) => normalizeSearchText(cityName) === selectedCityNorm
-  )?.[1];
-  return direct ? [...direct].sort((a, b) => a.localeCompare(b, 'pl')) : [];
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function approxKmPerPixel(region: Region, mapWidthPx: number, mapHeightPx: number) {
-  const latKmVisible = region.latitudeDelta * 111.32;
-  const lngKmVisible =
-    region.longitudeDelta *
-    111.32 *
-    Math.cos((region.latitude * Math.PI) / 180);
-  const kmPerPxLat = latKmVisible / Math.max(1, mapHeightPx);
-  const kmPerPxLng = lngKmVisible / Math.max(1, mapWidthPx);
-  return {
-    kmPerPxAvg: (kmPerPxLat + kmPerPxLng) / 2,
-  };
-}
-
-function formatRadiusLabel(km: number) {
-  return `${Math.round(km * 10) / 10} km`;
-}
-
-const clampScore = (value: number) => Math.max(0, Math.min(100, value));
-
-const numericOfferValue = (value: unknown) => {
-  const parsed = Number(String(value ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-function upperLimitScore(value: number, max: number, allowedSlackPct: number) {
-  if (!max || value <= max) return 100;
-  const slack = Math.max(1, max * allowedSlackPct);
-  return clampScore(100 - ((value - max) / slack) * 50);
-}
-
-function lowerLimitScore(value: number, min: number, fullDropPct: number) {
-  if (!min || value >= min) return 100;
-  const floor = Math.max(0, min * (1 - fullDropPct));
-  if (value <= floor) return clampScore((value / Math.max(1, min)) * 60);
-  return clampScore(60 + ((value - floor) / Math.max(1, min - floor)) * 40);
-}
-
-function yearScore(year: number, minYear: number) {
-  if (!minYear || minYear <= 1900 || year >= minYear) return 100;
-  const yearsOlder = minYear - year;
-  if (yearsOlder <= 15) return clampScore(100 - (yearsOlder / 15) * 40);
-  return clampScore(60 - Math.min(60, ((yearsOlder - 15) / 35) * 60));
-}
-
-function amenityScore(raw: any, rf: RadarFilters) {
-  const required = [
-    rf.requireBalcony ? !!raw.hasBalcony : null,
-    rf.requireGarden ? !!raw.hasGarden : null,
-    rf.requireElevator ? !!raw.hasElevator : null,
-    rf.requireParking ? !!raw.hasParking : null,
-    rf.requireFurnished ? !!raw.isFurnished : null,
-  ].filter((v) => v !== null) as boolean[];
-  if (required.length === 0) return 100;
-  const present = required.filter(Boolean).length;
-  return clampScore((present / required.length) * 100);
-}
-
-function locationScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds | null) {
-  const raw = offer.raw;
-  if (rf.calibrationMode === 'CITY') {
-    const rawCity = normalizeSearchText(String(raw.city || '').trim());
-    const selCity = normalizeSearchText(rf.city.trim());
-    if (selCity && !radarCityMatches(rawCity, selCity)) return 0;
-    if (rf.selectedDistricts.length === 0) return 100;
-
-    const rawDistrict = normalizeSearchText(String(raw.district || '').trim());
-    const districtMatch = rf.selectedDistricts.some((d) => normalizeSearchText(String(d).trim()) === rawDistrict);
-    // To nadal jest to samo miasto, ale poza wybraną dzielnicą: wpada dopiero przy szerszym skanowaniu.
-    return districtMatch ? 100 : 50;
-  }
-
-  if (!bounds) return 100;
-  const baseRadius = Math.max(0.1, bounds.radiusKm);
-  const dKm = distanceKm(bounds.centerLat, bounds.centerLng, offer.lat, offer.lng);
-  if (dKm <= baseRadius) return 100;
-  if (dKm <= baseRadius * 2) return clampScore(100 - ((dKm / baseRadius) - 1) * 50);
-  return 0;
-}
-
-function radarMatchScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds | null): number {
-  const raw = offer.raw;
-  if (String(raw.transactionType || '').toUpperCase() !== rf.transactionType) return 0;
-  if (rf.propertyType !== 'ALL' && String(raw.propertyType || '').toUpperCase() !== rf.propertyType) return 0;
-
-  const rawPrice = numericOfferValue(raw.price);
-  const rawArea = numericOfferValue(raw.area);
-  const yearRaw = raw.yearBuilt != null ? parseInt(String(raw.yearBuilt), 10) : 1900;
-  const year = Number.isFinite(yearRaw) ? yearRaw : 1900;
-
-  const parts = [
-    { weight: 30, score: locationScore(offer, rf, bounds) },
-    { weight: 25, score: upperLimitScore(rawPrice, rf.maxPrice, 0.1) },
-    { weight: 15, score: lowerLimitScore(rawArea, rf.minArea, 0.2) },
-    { weight: 10, score: yearScore(year, rf.minYear) },
-    { weight: 20, score: amenityScore(raw, rf) },
-  ];
-
-  const total = parts.reduce((sum, part) => sum + part.weight * part.score, 0);
-  const weight = parts.reduce((sum, part) => sum + part.weight, 0);
-  return clampScore(total / Math.max(1, weight));
-}
-
-type RadarMapBounds = {
-  centerLat: number;
-  centerLng: number;
-  radiusKm: number;
-};
-
-function matchesRadarCalibration(
-  offer: MapOffer,
-  rf: RadarFilters,
-  bounds: RadarMapBounds | null
-): boolean {
-  return radarMatchScore(offer, rf, bounds) >= Math.max(50, Math.min(100, rf.matchThreshold));
-}
-
-function isRadarFactoryDefaults(f: RadarFilters): boolean {
-  return (
-    f.calibrationMode === 'MAP' &&
-    f.transactionType === 'SELL' &&
-    f.propertyType === 'ALL' &&
-    f.city === 'Warszawa' &&
-    f.selectedDistricts.length === 0 &&
-    f.maxPrice === 5000000 &&
-    f.minArea === 0 &&
-    f.minYear === 1900 &&
-    !f.requireBalcony &&
-    !f.requireGarden &&
-    !f.requireElevator &&
-    !f.requireParking &&
-    !f.requireFurnished &&
-    f.matchThreshold === 100
-  );
-}
-
 export default function RadarHomeScreen({ navigation, route, splashDone }: any) {
   const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const themeMode = useThemeStore((s) => s.themeMode);
   const isDark = themeMode === 'dark';
   const { user, isRadarActive, setRadarActive } = useAuthStore() as any;
@@ -436,17 +236,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
-  const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('FAVORITES');
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   const [showCalibration, setShowCalibration] = useState(false);
-  const [showFavoritesCalibration, setShowFavoritesCalibration] = useState(false);
-  const [calibrationSessionId, setCalibrationSessionId] = useState(0);
-  const [favoritesCalibrationSessionId, setFavoritesCalibrationSessionId] = useState(0);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   
+  // NOWY STAN DO KALIBRACJI MAPY (zastępuje stare opacity/scale animacje)
   const [isMapMoving, setIsMapMoving] = useState(false);
 
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
@@ -487,17 +284,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     pushNotifications: !!isRadarActive,
     matchThreshold: 100,
   };
-  const defaultFavoritesRadarFilters: RadarFilters = {
-    ...defaultRadarFilters,
-    pushNotifications: false,
-  };
   const [radarFilters, setRadarFilters] = useState(defaultRadarFilters);
-  const [favoritesRadarFilters, setFavoritesRadarFilters] = useState(defaultFavoritesRadarFilters);
-  const [isFavoritesRadarEnabled, setIsFavoritesRadarEnabled] = useState(false);
-  /** Po kalibracji / zaznaczeniu obszaru filtry radaru (cena, skala %, krąg mapy) mają wpływać na listę i mapę. */
-  const [mapUsesRadarFilters, setMapUsesRadarFilters] = useState(false);
-  /** Środek i promień zaznaczone na mapie — przy 100% skali tylko oferty wewnątrz tego kręgu. */
-  const [radarMapBounds, setRadarMapBounds] = useState<RadarMapBounds | null>(null);
   const [showAreaPicker, setShowAreaPicker] = useState(false);
   const [areaPickerDraft, setAreaPickerDraft] = useState<RadarAreaDraft>({
     center: { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude },
@@ -505,34 +292,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     latitudeDelta: DEFAULT_REGION.latitudeDelta,
     longitudeDelta: DEFAULT_REGION.longitudeDelta,
   });
-  const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 });
-  const areaRegionRef = useRef<Region | null>(null);
-  const areaReticleScale = useRef(new Animated.Value(1)).current;
-  const areaReticleOpacity = useRef(new Animated.Value(0.92)).current;
-  const areaHaloOpacity = useRef(new Animated.Value(0.28)).current;
   const [areaSummary, setAreaSummary] = useState<string>('');
-  const isTablet = width >= 768;
-  const topBarTop = useMemo(
-    () => insets.top + (isTablet ? 14 : 8),
-    [insets.top, isTablet]
-  );
-  const bottomCardsInset = useMemo(() => {
-    const tabBase = Platform.OS === 'ios' ? 18 : 14;
-    return tabBase + insets.bottom;
-  }, [insets.bottom]);
-  const radarButtonTop = useMemo(
-    () => topBarTop + (isTablet ? 84 : Platform.OS === 'ios' ? 76 : 68),
-    [Platform.OS, isTablet, topBarTop]
-  );
-  /** Modal „Wyszukiwanie rozszerzone”: niemal pełny ekran — bez obcinania jak przy ~74%. */
-  const advancedSheetMaxHeight = useMemo(
-    () => Math.round(height - insets.top - Math.max(insets.bottom, 10) - 6),
-    [height, insets.top, insets.bottom]
-  );
-  const radarPulseA = useRef(new Animated.Value(0)).current;
-  const radarPulseB = useRef(new Animated.Value(0)).current;
-  const favoritesHeartBeat = useRef(new Animated.Value(1)).current;
-  const favoritesAuraPulse = useRef(new Animated.Value(0)).current;
 
   const pulseHaptic = useCallback(async (style: Haptics.ImpactFeedbackStyle | 'selection' | 'success') => {
     try {
@@ -548,78 +308,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
   }, []);
 
-  useEffect(() => {
-    let pulseAAnim: Animated.CompositeAnimation | null = null;
-    let pulseBAnim: Animated.CompositeAnimation | null = null;
-    if (isRadarEnabled) {
-      radarPulseA.setValue(0);
-      radarPulseB.setValue(0);
-      pulseAAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(radarPulseA, { toValue: 1, duration: 1500, useNativeDriver: true }),
-          Animated.timing(radarPulseA, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
-      );
-      pulseBAnim = Animated.loop(
-        Animated.sequence([
-          Animated.delay(760),
-          Animated.timing(radarPulseB, { toValue: 1, duration: 1500, useNativeDriver: true }),
-          Animated.timing(radarPulseB, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
-      );
-      pulseAAnim.start();
-      pulseBAnim.start();
-    } else {
-      radarPulseA.stopAnimation();
-      radarPulseB.stopAnimation();
-      radarPulseA.setValue(0);
-      radarPulseB.setValue(0);
-    }
-    return () => {
-      pulseAAnim?.stop();
-      pulseBAnim?.stop();
-    };
-  }, [isRadarEnabled, radarPulseA, radarPulseB]);
-
-  useEffect(() => {
-    let beatAnim: Animated.CompositeAnimation | null = null;
-    let auraAnim: Animated.CompositeAnimation | null = null;
-    if (isFavoritesRadarEnabled && showOnlyFavorites) {
-      favoritesHeartBeat.setValue(1);
-      favoritesAuraPulse.setValue(0);
-      beatAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(favoritesHeartBeat, { toValue: 1.12, duration: 360, useNativeDriver: true }),
-          Animated.timing(favoritesHeartBeat, { toValue: 0.96, duration: 220, useNativeDriver: true }),
-          Animated.timing(favoritesHeartBeat, { toValue: 1, duration: 340, useNativeDriver: true }),
-          Animated.delay(180),
-        ])
-      );
-      auraAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(favoritesAuraPulse, { toValue: 1, duration: 1200, useNativeDriver: true }),
-          Animated.timing(favoritesAuraPulse, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ])
-      );
-      beatAnim.start();
-      auraAnim.start();
-    } else {
-      favoritesHeartBeat.stopAnimation();
-      favoritesAuraPulse.stopAnimation();
-      favoritesHeartBeat.setValue(1);
-      favoritesAuraPulse.setValue(0);
-    }
-    return () => {
-      beatAnim?.stop();
-      auraAnim?.stop();
-    };
-  }, [favoritesAuraPulse, favoritesHeartBeat, isFavoritesRadarEnabled, showOnlyFavorites]);
-
-  const BASE_AREA_RETICLE_DIAMETER = Math.min(width * 0.48, 240);
-  const [areaReticleDiameter, setAreaReticleDiameter] = useState(BASE_AREA_RETICLE_DIAMETER);
-  useEffect(() => {
-    setAreaReticleDiameter(BASE_AREA_RETICLE_DIAMETER);
-  }, [BASE_AREA_RETICLE_DIAMETER]);
+  const AREA_RETICLE_DIAMETER = Math.min(width * 0.48, 240);
+  const areaReticleDiameter = useMemo(() => {
+    return AREA_RETICLE_DIAMETER;
+  }, [AREA_RETICLE_DIAMETER]);
   const areaLensLeft = useMemo(() => Math.round(Math.max(0, (width - areaReticleDiameter) / 2)), [width, areaReticleDiameter]);
   const areaLensTop = useMemo(() => Math.round(Math.max(0, (height - areaReticleDiameter) / 2)), [height, areaReticleDiameter]);
 
@@ -647,17 +339,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (typeof route?.params?.favoritesOnly === 'boolean') {
         setShowOnlyFavorites(route.params.favoritesOnly);
       }
-      if (route?.params?.favoritesScope === 'FAVORITES' || route?.params?.favoritesScope === 'MINE') {
-        setFavoritesMapScope(route.params.favoritesScope);
-      }
-    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope])
+    }, [route?.params?.favoritesOnly])
   );
-
-  useEffect(() => {
-    if (!showOnlyFavorites) {
-      setFavoritesMapScope('FAVORITES');
-    }
-  }, [showOnlyFavorites]);
 
   useEffect(() => {
     let cancelled = false;
@@ -780,14 +463,29 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   }, [offers, searchQuery]);
 
   const backendCities = useMemo(() => {
-    return [...STRICT_CITIES].sort((a, b) => a.localeCompare(b, 'pl'));
-  }, []);
+    const set = new Set<string>(STRICT_CITIES);
+    offers.forEach((o) => {
+      const city = String(o.raw?.city || '').trim();
+      if (city) set.add(city);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [offers]);
 
   const backendDistrictsForDraftCity = useMemo(() => {
     const selectedCity = draftAdvancedFilters.city.trim();
     if (!selectedCity) return [] as string[];
-    return getStrictDistrictsForCity(selectedCity);
-  }, [draftAdvancedFilters.city]);
+    const strictDistricts = STRICT_CITY_DISTRICTS[selectedCity] || [];
+    if (strictDistricts.length > 0) {
+      return [...strictDistricts].sort((a, b) => a.localeCompare(b, 'pl'));
+    }
+    const set = new Set<string>();
+    offers.forEach((o) => {
+      const city = String(o.raw?.city || '').trim();
+      const district = String(o.raw?.district || '').trim();
+      if (city === selectedCity && district) set.add(district);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pl'));
+  }, [offers, draftAdvancedFilters.city]);
 
   const searchOnlyMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) return offers.length;
@@ -1003,23 +701,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   const filteredOffers = useMemo(() => {
-    const isMyOffer = (offer: MapOffer) => {
-      const myId = Number(user?.id || 0);
-      if (!myId) return false;
-      const ownerCandidateIds = [
-        offer.raw?.userId,
-        offer.raw?.ownerId,
-        offer.raw?.sellerId,
-        offer.raw?.authorId,
-        offer.raw?.createdById,
-        offer.raw?.user?.id,
-        offer.raw?.owner?.id,
-        offer.raw?.seller?.id,
-        offer.raw?.createdBy?.id,
-      ]
-        .map((v) => Number(v || 0))
-        .filter((v) => Number.isFinite(v) && v > 0);
-      return ownerCandidateIds.includes(myId);
+    const cityMatches = (rawCityNorm: string, selectedCityNorm: string) => {
+      if (rawCityNorm === selectedCityNorm) return true;
+      if (rawCityNorm === 'trojmiasto' && ['gdansk', 'gdynia', 'sopot'].includes(selectedCityNorm)) return true;
+      return false;
     };
 
     const matchesAdvancedFilters = (offer: MapOffer) => {
@@ -1035,7 +720,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (advancedFilters.minArea !== null && rawArea < advancedFilters.minArea) return false;
       if (advancedFilters.maxArea !== null && rawArea > advancedFilters.maxArea) return false;
       const selectedCity = normalizeSearchText(advancedFilters.city.trim());
-      if (selectedCity && !radarCityMatches(rawCity, selectedCity)) return false;
+      if (selectedCity && !cityMatches(rawCity, selectedCity)) return false;
       if (
         advancedFilters.districts.length > 0 &&
         !advancedFilters.districts.some((d) => normalizeSearchText(d.trim()) === rawDistrict)
@@ -1044,41 +729,32 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       return true;
     };
     const favoriteOffers = offers.filter((o) => favorites.includes(Number(o.id)));
-    const myOffers = offers.filter(isMyOffer);
     const queryFiltered =
       normalizedSearchTokens.length === 0
         ? offers
         : offers.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)));
     const advancedFiltered = queryFiltered.filter(matchesAdvancedFilters);
-
-    // Radar LIVE działa niezależnie od listy/mapy wyników:
-    // kalibracja służy do logiki Radaru/Push, a wyszukiwanie rozszerzone odpowiada za wyniki wyszukiwania.
-    const shouldApplyRadarToMapResults = false && mapUsesRadarFilters && !hasAdvancedFiltersActive;
-    const applyRadar = (list: MapOffer[]) =>
-      shouldApplyRadarToMapResults ? list.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds)) : list;
-    const radarFiltered = applyRadar(advancedFiltered);
-
+    
     if (showOnlyFavorites) {
-      const scopedBase = favoritesMapScope === 'MINE' ? myOffers : favoriteOffers;
-      const scopedAndAdvanced = applyRadar(scopedBase.filter(matchesAdvancedFilters));
-      if (!userLocation) return scopedAndAdvanced;
-      const sortedScoped = scopedAndAdvanced
+      const favAndAdvanced = favoriteOffers.filter(matchesAdvancedFilters);
+      if (!userLocation) return favAndAdvanced;
+      const sortedFavorites = favAndAdvanced
         .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
         .sort((a, b) => a.distance - b.distance)
         .map((x) => x.offer);
-      return sortedScoped;
+      return sortedFavorites;
     }
     
     if (!userLocation) {
-      if (hasAdvancedFiltersActive) return radarFiltered;
-      const pinned = [...radarFiltered];
+      if (hasAdvancedFiltersActive) return advancedFiltered;
+      const pinned = [...advancedFiltered];
       favoriteOffers.forEach((fav) => {
         if (!pinned.some((o) => Number(o.id) === Number(fav.id))) pinned.push(fav);
       });
       return pinned;
     }
 
-    const withDistance = radarFiltered
+    const withDistance = advancedFiltered
       .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
       .sort((a, b) => a.distance - b.distance);
     const nearby = withDistance.filter((x) => x.distance <= 25).map((x) => x.offer);
@@ -1094,15 +770,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     normalizedSearchTokens,
     haystackForOffer,
     showOnlyFavorites,
-    favoritesMapScope,
     favorites,
-    user?.id,
     userLocation,
     advancedFilters,
     hasAdvancedFiltersActive,
-    mapUsesRadarFilters,
-    radarFilters,
-    radarMapBounds,
   ]);
 
   const activeOffers = filteredOffers;
@@ -1155,14 +826,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const openRadarCalibration = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setCalibrationSessionId((prev) => prev + 1);
     setShowCalibration(true);
-  };
-
-  const openFavoritesCalibration = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setFavoritesCalibrationSessionId((prev) => prev + 1);
-    setShowFavoritesCalibration(true);
   };
 
   const applyAdvancedFilters = () => {
@@ -1237,13 +901,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const applyRadarCalibration = async (filtersToApply: RadarFilters) => {
     setRadarFilters(filtersToApply);
-    if (isRadarFactoryDefaults(filtersToApply)) {
-      setMapUsesRadarFilters(false);
-      setRadarMapBounds(null);
-      setAreaSummary('');
-    } else {
-      setMapUsesRadarFilters(true);
-    }
     await setRadarActive(filtersToApply.pushNotifications);
     setIsRadarEnabled(filtersToApply.pushNotifications);
     await syncRadarPreferencesToBackend(filtersToApply);
@@ -1251,128 +908,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const applyFavoritesCalibration = async (filtersToApply: RadarFilters) => {
-    setFavoritesRadarFilters(filtersToApply);
-    setIsFavoritesRadarEnabled(filtersToApply.pushNotifications);
-    setShowFavoritesCalibration(false);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const getAreaSummaryPreview = useCallback(
-    (filters: RadarFilters): string | undefined => {
-      const offersInPreview = offers.filter((offer) => matchesRadarCalibration(offer, filters, radarMapBounds));
-      if (filters.calibrationMode === 'CITY') {
-        const districtLabel =
-          filters.selectedDistricts.length > 0
-            ? `${filters.selectedDistricts.length} dzielnic`
-            : 'wszystkie dzielnice';
-        return `${filters.city} • ${districtLabel} • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
-      }
-      if (!radarMapBounds) return areaSummary || undefined;
-      const radiusKm = radarGeoRadiusLimitKm(radarMapBounds.radiusKm, filters.matchThreshold);
-      return `${filters.city} • ${radiusKm.toFixed(1)} km • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
-    },
-    [radarMapBounds, areaSummary, offers]
-  );
-
-  const getMatchingOffersCountPreview = useCallback(
-    (filters: RadarFilters): number => {
-      return offers.filter((offer) => matchesRadarCalibration(offer, filters, radarMapBounds)).length;
-    },
-    [offers, radarMapBounds]
-  );
-
-  const handleMapRegionChange = (region: Region) => {
-    if (!showAreaPicker) return;
-    areaRegionRef.current = region;
-    if (!isMapMoving) {
-      setIsMapMoving(true);
-      Animated.parallel([
-        Animated.spring(areaReticleScale, {
-          toValue: 1.06,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.timing(areaReticleOpacity, {
-          toValue: 0.78,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-        Animated.timing(areaHaloOpacity, {
-          toValue: 0.12,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-    if (!mapLayout.width || !mapLayout.height) return;
-    const { kmPerPxAvg } = approxKmPerPixel(
-      region,
-      mapLayout.width,
-      mapLayout.height
-    );
-    const nextRadius = clamp(
-      (areaReticleDiameter / 2) * kmPerPxAvg,
-      0.3,
-      10
-    );
-    setAreaPickerDraft((prev) => ({
-      ...prev,
-      center: {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
-      radiusKm: Math.round(nextRadius * 10) / 10,
-      latitudeDelta: region.latitudeDelta,
-      longitudeDelta: region.longitudeDelta,
-    }));
-  };
-
   const handleMapRegionChangeComplete = (region: Region) => {
     if (!showAreaPicker) return;
-    areaRegionRef.current = region;
-    if (!mapLayout.width || !mapLayout.height) {
-      setIsMapMoving(false);
-      return;
-    }
-    const { kmPerPxAvg } = approxKmPerPixel(
-      region,
-      mapLayout.width,
-      mapLayout.height
-    );
-    const nextRadius = clamp(
-      (areaReticleDiameter / 2) * kmPerPxAvg,
-      0.3,
-      10
-    );
+    const metersPerPixel = (region.latitudeDelta * 111_320) / Math.max(1, height);
+    const radiusKm = Math.max(0.3, ((AREA_RETICLE_DIAMETER / 2) * metersPerPixel) / 1000);
+    const roundedRadius = Math.round(radiusKm * 10) / 10;
+    
     setAreaPickerDraft((prev) => ({
       ...prev,
-      center: {
-        latitude: region.latitude,
-        longitude: region.longitude,
-      },
-      radiusKm: Math.round(nextRadius * 10) / 10,
+      center: { latitude: region.latitude, longitude: region.longitude },
+      radiusKm: roundedRadius,
       latitudeDelta: region.latitudeDelta,
       longitudeDelta: region.longitudeDelta,
     }));
-    setIsMapMoving(false);
-    Animated.parallel([
-      Animated.spring(areaReticleScale, {
-        toValue: 1,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-      Animated.timing(areaReticleOpacity, {
-        toValue: 0.95,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.timing(areaHaloOpacity, {
-        toValue: 0.26,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    
+    setIsMapMoving(false); // <--- Odpala luksusową animację soczewki
+  };
+
+  const handleMapRegionChange = () => {
+    if (!showAreaPicker) return;
+    if (!isMapMoving) setIsMapMoving(true); // <--- Rozmywa i powiększa soczewkę
   };
 
   const openAreaPickerFromCalibration = (currentFilters: RadarFilters) => {
@@ -1426,26 +981,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
     }
 
-    const strictMatchCity =
-      STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(selectedCity)) ||
-      STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(radarFilters.city)) ||
-      STRICT_CITIES[0];
+    const districtsSet = new Set<string>();
+    for (const offer of offersInArea) {
+      const city = String(offer.raw?.city || '').trim();
+      const district = String(offer.raw?.district || '').trim();
+      if (city === selectedCity && district) districtsSet.add(district);
+    }
+
+    const selectedDistricts = Array.from(districtsSet).sort((a, b) => a.localeCompare(b, 'pl'));
     const updated: RadarFilters = {
       ...radarFilters,
-      calibrationMode: 'MAP',
-      city: strictMatchCity,
-      selectedDistricts: [],
+      city: selectedCity,
+      selectedDistricts,
     };
 
     setRadarFilters(updated);
-    setRadarMapBounds({
-      centerLat: center.latitude,
-      centerLng: center.longitude,
-      radiusKm: radius,
-    });
-    setMapUsesRadarFilters(true);
     setAreaSummary(
-      `${strictMatchCity} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
+      `${selectedCity} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
     );
     setShowAreaPicker(false);
     setShowCalibration(true);
@@ -1493,18 +1045,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         },
       ]}
     >
-      <View style={styles.cardImageWrap}>
-        {item.image ? (
-          <Image source={{ uri: item.image }} style={styles.cardImage} contentFit="cover" transition={200} />
-        ) : (
-          <View style={[styles.cardImage, { backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
-            <Ionicons name="home" size={22} color="#8E8E93" />
-          </View>
-        )}
-        <View style={[styles.transactionBadge, styles.transactionBadgeOnImage, { backgroundColor: getTransactionBadge(item.raw?.transactionType).color }]}>
-          <Text style={styles.transactionBadgeText}>{getTransactionBadge(item.raw?.transactionType).label}</Text>
+      {item.image ? (
+        <Image source={{ uri: item.image }} style={styles.cardImage} contentFit="cover" transition={200} />
+      ) : (
+        <View style={[styles.cardImage, { backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
+          <Ionicons name="home" size={22} color="#8E8E93" />
         </View>
-      </View>
+      )}
       <View style={styles.cardInfo}>
         <View style={styles.cardTopRow}>
           <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#1C1C1E' }]} numberOfLines={1}>
@@ -1533,26 +1080,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <Text style={[styles.badgeText, { color: isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
           </View>
         </View>
-
-        <View style={styles.cardFooterRow}>
-          <View style={styles.cardFooterTopRow}>
-            <Text style={styles.offerIdText}>ID: {item.id}</Text>
-            <View style={styles.amenitiesInlineRow}>
-              {[
-                { key: 'garden', icon: 'leaf', enabled: !!item.raw?.hasGarden },
-                { key: 'parking', icon: 'car', enabled: !!item.raw?.hasParking },
-                { key: 'balcony', icon: 'sunny', enabled: !!item.raw?.hasBalcony },
-                { key: 'elevator', icon: 'arrow-up', enabled: !!item.raw?.hasElevator },
-                { key: 'furnished', icon: 'cube', enabled: !!item.raw?.isFurnished },
-              ]
-                .filter((amenity) => amenity.enabled)
-                .map((amenity) => (
-                  <Ionicons key={amenity.key} name={amenity.icon as any} size={14} color="#10B981" />
-                ))}
-            </View>
-          </View>
-          <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw)}</Text>
-        </View>
       </View>
     </Pressable>
   );
@@ -1562,10 +1089,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <RadarMapComponent
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
-        onLayout={(e: any) => {
-          const { width: w, height: h } = e.nativeEvent.layout;
-          setMapLayout({ width: w, height: h });
-        }}
         initialRegion={DEFAULT_REGION}
         onRegionChange={handleMapRegionChange}
         onRegionChangeComplete={handleMapRegionChangeComplete}
@@ -1640,40 +1163,38 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         />
       )}
 
-      <View style={[styles.topBarContainer, { top: topBarTop }]}>
-        <View style={styles.searchBarSlot}>
-          <BlurView intensity={isDark ? 80 : 90} tint={isDark ? 'dark' : 'light'} style={styles.searchGlass}>
-            <Ionicons name="search" size={20} color={isDark ? '#FFF' : '#1C1C1E'} style={{ marginLeft: 16 }} />
-            <TextInput
-              ref={searchInputRef}
-              style={[styles.searchInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-              placeholder="Miasto, dzielnica, ulica…"
-              placeholderTextColor="#8E8E93"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onFocus={() => setIsSearchFocused(true)}
-              returnKeyType="search"
-              autoCorrect={false}
-              autoCapitalize="none"
-              clearButtonMode="never"
-              onSubmitEditing={() => finalizeSearchChoice(searchQuery)}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setSearchQuery('');
-                  searchInputRef.current?.focus();
-                }}
-                hitSlop={10}
-                style={styles.searchClearBtn}
-                accessibilityLabel="Wyczyść wyszukiwanie"
-              >
-                <Ionicons name="close-circle" size={22} color="#8E8E93" />
-              </Pressable>
-            )}
-          </BlurView>
-        </View>
+      <View style={[styles.topBarContainer, { top: Platform.OS === 'ios' ? 55 : 40 }]}>
+        <BlurView intensity={isDark ? 80 : 90} tint={isDark ? 'dark' : 'light'} style={styles.searchGlass}>
+          <Ionicons name="search" size={20} color={isDark ? '#FFF' : '#1C1C1E'} style={{ marginLeft: 16 }} />
+          <TextInput
+            ref={searchInputRef}
+            style={[styles.searchInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+            placeholder="Miasto, dzielnica, ulica…"
+            placeholderTextColor="#8E8E93"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onFocus={() => setIsSearchFocused(true)}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            clearButtonMode="never"
+            onSubmitEditing={() => finalizeSearchChoice(searchQuery)}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSearchQuery('');
+                searchInputRef.current?.focus();
+              }}
+              hitSlop={10}
+              style={styles.searchClearBtn}
+              accessibilityLabel="Wyczyść wyszukiwanie"
+            >
+              <Ionicons name="close-circle" size={22} color="#8E8E93" />
+            </Pressable>
+          )}
+        </BlurView>
 
         <Pressable
           style={({ pressed }) => [styles.filterButtonWrap, pressed && { opacity: 0.8 }]}
@@ -1700,78 +1221,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </BlurView>
         </Pressable>
       </View>
-
-      {showOnlyFavorites && (
-        <View style={[styles.favorFloatingIslandWrap, { top: topBarTop + (isTablet ? 66 : 60) }]}>
-          <View style={styles.radarHeroWrap}>
-            {isFavoritesRadarEnabled && (
-              <View pointerEvents="none" style={styles.radarPulseLayer}>
-                <Animated.View
-                  style={[
-                    styles.favoritesAuraWave,
-                    {
-                      borderColor: 'rgba(235,112,168,0.48)',
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0] }),
-                      transform: [{ scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
-                    },
-                  ]}
-                />
-                {[
-                  { x: -72, y: -8, size: 10 },
-                  { x: -44, y: -28, size: 8 },
-                  { x: -16, y: -36, size: 9 },
-                  { x: 20, y: -34, size: 10 },
-                  { x: 52, y: -18, size: 8 },
-                  { x: 74, y: 2, size: 9 },
-                  { x: -68, y: 20, size: 8 },
-                  { x: 48, y: 22, size: 8 },
-                ].map((heart, idx) => (
-                  <Animated.View
-                    key={`fav-heart-${idx}`}
-                    style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      transform: [
-                        { translateX: heart.x },
-                        { translateY: heart.y },
-                        { scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] }) },
-                      ],
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.08] }),
-                    }}
-                  >
-                    <Ionicons name="heart" size={heart.size} color="rgba(247,117,172,0.72)" />
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-            <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-              <BlurView
-                intensity={95}
-                tint={isDark ? 'dark' : 'light'}
-                style={[
-                  styles.radarPill,
-                  {
-                    backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
-                  },
-                ]}
-              >
-                <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
-                  <Ionicons
-                    name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
-                    size={18}
-                    color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
-                  />
-                </Animated.View>
-                <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>EstateOS™ Favor</Text>
-                  <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? 'Status: LOVE LIVE' : 'Status: NIEAKTYWNY'}</Text>
-                </View>
-              </BlurView>
-            </Pressable>
-          </View>
-        </View>
-      )}
       
       {isSearchFocused && (
         <View style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}>
@@ -1900,106 +1349,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       )}
 
-      {!showOnlyFavorites && (
-        <View style={[styles.radarToggleContainer, { top: radarButtonTop }]}>
-          <View style={styles.radarHeroWrap}>
-            {isRadarEnabled && (
-              <View pointerEvents="none" style={styles.radarPulseLayer}>
-                <Animated.View
-                  style={[
-                    styles.radarPulseWave,
-                    {
-                      borderColor: 'rgba(16,185,129,0.55)',
-                      opacity: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.42, 0] }),
-                      transform: [{ scale: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.radarPulseWave,
-                    {
-                      borderColor: 'rgba(16,185,129,0.42)',
-                      opacity: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0] }),
-                      transform: [{ scale: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.95] }) }],
-                    },
-                  ]}
-                />
-              </View>
-            )}
-            <Pressable onPress={openRadarCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-              <BlurView
-                intensity={95}
-                tint={isDark ? 'dark' : 'light'}
-                style={[
-                  styles.radarPill,
-                  { backgroundColor: isRadarEnabled ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 59, 48, 0.14)' },
-                ]}
-              >
-                <Ionicons name={isRadarEnabled ? 'radio' : 'radio-outline'} size={18} color={isRadarEnabled ? '#10b981' : '#FF3B30'} />
-                <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: isRadarEnabled ? '#10b981' : '#FF3B30' }]}>EstateOS™ Radar</Text>
-                  <Text style={styles.radarStatus}>{isRadarEnabled ? 'Status: LIVE' : 'Status: NIEAKTYWNY'}</Text>
-                </View>
-              </BlurView>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {showOnlyFavorites && (
-        <View style={[styles.favoritesScopeContainer, { top: topBarTop + (isTablet ? 58 : 54) }]}>
-          <BlurView intensity={95} tint={isDark ? 'dark' : 'light'} style={[styles.favoritesScopeWrap, { borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.08)' }]}>
-            {([
-              { key: 'FAVORITES', label: 'Ulubione', icon: 'heart' },
-              { key: 'MINE', label: 'Moje', icon: 'home' },
-            ] as const).map((item) => {
-              const active = favoritesMapScope === item.key;
-              return (
-                <Pressable
-                  key={item.key}
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    setFavoritesMapScope(item.key);
-                  }}
-                  style={[
-                    styles.favoritesScopeChip,
-                    active && { backgroundColor: item.key === 'FAVORITES' ? 'rgba(247,119,178,0.24)' : 'rgba(16,185,129,0.2)' },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.icon as any}
-                    size={13}
-                    color={active ? (item.key === 'FAVORITES' ? '#F777B2' : '#10b981') : '#8E8E93'}
-                  />
-                  <Text style={[styles.favoritesScopeText, active && { color: item.key === 'FAVORITES' ? '#F777B2' : '#10b981' }]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+      <View style={styles.radarToggleContainer}>
+        <Pressable onPress={openRadarCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
+          <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.radarPill, isRadarEnabled && { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+            <Ionicons name={isRadarEnabled ? 'notifications' : 'notifications-outline'} size={16} color={isRadarEnabled ? '#10b981' : (isDark ? '#FFF' : '#1C1C1E')} />
+            <Text style={[styles.radarText, { color: isRadarEnabled ? '#10b981' : (isDark ? '#FFF' : '#1C1C1E') }]}>
+              {isRadarEnabled ? 'Radar śledzi ten obszar' : 'Włącz Radar dla mapy'}
+            </Text>
           </BlurView>
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              navigation.navigate('EstateDiscovery');
-            }}
-            style={({ pressed }) => [
-              styles.discoveryLaunchBtn,
-              pressed && { transform: [{ scale: 0.97 }] },
-            ]}
-          >
-            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.discoveryLaunchGlass}>
-              <Ionicons name="sparkles-outline" size={14} color="#D4AF37" />
-              <Text style={styles.discoveryLaunchText}>Discovery</Text>
-            </BlurView>
-          </Pressable>
-        </View>
-      )}
+        </Pressable>
+      </View>
 
       <View style={styles.bottomCardsContainer}>
         {loading ? (
-          <View style={{ paddingBottom: bottomCardsInset, alignItems: 'center' }}>
+          <View style={{ paddingBottom: Platform.OS === 'ios' ? 110 : 90, alignItems: 'center' }}>
             <ActivityIndicator color={isDark ? '#FFF' : '#111'} />
           </View>
         ) : (
@@ -2011,7 +1374,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             showsHorizontalScrollIndicator={false}
             snapToInterval={width * 0.85 + 16}
             decelerationRate="fast"
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomCardsInset }}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 110 : 90 }}
             renderItem={renderOfferCard}
             onMomentumScrollEnd={(e) => {
               const idx = Math.round(e.nativeEvent.contentOffset.x / (width * 0.85 + 16));
@@ -2028,96 +1391,96 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       <RadarCalibrationModal
         visible={showCalibration}
-        calibrationSessionId={calibrationSessionId}
+        calibrationSessionId={0}
         isDark={isDark}
-        variant="radar"
         initialFilters={radarFilters}
         matchingOffersCount={activeOffers.length}
         areaSummary={areaSummary}
-        getAreaSummaryPreview={getAreaSummaryPreview}
-        getMatchingOffersCountPreview={getMatchingOffersCountPreview}
         onClose={() => setShowCalibration(false)}
         onApply={applyRadarCalibration}
-        onOpenAreaPicker={openAreaPickerFromCalibration}
-      />
-
-      <RadarCalibrationModal
-        visible={showFavoritesCalibration}
-        calibrationSessionId={favoritesCalibrationSessionId}
-        isDark={isDark}
-        variant="favorites"
-        initialFilters={favoritesRadarFilters}
-        matchingOffersCount={activeOffers.length}
-        areaSummary={areaSummary}
-        getAreaSummaryPreview={getAreaSummaryPreview}
-        getMatchingOffersCountPreview={getMatchingOffersCountPreview}
-        onClose={() => setShowFavoritesCalibration(false)}
-        onApply={applyFavoritesCalibration}
         onOpenAreaPicker={openAreaPickerFromCalibration}
       />
       
       {showAreaPicker && (
         <View style={styles.areaPickerOverlay} pointerEvents="box-none">
-          {/* PRZYCIEMNIENIE TŁA */}
-          <View style={styles.areaDimLayer} pointerEvents="none" />
-          {/* SOCZEWKA */}
-          <View
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[styles.areaBackdropBlur, { top: 0, left: 0, right: 0, height: areaLensTop }]}
             pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
             style={[
-              styles.areaReticleWrap,
+              styles.areaBackdropBlur,
               {
-                left: areaLensLeft,
-                top: areaLensTop,
-                width: areaReticleDiameter,
-                height: areaReticleDiameter,
+                top: areaLensTop + areaReticleDiameter,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: undefined,
               },
             ]}
-          >
-            <Animated.View
-              style={{
-                width: areaReticleDiameter,
+            pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[
+              styles.areaBackdropBlur,
+              {
+                top: areaLensTop,
+                left: 0,
+                width: areaLensLeft,
                 height: areaReticleDiameter,
-                borderRadius: areaReticleDiameter / 2,
-                transform: [{ scale: areaReticleScale }],
-                opacity: areaReticleOpacity,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Animated.View
-                style={{
-                  position: 'absolute',
-                  width: areaReticleDiameter,
-                  height: areaReticleDiameter,
-                  borderRadius: areaReticleDiameter / 2,
-                  borderWidth: 1.5,
-                  borderColor: 'rgba(16,185,129,0.4)',
-                  opacity: areaHaloOpacity,
-                }}
-              />
-              <CalibrationLens
-                isMoving={isMapMoving}
-                isDark={isDark}
-                diameter={areaReticleDiameter}
-              />
-            </Animated.View>
+                right: undefined,
+                bottom: undefined,
+              },
+            ]}
+            pointerEvents="none"
+          />
+          <BlurView
+            intensity={26}
+            tint="dark"
+            style={[
+              styles.areaBackdropBlur,
+              {
+                top: areaLensTop,
+                right: 0,
+                width: areaLensLeft,
+                height: areaReticleDiameter,
+                left: undefined,
+                bottom: undefined,
+              },
+            ]}
+            pointerEvents="none"
+          />
+
+          {/* ZASTOSOWANA SOCZEWKA KALIBRACJI W MIEJSCU STAREGO RETICLE */}
+          <View pointerEvents="none" style={[styles.areaReticleWrap, { left: areaLensLeft, top: areaLensTop, width: areaReticleDiameter, height: areaReticleDiameter }]}>
+            <CalibrationLens isMoving={isMapMoving} isDark={isDark} diameter={areaReticleDiameter} />
           </View>
-          {/* GÓRA */}
+
           <View style={styles.areaPickerTop} pointerEvents="box-none">
-            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
+            <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
               <Text style={styles.areaPickerTitle}>Zaznacz obszar radaru</Text>
               <Text style={styles.areaPickerSubtitle}>
-                Promień liczony jest na podstawie rzeczywistego widoku mapy.
+                Przesuń mapę pod znacznik i ustaw promień. Wykryjemy miasto i dzielnice automatycznie.
               </Text>
             </BlurView>
           </View>
-          {/* DÓŁ */}
+
           <View style={styles.areaPickerBottom} pointerEvents="box-none">
-            <BlurView intensity={92} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
+            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
               <View style={styles.areaRadiusHeader}>
-                <Text style={styles.areaRadiusLabel}>Promień</Text>
-                <Text style={styles.areaRadiusValue}>
-                  {formatRadiusLabel(areaPickerDraft.radiusKm)}
+                <Text style={styles.areaRadiusLabel}>Promień obszaru</Text>
+                <Text style={styles.areaRadiusValue}>{areaPickerDraft.radiusKm.toFixed(1)} km</Text>
+              </View>
+              <View style={styles.areaZoomHintRow}>
+                <Ionicons name="resize-outline" size={16} color="#10b981" />
+                <Text style={styles.areaZoomHintText}>
+                  Ustaw promień gestem szczypania na mapie (zoom in/out).
                 </Text>
               </View>
               <View style={styles.areaActionRow}>
@@ -2126,12 +1489,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   onPress={() => {
                     setShowAreaPicker(false);
                     setShowCalibration(true);
+                    void pulseHaptic(Haptics.ImpactFeedbackStyle.Light);
                   }}
                 >
                   <Text style={styles.areaGhostText}>Wróć</Text>
                 </Pressable>
-                <Pressable style={styles.areaApplyBtn} onPress={() => applyAreaSelectionToRadar()}>
-                  <Text style={styles.areaApplyText}>Zastosuj</Text>
+                <Pressable style={styles.areaApplyBtn} onPress={() => { void applyAreaSelectionToRadar(); }}>
+                  <Text style={styles.areaApplyText}>Zastosuj obszar</Text>
                 </Pressable>
               </View>
             </BlurView>
@@ -2142,163 +1506,145 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
         <View style={styles.advancedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdvancedSearch(false)} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}
-            style={{ width: '100%', flex: 1, justifyContent: 'flex-end' }}
-          >
-            <View
-              style={[
-                styles.advancedSheet,
-                { backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7' },
-                { height: advancedSheetMaxHeight, maxHeight: advancedSheetMaxHeight },
-              ]}
-            >
-              <View style={styles.modalDragHandle} />
-              <View style={styles.advancedHeader}>
-                <Text style={[styles.advancedTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Wyszukiwanie rozszerzone</Text>
-                <Pressable onPress={resetAdvancedFilters}>
-                  <Text style={styles.advancedReset}>Reset</Text>
-                </Pressable>
-              </View>
-              <ScrollView
-                style={{ flex: 1 }}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-                contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
-              >
-                <Text style={styles.advancedSection}>Tryb</Text>
-                <View style={styles.advancedRow}>
-                  {([
-                    { key: 'SELL', label: 'Kupno' },
-                    { key: 'RENT', label: 'Najem' },
-                  ] as const).map((item) => {
-                    const active = draftAdvancedFilters.transactionType === item.key;
-                    return (
-                      <Pressable key={item.key} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, transactionType: item.key }))}>
-                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{item.label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.advancedSection}>Miasto</Text>
-                <View style={styles.advancedRow}>
-                  {['', ...backendCities].map((city) => {
-                    const active = draftAdvancedFilters.city === city;
-                    return (
-                      <Pressable key={city || 'all'} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, city, districts: [] }))}>
-                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{city || 'Wszystkie'}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.advancedSection}>Dzielnica</Text>
-                <View style={styles.advancedRow}>
-                  {(() => {
-                    const selectedCity = draftAdvancedFilters.city.trim();
-                    const chips = selectedCity ? backendDistrictsForDraftCity : [];
-                    return chips.map((district) => {
-                      const active = draftAdvancedFilters.districts.includes(district);
-                      return (
-                        <Pressable
-                          key={district}
-                          style={[
-                            styles.advancedChip,
-                            active && styles.advancedChipActive,
-                            active && {
-                              borderColor: draftModeAccentColor,
-                              backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)',
-                            },
-                            !selectedCity && { opacity: 0.5 },
-                          ]}
-                          disabled={!selectedCity}
-                          onPress={() =>
-                            setDraftAdvancedFilters((p) => ({
-                              ...p,
-                              districts: p.districts.includes(district)
-                                ? p.districts.filter((d) => d !== district)
-                                : [...p.districts, district],
-                            }))
-                          }
-                        >
-                          <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>
-                            {district}
-                          </Text>
-                        </Pressable>
-                      );
-                    });
-                  })()}
-                </View>
-                {draftAdvancedFilters.districts.length > 0 && (
-                  <Pressable
-                    onPress={() => setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))}
-                    style={{ alignSelf: 'flex-start', marginBottom: 8 }}
-                  >
-                    <Text style={{ color: '#8E8E93', fontWeight: '700' }}>Wyczyść dzielnice</Text>
-                  </Pressable>
-                )}
-
-                <Text style={styles.advancedSection}>Typ nieruchomości</Text>
-                <View style={styles.advancedRow}>
-                  {(['ALL', 'FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((type) => {
-                    const labels = { ALL: 'Wszystkie', FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
-                    const active = draftAdvancedFilters.propertyType === type;
-                    return (
-                      <Pressable key={type} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, propertyType: type }))}>
-                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{labels[type]}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={styles.advancedSection}>Cena (PLN)</Text>
-                <View style={styles.advancedInputRow}>
-                  <TextInput
-                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Od"
-                    placeholderTextColor="#8E8E93"
-                    keyboardType="numeric"
-                    value={draftAdvancedFilters.minPrice === null ? '' : String(draftAdvancedFilters.minPrice)}
-                    onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, minPrice: v ? Number(v.replace(/\D/g, '')) : null }))}
-                  />
-                  <TextInput
-                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Do"
-                    placeholderTextColor="#8E8E93"
-                    keyboardType="numeric"
-                    value={draftAdvancedFilters.maxPrice === null ? '' : String(draftAdvancedFilters.maxPrice)}
-                    onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, maxPrice: v ? Number(v.replace(/\D/g, '')) : null }))}
-                  />
-                </View>
-
-                <Text style={styles.advancedSection}>Metraż (m²)</Text>
-                <View style={styles.advancedInputRow}>
-                  <TextInput
-                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Od"
-                    placeholderTextColor="#8E8E93"
-                    keyboardType="numeric"
-                    value={draftAdvancedFilters.minArea === null ? '' : String(draftAdvancedFilters.minArea)}
-                    onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, minArea: v ? Number(v.replace(/\D/g, '')) : null }))}
-                  />
-                  <TextInput
-                    style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Do"
-                    placeholderTextColor="#8E8E93"
-                    keyboardType="numeric"
-                    value={draftAdvancedFilters.maxArea === null ? '' : String(draftAdvancedFilters.maxArea)}
-                    onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, maxArea: v ? Number(v.replace(/\D/g, '')) : null }))}
-                  />
-                </View>
-              </ScrollView>
-              <Pressable style={[styles.advancedApplyBtn, { backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981' }]} onPress={applyAdvancedFilters}>
-                <Text style={styles.advancedApplyText}>Zastosuj filtry</Text>
+          <View style={[styles.advancedSheet, { backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7' }]}>
+            <View style={styles.modalDragHandle} />
+            <View style={styles.advancedHeader}>
+              <Text style={[styles.advancedTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Wyszukiwanie rozszerzone</Text>
+              <Pressable onPress={resetAdvancedFilters}>
+                <Text style={styles.advancedReset}>Reset</Text>
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.advancedSection}>Tryb</Text>
+              <View style={styles.advancedRow}>
+                {([
+                  { key: 'SELL', label: 'Kupno' },
+                  { key: 'RENT', label: 'Najem' },
+                ] as const).map((item) => {
+                  const active = draftAdvancedFilters.transactionType === item.key;
+                  return (
+                    <Pressable key={item.key} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, transactionType: item.key }))}>
+                      <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{item.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.advancedSection}>Miasto</Text>
+              <View style={styles.advancedRow}>
+                {['', ...backendCities].map((city) => {
+                  const active = draftAdvancedFilters.city === city;
+                  return (
+                    <Pressable key={city || 'all'} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, city, districts: [] }))}>
+                      <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{city || 'Wszystkie'}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.advancedSection}>Dzielnica</Text>
+              <View style={styles.advancedRow}>
+                {(() => {
+                  const selectedCity = draftAdvancedFilters.city.trim();
+                  const chips = selectedCity ? backendDistrictsForDraftCity : [];
+                  return chips.map((district) => {
+                    const active = draftAdvancedFilters.districts.includes(district);
+                    return (
+                      <Pressable
+                        key={district}
+                        style={[
+                          styles.advancedChip,
+                          active && styles.advancedChipActive,
+                          active && {
+                            borderColor: draftModeAccentColor,
+                            backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)',
+                          },
+                          !selectedCity && { opacity: 0.5 },
+                        ]}
+                        disabled={!selectedCity}
+                        onPress={() =>
+                          setDraftAdvancedFilters((p) => ({
+                            ...p,
+                            districts: p.districts.includes(district)
+                              ? p.districts.filter((d) => d !== district)
+                              : [...p.districts, district],
+                          }))
+                        }
+                      >
+                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>
+                          {district}
+                        </Text>
+                      </Pressable>
+                    );
+                  });
+                })()}
+              </View>
+              {draftAdvancedFilters.districts.length > 0 && (
+                <Pressable
+                  onPress={() => setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))}
+                  style={{ alignSelf: 'flex-start', marginBottom: 8 }}
+                >
+                  <Text style={{ color: '#8E8E93', fontWeight: '700' }}>Wyczyść dzielnice</Text>
+                </Pressable>
+              )}
+
+              <Text style={styles.advancedSection}>Typ nieruchomości</Text>
+              <View style={styles.advancedRow}>
+                {(['ALL', 'FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((type) => {
+                  const labels = { ALL: 'Wszystkie', FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
+                  const active = draftAdvancedFilters.propertyType === type;
+                  return (
+                    <Pressable key={type} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, propertyType: type }))}>
+                      <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{labels[type]}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.advancedSection}>Cena (PLN)</Text>
+              <View style={styles.advancedInputRow}>
+                <TextInput
+                  style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                  placeholder="Od"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="numeric"
+                  value={draftAdvancedFilters.minPrice === null ? '' : String(draftAdvancedFilters.minPrice)}
+                  onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, minPrice: v ? Number(v.replace(/\D/g, '')) : null }))}
+                />
+                <TextInput
+                  style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                  placeholder="Do"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="numeric"
+                  value={draftAdvancedFilters.maxPrice === null ? '' : String(draftAdvancedFilters.maxPrice)}
+                  onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, maxPrice: v ? Number(v.replace(/\D/g, '')) : null }))}
+                />
+              </View>
+
+              <Text style={styles.advancedSection}>Metraż (m²)</Text>
+              <View style={styles.advancedInputRow}>
+                <TextInput
+                  style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                  placeholder="Od"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="numeric"
+                  value={draftAdvancedFilters.minArea === null ? '' : String(draftAdvancedFilters.minArea)}
+                  onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, minArea: v ? Number(v.replace(/\D/g, '')) : null }))}
+                />
+                <TextInput
+                  style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                  placeholder="Do"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="numeric"
+                  value={draftAdvancedFilters.maxArea === null ? '' : String(draftAdvancedFilters.maxArea)}
+                  onChangeText={(v) => setDraftAdvancedFilters((p) => ({ ...p, maxArea: v ? Number(v.replace(/\D/g, '')) : null }))}
+                />
+              </View>
+            </ScrollView>
+            <Pressable style={[styles.advancedApplyBtn, { backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981' }]} onPress={applyAdvancedFilters}>
+              <Text style={styles.advancedApplyText}>Zastosuj filtry</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
     </View>
@@ -2363,18 +1709,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     zIndex: 50,
-  },
-  searchBarSlot: {
-    flex: 1,
-    position: 'relative',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  favorFloatingIslandWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    zIndex: 48,
-    elevation: 48,
   },
   searchGlass: {
     flex: 1,
@@ -2640,113 +1974,33 @@ const styles = StyleSheet.create({
   },
   radarToggleContainer: {
     position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 240 : 220,
     alignSelf: 'center',
     zIndex: 22,
     elevation: 22,
   },
-  radarHeroWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radarPulseLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radarPulseWave: {
-    position: 'absolute',
-    width: 280,
-    height: 86,
-    borderRadius: 43,
-    borderWidth: 1.5,
-  },
-  favoritesAuraWave: {
-    position: 'absolute',
-    width: 280,
-    height: 86,
-    borderRadius: 43,
-    borderWidth: 1.5,
-  },
   radarBtnWrapper: {
-    borderRadius: 26,
+    borderRadius: 24,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.2)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 9,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 11,
-    gap: 10,
-    minWidth: 220,
+    paddingVertical: 12,
+    gap: 8,
   },
-  radarPillTextWrap: {
-    flexDirection: 'column',
-  },
-  radarTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 0.1,
-  },
-  radarStatus: {
-    fontSize: 10,
+  radarText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#8E8E93',
-    marginTop: 1,
-    letterSpacing: 0.7,
-  },
-  favoritesScopeContainer: {
-    position: 'absolute',
-    right: 20,
-    zIndex: 24,
-    elevation: 24,
-  },
-  favoritesScopeWrap: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    padding: 4,
-    gap: 4,
-  },
-  favoritesScopeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  favoritesScopeText: {
-    color: '#8E8E93',
-    fontSize: 12,
-    fontWeight: '800',
     letterSpacing: 0.2,
-  },
-  discoveryLaunchBtn: {
-    marginTop: 8,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  discoveryLaunchGlass: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  discoveryLaunchText: {
-    color: '#D4AF37',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.25,
   },
   bottomCardsContainer: {
     position: 'absolute',
@@ -2767,13 +2021,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 15,
     elevation: 8,
-  },
-  cardImageWrap: {
-    width: 90,
-    height: 90,
-    borderRadius: 16,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
   },
   cardImage: {
     width: 90,
@@ -2800,27 +2047,7 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     fontWeight: '600',
     marginTop: 2,
-    marginBottom: 8,
-  },
-  cardMetaRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  transactionBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  transactionBadgeOnImage: {
-    position: 'absolute',
-    alignSelf: 'center',
-    bottom: 6,
-  },
-  transactionBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    marginBottom: 10,
   },
   cardBadgesRow: {
     flexDirection: 'row',
@@ -2839,39 +2066,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  cardFooterRow: {
-    marginTop: 8,
-  },
-  cardFooterTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  amenitiesInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 16,
-  },
-  offerIdText: {
-    fontSize: 11,
-    color: '#8E8E93',
-    fontWeight: '700',
-  },
-  publishDateText: {
-    fontSize: 10,
-    color: '#8E8E93',
-    marginTop: 2,
-    fontWeight: '500',
-  },
   areaPickerOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 120,
     justifyContent: 'space-between',
-  },
-  areaDimLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   areaBackdropBlur: { position: 'absolute' },
   
@@ -2990,12 +2188,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   advancedSheet: {
+    maxHeight: '74%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 22 : 16,
-    flexDirection: 'column',
+    paddingBottom: Platform.OS === 'ios' ? 28 : 18,
   },
   modalDragHandle: {
     width: 40,
@@ -3021,8 +2219,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   advancedSection: {
-    marginTop: 8,
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 8,
     color: '#8E8E93',
     fontSize: 12,
     fontWeight: '700',

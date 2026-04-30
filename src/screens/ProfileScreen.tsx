@@ -1041,6 +1041,172 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
   );
 };
 
+const AdminDealroomCheckModal = ({ visible, onClose, theme }) => {
+  const navigation = useNavigation();
+  const { token, user } = useAuthStore();
+  const isDark = theme.glass === 'dark';
+  const [loading, setLoading] = useState(false);
+  const [deals, setDeals] = useState([]);
+
+  const parseMaybeNumber = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  };
+
+  const extractOfferId = (deal) => {
+    const direct = parseMaybeNumber(deal?.offerId ?? deal?.offer?.id ?? deal?.propertyId ?? deal?.listingId);
+    if (direct) return direct;
+    const fromTitle = String(deal?.title || '').match(/#(\d{1,12})/);
+    if (fromTitle?.[1]) return parseMaybeNumber(fromTitle[1]);
+    return null;
+  };
+
+  const extractParticipantsLabel = (deal) => {
+    const names = new Set<string>();
+    const ids = new Set<string>();
+    const ownId = parseMaybeNumber(user?.id);
+
+    const addName = (v) => {
+      const s = String(v ?? '').trim();
+      if (s && !/^unknown$/i.test(s) && !/^null$/i.test(s) && !/^undefined$/i.test(s)) {
+        names.add(s);
+      }
+    };
+    const addId = (v) => {
+      const n = parseMaybeNumber(v);
+      if (n && n !== ownId) ids.add(`#${n}`);
+    };
+
+    addName(deal?.otherParty?.name);
+    addName(deal?.counterparty?.name);
+    addName(deal?.otherUserName);
+    addName(deal?.buyer?.fullName);
+    addName(deal?.seller?.fullName);
+    addId(deal?.buyerId);
+    addId(deal?.sellerId);
+    addId(deal?.otherUserId);
+    addId(deal?.counterpartyId);
+    addId(deal?.partnerId);
+
+    const participants = Array.isArray(deal?.participants) ? deal.participants : [];
+    for (const p of participants) {
+      addName(p?.fullName ?? p?.name ?? p?.displayName);
+      addId(p?.id ?? p?.userId);
+    }
+
+    const namesList = Array.from(names).slice(0, 4);
+    const idsList = Array.from(ids).slice(0, 3);
+    if (namesList.length > 0) return namesList.join(' • ');
+    if (idsList.length > 0) return idsList.join(' • ');
+    return 'Brak danych uczestników';
+  };
+
+  const fetchDeals = async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.deals) ? data.deals : Array.isArray(data) ? data : [];
+      const sorted = [...list].sort((a: any, b: any) => {
+        const ta = new Date(a?.updatedAt || a?.createdAt || a?.time || 0).getTime();
+        const tb = new Date(b?.updatedAt || b?.createdAt || b?.time || 0).getTime();
+        return tb - ta;
+      });
+      setDeals(sorted);
+    } catch (_e) {
+      Alert.alert('Błąd', 'Nie udało się pobrać listy dealroomów.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (visible) fetchDeals();
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
+        <View style={styles.modalHeader}>
+          <Text style={[styles.modalTitle, { color: theme.text }]}>Dealroom Check</Text>
+          <Pressable onPress={onClose}>
+            <Ionicons name="close-circle" size={32} color={theme.subtitle} />
+          </Pressable>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" color="#34C759" style={{ marginTop: 50 }} />
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+            <Text style={[styles.sectionFooter, { marginTop: 0, marginBottom: 10 }]}>
+              Lista wszystkich dealroomów i stron uczestniczących. Kliknij numer, aby otworzyć podgląd.
+            </Text>
+
+            {deals.length === 0 ? (
+              <Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 30 }}>Brak dealroomów.</Text>
+            ) : (
+              deals.map((deal: any, idx: number) => {
+                const offerId = extractOfferId(deal);
+                const participantsLabel = extractParticipantsLabel(deal);
+                const dealId = parseMaybeNumber(deal?.id);
+                return (
+                  <View
+                    key={`${deal?.id || idx}`}
+                    style={[
+                      styles.userCard,
+                      {
+                        backgroundColor: isDark ? '#1C1C1E' : '#FFF',
+                        borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                        paddingVertical: 12,
+                      },
+                    ]}
+                  >
+                    <Pressable
+                      onPress={() => {
+                        if (!dealId) return;
+                        Haptics.selectionAsync();
+                        onClose();
+                        setTimeout(() => {
+                          navigation.navigate('DealroomChat', {
+                            dealId,
+                            offerId: offerId ?? undefined,
+                            title: deal?.title || `Dealroom #${dealId}`,
+                          });
+                        }, 140);
+                      }}
+                      style={({ pressed }) => [{ opacity: pressed ? 0.72 : 1 }]}
+                    >
+                      <Text style={{ color: '#007AFF', fontWeight: '900', fontSize: 15 }}>
+                        #{dealId || '?'}
+                      </Text>
+                    </Pressable>
+                    <Text style={{ color: theme.text, fontSize: 11, marginTop: 2, fontWeight: '600' }}>
+                      Strony: {participantsLabel}
+                    </Text>
+                    <Text style={{ color: theme.subtitle, fontSize: 10, marginTop: 3 }}>
+                      {deal?.status ? `Status: ${deal.status}` : 'Status: -'}
+                      {offerId ? ` • Oferta #${offerId}` : ''}
+                    </Text>
+                  </View>
+                );
+              })
+            )}
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+};
+
 export default function ProfileScreen({ theme }) {
   const navigation = useNavigation();
   const { user, logout, updateAvatar, token } = useAuthStore();
@@ -1053,6 +1219,7 @@ export default function ProfileScreen({ theme }) {
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
   const [isAdminUsersVisible, setIsAdminUsersVisible] = useState(false);
   const [isAdminRadarVisible, setIsAdminRadarVisible] = useState(false);
+  const [isAdminDealroomCheckVisible, setIsAdminDealroomCheckVisible] = useState(false);
   const [adminSelectedUserId, setAdminSelectedUserId] = useState(null);
   const [isSmsEnabled, setIsSmsEnabled] = useState(true);
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
@@ -1317,6 +1484,7 @@ export default function ProfileScreen({ theme }) {
               <ListItem icon="business" color="#5E5CE6" title="Baza Ofert" onPress={() => setIsAdminOffersVisible(true)} isDark={isDark} />
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
               <ListItem icon="stats-chart" color="#FF2D55" title="Analityka Radaru" onPress={() => setIsAdminRadarVisible(true)} isDark={isDark} />
+              <ListItem icon="albums" color="#30B0C7" title="Dealroom Check" subtitle="Lista dealroomów i uczestników" onPress={() => setIsAdminDealroomCheckVisible(true)} isDark={isDark} />
               <ListItem icon="chatbubble-ellipses" color="#34C759" title="Bramka SMSPlanet" subtitle="Globalny przełącznik wysyłki" isLast={true} isDark={isDark} rightElement={<Switch value={isSmsEnabled} onValueChange={toggleSms} trackColor={{ false: '#767577', true: '#34C759' }} />} />
             </ListGroup>
           </View>
@@ -1348,6 +1516,7 @@ export default function ProfileScreen({ theme }) {
       <AdminUsersModal visible={isAdminUsersVisible} onClose={() => setIsAdminUsersVisible(false)} onOpenUser={(id) => setAdminSelectedUserId(id)} theme={theme} />
       <AdminUserProfileModal visible={!!adminSelectedUserId} userId={adminSelectedUserId} onClose={() => setAdminSelectedUserId(null)} theme={theme} />
       <AdminRadarAnalyticsModal visible={isAdminRadarVisible} onClose={() => setIsAdminRadarVisible(false)} theme={theme} />
+      <AdminDealroomCheckModal visible={isAdminDealroomCheckVisible} onClose={() => setIsAdminDealroomCheckVisible(false)} theme={theme} />
 
       <Modal visible={isOwnPublicProfileOpen} transparent animationType="fade" onRequestClose={() => setIsOwnPublicProfileOpen(false)}>
         <View style={styles.profileOverlay}>

@@ -69,24 +69,17 @@ function AddOfferNavigator({ theme }: { theme: any }) {
   );
 }
 
-// ======================================================================
-// KASKADOWY PLUSIK (APPLE GLASS) - ZABEZPIECZONY PANRESPONDER I KĄTY
-// ======================================================================
 const FloatingNextButton = ({ onPress }: any) => {
   const { draft, currentStep } = useOfferStore();
   const user = useAuthStore(state => state.user); 
   const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
-  
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const holdScale = useRef(new Animated.Value(1)).current;
   const menuOpacity = useRef(new Animated.Value(0)).current;
   const menuProgress = useRef(new Animated.Value(0)).current;
-  const itemScales = useRef([new Animated.Value(1), new Animated.Value(1), new Animated.Value(1)]).current;
-  
   const themeMode = useThemeStore(s => s.themeMode);
   const isDark = themeMode === 'dark';
-  
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
@@ -141,14 +134,13 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
   };
 
-  // Ustawione kąty: 180 (lewo), 270 (góra), 0 (prawo)
   const quickActions = [
     {
       key: 'MINE',
       label: 'Moje',
       icon: 'home',
-      angleDeg: 180,
-      distance: 90,
+      angleDeg: 200,
+      distance: 88,
       tint: '#10B981',
       glassBg: isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.2)',
       target: () => navigation.navigate('Ulubione', { favoritesOnly: true, favoritesScope: 'MINE' }),
@@ -158,7 +150,7 @@ const FloatingNextButton = ({ onPress }: any) => {
       label: 'Discovery',
       icon: 'sparkles',
       angleDeg: 270,
-      distance: 105,
+      distance: 104,
       tint: '#D4AF37',
       glassBg: isDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
       target: () => navigation.navigate('EstateDiscovery'),
@@ -167,13 +159,15 @@ const FloatingNextButton = ({ onPress }: any) => {
       key: 'FAVORITES',
       label: 'Ulubione',
       icon: 'heart',
-      angleDeg: 0,
-      distance: 90,
+      angleDeg: 340,
+      distance: 88,
       tint: '#F777B2',
       glassBg: isDark ? 'rgba(247,119,178,0.28)' : 'rgba(247,119,178,0.2)',
       target: () => navigation.navigate('Ulubione', { favoritesOnly: true, favoritesScope: 'FAVORITES' }),
     },
   ] as const;
+  const SNAP_DISTANCE = 40;
+  const CASCADE_STEP = 0.14;
 
   const clearLongPressTimer = useCallback(() => {
     if (!longPressTimeoutRef.current) return;
@@ -183,21 +177,19 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   const openQuickMenu = useCallback(() => {
     setIsQuickMenuOpen(true);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    quickActions.forEach((_, i) => itemScales[i].setValue(1));
-    
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.parallel([
       Animated.spring(holdScale, { toValue: 1.08, friction: 6, tension: 120, useNativeDriver: true }),
-      Animated.timing(menuOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-      Animated.spring(menuProgress, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+      Animated.timing(menuOpacity, { toValue: 1, duration: 170, useNativeDriver: true }),
+      Animated.timing(menuProgress, { toValue: 1, duration: 260, useNativeDriver: true }),
     ]).start();
-  }, [holdScale, menuOpacity, menuProgress, itemScales, quickActions]);
+  }, [holdScale, menuOpacity, menuProgress]);
 
   const closeQuickMenu = useCallback((toScale = 1) => {
     Animated.parallel([
       Animated.spring(holdScale, { toValue: toScale, friction: 7, tension: 90, useNativeDriver: true }),
-      Animated.timing(menuOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(menuProgress, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(menuOpacity, { toValue: 0, duration: 140, useNativeDriver: true }),
+      Animated.timing(menuProgress, { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(() => {
       setIsQuickMenuOpen(false);
       setHoveredAction(null);
@@ -206,46 +198,31 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   const resolveHoveredAction = useCallback((dx: number, dy: number) => {
     if (!isQuickMenuOpen) return null;
-    let best: { key: string; score: number } | null = null;
+
+    const distanceFromCenter = Math.hypot(dx, dy);
+    if (distanceFromCenter < 30) return null; // martwa strefa
+
+    let best: { key: string; dist: number } | null = null;
     for (const item of quickActions) {
       const rad = (item.angleDeg * Math.PI) / 180;
       const tx = Math.cos(rad) * item.distance;
       const ty = Math.sin(rad) * item.distance;
       const dist = Math.hypot(dx - tx, dy - ty);
-      // Szeroka strefa przyciągania, żeby pozycje "nie uciekały"
-      const score = Math.max(0, 75 - dist); 
-      if (!best || score > best.score) best = { key: item.key, score };
+      if (!best || dist < best.dist) {
+        best = { key: item.key, dist };
+      }
     }
-    if (!best || best.score <= 0) return null;
+
+    if (!best || best.dist > 60) return null;
+    if (best.dist < SNAP_DISTANCE) return best.key;
+
     return best.key;
-  }, [isQuickMenuOpen, quickActions]);
+  }, [isQuickMenuOpen]);
 
-  const onReleaseGesture = useCallback((dx: number, dy: number, e: any) => {
-    clearLongPressTimer();
-    if (!isQuickMenuOpen) {
-      closeQuickMenu(1);
-      handlePress(e);
-      return;
-    }
-
-    const selected = resolveHoveredAction(dx, dy);
-    if (selected) {
-      const target = quickActions.find((q) => q.key === selected);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      closeQuickMenu(1);
-      target?.target();
-      return;
-    }
-    closeQuickMenu(1);
-  }, [clearLongPressTimer, isQuickMenuOpen, closeQuickMenu, handlePress, resolveHoveredAction, quickActions]);
-
-  // PAN RESPONDER - ZABEZPIECZENIE PRZED KRADZIEŻĄ GESTU
   const panResponder = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true, // Zatrzymuje Map/ScrollView przed przejęciem dotyku
       onPanResponderGrant: () => {
         clearLongPressTimer();
         setHoveredAction(null);
@@ -254,33 +231,65 @@ const FloatingNextButton = ({ onPress }: any) => {
         }, 700);
       },
       onPanResponderMove: (_, gestureState) => {
-        if (!isQuickMenuOpen) return;
+        if (!isQuickMenuOpen) {
+          // Apple-like: jeśli palec od razu jedzie, nie traktujemy tego jak long press.
+          if (Math.hypot(gestureState.dx, gestureState.dy) > 12) clearLongPressTimer();
+          return;
+        }
         const hovered = resolveHoveredAction(gestureState.dx, gestureState.dy);
         setHoveredAction((prev) => {
           if (prev === hovered) return prev;
           if (hovered) void Haptics.selectionAsync();
-
-          // Płynne skalowanie elementów kaskadowych (bez uciekania)
-          quickActions.forEach((qa, idx) => {
-            Animated.spring(itemScales[idx], {
-              toValue: qa.key === hovered ? 1.25 : 1,
-              friction: 5,
-              useNativeDriver: true
-            }).start();
-          });
-
           return hovered;
         });
       },
       onPanResponderRelease: (e, gestureState) => {
-        onReleaseGesture(gestureState.dx, gestureState.dy, e);
+        clearLongPressTimer();
+
+        if (!isQuickMenuOpen) {
+          closeQuickMenu(1);
+          handlePress(e);
+          return;
+        }
+
+        const selected = resolveHoveredAction(gestureState.dx, gestureState.dy);
+
+        if (selected) {
+          const target = quickActions.find((q) => q.key === selected);
+
+          closeQuickMenu(1);
+
+          requestAnimationFrame(() => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            target?.target();
+          });
+
+          return;
+        }
+
+        closeQuickMenu(1);
       },
       onPanResponderTerminate: (_, gestureState) => {
-        onReleaseGesture(gestureState.dx, gestureState.dy, null);
+        clearLongPressTimer();
+        if (!isQuickMenuOpen) {
+          closeQuickMenu(1);
+          return;
+        }
+        const selected = resolveHoveredAction(gestureState.dx, gestureState.dy);
+        if (selected) {
+          const target = quickActions.find((q) => q.key === selected);
+          closeQuickMenu(1);
+          requestAnimationFrame(() => {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            target?.target();
+          });
+          return;
+        }
+        closeQuickMenu(1);
       },
       onPanResponderTerminationRequest: () => false,
     }),
-    [clearLongPressTimer, isQuickMenuOpen, onReleaseGesture, openQuickMenu, resolveHoveredAction, itemScales, quickActions]
+    [clearLongPressTimer, isQuickMenuOpen, closeQuickMenu, handlePress, openQuickMenu, resolveHoveredAction]
   );
 
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
@@ -337,78 +346,112 @@ const FloatingNextButton = ({ onPress }: any) => {
       </View>
       {isQuickMenuOpen && (
         <Animated.View
-          pointerEvents="none"
+          pointerEvents="box-none"
           style={{
             position: 'absolute',
-            width: 300,
-            height: 300,
+            width: 280,
+            height: 280,
             alignItems: 'center',
             justifyContent: 'center',
             opacity: menuOpacity,
-            zIndex: 999
           }}
         >
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              width: 168,
+              height: 168,
+              borderRadius: 84,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.46)',
+              borderWidth: 1,
+              borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.9)',
+              transform: [
+                {
+                  scale: menuProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.78, 1],
+                  }),
+                },
+              ],
+              opacity: menuProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+              }),
+            }}
+          />
           {quickActions.map((item, index) => {
             const rad = (item.angleDeg * Math.PI) / 180;
             const tx = Math.cos(rad) * item.distance;
             const ty = Math.sin(rad) * item.distance;
             const isHovered = hoveredAction === item.key;
+            const start = index * CASCADE_STEP;
+            const end = Math.min(1, start + 0.48);
             return (
-              <Animated.View
+              <Pressable
                 key={item.key}
-                style={{
-                  position: 'absolute',
-                  transform: [
-                    {
-                      translateX: menuProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, tx],
-                      }),
-                    },
-                    {
-                      translateY: menuProgress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0, ty],
-                      }),
-                    },
-                    {
-                      scale: Animated.multiply(
-                        menuProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0.3, 1],
-                        }),
-                        itemScales[index]
-                      ),
-                    },
-                  ],
-                  opacity: menuProgress,
+                onPress={() => {
+                  const target = item.target;
+                  closeQuickMenu(1);
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  target();
                 }}
+                style={{ position: 'absolute' }}
               >
-                <View
+                <Animated.View
                   style={{
-                    minWidth: 84,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    borderRadius: 20,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    backgroundColor: isHovered
-                      ? item.glassBg
-                      : (isDark ? 'rgba(22,22,24,0.85)' : 'rgba(255,255,255,0.92)'),
-                    borderWidth: 1.5,
-                    borderColor: isHovered ? item.tint : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
-                    shadowColor: '#000',
-                    shadowOpacity: isHovered ? 0.3 : 0.12,
-                    shadowRadius: isHovered ? 14 : 8,
-                    shadowOffset: { width: 0, height: 6 },
+                    transform: [
+                      {
+                        translateX: menuProgress.interpolate({
+                          inputRange: [0, start, end, 1],
+                          outputRange: [0, 0, tx * 0.92, tx],
+                        }),
+                      },
+                      {
+                        translateY: menuProgress.interpolate({
+                          inputRange: [0, start, end, 1],
+                          outputRange: [0, 0, ty * 0.92, ty],
+                        }),
+                      },
+                      {
+                        scale: menuProgress.interpolate({
+                          inputRange: [0, start, end, 1],
+                          outputRange: [0.64, 0.64, isHovered ? 1.14 : 1.02, isHovered ? 1.12 : 1],
+                        }),
+                      },
+                    ],
+                    opacity: menuProgress.interpolate({
+                      inputRange: [0, start, end, 1],
+                      outputRange: [0, 0, 0.92, 1],
+                    }),
                   }}
                 >
-                  <Ionicons name={item.icon as any} size={15} color={isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E')} />
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E') }}>{item.label}</Text>
-                </View>
-              </Animated.View>
+                  <View
+                    style={{
+                      minWidth: 90,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      borderRadius: 18,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      backgroundColor: isHovered
+                        ? item.glassBg
+                        : (isDark ? 'rgba(22,22,24,0.68)' : 'rgba(255,255,255,0.72)'),
+                      borderWidth: 1,
+                      borderColor: isHovered ? item.tint : (isDark ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.7)'),
+                      shadowColor: '#000',
+                      shadowOpacity: isHovered ? 0.22 : 0.12,
+                      shadowRadius: isHovered ? 14 : 8,
+                      shadowOffset: { width: 0, height: 6 },
+                    }}
+                  >
+                    <Ionicons name={item.icon as any} size={13} color={isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E')} />
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E') }}>{item.label}</Text>
+                  </View>
+                </Animated.View>
+              </Pressable>
             );
           })}
         </Animated.View>
@@ -478,7 +521,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Ulubione"
-        initialParams={{ favoritesOnly: true, favoritesScope: 'FAVORITES' }}
+        initialParams={{ favoritesOnly: true }}
         options={{ tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
       >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
