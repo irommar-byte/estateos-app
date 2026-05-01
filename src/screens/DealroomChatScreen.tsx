@@ -10,6 +10,7 @@ import {
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
 import Animated, { 
   FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, 
   withRepeat, withTiming, withSequence, withDelay 
@@ -188,6 +189,22 @@ function normalizeDealEvent(raw: any) {
     bidId,
     proposedDate,
   };
+}
+
+function formatActorLabel(msg: any, myUserId: any) {
+  if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return 'Ty';
+  const fromPayload =
+    firstDefined(
+      msg?.senderName,
+      msg?.sender?.fullName,
+      msg?.sender?.name,
+      msg?.authorName,
+      msg?.userName,
+      msg?.user?.fullName,
+      msg?.user?.name
+    ) || '';
+  const clean = String(fromPayload).trim();
+  return clean || 'Kontrahent';
 }
 
 function normalizeMediaUrl(raw: string | null | undefined): string | null {
@@ -415,12 +432,26 @@ export default function DealroomChatScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const lastTypingTime = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const seenNegotiationEventKeysRef = useRef<Set<string>>(new Set());
+  const negotiationBootstrappedRef = useRef(false);
 
   // Animations
   const attachmentUploadPulse = useSharedValue(0);
+  const appointmentAttentionPulse = useSharedValue(1);
+  const priceAttentionPulse = useSharedValue(1);
+  const appointmentSuccessNudge = useSharedValue(0);
+  const priceSuccessNudge = useSharedValue(0);
   const uploadingPillAnim = useAnimatedStyle(() => ({
     opacity: 0.8 + attachmentUploadPulse.value * 0.2,
     transform: [{ scale: 0.995 + attachmentUploadPulse.value * 0.005 }],
+  }));
+  const appointmentIconAnim = useAnimatedStyle(() => ({
+    opacity: appointmentAttentionPulse.value,
+    transform: [{ rotate: `${appointmentSuccessNudge.value}deg` }],
+  }));
+  const priceIconAnim = useAnimatedStyle(() => ({
+    opacity: priceAttentionPulse.value,
+    transform: [{ rotate: `${priceSuccessNudge.value}deg` }],
   }));
 
   useEffect(() => {
@@ -804,6 +835,134 @@ export default function DealroomChatScreen() {
     [bidEvents]
   );
 
+  const appointmentStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
+    if (!latestAppointment) return 'IDLE';
+    const action = String(latestAppointment.event?.action || '').toUpperCase();
+    if (action === 'ACCEPTED' || acceptedAppointment) return 'ACCEPTED';
+    if (['PROPOSED', 'COUNTERED'].includes(action)) return 'PENDING';
+    return 'IDLE';
+  }, [acceptedAppointment, latestAppointment]);
+
+  const priceStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
+    if (!latestBid) return 'IDLE';
+    const action = String(latestBid.event?.action || '').toUpperCase();
+    if (action === 'ACCEPTED' || acceptedPrice > 0) return 'ACCEPTED';
+    if (['PROPOSED', 'COUNTERED'].includes(action)) return 'PENDING';
+    return 'IDLE';
+  }, [acceptedPrice, latestBid]);
+
+  const appointmentStatusText = useMemo(() => {
+    if (appointmentStatus === 'IDLE') return 'Brak ustaleń';
+    if (appointmentStatus === 'ACCEPTED' && acceptedAppointment?.event?.proposedDate) {
+      return `Ustalono: ${new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL')}`;
+    }
+    const source = latestActionableAppointmentFromOther || latestAppointment;
+    if (source?.event?.proposedDate) {
+      const who = formatActorLabel(source.msg, user?.id);
+      return `Zaproponowano termin przez ${who}`;
+    }
+    return 'W trakcie negocjacji';
+  }, [acceptedAppointment, appointmentStatus, latestActionableAppointmentFromOther, latestAppointment, user?.id]);
+
+  const priceStatusText = useMemo(() => {
+    if (priceStatus === 'IDLE') return 'Brak ofert';
+    if (priceStatus === 'ACCEPTED' && acceptedPrice > 0) {
+      return `Ustalona cena: ${acceptedPrice.toLocaleString('pl-PL')} PLN`;
+    }
+    const source = latestActionableBidFromOther || latestBid;
+    if (source?.event?.amount) {
+      const who = formatActorLabel(source.msg, user?.id);
+      return `Zaproponowano ${Number(source.event.amount).toLocaleString('pl-PL')} PLN przez ${who}`;
+    }
+    return 'W trakcie negocjacji';
+  }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, user?.id]);
+
+  useEffect(() => {
+    if (appointmentStatus === 'PENDING') {
+      appointmentAttentionPulse.value = withRepeat(
+        withSequence(withTiming(0.35, { duration: 520 }), withTiming(1, { duration: 520 })),
+        -1,
+        false
+      );
+    } else {
+      appointmentAttentionPulse.value = withTiming(1, { duration: 220 });
+    }
+    if (appointmentStatus === 'ACCEPTED') {
+      appointmentSuccessNudge.value = withSequence(
+        withTiming(-12, { duration: 90 }),
+        withTiming(12, { duration: 120 }),
+        withTiming(-8, { duration: 100 }),
+        withTiming(0, { duration: 120 })
+      );
+    }
+  }, [appointmentStatus, appointmentAttentionPulse, appointmentSuccessNudge]);
+
+  useEffect(() => {
+    if (priceStatus === 'PENDING') {
+      priceAttentionPulse.value = withRepeat(
+        withSequence(withTiming(0.35, { duration: 520 }), withTiming(1, { duration: 520 })),
+        -1,
+        false
+      );
+    } else {
+      priceAttentionPulse.value = withTiming(1, { duration: 220 });
+    }
+    if (priceStatus === 'ACCEPTED') {
+      priceSuccessNudge.value = withSequence(
+        withTiming(-12, { duration: 90 }),
+        withTiming(12, { duration: 120 }),
+        withTiming(-8, { duration: 100 }),
+        withTiming(0, { duration: 120 })
+      );
+    }
+  }, [priceStatus, priceAttentionPulse, priceSuccessNudge]);
+
+  useEffect(() => {
+    const entries = negotiationEvents.map((entry) => {
+      const key = String(
+        firstDefined(
+          entry.msg?.id,
+          `${entry.event?.entity}-${entry.event?.action}-${entry.msg?.createdAt}-${entry.msg?.senderId}-${entry.event?.amount}-${entry.event?.proposedDate}`
+        )
+      );
+      return { key, entry };
+    });
+
+    if (!negotiationBootstrappedRef.current) {
+      entries.forEach(({ key }) => seenNegotiationEventKeysRef.current.add(key));
+      negotiationBootstrappedRef.current = true;
+      return;
+    }
+
+    entries.forEach(({ key, entry }) => {
+      if (seenNegotiationEventKeysRef.current.has(key)) return;
+      seenNegotiationEventKeysRef.current.add(key);
+      const action = String(entry.event?.action || '').toUpperCase();
+      const fromOther = String(entry.msg?.senderId ?? '') !== String(user?.id ?? '');
+      if (!fromOther || !['PROPOSED', 'COUNTERED'].includes(action)) return;
+
+      const who = formatActorLabel(entry.msg, user?.id);
+      const isPrice = entry.event?.entity === 'BID';
+      const body = isPrice
+        ? `${who} zaproponował(a) ${Number(entry.event?.amount || 0).toLocaleString('pl-PL')} PLN`
+        : `${who} zaproponował(a) termin prezentacji`;
+
+      void Notifications.scheduleNotificationAsync({
+        content: {
+          title: isPrice ? 'Zaproponowano cenę' : 'Zaproponowano termin prezentacji',
+          body,
+          data: {
+            target: 'dealroom',
+            dealId,
+            offerId: resolvedOfferId || undefined,
+            deeplink: `estateos://dealroom/${dealId}`,
+          },
+        },
+        trigger: null,
+      });
+    });
+  }, [dealId, negotiationEvents, resolvedOfferId, user?.id]);
+
   const handleAcceptAppointment = async (event: any) => {
     if (!token || !dealId || !event?.appointmentId) return;
     try {
@@ -861,27 +1020,70 @@ export default function DealroomChatScreen() {
             
             {/* Terminy */}
             <Pressable style={styles.negotiationRow} onPress={() => { Haptics.selectionAsync(); setAppointmentSectionExpanded(!appointmentSectionExpanded); }}>
-              <View style={styles.negotiationIconWrap}><CalendarClock size={16} color={COLORS.primary} /></View>
+              <Animated.View
+                style={[
+                  styles.negotiationIconWrap,
+                  appointmentStatus === 'IDLE'
+                    ? styles.negotiationIconIdle
+                    : appointmentStatus === 'PENDING'
+                      ? styles.negotiationIconPending
+                      : styles.negotiationIconAccepted,
+                  appointmentIconAnim,
+                ]}
+              >
+                <CalendarClock
+                  size={16}
+                  color={
+                    appointmentStatus === 'IDLE'
+                      ? '#8E8E93'
+                      : appointmentStatus === 'PENDING'
+                        ? '#FFD60A'
+                        : COLORS.primary
+                  }
+                />
+              </Animated.View>
               <View style={styles.negotiationTextWrap}>
                 <Text style={styles.negotiationTitle}>TERMIN PREZENTACJI</Text>
-                <Text style={styles.negotiationState}>
-                  {acceptedAppointment
-                    ? `Zaakceptowany: ${new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL')}`
-                    : latestAppointment
-                      ? 'W trakcie ustaleń'
-                      : 'Brak ustaleń'}
-                </Text>
+                <Text style={styles.negotiationState}>{appointmentStatusText}</Text>
               </View>
               <Text style={styles.negotiationCaret}>{appointmentSectionExpanded ? '−' : '+'}</Text>
             </Pressable>
             
             {appointmentSectionExpanded && (
               <View style={styles.negotiationExpanded}>
-                <Text style={styles.negotiationExpandedText}>
-                  {latestAppointment?.event?.proposedDate
-                    ? `Proponowana data: ${new Date(latestAppointment.event.proposedDate).toLocaleString('pl-PL')}`
-                    : 'Brak aktywnej daty.'}
-                </Text>
+                {appointmentEvents.length === 0 ? (
+                  <Text style={styles.negotiationExpandedText}>Brak propozycji terminu.</Text>
+                ) : (
+                  <View style={styles.timelineWrap}>
+                    {appointmentEvents.map((entry, idx) => {
+                      const isLast = idx === appointmentEvents.length - 1;
+                      const actor = formatActorLabel(entry.msg, user?.id);
+                      const action = String(entry.event?.action || '').toUpperCase();
+                      const actionLabel =
+                        action === 'ACCEPTED' ? 'zaakceptował(a)' :
+                        action === 'COUNTERED' ? 'zaproponował(a) zmianę terminu' :
+                        action === 'REJECTED' ? 'odrzucił(a) termin' :
+                        'zaproponował(a) termin';
+                      const dateText = entry.event?.proposedDate
+                        ? new Date(entry.event.proposedDate).toLocaleString('pl-PL')
+                        : 'brak daty';
+                      return (
+                        <View key={`appt-${entry.msg?.id || idx}`} style={styles.timelineRow}>
+                          <View style={styles.timelineRail}>
+                            <View style={styles.timelineDot} />
+                            {!isLast && <View style={styles.timelineLine} />}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <Text style={styles.timelineMainText}>{actor} {actionLabel}: {dateText}</Text>
+                            <Text style={styles.timelineMetaText}>
+                              {new Date(entry.msg?.createdAt || Date.now()).toLocaleString('pl-PL')}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 {latestActionableAppointmentFromOther && !isAppointmentProposalLocked && (
                   <View style={styles.actionRow}>
                     <Pressable
@@ -908,25 +1110,64 @@ export default function DealroomChatScreen() {
 
             {/* Ceny */}
             <Pressable style={styles.negotiationRow} onPress={() => { Haptics.selectionAsync(); setPriceSectionExpanded(!priceSectionExpanded); }}>
-              <View style={styles.negotiationIconWrap}><HandCoins size={16} color={COLORS.primary} /></View>
+              <Animated.View
+                style={[
+                  styles.negotiationIconWrap,
+                  priceStatus === 'IDLE'
+                    ? styles.negotiationIconIdle
+                    : priceStatus === 'PENDING'
+                      ? styles.negotiationIconPending
+                      : styles.negotiationIconAccepted,
+                  priceIconAnim,
+                ]}
+              >
+                <HandCoins
+                  size={16}
+                  color={priceStatus === 'IDLE' ? '#8E8E93' : priceStatus === 'PENDING' ? '#FFD60A' : COLORS.primary}
+                />
+              </Animated.View>
               <View style={styles.negotiationTextWrap}>
                 <Text style={styles.negotiationTitle}>USTALENIA CENOWE</Text>
-                <Text style={styles.negotiationState}>
-                  {acceptedPrice > 0
-                    ? `Cena zaakceptowana: ${acceptedPrice.toLocaleString('pl-PL')} PLN`
-                    : latestBid
-                      ? 'Negocjacje w toku'
-                      : 'Brak ofert'}
-                </Text>
+                <Text style={styles.negotiationState}>{priceStatusText}</Text>
               </View>
               <Text style={styles.negotiationCaret}>{priceSectionExpanded ? '−' : '+'}</Text>
             </Pressable>
 
             {priceSectionExpanded && (
               <View style={styles.negotiationExpanded}>
-                <Text style={styles.negotiationExpandedText}>
-                  Propozycja: <Text style={{fontWeight: '700', color: COLORS.textBase}}>{latestNegotiatedPrice > 0 ? `${latestNegotiatedPrice.toLocaleString('pl-PL')} PLN` : 'brak'}</Text>
-                </Text>
+                {bidEvents.length === 0 ? (
+                  <Text style={styles.negotiationExpandedText}>Brak propozycji cenowych.</Text>
+                ) : (
+                  <View style={styles.timelineWrap}>
+                    {bidEvents.map((entry, idx) => {
+                      const isLast = idx === bidEvents.length - 1;
+                      const actor = formatActorLabel(entry.msg, user?.id);
+                      const action = String(entry.event?.action || '').toUpperCase();
+                      const actionLabel =
+                        action === 'ACCEPTED' ? 'zaakceptował(a) cenę' :
+                        action === 'COUNTERED' ? 'złożył(a) kontrofertę' :
+                        action === 'REJECTED' ? 'odrzucił(a) ofertę' :
+                        'zaproponował(a) cenę';
+                      const amountText = Number(entry.event?.amount || 0) > 0
+                        ? `${Number(entry.event.amount).toLocaleString('pl-PL')} PLN`
+                        : 'brak kwoty';
+                      return (
+                        <View key={`bid-${entry.msg?.id || idx}`} style={styles.timelineRow}>
+                          <View style={styles.timelineRail}>
+                            <View style={styles.timelineDot} />
+                            {!isLast && <View style={styles.timelineLine} />}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <Text style={styles.timelineMainText}>{actor} {actionLabel}: {amountText}</Text>
+                            <Text style={styles.timelineMetaText}>
+                              {new Date(entry.msg?.createdAt || Date.now()).toLocaleString('pl-PL')}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 {latestActionableBidFromOther && acceptedPrice === 0 && (
                   <View style={styles.actionRow}>
                     <Pressable 
@@ -1122,12 +1363,37 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryDimmed, 
     alignItems: 'center', justifyContent: 'center', marginRight: 12 
   },
+  negotiationIconIdle: {
+    backgroundColor: 'rgba(142,142,147,0.16)',
+  },
+  negotiationIconPending: {
+    backgroundColor: 'rgba(255,214,10,0.16)',
+    shadowColor: '#FFD60A',
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  negotiationIconAccepted: {
+    backgroundColor: COLORS.primaryDimmed,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.42,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
   negotiationTextWrap: { flex: 1 },
   negotiationTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   negotiationState: { color: COLORS.textBase, fontSize: 14, fontWeight: '600', marginTop: 2 },
   negotiationCaret: { color: COLORS.textMuted, fontSize: 22, fontWeight: '300', paddingHorizontal: 8 },
   negotiationExpanded: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 },
   negotiationExpandedText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
+  timelineWrap: { marginTop: 2, marginBottom: 4 },
+  timelineRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
+  timelineRail: { width: 14, alignItems: 'center', marginTop: 2 },
+  timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
+  timelineLine: { width: 1.5, flex: 1, minHeight: 18, marginTop: 2, backgroundColor: 'rgba(255,255,255,0.16)' },
+  timelineContent: { flex: 1, paddingLeft: 8 },
+  timelineMainText: { color: COLORS.textBase, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  timelineMetaText: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
   
   // Buttons in Panel
   actionRow: { flexDirection: 'row', marginTop: 12, gap: 8 },

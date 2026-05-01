@@ -18,7 +18,7 @@ Notifications.addNotificationReceivedListener(notification => {
 
 import { createNavigationContainerRef } from "@react-navigation/native";
 
-import { NavigationContainer, DarkTheme, DefaultTheme, useNavigation, useNavigationState } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme, StackActions, useNavigation, useNavigationState } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,7 +88,10 @@ const FloatingNextButton = ({ onPress }: any) => {
   const isDark = themeMode === 'dark';
   
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buttonRef = useRef<View | null>(null);
+  const buttonLayoutRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
+  const initialDirectionRef = useRef<"VERTICAL" | "HORIZONTAL" | null>(null);
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
 
   const activeRouteName = useNavigationState(state => state?.routes[state.index]?.name || 'Radar');
@@ -168,7 +171,7 @@ const FloatingNextButton = ({ onPress }: any) => {
       label: 'Ulubione',
       icon: 'heart',
       angleDeg: 0,
-      distance: 90,
+      distance: 130,
       tint: '#F777B2',
       glassBg: isDark ? 'rgba(247,119,178,0.28)' : 'rgba(247,119,178,0.2)',
       target: () => navigation.navigate('Ulubione', { favoritesOnly: true, favoritesScope: 'FAVORITES' }),
@@ -182,6 +185,7 @@ const FloatingNextButton = ({ onPress }: any) => {
   }, []);
 
   const openQuickMenu = useCallback(() => {
+    console.log("[PLUS] openQuickMenu");
     setIsQuickMenuOpen(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     quickActions.forEach((_, i) => itemScales[i].setValue(1));
@@ -201,24 +205,37 @@ const FloatingNextButton = ({ onPress }: any) => {
     ]).start(() => {
       setIsQuickMenuOpen(false);
       setHoveredAction(null);
+        initialDirectionRef.current = null;
     });
   }, [holdScale, menuOpacity, menuProgress]);
-
   const resolveHoveredAction = useCallback((dx: number, dy: number) => {
     if (!isQuickMenuOpen) return null;
-    let best: { key: string; score: number } | null = null;
+
+    const r = Math.hypot(dx, dy);
+    if (r < 30) return null;
+
+    let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    if (angle < 0) angle += 360;
+
+    let best: { key: string; diff: number } | null = null;
+
     for (const item of quickActions) {
-      const rad = (item.angleDeg * Math.PI) / 180;
-      const tx = Math.cos(rad) * item.distance;
-      const ty = Math.sin(rad) * item.distance;
-      const dist = Math.hypot(dx - tx, dy - ty);
-      // Szeroka strefa przyciągania, żeby pozycje "nie uciekały"
-      const score = Math.max(0, 75 - dist); 
-      if (!best || score > best.score) best = { key: item.key, score };
+      const target = item.angleDeg;
+      let diff = Math.abs(angle - target);
+      if (diff > 180) diff = 360 - diff;
+
+      if (!best || diff < best.diff) {
+        best = { key: item.key, diff };
+      }
     }
-    if (!best || best.score <= 0) return null;
+
+    if (!best) return null;
+    const limit = best.key === "FAVORITES" ? 8 : 35;
+    if (best.diff > limit) return null;
+
     return best.key;
   }, [isQuickMenuOpen, quickActions]);
+
 
   const onReleaseGesture = useCallback((dx: number, dy: number, e: any) => {
     clearLongPressTimer();
@@ -228,7 +245,9 @@ const FloatingNextButton = ({ onPress }: any) => {
       return;
     }
 
+    console.log("[PLUS] release", { dx, dy, button: buttonLayoutRef.current });
     const selected = resolveHoveredAction(dx, dy);
+    console.log("[PLUS] selected", selected);
     if (selected) {
       const target = quickActions.find((q) => q.key === selected);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -247,15 +266,30 @@ const FloatingNextButton = ({ onPress }: any) => {
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true, // Zatrzymuje Map/ScrollView przed przejęciem dotyku
       onPanResponderGrant: () => {
+        console.log("[PLUS] grant");
         clearLongPressTimer();
         setHoveredAction(null);
+        initialDirectionRef.current = null;
         longPressTimeoutRef.current = setTimeout(() => {
           openQuickMenu();
         }, 700);
       },
       onPanResponderMove: (_, gestureState) => {
         if (!isQuickMenuOpen) return;
-        const hovered = resolveHoveredAction(gestureState.dx, gestureState.dy);
+        
+        let dx = gestureState.moveX - buttonLayoutRef.current.x;
+        let dy = gestureState.moveY - buttonLayoutRef.current.y;
+
+        if (!initialDirectionRef.current) {
+          if (Math.abs(dy) > Math.abs(dx) * 0.6) initialDirectionRef.current = "VERTICAL";
+          else initialDirectionRef.current = "HORIZONTAL";
+        }
+
+        if (initialDirectionRef.current === "VERTICAL") dx = 0;
+        if (initialDirectionRef.current === "HORIZONTAL") dy = 0;
+
+        const hovered = resolveHoveredAction(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y );
+        console.log("[PLUS] move", { moveX: gestureState.moveX, moveY: gestureState.moveY, button: buttonLayoutRef.current, hovered });
         setHoveredAction((prev) => {
           if (prev === hovered) return prev;
           if (hovered) void Haptics.selectionAsync();
@@ -273,10 +307,10 @@ const FloatingNextButton = ({ onPress }: any) => {
         });
       },
       onPanResponderRelease: (e, gestureState) => {
-        onReleaseGesture(gestureState.dx, gestureState.dy, e);
+        onReleaseGesture(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y , e);
       },
       onPanResponderTerminate: (_, gestureState) => {
-        onReleaseGesture(gestureState.dx, gestureState.dy, null);
+        onReleaseGesture(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y , null);
       },
       onPanResponderTerminationRequest: () => false,
     }),
@@ -322,7 +356,7 @@ const FloatingNextButton = ({ onPress }: any) => {
           elevation: 6,
         }}
       />
-      <View {...panResponder.panHandlers}>
+      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { buttonLayoutRef.current = { x: x + w/2, y: y + h/2 }; console.log("[PLUS] measureInWindow", { x, y, w, h, centerX: x + w/2, centerY: y + h/2 }); }); }); }}>
         <Animated.View style={{
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
           width: 80,
@@ -525,11 +559,15 @@ const AppStack = createNativeStackNavigator();
 type PushNavigationTarget =
   | {
       screen: 'OfferDetail';
-      params: { offer: { id: number | string } };
+      params: { offer: { id: number | string }; id: number | string; offerId: number | string };
     }
   | {
       screen: 'DealroomChat';
       params: { dealId: number | string; offerId?: number | string; title?: string };
+    }
+  | {
+      screen: 'MainTabs';
+      params: { screen: 'Radar' | 'Ulubione' | 'Wiadomości' };
     };
 
 const parseMaybeJson = (value: unknown): Record<string, any> => {
@@ -598,17 +636,38 @@ const parsePushTargetFromResponse = (
   response: Notifications.NotificationResponse | null
 ): PushNavigationTarget | null => {
   const baseData = parseMaybeJson(response?.notification?.request?.content?.data);
+  const triggerPayload = parseMaybeJson((response as any)?.notification?.request?.trigger?.payload);
+  const triggerBody = parseMaybeJson(triggerPayload?.body);
+  const triggerData = parseMaybeJson(triggerPayload?.data);
+  const triggerCustom = parseMaybeJson(triggerPayload?.custom);
   const nestedData = {
     ...parseMaybeJson(baseData.payload),
     ...parseMaybeJson(baseData.data),
     ...parseMaybeJson(baseData.meta),
     ...parseMaybeJson(baseData.custom),
+    ...triggerBody,
+    ...triggerData,
+    ...triggerCustom,
   };
-  const data = { ...baseData, ...nestedData };
+  const data = { ...triggerPayload, ...baseData, ...nestedData };
+  const targetTypeNorm = String(firstDefined(data.targetType, data.entity, data.notificationType) || '')
+    .trim()
+    .toUpperCase();
+  const targetTypeLooksOffer =
+    targetTypeNorm.includes('OFFER') ||
+    targetTypeNorm.includes('LISTING') ||
+    targetTypeNorm.includes('PROPERTY') ||
+    targetTypeNorm.includes('RADAR');
+  const targetTypeLooksDeal =
+    targetTypeNorm.includes('DEAL') ||
+    targetTypeNorm.includes('CHAT') ||
+    targetTypeNorm.includes('THREAD') ||
+    targetTypeNorm.includes('CONVERSATION');
 
   const routeHint = String(
     firstDefined(
       data.target,
+      data.targetType,
       data.type,
       data.action,
       data.screen,
@@ -618,7 +677,8 @@ const parsePushTargetFromResponse = (
     ) || ''
   ).toLowerCase();
 
-  const deeplink = String(firstDefined(data.deeplink, data.deepLink, data.link, data.url) || '');
+  const deeplink = String(firstDefined(data.deeplink, data.deepLink, data.link, data.url, data.dealroomLink) || '');
+  const deeplinkLower = deeplink.toLowerCase();
   const deeplinkOfferId = extractIdFromDeeplink(deeplink, 'offer');
   const deeplinkDealId = extractIdFromDeeplink(deeplink, 'deal');
 
@@ -626,8 +686,12 @@ const parsePushTargetFromResponse = (
     firstDefined(
       data.offerId,
       data.offer_id,
+      targetTypeLooksOffer ? data.targetId : null,
       data.listingId,
       data.propertyId,
+      data.property_id,
+      data.realEstateId,
+      data.real_estate_id,
       data?.offer?.id,
       deeplinkOfferId
     )
@@ -637,9 +701,12 @@ const parsePushTargetFromResponse = (
     firstDefined(
       data.dealId,
       data.deal_id,
+      targetTypeLooksDeal ? data.targetId : null,
       data.chatId,
       data.threadId,
       data.conversationId,
+      data.roomId,
+      data.room_id,
       data?.deal?.id,
       deeplinkDealId
     )
@@ -648,19 +715,95 @@ const parsePushTargetFromResponse = (
   const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
   const looksLikeDealOrChat =
     routeHint.includes('deal') || routeHint.includes('chat') || routeHint.includes('dealroom');
+  const looksLikeRadar =
+    routeHint.includes('radar') ||
+    routeHint.includes('match') ||
+    routeHint.includes('favorite') ||
+    routeHint.includes('favourite') ||
+    routeHint.includes('ulub');
+  const deeplinkLooksLikeDeal = /(deal|dealroom|chat|conversation|thread)/i.test(deeplinkLower);
+  const deeplinkLooksLikeOffer = /(offer|oferta|listing|property)/i.test(deeplinkLower);
+  const deeplinkLooksLikeRadar = /(radar|favorite|favourite|ulub)/i.test(deeplinkLower);
+  const explicitOfferTarget =
+    ['offer', 'oferta', 'listing', 'property', 'radar', 'radar_match', 'offer_push', 'offer_update', 'offer_match'].includes(routeHint) ||
+    routeHint.startsWith('offer_') ||
+    routeHint.startsWith('listing_') ||
+    routeHint.startsWith('property_') ||
+    routeHint.startsWith('radar_') ||
+    targetTypeLooksOffer;
+  const explicitDealTarget =
+    ['dealroom', 'dealroom_chat', 'deal', 'chat', 'message', 'deal_chat'].includes(routeHint) ||
+    routeHint.startsWith('deal_') ||
+    routeHint.startsWith('chat_') ||
+    targetTypeLooksDeal;
+  const textHint = `${String(response?.notification?.request?.content?.title || '')} ${String(
+    response?.notification?.request?.content?.body || ''
+  )}`.toLowerCase();
+  const offerSemanticHint =
+    /(ofert|offer|listing|nieruchomo|radar|aktywac|opublikow|dopasowan)/i.test(textHint) ||
+    /(offer|listing|property|oferta|radar|match)/i.test(String(data.notificationType || '').toLowerCase());
 
-  if ((looksLikeOffer || (!!offerId && !looksLikeDealOrChat)) && offerId) {
+  // 0) Deeplink ma absolutny priorytet - jeśli backend go wysłał, to on decyduje o trasie.
+  if (deeplinkOfferId) {
+    const id = parseNumericOrStringId(deeplinkOfferId);
+    if (id) {
+      return {
+        screen: 'OfferDetail',
+        params: { offer: { id }, id, offerId: id },
+      };
+    }
+  }
+  if (deeplinkDealId) {
+    const id = parseNumericOrStringId(deeplinkDealId);
+    if (id) {
+      const offerIdForDeal = parseNumericOrStringId(
+        firstDefined(
+          data.offerId,
+          data.offer_id,
+          data.listingId,
+          data.propertyId,
+          data.property_id,
+          data?.offer?.id
+        )
+      );
+      const title = String(firstDefined(data.title, data.dealTitle, data.chatTitle, data.subject) || '').trim();
+      return {
+        screen: 'DealroomChat',
+        params: {
+          dealId: id,
+          ...(offerIdForDeal ? { offerId: offerIdForDeal } : {}),
+          ...(title ? { title } : {}),
+        },
+      };
+    }
+  }
+
+  // 1) Ofertowy deeplink/offerId ma absolutny priorytet (nawet gdy payload niesie też dealId).
+  if ((explicitOfferTarget || (offerId && (deeplinkLooksLikeOffer || offerSemanticHint || looksLikeOffer || looksLikeRadar))) && offerId) {
     return {
       screen: 'OfferDetail',
-      params: { offer: { id: offerId } },
+      params: { offer: { id: offerId }, id: offerId, offerId },
     };
   }
 
-  if ((looksLikeDealOrChat || !!dealId) && dealId) {
+  // 2) Jawny target dealroom/czat.
+  if (
+    (explicitDealTarget || looksLikeDealOrChat || deeplinkLooksLikeDeal || !!dealId) &&
+    dealId &&
+    !deeplinkLooksLikeOffer &&
+    !offerSemanticHint
+  ) {
     const offerIdForDeal = parseNumericOrStringId(
-      firstDefined(data.offerId, data.offer_id, data.listingId, data.propertyId, data?.offer?.id)
+      firstDefined(
+        data.offerId,
+        data.offer_id,
+        data.listingId,
+        data.propertyId,
+        data.property_id,
+        data?.offer?.id
+      )
     );
-    const title = String(firstDefined(data.title, data.dealTitle, data.chatTitle) || '').trim();
+    const title = String(firstDefined(data.title, data.dealTitle, data.chatTitle, data.subject) || '').trim();
     return {
       screen: 'DealroomChat',
       params: {
@@ -668,6 +811,30 @@ const parsePushTargetFromResponse = (
         ...(offerIdForDeal ? { offerId: offerIdForDeal } : {}),
         ...(title ? { title } : {}),
       },
+    };
+  }
+
+  // 3) Powiadomienia ofertowe / radarowe z offerId
+  if ((looksLikeOffer || looksLikeRadar || deeplinkLooksLikeOffer || deeplinkLooksLikeRadar || !!offerId) && offerId) {
+    return {
+      screen: 'OfferDetail',
+      params: { offer: { id: offerId }, id: offerId, offerId },
+    };
+  }
+
+  // 4) Fallback po deeplinku bez id (np. "estateos://dealroom")
+  if (looksLikeDealOrChat || deeplinkLooksLikeDeal) {
+    return {
+      screen: 'MainTabs',
+      params: { screen: 'Wiadomości' },
+    };
+  }
+
+  // 5) Fallback radar bez offerId
+  if (looksLikeRadar || deeplinkLooksLikeRadar || deeplinkLower.includes('://radar')) {
+    return {
+      screen: 'MainTabs',
+      params: { screen: 'Radar' },
     };
   }
 
@@ -700,7 +867,12 @@ export default function App() {
     }
 
     lastNavigationKeyRef.current = { key: navigationKey, at: now };
-    (navigationRef as any).navigate(target.screen, target.params);
+    console.log('[PUSH][NAVIGATE]', navigationKey);
+    if (target.screen === 'OfferDetail' || target.screen === 'DealroomChat') {
+      (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
+    } else {
+      (navigationRef as any).navigate(target.screen, target.params);
+    }
     return true;
   }, []);
 
@@ -717,6 +889,16 @@ export default function App() {
       handledResponseKeysRef.current[dedupeKey] = now;
 
       const target = parsePushTargetFromResponse(response);
+      console.log(
+        '[PUSH][RESPONSE]',
+        JSON.stringify({
+          dedupeKey,
+          requestIdentifier,
+          actionIdentifier,
+          target,
+          data: response.notification?.request?.content?.data || {},
+        })
+      );
       if (!target) return;
 
       const navigated = navigateFromPushTarget(target);

@@ -1558,6 +1558,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   return (
+    <>
     <View style={styles.container}>
       <RadarMapComponent
         ref={mapRef}
@@ -1947,57 +1948,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       )}
 
-      {showOnlyFavorites && (
-        <View style={[styles.favoritesScopeContainer, { top: topBarTop + (isTablet ? 58 : 54) }]}>
-          <BlurView intensity={95} tint={isDark ? 'dark' : 'light'} style={[styles.favoritesScopeWrap, { borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.08)' }]}>
-            {([
-              { key: 'FAVORITES', label: 'Ulubione', icon: 'heart' },
-              { key: 'MINE', label: 'Moje', icon: 'home' },
-            ] as const).map((item) => {
-              const active = favoritesMapScope === item.key;
-              return (
-                <Pressable
-                  key={item.key}
-                  onPress={() => {
-                    void Haptics.selectionAsync();
-                    setFavoritesMapScope(item.key);
-                  }}
-                  style={[
-                    styles.favoritesScopeChip,
-                    active && { backgroundColor: item.key === 'FAVORITES' ? 'rgba(247,119,178,0.24)' : 'rgba(16,185,129,0.2)' },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.icon as any}
-                    size={13}
-                    color={active ? (item.key === 'FAVORITES' ? '#F777B2' : '#10b981') : '#8E8E93'}
-                  />
-                  <Text style={[styles.favoritesScopeText, active && { color: item.key === 'FAVORITES' ? '#F777B2' : '#10b981' }]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </BlurView>
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              navigation.navigate('EstateDiscovery');
-            }}
-            style={({ pressed }) => [
-              styles.discoveryLaunchBtn,
-              pressed && { transform: [{ scale: 0.97 }] },
-            ]}
-          >
-            <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.discoveryLaunchGlass}>
-              <Ionicons name="sparkles-outline" size={14} color="#D4AF37" />
-              <Text style={styles.discoveryLaunchText}>Discovery</Text>
-            </BlurView>
-          </Pressable>
-        </View>
-      )}
-
-      <View style={styles.bottomCardsContainer}>
+      <View style={styles.offersPreviewContainer}>
         {loading ? (
           <View style={{ paddingBottom: bottomCardsInset, alignItems: 'center' }}>
             <ActivityIndicator color={isDark ? '#FFF' : '#111'} />
@@ -2302,7 +2253,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       </Modal>
     </View>
-  );
+  </>);
 }
 
 const styles = StyleSheet.create({
@@ -2707,52 +2658,11 @@ const styles = StyleSheet.create({
     zIndex: 24,
     elevation: 24,
   },
-  favoritesScopeWrap: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    padding: 4,
-    gap: 4,
-  },
-  favoritesScopeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  favoritesScopeText: {
-    color: '#8E8E93',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  discoveryLaunchBtn: {
-    marginTop: 8,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  discoveryLaunchGlass: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  discoveryLaunchText: {
-    color: '#D4AF37',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.25,
-  },
-  bottomCardsContainer: {
+  offersPreviewContainer: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 20,
     elevation: 20,
   },

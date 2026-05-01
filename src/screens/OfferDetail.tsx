@@ -56,9 +56,11 @@ function formatFloorStat(f: unknown): string {
   return s ? s : '-';
 }
 
+const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
+
 export default function OfferDetail({ route, navigation }: any) {
   const offerFromParams = route?.params?.offer;
-  const idFromParams = route?.params?.id;
+  const idFromParams = firstDefined(route?.params?.id, route?.params?.offerId, route?.params?.offer?.id);
   const [hydratedOffer, setHydratedOffer] = useState<any>(null);
 
   // 🔥 FINALNY OBIEKT
