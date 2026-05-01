@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -128,7 +129,12 @@ export default function Step1_Type({ theme }: { theme: any }) {
           </Animated.View>
         )}
 
-        <View style={{ height: 160 }} />
+        <AddOfferStepFooterHint
+          theme={theme}
+          icon="reader-outline"
+          text="Transakcja, typ nieruchomości i stan techniczny wpływają na prezentację oferty oraz dopasowanie w radarach i filtrach. Wybierz wartości zgodne ze stanem faktycznym — zminimalizujesz ryzyko nieporozumień już przy pierwszym kontakcie zainteresowanych."
+        />
+        <View style={{ height: 48 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

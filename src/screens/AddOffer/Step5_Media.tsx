@@ -7,6 +7,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 const MAX_TITLE_LENGTH = 70;
@@ -433,7 +434,13 @@ export default function Step5_Media({ theme }: { theme: any }) {
           </View>
 
         </Animated.View>
-        <View style={{ height: 250 }} />
+
+        <AddOfferStepFooterHint
+          theme={theme}
+          icon="images-outline"
+          text="Pierwsze zdjęcie jest okładką na listach — kolejność zmienisz, przeciągając miniatury. Staraj się o dobre światło i czytelne kadry; plan rzutu zwiększa zaufanie do układu lokalu. Opis uzupełnia dane z formularza i powinien odzwierciedlać rzeczywisty stan nieruchomości (także gdy korzystasz z podpowiedzi AI)."
+        />
+        <View style={{ height: 48 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

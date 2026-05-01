@@ -21,6 +21,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import { API_URL } from '../config/network';
+import { postDealroomTextMessage, setOfferStatusPending } from '../utils/dealroomOfferReserve';
 
 // ==========================================
 // CONSTANTS & HELPERS
@@ -427,6 +428,7 @@ export default function DealroomChatScreen() {
   const [priceSectionExpanded, setPriceSectionExpanded] = useState(false);
   
   const [resolvedOfferId, setResolvedOfferId] = useState<any>(offerId || null);
+  const [isListingOwner, setIsListingOwner] = useState(false);
   const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
   
   const scrollViewRef = useRef<ScrollView>(null);
@@ -465,6 +467,50 @@ export default function DealroomChatScreen() {
   useEffect(() => {
     if (offerId) setResolvedOfferId(offerId);
   }, [offerId]);
+
+  useEffect(() => {
+    if (!dealId || !token || !user?.id) {
+      setIsListingOwner(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        const deals = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.deals)
+            ? json.deals
+            : Array.isArray(json?.items)
+              ? json.items
+              : Array.isArray(json?.data?.deals)
+                ? json.data.deals
+                : [];
+        const current = deals.find((d: any) => String(d?.id) === String(dealId));
+        if (!current || cancelled) return;
+        const ownerId = firstDefined(
+          current?.offer?.userId,
+          current?.listing?.userId,
+          current?.offer?.user?.id,
+          current?.userId
+        );
+        if (ownerId == null || ownerId === '') {
+          setIsListingOwner(false);
+          return;
+        }
+        setIsListingOwner(Number(user.id) === Number(ownerId));
+      } catch {
+        if (!cancelled) setIsListingOwner(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId, token, user?.id]);
 
   const resolveOfferIdForUpload = useCallback(async () => {
     if (resolvedOfferId) return resolvedOfferId;
@@ -877,6 +923,71 @@ export default function DealroomChatScreen() {
     return 'W trakcie negocjacji';
   }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, user?.id]);
 
+  const reserveWithdrawalDone = useMemo(
+    () =>
+      messages.some((m) =>
+        /Decyzja właściciela: oferta została wycofana z publikacji|rezerwacja uzgodnionej ceny/i.test(
+          String(m?.content || '')
+        )
+      ),
+    [messages]
+  );
+
+  const presentationHappened = useMemo(() => {
+    const raw = acceptedAppointment?.event?.proposedDate;
+    if (!raw) return false;
+    const ts = new Date(raw).getTime();
+    return Number.isFinite(ts) && ts <= Date.now();
+  }, [acceptedAppointment]);
+
+  const showPostPresentationReserve = Boolean(
+    isListingOwner &&
+      resolvedOfferId &&
+      user?.id &&
+      acceptedAppointment?.event?.proposedDate &&
+      presentationHappened &&
+      !reserveWithdrawalDone
+  );
+
+  const handlePostPresentationReserve = useCallback(async () => {
+    if (!token || !dealId || !resolvedOfferId || !user?.id) return;
+    Alert.alert(
+      'Rezerwacja po prezentacji',
+      'Wycofać ofertę z publikacji i ustawić status na oczekujący (PENDING), tak jak przy rezerwacji ustalonej ceny?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Wycofaj i zarezerwuj',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const msgOk = await postDealroomTextMessage({
+                dealId: Number(dealId),
+                token,
+                content:
+                  'Decyzja właściciela: oferta została wycofana z publikacji (rezerwacja uzgodnionej ceny).',
+              });
+              if (!msgOk) {
+                Alert.alert('Uwaga', 'Nie udało się dodać wpisu w czacie.');
+              }
+              const pendingRes = await setOfferStatusPending({
+                offerId: Number(resolvedOfferId),
+                userId: Number(user.id),
+                token,
+              });
+              if (!pendingRes.ok) {
+                Alert.alert('Uwaga', pendingRes.error || 'Nie udało się zmienić statusu oferty.');
+              }
+              await fetchMessages();
+            } catch {
+              Alert.alert('Błąd', 'Nie udało się dokończyć rezerwacji.');
+            }
+          },
+        },
+      ]
+    );
+  }, [token, dealId, resolvedOfferId, user?.id, fetchMessages]);
+
   useEffect(() => {
     if (appointmentStatus === 'PENDING') {
       appointmentAttentionPulse.value = withRepeat(
@@ -947,17 +1058,27 @@ export default function DealroomChatScreen() {
         ? `${who} zaproponował(a) ${Number(entry.event?.amount || 0).toLocaleString('pl-PL')} PLN`
         : `${who} zaproponował(a) termin prezentacji`;
 
+      /** Jeden stos na iOS per klient (nadawca); fallback: jeden stos per dealroom. */
+      const peerId = entry.msg?.senderId;
+      const threadIdentifier =
+        peerId != null && String(peerId).trim() !== ''
+          ? `estateos-peer-${String(peerId)}`
+          : `estateos-deal-${String(dealId ?? '')}`;
+
       void Notifications.scheduleNotificationAsync({
         content: {
           title: isPrice ? 'Zaproponowano cenę' : 'Zaproponowano termin prezentacji',
           body,
+          subtitle: dealId ? `Dealroom · TX-${dealId}` : undefined,
+          threadIdentifier,
           data: {
             target: 'dealroom',
             dealId,
             offerId: resolvedOfferId || undefined,
+            threadIdentifier,
             deeplink: `estateos://dealroom/${dealId}`,
           },
-        },
+        } as Notifications.NotificationContentInput,
         trigger: null,
       });
     });
@@ -1188,6 +1309,26 @@ export default function DealroomChatScreen() {
             )}
           </View>
 
+          {showPostPresentationReserve ? (
+            <View style={styles.reserveAfterPresentation}>
+              <BlurView intensity={50} tint="dark" style={styles.reserveAfterPresentationInner}>
+                <Text style={styles.reserveAfterPresentationTitle}>Po prezentacji</Text>
+                <Text style={styles.reserveAfterPresentationBody}>
+                  Termin prezentacji minął. Możesz wycofać ofertę ze sprzedaży i zarezerwować ustalenia — oferta trafi do oczekujących (PENDING).
+                </Text>
+                <Pressable
+                  style={({ pressed }) => [styles.reserveAfterPresentationBtn, pressed && { opacity: 0.92 }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    void handlePostPresentationReserve();
+                  }}
+                >
+                  <Text style={styles.reserveAfterPresentationBtnTxt}>Wycofaj ze sprzedaży i zarezerwuj</Text>
+                </Pressable>
+              </BlurView>
+            </View>
+          ) : null}
+
           {/* Chat Messages */}
           <ScrollView
             ref={scrollViewRef}
@@ -1308,6 +1449,9 @@ export default function DealroomChatScreen() {
         quickAccept={Boolean(selectedBidEvent?.quickAccept)}
         history={selectedBidHistory}
         title="Ustalenia cenowe"
+        offerId={resolvedOfferId != null ? Number(resolvedOfferId) : null}
+        userId={user?.id != null ? Number(user.id) : null}
+        isListingOwner={isListingOwner}
         onClose={() => setSelectedBidEvent(null)}
         onDone={fetchMessages}
       />
@@ -1355,6 +1499,45 @@ const styles = StyleSheet.create({
     borderRadius: 16, backgroundColor: COLORS.surface,
     borderWidth: 1, borderColor: COLORS.surfaceElevated,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8,
+  },
+  reserveAfterPresentation: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.28)',
+  },
+  reserveAfterPresentationInner: {
+    padding: 16,
+    backgroundColor: 'rgba(28,28,30,0.92)',
+  },
+  reserveAfterPresentationTitle: {
+    color: COLORS.textBase,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginBottom: 6,
+  },
+  reserveAfterPresentationBody: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 14,
+    fontWeight: '500',
+  },
+  reserveAfterPresentationBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  reserveAfterPresentationBtnTxt: {
+    color: '#081208',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   negotiationRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   negotiationDivider: { height: 1, backgroundColor: COLORS.surfaceElevated, marginHorizontal: 14 },

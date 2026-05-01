@@ -7,6 +7,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -37,10 +38,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const isFloorUnlocked = isPlot ? false : (isRoomsUnlocked && !!draft.rooms);
   const isYearUnlocked = isPlot ? false : (isFloorUnlocked && !!draft.floor);
   
-  // Udogodnienia odkrywają się na SAMYM KOŃCU (dla działki robi to metraż)
-  const isAmenitiesUnlocked = isPlot
-    ? isAreaFilled
-    : isYearUnlocked && !!(draft.yearBuilt || draft.buildYear);
+  const isAmenitiesUnlocked = !isPlot && isYearUnlocked && !!(draft.yearBuilt || draft.buildYear);
 
   const roomsAnim = useRef(new Animated.Value(isRoomsUnlocked ? 1 : 0.3)).current;
   const floorAnim = useRef(new Animated.Value(isFloorUnlocked ? 1 : 0.3)).current;
@@ -136,22 +134,28 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           </>
         )}
 
-        {/* Udogodnienia pojawiają się dopiero na samym końcu kaskady */}
-        <Animated.View 
-          style={{ opacity: amenitiesAnim, transform: [{ translateY: amenitiesAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }} 
-          pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
-        >
-          <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Udogodnienia (Opcjonalne)</Text>
-          <View style={styles.pillsContainer}>
-            <TogglePill label="Balkon / Taras" icon="sunny-outline" field="hasBalcony" />
-            <TogglePill label="Garaż / Parking" icon="car-sport-outline" field="hasParking" />
-            <TogglePill label="Piwnica / Komórka" icon="cube-outline" field="hasStorage" />
-            <TogglePill label="Winda" icon="arrow-up-circle-outline" field="hasElevator" />
-            <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
-            <TogglePill label="Umeblowane" icon="bed-outline" field="isFurnished" />
-          </View>
-        </Animated.View>
+        {!isPlot && (
+          <Animated.View
+            style={{ opacity: amenitiesAnim, transform: [{ translateY: amenitiesAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}
+            pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
+          >
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Udogodnienia (Opcjonalne)</Text>
+            <View style={styles.pillsContainer}>
+              <TogglePill label="Balkon / Taras" icon="sunny-outline" field="hasBalcony" />
+              <TogglePill label="Garaż / Parking" icon="car-sport-outline" field="hasParking" />
+              <TogglePill label="Piwnica / Komórka" icon="cube-outline" field="hasStorage" />
+              <TogglePill label="Winda" icon="arrow-up-circle-outline" field="hasElevator" />
+              <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
+              <TogglePill label="Umeblowane" icon="bed-outline" field="isFurnished" />
+            </View>
+          </Animated.View>
+        )}
 
+        <AddOfferStepFooterHint
+          theme={theme}
+          icon="options-outline"
+          text="Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami oraz na szacunki finansowe w następnym kroku. Uzupełniaj pola po kolei — kolejne sekcje odblokują się, gdy poprzednie są spójne. Dla działki wystarczy powierzchnia (bez udogodnień typowych dla lokalu)."
+        />
         <View style={{ height: 200 }} />
       </ScrollView>
     </KeyboardAvoidingView>

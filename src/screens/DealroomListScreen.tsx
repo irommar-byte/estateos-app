@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView, Pressable, Platform, 
   ActivityIndicator, Modal, Appearance, Image,
@@ -10,16 +10,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { 
   ChevronRight, ChevronLeft, MessageCircle, ShieldCheck, 
-  AlertCircle, User, X, Star, ImageIcon
+  AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
-
-const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
 // === LUKSUSOWA PALETA DYNAMICZNA (CERAMIC & DARK GLASS) ===
 const getColors = (isDark: boolean) => ({
@@ -38,15 +36,47 @@ const getColors = (isDark: boolean) => ({
   greenDimmed: isDark ? 'rgba(50, 215, 75, 0.15)' : 'rgba(52, 199, 89, 0.15)',
   yellow: isDark ? '#FFD60A' : '#FF9500',
   yellowDimmed: isDark ? 'rgba(255, 214, 10, 0.15)' : 'rgba(255, 149, 0, 0.15)',
+  purple: isDark ? '#BF5AF2' : '#5856D6',
+  purpleDimmed: isDark ? 'rgba(191, 90, 242, 0.22)' : 'rgba(88, 86, 214, 0.18)',
   red: isDark ? '#FF453A' : '#FF3B30',
   shadow: isDark ? '#000000' : '#8A8A93',
   overlay: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.5)',
 });
 
 // === HELPERY ===
-function parseDealEvent(content?: string) {
-  if (!content || !content.startsWith(EVENT_PREFIX)) return null;
-  try { return JSON.parse(content.slice(EVENT_PREFIX.length)); } catch { return null; }
+type DealPhase = 'started' | 'active' | 'finalized';
+
+function tryParseDealEventPayload(content: string): Record<string, unknown> | null {
+  const c = String(content || '');
+  for (const prefix of ['[[DEAL_EVENT]]', '[[deal_event]]']) {
+    if (!c.startsWith(prefix)) continue;
+    try {
+      const parsed = JSON.parse(c.slice(prefix.length));
+      return parsed && typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      /* następny prefix */
+    }
+  }
+  return null;
+}
+
+/** Klasyfikacja na podstawie treści wiadomości w wątku (spójnie z czatem dealroom). */
+function classifyDealPhaseFromMessages(messages: any[]): DealPhase {
+  const finalizedRx =
+    /Decyzja właściciela: oferta została wycofana z publikacji|rezerwacja uzgodnionej ceny/i;
+  for (const m of messages) {
+    const body = String(m?.content ?? m?.text ?? '');
+    if (finalizedRx.test(body)) return 'finalized';
+  }
+  for (const m of messages) {
+    const body = String(m?.content ?? m?.text ?? '');
+    const ev = tryParseDealEventPayload(body);
+    if (!ev) continue;
+    const action = String(ev.action || '').toUpperCase();
+    const entity = String(ev.entity || '').toUpperCase();
+    if (action === 'ACCEPTED' && (entity === 'BID' || entity === 'APPOINTMENT')) return 'active';
+  }
+  return 'started';
 }
 
 const firstDefined = (...values: unknown[]) =>
@@ -62,15 +92,120 @@ const parseUserName = (value: unknown): string | null => {
   return s ? s : null;
 };
 
-// Normalizator adresów URL (Naprawia brakujące obrazki)
+/** Jak w miniaturkach ofert: jedna baza bez końcowego `/`, żeby uniknąć `//` i złych ścieżek. */
 function normalizeMediaUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const s = String(raw).trim();
   if (!s) return null;
+  if (/^data:/i.test(s)) return s;
   if (/^https?:\/\//i.test(s)) return s;
   if (s.startsWith('//')) return `https:${s}`;
-  if (s.startsWith('/')) return `${API_URL}${s}`;
-  return `${API_URL}/${s.replace(/^\//, '')}`;
+  const base = API_URL.replace(/\/+$/, '');
+  if (s.startsWith('/')) return `${base}${s}`;
+  return `${base}/${s.replace(/^\/+/, '')}`;
+}
+
+function extractPublicProfileAvatarUrl(profile: any): string | null {
+  if (!profile || typeof profile !== 'object') return null;
+  const raw = firstDefined(
+    profile.user?.image,
+    profile.user?.avatar,
+    profile.user?.avatarUrl,
+    profile.user?.profilePhoto,
+    profile.user?.profileImage,
+    profile.user?.profileImageUrl,
+    profile.user?.photoUrl,
+    profile.user?.photoURL,
+    profile.user?.photo,
+    profile.user?.picture,
+    profile.profile?.image,
+    profile.profile?.avatar,
+    profile.profile?.photoUrl,
+    profile.metadata?.avatar,
+    profile.metadata?.image,
+    profile.image,
+    profile.avatar,
+    profile.avatarUrl,
+    profile.profilePhoto,
+    profile.picture,
+    profile.photoUrl,
+    profile.photoURL,
+    profile.photo
+  );
+  if (typeof raw !== 'string' || !String(raw).trim()) return null;
+  return normalizeMediaUrl(String(raw).trim());
+}
+
+function pickUserLikeByIdFromDeal(deal: any, uid: number): any {
+  const n = Number(uid);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const idOf = (obj: any) => parseUserId(firstDefined(obj?.id, obj?.userId, obj?.user?.id));
+  if (deal?.buyer && idOf(deal.buyer) === n) return deal.buyer;
+  if (deal?.seller && idOf(deal.seller) === n) return deal.seller;
+  if (Array.isArray(deal?.participants)) {
+    const hit = deal.participants.find((p: any) => idOf(p) === n);
+    if (hit) return hit;
+  }
+  for (const key of ['otherParty', 'counterparty', 'partner']) {
+    const o = deal?.[key];
+    if (o && idOf(o) === n) return o;
+  }
+  return null;
+}
+
+/** Fallback, gdy /public nie zwraca avatara — pola często są już na obiekcie deala z listy. */
+function extractPartnerAvatarFromDeal(deal: any, partnerUserId: number | null): string | null {
+  if (!deal || partnerUserId == null) return null;
+  const uid = Number(partnerUserId);
+  if (!Number.isFinite(uid) || uid <= 0) return null;
+
+  const node = pickUserLikeByIdFromDeal(deal, uid);
+  const fromNode = firstDefined(
+    node?.image,
+    node?.avatar,
+    node?.avatarUrl,
+    node?.photoUrl,
+    node?.photoURL,
+    node?.photo,
+    node?.picture,
+    node?.profilePhoto,
+    node?.profileImage,
+    node?.user?.image,
+    node?.user?.avatar,
+    node?.user?.photoUrl
+  );
+  if (typeof fromNode === 'string' && fromNode.trim()) return normalizeMediaUrl(fromNode.trim());
+
+  const buyerId = parseUserId(firstDefined(deal?.buyerId, deal?.buyer?.id));
+  const sellerId = parseUserId(firstDefined(deal?.sellerId, deal?.seller?.id));
+
+  if (uid === buyerId) {
+    const r = firstDefined(
+      deal?.buyerAvatar,
+      deal?.buyerImage,
+      deal?.buyerPhoto,
+      deal?.buyer?.image,
+      deal?.buyer?.avatar,
+      deal?.buyer?.photoUrl
+    );
+    if (typeof r === 'string' && r.trim()) return normalizeMediaUrl(r.trim());
+  }
+  if (uid === sellerId) {
+    const r = firstDefined(
+      deal?.sellerAvatar,
+      deal?.sellerImage,
+      deal?.sellerPhoto,
+      deal?.seller?.image,
+      deal?.seller?.avatar,
+      deal?.seller?.photoUrl
+    );
+    if (typeof r === 'string' && r.trim()) return normalizeMediaUrl(r.trim());
+  }
+
+  const loose = firstDefined(deal?.otherPartyImage, deal?.counterpartyImage, deal?.partnerImage);
+  if (typeof loose === 'string' && loose.trim()) return normalizeMediaUrl(loose.trim());
+
+  return null;
 }
 
 function extractOfferIdFromDeal(deal: any): number | null {
@@ -133,32 +268,85 @@ function extractOfferImageFromDeal(deal: any): string | null {
 }
 
 // === KOMPONENTY ===
-function DealStatusPill({ pending, label, colors }: { pending: boolean; label: string; colors: any }) {
+/** Zgodnie z działem listy: żółty Start | zielony Aktywne | fioletowy Finalizowanie (mocny „oddech”). */
+function DealPhasePill({ phase, colors }: { phase: DealPhase; colors: ReturnType<typeof getColors> }) {
   const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
+
   useEffect(() => {
-    if (pending) {
+    if (phase === 'started') {
+      scale.value = 1;
       opacity.value = withRepeat(
         withSequence(
-          withTiming(0.4, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+          withTiming(0.42, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
           withTiming(1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
-        ), -1, true
+        ),
+        -1,
+        true
+      );
+    } else if (phase === 'finalized') {
+      opacity.value = withRepeat(
+        withSequence(
+          withTiming(0.28, { duration: 480, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 480, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
+      );
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.08, { duration: 480, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 480, easing: Easing.inOut(Easing.ease) })
+        ),
+        -1,
+        true
       );
     } else {
-      opacity.value = withTiming(1, { duration: 300 });
+      opacity.value = withTiming(1, { duration: 220 });
+      scale.value = withTiming(1, { duration: 220 });
     }
-  }, [pending, opacity]);
-  
+  }, [phase, opacity, scale]);
+
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ scale: scale.value }],
+  }));
+
+  const label =
+    phase === 'started' ? 'Start negocjacji' : phase === 'active' ? 'Negocjacje aktywne' : 'Finalizowanie';
+
+  const shell =
+    phase === 'started'
+      ? { bg: colors.yellowDimmed, border: 'rgba(255,214,10,0.32)', fg: colors.yellow }
+      : phase === 'active'
+        ? { bg: colors.greenDimmed, border: 'rgba(50,215,75,0.28)', fg: colors.green }
+        : { bg: colors.purpleDimmed, border: 'rgba(191,90,242,0.45)', fg: colors.purple };
+
   return (
-    <Animated.View style={[
-      { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4, borderWidth: 1 },
-      pending ? { backgroundColor: colors.yellowDimmed, borderColor: 'rgba(255,214,10,0.2)' } : { backgroundColor: colors.greenDimmed, borderColor: 'rgba(50,215,75,0.2)' },
-      useAnimatedStyle(() => ({ opacity: opacity.value }))
-    ]}>
-      <ShieldCheck size={12} color={pending ? colors.yellow : colors.green} strokeWidth={3} />
-      <Text style={[
-        { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-        pending ? { color: colors.yellow } : { color: colors.green }
-      ]}>{label}</Text>
+    <Animated.View
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 8,
+          gap: 4,
+          borderWidth: 1,
+          backgroundColor: shell.bg,
+          borderColor: shell.border,
+        },
+        pulseStyle,
+      ]}
+    >
+      {phase === 'finalized' ? (
+        <Sparkles size={12} color={shell.fg} strokeWidth={2.8} />
+      ) : (
+        <ShieldCheck size={12} color={shell.fg} strokeWidth={3} />
+      )}
+      <Text style={{ fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, color: shell.fg }}>
+        {label}
+      </Text>
     </Animated.View>
   );
 }
@@ -279,15 +467,95 @@ export default function DealroomListScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [selectedPartnerDeal, setSelectedPartnerDeal] = useState<any>(null);
   const [selectedProfileLoading, setSelectedProfileLoading] = useState(false);
+  const [partnerAvatarFailed, setPartnerAvatarFailed] = useState(false);
   const [openingOfferId, setOpeningOfferId] = useState<number | null>(null);
   const [offerImageByOfferId, setOfferImageByOfferId] = useState<Record<number, string>>({});
   const [counterpartyNameById, setCounterpartyNameById] = useState<Record<number, string>>({});
   const offerImageCacheRef = useRef<Record<number, string>>({});
+  const [dealPhaseById, setDealPhaseById] = useState<Record<number, DealPhase>>({});
+  const [phasesReady, setPhasesReady] = useState(false);
+  const [phaseRefreshTick, setPhaseRefreshTick] = useState(0);
 
   useEffect(() => {
     offerImageCacheRef.current = offerImageByOfferId;
   }, [offerImageByOfferId]);
+
+  const dealIdsSig = useMemo(() => deals.map((d) => String(d.id)).sort().join(','), [deals]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setPhaseRefreshTick((t) => t + 1);
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!token || deals.length === 0) {
+      setDealPhaseById({});
+      setPhasesReady(true);
+      return;
+    }
+    let cancelled = false;
+    setPhasesReady(false);
+    (async () => {
+      const next: Record<number, DealPhase> = {};
+      await Promise.all(
+        deals.map(async (deal) => {
+          const id = Number(deal?.id);
+          if (!Number.isFinite(id) || id <= 0) return;
+          try {
+            const res = await fetch(`${API_URL}/api/mobile/v1/deals/${id}/messages`, {
+              headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
+            });
+            if (!res.ok) {
+              next[id] = 'started';
+              return;
+            }
+            const data = await res.json().catch(() => ({}));
+            const messages = Array.isArray(data?.messages) ? data.messages : [];
+            next[id] = classifyDealPhaseFromMessages(messages);
+          } catch {
+            next[id] = 'started';
+          }
+        })
+      );
+      if (!cancelled) {
+        setDealPhaseById(next);
+        setPhasesReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, dealIdsSig, phaseRefreshTick]);
+
+  const groupedDeals = useMemo(() => {
+    const started: any[] = [];
+    const active: any[] = [];
+    const finalized: any[] = [];
+    for (const deal of deals) {
+      const id = Number(deal?.id);
+      const phase = dealPhaseById[id] ?? 'started';
+      if (phase === 'finalized') finalized.push(deal);
+      else if (phase === 'active') active.push(deal);
+      else started.push(deal);
+    }
+    return { started, active, finalized };
+  }, [deals, dealPhaseById]);
+
+  const resolvedPartnerAvatarUrl = useMemo(() => {
+    const fromApi = selectedProfile ? extractPublicProfileAvatarUrl(selectedProfile) : null;
+    if (fromApi) return fromApi;
+    if (selectedProfileId != null && selectedPartnerDeal) {
+      return extractPartnerAvatarFromDeal(selectedPartnerDeal, selectedProfileId);
+    }
+    return null;
+  }, [selectedProfile, selectedProfileId, selectedPartnerDeal]);
+
+  useEffect(() => {
+    setPartnerAvatarFailed(false);
+  }, [selectedProfileId, resolvedPartnerAvatarUrl]);
 
   const normalizeDealsPayload = (payload: any): any[] => {
     if (!payload) return [];
@@ -302,8 +570,9 @@ export default function DealroomListScreen() {
 
   const isActiveDeal = (deal: any) => {
     const status = String(deal?.status || '').toUpperCase();
-    if (!status) return true; 
-    const inactiveStatuses = ['CLOSED', 'ARCHIVED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'DONE'];
+    if (!status) return true;
+    // DONE/CLOSED często ustawiane po uzgodnieniu ceny lub terminu — dealroom ma pozostać na liście.
+    const inactiveStatuses = ['ARCHIVED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
     return !inactiveStatuses.includes(status);
   };
 
@@ -380,13 +649,6 @@ export default function DealroomListScreen() {
     if (msg.startsWith('[[deal_event]]') && msg.includes('"bid"')) return 'Trwa negocjacja ceny';
     if (unread > 0) return 'Masz nową wiadomość';
     return 'Aktywna rozmowa';
-  };
-
-  const getDealNegotiationVisual = (deal: any) => {
-    const status = String(deal?.status || '').toUpperCase();
-    const action = String(parseDealEvent(String(deal?.lastMessage || ''))?.action || '').toUpperCase();
-    if (action === 'ACCEPTED' || status === 'ACCEPTED' || status === 'NEGOTIATION') return { pending: false, label: 'Negocjacje aktywne' };
-    return { pending: true, label: 'Start negocjacji' };
   };
 
   const getCounterparty = (deal: any) => {
@@ -501,17 +763,30 @@ export default function DealroomListScreen() {
     return raw;
   };
 
-  const openCounterpartyProfile = async (userId?: number | null) => {
+  const openCounterpartyProfile = async (userId?: number | null, dealContext?: any) => {
     if (!userId) return;
     Haptics.selectionAsync();
     setSelectedProfileId(userId);
     setSelectedProfile(null);
+    setSelectedPartnerDeal(dealContext ?? null);
     setSelectedProfileLoading(true);
     try {
-      const res = await fetch(`https://estateos.pl/api/users/${userId}/public`);
+      const res = await fetch(`${API_URL}/api/users/${userId}/public`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       const data = await res.json();
+      if (__DEV__) {
+        try {
+          console.log('[public profile]', JSON.stringify(data, null, 2));
+        } catch {
+          console.log('[public profile]', data);
+        }
+      }
       if (res.ok && !data?.error) setSelectedProfile(data);
-    } catch {} finally { setSelectedProfileLoading(false); }
+    } catch {
+    } finally {
+      setSelectedProfileLoading(false);
+    }
   };
 
   const openOfferPreview = async (deal: any) => {
@@ -527,6 +802,101 @@ export default function DealroomListScreen() {
     } catch {
       navigation.navigate('OfferDetail', { id: offerId });
     } finally { setOpeningOfferId(null); }
+  };
+
+  const renderDealCard = (deal: any, animDelayIndex: number, listPhase: DealPhase) => {
+    const counterparty = getCounterparty(deal);
+    const unreadCount = Number(deal.unread || 0);
+    const offerIdNum = extractOfferIdFromDeal(deal);
+    const thumbUrl =
+      extractOfferImageFromDeal(deal) || (offerIdNum ? offerImageByOfferId[offerIdNum] : null);
+
+    return (
+      <Animated.View
+        key={deal.id}
+        entering={FadeInDown.delay(animDelayIndex * 90).springify().damping(12).stiffness(150).mass(0.8)}
+        style={[styles.cardContainer, unreadCount > 0 && styles.cardContainerElevated]}
+      >
+        <Pressable
+          style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            navigation.navigate('DealroomChat', {
+              dealId: deal.id,
+              offerId: extractOfferIdFromDeal(deal),
+              title: deal.title,
+            });
+          }}
+        >
+          <BlurView
+            intensity={isDark ? 30 : 60}
+            tint={isDark ? 'dark' : 'light'}
+            style={[
+              styles.dealCard,
+              unreadCount > 0 && styles.dealCardUnread,
+              unreadCount > 0 && styles.dealCardBadgeBleed,
+            ]}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <Text style={styles.dealId}>TX-{deal?.id || '-'}</Text>
+                <DealPhasePill phase={listPhase} colors={COLORS} />
+              </View>
+              <Text style={styles.timeText}>{deal.time}</Text>
+            </View>
+
+            <View style={styles.cardBody}>
+              <View style={styles.cardInfo}>
+                <Pressable onPress={(e) => { e.stopPropagation(); openOfferPreview(deal); }} hitSlop={10}>
+                  <Text style={styles.offerTitle} numberOfLines={1}>
+                    {openingOfferId === Number(extractOfferIdFromDeal(deal) || 0)
+                      ? 'Otwieranie...'
+                      : getReadableDealTitle(deal)}
+                  </Text>
+                </Pressable>
+                <Text style={styles.activityDesc} numberOfLines={1}>{getCurrentDealActivity(deal)}</Text>
+
+                <Pressable
+                  style={styles.userRow}
+                  onPress={(e) => { e.stopPropagation(); openCounterpartyProfile(counterparty.id, deal); }}
+                  hitSlop={10}
+                >
+                  <View style={styles.userAvatar}>
+                    <User size={12} color={COLORS.gold} strokeWidth={2.5} />
+                  </View>
+                  <Text style={styles.userLabel}>{counterparty.sideLabel}: </Text>
+                  <Text style={styles.userName}>{counterparty.name}</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.thumbColumn}>
+                <View style={styles.thumbWrapper}>
+                  <DealOfferThumb uri={thumbUrl} colors={COLORS} />
+                </View>
+                {unreadCount > 0 ? <UnreadBadge count={unreadCount} colors={COLORS} /> : null}
+              </View>
+            </View>
+
+            <View style={styles.cardFooter}>
+              <View style={styles.messagePreviewRow}>
+                <MessageCircle
+                  size={15}
+                  color={unreadCount > 0 ? COLORS.gold : COLORS.textMuted}
+                  strokeWidth={unreadCount > 0 ? 2.5 : 2}
+                />
+                <Text
+                  style={[styles.lastMessageText, unreadCount > 0 && styles.lastMessageTextUnread]}
+                  numberOfLines={1}
+                >
+                  {formatLastMessage(deal.lastMessage)}
+                </Text>
+              </View>
+              <ChevronRight size={18} color={COLORS.textMuted} />
+            </View>
+          </BlurView>
+        </Pressable>
+      </Animated.View>
+    );
   };
 
   return (
@@ -561,103 +931,101 @@ export default function DealroomListScreen() {
         </Animated.View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {deals.map((deal, index) => {
-            const counterparty = getCounterparty(deal);
-            const negotiationVisual = getDealNegotiationVisual(deal);
-            const unreadCount = Number(deal.unread || 0);
-            const offerIdNum = extractOfferIdFromDeal(deal);
-            const thumbUrl =
-              extractOfferImageFromDeal(deal) || (offerIdNum ? offerImageByOfferId[offerIdNum] : null);
+          {!phasesReady && deals.length > 0 ? (
+            <View style={styles.phaseBanner}>
+              <ActivityIndicator size="small" color={COLORS.gold} />
+              <Text style={styles.phaseBannerText}>Układanie według etapów…</Text>
+            </View>
+          ) : null}
 
-            return (
-              <Animated.View 
-                key={deal.id} 
-                entering={FadeInDown.delay(index * 90).springify().damping(12).stiffness(150).mass(0.8)}
-                style={[styles.cardContainer, unreadCount > 0 && styles.cardContainerElevated]}
-              >
-                <Pressable 
-                  style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    navigation.navigate('DealroomChat', { dealId: deal.id, offerId: extractOfferIdFromDeal(deal), title: deal.title });
-                  }}
-                >
-                  <BlurView
-                    intensity={isDark ? 30 : 60}
-                    tint={isDark ? 'dark' : 'light'}
-                    style={[
-                      styles.dealCard,
-                      unreadCount > 0 && styles.dealCardUnread,
-                      unreadCount > 0 && styles.dealCardBadgeBleed,
-                    ]}
-                  >
-                    
-                    {/* GÓRA KARTY */}
-                    <View style={styles.cardHeader}>
-                      <View style={styles.cardHeaderLeft}>
-                        <Text style={styles.dealId}>TX-{deal?.id || '-'}</Text>
-                        <DealStatusPill pending={negotiationVisual.pending} label={negotiationVisual.label} colors={COLORS} />
+          {!phasesReady
+            ? deals.map((deal, index) =>
+                renderDealCard(deal, index, dealPhaseById[Number(deal.id)] ?? 'started')
+              )
+            : (
+              <>
+                {groupedDeals.started.length > 0 ? (
+                  <View style={styles.phaseSection}>
+                    <View style={styles.phaseSectionHeaderRow}>
+                      <View style={styles.phaseSectionIconWrap}>
+                        <PlayCircle size={20} color={COLORS.gold} strokeWidth={2.2} />
                       </View>
-                      <Text style={styles.timeText}>{deal.time}</Text>
-                    </View>
-
-                    {/* ŚRODEK KARTY Z MINIATURKĄ */}
-                    <View style={styles.cardBody}>
-                      <View style={styles.cardInfo}>
-                        <Pressable onPress={(e) => { e.stopPropagation(); openOfferPreview(deal); }} hitSlop={10}>
-                          <Text style={styles.offerTitle} numberOfLines={1}>
-                            {openingOfferId === Number(extractOfferIdFromDeal(deal) || 0) ? 'Otwieranie...' : getReadableDealTitle(deal)}
-                          </Text>
-                        </Pressable>
-                        <Text style={styles.activityDesc} numberOfLines={1}>{getCurrentDealActivity(deal)}</Text>
-                        
-                        <Pressable 
-                          style={styles.userRow} 
-                          onPress={(e) => { e.stopPropagation(); openCounterpartyProfile(counterparty.id); }}
-                          hitSlop={10}
-                        >
-                          <View style={styles.userAvatar}><User size={12} color={COLORS.gold} strokeWidth={2.5}/></View>
-                          <Text style={styles.userLabel}>{counterparty.sideLabel}: </Text>
-                          <Text style={styles.userName}>{counterparty.name}</Text>
-                        </Pressable>
-                      </View>
-
-                      {/* Miniaturka + badge poza overflow miniatury, żeby kółko nie było ucinane */}
-                      <View style={styles.thumbColumn}>
-                        <View style={styles.thumbWrapper}>
-                          <DealOfferThumb uri={thumbUrl} colors={COLORS} />
-                        </View>
-                        {unreadCount > 0 ? <UnreadBadge count={unreadCount} colors={COLORS} /> : null}
+                      <View style={styles.phaseSectionTitles}>
+                        <Text style={styles.phaseEyebrow}>Negocjacje</Text>
+                        <Text style={styles.phaseTitle}>Rozpoczęte</Text>
+                        <Text style={styles.phaseHint}>Jeszcze bez zaakceptowanej ceny ani terminu prezentacji.</Text>
                       </View>
                     </View>
+                    {groupedDeals.started.map((deal, idx) => renderDealCard(deal, idx, 'started'))}
+                  </View>
+                ) : null}
 
-                    {/* DÓŁ KARTY */}
-                    <View style={styles.cardFooter}>
-                      <View style={styles.messagePreviewRow}>
-                        <MessageCircle size={15} color={unreadCount > 0 ? COLORS.gold : COLORS.textMuted} strokeWidth={unreadCount > 0 ? 2.5 : 2} />
-                        <Text style={[styles.lastMessageText, unreadCount > 0 && styles.lastMessageTextUnread]} numberOfLines={1}>
-                          {formatLastMessage(deal.lastMessage)}
-                        </Text>
+                {groupedDeals.active.length > 0 ? (
+                  <View style={styles.phaseSection}>
+                    <View style={styles.phaseSectionHeaderRow}>
+                      <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapActive]}>
+                        <Zap size={20} color={COLORS.green} strokeWidth={2.2} />
                       </View>
-                      <ChevronRight size={18} color={COLORS.textMuted} />
+                      <View style={styles.phaseSectionTitles}>
+                        <Text style={styles.phaseEyebrow}>W toku</Text>
+                        <Text style={styles.phaseTitle}>Aktywne</Text>
+                        <Text style={styles.phaseHint}>Po akceptacji ceny i/lub terminu prezentacji.</Text>
+                      </View>
                     </View>
+                    {groupedDeals.active.map((deal, idx) => renderDealCard(deal, idx, 'active'))}
+                  </View>
+                ) : null}
 
-                  </BlurView>
-                </Pressable>
-              </Animated.View>
-            );
-          })}
+                {groupedDeals.finalized.length > 0 ? (
+                  <View style={styles.phaseSection}>
+                    <View style={styles.phaseSectionHeaderRow}>
+                      <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapDone]}>
+                        <CheckCircle2 size={20} color={COLORS.purple} strokeWidth={2.2} />
+                      </View>
+                      <View style={styles.phaseSectionTitles}>
+                        <Text style={styles.phaseEyebrow}>Domknięcie</Text>
+                        <Text style={styles.phaseTitle}>Finalizowane</Text>
+                        <Text style={styles.phaseHint}>Oferta wycofana z publikacji — rezerwacja po prezentacji.</Text>
+                      </View>
+                    </View>
+                    {groupedDeals.finalized.map((deal, idx) => renderDealCard(deal, idx, 'finalized'))}
+                  </View>
+                ) : null}
+              </>
+            )}
         </ScrollView>
       )}
 
       {/* WIZYTÓWKA MODAL */}
-      <Modal visible={!!selectedProfileId} transparent animationType="fade" onRequestClose={() => setSelectedProfileId(null)}>
+      <Modal
+        visible={!!selectedProfileId}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSelectedProfileId(null);
+          setSelectedPartnerDeal(null);
+        }}
+      >
         <BlurView intensity={40} tint="dark" style={styles.modalOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelectedProfileId(null)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setSelectedProfileId(null);
+              setSelectedPartnerDeal(null);
+            }}
+          />
           <Animated.View entering={FadeInDown.springify().damping(15)} style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Wizytówka Partnera</Text>
-              <Pressable onPress={() => { Haptics.selectionAsync(); setSelectedProfileId(null); }} style={styles.modalCloseBtn} hitSlop={15}>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setSelectedProfileId(null);
+                  setSelectedPartnerDeal(null);
+                }}
+                style={styles.modalCloseBtn}
+                hitSlop={15}
+              >
                 <X size={20} color={COLORS.textMain} />
               </Pressable>
             </View>
@@ -670,7 +1038,17 @@ export default function DealroomListScreen() {
               <>
                 <View style={styles.profileHero}>
                   <View style={styles.profileBigAvatar}>
-                     <User size={36} color={COLORS.gold} strokeWidth={2}/>
+                    {resolvedPartnerAvatarUrl && !partnerAvatarFailed ? (
+                      <Image
+                        key={`${selectedProfileId}-${resolvedPartnerAvatarUrl}`}
+                        source={{ uri: resolvedPartnerAvatarUrl }}
+                        style={styles.profileBigAvatarImage}
+                        resizeMode="cover"
+                        onError={() => setPartnerAvatarFailed(true)}
+                      />
+                    ) : (
+                      <User size={36} color={COLORS.gold} strokeWidth={2} />
+                    )}
                   </View>
                   <Text style={styles.profileName}>{selectedProfile?.user?.name || `Użytkownik #${selectedProfileId}`}</Text>
                   <Text style={styles.profileIdText}>ID w systemie: {selectedProfile?.user?.id || selectedProfileId}</Text>
@@ -754,6 +1132,64 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   loaderText: { color: colors.textSec, fontSize: 13, fontWeight: '500', marginTop: 16, letterSpacing: 0.5 },
   
   scrollContent: { paddingHorizontal: 16, paddingBottom: 50, paddingTop: 16 },
+
+  phaseBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    borderRadius: 14,
+    backgroundColor: colors.cardSolid,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderHighlight,
+  },
+  phaseBannerText: { color: colors.textSec, fontSize: 13, fontWeight: '600' },
+
+  phaseSection: { marginBottom: 28 },
+  phaseSectionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14, paddingHorizontal: 2 },
+  phaseSectionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.goldDimmed,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(212,175,55,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  phaseSectionIconWrapActive: {
+    backgroundColor: colors.greenDimmed,
+    borderColor: 'rgba(52,199,89,0.35)',
+  },
+  phaseSectionIconWrapDone: {
+    backgroundColor: colors.purpleDimmed,
+    borderColor: 'rgba(191,90,242,0.38)',
+  },
+  phaseSectionTitles: { flex: 1, paddingTop: 2 },
+  phaseEyebrow: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  phaseTitle: {
+    color: colors.textMain,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    marginTop: 4,
+  },
+  phaseHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginTop: 6,
+  },
   
   cardContainer: { marginBottom: 16 },
   /** Wyżej od kolejnej karty — żeby badge nie był „pod” sąsiadem */
@@ -830,7 +1266,19 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   modalLoader: { paddingVertical: 50, alignItems: 'center' },
   
   profileHero: { alignItems: 'center', marginBottom: 28 },
-  profileBigAvatar: { width: 70, height: 70, borderRadius: 35, backgroundColor: colors.goldDimmed, alignItems: 'center', justifyContent: 'center', marginBottom: 12, borderWidth: 1, borderColor: colors.goldDimmed },
+  profileBigAvatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: colors.goldDimmed,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.goldDimmed,
+    overflow: 'hidden',
+  },
+  profileBigAvatarImage: { width: 70, height: 70, borderRadius: 35 },
   profileName: { color: colors.textMain, fontSize: 26, fontWeight: '800', letterSpacing: 0.5 },
   profileIdText: { color: colors.textMuted, fontSize: 12, marginTop: 4, fontWeight: '600' },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 14, backgroundColor: colors.goldDimmed, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },

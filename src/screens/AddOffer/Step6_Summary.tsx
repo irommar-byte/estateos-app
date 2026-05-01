@@ -10,6 +10,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
 import {
   fetchCountableUserOffers,
   allowsMultipleCountableListings,
@@ -229,7 +230,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       userId: user.id, 
       lat: draft.lat || 52.2297,
       lng: draft.lng || 21.0122,
-      title: draft.title || `${draft.propertyType === 'FLAT' ? 'Mieszkanie' : 'Nieruchomość'} w Warszawie`,
+      title:
+        draft.title ||
+        (draft.city === REST_OF_COUNTRY_CITY
+          ? `${draft.propertyType === 'FLAT' ? 'Mieszkanie' : 'Nieruchomość'} — ${draft.district || 'Polska'}`
+          : `${draft.propertyType === 'FLAT' ? 'Mieszkanie' : 'Nieruchomość'} w ${draft.city || 'Warszawie'}`),
       propertyType: draft.propertyType,
       transactionType: draft.transactionType,
       condition: draft.condition || 'READY',

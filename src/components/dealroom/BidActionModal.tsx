@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X } from 'lucide-react-native';
+import { postDealroomTextMessage, setOfferStatusPending } from '../../utils/dealroomOfferReserve';
+import { API_URL } from '../../config/network';
 
 type BidMode = 'create' | 'counter' | 'respond';
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
@@ -22,9 +24,11 @@ interface BidActionModalProps {
   }>;
   onClose: () => void;
   onDone?: () => void;
+  /** Właściciel listingu — przy akceptacji ceny pytamy o wycofanie z publikacji (rezerwacja). */
+  offerId?: number | null;
+  userId?: number | null;
+  isListingOwner?: boolean;
 }
-
-const API_URL = 'https://estateos.pl';
 
 function normalizeToken(rawToken: string | null) {
   if (!rawToken) return null;
@@ -50,6 +54,9 @@ export default function BidActionModal({
   history = [],
   onClose,
   onDone,
+  offerId = null,
+  userId = null,
+  isListingOwner = false,
 }: BidActionModalProps) {
   const [amount, setAmount] = useState(initialAmount ? String(Math.round(initialAmount)) : '');
   const [note, setNote] = useState('');
@@ -58,6 +65,7 @@ export default function BidActionModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [withdrawPromptVisible, setWithdrawPromptVisible] = useState(false);
 
   const isLocked = useMemo(
     () => mode === 'respond' && String(eventAction || '').toUpperCase() === 'ACCEPTED',
@@ -71,6 +79,8 @@ export default function BidActionModal({
     setFinancing('CASH');
     setDecision(quickAccept ? 'ACCEPT' : 'COUNTER');
     setError(null);
+    setWithdrawPromptVisible(false);
+    setConfirmVisible(false);
   }, [visible, initialAmount, quickAccept]);
 
   const normalizedBidId = useMemo(() => {
@@ -89,7 +99,7 @@ export default function BidActionModal({
     return amount.trim().length > 0;
   }, [dealId, token, mode, normalizedBidId, decision, amount, isLocked]);
 
-  const submit = async () => {
+  const submitInner = async (reserveChoice?: { withdrawFromPublicSale: boolean }) => {
     const safeToken = normalizeToken(token);
     if (!dealId || !safeToken || !canSubmit || isLocked) return;
     setLoading(true);
@@ -125,6 +135,31 @@ export default function BidActionModal({
         setError(data?.error || 'Nie udalo sie zapisac akcji.');
         return;
       }
+
+      if (
+        mode === 'respond' &&
+        decision === 'ACCEPT' &&
+        isListingOwner &&
+        dealId &&
+        reserveChoice !== undefined
+      ) {
+        const withdraw = reserveChoice.withdrawFromPublicSale;
+        const msg = withdraw
+          ? 'Decyzja właściciela: oferta została wycofana z publikacji (rezerwacja uzgodnionej ceny).'
+          : 'Decyzja właściciela: oferta pozostaje widoczna na rynku po uzgodnieniu ceny rezerwacyjnej.';
+        await postDealroomTextMessage({ dealId, token: safeToken, content: msg });
+        if (withdraw && offerId != null && userId != null) {
+          const pendingRes = await setOfferStatusPending({
+            offerId: Number(offerId),
+            userId: Number(userId),
+            token: safeToken,
+          });
+          if (!pendingRes.ok) {
+            console.warn('[BidActionModal] setOfferStatusPending', pendingRes.error);
+          }
+        }
+      }
+
       onDone?.();
       onClose();
     } catch (_e) {
@@ -132,6 +167,11 @@ export default function BidActionModal({
     } finally {
       setLoading(false);
     }
+  };
+
+  const finishReserveChoice = async (withdrawFromPublicSale: boolean) => {
+    setWithdrawPromptVisible(false);
+    await submitInner({ withdrawFromPublicSale });
   };
 
   const getConfirmMessage = () => {
@@ -299,12 +339,55 @@ export default function BidActionModal({
                   style={styles.confirmPrimary}
                   onPress={async () => {
                     setConfirmVisible(false);
-                    await submit();
+                    if (
+                      mode === 'respond' &&
+                      decision === 'ACCEPT' &&
+                      isListingOwner &&
+                      !isLocked
+                    ) {
+                      setWithdrawPromptVisible(true);
+                      return;
+                    }
+                    await submitInner();
                   }}
                 >
                   <Text style={styles.confirmPrimaryTxt}>Tak, wyślij</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={withdrawPromptVisible} transparent animationType="fade" onRequestClose={() => setWithdrawPromptVisible(false)}>
+          <View style={styles.confirmBackdrop}>
+            <View style={styles.confirmCard}>
+              <Text style={styles.confirmTitle}>Rezerwacja ceny</Text>
+              <Text style={styles.confirmText}>
+                Czy chcesz wycofać ofertę z publikacji (sprzedaż „zarezerwowana” dla tej negocjacji), czy zostawić ją widoczną na rynku?
+              </Text>
+              <View style={styles.confirmRow}>
+                <TouchableOpacity
+                  style={styles.confirmSecondary}
+                  onPress={() => setWithdrawPromptVisible(false)}
+                  disabled={loading}
+                >
+                  <Text style={styles.confirmSecondaryTxt}>Wróć</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmPrimary}
+                  onPress={() => finishReserveChoice(true)}
+                  disabled={loading}
+                >
+                  <Text style={styles.confirmPrimaryTxt}>Wycofaj</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={[styles.stayPublicBtn, loading && styles.disabled]}
+                onPress={() => finishReserveChoice(false)}
+                disabled={loading}
+              >
+                <Text style={styles.stayPublicTxt}>Zostaw widoczną</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </Modal>
@@ -401,4 +484,14 @@ const styles = StyleSheet.create({
   confirmPrimary: { flex: 1, borderRadius: 10, backgroundColor: '#10b981', paddingVertical: 10, alignItems: 'center' },
   confirmSecondaryTxt: { color: '#d1d5db', fontSize: 12, fontWeight: '800' },
   confirmPrimaryTxt: { color: '#032014', fontSize: 12, fontWeight: '900' },
+  stayPublicBtn: {
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingVertical: 11,
+    alignItems: 'center',
+    backgroundColor: '#1b1d20',
+  },
+  stayPublicTxt: { color: '#e5e7eb', fontSize: 12, fontWeight: '800' },
 });

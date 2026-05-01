@@ -1,3 +1,6 @@
+/** Oferty spoza listy głównych aglomeracji — miejscowość trzymamy w `district` (np. „Przemyśl”). */
+export const REST_OF_COUNTRY_CITY = 'Reszta kraju' as const;
+
 export const STRICT_CITIES = [
   'Warszawa',
   'Kraków',
@@ -12,6 +15,7 @@ export const STRICT_CITIES = [
   'Rybnik',
   'Białystok',
   'Zamość',
+  REST_OF_COUNTRY_CITY,
 ] as const;
 
 export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
@@ -28,6 +32,7 @@ export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
   Rybnik: ['Śródmieście', 'Boguszowice Osiedle', 'Boguszowice Stare', 'Chwałęcice', 'Chwałowice', 'Golejów', 'Gotartowice', 'Kamień', 'Kłokocin', 'Ligota-Ligocka Kuźnia', 'Meksyk', 'Niedobczyce', 'Niewiadom', 'Ochojec', 'Orzepowice', 'Paruszowiec-Piaski', 'Popielów', 'Radziejów', 'Rybnicka Kuźnia', 'Smolna', 'Stodoły', 'Wielopole', 'Zamysłów', 'Zebrzydowice'],
   Białystok: ['Centrum', 'Białostoczek', 'Bojary', 'Dziesięciny I', 'Dziesięciny II', 'Antoniuk', 'Piaski', 'Przydworcowe', 'Sienkiewicza', 'Młodych', 'Starosielce', 'Nowe Miasto', 'Wysoki Stoczek', 'Zielone Wzgórza', 'Słoneczny Stok', 'Leśna Dolina', 'Bacieczki', 'Jaroszówka', 'Dojlidy', 'Skorupy', 'Zawady'],
   Zamość: ['Stare Miasto', 'Nowe Miasto', 'Planty', 'Janowice', 'Karolówka', 'Promyk', 'Powiatowa', 'Rataja', 'Zamczysko', 'Słoneczny Stok'],
+  [REST_OF_COUNTRY_CITY]: [],
 };
 
 const cityKeys = Object.keys(STRICT_CITY_DISTRICTS);

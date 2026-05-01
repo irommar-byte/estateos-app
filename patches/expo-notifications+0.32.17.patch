@@ -1,0 +1,25 @@
+diff --git a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
+index 73b8f32..ac53a4d 100644
+--- a/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
++++ b/node_modules/expo-notifications/ios/EXNotifications/Notifications/Records.swift
+@@ -402,6 +402,9 @@ struct NotificationRequestContentRecord: Record {
+   var attachments: [[String: Any]]?
+   @Field
+   var interruptionLevel: String?
++  /// Grupuje powiadomienia na liście iOS (ten sam co drugi użytkownik / ten sam deal).
++  @Field
++  var threadIdentifier: String?
+ 
+   func attachment(_ request: [String: Any]) -> UNNotificationAttachment? {
+     let identifier = request["identifier"] as? String ?? ""
+@@ -518,6 +521,10 @@ struct NotificationRequestContentRecord: Record {
+       content.interruptionLevel = deserializeInterruptionLevel(interruptionLevel)
+     }
+ 
++    if let threadIdentifier = threadIdentifier, !threadIdentifier.isEmpty {
++      content.threadIdentifier = threadIdentifier
++    }
++
+     return content
+   }
+ }

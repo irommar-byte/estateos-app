@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
+import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
 
@@ -119,6 +120,11 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           </View>
         </View>
 
+        <AddOfferStepFooterHint
+          theme={theme}
+          icon="wallet-outline"
+          text="Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku."
+        />
         <View style={{ height: 200 }} />
       </ScrollView>
     </KeyboardAvoidingView>

@@ -69,11 +69,42 @@ function AddOfferNavigator({ theme }: { theme: any }) {
   );
 }
 
+/** Aktywny ekran AddOffer (Step1…Step6) ze stanu tabów — po restarcie Zustand ma currentStep=0, ale stack jest przywrócony. */
+function parseAddOfferStepFromTabNavState(navState: any): number | null {
+  try {
+    const routes = navState?.routes;
+    if (!Array.isArray(routes)) return null;
+    const dodaj = routes.find((r: any) => r?.name === 'Dodaj');
+    const stack = dodaj?.state;
+    if (!stack?.routes?.length) return null;
+    const idx = typeof stack.index === 'number' ? stack.index : stack.routes.length - 1;
+    const name = stack.routes[idx]?.name;
+    if (typeof name === 'string' && /^Step\d+$/i.test(name)) {
+      const n = parseInt(name.replace(/^Step/i, ''), 10);
+      return Number.isFinite(n) ? n : null;
+    }
+  } catch {
+    /* noop */
+  }
+  return null;
+}
+
 // ======================================================================
 // KASKADOWY PLUSIK (APPLE GLASS) - ZABEZPIECZONY PANRESPONDER I KĄTY
 // ======================================================================
 const FloatingNextButton = ({ onPress }: any) => {
-  const { draft, currentStep } = useOfferStore();
+  const draft = useOfferStore((s) => s.draft);
+  const currentStep = useOfferStore((s) => s.currentStep);
+  const setCurrentStep = useOfferStore((s) => s.setCurrentStep);
+  const stepFromNav = useNavigationState(parseAddOfferStepFromTabNavState);
+  const step = stepFromNav ?? currentStep;
+
+  useEffect(() => {
+    if (stepFromNav != null && stepFromNav !== currentStep) {
+      setCurrentStep(stepFromNav);
+    }
+  }, [stepFromNav, currentStep, setCurrentStep]);
+
   const user = useAuthStore(state => state.user); 
   const isLoggedIn = !!user;
   const navigation = useNavigation<any>();
@@ -98,14 +129,14 @@ const FloatingNextButton = ({ onPress }: any) => {
   const isFocused = activeRouteName === 'Dodaj';
 
   let isValid = false;
-  let errorMessage = getStepBlockMessage(currentStep);
-  if (currentStep >= 1 && currentStep <= 5) {
-    isValid = isStepValid(currentStep, draft);
-    errorMessage = getStepBlockMessage(currentStep);
+  let errorMessage = getStepBlockMessage(step);
+  if (step >= 1 && step <= 5) {
+    isValid = isStepValid(step, draft);
+    errorMessage = getStepBlockMessage(step);
   }
 
   useEffect(() => {
-    if (isValid && currentStep > 0 && currentStep < 6 && isFocused) {
+    if (isValid && step > 0 && step < 6 && isFocused) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }),
@@ -116,7 +147,7 @@ const FloatingNextButton = ({ onPress }: any) => {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
     }
-  }, [isValid, currentStep, isFocused]);
+  }, [isValid, step, isFocused]);
 
   const handlePress = (e: any) => {
     if (!isFocused) {
@@ -125,7 +156,7 @@ const FloatingNextButton = ({ onPress }: any) => {
       return;
     }
 
-    if (currentStep === 0) {
+    if (step === 0) {
       if (!isLoggedIn) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         navigation.navigate('Profil');
@@ -133,10 +164,10 @@ const FloatingNextButton = ({ onPress }: any) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onPress(e);
       }
-    } else if (currentStep !== 6) {
+    } else if (step !== 6) {
       if (isValid) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        navigation.navigate('Dodaj', { screen: 'Step' + (currentStep + 1) });
+        navigation.navigate('Dodaj', { screen: 'Step' + (step + 1) });
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Brakuje danych", errorMessage);
@@ -319,10 +350,10 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
 
-  if (currentStep === 6 && isFocused) return <View style={{ width: 80 }} />;
+  if (step === 6 && isFocused) return <View style={{ width: 80 }} />;
 
-  const isArrow = isFocused && currentStep > 0;
-  const isReady = !isFocused || currentStep === 0 || isValid;
+  const isArrow = isFocused && step > 0;
+  const isReady = !isFocused || step === 0 || isValid;
 
   return (
     <View style={{ top: -35, justifyContent: 'center', alignItems: 'center' }}>

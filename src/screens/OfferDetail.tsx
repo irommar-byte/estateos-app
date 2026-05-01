@@ -69,6 +69,10 @@ export default function OfferDetail({ route, navigation }: any) {
   const [isFavorite, setIsFavorite] = useState(false);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
+  const isGuest = !user?.id;
+  const [isGuestGateVisible, setIsGuestGateVisible] = useState(isGuest);
+  const [isPhoneVerifyGateVisible, setIsPhoneVerifyGateVisible] = useState(false);
+  const isPhoneVerified = Boolean(user?.isVerifiedPhone || user?.isVerified);
   const isOwner = user?.id && offer?.userId === user?.id;
   const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
@@ -161,6 +165,26 @@ export default function OfferDetail({ route, navigation }: any) {
       Alert.alert('EstateOS', 'Nie udało się otworzyć strony cennika PRO.');
     }
   };
+
+  const openAuthEntry = (intent: 'login' | 'register') => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsGuestGateVisible(false);
+    navigation.goBack();
+    setTimeout(() => {
+      navigation.navigate('MainTabs', { screen: 'Profil', params: { authIntent: intent } });
+    }, 120);
+  };
+
+  const guardPhoneVerification = () => {
+    if (isGuest || !user?.id || isPhoneVerified) return false;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setIsPhoneVerifyGateVisible(true);
+    return true;
+  };
+
+  useEffect(() => {
+    setIsGuestGateVisible(isGuest);
+  }, [isGuest]);
 
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
@@ -837,7 +861,11 @@ export default function OfferDetail({ route, navigation }: any) {
                 <Animated.View style={[styles.actionFlexWrap, apptBtnAnimatedStyle]}>
                   <TouchableOpacity
                     style={styles.secondaryAppleButton}
-                    onPress={() => { animateAppointmentButton(); openAppointmentFlow(); }}
+                    onPress={() => {
+                      if (guardPhoneVerification()) return;
+                      animateAppointmentButton();
+                      openAppointmentFlow();
+                    }}
                     activeOpacity={0.8}
                   >
                     <CalendarClock size={16} color="#1d1d1f" />
@@ -848,7 +876,11 @@ export default function OfferDetail({ route, navigation }: any) {
                 <Animated.View style={[styles.actionFlexWrap, bidBtnAnimatedStyle]}>
                   <TouchableOpacity
                     style={styles.primaryAppleButton}
-                    onPress={() => { animateBidButton(); openBidFlow(); }}
+                    onPress={() => {
+                      if (guardPhoneVerification()) return;
+                      animateBidButton();
+                      openBidFlow();
+                    }}
                     activeOpacity={0.8}
                   >
                     <Handshake size={16} color="#fff" />
@@ -902,6 +934,9 @@ export default function OfferDetail({ route, navigation }: any) {
         quickAccept={bidModalConfig.quickAccept}
         history={bidModalConfig.history}
         title="Negocjacja ceny"
+        offerId={offer?.id != null ? Number(offer.id) : null}
+        userId={user?.id != null ? Number(user.id) : null}
+        isListingOwner={!!isOwner}
         onClose={() => setIsBidModalOpen(false)}
         onDone={openDealroom}
       />
@@ -1080,6 +1115,81 @@ export default function OfferDetail({ route, navigation }: any) {
         </BlurView>
       </Modal>
 
+      {/* --- GUEST GATE: DOSTĘP DO OFERTY DLA NIEZALOGOWANYCH --- */}
+      <Modal visible={isGuestGateVisible} transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
+        <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
+          <View style={styles.guestGateBackdrop} />
+          <View style={styles.offMarketOverlay}>
+            <View style={styles.guestGateCard}>
+              <Pressable
+                onPress={() => {
+                  setIsGuestGateVisible(false);
+                  navigation?.goBack();
+                }}
+                style={styles.guestCloseBtn}
+                hitSlop={12}
+              >
+                <X color="rgba(255,255,255,0.8)" size={18} />
+              </Pressable>
+              <View style={styles.guestGateIconWrap}>
+                <ShieldCheck color="#10B981" size={30} />
+              </View>
+              <Text style={styles.guestGateTitle}>Załóż bezpłatne konto</Text>
+              <Text style={styles.guestGateSub}>
+                Za darmo zobaczysz każdą ofertę, zainicjujesz kontakt z właścicielami oraz wystawisz własną ofertę bez opłat.
+              </Text>
+              <TouchableOpacity activeOpacity={0.9} style={styles.guestPrimaryButton} onPress={() => openAuthEntry('register')}>
+                <Crown color="#0a0a0a" size={16} />
+                <Text style={styles.guestPrimaryButtonText}>Zarejestruj się</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.9} style={styles.guestSecondaryButton} onPress={() => openAuthEntry('login')}>
+                <Text style={styles.guestSecondaryButtonText}>Zaloguj się</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurView>
+      </Modal>
+
+      <Modal
+        visible={isPhoneVerifyGateVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsPhoneVerifyGateVisible(false)}
+      >
+        <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
+          <View style={styles.guestGateBackdrop} />
+          <View style={styles.offMarketOverlay}>
+            <View style={styles.guestGateCard}>
+              <Pressable onPress={() => setIsPhoneVerifyGateVisible(false)} style={styles.guestCloseBtn} hitSlop={12}>
+                <X color="rgba(255,255,255,0.8)" size={18} />
+              </Pressable>
+              <View style={styles.guestGateIconWrap}>
+                <ShieldCheck color="#10B981" size={30} />
+              </View>
+              <Text style={styles.guestGateTitle}>Zweryfikuj numer telefonu</Text>
+              <Text style={styles.guestGateSub}>
+                W EstateOS wszyscy uczestnicy negocjacji są zweryfikowani, dzięki czemu rozmowy o cenie i terminie są
+                realne, bezpieczne i traktowane na poważnie.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                style={styles.guestPrimaryButton}
+                onPress={() => {
+                  setIsPhoneVerifyGateVisible(false);
+                  navigation.navigate('SmsVerification');
+                }}
+              >
+                <ShieldCheck color="#062315" size={16} />
+                <Text style={styles.guestPrimaryButtonText}>Zweryfikuj swój numer telefonu</Text>
+              </TouchableOpacity>
+              <TouchableOpacity activeOpacity={0.9} style={styles.guestSecondaryButton} onPress={() => setIsPhoneVerifyGateVisible(false)}>
+                <Text style={styles.guestSecondaryButtonText}>Później</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </BlurView>
+      </Modal>
+
     </View>
   );
 }
@@ -1208,6 +1318,106 @@ const styles = StyleSheet.create({
   offMarketPrimaryButtonText: { color: '#0a0a0a', fontSize: 13, fontWeight: '900', letterSpacing: 1.4, textTransform: 'uppercase' },
   offMarketSecondaryButton: { width: '100%', borderRadius: 18, paddingVertical: 15, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center' },
   offMarketSecondaryButtonText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '800', letterSpacing: 1.3, textTransform: 'uppercase' },
+  guestCloseBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  guestGateBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.46)' },
+  guestGateCard: {
+    width: '100%',
+    maxWidth: 440,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.35)',
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 30,
+  },
+  guestGateIconWrap: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    marginTop: 6,
+    marginBottom: 18,
+    backgroundColor: 'rgba(16,185,129,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestGateTitle: {
+    color: '#fff',
+    fontSize: 30,
+    fontWeight: '900',
+    marginBottom: 10,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  guestGateSub: {
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 30,
+    paddingHorizontal: 4,
+  },
+  guestPrimaryButton: {
+    width: '100%',
+    borderRadius: 18,
+    paddingVertical: 16,
+    backgroundColor: '#10B981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 12,
+    shadowColor: '#10B981',
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 12,
+  },
+  guestPrimaryButtonText: {
+    color: '#062315',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  guestSecondaryButton: {
+    width: '100%',
+    borderRadius: 18,
+    paddingVertical: 15,
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.38)',
+    alignItems: 'center',
+  },
+  guestSecondaryButtonText: {
+    color: 'rgba(217,255,239,0.92)',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+  },
   
   profileOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', paddingHorizontal: 16 },
   profileCard: { backgroundColor: '#0a0a0a', borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 18, maxHeight: '80%' },

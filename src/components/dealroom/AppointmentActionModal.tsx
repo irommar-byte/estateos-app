@@ -3,7 +3,6 @@ import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityInd
 import { X, ChevronLeft } from 'lucide-react-native';
 
 type AppointmentMode = 'create' | 'respond';
-type AppointmentDecision = 'ACCEPT' | 'COUNTER';
 
 interface AppointmentActionModalProps {
   visible: boolean;
@@ -66,7 +65,6 @@ export default function AppointmentActionModal({
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedHour, setSelectedHour] = useState<string | null>(null);
   const [note, setNote] = useState('');
-  const [decision, setDecision] = useState<AppointmentDecision>('COUNTER');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -79,7 +77,6 @@ export default function AppointmentActionModal({
     setStep(1);
     setSelectedDate(null);
     setSelectedHour(null);
-    setDecision('COUNTER');
     setNote('');
     setError(null);
   }, [visible]);
@@ -89,9 +86,10 @@ export default function AppointmentActionModal({
     [mode, eventAction]
   );
 
+  /** Akceptacja terminu jest w czacie (panel); modal służy wyłącznie do wysłania własnej propozycji / create. */
   const isSchedulerVisible = useMemo(
-    () => mode === 'create' || (mode === 'respond' && decision === 'COUNTER'),
-    [mode, decision]
+    () => !isLocked && (mode === 'create' || mode === 'respond'),
+    [mode, isLocked]
   );
 
   const canSubmit = useMemo(() => {
@@ -100,18 +98,16 @@ export default function AppointmentActionModal({
     if (!dealId || !safeToken) return false;
     if (mode === 'respond') {
       if (!appointmentId) return false;
-      if (decision !== 'COUNTER') return true;
     }
     return Boolean(selectedDate && selectedHour);
-  }, [isLocked, dealId, token, mode, appointmentId, decision, selectedDate, selectedHour]);
+  }, [isLocked, dealId, token, mode, appointmentId, selectedDate, selectedHour]);
 
-  const submit = async (forcedDecision?: AppointmentDecision) => {
+  const submit = async () => {
     const safeToken = normalizeToken(token);
     if (!dealId || !safeToken || isLocked) return;
-    const finalDecision = forcedDecision || decision;
     const canRun =
       mode === 'respond'
-        ? Boolean(appointmentId) && (finalDecision !== 'COUNTER' || Boolean(selectedDate && selectedHour))
+        ? Boolean(appointmentId) && Boolean(selectedDate && selectedHour)
         : Boolean(selectedDate && selectedHour);
     if (!canRun) return;
     setLoading(true);
@@ -134,9 +130,9 @@ export default function AppointmentActionModal({
       } else {
         payload.type = 'APPOINTMENT_RESPOND';
         payload.appointmentId = appointmentId;
-        payload.decision = finalDecision;
+        payload.decision = 'COUNTER';
         payload.message = note;
-        if (finalDecision === 'COUNTER') payload.counterDate = proposedIso;
+        payload.counterDate = proposedIso;
       }
 
       const res = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/actions`, {
@@ -169,9 +165,6 @@ export default function AppointmentActionModal({
   const getConfirmMessage = () => {
     if (mode === 'create') {
       return `Czy na pewno chcesz zaproponować termin ${getSelectedDateLabel()}?`;
-    }
-    if (decision === 'ACCEPT') {
-      return 'Czy na pewno chcesz zaakceptować ten termin spotkania?';
     }
     return `Czy na pewno chcesz wysłać swój termin ${getSelectedDateLabel()}?`;
   };
@@ -227,28 +220,6 @@ export default function AppointmentActionModal({
               </View>
             </View>
           )}
-
-            {mode === 'respond' && !isLocked && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>Decyzja</Text>
-                <View style={styles.segment}>
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, styles.acceptBtn, loading && styles.disabled]}
-                    onPress={() => submit('ACCEPT')}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.segmentTxt, styles.acceptTxt]}>Akceptuj termin</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, decision === 'COUNTER' && styles.segmentBtnActive, loading && styles.disabled]}
-                    onPress={() => setDecision('COUNTER')}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.segmentTxt, decision === 'COUNTER' && styles.segmentTxtActive]}>Zaproponuj swoj termin</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
 
           {history.length > 0 && (
             <View style={styles.timelineWrap}>
@@ -521,13 +492,6 @@ const styles = StyleSheet.create({
   selectedTermValue: { color: '#ddffe8', fontSize: 16, fontWeight: '800', marginTop: 4 },
   input: { backgroundColor: '#161618', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: '#fff', paddingHorizontal: 12, paddingVertical: 11, marginBottom: 0 },
   note: { minHeight: 70, textAlignVertical: 'top' },
-  segment: { flexDirection: 'row', gap: 8, marginBottom: 10 },
-  segmentBtn: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingVertical: 10, alignItems: 'center', backgroundColor: '#151515' },
-  segmentBtnActive: { borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.2)' },
-  acceptBtn: { borderColor: 'rgba(16,185,129,0.45)', backgroundColor: 'rgba(16,185,129,0.18)' },
-  segmentTxt: { color: '#bbb', fontWeight: '700', fontSize: 12, textTransform: 'uppercase' },
-  acceptTxt: { color: '#9af0bf' },
-  segmentTxtActive: { color: '#10b981' },
   lockedBox: {
     borderRadius: 14,
     borderWidth: 1,
