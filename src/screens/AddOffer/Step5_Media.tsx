@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,14 @@ const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premi
 const MAX_TITLE_LENGTH = 70;
 const MAX_IMAGES = 20;
 const MAX_MB = 20;
+/** Gdy brak fileSize z pickera (np. po powrocie na krok) — realistyczny szacunek ~0,9 MB */
+const FALLBACK_BYTES_PER_IMAGE = Math.round(0.9 * 1024 * 1024);
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+
+function sumImageBytes(uris: string[], sizes: Record<string, number> | undefined): number {
+  const map = sizes || {};
+  return uris.reduce((acc, uri) => acc + (map[uri] ?? FALLBACK_BYTES_PER_IMAGE), 0);
+}
 
 // --- MATEMATYKA SIATKI ---
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -47,91 +55,107 @@ const CapacityBar = ({ label, current, max, suffix, theme }: any) => {
 };
 
 // --- DRAGGABLE SQUARE APPLE-STYLE ---
-const DraggableSquare = ({ uri, index, total, onDragStart, onDragEnd, onHoverSwap, onRemove, theme, progress = 100 }: any) => {
+const DraggableSquare = ({
+  uri,
+  index,
+  total,
+  onDragStart,
+  onDragEnd,
+  onHoverSwap,
+  onRemove,
+  theme,
+  progress = 100,
+}: any) => {
   const pos = useRef(new Animated.ValueXY(getPosition(index))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  
+
   const [isActive, setIsActive] = useState(false);
   const isDragging = useRef(false);
   const initialIndex = useRef(index);
   const lastHoveredIndex = useRef(index);
 
-  // Animacja płynnego przesuwania się zdjęć robiących miejsce
+  const onDragStartRef = useRef(onDragStart);
+  const onDragEndRef = useRef(onDragEnd);
+  const onHoverSwapRef = useRef(onHoverSwap);
+  const indexRef = useRef(index);
+  const totalRef = useRef(total);
+  const uriRef = useRef(uri);
+  onDragStartRef.current = onDragStart;
+  onDragEndRef.current = onDragEnd;
+  onHoverSwapRef.current = onHoverSwap;
+  indexRef.current = index;
+  totalRef.current = total;
+  uriRef.current = uri;
+
+  // Tylko gdy nie przeciągamy — płynne dociąganie kafelków do siatki (bez podwójnej animacji z końcem gestu)
   useEffect(() => {
     if (!isDragging.current) {
       Animated.spring(pos, {
         toValue: getPosition(index),
         useNativeDriver: true,
-        friction: 8, // Apple-like sprężystość
-        tension: 50,
+        friction: 9,
+        tension: 68,
       }).start();
     }
-  }, [index]);
+  }, [index, pos]);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      // Aktywacja drag & drop tylko po minimalnym przesunięciu (pozwala to na swobodne klikanie w 'X')
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 5 || Math.abs(gesture.dy) > 5,
-      onPanResponderGrant: () => {
-        isDragging.current = true;
-        setIsActive(true);
-        initialIndex.current = index;
-        lastHoveredIndex.current = index;
-
-        onDragStart();
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); // Wyczuwalne podniesienie
-        Animated.spring(scaleAnim, { toValue: 1.1, friction: 5, useNativeDriver: true }).start();
-      },
-      onPanResponderMove: (e, gestureState) => {
-        const startPos = getPosition(initialIndex.current);
-        const currentX = startPos.x + gestureState.dx;
-        const currentY = startPos.y + gestureState.dy;
-
-        // Podążanie za palcem (zastępujemy animację bezpośrednią wartością)
-        pos.setValue({ x: currentX, y: currentY });
-
-        // Obliczanie środka przesuwanego elementu, aby sprawdzić, nad którym kafelkiem jesteśmy
-        const centerX = currentX + SQUARE_SIZE / 2;
-        const centerY = currentY + SQUARE_SIZE / 2;
-
-        const targetCol = Math.max(0, Math.min(COLUMNS - 1, Math.floor(centerX / (SQUARE_SIZE + GRID_GAP))));
-        const maxRow = Math.ceil(total / COLUMNS) - 1;
-        const targetRow = Math.max(0, Math.min(maxRow, Math.floor(centerY / (SQUARE_SIZE + GRID_GAP))));
-
-        let targetIndex = targetRow * COLUMNS + targetCol;
-        targetIndex = Math.min(targetIndex, total - 1); // Zabezpieczenie przed wyjściem za listę
-
-        // Jeśli najeżdżamy na nowy index -> uruchamiamy płynną zamianę
-        if (targetIndex !== lastHoveredIndex.current) {
-          lastHoveredIndex.current = targetIndex;
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); // Tyknięcie przy każdym przesunięciu jak w iOS
-          onHoverSwap(uri, targetIndex);
-        }
-      },
-      onPanResponderRelease: () => {
-        finishDrag();
-      },
-      onPanResponderTerminate: () => {
-        finishDrag();
-      }
-    })
-  ).current;
-
-  const finishDrag = () => {
-    isDragging.current = false;
+  const finishDrag = useCallback(() => {
     setIsActive(false);
-    onDragEnd();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Tyknięcie upuszczenia
+    onDragEndRef.current();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+    isDragging.current = false;
+  }, [scaleAnim]);
 
-    Animated.spring(scaleAnim, { toValue: 1, friction: 5, useNativeDriver: true }).start();
-    // Powrót do aktualnego (nowego lub starego) miejsca w siatce
-    Animated.spring(pos, {
-      toValue: getPosition(index),
-      useNativeDriver: true,
-      friction: 8,
-      tension: 50,
-    }).start();
-  };
+  const finishDragRef = useRef(finishDrag);
+  finishDragRef.current = finishDrag;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
+        onPanResponderGrant: () => {
+          isDragging.current = true;
+          setIsActive(true);
+          initialIndex.current = indexRef.current;
+          lastHoveredIndex.current = indexRef.current;
+
+          onDragStartRef.current();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Animated.spring(scaleAnim, { toValue: 1.08, friction: 6, useNativeDriver: true }).start();
+        },
+        onPanResponderMove: (_e, gestureState) => {
+          const startPos = getPosition(initialIndex.current);
+          const currentX = startPos.x + gestureState.dx;
+          const currentY = startPos.y + gestureState.dy;
+
+          pos.setValue({ x: currentX, y: currentY });
+
+          const cellStride = SQUARE_SIZE + GRID_GAP;
+          const centerX = currentX + SQUARE_SIZE / 2;
+          const centerY = currentY + SQUARE_SIZE / 2;
+          const n = totalRef.current;
+
+          const targetCol = Math.max(0, Math.min(COLUMNS - 1, Math.floor(centerX / cellStride)));
+          const rowCount = Math.max(1, Math.ceil(n / COLUMNS));
+          const maxRow = Math.max(0, rowCount - 1);
+          const targetRow = Math.max(0, Math.min(maxRow, Math.floor(centerY / cellStride)));
+
+          let targetIndex = targetRow * COLUMNS + targetCol;
+          targetIndex = Math.min(Math.max(0, targetIndex), Math.max(0, n - 1));
+
+          if (targetIndex !== lastHoveredIndex.current) {
+            lastHoveredIndex.current = targetIndex;
+            Haptics.selectionAsync();
+            onHoverSwapRef.current(uriRef.current, targetIndex);
+          }
+        },
+        onPanResponderRelease: () => finishDragRef.current(),
+        onPanResponderTerminate: () => finishDragRef.current(),
+      }),
+    [pos, scaleAnim]
+  );
 
   // Unikalny stos przy nakładaniu się kafelków w trakcie animacji (równy zIndex = losowa kolejność malowania).
   const stackOrder = isActive ? 1000 : 10 + index;
@@ -199,7 +223,13 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const glowAnim = useRef(new Animated.Value(0)).current;
 
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  const [usedMB, setUsedMB] = useState(0.0);
+  /** Kolejność podczas przeciągania — bez ciągłego zapisu do Zustand (brak „skakania”). */
+  const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
+
+  const displayImages = dragSnapshot ?? draft.images;
+  const imageSizes: Record<string, number> = draft.imageByteSizes || {};
+  const usedMB =
+    sumImageBytes(displayImages, imageSizes) / (1024 * 1024);
 
   const isTitleValid = (draft.title?.length || 0) >= 10;
   const isDescValid = (draft.description?.length || 0) >= 10;
@@ -211,70 +241,108 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
   const handleTitleChange = (text: string) => { if (text.length <= MAX_TITLE_LENGTH) updateDraft({ title: text }); };
 
-  const simulateUploadOrReal = (uri: string, sizeBytes: number) => {
-    const fileSizeMB = sizeBytes / (1024 * 1024);
-    if (usedMB + fileSizeMB > MAX_MB) {
-      Alert.alert("Limit Przekroczony", "To zdjęcie przekracza limit 20MB. Zmniejsz rozmiar lub usuń inne zdjęcia.");
-      return false;
-    }
-
-    setUsedMB(prev => prev + fileSizeMB);
-    
+  const startFakeUploadProgress = (uri: string) => {
     let currentProgress = 0;
     const interval = setInterval(() => {
-      currentProgress += Math.floor(Math.random() * 15) + 5;
+      currentProgress += Math.floor(Math.random() * 12) + 8;
       if (currentProgress >= 100) {
         currentProgress = 100;
         clearInterval(interval);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      setUploadProgress(prev => ({ ...prev, [uri]: currentProgress }));
-    }, 200);
-
-    return true;
+      setUploadProgress((prev) => ({ ...prev, [uri]: currentProgress }));
+    }, 180);
   };
 
   const pickGallery = async () => {
-    if (draft.images.length >= MAX_IMAGES) return Alert.alert("Limit zdjęć", "Osiągnięto maksymalny limit 20 zdjęć.");
-    
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8 });
-    if (!result.canceled) { 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const newImages = [...draft.images];
-      result.assets.forEach(asset => {
-         if (newImages.length < MAX_IMAGES) {
-           const sizeEstimate = asset.fileSize || Math.floor(Math.random() * 2000000) + 500000;
-           if (simulateUploadOrReal(asset.uri, sizeEstimate)) {
-             newImages.push(asset.uri);
-             setUploadProgress(prev => ({ ...prev, [asset.uri]: 0 }));
-           }
-         }
-      });
-      updateDraft({ images: newImages }); 
+    if (draft.images.length >= MAX_IMAGES) {
+      return Alert.alert('Limit zdjęć', 'Osiągnięto maksymalny limit 20 zdjęć.');
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    let nextImages = [...draft.images];
+    let nextSizes = { ...(draft.imageByteSizes || {}) };
+    let runningBytes = sumImageBytes(nextImages, nextSizes);
+
+    for (const asset of result.assets) {
+      if (nextImages.length >= MAX_IMAGES) break;
+
+      const sizeBytes =
+        typeof asset.fileSize === 'number' && asset.fileSize > 0
+          ? asset.fileSize
+          : FALLBACK_BYTES_PER_IMAGE;
+
+      if (runningBytes + sizeBytes > MAX_BYTES) {
+        Alert.alert(
+          'Limit miejsca',
+          `Łączny rozmiar zdjęć nie może przekroczyć ${MAX_MB} MB. Zmniejsz liczbę plików lub usuń inne zdjęcia.`
+        );
+        break;
+      }
+
+      nextImages.push(asset.uri);
+      nextSizes[asset.uri] = sizeBytes;
+      runningBytes += sizeBytes;
+      setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
+      startFakeUploadProgress(asset.uri);
+    }
+
+    if (nextImages.length > draft.images.length) {
+      updateDraft({ images: nextImages, imageByteSizes: nextSizes });
     }
   };
 
-  const removeImage = (indexToRemove: number) => { 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-    const uriToRemove = draft.images[indexToRemove];
-    setUsedMB(prev => Math.max(0, prev - 1.2));
-    const newProgress = {...uploadProgress};
+  const removeImage = (indexToRemove: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const uriToRemove = displayImages[indexToRemove];
+    const newProgress = { ...uploadProgress };
     delete newProgress[uriToRemove];
     setUploadProgress(newProgress);
-    updateDraft({ images: draft.images.filter((_: any, i: number) => i !== indexToRemove) }); 
-  };
-  
-  // Real-time funkcja podmiany przy przeciąganiu (bez LayoutAnimation)
-  const handleHoverSwap = useCallback((uri: string, targetIndex: number) => {
-    const currentIndex = draft.images.indexOf(uri);
-    if (currentIndex === targetIndex || currentIndex === -1) return;
 
-    const newArr = [...draft.images];
-    newArr.splice(currentIndex, 1);
-    newArr.splice(targetIndex, 0, uri);
-    
-    updateDraft({ images: newArr });
-  }, [draft.images, updateDraft]);
+    const filtered = displayImages.filter((_: string, i: number) => i !== indexToRemove);
+    const nextSizes = { ...(draft.imageByteSizes || {}) };
+    delete nextSizes[uriToRemove];
+
+    setDragSnapshot(null);
+    updateDraft({ images: filtered, imageByteSizes: nextSizes });
+  };
+
+  const handleDragStart = useCallback(() => {
+    setDragSnapshot([...draft.images]);
+    setIsDraggingGlobal(true);
+  }, [draft.images]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDraggingGlobal(false);
+    setDragSnapshot((snap) => {
+      if (snap != null) {
+        updateDraft({ images: snap });
+      }
+      return null;
+    });
+  }, [updateDraft]);
+
+  const handleHoverSwap = useCallback(
+    (uri: string, targetIndex: number) => {
+      setDragSnapshot((prev) => {
+        const arr = [...(prev ?? draft.images)];
+        const currentIndex = arr.indexOf(uri);
+        if (currentIndex === targetIndex || currentIndex === -1) return prev;
+        const next = [...arr];
+        const [item] = next.splice(currentIndex, 1);
+        next.splice(targetIndex, 0, item);
+        return next;
+      });
+    },
+    [draft.images]
+  );
 
   const pickFloorPlan = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 0.8 });
@@ -324,7 +392,8 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
   const isDark = theme.glass === 'dark';
   // Obliczamy dynamiczną wysokość kontenera, aby absolutnie ułożone kwadraty nie obcięły się u dołu
-  const gridHeight = Math.ceil((draft.images.length || 1) / COLUMNS) * (SQUARE_SIZE + GRID_GAP);
+  const gridHeight =
+    Math.ceil((displayImages.length || 1) / COLUMNS) * (SQUARE_SIZE + GRID_GAP);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
@@ -351,23 +420,23 @@ export default function Step5_Media({ theme }: { theme: any }) {
         <Animated.View style={{ opacity: mediaAnim, transform: [{ translateY: mediaAnim.interpolate({ inputRange: [0.3, 1], outputRange: [15, 0] }) }] }} pointerEvents={isTitleValid ? 'auto' : 'none'}>
           
           <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
-            <CapacityBar label="Wgrane Zdjęcia" current={draft.images.length} max={MAX_IMAGES} suffix="Szt." theme={theme} />
+            <CapacityBar label="Wgrane Zdjęcia" current={displayImages.length} max={MAX_IMAGES} suffix="Szt." theme={theme} />
             <CapacityBar label="Przestrzeń Dysku" current={usedMB} max={MAX_MB} suffix="MB" theme={theme} />
           </View>
 
           <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>Siatka Zdjęć</Text>
           
           {/* NOWY, ABSOLUTNIE POZYCJONOWANY GRID (APPLE-STYLE) */}
-          {draft.images.length > 0 && (
+          {displayImages.length > 0 && (
             <View style={[styles.gridContainer, { height: gridHeight }]}>
-              {draft.images.map((uri: string, index: number) => (
+              {displayImages.map((uri: string, index: number) => (
                 <DraggableSquare
                   key={uri}
                   uri={uri}
                   index={index}
-                  total={draft.images.length}
-                  onDragStart={() => setIsDraggingGlobal(true)}
-                  onDragEnd={() => setIsDraggingGlobal(false)}
+                  total={displayImages.length}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                   onHoverSwap={handleHoverSwap}
                   onRemove={removeImage}
                   theme={theme}
@@ -381,7 +450,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
              <View style={[styles.addMediaBtn, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)' }]}>
                 <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
                 <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>
-                  {draft.images.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
+                  {displayImages.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
                 </Text>
              </View>
           </AppleHover>

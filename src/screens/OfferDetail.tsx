@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
+import { buildOfferShareMessage } from '../utils/offerShareUrls';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -275,7 +276,21 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try { await Share.share({ message: `Sprawdź tę ofertę na EstateOS: ${displayOffer.title} za ${displayOffer.price}`, title: 'Oferta Nieruchomości' }); } catch (error) {}
+    if (!offer?.id) return;
+    const { message, url } = buildOfferShareMessage({
+      title: displayOffer.title,
+      priceLine: displayOffer.price,
+      offerId: offer.id,
+    });
+    try {
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { message, url, title: 'EstateOS™ — udostępnianie oferty' }
+          : { message, title: 'EstateOS™' }
+      );
+    } catch {
+      /* anulowano lub błąd share */
+    }
   };
 
   const isTrue = (v: any) => v === true || v === 1 || v === 'true' || v === '1';
@@ -403,9 +418,13 @@ export default function OfferDetail({ route, navigation }: any) {
     const appointmentAccepted = latestAppointmentAction === 'ACCEPTED';
     const appointmentByMe = Number(latestAppointment?.senderId || 0) === Number(user?.id || 0);
     if (appointmentPending && appointmentByMe) {
+      const ownerHint =
+        ownerProfile?.user?.name ||
+        ownerProfile?.user?.fullName ||
+        (offer?.userId ? `właściciel (profil #${offer.userId})` : 'właściciel');
       Alert.alert(
-        'Ustalanie terminu w toku',
-        'Termin został wysłany. Oczekujemy na odpowiedź właściciela — aktualizacje pojawią się w dealroomie.'
+        'Propozycja terminu już w czacie',
+        `Wysłałeś propozycję terminu prezentacji. Teraz kolej u ${ownerHint}: akceptacja, kontroferta daty lub odrzucenie. Śledź odpowiedź w Dealroomie lub w tym ekranie.`
       );
       return;
     }
@@ -772,15 +791,15 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={styles.negotiationMemoryLabel}>TERMIN SPOTKANIA</Text>
               <Text style={styles.negotiationMemoryTitle}>
                 {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
-                  ? 'Spotkanie zostało potwierdzone'
-                  : 'Ustalanie terminu jest aktywne'}
+                  ? 'Termin prezentacji: uzgodniony'
+                  : 'Termin prezentacji: w negocjacji'}
               </Text>
               <Text style={styles.negotiationMemoryText}>
                 {String(dealNegotiationState.latestAppointment.action || '').toUpperCase() === 'ACCEPTED'
-                  ? `Potwierdzony termin: ${dealNegotiationState.latestAppointment?.proposedDate ? new Date(dealNegotiationState.latestAppointment.proposedDate).toLocaleString('pl-PL') : '-'}`
+                  ? `Potwierdzona data i godzina: ${dealNegotiationState.latestAppointment?.proposedDate ? new Date(dealNegotiationState.latestAppointment.proposedDate).toLocaleString('pl-PL') : '-'}.`
                   : Number(dealNegotiationState.latestAppointment?.senderId || 0) === Number(user?.id || 0)
-                    ? 'Twoja propozycja została wysłana. Czekamy na decyzję właściciela.'
-                    : `Nowa odpowiedź właściciela (${getDealActionLabel(dealNegotiationState.latestAppointment.action)}). Możesz kontynuować z przycisku Spotkanie.`}
+                    ? 'Ty wysłałeś ostatnią propozycję terminu — czekasz na reakcję właściciela nieruchomości (akceptacja, kontroferta lub odrzucenie).'
+                    : `Ostatnia akcja właściciela: ${getDealActionLabel(dealNegotiationState.latestAppointment.action)}. Twoja kolej: akceptacja, kontroferta daty lub odrzucenie (przycisk „Spotkanie”).`}
               </Text>
             </View>
           )}
@@ -796,15 +815,15 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={styles.negotiationMemoryLabel}>NEGOCJACJE CENOWE</Text>
               <Text style={styles.negotiationMemoryTitle}>
                 {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
-                  ? 'Cena została potwierdzona'
-                  : 'Negocjacje cenowe są aktywne'}
+                  ? 'Cena: uzgodniona'
+                  : 'Cena: w negocjacji'}
               </Text>
               <Text style={styles.negotiationMemoryText}>
                 {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
-                  ? `Uzgodniona kwota: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN`
+                  ? `Uzgodniona kwota transakcyjna: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN.`
                   : Number(dealNegotiationState.latestBid?.senderId || 0) === Number(user?.id || 0)
-                    ? `Twoja propozycja: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN. Oczekujemy na decyzję właściciela.`
-                    : `Ostatnia propozycja właściciela: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN. Możesz kontynuować z przycisku Negocjuj cenę.`}
+                    ? `Twoja ostatnia propozycja: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN — czekasz na decyzję właściciela (akceptacja, kontroferta lub odrzucenie).`
+                    : `Właściciel zaproponował ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN — Twoja kolej z przycisku „Negocjuj cenę”.`}
               </Text>
             </View>
           )}

@@ -14,7 +14,6 @@ import {
   Modal,
   ScrollView,
   Keyboard,
-  KeyboardAvoidingView,
   TouchableOpacity,
   InteractionManager,
   Dimensions,
@@ -422,7 +421,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const insets = useSafeAreaInsets();
   const themeMode = useThemeStore((s) => s.themeMode);
   const isDark = themeMode === 'dark';
-  const { user, isRadarActive, setRadarActive } = useAuthStore() as any;
+  const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
@@ -469,6 +468,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     districts: [],
     propertyType: 'ALL',
   });
+  const [draftOfferIdInput, setDraftOfferIdInput] = useState('');
+  const [advancedOfferIdBusy, setAdvancedOfferIdBusy] = useState(false);
+  /** Bez KeyboardAvoidingView w modalu — tylko padding od klawiatury, żeby sheet się nie „wystrzeliwał” w górę. */
+  const [advancedSearchKeyboardInset, setAdvancedSearchKeyboardInset] = useState(0);
   const [pendingMapFocusAfterApply, setPendingMapFocusAfterApply] = useState(false);
   const defaultRadarFilters: RadarFilters = {
     calibrationMode: 'MAP',
@@ -676,6 +679,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!showAdvancedSearch) {
+      setAdvancedSearchKeyboardInset(0);
+      return;
+    }
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = (e: { endCoordinates?: { height?: number } }) => {
+      const h = e?.endCoordinates?.height;
+      setAdvancedSearchKeyboardInset(typeof h === 'number' && Number.isFinite(h) ? Math.round(h) : 0);
+    };
+    const onHide = () => setAdvancedSearchKeyboardInset(0);
+    const subShow = Keyboard.addListener(showEvent, onShow);
+    const subHide = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, [showAdvancedSearch]);
 
   const persistRecentSearch = useCallback(async (phrase: string) => {
     const t = phrase.trim();
@@ -1165,7 +1188,58 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setShowFavoritesCalibration(true);
   };
 
-  const applyAdvancedFilters = () => {
+  const resolveOfferById = useCallback(async (id: number): Promise<any | null> => {
+    const headers = token ? ({ Authorization: `Bearer ${token}` } as Record<string, string>) : undefined;
+    const [mobileRes, webRes] = await Promise.allSettled([
+      fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers }),
+      fetch(`${API_URL}/api/offers/${id}`),
+    ]);
+    let candidate: any = null;
+    if (mobileRes.status === 'fulfilled' && mobileRes.value.ok) {
+      try {
+        const mobileJson = await mobileRes.value.json();
+        const list = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
+        candidate = list.find((o: any) => Number(o?.id || 0) === id) || null;
+      } catch {
+        /* noop */
+      }
+    }
+    if (!candidate && webRes.status === 'fulfilled' && webRes.value.ok) {
+      try {
+        const webJson = await webRes.value.json();
+        candidate = webJson?.offer || webJson?.data || (webJson?.id ? webJson : null);
+      } catch {
+        /* noop */
+      }
+    }
+    return candidate;
+  }, [token]);
+
+  const applyAdvancedFilters = async () => {
+    const digitsOnly = draftOfferIdInput.replace(/\D/g, '');
+    if (digitsOnly) {
+      const id = Number(digitsOnly);
+      if (Number.isFinite(id) && id > 0) {
+        setAdvancedOfferIdBusy(true);
+        Keyboard.dismiss();
+        try {
+          const found = await resolveOfferById(id);
+          if (found) {
+            setShowAdvancedSearch(false);
+            setDraftOfferIdInput('');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            navigation.navigate('OfferDetail', { offer: found });
+            return;
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert('EstateOS', 'Nie znaleziono oferty o podanym numerze.');
+          return;
+        } finally {
+          setAdvancedOfferIdBusy(false);
+        }
+      }
+    }
+
     setAdvancedFilters(draftAdvancedFilters);
     setPendingMapFocusAfterApply(true);
     setShowAdvancedSearch(false);
@@ -1185,6 +1259,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     };
     setDraftAdvancedFilters(reset);
     setAdvancedFilters(reset);
+    setDraftOfferIdInput('');
     setPendingMapFocusAfterApply(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -2093,16 +2168,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
         <View style={styles.advancedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdvancedSearch(false)} />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Math.max(insets.top, 12) : 0}
-            style={{ width: '100%', flex: 1, justifyContent: 'flex-end' }}
-          >
+          <View style={{ width: '100%', flex: 1, justifyContent: 'flex-end' }}>
             <View
               style={[
                 styles.advancedSheet,
                 { backgroundColor: isDark ? '#1C1C1E' : '#F2F2F7' },
                 { height: advancedSheetMaxHeight, maxHeight: advancedSheetMaxHeight },
+                advancedSearchKeyboardInset > 0 && { paddingBottom: advancedSearchKeyboardInset },
               ]}
             >
               <View style={styles.modalDragHandle} />
@@ -2119,6 +2191,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
               >
+                <Text style={styles.advancedSection}>ID oferty</Text>
+                <TextInput
+                  style={[
+                    styles.advancedInput,
+                    { flexGrow: 0, alignSelf: 'stretch', width: '100%', color: isDark ? '#FFF' : '#1C1C1E', marginBottom: 12 },
+                  ]}
+                  placeholder="Numer oferty"
+                  placeholderTextColor="#8E8E93"
+                  keyboardType="number-pad"
+                  value={draftOfferIdInput}
+                  onChangeText={setDraftOfferIdInput}
+                  returnKeyType="done"
+                  editable={!advancedOfferIdBusy}
+                />
+
                 <Text style={styles.advancedSection}>Tryb</Text>
                 <View style={styles.advancedRow}>
                   {([
@@ -2245,11 +2332,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                 </View>
               </ScrollView>
-              <Pressable style={[styles.advancedApplyBtn, { backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981' }]} onPress={applyAdvancedFilters}>
-                <Text style={styles.advancedApplyText}>Zastosuj filtry</Text>
+              <Pressable
+                style={[
+                  styles.advancedApplyBtn,
+                  { backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981' },
+                  advancedOfferIdBusy && { opacity: 0.75 },
+                ]}
+                disabled={advancedOfferIdBusy}
+                onPress={() => void applyAdvancedFilters()}
+              >
+                {advancedOfferIdBusy ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.advancedApplyText}>Zastosuj filtry</Text>
+                )}
               </Pressable>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </Modal>
     </View>

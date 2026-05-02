@@ -3,6 +3,7 @@
     "name": "EstateOS™",
     "displayName": "EstateOS™",
     "slug": "apple-style-app",
+    "scheme": "estateos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/app.png",
@@ -17,10 +18,13 @@
       "supportsTablet": true,
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
-        "webcredentials:estateos.pl"
+        "webcredentials:estateos.pl",
+        "applinks:estateos.pl"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
+        "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin z przypomnieniami systemowymi."
       }
     },
     "android": {
@@ -30,7 +34,21 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "pl.estateos.app"
+      "package": "pl.estateos.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "estateos.pl",
+              "pathPrefix": "/o"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "extra": {
       "eas": {
@@ -45,6 +63,13 @@
           "android": {
             "kotlinVersion": "2.2.0"
           }
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "EstateOS zapisuje w kalendarzu termin prezentacji, adres i przypomnienia o wyjeździe.",
+          "remindersPermission": "Powiązanie z przypomnieniami systemowymi jest opcjonalne."
         }
       ],
       "react-native-iap"

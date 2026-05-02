@@ -3,7 +3,7 @@ import {
   StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, 
   Platform, ScrollView, ActivityIndicator, Alert, Linking 
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { 
   ChevronLeft, Send, Paperclip, Check, CheckCheck, 
   FileText, Play, Pause, CalendarClock, HandCoins 
@@ -22,12 +22,24 @@ import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import { API_URL } from '../config/network';
 import { postDealroomTextMessage, setOfferStatusPending } from '../utils/dealroomOfferReserve';
+import { setActiveDealroomContext } from '../utils/activeDealroomPush';
+import { offerPresentationCalendarAfterAcceptance } from '../utils/presentationCalendar';
+import {
+  schedulePresentationTwoHourReminder,
+  cancelPresentationTwoHourReminder,
+} from '../utils/presentationReminderNotification';
+import PresentationCountdown from '../components/dealroom/PresentationCountdown';
+import {
+  parseDealEvent,
+  normalizeDealEvent,
+  parseJsonMaybe,
+  EVENT_PREFIX,
+} from '../utils/dealEventParse';
 
 // ==========================================
 // CONSTANTS & HELPERS
 // ==========================================
 
-const EVENT_PREFIX = '[[DEAL_EVENT]]';
 const ATTACHMENT_PREFIX = '[[DEAL_ATTACHMENT]]';
 const ATTACHMENT_PREFIX_LEGACY = '[[deal_attachment]]';
 const DEALROOM_ATTACHMENT_LIMIT_BYTES = 50 * 1024 * 1024;
@@ -47,150 +59,6 @@ const COLORS = {
 };
 
 const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
-
-const parseJsonMaybe = (value: unknown): Record<string, any> => {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const parseIntMaybe = (value: unknown) => {
-  if (value === undefined || value === null || value === '') return null;
-  const n = Number(String(value).replace(/[^\d.-]/g, ''));
-  return Number.isFinite(n) ? n : null;
-};
-
-const parseCurrencyMaybe = (value: unknown) => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value !== 'string') return null;
-  const normalized = value.replace(/\s/g, '').replace(/,/g, '.').replace(/[^\d.]/g, '');
-  const n = Number(normalized);
-  if (Number.isFinite(n) && n > 0) return Math.round(n);
-  const intOnly = Number(value.replace(/[^\d]/g, ''));
-  return Number.isFinite(intOnly) && intOnly > 0 ? intOnly : null;
-};
-
-const parseLegacyPolishDate = (rawDate: string) => {
-  const trimmed = rawDate.trim();
-  const dotMatch = trimmed.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})(?:\s*(?:o|godz\.?)?\s*(\d{1,2})[:.](\d{2}))?/i);
-  if (dotMatch) {
-    const day = Number(dotMatch[1]);
-    const month = Number(dotMatch[2]);
-    const yearRaw = Number(dotMatch[3]);
-    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
-    const hour = Number(dotMatch[4] ?? 0);
-    const minute = Number(dotMatch[5] ?? 0);
-    const dt = new Date(year, month - 1, day, hour, minute, 0, 0);
-    if (!Number.isNaN(dt.getTime())) return dt.toISOString();
-  }
-  const fallback = new Date(trimmed.replace(' o ', ' ').replace(/\./g, '-'));
-  return Number.isNaN(fallback.getTime()) ? null : fallback.toISOString();
-};
-
-function parseDealEvent(input?: string | any) {
-  const rawMessage = typeof input === 'string' ? null : input;
-  const content = typeof input === 'string' ? input : String(input?.content || '');
-  if (!content && !rawMessage) return null;
-
-  const payloadFromMessage = {
-    ...parseJsonMaybe(rawMessage?.payload),
-    ...parseJsonMaybe(rawMessage?.eventPayload),
-    ...parseJsonMaybe(rawMessage?.meta),
-    ...parseJsonMaybe(rawMessage?.metadata),
-    ...parseJsonMaybe(rawMessage?.data),
-    ...(rawMessage?.event && typeof rawMessage.event === 'object' ? rawMessage.event : {}),
-    ...(rawMessage?.dealEvent && typeof rawMessage.dealEvent === 'object' ? rawMessage.dealEvent : {}),
-  };
-
-  const messageRefs = {
-    bidId: parseIntMaybe(firstDefined(rawMessage?.bidId, rawMessage?.bid?.id, payloadFromMessage.bidId, payloadFromMessage.bid?.id, payloadFromMessage.id)),
-    appointmentId: parseIntMaybe(firstDefined(rawMessage?.appointmentId, rawMessage?.appointment?.id, payloadFromMessage.appointmentId, payloadFromMessage.appointment?.id, payloadFromMessage.id)),
-    note: String(firstDefined(rawMessage?.note, payloadFromMessage.note, payloadFromMessage.message) || '').trim(),
-  };
-
-  if (!content) return null;
-  if (content.startsWith(EVENT_PREFIX)) {
-    try {
-      const parsed = JSON.parse(content.slice(EVENT_PREFIX.length));
-      if (parsed && typeof parsed === 'object') {
-        return {
-          ...parsed,
-          bidId: parsed.bidId ?? messageRefs.bidId ?? null,
-          appointmentId: parsed.appointmentId ?? messageRefs.appointmentId ?? null,
-        };
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  const appointmentLegacyMatch = content.match(/(?:zaproponowano|nowy)\s+termin(?:\s+spotkania)?[:\s-]*(.+)$/i) || content.match(/termin(?:\s+spotkania)?[:\s-]*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}(?:\s*(?:o|godz\.?)?\s*\d{1,2}[:.]\d{2})?)/i);
-  if (appointmentLegacyMatch) {
-    const raw = String(appointmentLegacyMatch[1] || '').trim();
-    const proposedDate = raw ? parseLegacyPolishDate(raw) : null;
-    return {
-      entity: 'APPOINTMENT', action: 'PROPOSED', appointmentId: messageRefs.appointmentId,
-      proposedDate, note: messageRefs.note || 'Wiadomość z wcześniejszego formatu', status: 'PENDING', legacy: true,
-    };
-  }
-
-  const upper = content.toUpperCase();
-  const isBidMessage = /(?:cena|oferta cenowa|propozycja cenowa|kontroferta|counteroffer)/i.test(content) || (upper.includes('BID') && /\d/.test(content));
-
-  if (isBidMessage) {
-    const amountFromText = parseCurrencyMaybe(content.match(/(?:za|na|:)\s*([\d\s.,]+)\s*(?:PLN|ZŁ)?/i)?.[1]) || parseCurrencyMaybe(content.match(/([\d\s.,]+)\s*(?:PLN|ZŁ)\b/i)?.[1]);
-    const amount = amountFromText ?? parseIntMaybe(firstDefined(rawMessage?.amount, payloadFromMessage.amount));
-    let action: 'PROPOSED' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' = 'PROPOSED';
-    if (/kontrofert|counter/i.test(content)) action = 'COUNTERED';
-    if (/zaakceptowan|accepted/i.test(content)) action = 'ACCEPTED';
-    if (/odrzucon|reject|declin/i.test(content)) action = 'REJECTED';
-
-    return {
-      entity: 'BID', action, bidId: messageRefs.bidId, amount: amount || 0,
-      note: messageRefs.note || 'Wiadomość z wcześniejszego formatu',
-      status: action === 'ACCEPTED' ? 'ACCEPTED' : action === 'REJECTED' ? 'REJECTED' : 'PENDING', legacy: true,
-    };
-  }
-
-  return null;
-}
-
-function normalizeDealEvent(raw: any) {
-  if (!raw || typeof raw !== 'object') return null;
-  const entity = String(raw.entity || '').toUpperCase();
-  const action = String(raw.action || '').toUpperCase();
-  const status = String(raw.status || '').toUpperCase();
-  const amount = parseCurrencyMaybe(raw.amount) || 0;
-  const appointmentId = parseIntMaybe(raw.appointmentId);
-  const bidId = parseIntMaybe(raw.bidId);
-
-  let proposedDate: string | null = null;
-  if (raw.proposedDate) {
-    const parsed = new Date(raw.proposedDate);
-    if (!Number.isNaN(parsed.getTime())) proposedDate = parsed.toISOString();
-  } else if (raw.date) {
-    const parsed = new Date(raw.date);
-    if (!Number.isNaN(parsed.getTime())) proposedDate = parsed.toISOString();
-  }
-
-  return {
-    ...raw,
-    entity,
-    action,
-    status,
-    amount,
-    appointmentId,
-    bidId,
-    proposedDate,
-  };
-}
 
 function formatActorLabel(msg: any, myUserId: any) {
   if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return 'Ty';
@@ -467,6 +335,18 @@ export default function DealroomChatScreen() {
   useEffect(() => {
     if (offerId) setResolvedOfferId(offerId);
   }, [offerId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const d = Number(dealId || 0);
+      const oid = Number(resolvedOfferId ?? offerId ?? 0);
+      setActiveDealroomContext({
+        dealId: Number.isFinite(d) && d > 0 ? d : null,
+        offerId: Number.isFinite(oid) && oid > 0 ? oid : null,
+      });
+      return () => setActiveDealroomContext({ dealId: null, offerId: null });
+    }, [dealId, offerId, resolvedOfferId])
+  );
 
   useEffect(() => {
     if (!dealId || !token || !user?.id) {
@@ -1009,6 +889,32 @@ export default function DealroomChatScreen() {
   }, [appointmentStatus, appointmentAttentionPulse, appointmentSuccessNudge]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (!dealId) return;
+
+    if (appointmentStatus !== 'ACCEPTED' || !acceptedAppointment?.event?.proposedDate) {
+      void cancelPresentationTwoHourReminder(dealId);
+      return;
+    }
+
+    const raw = String(acceptedAppointment.event.proposedDate);
+    const end = new Date(raw).getTime();
+    if (!Number.isFinite(end)) return;
+
+    if (end <= Date.now()) {
+      void cancelPresentationTwoHourReminder(dealId);
+      return;
+    }
+
+    void schedulePresentationTwoHourReminder({
+      dealId,
+      offerId: resolvedOfferId,
+      presentationIso: raw,
+      listingTitle: title,
+    });
+  }, [appointmentStatus, acceptedAppointment?.event?.proposedDate, dealId, resolvedOfferId, title]);
+
+  useEffect(() => {
     if (priceStatus === 'PENDING') {
       priceAttentionPulse.value = withRepeat(
         withSequence(withTiming(0.35, { duration: 520 }), withTiming(1, { duration: 520 })),
@@ -1049,6 +955,23 @@ export default function DealroomChatScreen() {
       if (seenNegotiationEventKeysRef.current.has(key)) return;
       seenNegotiationEventKeysRef.current.add(key);
       const action = String(entry.event?.action || '').toUpperCase();
+      const entity = String(entry.event?.entity || '').toUpperCase();
+      if (
+        entity === 'APPOINTMENT' &&
+        action === 'ACCEPTED' &&
+        entry.event?.proposedDate &&
+        token
+      ) {
+        void offerPresentationCalendarAfterAcceptance({
+          token,
+          dealId: dealId ?? '',
+          offerId: resolvedOfferId,
+          proposedDateIso: String(entry.event.proposedDate),
+          fallbackTitle: title,
+          viewerUserId: user?.id,
+        });
+      }
+
       const fromOther = String(entry.msg?.senderId ?? '') !== String(user?.id ?? '');
       if (!fromOther || !['PROPOSED', 'COUNTERED'].includes(action)) return;
 
@@ -1082,7 +1005,7 @@ export default function DealroomChatScreen() {
         trigger: null,
       });
     });
-  }, [dealId, negotiationEvents, resolvedOfferId, user?.id]);
+  }, [dealId, negotiationEvents, resolvedOfferId, user?.id, token, title]);
 
   const handleAcceptAppointment = async (event: any) => {
     if (!token || !dealId || !event?.appointmentId) return;
@@ -1166,6 +1089,14 @@ export default function DealroomChatScreen() {
               <View style={styles.negotiationTextWrap}>
                 <Text style={styles.negotiationTitle}>TERMIN PREZENTACJI</Text>
                 <Text style={styles.negotiationState}>{appointmentStatusText}</Text>
+                {appointmentStatus === 'ACCEPTED' &&
+                  acceptedAppointment?.event?.proposedDate &&
+                  !presentationHappened && (
+                    <PresentationCountdown
+                      presentationIso={String(acceptedAppointment.event.proposedDate)}
+                      variant="panel"
+                    />
+                  )}
               </View>
               <Text style={styles.negotiationCaret}>{appointmentSectionExpanded ? '−' : '+'}</Text>
             </Pressable>

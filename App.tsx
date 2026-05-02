@@ -8,7 +8,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking } from 'react-native';
 
 import * as Notifications from "expo-notifications";
 
@@ -52,6 +52,7 @@ import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
+import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 
 const navigationRef = createNavigationContainerRef();
 
@@ -623,44 +624,16 @@ const parseNumericOrStringId = (value: unknown): number | string | null => {
   return Number.isFinite(asNumber) ? asNumber : asString;
 };
 
-const extractIdFromDeeplink = (deeplink: string, kind: 'offer' | 'deal') => {
-  if (!deeplink) return null;
-  const cleaned = deeplink.trim();
-  if (!cleaned) return null;
-
-  const pathRegexes =
-    kind === 'offer'
-      ? [/offers?\/(\d+)/i, /oferta\/(\d+)/i, /listing\/(\d+)/i, /property\/(\d+)/i]
-      : [/deals?\/(\d+)/i, /dealroom\/(\d+)/i, /chat\/(\d+)/i, /thread\/(\d+)/i, /conversation\/(\d+)/i];
-
-  for (const rx of pathRegexes) {
-    const m = cleaned.match(rx);
-    if (m?.[1]) return m[1];
+const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
+  const offerIdStr = extractIdFromDeeplink(url, 'offer');
+  const id = parseNumericOrStringId(offerIdStr);
+  if (id) {
+    return {
+      screen: 'OfferDetail',
+      params: { offer: { id }, id, offerId: id },
+    };
   }
-
-  try {
-    const normalized = cleaned.includes('://') ? cleaned : `https://estateos.pl/${cleaned.replace(/^\//, '')}`;
-    const u = new URL(normalized);
-    if (kind === 'offer') {
-      return (
-        u.searchParams.get('offerId') ||
-        u.searchParams.get('offer_id') ||
-        u.searchParams.get('listingId') ||
-        u.searchParams.get('propertyId') ||
-        u.searchParams.get('id')
-      );
-    }
-    return (
-      u.searchParams.get('dealId') ||
-      u.searchParams.get('deal_id') ||
-      u.searchParams.get('chatId') ||
-      u.searchParams.get('threadId') ||
-      u.searchParams.get('conversationId') ||
-      u.searchParams.get('id')
-    );
-  } catch {
-    return null;
-  }
+  return null;
 };
 
 const parsePushTargetFromResponse = (
@@ -753,7 +726,7 @@ const parsePushTargetFromResponse = (
     routeHint.includes('favourite') ||
     routeHint.includes('ulub');
   const deeplinkLooksLikeDeal = /(deal|dealroom|chat|conversation|thread)/i.test(deeplinkLower);
-  const deeplinkLooksLikeOffer = /(offer|oferta|listing|property)/i.test(deeplinkLower);
+  const deeplinkLooksLikeOffer = /(offer|oferta|listing|property|\/o\/)/i.test(deeplinkLower);
   const deeplinkLooksLikeRadar = /(radar|favorite|favourite|ulub)/i.test(deeplinkLower);
   const explicitOfferTarget =
     ['offer', 'oferta', 'listing', 'property', 'radar', 'radar_match', 'offer_push', 'offer_update', 'offer_match'].includes(routeHint) ||
@@ -907,6 +880,19 @@ export default function App() {
     return true;
   }, []);
 
+  const handleIncomingLink = useCallback(
+    (url: string | null) => {
+      if (!url) return;
+      const target = parseLinkToPushTarget(url);
+      if (!target) return;
+      const navigated = navigateFromPushTarget(target);
+      if (!navigated) {
+        pendingPushTargetRef.current = target;
+      }
+    },
+    [navigateFromPushTarget]
+  );
+
   const handleNotificationResponse = useCallback(
     (response: Notifications.NotificationResponse | null) => {
       if (!response) return;
@@ -948,6 +934,24 @@ export default function App() {
 
     return () => sub.remove();
   }, [handleNotificationResponse]);
+
+  useEffect(() => {
+    if (isSplashVisible) return;
+
+    let alive = true;
+    const sub = Linking.addEventListener('url', ({ url }) => {
+      if (alive) handleIncomingLink(url);
+    });
+
+    void Linking.getInitialURL().then((url) => {
+      if (alive && url) handleIncomingLink(url);
+    });
+
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, [isSplashVisible, handleIncomingLink]);
 
   return (
     <>

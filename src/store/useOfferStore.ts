@@ -45,6 +45,8 @@ const initialDraft = {
 
   // Krok 5: Media
   images: [],
+  /** Rozmiary plików (bajty) wg URI — suma MB i limit bez „znikania” po nawigacji */
+  imageByteSizes: {} as Record<string, number>,
   videoUrl: '',
   floorPlanUrl: ''
 };

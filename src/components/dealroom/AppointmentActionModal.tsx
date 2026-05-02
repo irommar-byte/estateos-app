@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, ChevronLeft } from 'lucide-react-native';
+import PresentationCountdown from './PresentationCountdown';
 
 type AppointmentMode = 'create' | 'respond';
 
@@ -215,6 +216,9 @@ export default function AppointmentActionModal({
               <Text style={styles.lockDate}>
                 {proposedDate ? new Date(proposedDate).toLocaleString('pl-PL') : '-'}
               </Text>
+              {proposedDate && new Date(proposedDate).getTime() > Date.now() && (
+                <PresentationCountdown presentationIso={proposedDate} variant="modal" />
+              )}
               <View style={styles.stamp}>
                 <Text style={styles.stampText}>ZAAKCEPTOWANO</Text>
               </View>

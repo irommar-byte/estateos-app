@@ -1,16 +1,19 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { 
-  StyleSheet, View, Text, ScrollView, Pressable, Platform, 
-  ActivityIndicator, Modal, Appearance, Image,
+  StyleSheet, View, Text, ScrollView as RNScrollView, Pressable, Platform, 
+  ActivityIndicator, Modal, Appearance, Image, Alert,
   type ColorSchemeName,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ScrollView, Swipeable, RectButton } from 'react-native-gesture-handler';
 import Animated, { 
   FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, 
   withRepeat, withSequence, withTiming, withDelay, withSpring, Easing 
 } from 'react-native-reanimated';
 import { 
   ChevronRight, ChevronLeft, MessageCircle, ShieldCheck, 
-  AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles
+  AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles,
+  Trash2, Pin, CalendarClock,
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -18,6 +21,12 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { API_URL } from '../config/network';
+import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
+import { buildDealListActivityLine } from '../utils/dealListActivityLine';
+import PresentationCountdown from '../components/dealroom/PresentationCountdown';
+
+/** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
+const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
 
 // === LUKSUSOWA PALETA DYNAMICZNA (CERAMIC & DARK GLASS) ===
 const getColors = (isDark: boolean) => ({
@@ -77,6 +86,34 @@ function classifyDealPhaseFromMessages(messages: any[]): DealPhase {
     if (action === 'ACCEPTED' && (entity === 'BID' || entity === 'APPOINTMENT')) return 'active';
   }
   return 'started';
+}
+
+/** Ostatni zaakceptowany termin prezentacji z wątku (wg daty wiadomości). */
+function getAcceptedPresentationIso(messages: any[] | undefined): string | null {
+  if (!messages?.length) return null;
+  type Row = { iso: string; created: number };
+  const rows: Row[] = [];
+  for (const m of messages) {
+    const ev = tryParseDealEventPayload(String(m?.content ?? ''));
+    if (!ev) continue;
+    if (String(ev.entity || '').toUpperCase() !== 'APPOINTMENT') continue;
+    if (String(ev.action || '').toUpperCase() !== 'ACCEPTED') continue;
+    const raw = ev.proposedDate;
+    if (!raw) continue;
+    const iso = String(raw);
+    const created = new Date(m?.createdAt || 0).getTime();
+    rows.push({ iso, created: Number.isFinite(created) ? created : 0 });
+  }
+  if (!rows.length) return null;
+  rows.sort((a, b) => b.created - a.created);
+  return rows[0].iso;
+}
+
+function isFutureAcceptedPresentationDeal(dealId: number, dealMessagesById: Record<number, any[]>): boolean {
+  const iso = getAcceptedPresentationIso(dealMessagesById[dealId]);
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) && t > Date.now();
 }
 
 const firstDefined = (...values: unknown[]) =>
@@ -265,6 +302,62 @@ function extractOfferImageFromDeal(deal: any): string | null {
     if (raw) return normalizeMediaUrl(raw);
   }
   return null;
+}
+
+/** Rozwiązanie roli kontrahenta — używane także przy budowaniu opisu aktywności z wątku wiadomości. */
+function resolveDealCounterparty(
+  deal: any,
+  user: { id?: number } | null | undefined,
+  counterpartyNameById: Record<number, string>
+) {
+  const me = Number(user?.id || 0);
+  const buyerId = parseUserId(firstDefined(deal?.buyerId, deal?.buyer?.id));
+  const sellerId = parseUserId(firstDefined(deal?.sellerId, deal?.seller?.id));
+  const buyerName = parseUserName(firstDefined(deal?.buyer?.name, deal?.buyer?.fullName, deal?.buyerName));
+  const sellerName = parseUserName(firstDefined(deal?.seller?.name, deal?.seller?.fullName, deal?.sellerName));
+
+  const participants = Array.isArray(deal?.participants) ? deal.participants : [];
+  const firstOtherParticipant = participants.find((p: any) => {
+    const pid = parseUserId(firstDefined(p?.id, p?.userId, p?.user?.id));
+    return pid && pid !== me;
+  });
+  const participantId = parseUserId(firstDefined(firstOtherParticipant?.id, firstOtherParticipant?.userId, firstOtherParticipant?.user?.id));
+  const participantName = parseUserName(
+    firstDefined(
+      firstOtherParticipant?.name,
+      firstOtherParticipant?.fullName,
+      firstOtherParticipant?.user?.name,
+      firstOtherParticipant?.user?.fullName
+    )
+  );
+
+  const explicitOtherId = parseUserId(firstDefined(deal?.otherUserId, deal?.counterpartyId, deal?.partnerId, deal?.userId));
+  const explicitOtherName = parseUserName(firstDefined(deal?.otherUserName, deal?.counterpartyName, deal?.partnerName, deal?.userName));
+
+  if (me && buyerId && me === buyerId) {
+    const id = sellerId ?? participantId ?? explicitOtherId;
+    const name = sellerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
+    return { sideLabel: 'Sprzedający', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
+  }
+  if (me && sellerId && me === sellerId) {
+    const id = buyerId ?? participantId ?? explicitOtherId;
+    const name = buyerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
+    return { sideLabel: 'Kupujący', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
+  }
+
+  const guessedId = participantId ?? explicitOtherId ?? (me === buyerId ? sellerId : buyerId) ?? sellerId ?? buyerId;
+  const guessedName =
+    participantName ??
+    explicitOtherName ??
+    (guessedId && guessedId === sellerId ? sellerName : null) ??
+    (guessedId && guessedId === buyerId ? buyerName : null) ??
+    (guessedId ? counterpartyNameById[guessedId] : null);
+
+  return {
+    sideLabel: 'Kontrahent',
+    id: guessedId || null,
+    name: guessedName || (guessedId ? `Użytkownik #${guessedId}` : 'Brak danych'),
+  };
 }
 
 // === KOMPONENTY ===
@@ -475,8 +568,29 @@ export default function DealroomListScreen() {
   const [counterpartyNameById, setCounterpartyNameById] = useState<Record<number, string>>({});
   const offerImageCacheRef = useRef<Record<number, string>>({});
   const [dealPhaseById, setDealPhaseById] = useState<Record<number, DealPhase>>({});
+  const [dealMessagesById, setDealMessagesById] = useState<Record<number, any[]>>({});
   const [phasesReady, setPhasesReady] = useState(false);
   const [phaseRefreshTick, setPhaseRefreshTick] = useState(0);
+  const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DEALROOM_PINS_STORAGE_KEY);
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setPinnedDealIds(parsed.map(Number).filter((n) => Number.isFinite(n) && n > 0));
+        }
+      } catch {
+        /* noop */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     offerImageCacheRef.current = offerImageByOfferId;
@@ -493,6 +607,7 @@ export default function DealroomListScreen() {
   useEffect(() => {
     if (!token || deals.length === 0) {
       setDealPhaseById({});
+      setDealMessagesById({});
       setPhasesReady(true);
       return;
     }
@@ -500,6 +615,7 @@ export default function DealroomListScreen() {
     setPhasesReady(false);
     (async () => {
       const next: Record<number, DealPhase> = {};
+      const nextMsgs: Record<number, any[]> = {};
       await Promise.all(
         deals.map(async (deal) => {
           const id = Number(deal?.id);
@@ -510,18 +626,22 @@ export default function DealroomListScreen() {
             });
             if (!res.ok) {
               next[id] = 'started';
+              nextMsgs[id] = [];
               return;
             }
             const data = await res.json().catch(() => ({}));
             const messages = Array.isArray(data?.messages) ? data.messages : [];
+            nextMsgs[id] = messages;
             next[id] = classifyDealPhaseFromMessages(messages);
           } catch {
             next[id] = 'started';
+            nextMsgs[id] = [];
           }
         })
       );
       if (!cancelled) {
         setDealPhaseById(next);
+        setDealMessagesById(nextMsgs);
         setPhasesReady(true);
       }
     })();
@@ -530,19 +650,58 @@ export default function DealroomListScreen() {
     };
   }, [token, dealIdsSig, phaseRefreshTick]);
 
+  /** Najpierw transakcje z nadchodzącą zaakceptowaną prezentacją (najbliższy termin na górze), potem kolejność pinezek. */
+  const presentationAndPinSortDeals = useCallback(
+    (arr: any[]) =>
+      [...arr].sort((a, b) => {
+        const idA = Number(a?.id);
+        const idB = Number(b?.id);
+        const futA = isFutureAcceptedPresentationDeal(idA, dealMessagesById);
+        const futB = isFutureAcceptedPresentationDeal(idB, dealMessagesById);
+        if (futA !== futB) return futA ? -1 : 1;
+        if (futA && futB) {
+          const isoA = getAcceptedPresentationIso(dealMessagesById[idA]);
+          const isoB = getAcceptedPresentationIso(dealMessagesById[idB]);
+          const tA = isoA ? new Date(isoA).getTime() : 0;
+          const tB = isoB ? new Date(isoB).getTime() : 0;
+          return tA - tB;
+        }
+        const ia = pinnedDealIds.indexOf(idA);
+        const ib = pinnedDealIds.indexOf(idB);
+        const ra = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
+        const rb = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
+        return ra - rb;
+      }),
+    [pinnedDealIds, dealMessagesById]
+  );
+
+  /** Te same karty pokazywane są na samej górze listy — wyklucz je z sekcji etapów. */
+  const presentationTopDealsSorted = useMemo(() => {
+    return presentationAndPinSortDeals(
+      deals.filter((d) => isFutureAcceptedPresentationDeal(Number(d?.id), dealMessagesById))
+    );
+  }, [deals, dealMessagesById, presentationAndPinSortDeals]);
+
   const groupedDeals = useMemo(() => {
     const started: any[] = [];
     const active: any[] = [];
     const finalized: any[] = [];
     for (const deal of deals) {
       const id = Number(deal?.id);
+      if (isFutureAcceptedPresentationDeal(id, dealMessagesById)) continue;
       const phase = dealPhaseById[id] ?? 'started';
       if (phase === 'finalized') finalized.push(deal);
       else if (phase === 'active') active.push(deal);
       else started.push(deal);
     }
-    return { started, active, finalized };
-  }, [deals, dealPhaseById]);
+    return {
+      started: presentationAndPinSortDeals(started),
+      active: presentationAndPinSortDeals(active),
+      finalized: presentationAndPinSortDeals(finalized),
+    };
+  }, [deals, dealPhaseById, presentationAndPinSortDeals, dealMessagesById]);
+
+  const dealsSortedFlat = useMemo(() => presentationAndPinSortDeals(deals), [deals, presentationAndPinSortDeals]);
 
   const resolvedPartnerAvatarUrl = useMemo(() => {
     const fromApi = selectedProfile ? extractPublicProfileAvatarUrl(selectedProfile) : null;
@@ -635,72 +794,52 @@ export default function DealroomListScreen() {
     return 'Negocjacja oferty';
   };
 
-  const getCurrentDealActivity = (deal: any) => {
+  /** Krótki opis z pól listy API, zanim wczyta się pełny wątek wiadomości. */
+  const getCurrentDealActivity = (deal: any, counterpartyHint?: { sideLabel: string; name: string }) => {
     const status = String(deal?.status || '').toUpperCase();
-    const msg = String(deal?.lastMessage || '').toLowerCase();
+    const raw = String(deal?.lastMessage || '');
+    const msg = raw.toLowerCase();
     const unread = Number(deal?.unread || 0);
+    const peer = counterpartyHint?.name ? String(counterpartyHint.name).split(/\s+/)[0] : null;
+    const side = counterpartyHint?.sideLabel;
 
-    if (status === 'ACCEPTED') return 'Uzgodnione warunki transakcji';
-    if (status === 'REJECTED') return 'Jedna ze stron odrzuciła propozycję';
-    if (status === 'INITIATED') return 'Oczekuje na odpowiedź';
-
-    if (msg.startsWith('[[deal_attachment]]')) return 'Dodano nowy dokument';
-    if (msg.startsWith('[[deal_event]]') && msg.includes('"appointment"')) return 'Trwa ustalanie terminu';
-    if (msg.startsWith('[[deal_event]]') && msg.includes('"bid"')) return 'Trwa negocjacja ceny';
-    if (unread > 0) return 'Masz nową wiadomość';
-    return 'Aktywna rozmowa';
-  };
-
-  const getCounterparty = (deal: any) => {
-    const me = Number(user?.id || 0);
-    const buyerId = parseUserId(firstDefined(deal?.buyerId, deal?.buyer?.id));
-    const sellerId = parseUserId(firstDefined(deal?.sellerId, deal?.seller?.id));
-    const buyerName = parseUserName(firstDefined(deal?.buyer?.name, deal?.buyer?.fullName, deal?.buyerName));
-    const sellerName = parseUserName(firstDefined(deal?.seller?.name, deal?.seller?.fullName, deal?.sellerName));
-
-    const participants = Array.isArray(deal?.participants) ? deal.participants : [];
-    const firstOtherParticipant = participants.find((p: any) => {
-      const pid = parseUserId(firstDefined(p?.id, p?.userId, p?.user?.id));
-      return pid && pid !== me;
-    });
-    const participantId = parseUserId(firstDefined(firstOtherParticipant?.id, firstOtherParticipant?.userId, firstOtherParticipant?.user?.id));
-    const participantName = parseUserName(
-      firstDefined(
-        firstOtherParticipant?.name,
-        firstOtherParticipant?.fullName,
-        firstOtherParticipant?.user?.name,
-        firstOtherParticipant?.user?.fullName
-      )
-    );
-
-    const explicitOtherId = parseUserId(firstDefined(deal?.otherUserId, deal?.counterpartyId, deal?.partnerId, deal?.userId));
-    const explicitOtherName = parseUserName(firstDefined(deal?.otherUserName, deal?.counterpartyName, deal?.partnerName, deal?.userName));
-
-    if (me && buyerId && me === buyerId) {
-      const id = sellerId ?? participantId ?? explicitOtherId;
-      const name = sellerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
-      return { sideLabel: 'Sprzedający', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
-    }
-    if (me && sellerId && me === sellerId) {
-      const id = buyerId ?? participantId ?? explicitOtherId;
-      const name = buyerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
-      return { sideLabel: 'Kupujący', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
+    if (status === 'ACCEPTED') return 'Etap: warunki transakcji uzgodnione';
+    if (status === 'REJECTED') return 'Etap: negocjacja przerwana — szczegóły w czacie';
+    if (status === 'INITIATED') {
+      if (side === 'Sprzedający' && peer) {
+        return `Etap: start — możesz wysłać ${peer} pierwszą propozycję ceny lub terminu prezentacji`;
+      }
+      if (side === 'Kupujący' && peer) {
+        return `Etap: start — czekasz na pierwszy ruch od ${peer}`;
+      }
+      return 'Etap: start negocjacji — wyślij propozycję ceny lub terminu';
     }
 
-    const guessedId = participantId ?? explicitOtherId ?? (me === buyerId ? sellerId : buyerId) ?? sellerId ?? buyerId;
-    const guessedName =
-      participantName ??
-      explicitOtherName ??
-      (guessedId && guessedId === sellerId ? sellerName : null) ??
-      (guessedId && guessedId === buyerId ? buyerName : null) ??
-      (guessedId ? counterpartyNameById[guessedId] : null);
+    if (raw.startsWith('[[DEAL_ATTACHMENT]]') || raw.startsWith('[[deal_attachment]]')) {
+      return peer ? `Nowy dokument od ${peer} — zobacz w czacie` : 'Nowy dokument w wątku — zobacz w czacie';
+    }
 
-    return {
-      sideLabel: 'Kontrahent',
-      id: guessedId || null,
-      name: guessedName || (guessedId ? `Użytkownik #${guessedId}` : 'Brak danych'),
-    };
+    if (msg.includes('"appointment"')) {
+      return peer
+        ? `Termin prezentacji w toku — ostatnia zmiana w czacie (partner: ${peer})`
+        : 'Termin prezentacji w toku — zajrzyj do czatu';
+    }
+    if (msg.includes('"bid"') || msg.includes('"BID"')) {
+      return peer
+        ? `Negocjacja ceny w toku — ostatnia zmiana w czacie (partner: ${peer})`
+        : 'Negocjacja ceny w toku — zajrzyj do czatu';
+    }
+
+    if (unread > 0) {
+      return peer ? `Nowa wiadomość od ${peer}` : 'Masz nieprzeczytaną wiadomość w wątku';
+    }
+    return peer ? `Aktywny wątek z ${peer}` : 'Aktywny wątek — zajrzyj do czatu';
   };
+
+  const getCounterparty = useCallback(
+    (deal: any) => resolveDealCounterparty(deal, user, counterpartyNameById),
+    [user, counterpartyNameById]
+  );
 
   useEffect(() => {
     if (!token || !user?.id || deals.length === 0) return;
@@ -752,16 +891,95 @@ export default function DealroomListScreen() {
 
   const formatLastMessage = (msg?: string) => {
     const raw = String(msg || '').trim();
-    if (!raw) return 'Brak wiadomości.';
-    if (raw.startsWith('[[DEAL_ATTACHMENT]]')) return 'Wysłano załącznik 📎';
-    if (raw.startsWith('[[DEAL_EVENT]]')) {
-      if (raw.includes('"APPOINTMENT"')) return 'Zmiana w proponowanym terminie 📅';
-      if (raw.includes('"BID"')) return 'Pojawiła się nowa oferta cenowa 💰';
-      return 'Aktualizacja negocjacji 🛡️';
+    if (!raw) return 'Brak wpisów w wątku.';
+    const lower = raw.toLowerCase();
+    if (lower.startsWith('[[deal_attachment]]') || raw.startsWith('[[DEAL_ATTACHMENT]]')) {
+      return 'Ostatnia aktywność: załącznik — dokument w czacie';
+    }
+    const parsed = tryParseDealEventPayload(raw);
+    if (parsed) {
+      const entity = String(parsed.entity || '').toUpperCase();
+      const action = String(parsed.action || '').toUpperCase();
+      const amt = Number(parsed.amount || 0);
+      if (entity === 'APPOINTMENT') {
+        if (action === 'ACCEPTED') return 'Ostatnio w czacie: termin prezentacji zaakceptowany';
+        if (action === 'COUNTERED') return 'Ostatnio w czacie: kontroferta terminu — wymaga Twojej reakcji';
+        return 'Ostatnio w czacie: propozycja terminu prezentacji';
+      }
+      if (entity === 'BID') {
+        if (action === 'ACCEPTED' && amt > 0) {
+          return `Ostatnio w czacie: uzgodniona cena ${amt.toLocaleString('pl-PL')} PLN`;
+        }
+        if (amt > 0) return `Ostatnio w czacie: propozycja ceny ${amt.toLocaleString('pl-PL')} PLN`;
+        return 'Ostatnio w czacie: zmiana w negocjacji ceny';
+      }
+    }
+    if (lower.startsWith('[[deal_event]]') || raw.startsWith('[[DEAL_EVENT]]')) {
+      return 'Ostatnio w czacie: aktualizacja negocjacji';
     }
     if (raw.startsWith('📅')) return raw;
-    return raw;
+    const preview = raw.replace(/\s+/g, ' ').slice(0, 52);
+    return `Ostatnio: „${preview}${raw.length > 52 ? '…' : ''}”`;
   };
+
+  const togglePinForDeal = useCallback((dealId: number) => {
+    const id = Number(dealId);
+    setPinnedDealIds((prev) => {
+      const idx = prev.indexOf(id);
+      const next =
+        idx >= 0 ? prev.filter((x) => x !== id) : [id, ...prev.filter((x) => x !== id)];
+      void AsyncStorage.setItem(DEALROOM_PINS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const requestDeleteDeal = useCallback(
+    (deal: any) => {
+      const id = Number(deal?.id);
+      if (!id || !token) return;
+      Alert.alert(
+        'Usunąć transakcję?',
+        'Tej operacji nie cofniesz — transakcja zniknie z Dealroom bezpowrotnie.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          {
+            text: 'Usuń',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const result = await requestMobileDealDeletion(id, token);
+                if (!result.ok) {
+                  Alert.alert('Nie udało się usunąć', result.message);
+                  return;
+                }
+                setDeals((prev) => prev.filter((d) => Number(d.id) !== id));
+                setPinnedDealIds((prev) => {
+                  const next = prev.filter((x) => x !== id);
+                  void AsyncStorage.setItem(DEALROOM_PINS_STORAGE_KEY, JSON.stringify(next));
+                  return next;
+                });
+                setDealPhaseById((prev) => {
+                  const next = { ...prev };
+                  delete next[id];
+                  return next;
+                });
+                setDealMessagesById((prev) => {
+                  const next = { ...prev };
+                  delete next[id];
+                  return next;
+                });
+                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch {
+                Alert.alert('Błąd', 'Sprawdź połączenie i spróbuj ponownie.');
+              }
+            },
+          },
+        ]
+      );
+    },
+    [token]
+  );
 
   const openCounterpartyProfile = async (userId?: number | null, dealContext?: any) => {
     if (!userId) return;
@@ -810,6 +1028,27 @@ export default function DealroomListScreen() {
     const offerIdNum = extractOfferIdFromDeal(deal);
     const thumbUrl =
       extractOfferImageFromDeal(deal) || (offerIdNum ? offerImageByOfferId[offerIdNum] : null);
+    const dealNumericId = Number(deal?.id);
+    const thread = dealMessagesById[dealNumericId];
+    const activityLine =
+      phasesReady && thread !== undefined
+        ? buildDealListActivityLine(thread, {
+            myUserId: Number(user?.id || 0),
+            dealStatus: String(deal?.status || ''),
+            peerName: counterparty.name,
+            peerSideLabel: counterparty.sideLabel,
+          })
+        : getCurrentDealActivity(deal, { sideLabel: counterparty.sideLabel, name: counterparty.name });
+    const presentationIsoForCountdown =
+      phasesReady && thread
+        ? getAcceptedPresentationIso(thread)
+        : null;
+    const showPresentationCountdown = Boolean(
+      presentationIsoForCountdown && new Date(presentationIsoForCountdown).getTime() > Date.now()
+    );
+    const isPinned =
+      Number.isFinite(dealNumericId) && dealNumericId > 0 && pinnedDealIds.includes(dealNumericId);
+    const canDeleteSwipe = phasesReady && listPhase === 'started';
 
     return (
       <Animated.View
@@ -817,17 +1056,57 @@ export default function DealroomListScreen() {
         entering={FadeInDown.delay(animDelayIndex * 90).springify().damping(12).stiffness(150).mass(0.8)}
         style={[styles.cardContainer, unreadCount > 0 && styles.cardContainerElevated]}
       >
-        <Pressable
-          style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            navigation.navigate('DealroomChat', {
-              dealId: deal.id,
-              offerId: extractOfferIdFromDeal(deal),
-              title: deal.title,
-            });
-          }}
+        <Swipeable
+          friction={2}
+          overshootLeft={false}
+          overshootRight={canDeleteSwipe}
+          enableTrackpadTwoFingerGesture
+          containerStyle={styles.swipeableContainer}
+          childrenContainerStyle={styles.swipeableChild}
+          renderLeftActions={(_progress, _drag, swipeable) => (
+            <View style={styles.swipeLeftActions}>
+              <RectButton
+                style={[styles.swipePinBtn, isPinned && styles.swipePinBtnActive]}
+                onPress={() => {
+                  swipeable.close();
+                  togglePinForDeal(dealNumericId);
+                }}
+              >
+                <Pin size={22} color="#fff" fill={isPinned ? '#fff' : 'transparent'} strokeWidth={2.2} />
+                <Text style={styles.swipeActionCaption}>{isPinned ? 'Odepnij' : 'Przypnij'}</Text>
+              </RectButton>
+            </View>
+          )}
+          renderRightActions={
+            canDeleteSwipe
+              ? (_progress, _drag, swipeable) => (
+                  <View style={styles.swipeRightActions}>
+                    <RectButton
+                      style={styles.swipeDeleteBtn}
+                      onPress={() => {
+                        swipeable.close();
+                        requestDeleteDeal(deal);
+                      }}
+                    >
+                      <Trash2 size={22} color="#fff" strokeWidth={2.2} />
+                      <Text style={styles.swipeActionCaption}>Usuń</Text>
+                    </RectButton>
+                  </View>
+                )
+              : undefined
+          }
         >
+          <Pressable
+            style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              navigation.navigate('DealroomChat', {
+                dealId: deal.id,
+                offerId: extractOfferIdFromDeal(deal),
+                title: deal.title,
+              });
+            }}
+          >
           <BlurView
             intensity={isDark ? 30 : 60}
             tint={isDark ? 'dark' : 'light'}
@@ -854,7 +1133,14 @@ export default function DealroomListScreen() {
                       : getReadableDealTitle(deal)}
                   </Text>
                 </Pressable>
-                <Text style={styles.activityDesc} numberOfLines={1}>{getCurrentDealActivity(deal)}</Text>
+                <Text style={styles.activityDesc} numberOfLines={2}>
+                  {activityLine}
+                </Text>
+                {showPresentationCountdown && presentationIsoForCountdown ? (
+                  <View style={styles.countdownInCard}>
+                    <PresentationCountdown presentationIso={presentationIsoForCountdown} variant="panel" />
+                  </View>
+                ) : null}
 
                 <Pressable
                   style={styles.userRow}
@@ -895,6 +1181,7 @@ export default function DealroomListScreen() {
             </View>
           </BlurView>
         </Pressable>
+        </Swipeable>
       </Animated.View>
     );
   };
@@ -939,11 +1226,31 @@ export default function DealroomListScreen() {
           ) : null}
 
           {!phasesReady
-            ? deals.map((deal, index) =>
+            ? dealsSortedFlat.map((deal, index) =>
                 renderDealCard(deal, index, dealPhaseById[Number(deal.id)] ?? 'started')
               )
             : (
               <>
+                {presentationTopDealsSorted.length > 0 ? (
+                  <View style={styles.phaseSection}>
+                    <View style={styles.phaseSectionHeaderRow}>
+                      <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapActive]}>
+                        <CalendarClock size={20} color={COLORS.green} strokeWidth={2.2} />
+                      </View>
+                      <View style={styles.phaseSectionTitles}>
+                        <Text style={styles.phaseEyebrow}>Prezentacja</Text>
+                        <Text style={styles.phaseTitle}>Nadchodzące prezentacje</Text>
+                        <Text style={styles.phaseHint}>
+                          Uzgodniony termin w czacie — na górze od najbliższej daty, z odliczaniem jak w wątku.
+                        </Text>
+                      </View>
+                    </View>
+                    {presentationTopDealsSorted.map((deal, idx) =>
+                      renderDealCard(deal, idx, dealPhaseById[Number(deal.id)] ?? 'active')
+                    )}
+                  </View>
+                ) : null}
+
                 {groupedDeals.started.length > 0 ? (
                   <View style={styles.phaseSection}>
                     <View style={styles.phaseSectionHeaderRow}>
@@ -953,7 +1260,9 @@ export default function DealroomListScreen() {
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>Negocjacje</Text>
                         <Text style={styles.phaseTitle}>Rozpoczęte</Text>
-                        <Text style={styles.phaseHint}>Jeszcze bez zaakceptowanej ceny ani terminu prezentacji.</Text>
+                        <Text style={styles.phaseHint}>
+                          Jeszcze bez potwierdzonej ceny i bez potwierdzonego terminu prezentacji — pierwsze propozycje wysyłasz w czacie.
+                        </Text>
                       </View>
                     </View>
                     {groupedDeals.started.map((deal, idx) => renderDealCard(deal, idx, 'started'))}
@@ -969,7 +1278,9 @@ export default function DealroomListScreen() {
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>W toku</Text>
                         <Text style={styles.phaseTitle}>Aktywne</Text>
-                        <Text style={styles.phaseHint}>Po akceptacji ceny i/lub terminu prezentacji.</Text>
+                        <Text style={styles.phaseHint}>
+                          Cena i/lub termin prezentacji już uzgodnione — kolejne ustalenia prowadzicie w czacie.
+                        </Text>
                       </View>
                     </View>
                     {groupedDeals.active.map((deal, idx) => renderDealCard(deal, idx, 'active'))}
@@ -985,7 +1296,9 @@ export default function DealroomListScreen() {
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>Domknięcie</Text>
                         <Text style={styles.phaseTitle}>Finalizowane</Text>
-                        <Text style={styles.phaseHint}>Oferta wycofana z publikacji — rezerwacja po prezentacji.</Text>
+                        <Text style={styles.phaseHint}>
+                          Etap po prezentacji: oferta może być wycofana z publikacji (rezerwacja uzgodnień) — status w czacie.
+                        </Text>
                       </View>
                     </View>
                     {groupedDeals.finalized.map((deal, idx) => renderDealCard(deal, idx, 'finalized'))}
@@ -1067,7 +1380,7 @@ export default function DealroomListScreen() {
                   })()}
                 </View>
 
-                <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+                <RNScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
                   <Text style={styles.sectionHeader}>OSTATNIE OPINIE</Text>
                   {!Array.isArray(selectedProfile?.reviews) || selectedProfile.reviews.length === 0 ? (
                     <Text style={styles.emptyText}>Brak zweryfikowanych opinii.</Text>
@@ -1102,7 +1415,7 @@ export default function DealroomListScreen() {
                       <ChevronRight size={16} color={COLORS.textMuted} />
                     </Pressable>
                   ))}
-                </ScrollView>
+                </RNScrollView>
               </>
             )}
           </Animated.View>
@@ -1197,6 +1510,53 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     zIndex: 20,
     elevation: Platform.OS === 'android' ? 12 : 0,
   },
+
+  swipeableContainer: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  swipeableChild: {
+    flex: 1,
+  },
+  swipeLeftActions: {
+    width: 92,
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+  },
+  swipeRightActions: {
+    width: 92,
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+  },
+  swipePinBtn: {
+    flex: 1,
+    backgroundColor: '#FF9500',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderTopRightRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  swipePinBtnActive: {
+    backgroundColor: '#C93400',
+  },
+  swipeDeleteBtn: {
+    flex: 1,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderTopLeftRadius: 24,
+    borderBottomLeftRadius: 24,
+  },
+  swipeActionCaption: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 5,
+    letterSpacing: 0.15,
+  },
   
   // GLASSMORPHISM CARD
   dealCard: { 
@@ -1225,7 +1585,8 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   cardInfo: { flex: 1, paddingRight: 16 },
   offerTitle: { color: colors.textMain, fontSize: 19, fontWeight: '700', letterSpacing: 0.2, marginBottom: 4 },
   activityDesc: { color: colors.textSec, fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  
+  countdownInCard: { marginTop: 6, alignSelf: 'stretch' },
+
   userRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: colors.border, borderRadius: 12 },
   userAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.goldDimmed, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   userLabel: { color: colors.textSec, fontSize: 12, fontWeight: '500' },
