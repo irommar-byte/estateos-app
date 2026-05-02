@@ -44,6 +44,16 @@
               "scheme": "https",
               "host": "estateos.pl",
               "pathPrefix": "/o"
+            },
+            {
+              "scheme": "https",
+              "host": "estateos.pl",
+              "pathPrefix": "/oferta"
+            },
+            {
+              "scheme": "https",
+              "host": "estateos.pl",
+              "pathPrefix": "/offer"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

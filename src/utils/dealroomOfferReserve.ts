@@ -1,12 +1,12 @@
 import { API_URL } from '../config/network';
 
-/** Zmiana statusu oferty na PENDING (oczekujące) po rezerwacji — PUT jak w edycji oferty. */
-export async function setOfferStatusPending(params: {
+async function setOfferStatus(params: {
   offerId: number;
   userId: number;
   token: string | null;
+  status: 'PENDING' | 'ARCHIVED';
 }): Promise<{ ok: boolean; error?: string }> {
-  const { offerId, userId, token } = params;
+  const { offerId, userId, token, status } = params;
   const safeToken = token?.trim();
   if (!safeToken || !offerId || !userId) return { ok: false, error: 'Brak danych' };
 
@@ -23,7 +23,7 @@ export async function setOfferStatusPending(params: {
       ...offer,
       id: offerId,
       userId,
-      status: 'PENDING',
+      status,
     };
 
     const putRes = await fetch(`${API_URL}/api/mobile/v1/offers`, {
@@ -42,6 +42,24 @@ export async function setOfferStatusPending(params: {
   } catch (e: any) {
     return { ok: false, error: e?.message || 'Błąd sieci' };
   }
+}
+
+/** Zmiana statusu oferty na PENDING (oczekujące) po rezerwacji — PUT jak w edycji oferty. */
+export async function setOfferStatusPending(params: {
+  offerId: number;
+  userId: number;
+  token: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  return setOfferStatus({ ...params, status: 'PENDING' });
+}
+
+/** Końcowe domknięcie transakcji — oferta przechodzi do ARCHIVED. */
+export async function setOfferStatusArchived(params: {
+  offerId: number;
+  userId: number;
+  token: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  return setOfferStatus({ ...params, status: 'ARCHIVED' });
 }
 
 export async function postDealroomTextMessage(params: {

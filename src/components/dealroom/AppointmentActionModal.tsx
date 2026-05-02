@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { X, ChevronLeft } from 'lucide-react-native';
 import PresentationCountdown from './PresentationCountdown';
 
@@ -21,6 +21,7 @@ interface AppointmentActionModalProps {
   }>;
   onClose: () => void;
   onDone?: () => void;
+  onSavedDate?: (iso: string) => void;
 }
 
 const API_URL = 'https://estateos.pl';
@@ -61,6 +62,7 @@ export default function AppointmentActionModal({
   history = [],
   onClose,
   onDone,
+  onSavedDate,
 }: AppointmentActionModalProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -146,13 +148,20 @@ export default function AppointmentActionModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error || 'Nie udalo sie zapisac terminu.');
+        const msg = data?.error || 'Nie udalo sie zapisac terminu.';
+        setError(msg);
+        Alert.alert('Błąd', msg);
         return;
+      }
+      if (proposedIso) {
+        onSavedDate?.(proposedIso);
       }
       onDone?.();
       onClose();
     } catch {
-      setError('Blad polaczenia z serwerem.');
+      const msg = 'Błąd połączenia z serwerem.';
+      setError(msg);
+      Alert.alert('Błąd', msg);
     } finally {
       setLoading(false);
     }
@@ -171,7 +180,30 @@ export default function AppointmentActionModal({
   };
 
   const handleSubmitPress = () => {
-    if (!canSubmit || loading || isLocked) return;
+    if (loading) return;
+    if (isLocked) {
+      Alert.alert('Termin zamknięty', 'Ta propozycja została już rozpatrzona.');
+      return;
+    }
+    const safeToken = normalizeToken(token);
+    if (!dealId || !safeToken) {
+      Alert.alert('Brak sesji', 'Odśwież czat i spróbuj ponownie.');
+      return;
+    }
+    if (!selectedDate || !selectedHour) {
+      Alert.alert('Wybierz termin', 'Najpierw wybierz dzień i godzinę.');
+      return;
+    }
+    if (!canSubmit) {
+      Alert.alert('Brak danych', 'Nie udało się przygotować terminu. Spróbuj ponownie.');
+      return;
+    }
+
+    // Dla trybu tworzenia terminu wysyłamy od razu bez dodatkowego kroku.
+    if (mode === 'create') {
+      void submit();
+      return;
+    }
     setConfirmVisible(true);
   };
 
@@ -352,7 +384,13 @@ export default function AppointmentActionModal({
                 onPress={handleSubmitPress}
                 disabled={!canSubmit || loading}
               >
-                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryTxt}>{mode === 'respond' ? 'Wyslij swoj termin' : 'Wyslij'}</Text>}
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.primaryTxt}>
+                    {mode === 'respond' ? 'Wyslij swoj termin' : 'Umow i wyslij'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

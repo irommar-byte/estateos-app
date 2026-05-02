@@ -11,7 +11,7 @@ import Animated, {
   withRepeat, withSequence, withTiming, withDelay, withSpring, Easing 
 } from 'react-native-reanimated';
 import { 
-  ChevronRight, ChevronLeft, MessageCircle, ShieldCheck, 
+  ChevronRight, ChevronLeft, ChevronDown, MessageCircle, ShieldCheck, 
   AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles,
   Trash2, Pin, CalendarClock,
 } from 'lucide-react-native';
@@ -114,6 +114,28 @@ function isFutureAcceptedPresentationDeal(dealId: number, dealMessagesById: Reco
   if (!iso) return false;
   const t = new Date(iso).getTime();
   return Number.isFinite(t) && t > Date.now();
+}
+
+/** Czy wątek czeka na decyzję użytkownika (ostatnia oferta/termin od drugiej strony). */
+function needsReactionFromMessages(messages: any[] | undefined, myUserId: number): boolean {
+  if (!messages?.length || !myUserId) return false;
+  const sorted = [...messages].sort(
+    (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+  );
+  for (const msg of sorted) {
+    const ev = tryParseDealEventPayload(String(msg?.content ?? msg?.text ?? ''));
+    if (!ev) continue;
+    const entity = String(ev.entity || '').toUpperCase();
+    if (entity !== 'BID' && entity !== 'APPOINTMENT') continue;
+    const action = String(ev.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED', 'ACCEPTED', 'REJECTED', 'DECLINED'].includes(action)) continue;
+    const senderId = Number(msg?.senderId || 0);
+    if (['PROPOSED', 'COUNTERED'].includes(action)) {
+      return senderId > 0 && senderId !== myUserId;
+    }
+    return false;
+  }
+  return false;
 }
 
 const firstDefined = (...values: unknown[]) =>
@@ -500,6 +522,41 @@ function UnreadBadge({ count, colors }: { count: number; colors: ReturnType<type
   );
 }
 
+function AttentionBadge({
+  colors,
+  compact = false,
+  text = 'REAKCJA',
+}: {
+  colors: ReturnType<typeof getColors>;
+  compact?: boolean;
+  text?: string;
+}) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.32, { duration: 520, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 520, easing: Easing.inOut(Easing.ease) })
+      ),
+      -1,
+      true
+    );
+  }, [opacity]);
+  const blink = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  if (compact) {
+    return (
+      <Animated.View style={[{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.red }, blink]} />
+    );
+  }
+
+  return (
+    <Animated.View style={[{ borderRadius: 999, backgroundColor: colors.red, paddingHorizontal: 8, paddingVertical: 4 }, blink]}>
+      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>{text}</Text>
+    </Animated.View>
+  );
+}
+
 function DealOfferThumb({ uri, colors }: { uri: string | null; colors: ReturnType<typeof getColors> }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [uri]);
@@ -572,6 +629,11 @@ export default function DealroomListScreen() {
   const [phasesReady, setPhasesReady] = useState(false);
   const [phaseRefreshTick, setPhaseRefreshTick] = useState(0);
   const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
+  const [collapsedSections, setCollapsedSections] = useState<Record<DealPhase, boolean>>({
+    started: false,
+    active: false,
+    finalized: false,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -700,6 +762,36 @@ export default function DealroomListScreen() {
       finalized: presentationAndPinSortDeals(finalized),
     };
   }, [deals, dealPhaseById, presentationAndPinSortDeals, dealMessagesById]);
+
+  const dealNeedsAttentionById = useMemo(() => {
+    const out: Record<number, boolean> = {};
+    const myId = Number(user?.id || 0);
+    for (const deal of deals) {
+      const id = Number(deal?.id || 0);
+      if (!id) continue;
+      const unread = Number(deal?.unread || 0);
+      if (unread > 0) {
+        out[id] = true;
+        continue;
+      }
+      out[id] = needsReactionFromMessages(dealMessagesById[id], myId);
+    }
+    return out;
+  }, [deals, dealMessagesById, user?.id]);
+
+  const sectionNeedsAttention = useMemo(
+    () => ({
+      started: groupedDeals.started.some((d) => dealNeedsAttentionById[Number(d?.id)]),
+      active: groupedDeals.active.some((d) => dealNeedsAttentionById[Number(d?.id)]),
+      finalized: groupedDeals.finalized.some((d) => dealNeedsAttentionById[Number(d?.id)]),
+    }),
+    [groupedDeals, dealNeedsAttentionById]
+  );
+
+  const toggleSection = useCallback((phase: DealPhase) => {
+    Haptics.selectionAsync();
+    setCollapsedSections((prev) => ({ ...prev, [phase]: !prev[phase] }));
+  }, []);
 
   const dealsSortedFlat = useMemo(() => presentationAndPinSortDeals(deals), [deals, presentationAndPinSortDeals]);
 
@@ -1049,12 +1141,13 @@ export default function DealroomListScreen() {
     const isPinned =
       Number.isFinite(dealNumericId) && dealNumericId > 0 && pinnedDealIds.includes(dealNumericId);
     const canDeleteSwipe = phasesReady && listPhase === 'started';
+    const needsAttention = Boolean(dealNeedsAttentionById[dealNumericId]);
 
     return (
       <Animated.View
         key={deal.id}
         entering={FadeInDown.delay(animDelayIndex * 90).springify().damping(12).stiffness(150).mass(0.8)}
-        style={[styles.cardContainer, unreadCount > 0 && styles.cardContainerElevated]}
+        style={[styles.cardContainer, needsAttention && styles.cardContainerElevated]}
       >
         <Swipeable
           friction={2}
@@ -1112,8 +1205,8 @@ export default function DealroomListScreen() {
             tint={isDark ? 'dark' : 'light'}
             style={[
               styles.dealCard,
-              unreadCount > 0 && styles.dealCardUnread,
-              unreadCount > 0 && styles.dealCardBadgeBleed,
+              needsAttention && styles.dealCardUnread,
+              needsAttention && styles.dealCardBadgeBleed,
             ]}
           >
             <View style={styles.cardHeader}>
@@ -1159,7 +1252,13 @@ export default function DealroomListScreen() {
                 <View style={styles.thumbWrapper}>
                   <DealOfferThumb uri={thumbUrl} colors={COLORS} />
                 </View>
-                {unreadCount > 0 ? <UnreadBadge count={unreadCount} colors={COLORS} /> : null}
+                {unreadCount > 0 ? (
+                  <UnreadBadge count={unreadCount} colors={COLORS} />
+                ) : needsAttention ? (
+                  <View style={styles.reactionBadgeWrap}>
+                    <AttentionBadge colors={COLORS} compact />
+                  </View>
+                ) : null}
               </View>
             </View>
 
@@ -1167,11 +1266,11 @@ export default function DealroomListScreen() {
               <View style={styles.messagePreviewRow}>
                 <MessageCircle
                   size={15}
-                  color={unreadCount > 0 ? COLORS.gold : COLORS.textMuted}
-                  strokeWidth={unreadCount > 0 ? 2.5 : 2}
+                  color={needsAttention ? COLORS.gold : COLORS.textMuted}
+                  strokeWidth={needsAttention ? 2.5 : 2}
                 />
                 <Text
-                  style={[styles.lastMessageText, unreadCount > 0 && styles.lastMessageTextUnread]}
+                  style={[styles.lastMessageText, needsAttention && styles.lastMessageTextUnread]}
                   numberOfLines={1}
                 >
                   {formatLastMessage(deal.lastMessage)}
@@ -1253,55 +1352,85 @@ export default function DealroomListScreen() {
 
                 {groupedDeals.started.length > 0 ? (
                   <View style={styles.phaseSection}>
-                    <View style={styles.phaseSectionHeaderRow}>
+                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('started')}>
                       <View style={styles.phaseSectionIconWrap}>
                         <PlayCircle size={20} color={COLORS.gold} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>Negocjacje</Text>
-                        <Text style={styles.phaseTitle}>Rozpoczęte</Text>
+                        <Text style={styles.phaseTitle}>Rozpoczęte ({groupedDeals.started.length})</Text>
                         <Text style={styles.phaseHint}>
                           Jeszcze bez potwierdzonej ceny i bez potwierdzonego terminu prezentacji — pierwsze propozycje wysyłasz w czacie.
                         </Text>
                       </View>
-                    </View>
-                    {groupedDeals.started.map((deal, idx) => renderDealCard(deal, idx, 'started'))}
+                      <View style={styles.phaseHeaderMeta}>
+                        {sectionNeedsAttention.started ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {collapsedSections.started ? (
+                          <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        ) : (
+                          <ChevronDown size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        )}
+                      </View>
+                    </Pressable>
+                    {!collapsedSections.started
+                      ? groupedDeals.started.map((deal, idx) => renderDealCard(deal, idx, 'started'))
+                      : null}
                   </View>
                 ) : null}
 
                 {groupedDeals.active.length > 0 ? (
                   <View style={styles.phaseSection}>
-                    <View style={styles.phaseSectionHeaderRow}>
+                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('active')}>
                       <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapActive]}>
                         <Zap size={20} color={COLORS.green} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>W toku</Text>
-                        <Text style={styles.phaseTitle}>Aktywne</Text>
+                        <Text style={styles.phaseTitle}>Aktywne ({groupedDeals.active.length})</Text>
                         <Text style={styles.phaseHint}>
                           Cena i/lub termin prezentacji już uzgodnione — kolejne ustalenia prowadzicie w czacie.
                         </Text>
                       </View>
-                    </View>
-                    {groupedDeals.active.map((deal, idx) => renderDealCard(deal, idx, 'active'))}
+                      <View style={styles.phaseHeaderMeta}>
+                        {sectionNeedsAttention.active ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {collapsedSections.active ? (
+                          <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        ) : (
+                          <ChevronDown size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        )}
+                      </View>
+                    </Pressable>
+                    {!collapsedSections.active
+                      ? groupedDeals.active.map((deal, idx) => renderDealCard(deal, idx, 'active'))
+                      : null}
                   </View>
                 ) : null}
 
                 {groupedDeals.finalized.length > 0 ? (
                   <View style={styles.phaseSection}>
-                    <View style={styles.phaseSectionHeaderRow}>
+                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('finalized')}>
                       <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapDone]}>
                         <CheckCircle2 size={20} color={COLORS.purple} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
                         <Text style={styles.phaseEyebrow}>Domknięcie</Text>
-                        <Text style={styles.phaseTitle}>Finalizowane</Text>
+                        <Text style={styles.phaseTitle}>Sfinalizowane ({groupedDeals.finalized.length})</Text>
                         <Text style={styles.phaseHint}>
-                          Etap po prezentacji: oferta może być wycofana z publikacji (rezerwacja uzgodnień) — status w czacie.
+                          Transakcja zamknięta przez właściciela — oferta przeniesiona do archiwum.
                         </Text>
                       </View>
-                    </View>
-                    {groupedDeals.finalized.map((deal, idx) => renderDealCard(deal, idx, 'finalized'))}
+                      <View style={styles.phaseHeaderMeta}>
+                        {sectionNeedsAttention.finalized ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {collapsedSections.finalized ? (
+                          <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        ) : (
+                          <ChevronDown size={20} color={COLORS.textMuted} strokeWidth={2.6} />
+                        )}
+                      </View>
+                    </Pressable>
+                    {!collapsedSections.finalized
+                      ? groupedDeals.finalized.map((deal, idx) => renderDealCard(deal, idx, 'finalized'))
+                      : null}
                   </View>
                 ) : null}
               </>
@@ -1462,6 +1591,7 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
 
   phaseSection: { marginBottom: 28 },
   phaseSectionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14, paddingHorizontal: 2 },
+  phaseHeaderMeta: { alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 44, paddingTop: 2, gap: 8 },
   phaseSectionIconWrap: {
     width: 40,
     height: 40,
@@ -1611,6 +1741,13 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     shadowOpacity: 0.1,
     shadowRadius: 8,
     overflow: 'hidden',
+  },
+  reactionBadgeWrap: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    zIndex: 999,
+    elevation: Platform.OS === 'android' ? 16 : 0,
   },
 
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.borderHighlight },

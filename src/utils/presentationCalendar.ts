@@ -102,34 +102,26 @@ async function fetchOfferById(token: string, offerId: number | string): Promise<
   }
 }
 
-async function fetchPublicProfile(token: string, userId: number): Promise<any | null> {
-  try {
-    const res = await fetch(`${API_URL}/api/users/${userId}/public`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.error) return null;
-    return data;
-  } catch {
-    return null;
-  }
+/**
+ * Strony deala z GET /api/mobile/v1/deals — buyer/seller/otherParty z email i phone (bez publicznego profilu).
+ */
+function dealPartyFields(p: any): { name: string; email: string | null; phone: string | null } {
+  if (!p || typeof p !== 'object') return { name: '', email: null, phone: null };
+  const o = p.user && typeof p.user === 'object' ? { ...p, ...p.user } : p;
+  const name = String(o.name || o.fullName || '').trim();
+  const emailRaw = String(o.email || '').trim();
+  const email = emailRaw.includes('@') ? emailRaw : null;
+  const phone = String(o.phone || o.phoneNumber || o.mobile || o.mobilePhone || '').trim() || null;
+  return { name, email, phone };
 }
 
-function extractPhoneFromPublicPayload(profile: any): string | null {
-  if (!profile || typeof profile !== 'object') return null;
-  const u = profile.user || profile;
-  const raw = firstDefined(
-    u?.phone,
-    u?.phoneNumber,
-    u?.mobile,
-    u?.mobilePhone,
-    u?.tel,
-    profile?.phone,
-    profile?.metadata?.phone,
-    profile?.profile?.phone
-  );
-  const s = String(raw ?? '').trim();
-  return s || null;
+function partyFromDealByUserId(deal: any, userId: number): any | null {
+  if (!deal || !userId) return null;
+  const b = deal.buyer;
+  const s = deal.seller;
+  if (b && Number(b.id) === userId) return b;
+  if (s && Number(s.id) === userId) return s;
+  return null;
 }
 
 /** Numer z ogłoszenia — wiele backendów trzyma telefon tylko na ofercie. */
@@ -170,21 +162,6 @@ function toTelUri(displayPhone: string): string | null {
   return null;
 }
 
-function extractEmailFromPublicPayload(profile: any): string | null {
-  if (!profile || typeof profile !== 'object') return null;
-  const u = profile.user || profile;
-  const raw = firstDefined(
-    u?.email,
-    profile?.email,
-    profile?.profile?.email,
-    profile?.metadata?.email,
-    u?.contactEmail
-  );
-  const s = String(raw ?? '').trim();
-  if (!s || !s.includes('@')) return null;
-  return s;
-}
-
 function extractEmailFromOffer(offer: any): string | null {
   if (!offer || typeof offer !== 'object') return null;
   const raw = firstDefined(
@@ -200,37 +177,103 @@ function extractEmailFromOffer(offer: any): string | null {
   return s;
 }
 
-function buildContactSectionLines(params: {
-  ownerHeading: string;
+function normalizePhoneDigits(phone: string | null | undefined): string {
+  if (!phone) return '';
+  return String(phone).replace(/\D/g, '');
+}
+
+function normalizedEmail(email: string | null | undefined): string {
+  if (!email) return '';
+  return String(email).trim().toLowerCase();
+}
+
+/** Ta sama osoba po obu stronach (np. ten sam userId albo ten sam tel+mail). */
+function contactsRepresentSamePerson(params: {
+  ownerOfferUserId: number;
+  peerUserId: number;
   ownerPhone: string | null;
   ownerEmail: string | null;
-  peerHeading: string;
+  peerPhone: string | null;
+  peerEmail: string | null;
+}): boolean {
+  const { ownerOfferUserId, peerUserId } = params;
+  if (ownerOfferUserId > 0 && peerUserId > 0 && ownerOfferUserId === peerUserId) return true;
+  const od = normalizePhoneDigits(params.ownerPhone);
+  const pd = normalizePhoneDigits(params.peerPhone);
+  const oe = normalizedEmail(params.ownerEmail);
+  const pe = normalizedEmail(params.peerEmail);
+  if (od && pd && od === pd) {
+    if (oe && pe) return oe === pe;
+    return true;
+  }
+  if (!od && !pd && oe && pe && oe === pe) return true;
+  return false;
+}
+
+function buildContactSectionLines(params: {
+  ownerLabel: string;
+  ownerPhone: string | null;
+  ownerEmail: string | null;
+  peerLabel: string;
   peerPhone: string | null;
   peerEmail: string | null;
   peerUserId: number;
+  ownerOfferUserId: number;
 }): string[] {
   const lines: string[] = [];
 
-  const person = (heading: string, phone: string | null, email: string | null) => {
-    lines.push(`   ▸ ${heading}`);
+  const writeChannels = (phone: string | null, email: string | null) => {
     if (phone) {
-      lines.push(`   Telefon    ${phone.trim()}`);
+      lines.push(`   Telefon   ${phone.trim()}`);
       const uri = toTelUri(phone);
-      if (uri) lines.push(`              ${uri}`);
+      if (uri) lines.push(`             ${uri}`);
     }
     if (email) {
-      lines.push(`   E-mail     ${email.trim()}`);
-      lines.push(`              mailto:${email.trim()}`);
+      lines.push(`   E-mail    ${email.trim()}`);
+      lines.push(`             mailto:${email.trim()}`);
     }
     if (!phone && !email) {
-      lines.push('   (brak telefonu i e-mailu w profilu publicznym / ogłoszeniu — sprawdź czat EstateOS™)');
+      lines.push('   (brak telefonu i e-mailu w Dealroom / ogłoszeniu — sprawdź czat EstateOS™)');
     }
     lines.push('');
   };
 
-  person(params.ownerHeading, params.ownerPhone, params.ownerEmail);
+  const merged =
+    params.peerUserId > 0 &&
+    contactsRepresentSamePerson({
+      ownerOfferUserId: params.ownerOfferUserId,
+      peerUserId: params.peerUserId,
+      ownerPhone: params.ownerPhone,
+      ownerEmail: params.ownerEmail,
+      peerPhone: params.peerPhone,
+      peerEmail: params.peerEmail,
+    });
+
+  if (merged) {
+    lines.push(`   ${params.ownerLabel}`);
+    const alt = params.peerLabel.trim();
+    if (alt && alt !== params.ownerLabel.trim()) {
+      lines.push(`   (${alt} — w Dealroom ten sam zestaw kontaktowy)`);
+    }
+    lines.push(
+      '   Obie role (ogłoszenie i druga strona) mają tu identyczne dane — pełny kontekst w EstateOS™.'
+    );
+    lines.push('');
+    writeChannels(
+      params.ownerPhone || params.peerPhone,
+      params.ownerEmail || params.peerEmail
+    );
+    return lines;
+  }
+
+  const personBlock = (role: string, name: string, phone: string | null, email: string | null) => {
+    lines.push(`   ▸ ${role} — ${name}`);
+    writeChannels(phone, email);
+  };
+
+  personBlock('Ogłoszenie', params.ownerLabel, params.ownerPhone, params.ownerEmail);
   if (params.peerUserId > 0) {
-    person(params.peerHeading, params.peerPhone, params.peerEmail);
+    personBlock('Druga strona', params.peerLabel, params.peerPhone, params.peerEmail);
   }
 
   return lines;
@@ -242,7 +285,10 @@ function buildProfessionalCalendarNotes(input: {
   displayLocation: string;
   geoNote: boolean;
   landingUrl: string | null;
+  /** Gdy true (np. iOS + pole URL wydarzenia), nie powielamy pełnego HTTPS w notatkach. */
+  landingUrlOnlyInEventUrlField: boolean;
   mapsUrl: string | null;
+  ownerOfferUserId: number;
   ownerLabel: string;
   ownerPhone: string | null;
   ownerEmail: string | null;
@@ -252,10 +298,10 @@ function buildProfessionalCalendarNotes(input: {
   peerUserId: number;
   tailBlocks: string[];
 }): string {
-  const rule = '══════════════════════════════════════';
+  const rule = '────────────────────────────────────────';
   const out: string[] = [];
   out.push(rule);
-  out.push(`  ESTATEOS™   ·   Dealroom TX-${input.dealId}`);
+  out.push(`  ESTATEOS™  ·  Dealroom TX-${input.dealId}`);
   out.push(rule);
   out.push('');
   out.push('PREZENTACJA NIERUCHOMOŚCI');
@@ -268,16 +314,19 @@ function buildProfessionalCalendarNotes(input: {
   }
   out.push('▸ Adres spotkania');
   out.push(`   ${input.displayLocation || '— uzupełnij ręcznie w kalendarzu, jeśli brak w ogłoszeniu'}`);
-  if (input.geoNote) out.push('   Adres został dopasowany do map (geokodowanie).');
+  if (input.geoNote) out.push('   · dopasowanie adresu z map (geokodowanie)');
   out.push('');
   if (input.landingUrl) {
-    out.push('▸ Wizytówka oferty (www)');
-    out.push(`   ${input.landingUrl}`);
-    out.push('   Zdjęcia, parametry, opis — ten sam link jest w polu „URL” wydarzenia na iPhone.');
+    out.push('▸ Wizytówka www');
+    if (input.landingUrlOnlyInEventUrlField) {
+      out.push('   Link do zdjęć i parametrów: pole „URL” tego wydarzenia (Kalendarz Apple).');
+    } else {
+      out.push(`   ${input.landingUrl}`);
+    }
     out.push('');
   }
   if (input.mapsUrl) {
-    out.push('▸ Dojazd · Mapy');
+    out.push('▸ Dojazd (Mapy)');
     out.push(`   ${input.mapsUrl}`);
     out.push('');
   }
@@ -285,13 +334,14 @@ function buildProfessionalCalendarNotes(input: {
   out.push('');
   out.push(
     ...buildContactSectionLines({
-      ownerHeading: `Ogłoszenie / właściciel — ${input.ownerLabel}`,
+      ownerLabel: input.ownerLabel,
       ownerPhone: input.ownerPhone,
       ownerEmail: input.ownerEmail,
-      peerHeading: `Druga strona transakcji — ${input.peerLabel}`,
+      peerLabel: input.peerLabel,
       peerPhone: input.peerPhone,
       peerEmail: input.peerEmail,
       peerUserId: input.peerUserId,
+      ownerOfferUserId: input.ownerOfferUserId,
     })
   );
   for (const block of input.tailBlocks) {
@@ -302,11 +352,11 @@ function buildProfessionalCalendarNotes(input: {
   return out.join('\n');
 }
 
-function formatPersonLabel(profile: any, fallbackId: number): string {
-  const u = profile?.user || profile;
-  const name = String(firstDefined(u?.fullName, u?.name, profile?.name, profile?.fullName) || '').trim();
+function partyDisplayName(party: any, fallbackId: number): string {
+  const { name } = dealPartyFields(party);
   if (name) return name;
-  return `Użytkownik #${fallbackId}`;
+  if (fallbackId > 0) return `Użytkownik #${fallbackId}`;
+  return 'Nieznany';
 }
 
 export function formatOfferLocationForCalendar(offer: any): string {
@@ -382,6 +432,9 @@ export type PresentationCalendarPromptParams = {
   proposedDateIso: string;
   fallbackTitle: string;
   viewerUserId: number | string | null | undefined;
+  /** Z GET /api/mobile/v1/auth (lub store po logowaniu) — uzupełnia kontakt „ja”, gdy jestem stroną ogłoszenia. */
+  viewerEmail?: string | null;
+  viewerPhone?: string | null;
 };
 
 /**
@@ -441,17 +494,46 @@ export async function offerPresentationCalendarAfterAcceptance(params: Presentat
   else if (buyerId && buyerId !== me) peerUserId = buyerId;
   else if (sellerId && sellerId !== me) peerUserId = sellerId;
 
-  const ownerProfile =
-    ownerOfferUserId > 0 ? await fetchPublicProfile(params.token, ownerOfferUserId) : null;
-  const peerProfile = peerUserId > 0 ? await fetchPublicProfile(params.token, peerUserId) : null;
+  const viewerEmailRaw = String(params.viewerEmail ?? '').trim();
+  const viewerEmailOk = viewerEmailRaw.includes('@') ? viewerEmailRaw : null;
+  const viewerPhoneRaw = String(params.viewerPhone ?? '').trim();
+  const viewerPhoneOk =
+    viewerPhoneRaw && viewerPhoneRaw !== 'Brak numeru' ? viewerPhoneRaw : null;
 
-  const ownerPhone = extractPhoneFromPublicPayload(ownerProfile);
-  const peerPhone = extractPhoneFromPublicPayload(peerProfile);
-  const ownerPhoneResolved = ownerPhone || extractPhoneFromOffer(offer);
-  const ownerEmailResolved = extractEmailFromPublicPayload(ownerProfile) || extractEmailFromOffer(offer);
-  const peerEmailResolved = peerUserId > 0 ? extractEmailFromPublicPayload(peerProfile) : null;
-  const ownerLabel = formatPersonLabel(ownerProfile, ownerOfferUserId);
-  const peerLabel = formatPersonLabel(peerProfile, peerUserId);
+  const ownerPartyRow =
+    ownerOfferUserId > 0 ? partyFromDealByUserId(deal, ownerOfferUserId) : null;
+  const ownerFields = dealPartyFields(ownerPartyRow);
+  let ownerPhoneResolved = ownerFields.phone || extractPhoneFromOffer(offer);
+  let ownerEmailResolved = ownerFields.email || extractEmailFromOffer(offer);
+  if (me > 0 && ownerOfferUserId > 0 && me === ownerOfferUserId) {
+    ownerPhoneResolved = ownerPhoneResolved || viewerPhoneOk;
+    ownerEmailResolved = ownerEmailResolved || viewerEmailOk;
+  }
+  const ownerLabel = ownerFields.name || partyDisplayName(ownerPartyRow, ownerOfferUserId);
+
+  const otherPartyFields = deal?.otherParty ? dealPartyFields(deal.otherParty) : null;
+  const peerPartyRow = peerUserId > 0 ? partyFromDealByUserId(deal, peerUserId) : null;
+  const peerFields = dealPartyFields(peerPartyRow);
+
+  let peerPhone = otherPartyFields?.phone || peerFields.phone || null;
+  let peerEmail = otherPartyFields?.email || peerFields.email || null;
+  let peerLabel =
+    (otherPartyFields?.name || '').trim() ||
+    peerFields.name ||
+    partyDisplayName(peerPartyRow, peerUserId);
+
+  const peerEmailResolved = peerUserId > 0 ? peerEmail : null;
+
+  const sameContactPreview =
+    peerUserId > 0 &&
+    contactsRepresentSamePerson({
+      ownerOfferUserId,
+      peerUserId,
+      ownerPhone: ownerPhoneResolved,
+      ownerEmail: ownerEmailResolved,
+      peerPhone,
+      peerEmail: peerEmailResolved,
+    });
 
   const end = new Date(start.getTime() + PRESENTATION_DURATION_MS);
   const whenLabel = start.toLocaleString('pl-PL', {
@@ -473,11 +555,10 @@ export async function offerPresentationCalendarAfterAcceptance(params: Presentat
     Platform.OS === 'ios'
       ? [
           '',
-          '──────────────────────────────────────',
-          ' iPhone · „Czas na wyjazd”',
-          ' Po zapisaniu otwórz wydarzenie → Edytuj → Powiadomienia →',
-          ' włącz „Czas na wyjazd” / Time to Leave oraz sposób dojazdu (Mapy).',
-          ' Ustawienia → Kalendarz → Czas na wyjazd · dostęp do lokalizacji.',
+          '────────────────────────────────────────',
+          'iPhone — „Czas na wyjazd”',
+          'Po zapisaniu: wydarzenie → Edytuj → Powiadomienia → Time to Leave / dojazd (Mapy).',
+          'Ustawienia → Kalendarz → Czas na wyjazd · lokalizacja dla Kalendarza i Map.',
         ].join('\n')
       : '';
 
@@ -485,10 +566,12 @@ export async function offerPresentationCalendarAfterAcceptance(params: Presentat
     Platform.OS === 'android'
       ? [
           '',
-          '──────────────────────────────────────',
-          ` Przypomnienia w wydarzeniu: ${ANDROID_FIRST_REMINDER_MINUTES_BEFORE} min oraz ${ANDROID_SECOND_REMINDER_MINUTES_BEFORE} min przed startem.`,
+          '────────────────────────────────────────',
+          `Przypomnienia: ${ANDROID_FIRST_REMINDER_MINUTES_BEFORE} min i ${ANDROID_SECOND_REMINDER_MINUTES_BEFORE} min przed startem.`,
         ].join('\n')
       : '';
+
+  const landingUrlOnlyInEventUrlField = Platform.OS === 'ios' && !!landingUrl;
 
   const notes = buildProfessionalCalendarNotes({
     dealId: params.dealId,
@@ -496,7 +579,9 @@ export async function offerPresentationCalendarAfterAcceptance(params: Presentat
     displayLocation,
     geoNote: refined.latitude != null,
     landingUrl,
+    landingUrlOnlyInEventUrlField,
     mapsUrl,
+    ownerOfferUserId,
     ownerLabel,
     ownerPhone: ownerPhoneResolved,
     ownerEmail: ownerEmailResolved,
@@ -520,11 +605,23 @@ export async function offerPresentationCalendarAfterAcceptance(params: Presentat
     notes,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     ...(Platform.OS === 'android' ? { alarms: androidAlarms } : {}),
-    ...(Platform.OS === 'ios' && landingUrl ? { url: landingUrl } : {}),
+    ...(landingUrl ? { url: landingUrl } : {}),
   };
 
-  const previewPhones = [ownerPhoneResolved, peerUserId > 0 ? peerPhone : null].filter(Boolean).join(', ');
-  const previewEmails = [ownerEmailResolved, peerUserId > 0 ? peerEmailResolved : null].filter(Boolean).join(', ');
+  const previewPhones = (
+    sameContactPreview
+      ? [ownerPhoneResolved || peerPhone]
+      : [ownerPhoneResolved, peerUserId > 0 ? peerPhone : null]
+  )
+    .filter(Boolean)
+    .join(', ');
+  const previewEmails = (
+    sameContactPreview
+      ? [ownerEmailResolved || peerEmailResolved]
+      : [ownerEmailResolved, peerUserId > 0 ? peerEmailResolved : null]
+  )
+    .filter(Boolean)
+    .join(', ');
   const previewBody = [
     whenLabel,
     displayLocation ? `\n📍 ${displayLocation}` : '',

@@ -9,6 +9,8 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withDelay,
+  withSequence,
+  withSpring,
   runOnJS,
   Easing,
   withRepeat,
@@ -31,82 +33,104 @@ const TAGLINE_ROTATION = [
 const SPLASH_TAGLINE_STORAGE_KEY = '@EstateOS_splash_tagline_slot';
 
 const STAGGER_MS = 30;
+const PARTICLE_COUNT = 80;
 
-const PARTICLE_COUNT = 72;
-
-/** Responsywne, większe logo — ograniczenie szer./wys. ekranu + cap na tabletach */
 const LOGO_SIZE = Math.round(
   Math.min(Math.max(width * 0.88, 260), height * 0.48, 540)
 );
 
+// ─── Timing master ────────────────────────────────────────────────────────────
 const T = {
   logoStart: 120,
-  /** Rozświetlenie jak luksusowy reveal: długo i bez „szarpnięcia” na końcu. */
   logoLightMs: 2600,
-  /** Pierwsza litera zaraz po zakończeniu rozświetlenia loga. */
   gapLogoToLine1: 0,
   lineGapAfter1: 72,
   sunGapAfter2: 56,
-  /** Wolniejszy „luksusowy” złoty błysk — dłuższy przejazd wiązki. */
   sunDuration: 2750,
-  /** Tuż po końcu błysku — bez przerwy przed lotem. */
   flyOutGapAfterSun: 0,
   flyOutMs: 380,
-  /** Wyraźniejsze „rozsuwanie” jak w pierwszej wersji (v1 miało ~1200 ms) */
   doorDuration: 1180,
   doorSoundLead: 26,
 } as const;
 
-/** Pierwsza linia tekstu wcześniej o tyle ms (nakłada się na rozświetlanie loga). */
 const LINE1_START_ADVANCE_MS = 2000;
-
-/** 0 = drzwi dopiero po zakończeniu odlotu (bez nakładania się — widać pełne otwarcie). */
 const DOOR_OPEN_EARLIER_MS = 0;
-
-/** Start odlotu (logo + tekst + backdrop) — o tyle wcześniej względem końca błysku. */
 const FLY_OUT_EARLIER_MS = 1200;
 
 const EXIT_UP = -height * 0.52;
 const EXIT_DOWN = height * 0.52;
 
+// ─── Particle ─────────────────────────────────────────────────────────────────
 function Particle({
   startX,
   startY,
   size,
   duration,
   delay,
+  driftX = 0,
+  warm = false,
 }: {
   startX: number;
   startY: number;
   size: number;
   duration: number;
   delay: number;
+  driftX?: number;
+  warm?: boolean;
 }) {
   const translateY = useSharedValue(startY);
+  const driftValue = useSharedValue(0);
   const opacity = useSharedValue(0);
 
   useEffect(() => {
+    const maxOpacity = warm
+      ? Math.random() * 0.22 + 0.28   // złote — delikatniejsze
+      : Math.random() * 0.28 + 0.38;  // białe — jak poprzednio
+
     opacity.value = withDelay(
       delay,
-      withTiming(Math.random() * 0.28 + 0.38, { duration: 1400 })
+      withTiming(maxOpacity, { duration: 1600 })
     );
+
     translateY.value = withRepeat(
-      withTiming(startY - 280, { duration, easing: Easing.linear }),
+      withTiming(startY - 300, { duration, easing: Easing.linear }),
       -1,
       true
     );
+
+    if (Math.abs(driftX) > 1) {
+      driftValue.value = withRepeat(
+        withSequence(
+          withTiming(driftX, {
+            duration: duration * 0.52,
+            easing: Easing.inOut(Easing.sin),
+          }),
+          withTiming(-driftX * 0.45, {
+            duration: duration * 0.48,
+            easing: Easing.inOut(Easing.sin),
+          })
+        ),
+        -1,
+        true
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const style = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+     
+    transform: [
+      { translateY: translateY.value },
+      { translateX: driftValue.value },
+    ] as any,
   }));
 
   return (
     <Animated.View
       style={[
         styles.particle,
+        warm ? styles.particleWarm : null,
         style,
         { left: startX, width: size, height: size, borderRadius: size / 2 },
       ]}
@@ -114,7 +138,7 @@ function Particle({
   );
 }
 
-/** Słowa z pozycją startu w oryginalnym stringu (spacje zostają w układzie czasowym reveal). */
+// ─── Text reveal helpers ───────────────────────────────────────────────────────
 function getWordSpans(text: string): { word: string; startIndex: number }[] {
   const result: { word: string; startIndex: number }[] = [];
   let i = 0;
@@ -185,10 +209,13 @@ function SplashChar({
     const start = index / total;
     const end = (index + 1) / total;
     const o = interpolate(reveal.value, [start, end], [0, 1], Extrapolation.CLAMP);
-    const y = interpolate(reveal.value, [start, end], [13, 0], Extrapolation.CLAMP);
+    const y = interpolate(reveal.value, [start, end], [14, 0], Extrapolation.CLAMP);
+    // subtelny blur-out via scale (iOS renderuje to płynnie)
+    const s = interpolate(reveal.value, [start, Math.min(end, start + 0.05)], [0.88, 1], Extrapolation.CLAMP);
     return {
       opacity: o,
-      transform: [{ translateY: y }],
+       
+      transform: [{ translateY: y }, { scale: s }] as any,
     };
   });
 
@@ -206,6 +233,7 @@ function SplashChar({
   );
 }
 
+// ─── Main screen ───────────────────────────────────────────────────────────────
 export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }) {
   const finishRef = useRef(onFinish);
   finishRef.current = onFinish;
@@ -229,33 +257,25 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
               TAGLINE_ROTATION.length;
           }
         }
-        if (!cancelled) {
-          setTaglineBoot({
-            line2: TAGLINE_ROTATION[slot],
-            slotIndex: slot,
-          });
-        }
+        if (!cancelled) setTaglineBoot({ line2: TAGLINE_ROTATION[slot], slotIndex: slot });
       } catch {
-        if (!cancelled) {
-          setTaglineBoot({ line2: TAGLINE_ROTATION[0], slotIndex: 0 });
-        }
+        if (!cancelled) setTaglineBoot({ line2: TAGLINE_ROTATION[0], slotIndex: 0 });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // ── Shared values ────────────────────────────────────────────────────────────
   const logoOpacity = useSharedValue(0);
-
+  const logoScale   = useSharedValue(0.88);   // NEW: scale reveal
+  const logoGlow    = useSharedValue(0);       // NEW: ambient halo
   const line1Reveal = useSharedValue(0);
   const line2Reveal = useSharedValue(0);
-  const sunSweep = useSharedValue(0);
-
+  const sunSweep    = useSharedValue(0);
   const backdropOpacity = useSharedValue(1);
-  /** 0 = centrum, 1 = logo i tekst poza ekranem — wtedy startują drzwi. */
-  const exitLift = useSharedValue(0);
-  const doorOpen = useSharedValue(0);
+  const exitLift    = useSharedValue(0);
+  const doorOpen    = useSharedValue(0);
+  const doorEdgeGlow = useSharedValue(0);      // NEW: golden crack on door edge
 
   const line2Len = taglineBoot?.line2.length ?? 0;
 
@@ -263,9 +283,8 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     T.logoStart,
     T.logoStart + T.logoLightMs + T.gapLogoToLine1 - LINE1_START_ADVANCE_MS
   );
-  const line2Start =
-    line1Start + LINE1.length * STAGGER_MS + T.lineGapAfter1;
-  const sunStart = line2Start + line2Len * STAGGER_MS + T.sunGapAfter2;
+  const line2Start = line1Start + LINE1.length * STAGGER_MS + T.lineGapAfter1;
+  const sunStart   = line2Start + line2Len * STAGGER_MS + T.sunGapAfter2;
   const flyOutStart = Math.max(
     0,
     sunStart + T.sunDuration + T.flyOutGapAfterSun - FLY_OUT_EARLIER_MS
@@ -273,21 +292,32 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
   const doorMotionStart = flyOutStart + T.flyOutMs;
   const doorOpenAt = Math.max(0, doorMotionStart - DOOR_OPEN_EARLIER_MS);
 
+  // ── Particle generation ──────────────────────────────────────────────────────
   const particles = useMemo(
     () =>
       taglineBoot
-        ? Array.from({ length: PARTICLE_COUNT }).map((_, i) => ({
-            id: i,
-            startX: Math.random() * width,
-            startY: Math.random() * height + 80,
-            size: Math.random() * 2.2 + 2.1,
-            duration: 9000 + Math.random() * 8000,
-            delay: Math.random() * 1400,
-          }))
+        ? Array.from({ length: PARTICLE_COUNT }).map((_, i) => {
+            const warm = i < Math.floor(PARTICLE_COUNT * 0.32); // 32% złote
+            return {
+              id: i,
+              startX: Math.random() * width,
+              startY: Math.random() * height + 80,
+              size: warm
+                ? Math.random() * 1.6 + 1.1   // złote — mniejsze
+                : Math.random() * 2.2 + 2.1,  // białe — jak wcześniej
+              duration: warm
+                ? 13000 + Math.random() * 8000 // złote — wolniejsze
+                : 9000 + Math.random() * 8000,
+              delay: Math.random() * 1600,
+              driftX: warm ? (Math.random() - 0.5) * 70 : 0,
+              warm,
+            };
+          })
         : [],
     [taglineBoot]
   );
 
+  // ── Audio ────────────────────────────────────────────────────────────────────
   const playDoorSound = async () => {
     try {
       const { sound } = await Audio.Sound.createAsync(require('../../assets/door.mp3'), {
@@ -304,16 +334,17 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     }
   };
 
+  // ── Master animation sequence ─────────────────────────────────────────────────
   useEffect(() => {
     if (!taglineBoot || line2Len === 0) return;
 
     const nextSlot = (taglineBoot.slotIndex + 1) % TAGLINE_ROTATION.length;
-
     const runFinish = () => {
       void AsyncStorage.setItem(SPLASH_TAGLINE_STORAGE_KEY, String(nextSlot));
       finishRef.current();
     };
 
+    // 1. Logo opacity — powolny luksusowy reveal ──────────────────────────────
     logoOpacity.value = withDelay(
       T.logoStart,
       withTiming(1, {
@@ -322,6 +353,28 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
       })
     );
 
+    // 2. Logo scale — wdech z 0.88 → 1.0, subtelna sprężyna na końcu ──────────
+    logoScale.value = withDelay(
+      T.logoStart,
+      withSequence(
+        withTiming(0.994, {
+          duration: Math.round(T.logoLightMs * 0.88),
+          easing: Easing.bezier(0.16, 1, 0.3, 1),
+        }),
+        withSpring(1, { damping: 14, stiffness: 90, mass: 0.6 })
+      )
+    );
+
+    // 3. Logo ambient glow ring — pojawia się po ~600ms
+    logoGlow.value = withDelay(
+      T.logoStart + 600,
+      withTiming(1, {
+        duration: Math.round(T.logoLightMs * 0.75),
+        easing: Easing.out(Easing.cubic),
+      })
+    );
+
+    // 4. Linia 1 — reveal liter ───────────────────────────────────────────────
     const line1Dur = Math.max(220, LINE1.length * STAGGER_MS + 100);
     line1Reveal.value = withDelay(
       line1Start,
@@ -331,6 +384,7 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
       })
     );
 
+    // 5. Linia 2 — reveal liter ───────────────────────────────────────────────
     const line2Dur = Math.max(220, line2Len * STAGGER_MS + 100);
     line2Reveal.value = withDelay(
       line2Start,
@@ -340,6 +394,7 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
       })
     );
 
+    // 6. Złota wiązka (główna) ─────────────────────────────────────────────────
     sunSweep.value = withDelay(
       sunStart,
       withTiming(1, {
@@ -348,11 +403,11 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
       })
     );
 
+    // 7. Odlot zawartości ─────────────────────────────────────────────────────
     backdropOpacity.value = withDelay(
       flyOutStart,
       withTiming(0, { duration: T.flyOutMs, easing: Easing.out(Easing.cubic) })
     );
-
     exitLift.value = withDelay(
       flyOutStart,
       withTiming(1, {
@@ -361,6 +416,17 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
       })
     );
 
+    // 8. Złota szczelina drzwi — bardziej detaliczna: micro-pulse + dłuższe wygaszanie
+    doorEdgeGlow.value = withDelay(
+      doorOpenAt,
+      withSequence(
+        withTiming(1, { duration: 75, easing: Easing.out(Easing.quad) }),
+        withTiming(0.74, { duration: 85, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: Math.round(T.doorDuration * 0.62), easing: Easing.out(Easing.cubic) })
+      )
+    );
+
+    // 9. Drzwi ───────────────────────────────────────────────────────────────
     doorOpen.value = withDelay(
       doorOpenAt,
       withTiming(
@@ -381,9 +447,10 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     }, Math.max(0, doorOpenAt - T.doorSoundLead));
 
     return () => clearTimeout(soundTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- jednorazowa sekwencja po znanym tagline
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taglineBoot]);
 
+  // ── Animated styles ───────────────────────────────────────────────────────────
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
@@ -396,6 +463,11 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     transform: [{ translateX: doorOpen.value * (width / 2 + 50) }],
   }));
 
+  // Złota krawędź przy otwieraniu drzwi
+  const doorEdgeStyle = useAnimatedStyle(() => ({
+    opacity: doorEdgeGlow.value,
+  }));
+
   const contentStyle = useAnimatedStyle(() => ({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -403,13 +475,24 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     zIndex: 10,
   }));
 
+  // Logo: opacity + scale + wylot w górę
   const logoStyle = useAnimatedStyle(() => ({
     opacity: logoOpacity.value,
+     
     transform: [
-      {
-        translateY: interpolate(exitLift.value, [0, 1], [0, EXIT_UP], Extrapolation.CLAMP),
-      },
-    ],
+      { scale: logoScale.value },
+      { translateY: interpolate(exitLift.value, [0, 1], [0, EXIT_UP], Extrapolation.CLAMP) },
+    ] as any,
+  }));
+
+  // Ambient glow ring za logo
+  const logoGlowRingStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(logoGlow.value, [0, 0.4, 1], [0, 0.6, 0.82], Extrapolation.CLAMP),
+     
+    transform: [
+      { scale: interpolate(logoGlow.value, [0, 1], [0.55, 1.02], Extrapolation.CLAMP) },
+      { translateY: interpolate(exitLift.value, [0, 1], [0, EXIT_UP], Extrapolation.CLAMP) },
+    ] as any,
   }));
 
   const textClusterStyle = useAnimatedStyle(() => ({
@@ -420,7 +503,7 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     ],
   }));
 
-  /** Wiązka — nieco dłuższy przejazd po osi X niż wcześniej */
+  // Główna złota wiązka
   const sunBandStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -430,6 +513,7 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
     opacity: interpolate(sunSweep.value, [0, 0.08, 0.92, 1], [0, 0.94, 0.94, 0], Extrapolation.CLAMP),
   }));
 
+  // ── Render ────────────────────────────────────────────────────────────────────
   if (!taglineBoot) {
     return (
       <View
@@ -441,27 +525,58 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
 
   return (
     <View style={styles.container} pointerEvents="box-none">
+      {/* Tło */}
       <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]} pointerEvents="none">
-        {/** Jedna warstwa — bez jasnych nakładek (wcześniej przy drzwiach zostawała „poświata”) */}
         <LinearGradient
           colors={['#0a0a0c', '#030303', '#000000']}
           start={{ x: 0.5, y: 0 }}
           end={{ x: 0.5, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
+        <LinearGradient
+          colors={['rgba(255,255,255,0.045)', 'rgba(255,255,255,0.0)', 'rgba(0,0,0,0.35)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
       </Animated.View>
 
+      {/* Drzwi ze złotą krawędzią */}
       <View style={styles.doorStage} pointerEvents="none">
-        {/** Pełna czerń — przy środku nie ma jaśniejszej krawędzi (#15151a) przy rozsuwaniu */}
-        <Animated.View style={[styles.doorLeft, styles.doorFillBlack, leftDoorStyle]} pointerEvents="none" />
-        <Animated.View style={[styles.doorRight, styles.doorFillBlack, rightDoorStyle]} pointerEvents="none" />
+        <Animated.View style={[styles.doorLeft, styles.doorFillBlack, leftDoorStyle]} pointerEvents="none">
+          <LinearGradient
+            colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.015)', 'rgba(0,0,0,0.38)']}
+            locations={[0, 0.45, 1]}
+            start={{ x: 0.06, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* Złota linia-szczelina na prawej krawędzi lewych drzwi */}
+          <Animated.View style={[styles.doorInnerEdgeRight, doorEdgeStyle]} />
+        </Animated.View>
+        <Animated.View style={[styles.doorRight, styles.doorFillBlack, rightDoorStyle]} pointerEvents="none">
+          <LinearGradient
+            colors={['rgba(0,0,0,0.38)', 'rgba(255,255,255,0.015)', 'rgba(255,255,255,0.07)']}
+            locations={[0, 0.55, 1]}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 0.94, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* Złota linia-szczelina na lewej krawędzi prawych drzwi */}
+          <Animated.View style={[styles.doorInnerEdgeLeft, doorEdgeStyle]} />
+        </Animated.View>
       </View>
 
       <Animated.View style={contentStyle} pointerEvents="none">
+        {/* Cząsteczki: 32% złote z dryfem, 68% białe */}
         {particles.map((p) => (
           <Particle key={p.id} {...p} />
         ))}
 
+        {/* Ambient glow ring — za logo, pojawia się po ~600ms */}
+        <Animated.View style={[styles.logoGlowRing, logoGlowRingStyle]} pointerEvents="none" />
+
+        {/* Logo */}
         <Animated.View style={[styles.logoWrapper, logoStyle]}>
           <Image
             source={require('../../assets/logo.png')}
@@ -470,46 +585,63 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
           />
         </Animated.View>
 
+        {/* Tekst + złote wiązki */}
         <Animated.View style={[styles.textCluster, textClusterStyle]}>
-        <View style={styles.textBlock}>
-          <View style={styles.sunClip}>
-            <View style={styles.linesUnderSun}>
-              <SplashWordWrappedLine text={LINE1} reveal={line1Reveal} lineId="l1" />
+          <View style={styles.textBlock}>
+            <View style={styles.sunClip}>
+              <View style={styles.linesUnderSun}>
+                <SplashWordWrappedLine text={LINE1} reveal={line1Reveal} lineId="l1" />
 
-              {taglineBoot ? (
-                <View style={styles.lineRowSecondWrap}>
-                  <SplashWordWrappedLine
-                    text={taglineBoot.line2}
-                    reveal={line2Reveal}
-                    lineId="l2"
-                  />
-                </View>
-              ) : null}
+                {taglineBoot ? (
+                  <View style={styles.lineRowSecondWrap}>
+                    <SplashWordWrappedLine
+                      text={taglineBoot.line2}
+                      reveal={line2Reveal}
+                      lineId="l2"
+                    />
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Jedna wiązka premium (core + halo), bez drugiego przejazdu */}
+              <Animated.View
+                style={[styles.sunBandWrap, sunBandStyle]}
+                pointerEvents="none"
+                needsOffscreenAlphaCompositing
+              >
+                <LinearGradient
+                  colors={[
+                    'transparent',
+                    'rgba(100, 62, 22, 0.2)',
+                    'rgba(168, 112, 38, 0.55)',
+                    'rgba(245, 210, 150, 1)',
+                    'rgba(195, 138, 48, 0.62)',
+                    'rgba(130, 82, 28, 0.22)',
+                    'transparent',
+                  ]}
+                  locations={[0, 0.18, 0.38, 0.5, 0.58, 0.78, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={[styles.sunBandGrad, Platform.OS === 'ios' ? styles.sunBlend : null]}
+                />
+                <LinearGradient
+                  colors={[
+                    'transparent',
+                    'rgba(248, 220, 140, 0.10)',
+                    'rgba(255, 235, 170, 0.26)',
+                    'rgba(255, 235, 170, 0.42)',
+                    'rgba(224, 180, 80, 0.16)',
+                    'rgba(180, 130, 40, 0.06)',
+                    'transparent',
+                  ]}
+                  locations={[0, 0.2, 0.43, 0.5, 0.58, 0.78, 1]}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={[styles.sunBandGradHalo, Platform.OS === 'ios' ? styles.sunBlend : null]}
+                />
+              </Animated.View>
             </View>
-
-            <Animated.View
-              style={[styles.sunBandWrap, sunBandStyle]}
-              pointerEvents="none"
-              needsOffscreenAlphaCompositing
-            >
-              <LinearGradient
-                colors={[
-                  'transparent',
-                  'rgba(100, 62, 22, 0.2)',
-                  'rgba(168, 112, 38, 0.55)',
-                  'rgba(245, 210, 150, 1)',
-                  'rgba(195, 138, 48, 0.62)',
-                  'rgba(130, 82, 28, 0.22)',
-                  'transparent',
-                ]}
-                locations={[0, 0.18, 0.38, 0.5, 0.58, 0.78, 1]}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={[styles.sunBandGrad, Platform.OS === 'ios' ? styles.sunBlend : null]}
-              />
-            </Animated.View>
           </View>
-        </View>
         </Animated.View>
       </Animated.View>
     </View>
@@ -517,7 +649,6 @@ export default function AppleSplashScreen({ onFinish }: { onFinish: () => void }
 }
 
 const styles = StyleSheet.create({
-  /** Przezroczysty — po zaniku backdropu i przy otwartych drzwiach widać aplikację pod spodem (nie czarną „podłogę”). */
   container: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
@@ -547,13 +678,58 @@ const styles = StyleSheet.create({
   doorFillBlack: {
     backgroundColor: '#000000',
   },
+  /** Złota krawędź na prawym boku lewych drzwi */
+  doorInnerEdgeRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 2.5,
+    backgroundColor: '#D4AF37',
+    shadowColor: '#D4AF37',
+    shadowRadius: 12,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  /** Złota krawędź na lewym boku prawych drzwi */
+  doorInnerEdgeLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 2.5,
+    backgroundColor: '#D4AF37',
+    shadowColor: '#D4AF37',
+    shadowRadius: 12,
+    shadowOpacity: 1,
+    shadowOffset: { width: 0, height: 0 },
+  },
   particle: {
     position: 'absolute',
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  particleWarm: {
+    backgroundColor: 'rgba(212,175,55,0.85)',
+  },
+  /** Ambient glow ring — podświetla logo od tyłu */
+  logoGlowRing: {
+    position: 'absolute',
+    width: LOGO_SIZE * 0.68,
+    height: LOGO_SIZE * 0.68,
+    borderRadius: (LOGO_SIZE * 0.68) / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.12)',
+    backgroundColor: 'transparent',
+    shadowColor: '#D4AF37',
+    shadowRadius: 56,
+    shadowOpacity: 0.72,
+    shadowOffset: { width: 0, height: 0 },
+    zIndex: 1,
   },
   logoWrapper: {
     width: LOGO_SIZE,
     height: LOGO_SIZE,
+    zIndex: 2,
   },
   logoImage: {
     width: '100%',
@@ -585,10 +761,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 4,
   },
-  /** Węższa wiązka — światło jedzie nad samym tekstem (nie „zasłania” całej szerokości) */
+  /** Główna wiązka — oryginalna szerokość */
   sunBandGrad: {
     width: width * 0.3,
     height: '112%',
+    alignSelf: 'center',
+  },
+  /** Halo jednej wiązki — detal, bez drugiego przejazdu */
+  sunBandGradHalo: {
+    position: 'absolute',
+    width: width * 0.45,
+    height: '118%',
     alignSelf: 'center',
   },
   sunBlend: {
@@ -627,12 +810,8 @@ const styles = StyleSheet.create({
     fontWeight: Platform.OS === 'ios' ? '500' : '600',
     letterSpacing: 2.75,
     ...Platform.select({
-      ios: {
-        fontFamily: 'AvenirNext-Medium',
-      },
-      android: {
-        fontFamily: 'sans-serif-medium',
-      },
+      ios: { fontFamily: 'AvenirNext-Medium' },
+      android: { fontFamily: 'sans-serif-medium' },
       default: {},
     }),
     textShadowColor: 'rgba(0,0,0,0.42)',

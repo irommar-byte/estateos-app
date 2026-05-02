@@ -247,6 +247,23 @@ function stripChatAttachmentDecorations(rawContent: string | undefined, attachme
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function parseDealReviewPayload(content?: string): { rating: number; review: string; senderId?: number | null } | null {
+  const raw = String(content || '').trim();
+  if (!raw.startsWith('[[DEAL_REVIEW]]')) return null;
+  try {
+    const parsed = JSON.parse(raw.slice('[[DEAL_REVIEW]]'.length));
+    const rating = Number(parsed?.rating || 0);
+    if (!Number.isFinite(rating) || rating < 1 || rating > 5) return null;
+    return {
+      rating: Math.round(rating),
+      review: String(parsed?.review || '').trim(),
+      senderId: Number(parsed?.senderId || 0) || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ==========================================
 // SUBCOMPONENTS
 // ==========================================
@@ -298,6 +315,9 @@ export default function DealroomChatScreen() {
   const [resolvedOfferId, setResolvedOfferId] = useState<any>(offerId || null);
   const [isListingOwner, setIsListingOwner] = useState(false);
   const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
+  const [myFinalRating, setMyFinalRating] = useState(0);
+  const [myFinalReview, setMyFinalReview] = useState('');
+  const [isSubmittingFinalReview, setIsSubmittingFinalReview] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
   const lastTypingTime = useRef(0);
@@ -803,10 +823,10 @@ export default function DealroomChatScreen() {
     return 'W trakcie negocjacji';
   }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, user?.id]);
 
-  const reserveWithdrawalDone = useMemo(
+  const transactionFinalized = useMemo(
     () =>
       messages.some((m) =>
-        /Decyzja właściciela: oferta została wycofana z publikacji|rezerwacja uzgodnionej ceny/i.test(
+        /Decyzja właściciela: oferta została wycofana z publikacji|transakcja sfinalizowana|rezerwacja uzgodnionej ceny/i.test(
           String(m?.content || '')
         )
       ),
@@ -826,8 +846,36 @@ export default function DealroomChatScreen() {
       user?.id &&
       acceptedAppointment?.event?.proposedDate &&
       presentationHappened &&
-      !reserveWithdrawalDone
+      !transactionFinalized
   );
+
+  const finalReviews = useMemo(() => {
+    return messages
+      .map((m) => ({ msg: m, review: parseDealReviewPayload(String(m?.content || '')) }))
+      .filter((x) => !!x.review)
+      .map((x) => ({
+        ...x.review!,
+        senderId: Number(x.msg?.senderId ?? x.review?.senderId ?? 0) || null,
+        senderName: formatActorLabel(x.msg, user?.id),
+        createdAt: x.msg?.createdAt,
+      }));
+  }, [messages, user?.id]);
+
+  const myFinalReviewEntry = useMemo(
+    () => finalReviews.find((r) => String(r.senderId ?? '') === String(user?.id ?? '')) || null,
+    [finalReviews, user?.id]
+  );
+
+  const partnerFinalReviewEntry = useMemo(
+    () => finalReviews.find((r) => String(r.senderId ?? '') !== String(user?.id ?? '')) || null,
+    [finalReviews, user?.id]
+  );
+
+  useEffect(() => {
+    if (!myFinalReviewEntry) return;
+    setMyFinalRating(Number(myFinalReviewEntry.rating || 0));
+    setMyFinalReview(String(myFinalReviewEntry.review || ''));
+  }, [myFinalReviewEntry]);
 
   const handlePostPresentationReserve = useCallback(async () => {
     if (!token || !dealId || !resolvedOfferId || !user?.id) return;
@@ -867,6 +915,37 @@ export default function DealroomChatScreen() {
       ]
     );
   }, [token, dealId, resolvedOfferId, user?.id, fetchMessages]);
+
+  const handleSubmitFinalReview = useCallback(async () => {
+    if (!token || !dealId || !user?.id) return;
+    if (!transactionFinalized) return;
+    if (myFinalRating < 1 || myFinalRating > 5) {
+      Alert.alert('Ocena', 'Wybierz liczbę gwiazdek od 1 do 5.');
+      return;
+    }
+    setIsSubmittingFinalReview(true);
+    try {
+      const payload = `[[DEAL_REVIEW]]${JSON.stringify({
+        rating: myFinalRating,
+        review: myFinalReview.trim(),
+        senderId: Number(user.id),
+      })}`;
+      const ok = await postDealroomTextMessage({
+        dealId: Number(dealId),
+        token,
+        content: payload,
+      });
+      if (!ok) {
+        Alert.alert('Błąd', 'Nie udało się zapisać opinii. Spróbuj ponownie.');
+        return;
+      }
+      await fetchMessages();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Dziękujemy', 'Twoja ocena została zapisana.');
+    } finally {
+      setIsSubmittingFinalReview(false);
+    }
+  }, [token, dealId, user?.id, transactionFinalized, myFinalRating, myFinalReview, fetchMessages]);
 
   useEffect(() => {
     if (appointmentStatus === 'PENDING') {
@@ -969,6 +1048,11 @@ export default function DealroomChatScreen() {
           proposedDateIso: String(entry.event.proposedDate),
           fallbackTitle: title,
           viewerUserId: user?.id,
+          viewerEmail: user?.email ?? null,
+          viewerPhone:
+            user?.phone && String(user.phone).trim() !== '' && user.phone !== 'Brak numeru'
+              ? user.phone
+              : null,
         });
       }
 
@@ -1008,7 +1092,22 @@ export default function DealroomChatScreen() {
   }, [dealId, negotiationEvents, resolvedOfferId, user?.id, token, title]);
 
   const handleAcceptAppointment = async (event: any) => {
-    if (!token || !dealId || !event?.appointmentId) return;
+    const appointmentId = Number(
+      event?.appointmentId ??
+      event?.id ??
+      event?.eventId ??
+      event?.targetId ??
+      event?.appointment?.id ??
+      0
+    );
+    if (!token || !dealId) {
+      Alert.alert('Brak sesji', 'Odśwież czat i spróbuj ponownie.');
+      return;
+    }
+    if (!Number.isFinite(appointmentId) || appointmentId <= 0) {
+      Alert.alert('Brak identyfikatora terminu', 'Nie można zaakceptować tej propozycji. Otwórz „Zmień” i wyślij termin ponownie.');
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/actions`, {
         method: 'POST',
@@ -1018,7 +1117,7 @@ export default function DealroomChatScreen() {
         },
         body: JSON.stringify({
           type: 'APPOINTMENT_RESPOND',
-          appointmentId: event.appointmentId,
+          appointmentId,
           decision: 'ACCEPT',
           message: 'Akceptuję termin',
         }),
@@ -1028,7 +1127,8 @@ export default function DealroomChatScreen() {
         Alert.alert('Błąd', body || 'Nie udało się zaakceptować terminu.');
         return;
       }
-      fetchMessages();
+      await fetchMessages();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       Alert.alert('Błąd', 'Nie udało się zaakceptować terminu.');
     }
@@ -1136,7 +1236,16 @@ export default function DealroomChatScreen() {
                     })}
                   </View>
                 )}
-                {latestActionableAppointmentFromOther && !isAppointmentProposalLocked && (
+                {appointmentStatus === 'ACCEPTED' && (
+                  <View style={styles.royalSealWrap}>
+                    <View style={styles.royalSealOuter}>
+                      <Text style={styles.royalSealTop}>ESTATEOS™</Text>
+                      <Text style={styles.royalSealMain}>ODBYTE</Text>
+                      <Text style={styles.royalSealBottom}>TERMIN ZAAKCEPTOWANY</Text>
+                    </View>
+                  </View>
+                )}
+                {latestActionableAppointmentFromOther && !isAppointmentProposalLocked && appointmentStatus !== 'ACCEPTED' && (
                   <View style={styles.actionRow}>
                     <Pressable
                       style={[styles.actionBtn, styles.actionPrimary]}
@@ -1220,7 +1329,18 @@ export default function DealroomChatScreen() {
                     })}
                   </View>
                 )}
-                {latestActionableBidFromOther && acceptedPrice === 0 && (
+                {priceStatus === 'ACCEPTED' && (
+                  <View style={styles.royalSealWrap}>
+                    <View style={styles.royalSealOuter}>
+                      <Text style={styles.royalSealTop}>ESTATEOS™</Text>
+                      <Text style={styles.royalSealMain}>{transactionFinalized ? 'SFINALIZOWANO' : 'AKCEPTACJA CENY'}</Text>
+                      <Text style={styles.royalSealBottom}>
+                        CENA OSTATECZNA: {acceptedPrice.toLocaleString('pl-PL')} PLN
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && (
                   <View style={styles.actionRow}>
                     <Pressable 
                       style={[styles.actionBtn, styles.actionPrimary]} 
@@ -1240,7 +1360,7 @@ export default function DealroomChatScreen() {
             )}
           </View>
 
-          {showPostPresentationReserve ? (
+          {showPostPresentationReserve && !transactionFinalized ? (
             <View style={styles.reserveAfterPresentation}>
               <BlurView intensity={50} tint="dark" style={styles.reserveAfterPresentationInner}>
                 <Text style={styles.reserveAfterPresentationTitle}>Po prezentacji</Text>
@@ -1260,6 +1380,59 @@ export default function DealroomChatScreen() {
             </View>
           ) : null}
 
+          {transactionFinalized ? (
+            <View style={styles.finalizedWrap}>
+              <BlurView intensity={72} tint="dark" style={styles.finalizedInner}>
+                <Text style={styles.finalizedTitle}>Gratulacje! Transakcja została zamknięta.</Text>
+                <Text style={styles.finalizedSubtitle}>
+                  Oferta jest wycofana z rynku i przeniesiona do sekcji sfinalizowane / zarchiwizowane.
+                </Text>
+                <Text style={styles.finalizedSectionLabel}>Twoja ocena kontrahenta</Text>
+                <View style={styles.ratingRow}>
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Pressable
+                      key={`star-${star}`}
+                      onPress={() => setMyFinalRating(star)}
+                      style={({ pressed }) => [styles.starBtn, pressed && { opacity: 0.85 }]}
+                    >
+                      <Text style={[styles.starGlyph, myFinalRating >= star && styles.starGlyphOn]}>★</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  value={myFinalReview}
+                  onChangeText={setMyFinalReview}
+                  placeholder="Krótka opinia o przebiegu transakcji (opcjonalnie)"
+                  placeholderTextColor={COLORS.textMuted}
+                  style={styles.finalizedInput}
+                  multiline
+                />
+                <Pressable
+                  style={[styles.finalizedBtn, (isSubmittingFinalReview || myFinalRating < 1) && styles.finalizedBtnDisabled]}
+                  onPress={() => void handleSubmitFinalReview()}
+                  disabled={isSubmittingFinalReview || myFinalRating < 1}
+                >
+                  {isSubmittingFinalReview ? (
+                    <ActivityIndicator color="#041208" />
+                  ) : (
+                    <Text style={styles.finalizedBtnTxt}>{myFinalReviewEntry ? 'Zaktualizuj opinię' : 'Wyślij opinię'}</Text>
+                  )}
+                </Pressable>
+                {partnerFinalReviewEntry ? (
+                  <View style={styles.partnerReviewCard}>
+                    <Text style={styles.partnerReviewTitle}>Ocena od drugiej strony</Text>
+                    <Text style={styles.partnerReviewStars}>{'★'.repeat(partnerFinalReviewEntry.rating)}{'☆'.repeat(5 - partnerFinalReviewEntry.rating)}</Text>
+                    {partnerFinalReviewEntry.review ? (
+                      <Text style={styles.partnerReviewBody}>„{partnerFinalReviewEntry.review}”</Text>
+                    ) : null}
+                  </View>
+                ) : (
+                  <Text style={styles.partnerReviewPending}>Druga strona jeszcze nie dodała swojej opinii.</Text>
+                )}
+              </BlurView>
+            </View>
+          ) : null}
+
           {/* Chat Messages */}
           <ScrollView
             ref={scrollViewRef}
@@ -1271,6 +1444,7 @@ export default function DealroomChatScreen() {
               const isMe = msg.senderId === user?.id;
               const dealEvent = parseDealEvent(msg);
               if (dealEvent?.entity === 'BID' || dealEvent?.entity === 'APPOINTMENT') return null;
+              if (String(msg?.content || '').trim().startsWith('[[DEAL_REVIEW]]')) return null;
               
               const attachment = resolveAttachmentFromMessage(msg);
               const visibleText = stripChatAttachmentDecorations(msg.content, attachment);
@@ -1397,7 +1571,9 @@ export default function DealroomChatScreen() {
         proposedDate={selectedAppointmentEvent?.proposedDate || null}
         history={selectedAppointmentHistory}
         title="Termin prezentacji"
-        onClose={() => setSelectedAppointmentEvent(null)}
+        onClose={() => {
+          setSelectedAppointmentEvent(null);
+        }}
         onDone={fetchMessages}
       />
     </View>
@@ -1516,6 +1692,109 @@ const styles = StyleSheet.create({
   actionSecondary: { backgroundColor: COLORS.surfaceElevated },
   actionPrimaryTxt: { color: '#000', fontWeight: '700', fontSize: 13 },
   actionSecondaryTxt: { color: COLORS.textBase, fontWeight: '600', fontSize: 13 },
+  royalSealWrap: {
+    marginTop: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  royalSealOuter: {
+    minWidth: 240,
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(212,175,55,0.88)',
+    backgroundColor: 'rgba(16,16,18,0.92)',
+    alignItems: 'center',
+    shadowColor: '#D4AF37',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+  },
+  royalSealTop: {
+    color: 'rgba(212,175,55,0.94)',
+    fontSize: 10,
+    letterSpacing: 2.2,
+    fontWeight: '900',
+  },
+  royalSealMain: {
+    color: '#F5E1A4',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    marginTop: 1,
+    marginBottom: 1,
+  },
+  royalSealBottom: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 10,
+    letterSpacing: 1.5,
+    fontWeight: '700',
+  },
+  finalizedWrap: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.34)',
+  },
+  finalizedInner: {
+    padding: 16,
+    backgroundColor: 'rgba(14,22,16,0.92)',
+  },
+  finalizedTitle: { color: '#eaffef', fontSize: 17, fontWeight: '800', marginBottom: 6, letterSpacing: -0.2 },
+  finalizedSubtitle: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 12, fontWeight: '500' },
+  finalizedSectionLabel: { color: '#a8f1bf', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  ratingRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  starBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  starGlyph: { color: 'rgba(255,255,255,0.38)', fontSize: 21, fontWeight: '900', lineHeight: 24 },
+  starGlyphOn: { color: '#FFD60A' },
+  finalizedInput: {
+    minHeight: 68,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    color: COLORS.textBase,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    textAlignVertical: 'top',
+    marginBottom: 10,
+  },
+  finalizedBtn: {
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    marginBottom: 10,
+  },
+  finalizedBtnDisabled: { opacity: 0.45 },
+  finalizedBtnTxt: { color: '#041208', fontSize: 13, fontWeight: '900', letterSpacing: 0.4, textTransform: 'uppercase' },
+  partnerReviewCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 11,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  partnerReviewTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  partnerReviewStars: { color: '#FFD60A', fontSize: 15, fontWeight: '900', marginBottom: 4, letterSpacing: 0.4 },
+  partnerReviewBody: { color: COLORS.textBase, fontSize: 13, lineHeight: 18, fontWeight: '500' },
+  partnerReviewPending: { color: COLORS.textMuted, fontSize: 12, lineHeight: 18, fontWeight: '500' },
 
   // Chat Area
   chatArea: { padding: 16, paddingBottom: 40 },

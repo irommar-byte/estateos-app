@@ -32,6 +32,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
+import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 
 // --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
@@ -108,6 +109,9 @@ function markerLuxuryGradient(accentHex: string): [string, string, string] {
   if (accentHex === '#0A84FF') {
     return ['#8ECBFF', '#3DA3FF', '#0066CC'];
   }
+  if (accentHex === '#FF9F0A') {
+    return ['#FFD08A', '#FFB648', '#FF8A00'];
+  }
   return ['#6EE7B7', '#22C993', '#0A9F6E'];
 }
 
@@ -133,10 +137,31 @@ function formatClusterCount(n: number) {
 
 const API_URL = 'https://estateos.pl';
 const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
+const PARTNER_MARKER_COLOR = '#FF9F0A';
+const SELL_MARKER_COLOR = '#10b981';
+const RENT_MARKER_COLOR = '#0A84FF';
 
 const RECENT_SEARCH_KEY = '@estateos_home_search_recent';
 const MAX_RECENT_SEARCHES = 8;
 const QUICK_CITIES = [...STRICT_CITIES];
+const FAVORITES_MAP_HEARTS = [
+  { left: '8%', top: '20%', size: 12, drift: -8 },
+  { left: '16%', top: '30%', size: 10, drift: 10 },
+  { left: '25%', top: '16%', size: 9, drift: -6 },
+  { left: '34%', top: '28%', size: 11, drift: 8 },
+  { left: '44%', top: '18%', size: 12, drift: -9 },
+  { left: '56%', top: '30%', size: 10, drift: 7 },
+  { left: '66%', top: '17%', size: 9, drift: -7 },
+  { left: '76%', top: '29%', size: 11, drift: 9 },
+  { left: '86%', top: '21%', size: 10, drift: -8 },
+  { left: '11%', top: '58%', size: 10, drift: 7 },
+  { left: '23%', top: '66%', size: 12, drift: -10 },
+  { left: '36%', top: '60%', size: 10, drift: 8 },
+  { left: '49%', top: '68%', size: 11, drift: -7 },
+  { left: '62%', top: '61%', size: 9, drift: 6 },
+  { left: '74%', top: '67%', size: 12, drift: -9 },
+  { left: '87%', top: '59%', size: 10, drift: 7 },
+] as const;
 
 function normalizeSearchText(s: string) {
   return s
@@ -214,10 +239,49 @@ const formatMarkerPrice = (price: string) => {
 const getTransactionBadge = (rawTransactionType: unknown) => {
   const normalized = String(rawTransactionType || '').toUpperCase();
   if (normalized === 'RENT') {
-    return { label: 'WYNAJEM', color: '#0A84FF' };
+    return { label: 'WYNAJEM', color: RENT_MARKER_COLOR };
   }
-  return { label: 'SPRZEDAŻ', color: '#10b981' };
+  return { label: 'SPRZEDAŻ', color: SELL_MARKER_COLOR };
 };
+
+function isPartnerOffer(raw: any): boolean {
+  const candidates = [
+    raw?.role,
+    raw?.userRole,
+    raw?.ownerRole,
+    raw?.publisherRole,
+    raw?.accountType,
+    raw?.source,
+    raw?.listingSource,
+    raw?.authorType,
+    raw?.user?.role,
+    raw?.owner?.role,
+    raw?.seller?.role,
+    raw?.user?.planType,
+    raw?.owner?.planType,
+    raw?.seller?.planType,
+  ]
+    .map((v) => String(v || '').toUpperCase())
+    .filter(Boolean);
+
+  if (
+    raw?.isPartner === true ||
+    raw?.partner === true ||
+    raw?.isAgency === true ||
+    raw?.agency === true ||
+    raw?.isProAgency === true
+  ) {
+    return true;
+  }
+
+  return candidates.some((v) => v.includes('PARTNER') || v.includes('AGENCY'));
+}
+
+function offerMarkerAccent(raw: any): string {
+  if (isPartnerOffer(raw)) return PARTNER_MARKER_COLOR;
+  const tx = String(raw?.transactionType || '').toUpperCase();
+  return tx === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
+}
 
 const formatOfferPublishDate = (raw: any) => {
   const value =
@@ -489,6 +553,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     requireFurnished: false,
     pushNotifications: !!isRadarActive,
     matchThreshold: 100,
+    favoritesNotifyPriceChange: true,
+    favoritesNotifyDealProposals: true,
+    favoritesNotifyIncludeAmounts: false,
+    favoritesNotifyStatusChange: true,
+    favoritesNotifyNewSimilar: true,
   };
   const defaultFavoritesRadarFilters: RadarFilters = {
     ...defaultRadarFilters,
@@ -830,8 +899,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     );
   }, [advancedFilters]);
 
-  const modeAccentColor = advancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
-  const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? '#0A84FF' : '#10b981';
+  const modeAccentColor = advancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
+  const draftModeAccentColor = draftAdvancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 
   const renderLuxuryCluster = useCallback(
     (clusterData: any) => {
@@ -1329,6 +1398,46 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const applyFavoritesCalibration = async (filtersToApply: RadarFilters) => {
     setFavoritesRadarFilters(filtersToApply);
     setIsFavoritesRadarEnabled(filtersToApply.pushNotifications);
+    // Preferencje Ulubionych → backend (może ignorować nieznane pola; ważne, by kontrakt nie blokował).
+    void (async () => {
+      try {
+        if (user?.id) {
+          await fetch(`${API_URL}/api/radar/preferences`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.id,
+              variant: 'FAVORITES',
+              pushNotifications: filtersToApply.pushNotifications !== false,
+              favoritesNotifyPriceChange: !!filtersToApply.favoritesNotifyPriceChange,
+              favoritesNotifyDealProposals: !!filtersToApply.favoritesNotifyDealProposals,
+              favoritesNotifyIncludeAmounts: !!filtersToApply.favoritesNotifyIncludeAmounts,
+              favoritesNotifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
+              favoritesNotifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
+            }),
+          });
+        }
+      } catch {
+        // noop
+      }
+    })();
+
+    // Preferencje push per-device (produkcyjnie: backend może upsert po expoPushToken).
+    if (token) {
+      void syncPushDevicePreferences({
+        authToken: token,
+        devicePreferences: {
+          favorites: {
+            enabled: filtersToApply.pushNotifications !== false,
+            notifyPriceChange: !!filtersToApply.favoritesNotifyPriceChange,
+            notifyDealProposals: !!filtersToApply.favoritesNotifyDealProposals,
+            notifyIncludeAmounts: !!filtersToApply.favoritesNotifyIncludeAmounts,
+            notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
+            notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
+          },
+        },
+      });
+    }
     setShowFavoritesCalibration(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
@@ -1652,21 +1761,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         {...(Platform.OS === 'ios'
           ? {}
           : {
-              radius: 56,
+              radius: 52,
               maxZoom: 20,
               minZoom: 1,
               minPoints: 2,
               extent: 512,
-              animationEnabled: true,
+              animationEnabled: false,
               clusterColor: modeAccentColor,
               clusterTextColor: '#FFFFFF',
               renderCluster: renderLuxuryCluster,
-              spiralEnabled: true,
+              spiralEnabled: false,
+              preserveClusterPressBehavior: true,
+              edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
             })}
       >
         {activeOffers.map((offer, idx) => {
           const isSelected = activeIndex === idx;
-          const luxColors = markerLuxuryGradient(modeAccentColor);
+          const markerAccent = offerMarkerAccent(offer.raw);
+          const luxColors = markerLuxuryGradient(markerAccent);
           const lat = Number(offer.lat);
           const lng = Number(offer.lng);
           if (!hasFiniteCoords(lat, lng)) return null;
@@ -1674,14 +1786,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <Marker
               key={String(offer.id ?? idx)}
               coordinate={{ latitude: lat, longitude: lng }}
-              tracksViewChanges={isSelected}
+              tracksViewChanges={false}
               onPress={() => {
                 Haptics.selectionAsync();
                 focusOffer(idx);
                 listRef.current?.scrollToIndex({ index: idx, animated: true });
               }}
             >
-              <View style={[styles.markerOuter, isSelected && styles.markerOuterSelected, { shadowColor: modeAccentColor }]}>
+              <View style={[styles.markerOuter, isSelected && styles.markerOuterSelected, { shadowColor: markerAccent }]}>
                 <LinearGradient
                   colors={luxColors}
                   start={{ x: 0.12, y: 0 }}
@@ -1703,6 +1815,37 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           );
         })}
       </RadarMapComponent>
+
+      {showOnlyFavorites && (
+        <View pointerEvents="none" style={styles.favoritesMapDecorLayer}>
+          {FAVORITES_MAP_HEARTS.map((h, idx) => (
+            <Animated.View
+              key={`map-heart-${idx}`}
+              style={[
+                styles.favoritesMapHeart,
+                {
+                  left: h.left,
+                  top: h.top,
+                  transform: [
+                    { translateX: -h.size / 2 },
+                    { translateY: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0, h.drift] }) },
+                    { scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.14] }) },
+                  ],
+                  opacity: isFavoritesRadarEnabled
+                    ? favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.64] })
+                    : 0.18,
+                },
+              ]}
+            >
+              <Ionicons
+                name={idx % 4 === 0 ? 'heart' : idx % 7 === 0 ? 'heart-outline' : 'sparkles-outline'}
+                size={h.size}
+                color={idx % 3 === 0 ? 'rgba(255,141,196,0.85)' : 'rgba(246,119,178,0.72)'}
+              />
+            </Animated.View>
+          ))}
+        </View>
+      )}
 
       {isSearchFocused && (
         <Pressable
@@ -2687,6 +2830,13 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  favoritesMapDecorLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 6,
+  },
+  favoritesMapHeart: {
+    position: 'absolute',
   },
   radarToggleContainer: {
     position: 'absolute',

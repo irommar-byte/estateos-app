@@ -42,7 +42,7 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
   for (const m of sorted) {
     const body = String(m?.content ?? m?.text ?? '');
     if (FINALIZED_RX.test(body)) {
-      return 'Po prezentacji: oferta wycofana z publikacji — sprawdź czat (rezerwacja uzgodnień)';
+      return 'Transakcja sfinalizowana: oferta wycofana z publikacji i przeniesiona do archiwum';
     }
   }
 

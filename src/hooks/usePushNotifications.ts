@@ -29,6 +29,59 @@ Notifications.setNotificationHandler({
 
 const PUSH_REGISTER_URL = `${API_URL}/api/notifications/device`;
 
+const POST_REGISTER_ATTEMPTS = 3;
+const POST_RETRY_DELAY_MS = 600;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function syncPushDevicePreferences(params: {
+  authToken: string;
+  /** Preferencje per-device (np. Ulubione / Radar) — backend może ignorować nieznane pola. */
+  devicePreferences: Record<string, any>;
+}): Promise<boolean> {
+  const normalizedAuthToken =
+    params.authToken && params.authToken.trim()
+      ? params.authToken.trim().startsWith('Bearer ')
+        ? params.authToken.trim().slice('Bearer '.length).trim()
+        : params.authToken.trim()
+      : null;
+  if (!Device.isDevice || !normalizedAuthToken) return false;
+
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) return false;
+
+    let pushToken = (await AsyncStorage.getItem('pushToken')) || '';
+    if (!pushToken) {
+      pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+      if (pushToken) await AsyncStorage.setItem('pushToken', pushToken);
+    }
+    if (!pushToken) return false;
+
+    const payload = {
+      expoPushToken: pushToken,
+      platform: Platform.OS.toUpperCase(),
+      deviceModel: Device.modelName ?? 'Unknown',
+      appVersion: Constants.expoConfig?.version ?? '1.0',
+      devicePreferences: params.devicePreferences,
+    };
+
+    const res = await fetch(PUSH_REGISTER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${normalizedAuthToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
 
@@ -87,25 +140,46 @@ export function usePushNotifications(authToken: string | null) {
         appVersion: Constants.expoConfig?.version ?? '1.0',
       };
 
-      try {
-        const response = await fetch(PUSH_REGISTER_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${normalizedAuthToken}`,
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
+      let registerPostOk = false;
+      let lastPostNetworkError: unknown;
+
+      for (let attempt = 1; attempt <= POST_REGISTER_ATTEMPTS; attempt++) {
+        try {
+          const response = await fetch(PUSH_REGISTER_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${normalizedAuthToken}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          if (response.ok) {
+            registerPostOk = true;
+            break;
+          }
           const body = await response.text().catch(() => '');
           console.warn('⚠️ Push: backend odrzucił token', response.status, body?.slice(0, 200));
-          return false;
+          break;
+        } catch (e) {
+          lastPostNetworkError = e;
+          if (attempt < POST_REGISTER_ATTEMPTS) {
+            await sleep(POST_RETRY_DELAY_MS);
+          }
         }
-      } catch (e) {
-        console.error(
-          `❌ Push: fetch ${PUSH_REGISTER_URL} — backend niedostępny lub TLS/DNS.`,
-          e
-        );
+      }
+
+      if (!registerPostOk) {
+        if (lastPostNetworkError != null) {
+          console.error(
+            [
+              `❌ Push: po ${POST_REGISTER_ATTEMPTS} próbach POST ${PUSH_REGISTER_URL}`,
+              'TypeError „Network request failed” = brak odpowiedzi sieciowej (DNS, TLS, zerwane Wi‑Fi/5G, timeout), zwykle nie 401/500 z samego API.',
+              `Test na iPhonie (Safari): otwórz GET ${PUSH_REGISTER_URL} — po deployu Next oczekuj JSON z ok.`,
+              `SSH: curl -sS ${PUSH_REGISTER_URL}`,
+            ].join(' '),
+            lastPostNetworkError
+          );
+        }
         return false;
       }
 

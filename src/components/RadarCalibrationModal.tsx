@@ -66,6 +66,16 @@ export type RadarFilters = {
   requireFurnished: boolean;
   pushNotifications: boolean;
   matchThreshold: number;
+  /** Ulubione: powiadom o zmianie ceny obserwowanej oferty. */
+  favoritesNotifyPriceChange: boolean;
+  /** Ulubione: powiadom, gdy pojawi się nowa propozycja / negocjacja dotycząca ulubionej. */
+  favoritesNotifyDealProposals: boolean;
+  /** Ulubione: czy w powiadomieniu push pokazywać konkretną kwotę (jeśli dotyczy). */
+  favoritesNotifyIncludeAmounts: boolean;
+  /** Ulubione: powiadom o zmianie statusu (wycofana, sprzedana, zarchiwizowana). */
+  favoritesNotifyStatusChange: boolean;
+  /** Ulubione: powiadom o nowych ofertach podobnych do ulubionych (rekomendacje). */
+  favoritesNotifyNewSimilar: boolean;
 };
 
 type Props = {
@@ -357,6 +367,10 @@ export default function RadarCalibrationModal({
     pendingFiltersRef.current = draftFilters;
     setRitualMatchingOffersCount(getMatchingOffersCountPreview ? getMatchingOffersCountPreview(draftFilters) : matchingOffersCount);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (isFavoritesVariant) {
+      void onApply(draftFilters);
+      return;
+    }
     setShowApplyRitual(true);
   };
 
@@ -438,8 +452,30 @@ export default function RadarCalibrationModal({
               <Pressable
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  handleFilterSelect('calibrationMode', 'MAP');
-                  setDraftFilters(p => ({ ...p, matchThreshold: 100, maxPrice: priceRange.max, minArea: 0, minYear: 1900, selectedDistricts: [], pushNotifications: false }));
+                  if (!isFavoritesVariant) {
+                    handleFilterSelect('calibrationMode', 'MAP');
+                  }
+                  setDraftFilters((p) =>
+                    isFavoritesVariant
+                      ? {
+                          ...p,
+                          pushNotifications: false,
+                          favoritesNotifyPriceChange: true,
+                          favoritesNotifyDealProposals: true,
+                          favoritesNotifyIncludeAmounts: false,
+                          favoritesNotifyStatusChange: true,
+                          favoritesNotifyNewSimilar: true,
+                        }
+                      : {
+                          ...p,
+                          matchThreshold: 100,
+                          maxPrice: priceRange.max,
+                          minArea: 0,
+                          minYear: 1900,
+                          selectedDistricts: [],
+                          pushNotifications: false,
+                        }
+                  );
                 }}
                 style={styles.resetBtn}
               >
@@ -450,23 +486,39 @@ export default function RadarCalibrationModal({
             <ScrollView
               showsVerticalScrollIndicator={false}
               scrollEnabled={!isGestureLocked}
-              contentContainerStyle={{ padding: 16, paddingBottom: Math.max(150, keyboardHeight + 24) }}
+              contentContainerStyle={{
+                padding: 16,
+                paddingBottom: radarAwake ? Math.max(150, keyboardHeight + 24) : Math.max(32, keyboardHeight + 24),
+              }}
             >
               
-              {/* === TWOJA ORYGINALNA SEKCJA: AKTYWNY RADAR I OBSZAR === */}
-              <Text style={[styles.sectionTitle, { marginTop: 0 }]}>AKTYWNY RADAR I OBSZAR</Text>
+              {/* === SEKCJA: AKTYWNY RADAR / ULUBIONE === */}
+              <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
+                {isFavoritesVariant ? 'ULUBIONE — POWIADOMIENIA' : 'AKTYWNY RADAR I OBSZAR'}
+              </Text>
               <View style={[styles.glassCard, { backgroundColor: COLORS.glassCardSolid, borderColor: draftFilters.pushNotifications ? accentMetal : COLORS.border }]}>
                 {isFavoritesVariant && (
                   <View pointerEvents="none" style={styles.favoritesSparkleLayer}>
-                    {Array.from({ length: 16 }).map((_, i) => (
+                    {Array.from({ length: 36 }).map((_, i) => (
                       <Ionicons
                         key={`spark-${i}`}
-                        name={i % 3 === 0 ? 'heart' : 'sparkles-outline'}
-                        size={i % 3 === 0 ? 9 : 8}
-                        color={i % 2 === 0 ? 'rgba(231,167,200,0.58)' : 'rgba(255,255,255,0.35)'}
+                        name={i % 4 === 0 ? 'heart' : i % 7 === 0 ? 'heart-outline' : 'sparkles-outline'}
+                        size={i % 4 === 0 ? 10 : i % 7 === 0 ? 10 : 8}
+                        color={
+                          i % 5 === 0
+                            ? 'rgba(255,135,195,0.55)'
+                            : i % 2 === 0
+                              ? 'rgba(231,167,200,0.62)'
+                              : 'rgba(255,255,255,0.28)'
+                        }
                         style={[
                           styles.favoritesSparkle,
-                          { left: 8 + ((i * 37) % 290), top: 8 + ((i * 23) % 74), transform: [{ rotate: `${(i * 27) % 360}deg` }] },
+                          {
+                            left: 6 + ((i * 31) % 302),
+                            top: 6 + ((i * 19) % 92),
+                            transform: [{ rotate: `${(i * 19) % 360}deg` }],
+                            opacity: 0.5 + ((i % 4) * 0.12),
+                          },
                         ]}
                       />
                     ))}
@@ -496,150 +548,279 @@ export default function RadarCalibrationModal({
                   />
                 </View>
 
-                <Animated.View
-                  pointerEvents={radarAwake ? 'auto' : 'none'}
-                  style={sleepingSectionStyle}
-                >
-                {/* Rozwijana Skala Tolerancji (Tylko jak Radar włączony) */}
-                {radarAwake && (
-                  <Animated.View entering={FadeIn} exiting={FadeOut} style={thresholdRevealStyle}>
-                    <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                      <View style={[styles.divider, { backgroundColor: COLORS.border, marginBottom: 16 }]} />
-                      
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                        <View style={{ flex: 1, paddingRight: 16 }}>
-                          <Text style={{ fontSize: 16, fontWeight: '800', color: currentIntelligence.color, marginBottom: 4 }}>{currentIntelligence.title}</Text>
-                          <Text style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 16 }}>{currentIntelligence.desc}</Text>
-                        </View>
-                        <Text style={{ fontSize: 32, fontWeight: '900', color: currentIntelligence.color, fontVariant: ['tabular-nums'] }}>{draftFilters.matchThreshold}%</Text>
-                      </View>
+                {/* Poniżej: dopiero po włączeniu nasłuchu. */}
+                {radarAwake && !isFavoritesVariant && (
+                  <Animated.View
+                    entering={FadeIn.duration(220)}
+                    layout={Layout.springify().damping(18).stiffness(220)}
+                    pointerEvents="auto"
+                    style={sleepingSectionStyle}
+                  >
+                    <Animated.View entering={FadeIn.duration(180)} style={thresholdRevealStyle}>
+                      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                        <View style={[styles.divider, { backgroundColor: COLORS.border, marginBottom: 16 }]} />
 
-                      {/* Suwak 25-kresek (Zgodnie z oryginałem, naprawiony) */}
-                      <View 
-                        style={styles.customSliderContainer}
-                        {...thresholdPan.panHandlers}
-                        onLayout={(e) => { thresholdTrackWidth.current = Math.max(80, e.nativeEvent.layout.width); }}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                          <View style={{ flex: 1, paddingRight: 16 }}>
+                            <Text style={{ fontSize: 16, fontWeight: '800', color: currentIntelligence.color, marginBottom: 4 }}>{currentIntelligence.title}</Text>
+                            <Text style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 16 }}>{currentIntelligence.desc}</Text>
+                          </View>
+                          <Text style={{ fontSize: 32, fontWeight: '900', color: currentIntelligence.color, fontVariant: ['tabular-nums'] }}>{draftFilters.matchThreshold}%</Text>
+                        </View>
+
+                        <View
+                          style={styles.customSliderContainer}
+                          {...thresholdPan.panHandlers}
+                          onLayout={(e) => {
+                            thresholdTrackWidth.current = Math.max(80, e.nativeEvent.layout.width);
+                          }}
+                        >
+                          {Array.from({ length: 25 }).map((_, i) => {
+                            const stepVal = 50 + i * 2;
+                            const isActive = stepVal <= draftFilters.matchThreshold;
+                            const isMajor = stepVal % 10 === 0;
+                            return (
+                              <View
+                                key={i}
+                                pointerEvents="none"
+                                style={{
+                                  width: isMajor ? 3 : 2,
+                                  height: isMajor ? 28 : 14,
+                                  backgroundColor: isActive ? currentIntelligence.color : COLORS.trackBg,
+                                  borderRadius: 2,
+                                }}
+                              />
+                            );
+                          })}
+                        </View>
+
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>50%</Text>
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>Skala dopasowania (mapa + cena)</Text>
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>100%</Text>
+                        </View>
+                      </View>
+                    </Animated.View>
+
+                    <View style={[styles.divider, { backgroundColor: COLORS.border }]} />
+
+                    <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 12 }}>
+                      <View
+                        style={[styles.segmentContainer, { backgroundColor: COLORS.trackBg }]}
+                        onLayout={(e) => setModeTrackWidth(Math.max(2, e.nativeEvent.layout.width - 6))}
                       >
-                        {Array.from({ length: 25 }).map((_, i) => {
-                          const stepVal = 50 + i * 2;
-                          const isActive = stepVal <= draftFilters.matchThreshold;
-                          const isMajor = stepVal % 10 === 0;
+                        <Animated.View style={[styles.modePillActive, modePillStyle]} />
+                        {(
+                          [
+                            { key: 'MAP', label: 'Obszar mapy', icon: 'scan-circle-outline' },
+                            { key: 'CITY', label: 'Miasto + dzielnice', icon: 'business-outline' },
+                          ] as const
+                        ).map((mode) => {
+                          const isActive = draftFilters.calibrationMode === mode.key;
                           return (
-                            <View
-                              key={i}
-                              pointerEvents="none"
-                              style={{
-                                width: isMajor ? 3 : 2, height: isMajor ? 28 : 14,
-                                backgroundColor: isActive ? currentIntelligence.color : COLORS.trackBg,
-                                borderRadius: 2,
-                              }}
-                            />
+                            <Pressable key={mode.key} onPress={() => handleFilterSelect('calibrationMode', mode.key)} style={styles.segmentBtn}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Ionicons name={mode.icon} size={14} color={isActive ? '#FFF' : COLORS.textSec} />
+                                <Text
+                                  style={[
+                                    styles.segmentTxt,
+                                    isActive && { color: '#FFF', fontWeight: '700' },
+                                    !isActive && { color: COLORS.textSec },
+                                  ]}
+                                >
+                                  {mode.label}
+                                </Text>
+                              </View>
+                            </Pressable>
                           );
                         })}
                       </View>
-                      
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>50%</Text>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>Skala dopasowania (mapa + cena)</Text>
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>100%</Text>
+                    </View>
+
+                    <View style={[styles.divider, { backgroundColor: COLORS.border }]} />
+
+                    <View style={{ minHeight: 80 }}>
+                      {draftFilters.calibrationMode === 'MAP' ? (
+                        <Animated.View layout={Layout.springify().damping(16)}>
+                          <Pressable
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              onOpenAreaPicker(draftFilters);
+                            }}
+                            style={({ pressed }) => [
+                              styles.areaPickerBtn,
+                              { backgroundColor: COLORS.trackBg, borderColor: COLORS.border },
+                              pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+                            ]}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                              <View style={[styles.areaIconBg, { backgroundColor: `${activeColor}22` }]}>
+                                <Ionicons name="scan-circle-outline" size={20} color={activeColor} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.areaTitle, { color: COLORS.textMain }]}>Zaznacz obszar na mapie</Text>
+                                <Text style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 15 }}>
+                                  Przesuń mapę, ustaw promień i automatycznie uzupełnij miasto + dzielnice.
+                                </Text>
+                              </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                          </Pressable>
+                          {!!displayedAreaSummary && (
+                            <Text style={{ fontSize: 12, color: COLORS.textMuted, paddingHorizontal: 16, paddingBottom: 16, marginTop: -4 }}>
+                              Obecnie: {displayedAreaSummary}
+                            </Text>
+                          )}
+                        </Animated.View>
+                      ) : (
+                        <Animated.View layout={Layout.springify().damping(16)} style={{ paddingBottom: 16 }}>
+                          <Text style={[styles.sectionTitle, { marginTop: 12, marginBottom: 8 }]}>METROPOLIA</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+                            {CITIES.map((c) => {
+                              const isActive = draftFilters.city === c;
+                              return (
+                                <Pressable
+                                  key={c}
+                                  onPress={() => {
+                                    Haptics.selectionAsync();
+                                    setDraftFilters((prev) => ({
+                                      ...prev,
+                                      city: c,
+                                      selectedDistricts: [...(CITY_DISTRICTS[c] || [])],
+                                    }));
+                                  }}
+                                  style={[
+                                    styles.pillBtn,
+                                    { borderColor: COLORS.border },
+                                    isActive && { backgroundColor: activeColor, borderColor: activeColor },
+                                  ]}
+                                >
+                                  <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '800' }]}>{c}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </ScrollView>
+
+                          <Text style={[styles.sectionTitle, { marginTop: 16, marginBottom: 8 }]}>DZIELNICE ({draftFilters.city})</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+                            {availableDistricts.map((dist) => {
+                              const isActive = draftFilters.selectedDistricts.includes(dist);
+                              return (
+                                <Pressable
+                                  key={dist}
+                                  onPress={() => toggleDistrict(dist)}
+                                  style={[
+                                    styles.pillBtn,
+                                    { borderColor: COLORS.border },
+                                    isActive && { backgroundColor: activeColor, borderColor: activeColor },
+                                  ]}
+                                >
+                                  <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '700' }]}>{dist}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </ScrollView>
+                        </Animated.View>
+                      )}
+                    </View>
+                  </Animated.View>
+                )}
+
+                {radarAwake && isFavoritesVariant && (
+                  <Animated.View
+                    entering={FadeIn.duration(220)}
+                    layout={Layout.springify().damping(18).stiffness(220)}
+                    style={[sleepingSectionStyle, { paddingBottom: 14 }]}
+                  >
+                    <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+                      <View style={[styles.divider, { backgroundColor: COLORS.border, marginBottom: 14 }]} />
+
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: accentMetal, marginBottom: 10 }}>
+                        Powiadomienia dla Ulubionych
+                      </Text>
+
+                      {[
+                        {
+                          key: 'favoritesNotifyPriceChange',
+                          label: 'Zmiana ceny',
+                          desc: 'Gdy ulubiona oferta zmieni cenę.',
+                          icon: 'cash-outline',
+                        },
+                        {
+                          key: 'favoritesNotifyDealProposals',
+                          label: 'Propozycje / negocjacje',
+                          desc: 'Gdy pojawi się propozycja terminu lub ceny w Dealroom dla ulubionej.',
+                          icon: 'chatbubble-ellipses-outline',
+                        },
+                        {
+                          key: 'favoritesNotifyStatusChange',
+                          label: 'Zmiana statusu',
+                          desc: 'Wycofana, sprzedana lub zarchiwizowana.',
+                          icon: 'shield-checkmark-outline',
+                        },
+                        {
+                          key: 'favoritesNotifyNewSimilar',
+                          label: 'Nowe podobne oferty',
+                          desc: 'Nietuzinkowe rekomendacje oparte o Twoje Ulubione.',
+                          icon: 'sparkles-outline',
+                        },
+                      ].map((item, idx) => (
+                        <View key={item.key}>
+                          <View style={styles.switchRow}>
+                            <View style={{ flex: 1, paddingRight: 12 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <Ionicons name={item.icon as any} size={18} color={COLORS.textSec} />
+                                <Text style={[styles.switchTitle, { color: COLORS.textMain }]}>{item.label}</Text>
+                              </View>
+                              <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
+                                {item.desc}
+                              </Text>
+                            </View>
+                            <Switch
+                              value={draftFilters[item.key as keyof RadarFilters] as boolean}
+                              onValueChange={(v) => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                handleFilterSelect(item.key as keyof RadarFilters, v);
+                              }}
+                              trackColor={{ false: COLORS.trackBg, true: accentMetal }}
+                              thumbColor="#FFF"
+                            />
+                          </View>
+                          {idx < 3 && <View style={[styles.divider, { backgroundColor: COLORS.border, marginLeft: 44 }]} />}
+                        </View>
+                      ))}
+
+                      <View style={[styles.divider, { backgroundColor: COLORS.border, marginTop: 12, marginBottom: 10 }]} />
+
+                      <View style={styles.switchRow}>
+                        <View style={{ flex: 1, paddingRight: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <Ionicons name="eye-off-outline" size={18} color={COLORS.textSec} />
+                            <Text style={[styles.switchTitle, { color: COLORS.textMain }]}>Prywatność kwot</Text>
+                          </View>
+                          <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
+                            Jeśli wyłączysz, powiadomienia nie będą zawierały konkretnych kwot (bezpieczniej na ekranie blokady).
+                          </Text>
+                        </View>
+                        <Switch
+                          value={draftFilters.favoritesNotifyIncludeAmounts}
+                          onValueChange={(v) => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            handleFilterSelect('favoritesNotifyIncludeAmounts', v);
+                          }}
+                          trackColor={{ false: COLORS.trackBg, true: accentMetal }}
+                          thumbColor="#FFF"
+                        />
                       </View>
                     </View>
                   </Animated.View>
                 )}
-                </Animated.View>
-
-                <View style={[styles.divider, { backgroundColor: COLORS.border }]} />
-
-                {/* Przełącznik MAPA / MIASTO (Luksusowa Tabletka) */}
-                <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 12 }}>
-                  <View 
-                    style={[styles.segmentContainer, { backgroundColor: COLORS.trackBg }]}
-                    onLayout={(e) => setModeTrackWidth(Math.max(2, e.nativeEvent.layout.width - 6))}
-                  >
-                    <Animated.View style={[styles.modePillActive, modePillStyle]} />
-                    {([
-                      { key: 'MAP', label: 'Obszar mapy', icon: 'scan-circle-outline' },
-                      { key: 'CITY', label: 'Miasto + dzielnice', icon: 'business-outline' },
-                    ] as const).map((mode) => {
-                      const isActive = draftFilters.calibrationMode === mode.key;
-                      return (
-                        <Pressable key={mode.key} onPress={() => handleFilterSelect('calibrationMode', mode.key)} style={styles.segmentBtn}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Ionicons name={mode.icon} size={14} color={isActive ? '#FFF' : COLORS.textSec} />
-                            <Text style={[styles.segmentTxt, isActive && { color: '#FFF', fontWeight: '700' }, !isActive && { color: COLORS.textSec }]}>{mode.label}</Text>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                <View style={[styles.divider, { backgroundColor: COLORS.border }]} />
-
-                {/* Dynamicznie pojawiające się sekcje dla Mapy / Miasta */}
-                <View style={{ minHeight: 80 }}>
-                  {draftFilters.calibrationMode === 'MAP' ? (
-                    <Animated.View layout={Layout.springify().damping(16)}>
-                      <Pressable
-                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenAreaPicker(draftFilters); }}
-                        style={({ pressed }) => [styles.areaPickerBtn, { backgroundColor: COLORS.trackBg, borderColor: COLORS.border }, pressed && { opacity: 0.8, transform: [{scale: 0.98}] }]}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                          <View style={[styles.areaIconBg, { backgroundColor: `${activeColor}22` }]}>
-                            <Ionicons name="scan-circle-outline" size={20} color={activeColor} />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.areaTitle, { color: COLORS.textMain }]}>Zaznacz obszar na mapie</Text>
-                            <Text style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 15 }}>Przesuń mapę, ustaw promień i automatycznie uzupełnij miasto + dzielnice.</Text>
-                          </View>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-                      </Pressable>
-                      {!!displayedAreaSummary && <Text style={{ fontSize: 12, color: COLORS.textMuted, paddingHorizontal: 16, paddingBottom: 16, marginTop: -4 }}>Obecnie: {displayedAreaSummary}</Text>}
-                    </Animated.View>
-                  ) : (
-                    <Animated.View layout={Layout.springify().damping(16)} style={{ paddingBottom: 16 }}>
-                      <Text style={[styles.sectionTitle, { marginTop: 12, marginBottom: 8 }]}>METROPOLIA</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
-                        {CITIES.map((c) => {
-                          const isActive = draftFilters.city === c;
-                          return (
-                            <Pressable
-                              key={c}
-                              onPress={() => {
-                                Haptics.selectionAsync();
-                                setDraftFilters((prev) => ({
-                                  ...prev,
-                                  city: c,
-                                  selectedDistricts: [...(CITY_DISTRICTS[c] || [])],
-                                }));
-                              }}
-                              style={[styles.pillBtn, { borderColor: COLORS.border }, isActive && { backgroundColor: activeColor, borderColor: activeColor }]}
-                            >
-                              <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '800' }]}>{c}</Text>
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-
-                      <Text style={[styles.sectionTitle, { marginTop: 16, marginBottom: 8 }]}>DZIELNICE ({draftFilters.city})</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
-                        {availableDistricts.map((dist) => {
-                          const isActive = draftFilters.selectedDistricts.includes(dist);
-                          return (
-                            <Pressable key={dist} onPress={() => toggleDistrict(dist)} style={[styles.pillBtn, { borderColor: COLORS.border }, isActive && { backgroundColor: activeColor, borderColor: activeColor }]}>
-                              <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '700' }]}>{dist}</Text>
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-                    </Animated.View>
-                  )}
-                </View>
               </View>
 
+              {radarAwake && !isFavoritesVariant && (
               <Animated.View
-                pointerEvents={radarAwake ? 'auto' : 'none'}
+                entering={FadeIn.duration(240)}
+                layout={Layout.springify().damping(18).stiffness(200)}
                 style={sleepingSectionStyle}
               >
               {/* === TWOJA ORYGINALNA SEKCJA: PRZEZNACZENIE I TYP === */}
@@ -747,11 +928,12 @@ export default function RadarCalibrationModal({
                 </Text>
               </View>
               </Animated.View>
+              )}
               
             </ScrollView>
 
-            {/* === STOPKA (Z PRZYCISKIEM) === */}
-            {keyboardHeight === 0 && (
+            {/* Stopka tylko przy włączonym nasłuchu — wyłączony pierwszy switch = sam nagłówek + karta, zamknięcie z tła / gestu. */}
+            {keyboardHeight === 0 && radarAwake && (
               <View style={[styles.footer, { borderTopColor: COLORS.border }]}>
                 <Pressable
                   disabled={showApplyRitual}
@@ -759,11 +941,11 @@ export default function RadarCalibrationModal({
                     styles.applyBtn,
                     { backgroundColor: draftFilters.pushNotifications ? accentMetal : activeColor },
                     pressed && !showApplyRitual && { transform: [{ scale: 0.97 }] },
-                    showApplyRitual && { opacity: 0.6 }
+                    showApplyRitual && { opacity: 0.6 },
                   ]}
                   onPress={handleApply}
                 >
-                  <Text style={styles.applyBtnTxt}>Zastosuj i Skanuj</Text>
+                  <Text style={styles.applyBtnTxt}>{isFavoritesVariant ? 'Zapisz ustawienia' : 'Zastosuj i Skanuj'}</Text>
                   <Ionicons name="scan-outline" size={20} color="#FFF" style={{ marginLeft: 8 }} />
                 </Pressable>
               </View>
@@ -772,7 +954,7 @@ export default function RadarCalibrationModal({
           </BlurView>
         </KeyboardAvoidingView>
 
-        {showApplyRitual && (
+        {showApplyRitual && !isFavoritesVariant && (
           <RadarCalibrationRitualOverlay
             visible={showApplyRitual}
             cityLabel={draftFilters.city}
