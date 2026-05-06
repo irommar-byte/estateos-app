@@ -58,6 +58,16 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const handleIncreaseSqm = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (areaNum > 0) { const step = isRent ? 5 : 100; updateDraft({ price: Math.round(priceNum + (step * areaNum)).toString() }); } };
   const handleDecreaseSqm = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (areaNum > 0) { const step = isRent ? 5 : 100; updateDraft({ price: Math.round(Math.max(0, priceNum - (step * areaNum))).toString() }); } };
 
+  const handleSecondaryAmountChange = (text: string) => {
+    const value = text.replace(/\s/g, '');
+    if (isRent) {
+      updateDraft({ deposit: value });
+      return;
+    }
+    // Dla sprzedaży utrzymujemy spójność obu pól (legacy rent + canonical adminFee).
+    updateDraft({ rent: value, adminFee: value });
+  };
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -107,7 +117,14 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           <View style={styles.halfCol}>
             <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{isRent ? 'Kaucja' : 'Czynsz Admin.'}</Text>
             <View style={[styles.smallInputBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
-              <TextInput style={[styles.smallInput, { color: theme.text }]} placeholder="0" placeholderTextColor={theme.subtitle} value={formatNumber(isRent ? draft.deposit : draft.rent)} onChangeText={(t) => isRent ? updateDraft({ deposit: t.replace(/\s/g, '') }) : updateDraft({ rent: t.replace(/\s/g, '') })} keyboardType="numeric" />
+              <TextInput
+                style={[styles.smallInput, { color: theme.text }]}
+                placeholder="0"
+                placeholderTextColor={theme.subtitle}
+                value={formatNumber(isRent ? draft.deposit : (draft.adminFee || draft.rent))}
+                onChangeText={handleSecondaryAmountChange}
+                keyboardType="numeric"
+              />
             </View>
           </View>
           <View style={styles.halfCol}>

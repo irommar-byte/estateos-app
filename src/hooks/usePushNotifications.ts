@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { Alert, AppState, Linking, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -92,7 +92,11 @@ export function usePushNotifications(authToken: string | null) {
         : authToken.trim()
       : null;
 
-  const registerToken = async (showPrompt = false) => {
+  useEffect(() => {
+    isRegisteredRef.current = false;
+  }, [normalizedAuthToken]);
+
+  const registerToken = useCallback(async (showPrompt = false) => {
     if (isRegisteredRef.current || !Device.isDevice || !normalizedAuthToken) return false;
 
     try {
@@ -100,6 +104,20 @@ export function usePushNotifications(authToken: string | null) {
       let finalStatus = existingStatus;
 
       if (existingStatus !== 'granted' && showPrompt) {
+        if (existingStatus === 'denied') {
+          // iOS nie pokaże ponownie systemowego promptu — tylko Ustawienia.
+          await new Promise<void>((resolve) => {
+            Alert.alert(
+              'Powiadomienia wyłączone',
+              'Aby włączyć alerty EstateOS™, otwórz Ustawienia → Powiadomienia → EstateOS™ i włącz powiadomienia.',
+              [
+                { text: 'Anuluj', style: 'cancel', onPress: () => resolve() },
+                { text: 'Otwórz Ustawienia', onPress: () => { void Linking.openSettings(); resolve(); } },
+              ]
+            );
+          });
+          return false;
+        }
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
       }
@@ -190,11 +208,18 @@ export function usePushNotifications(authToken: string | null) {
       console.error('❌ Push setup error:', e);
       return false;
     }
-  };
+  }, [normalizedAuthToken]);
 
   useEffect(() => {
-    registerToken(false);
-  }, [normalizedAuthToken]);
+    void registerToken(false);
+  }, [registerToken]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void registerToken(false);
+    });
+    return () => sub.remove();
+  }, [registerToken]);
 
   return { askForPermission: () => registerToken(true) };
 }

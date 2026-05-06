@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -16,8 +16,15 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
+import {
+  buildDiscoveryEventPayload,
+  parseDiscoveryFeedItems,
+  type DiscoveryEventType,
+  type DiscoveryDislikeReasonCode,
+} from '../contracts/discoveryContracts';
 
 // === LUKSUSOWA PALETA ===
 const RR_BLACK = '#040405';
@@ -39,10 +46,24 @@ type DiscoveryOffer = {
   image: string;
 };
 
+type DiscoveryProfile = {
+  likedLocations: Record<string, number>;
+  dislikedLocations: Record<string, number>;
+  medianLikedPrice: number | null;
+  medianLikedArea: number | null;
+  interactions: number;
+};
+
+const DISCOVERY_EVENT_QUEUE_KEY = 'discovery_event_queue_v1';
+const DISCOVERY_DISLIKE_REASONS = [
+  { key: 'PRICE_TOO_HIGH', label: 'Za drogo' },
+  { key: 'LOCATION_MISMATCH', label: 'Lokalizacja' },
+  { key: 'LAYOUT_MISMATCH', label: 'Układ / metraż' },
+  { key: 'QUALITY_LOW', label: 'Standard' },
+] as const satisfies readonly { key: DiscoveryDislikeReasonCode; label: string }[];
+
 const PLACEHOLDER_IMAGE =
   'https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=1200&auto=format&fit=crop';
-
-const asArray = (value: unknown): any[] => (Array.isArray(value) ? value : []);
 
 const normalizeMediaUrl = (raw: string | null | undefined): string | null => {
   if (raw == null) return null;
@@ -167,6 +188,17 @@ const buildPriceHistory = (priceNow: number, previousMaybe: number): number[] =>
   ];
 };
 
+async function enqueueDiscoveryEvent(payload: any) {
+  try {
+    const raw = await AsyncStorage.getItem(DISCOVERY_EVENT_QUEUE_KEY);
+    const queue = raw ? (JSON.parse(raw) as any[]) : [];
+    queue.push(payload);
+    await AsyncStorage.setItem(DISCOVERY_EVENT_QUEUE_KEY, JSON.stringify(queue.slice(-120)));
+  } catch {
+    // noop
+  }
+}
+
 // === KOMPONENT WYKRESU (APPLE STOCKS STYLE) ===
 const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) => {
   const chartHeight = 50;
@@ -220,50 +252,136 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const position = useRef(new Animated.ValueXY()).current;
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const topOfferId = offers[0]?.id;
+  const [profile, setProfile] = useState<DiscoveryProfile>({
+    likedLocations: {},
+    dislikedLocations: {},
+    medianLikedPrice: null,
+    medianLikedArea: null,
+    interactions: 0,
+  });
+  const [pendingDislikeOffer, setPendingDislikeOffer] = useState<DiscoveryOffer | null>(null);
+
+  const mapRawOffersToDiscovery = useCallback((list: any[]): DiscoveryOffer[] => {
+    return list
+      .map((raw: any): DiscoveryOffer | null => {
+        const priceNow = parsePriceNumber(raw?.price);
+        if (!priceNow) return null;
+        const previousPrice = parsePriceNumber(raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart);
+        const city = String(raw?.city ?? '').trim();
+        const district = String(raw?.district ?? '').trim();
+        const title = String(raw?.title ?? raw?.name ?? '').trim() || 'Oferta premium';
+        const areaValue = parsePriceNumber(raw?.area);
+        const createdAtMs = raw?.createdAt ? new Date(raw.createdAt).getTime() : Date.now();
+        const daysOnMarket = Math.max(1, Math.round((Date.now() - createdAtMs) / (1000 * 60 * 60 * 24)));
+        const location = [district, city].filter(Boolean).join(', ') || 'Polska';
+        const images = extractImagesFromOffer(raw);
+        return {
+          id: String(raw?.id ?? `${title}-${city}-${Math.random()}`),
+          title,
+          location,
+          price: formatPln(priceNow),
+          originalPrice: formatPln(previousPrice || priceNow),
+          area: `${Math.max(0, Math.round(areaValue || 0))} m²`,
+          daysOnMarket,
+          priceHistory: buildPriceHistory(priceNow, previousPrice),
+          images,
+          image: images[0] || extractImageFromOffer(raw),
+        };
+      })
+      .filter(Boolean) as DiscoveryOffer[];
+  }, []);
+
+  const sendDiscoveryEvent = useCallback(
+    async (
+      eventType: DiscoveryEventType,
+      offer: DiscoveryOffer,
+      extra?: { reasonCode?: DiscoveryDislikeReasonCode; photoIndex?: number; score?: number }
+    ) => {
+      const payload = buildDiscoveryEventPayload({
+        eventType,
+        offerId: Number(offer.id),
+        photoIndex: extra?.photoIndex ?? activePhotoIndex,
+        score: extra?.score ?? null,
+        reasonCode: extra?.reasonCode || null,
+        platform: Platform.OS,
+        at: new Date().toISOString(),
+      });
+      if (!payload) return;
+      try {
+        const res = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          await enqueueDiscoveryEvent(payload);
+        }
+      } catch {
+        await enqueueDiscoveryEvent(payload);
+      }
+    },
+    [activePhotoIndex, token]
+  );
+
+  const flushDiscoveryQueue = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(DISCOVERY_EVENT_QUEUE_KEY);
+      const queue = raw ? (JSON.parse(raw) as any[]) : [];
+      if (!queue.length) return;
+      const nextQueue: any[] = [];
+      for (const payload of queue) {
+        try {
+          const res = await fetch(`${API_URL}/api/mobile/v1/discovery/events`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) nextQueue.push(payload);
+        } catch {
+          nextQueue.push(payload);
+        }
+      }
+      await AsyncStorage.setItem(DISCOVERY_EVENT_QUEUE_KEY, JSON.stringify(nextQueue.slice(-120)));
+    } catch {
+      // noop
+    }
+  }, [token]);
 
   useEffect(() => {
     let mounted = true;
     const fetchOffers = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/mobile/v1/offers`, {
+        await flushDiscoveryQueue();
+        // 1) Prefer feed "for you" from backend
+        const feedRes = await fetch(`${API_URL}/api/mobile/v1/discovery/feed?mode=for_you&limit=40`, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
-        const json = await res.json().catch(() => ({}));
-        const list = Array.isArray(json)
-          ? json
-          : Array.isArray(json?.offers)
-            ? json.offers
-            : Array.isArray(json?.items)
-              ? json.items
-              : [];
+        const feedJson = await feedRes.json().catch(() => ({}));
+        const feedList = parseDiscoveryFeedItems(feedJson);
 
-        const mapped: DiscoveryOffer[] = list
-          .map((raw: any): DiscoveryOffer | null => {
-            const priceNow = parsePriceNumber(raw?.price);
-            if (!priceNow) return null;
-            const previousPrice = parsePriceNumber(raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart);
-            const city = String(raw?.city ?? '').trim();
-            const district = String(raw?.district ?? '').trim();
-            const title = String(raw?.title ?? raw?.name ?? '').trim() || 'Oferta premium';
-            const areaValue = parsePriceNumber(raw?.area);
-            const createdAtMs = raw?.createdAt ? new Date(raw.createdAt).getTime() : Date.now();
-            const daysOnMarket = Math.max(1, Math.round((Date.now() - createdAtMs) / (1000 * 60 * 60 * 24)));
-            const location = [district, city].filter(Boolean).join(', ') || 'Polska';
-            const images = extractImagesFromOffer(raw);
-            return {
-              id: String(raw?.id ?? `${title}-${city}-${Math.random()}`),
-              title,
-              location,
-              price: formatPln(priceNow),
-              originalPrice: formatPln(previousPrice || priceNow),
-              area: `${Math.max(0, Math.round(areaValue || 0))} m²`,
-              daysOnMarket,
-              priceHistory: buildPriceHistory(priceNow, previousPrice),
-              images,
-              image: images[0] || extractImageFromOffer(raw),
-            };
-          })
-          .filter(Boolean) as DiscoveryOffer[];
+        let mapped = mapRawOffersToDiscovery(feedList);
+        // 2) Fallback to generic offers if feed unavailable/empty
+        if (mapped.length === 0) {
+          const res = await fetch(`${API_URL}/api/mobile/v1/offers`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          });
+          const json = await res.json().catch(() => ({}));
+          const list = Array.isArray(json)
+            ? json
+            : Array.isArray(json?.offers)
+              ? json.offers
+              : Array.isArray(json?.items)
+                ? json.items
+                : [];
+          mapped = mapRawOffersToDiscovery(list);
+        }
 
         if (mounted) setOffers(mapped);
       } catch {
@@ -274,11 +392,22 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, [token, flushDiscoveryQueue, mapRawOffersToDiscovery]);
 
   useEffect(() => {
     setActivePhotoIndex(0);
-  }, [offers[0]?.id]);
+  }, [topOfferId]);
+
+  useEffect(() => {
+    const top = offers[0];
+    if (!top?.images?.length) return;
+    const current = top.images[activePhotoIndex];
+    const next = top.images[(activePhotoIndex + 1) % top.images.length];
+    const prev = top.images[(activePhotoIndex - 1 + top.images.length) % top.images.length];
+    const preload = [current, next, prev].filter(Boolean);
+    if (preload.length === 0) return;
+    void Image.prefetch(preload);
+  }, [offers, activePhotoIndex]);
 
   // === SYSTEM POWIADOMIEŃ (TOAST) ===
   const showToast = (message: string) => {
@@ -326,7 +455,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       duration: 350,
       useNativeDriver: false,
     }).start(() => onSwipeComplete(direction));
-  }, [position, width, height]);
+  }, [position, width, height, onSwipeComplete]);
 
   const resetPosition = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -339,6 +468,42 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   }, [position]);
 
   const onSwipeComplete = useCallback((direction: 'right' | 'left' | 'up') => {
+    const top = offers[0];
+    if (top) {
+      const price = parsePriceNumber(top.price);
+      const area = parsePriceNumber(top.area);
+      const locationKey = top.location.split(',')[0]?.trim().toLowerCase() || top.location.toLowerCase();
+      setProfile((prev) => {
+        const next: DiscoveryProfile = {
+          likedLocations: { ...prev.likedLocations },
+          dislikedLocations: { ...prev.dislikedLocations },
+          medianLikedPrice: prev.medianLikedPrice,
+          medianLikedArea: prev.medianLikedArea,
+          interactions: prev.interactions + 1,
+        };
+        if (direction === 'right' || direction === 'up') {
+          next.likedLocations[locationKey] = (next.likedLocations[locationKey] || 0) + 1;
+          next.medianLikedPrice =
+            next.medianLikedPrice == null ? price : Math.round((next.medianLikedPrice * 0.72) + (price * 0.28));
+          next.medianLikedArea =
+            next.medianLikedArea == null ? area : Math.round((next.medianLikedArea * 0.72) + (area * 0.28));
+        } else if (direction === 'left') {
+          next.dislikedLocations[locationKey] = (next.dislikedLocations[locationKey] || 0) + 1;
+        }
+        return next;
+      });
+      if (direction === 'left') setPendingDislikeOffer(top);
+      else setPendingDislikeOffer(null);
+      void sendDiscoveryEvent(
+        direction === 'right'
+          ? 'DISCOVERY_LIKE'
+          : direction === 'left'
+            ? 'DISCOVERY_DISLIKE'
+            : 'DISCOVERY_FAST_TRACK',
+        top
+      );
+    }
+
     if (direction === 'right') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else if (direction === 'left') {
@@ -350,16 +515,64 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
     position.setValue({ x: 0, y: 0 });
-  }, [position]);
+  }, [position, offers, sendDiscoveryEvent]);
 
-  const handleTopCardImageTap = useCallback(() => {
+  const handleTopCardImageTap = useCallback((zone: 'left' | 'right') => {
     const top = offers[0];
     if (!top) return;
     const total = Math.max(1, top.images?.length ?? 1);
     if (total <= 1) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setActivePhotoIndex((prev) => (prev + 1) % total);
+    setActivePhotoIndex((prev) => {
+      if (zone === 'left') return (prev - 1 + total) % total;
+      return (prev + 1) % total;
+    });
   }, [offers]);
+
+  const topOfferInsight = useMemo(() => {
+    const top = offers[0];
+    if (!top) return { score: 50, reason: 'Budujemy Twój profil preferencji' };
+    const locationKey = top.location.split(',')[0]?.trim().toLowerCase() || top.location.toLowerCase();
+    const price = parsePriceNumber(top.price);
+    const area = parsePriceNumber(top.area);
+    let score = 50;
+    const reasons: string[] = [];
+
+    const likedLoc = profile.likedLocations[locationKey] || 0;
+    const dislikedLoc = profile.dislikedLocations[locationKey] || 0;
+    if (likedLoc > 0) {
+      score += Math.min(18, likedLoc * 5);
+      reasons.push('lokalizacja zgodna z Twoimi wyborami');
+    }
+    if (dislikedLoc > 0) {
+      score -= Math.min(20, dislikedLoc * 6);
+      reasons.push('lokalizacja rzadziej wybierana');
+    }
+
+    if (profile.medianLikedPrice && price > 0) {
+      const diff = Math.abs(price - profile.medianLikedPrice) / profile.medianLikedPrice;
+      if (diff <= 0.2) {
+        score += 12;
+        reasons.push('cena bliska preferowanemu zakresowi');
+      } else if (diff > 0.45) {
+        score -= 10;
+      }
+    }
+
+    if (profile.medianLikedArea && area > 0) {
+      const diffA = Math.abs(area - profile.medianLikedArea) / Math.max(1, profile.medianLikedArea);
+      if (diffA <= 0.25) {
+        score += 10;
+        reasons.push('metraż dopasowany do Twojego profilu');
+      }
+    }
+
+    score = Math.max(35, Math.min(98, Math.round(score)));
+    return {
+      score,
+      reason: reasons[0] || 'algorytm testuje nowe warianty pod Twój gust',
+    };
+  }, [offers, profile]);
 
   // === INTERPOLACJE IKON NA ŚRODKU ===
   const rotate = position.x.interpolate({ inputRange: [-width / 2, 0, width / 2], outputRange: ['-10deg', '0deg', '10deg'], extrapolate: 'clamp' });
@@ -405,10 +618,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           ]}
           {...(isFirst ? panResponder.panHandlers : {})}
         >
-          <Pressable
-            onPress={isFirst ? handleTopCardImageTap : undefined}
-            style={styles.cardImageTapLayer}
-          >
+          <View style={styles.cardImageTapLayer}>
             <Image
               source={{
                 uri: isFirst
@@ -417,8 +627,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               }}
               style={styles.cardImage}
               contentFit="cover"
+              transition={120}
+              cachePolicy="memory-disk"
             />
-          </Pressable>
+            {isFirst ? (
+              <View style={styles.tapZonesLayer} pointerEvents="box-none">
+                <Pressable style={styles.tapZoneLeft} onPress={() => handleTopCardImageTap('left')} />
+                <Pressable style={styles.tapZoneRight} onPress={() => handleTopCardImageTap('right')} />
+              </View>
+            ) : null}
+          </View>
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.85)', '#000']} locations={[0.2, 0.65, 1]} style={styles.cardGradient} />
           {isFirst && (
             <View style={styles.photoPagerOverlay} pointerEvents="none">
@@ -481,9 +699,29 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               </View>
               
               <PriceHistoryChart data={offer.priceHistory} width={CARD_WIDTH - 64} />
+              {isFirst ? (
+                <View style={styles.smartInsightRow}>
+                  <Text style={styles.smartInsightBadge}>SMART MATCH {topOfferInsight.score}%</Text>
+                  <Text style={styles.smartInsightText}>{topOfferInsight.reason}</Text>
+                </View>
+              ) : null}
             </BlurView>
 
           </View>
+          {isFirst ? (
+            <Pressable
+              onPress={() => {
+                void sendDiscoveryEvent('DISCOVERY_OPEN', offer, { score: topOfferInsight.score });
+                navigation?.navigate?.('OfferDetail', { offerId: Number(offer.id) || offer.id });
+              }}
+              style={styles.infoChevronBtn}
+              hitSlop={14}
+            >
+              <BlurView intensity={45} tint="dark" style={styles.infoChevronGlass}>
+                <Ionicons name="chevron-forward" size={20} color="#FFF" />
+              </BlurView>
+            </Pressable>
+          ) : null}
         </Animated.View>
       );
     }).reverse();
@@ -537,6 +775,28 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               <Heart size={28} color={RR_GREEN} />
             </BlurView>
           </Pressable>
+        </View>
+      )}
+      {pendingDislikeOffer && (
+        <View style={styles.dislikeReasonWrap}>
+          <BlurView intensity={55} tint="dark" style={styles.dislikeReasonGlass}>
+            <Text style={styles.dislikeReasonTitle}>Dlaczego pomijasz tę ofertę?</Text>
+            <View style={styles.dislikeReasonRow}>
+              {DISCOVERY_DISLIKE_REASONS.map((reason) => (
+                <Pressable
+                  key={reason.key}
+                  onPress={() => {
+                    void sendDiscoveryEvent('DISCOVERY_DISLIKE_REASON', pendingDislikeOffer, { reasonCode: reason.key });
+                    setPendingDislikeOffer(null);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={({ pressed }) => [styles.dislikeReasonChip, pressed && { opacity: 0.75 }]}
+                >
+                  <Text style={styles.dislikeReasonChipText}>{reason.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </BlurView>
         </View>
       )}
     </View>
@@ -617,6 +877,18 @@ const styles = StyleSheet.create({
   },
   cardImageTapLayer: {
     width: '100%',
+    height: '100%',
+  },
+  tapZonesLayer: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+  },
+  tapZoneLeft: {
+    width: '50%',
+    height: '100%',
+  },
+  tapZoneRight: {
+    width: '50%',
     height: '100%',
   },
   photoPagerOverlay: {
@@ -746,6 +1018,40 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     overflow: 'hidden',
   },
+  smartInsightRow: {
+    marginTop: 10,
+    gap: 5,
+  },
+  smartInsightBadge: {
+    color: RR_GREEN,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+  },
+  smartInsightText: {
+    color: '#D7D7DB',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  infoChevronBtn: {
+    position: 'absolute',
+    right: 14,
+    bottom: 20,
+    borderRadius: 18,
+    overflow: 'hidden',
+    zIndex: 30,
+  },
+  infoChevronGlass: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.26)',
+    backgroundColor: 'rgba(0,0,0,0.26)',
+  },
   dashHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -777,6 +1083,47 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 40 : 20,
     paddingHorizontal: 40,
     marginTop: 10,
+  },
+  dislikeReasonWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: Platform.OS === 'ios' ? 126 : 112,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  dislikeReasonGlass: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  dislikeReasonTitle: {
+    color: '#E5E5EA',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  dislikeReasonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dislikeReasonChip: {
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  dislikeReasonChipText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   actionBtnBlur: {
     width: 64,

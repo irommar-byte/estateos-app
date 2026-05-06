@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Platform, KeyboardAvoidingView, Animated, UIManager } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Platform, KeyboardAvoidingView, Animated, UIManager, Pressable } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -8,12 +8,28 @@ import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import {
+  applyLandRegistryPrefix,
+  getCourtByLandRegistryPrefix,
+  getLandRegistryPrefixSuggestions,
+  isValidLandRegistryNumber,
+  normalizeLandRegistryNumber,
+} from '../../utils/landRegistry';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const Colors = { primary: '#10b981' };
+const HEATING_OPTIONS = [
+  { key: '', label: 'Nie podano' },
+  { key: 'Miejskie', label: 'Miejskie' },
+  { key: 'Gazowe', label: 'Gazowe' },
+  { key: 'Elektryczne', label: 'Elektryczne' },
+  { key: 'Pompa Ciepła', label: 'Pompa Ciepła' },
+  { key: 'Węglowe/Pellet', label: 'Węglowe / Pellet' },
+  { key: 'Inne', label: 'Inne' },
+];
 
 const ROOMS = ['', ...Array.from({length: 10}, (_, i) => (i + 1).toString())];
 const FLOORS = ['', 'Parter', ...Array.from({length: 30}, (_, i) => (i + 1).toString())];
@@ -39,6 +55,10 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const isYearUnlocked = isPlot ? false : (isFloorUnlocked && !!draft.floor);
   
   const isAmenitiesUnlocked = !isPlot && isYearUnlocked && !!(draft.yearBuilt || draft.buildYear);
+  const landRegistryRaw = String(draft.landRegistryNumber || '').trim();
+  const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
+  const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
+  const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
   const roomsAnim = useRef(new Animated.Value(isRoomsUnlocked ? 1 : 0.3)).current;
   const floorAnim = useRef(new Animated.Value(isFloorUnlocked ? 1 : 0.3)).current;
@@ -140,13 +160,111 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
             pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
           >
             <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Udogodnienia (Opcjonalne)</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 16 }]}>Ogrzewanie</Text>
+            <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2, marginBottom: 16 }]}>
+              <Picker
+                selectedValue={draft.heating || ''}
+                onValueChange={(v) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  updateDraft({ heating: v });
+                }}
+                mode="dialog"
+                dropdownIconColor={theme.text}
+                style={[styles.pickerNative, { color: theme.text }]}
+                itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}
+              >
+                {HEATING_OPTIONS.map((opt) => (
+                  <Picker.Item key={opt.key || 'none'} label={opt.label} value={opt.key} />
+                ))}
+              </Picker>
+            </View>
+
+            <AppleHover
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                updateDraft({ isFurnished: !draft.isFurnished });
+              }}
+              style={[styles.premiumRow, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }]}
+            >
+              <View>
+                <Text style={[styles.premiumRowTitle, { color: theme.text }]}>Umeblowane</Text>
+                <Text style={[styles.premiumRowSubtitle, { color: theme.subtitle }]}>
+                  {draft.isFurnished ? 'Tak' : 'Nie'}
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={[styles.booleanLabel, { color: draft.isFurnished ? Colors.primary : theme.subtitle }]}>
+                  {draft.isFurnished ? 'Tak' : 'Nie'}
+                </Text>
+                <View pointerEvents="none">
+                  <Ionicons name={draft.isFurnished ? 'checkmark-circle' : 'close-circle-outline'} size={18} color={draft.isFurnished ? Colors.primary : theme.subtitle} />
+                </View>
+              </View>
+            </AppleHover>
+
             <View style={styles.pillsContainer}>
               <TogglePill label="Balkon / Taras" icon="sunny-outline" field="hasBalcony" />
               <TogglePill label="Garaż / Parking" icon="car-sport-outline" field="hasParking" />
               <TogglePill label="Piwnica / Komórka" icon="cube-outline" field="hasStorage" />
               <TogglePill label="Winda" icon="arrow-up-circle-outline" field="hasElevator" />
               <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
-              <TogglePill label="Umeblowane" icon="bed-outline" field="isFurnished" />
+            </View>
+
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 20 }]}>Weryfikacja dokumentów (opcjonalnie)</Text>
+            <View style={[styles.docsCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <TextInput
+                style={[styles.docsInput, { color: theme.text, borderBottomColor: cardBorder }]}
+                placeholder="Numer mieszkania"
+                placeholderTextColor={theme.subtitle}
+                value={draft.apartmentNumber || ''}
+                onChangeText={(t) => updateDraft({ apartmentNumber: t })}
+              />
+              <TextInput
+                style={[styles.docsInput, { color: theme.text }]}
+                placeholder="Numer księgi wieczystej (np. WA4N/00012345/6)"
+                placeholderTextColor={theme.subtitle}
+                value={draft.landRegistryNumber || ''}
+                onChangeText={(t) => updateDraft({ landRegistryNumber: normalizeLandRegistryNumber(t) })}
+                autoCapitalize="characters"
+              />
+              {landRegistrySuggestions.length > 0 && landRegistryRaw.indexOf('/') < 0 ? (
+                <View style={[styles.suggestionsWrap, { borderColor: cardBorder, backgroundColor: isDark ? '#111214' : '#F8FAFC' }]}>
+                  {landRegistrySuggestions.map((item) => (
+                    <Pressable
+                      key={item.prefix}
+                      style={styles.suggestionRow}
+                      onPress={() =>
+                        updateDraft({
+                          landRegistryNumber: applyLandRegistryPrefix(String(draft.landRegistryNumber || ''), item.prefix),
+                        })
+                      }
+                    >
+                      <Text style={[styles.suggestionPrefix, { color: theme.text }]}>{item.prefix}</Text>
+                      <Text style={[styles.suggestionCourt, { color: theme.subtitle }]} numberOfLines={1}>
+                        {item.courtName}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {selectedCourt ? (
+                <Text style={[styles.docsCourtText, { color: theme.subtitle }]}>
+                  Właściwy sąd: {selectedCourt.courtName}
+                </Text>
+              ) : null}
+              {landRegistryRaw ? (
+                <Text style={[styles.docsValidationText, { color: isLandRegistryValid ? '#34C759' : '#FF3B30' }]}>
+                  {isLandRegistryValid
+                    ? 'Format KW poprawny. Dane trafiają wyłącznie do procesu weryfikacji.'
+                    : 'Nieprawidłowy format KW. Użyj wzoru: WA4N/00012345/6'}
+                </Text>
+              ) : null}
+              <Text style={[styles.docsPrivacyText, { color: theme.subtitle }]}>
+                Dane dokumentowe są prywatne i służą wyłącznie do weryfikacji stanu prawnego nieruchomości (np.
+                potwierdzenie: nieruchomość sprawdzona, bez zadłużeń), co zwiększa wiarygodność oferty i szansę na
+                zainteresowanie klientów. Te dane nie są publikowane i nigdy nie zostaną ujawnione bez Twojej wyraźnej
+                zgody.
+              </Text>
             </View>
           </Animated.View>
         )}
@@ -170,5 +288,71 @@ const styles = StyleSheet.create({
   triplePickerWrapper: { flexDirection: 'row', gap: 12, height: Platform.OS === 'ios' ? 200 : 80 }, pickerColumn: { flex: 1, alignItems: 'stretch' }, pickerTitle: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', marginBottom: 10, textAlign: 'center', letterSpacing: 1 }, 
   pickerBox: { flex: 1, justifyContent: 'center', borderRadius: 24, borderWidth: 1 }, 
   pickerNative: Platform.OS === 'ios' ? { width: '100%', height: 160 } : { width: '100%', height: 60, backgroundColor: 'transparent' },
+  premiumRow: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  premiumRowTitle: { fontSize: 15, fontWeight: '700' },
+  premiumRowSubtitle: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  booleanLabel: { fontSize: 14, fontWeight: '800' },
   pillsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, pill: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, borderWidth: 1 }, pillText: { fontSize: 14, fontWeight: '700' },
+  docsCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    paddingBottom: 12,
+    marginTop: 4,
+  },
+  docsInput: {
+    minHeight: 46,
+    fontSize: 15,
+    fontWeight: '600',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  docsPrivacyText: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
+  },
+  docsValidationText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  suggestionsWrap: {
+    marginTop: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(127,127,127,0.2)',
+  },
+  suggestionPrefix: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  suggestionCourt: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  docsCourtText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });

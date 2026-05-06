@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X } from 'lucide-react-native';
-import { postDealroomTextMessage, setOfferStatusArchived } from '../../utils/dealroomOfferReserve';
 import { API_URL } from '../../config/network';
 
 type BidMode = 'create' | 'counter' | 'respond';
@@ -114,11 +113,13 @@ export default function BidActionModal({
         payload.amount = Number(amount.replace(/\D/g, ''));
         payload.financing = financing;
         payload.message = note;
+        payload.note = note;
       } else {
         payload.type = 'BID_RESPOND';
         payload.bidId = normalizedBidId;
         payload.decision = decision === 'REJECT' ? 'REJECT' : decision;
         payload.message = note;
+        payload.note = note;
         if (decision === 'COUNTER') {
           payload.counterAmount = Number(amount.replace(/\D/g, ''));
         }
@@ -138,27 +139,8 @@ export default function BidActionModal({
         return;
       }
 
-      if (
-        mode === 'respond' &&
-        decision === 'ACCEPT' &&
-        isListingOwner &&
-        dealId &&
-        finalizeOwnerAccept
-      ) {
-        const msg =
-          'Decyzja właściciela: oferta została wycofana z publikacji (transakcja sfinalizowana, przywrócenie wymaga kolejnych środków).';
-        await postDealroomTextMessage({ dealId, token: safeToken, content: msg });
-        if (offerId != null && userId != null) {
-          const archiveRes = await setOfferStatusArchived({
-            offerId: Number(offerId),
-            userId: Number(userId),
-            token: safeToken,
-          });
-          if (!archiveRes.ok) {
-            console.warn('[BidActionModal] setOfferStatusArchived', archiveRes.error);
-          }
-        }
-      }
+      // Finalizacja jest canonical po stronie backendu (AGREED + acceptedBidId -> FINALIZED/SOLD/CANCELLED).
+      // Mobile nie wykonuje już lokalnej zmiany statusów, tylko wysyła akcję BID_RESPOND i odświeża stan.
 
       onDone?.();
       onClose();
@@ -225,28 +207,6 @@ export default function BidActionModal({
                 <Text style={styles.lockTitle}>Cena zaakceptowana</Text>
                 <View style={styles.stamp}>
                   <Text style={styles.stampText}>DEAL SEALED</Text>
-                </View>
-              </View>
-            )}
-
-            {mode === 'respond' && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>Decyzja</Text>
-                <View style={styles.segment}>
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, styles.acceptBtn, decision === 'ACCEPT' && styles.segmentBtnActive, loading && styles.disabled]}
-                    onPress={() => setDecision('ACCEPT')}
-                    disabled={loading || isLocked}
-                  >
-                    <Text style={[styles.segmentTxt, styles.acceptTxt]}>Akceptuj cenę</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, decision === 'COUNTER' && styles.segmentBtnActive, loading && styles.disabled]}
-                    onPress={() => setDecision('COUNTER')}
-                    disabled={loading || isLocked}
-                  >
-                    <Text style={[styles.segmentTxt, decision === 'COUNTER' && styles.segmentTxtActive]}>Zaproponuj swoją cenę</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             )}

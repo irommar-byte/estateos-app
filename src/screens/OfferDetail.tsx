@@ -20,11 +20,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import { buildOfferShareMessage } from '../utils/offerShareUrls';
+import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
+import EliteStatusBadges from '../components/EliteStatusBadges';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
 const API_URL = 'https://estateos.pl';
-const EVENT_PREFIX = '[[DEAL_EVENT]]';
+const EVENT_PREFIX = DEAL_EVENT_PREFIX;
 
 function parseDealEvent(content?: string) {
   if (!content || !content.startsWith(EVENT_PREFIX)) return null;
@@ -300,9 +302,13 @@ export default function OfferDetail({ route, navigation }: any) {
   if (isTrue(offer?.hasElevator)) activeAmenities.push('Winda');
   if (isTrue(offer?.hasStorage)) activeAmenities.push('Piwnica / Komórka');
   if (isTrue(offer?.hasGarden)) activeAmenities.push('Ogródek');
-  if (isTrue(offer?.isFurnished)) activeAmenities.push('Umeblowane');
   if (isTrue(offer?.petsAllowed)) activeAmenities.push('Zwierzęta akceptowane');
   if (isTrue(offer?.airConditioning)) activeAmenities.push('Klimatyzacja');
+  const heatingLabel = String(offer?.heating || '').trim();
+  const furnishedLabel = isTrue(offer?.isFurnished) ? 'Tak' : 'Nie';
+  const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
+  const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
+  const adminFeeLabel = hasAdminFee ? `${Math.round(adminFeeNumber).toLocaleString('pl-PL')} PLN` : 'Brak';
 
   const formatCondition = (cond: string) => { const map: any = { NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry', TO_RENOVATION: 'Do remontu', DEVELOPER: 'Stan deweloperski', READY: 'Gotowe do zamieszkania' }; return map[cond] || cond || 'Brak danych'; };
   const formatDate = (dateString: string) => { if (!dateString) return 'Brak danych'; const d = new Date(dateString); return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }); };
@@ -722,6 +728,11 @@ export default function OfferDetail({ route, navigation }: any) {
       <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 160 }}>
         <View style={styles.contentSheet}>
           <Text style={styles.price}>{displayOffer.price}</Text>
+          {hasAdminFee ? (
+            <View style={styles.adminFeeBadge}>
+              <Text style={styles.adminFeeBadgeText}>+ czynsz admin {adminFeeLabel}</Text>
+            </View>
+          ) : null}
           <Text style={styles.title}>{displayOffer.title}</Text>
           
           <View style={styles.locationRow}>
@@ -747,6 +758,9 @@ export default function OfferDetail({ route, navigation }: any) {
           <Text style={styles.sectionTitle}>Szczegóły</Text>
           <View style={styles.detailsContainer}>
             <View style={[styles.detailRow, { borderTopWidth: 0 }]}><Text style={styles.detailLabel}>Stan wykończenia</Text><Text style={styles.detailValue}>{formatCondition(offer?.condition)}</Text></View>
+            <View style={styles.detailRow}><Text style={styles.detailLabel}>Czynsz administracyjny</Text><Text style={styles.detailValue}>{adminFeeLabel}</Text></View>
+            <View style={styles.detailRow}><Text style={styles.detailLabel}>Ogrzewanie</Text><Text style={styles.detailValue}>{heatingLabel || 'Nie podano'}</Text></View>
+            <View style={styles.detailRow}><Text style={styles.detailLabel}>Umeblowanie</Text><Text style={styles.detailValue}>{furnishedLabel}</Text></View>
             <View style={[styles.detailRow, { borderBottomWidth: 0 }]}><Text style={styles.detailLabel}>Na rynku od</Text><Text style={styles.detailValue}>{formatDate(offer?.createdAt)}</Text></View>
           </View>
 
@@ -1016,6 +1030,7 @@ export default function OfferDetail({ route, navigation }: any) {
             ) : (
               <>
                 <Text style={styles.profileName}>{activeProfileData?.user?.name || 'Użytkownik'}</Text>
+                <EliteStatusBadges subject={activeProfileData?.user || activeProfileData} isDark compact />
                 <Text style={styles.profileMeta}>ID: {activeProfileData?.user?.id || activeProfileUserId || offer?.userId || '-'}</Text>
 
                 <View style={styles.profileRatingBox}>
@@ -1222,6 +1237,17 @@ const styles = StyleSheet.create({
   glassButton: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, minHeight: 800, shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 10 },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
+  adminFeeBadge: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    backgroundColor: 'rgba(52,199,89,0.12)',
+    borderColor: 'rgba(52,199,89,0.35)',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  adminFeeBadgeText: { fontSize: 12, fontWeight: '800', color: '#1d1d1f', letterSpacing: 0.2 },
   title: { fontSize: 24, fontWeight: '600', color: '#1d1d1f', marginBottom: 8 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
   locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500' },

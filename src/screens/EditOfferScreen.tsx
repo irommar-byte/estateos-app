@@ -6,13 +6,22 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
+import { Picker } from '@react-native-picker/picker';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
+import {
+  applyLandRegistryPrefix,
+  getCourtByLandRegistryPrefix,
+  getLandRegistryPrefixSuggestions,
+  isValidLandRegistryNumber,
+  normalizeLandRegistryNumber,
+} from '../utils/landRegistry';
 
 const API_URL = 'https://estateos.pl';
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
+const HEATING_OPTIONS = ['', 'Miejskie', 'Gazowe', 'Elektryczne', 'Pompa Ciepła', 'Węglowe/Pellet', 'Inne'];
 
 type EditableImage = {
   uri: string;
@@ -50,6 +59,9 @@ export default function EditOfferScreen({ route }: any) {
   const [rooms, setRooms] = useState('');
   const [floor, setFloor] = useState('');
   const [yearBuilt, setYearBuilt] = useState('');
+  const [heating, setHeating] = useState('');
+  const [apartmentNumber, setApartmentNumber] = useState('');
+  const [landRegistryNumber, setLandRegistryNumber] = useState('');
 
   const [price, setPrice] = useState('');
   const [adminFee, setAdminFee] = useState('');
@@ -59,6 +71,10 @@ export default function EditOfferScreen({ route }: any) {
   const [amenities, setAmenities] = useState({
     hasBalcony: false, hasParking: false, hasStorage: false, hasElevator: false, hasGarden: false, isFurnished: false
   });
+  const landRegistryRaw = landRegistryNumber.trim();
+  const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
+  const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
+  const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
   useEffect(() => {
     fetchOffer();
@@ -86,6 +102,9 @@ export default function EditOfferScreen({ route }: any) {
           setRooms(offer.rooms?.toString() || '');
           setFloor(offer.floor?.toString() || '');
           setYearBuilt(offer.yearBuilt?.toString() || offer.buildYear?.toString() || '');
+          setHeating(String(offer.heating || ''));
+          setApartmentNumber(String(offer.apartmentNumber || ''));
+          setLandRegistryNumber(String(offer.landRegistryNumber || ''));
           setCondition(offer.condition || 'READY');
           setIsExactLocation(offer.isExactLocation === true || offer.isExactLocation === 1);
           
@@ -169,6 +188,11 @@ export default function EditOfferScreen({ route }: any) {
       setSaving(false);
       return;
     }
+    if (!isLandRegistryValid) {
+      Alert.alert("Walidacja", "Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6");
+      setSaving(false);
+      return;
+    }
 
     const updatePayload = {
       id: offerId,
@@ -185,7 +209,10 @@ export default function EditOfferScreen({ route }: any) {
       isExactLocation,
       status: originalData?.status || 'ACTIVE',
       images: remoteImages,
-      ...amenities
+      ...amenities,
+      heating: heating.trim() || null,
+      apartmentNumber: apartmentNumber.trim() || undefined,
+      landRegistryNumber: landRegistryNumber.trim() || undefined,
     };
 
     try {
@@ -420,7 +447,77 @@ export default function EditOfferScreen({ route }: any) {
               <Text style={[styles.switchTitle, { color: txtColor }]}>Pełne umeblowanie</Text>
               <Switch value={amenities.isFurnished} onValueChange={(v) => { Haptics.selectionAsync(); setAmenities({...amenities, isFurnished: v}); }} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#34C759' }} />
             </View>
+            <View style={[styles.divider, { backgroundColor: borderColor }]} />
+            <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+              <Text style={[styles.switchSubtitle, { marginTop: 0, marginBottom: 6 }]}>Ogrzewanie</Text>
+              <View style={[styles.heatingPickerWrap, { borderColor, backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8' }]}>
+                <Picker
+                  selectedValue={heating}
+                  onValueChange={(v) => {
+                    Haptics.selectionAsync();
+                    setHeating(String(v || ''));
+                  }}
+                  mode="dialog"
+                  dropdownIconColor={txtColor}
+                  style={{ color: txtColor }}
+                >
+                  {HEATING_OPTIONS.map((opt) => (
+                    <Picker.Item key={opt || 'none'} label={opt || 'Nie podano'} value={opt} />
+                  ))}
+                </Picker>
+              </View>
+            </View>
           </View>
+
+          <Text style={styles.sectionTitle}>WERYFIKACJA DOKUMENTÓW (OPCJONALNIE)</Text>
+          <View style={[styles.premiumGroup, { backgroundColor: cardBg }]}>
+            <TextInput
+              style={[styles.inputPremium, { color: txtColor, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor }]}
+              value={apartmentNumber}
+              onChangeText={setApartmentNumber}
+              placeholder="Numer mieszkania"
+              placeholderTextColor={subColor}
+            />
+            <TextInput
+              style={[styles.inputPremium, { color: txtColor }]}
+              value={landRegistryNumber}
+              onChangeText={(t) => setLandRegistryNumber(normalizeLandRegistryNumber(t))}
+              placeholder="Numer księgi wieczystej (np. WA4N/00012345/6)"
+              placeholderTextColor={subColor}
+              autoCapitalize="characters"
+            />
+            {landRegistrySuggestions.length > 0 && landRegistryRaw.indexOf('/') < 0 ? (
+              <View style={[styles.suggestionsWrap, { borderColor, backgroundColor: isDark ? '#111214' : '#F8FAFC' }]}>
+                {landRegistrySuggestions.map((item) => (
+                  <Pressable
+                    key={item.prefix}
+                    style={styles.suggestionRow}
+                    onPress={() => setLandRegistryNumber(applyLandRegistryPrefix(landRegistryNumber, item.prefix))}
+                  >
+                    <Text style={[styles.suggestionPrefix, { color: txtColor }]}>{item.prefix}</Text>
+                    <Text style={[styles.suggestionCourt, { color: subColor }]} numberOfLines={1}>
+                      {item.courtName}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {selectedCourt ? (
+              <Text style={[styles.landRegistryCourt, { color: subColor }]}>Właściwy sąd: {selectedCourt.courtName}</Text>
+            ) : null}
+            {landRegistryRaw ? (
+              <Text style={[styles.landRegistryValidation, { color: isLandRegistryValid ? '#34C759' : '#FF3B30' }]}>
+                {isLandRegistryValid
+                  ? 'Format KW poprawny. Dane są przekazywane wyłącznie do procesu weryfikacji.'
+                  : 'Nieprawidłowy format KW. Wzór: WA4N/00012345/6'}
+              </Text>
+            ) : null}
+          </View>
+          <Text style={styles.sectionFooter}>
+            Dane dokumentowe są prywatne i służą wyłącznie do weryfikacji stanu prawnego nieruchomości (np.
+            potwierdzenie: nieruchomość sprawdzona, bez zadłużeń), co zwiększa zaufanie do oferty. Te dane nie są
+            pokazywane publicznie i nie będą publikowane bez Twojej wyraźnej zgody.
+          </Text>
 
           {/* LOKALIZACJA PRECYZYJNA */}
           <Text style={styles.sectionTitle}>MAPA I WIDOCZNOŚĆ</Text>
@@ -478,7 +575,38 @@ const styles = StyleSheet.create({
   segmentText: { fontSize: 13, color: '#8E8E93', fontWeight: '500', letterSpacing: -0.2 },
   
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  heatingPickerWrap: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, overflow: 'hidden' },
   switchTextGroup: { flex: 1, paddingRight: 15 },
   switchTitle: { fontSize: 17, fontWeight: '400', letterSpacing: -0.4 },
   switchSubtitle: { fontSize: 13, color: '#8E8E93', marginTop: 4, lineHeight: 18 },
+  landRegistryValidation: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  suggestionsWrap: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(127,127,127,0.2)',
+  },
+  suggestionPrefix: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4 },
+  suggestionCourt: { marginTop: 2, fontSize: 12, fontWeight: '500' },
+  landRegistryCourt: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 2,
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });

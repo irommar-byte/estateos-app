@@ -36,12 +36,15 @@ const initialDraft = {
   yearBuilt: '',
 
   // Krok 4: Udogodnienia
+  heating: '',
   hasBalcony: false,
   hasElevator: false,
   hasStorage: false,
   hasParking: false,
   hasGarden: false,
   isFurnished: false,
+  apartmentNumber: '',
+  landRegistryNumber: '',
 
   // Krok 5: Media
   images: [],

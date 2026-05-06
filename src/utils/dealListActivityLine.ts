@@ -1,7 +1,5 @@
 import { parseDealEvent, normalizeDealEvent } from './dealEventParse';
-
-const FINALIZED_RX =
-  /Decyzja właściciela: oferta została wycofana z publikacji|rezerwacja uzgodnionej ceny/i;
+import { isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
 
 const shortPl = (iso: string) =>
   new Date(iso).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -41,7 +39,7 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
 
   for (const m of sorted) {
     const body = String(m?.content ?? m?.text ?? '');
-    if (FINALIZED_RX.test(body)) {
+    if (isFinalizedOwnerAcceptanceMessage(body)) {
       return 'Transakcja sfinalizowana: oferta wycofana z publikacji i przeniesiona do archiwum';
     }
   }

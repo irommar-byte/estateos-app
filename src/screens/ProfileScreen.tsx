@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,6 +15,8 @@ import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
 import { openStripeCheckoutForPlan } from '../utils/listingQuota';
+import * as Notifications from 'expo-notifications';
+import EliteStatusBadges from '../components/EliteStatusBadges';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -81,11 +83,61 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
   const isDark = theme.glass === 'dark';
   const [priceAlerts, setPriceAlerts] = useState(true);
   const [negotiationAlerts, setNegotiationAlerts] = useState(true);
+  const [pushPermissionStatus, setPushPermissionStatus] = useState(null);
+
+  const refreshPushPermission = async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setPushPermissionStatus(status);
+    } catch {
+      setPushPermissionStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+    void refreshPushPermission();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshPushPermission();
+    });
+    return () => sub.remove();
+  }, [visible]);
 
   const toggleSetting = (setter, value) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(value);
   };
+
+  const handleSystemPushAction = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === 'denied') {
+      Alert.alert(
+        'Powiadomienia systemowe',
+        'System nie pozwoli ponownie wyświetlić okna zgody. Otwórz Ustawienia → Powiadomienia → EstateOS™ i włącz powiadomienia.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          { text: 'Ustawienia', onPress: () => void Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+    await Notifications.requestPermissionsAsync();
+    await refreshPushPermission();
+  };
+
+  const pushStatusLabel =
+    pushPermissionStatus === 'granted'
+      ? 'Włączone'
+      : pushPermissionStatus === 'denied'
+        ? 'Wyłączone (ustawienia systemowe)'
+        : pushPermissionStatus === 'undetermined'
+          ? 'Nie ustawiono — możesz zezwolić'
+          : '—';
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
@@ -95,6 +147,30 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
           <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+          <Text style={styles.sectionTitle}>Powiadomienia na urządzeniu</Text>
+          <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', marginBottom: 12 }]}>
+            <View style={[styles.listItem, { paddingVertical: 14 }]}>
+              <View style={[styles.listIconBox, { backgroundColor: pushPermissionStatus === 'granted' ? '#34C759' : '#FF9500' }]}>
+                <Ionicons name="phone-portrait-outline" size={20} color="#FFF" />
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>Status systemowy</Text>
+                <Text style={styles.listSubtitle}>{pushStatusLabel}</Text>
+              </View>
+              <Pressable
+                onPress={() => void handleSystemPushAction()}
+                style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
+              >
+                <Text style={{ color: '#007AFF', fontWeight: '700', fontSize: 15 }}>
+                  {pushPermissionStatus === 'denied' ? 'Ustawienia' : 'Zezwól'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+          <Text style={styles.sectionFooter}>
+            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady — przełącznik pojawi się w Ustawieniach dopiero po pierwszej próbie zezwolenia.
+          </Text>
+
           <Text style={styles.sectionTitle}>Ulubione oferty</Text>
           <ListGroup isDark={isDark}>
             <ListItem icon="pricetag" color="#34C759" title="Zmiany cen" subtitle="Gdy cena obserwowanej oferty spadnie" isDark={isDark} rightElement={<Switch value={priceAlerts} onValueChange={(v) => toggleSetting(setPriceAlerts, v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#34C759' }} />} />
@@ -153,6 +229,57 @@ const PremiumActionButton = ({ icon, color, title, subtitle, onPress, disabled, 
       </Animated.View>
     </Pressable>
   );
+};
+
+const resolveOfferMediaUrl = (value: unknown): string | null => {
+  const s = String(value ?? '').trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('//')) return `https:${s}`;
+  if (s.startsWith('/')) return `${API_URL}${s}`;
+  return `${API_URL}/${s.replace(/^\//, '')}`;
+};
+
+const parseOfferImageCandidates = (raw: unknown): any[] => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    if (trimmed.includes(',')) return trimmed.split(',').map((x) => x.trim()).filter(Boolean);
+    return [trimmed];
+  }
+};
+
+const extractOfferCardImage = (offer: any): string | null => {
+  const direct = [
+    offer?.thumbnail,
+    offer?.thumbnailUrl,
+    offer?.image,
+    offer?.imageUrl,
+    offer?.coverImage,
+    offer?.mainImage,
+  ]
+    .map(resolveOfferMediaUrl)
+    .find(Boolean);
+  if (direct) return direct;
+
+  const candidates = parseOfferImageCandidates(offer?.images);
+  for (const item of candidates) {
+    if (typeof item === 'string') {
+      const url = resolveOfferMediaUrl(item);
+      if (url) return url;
+      continue;
+    }
+    if (item && typeof item === 'object') {
+      const url = resolveOfferMediaUrl(item.url ?? item.src ?? item.uri ?? item.path);
+      if (url) return url;
+    }
+  }
+  return null;
 };
 
 const MyOffersModal = ({ visible, onClose, theme }) => {
@@ -323,11 +450,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   });
 
   const renderMyOffer = ({ item }) => {
-    let imageUri = null;
-    try {
-      const parsedImages = typeof item.images === 'string' ? JSON.parse(item.images) : item.images;
-      if (parsedImages && parsedImages.length > 0) imageUri = parsedImages[0].startsWith('/') ? `https://estateos.pl${parsedImages[0]}` : parsedImages[0];
-    } catch (e) {}
+    const imageUri = extractOfferCardImage(item);
 
     const rowStatus = normalizeOfferTabStatus(item.status);
 
@@ -369,11 +492,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       : 0;
     const realViews = Number(selectedOffer.viewsCount ?? selectedOffer.views ?? 0);
 
-    let imageUri = null;
-    try {
-      const pImages = typeof selectedOffer.images === 'string' ? JSON.parse(selectedOffer.images) : selectedOffer.images;
-      if (pImages?.length > 0) imageUri = pImages[0].startsWith('/') ? `https://estateos.pl${pImages[0]}` : pImages[0];
-    } catch(e){}
+    const imageUri = extractOfferCardImage(selectedOffer);
 
     return (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20 }}>
@@ -1397,6 +1516,7 @@ export default function ProfileScreen({ theme }) {
           </Pressable>
           <View style={styles.headerInfo}>
             <Text style={[styles.headerName, { color: theme.text }]} numberOfLines={1}>{user?.firstName || user?.email} {user?.lastName || ''}</Text>
+            <EliteStatusBadges subject={user} isDark={isDark} compact />
             <Pressable
               onPress={() => {
                 Haptics.selectionAsync();
@@ -1537,6 +1657,7 @@ export default function ProfileScreen({ theme }) {
             ) : (
               <>
                 <Text style={styles.profileName}>{ownPublicProfile?.user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Użytkownik'}</Text>
+                <EliteStatusBadges subject={ownPublicProfile?.user || user} isDark compact />
                 <Text style={styles.profileMeta}>ID: {user?.id || '-'}</Text>
                 <View style={styles.profileRatingBox}>
                   <Text style={styles.profileRatingValue}>{ownAverageRating.toFixed(1)}</Text>

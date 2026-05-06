@@ -53,6 +53,12 @@ import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
+import {
+  extractPushDealAndOfferIds,
+  firstDefined,
+  mergePushPayload,
+  shouldPrioritizeDealroom,
+} from './src/contracts/parityContracts';
 
 const navigationRef = createNavigationContainerRef();
 
@@ -602,20 +608,6 @@ type PushNavigationTarget =
       params: { screen: 'Radar' | 'Ulubione' | 'Wiadomości' };
     };
 
-const parseMaybeJson = (value: unknown): Record<string, any> => {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
-
 const parseNumericOrStringId = (value: unknown): number | string | null => {
   if (value === undefined || value === null) return null;
   const asString = String(value).trim();
@@ -639,21 +631,10 @@ const parseLinkToPushTarget = (url: string): PushNavigationTarget | null => {
 const parsePushTargetFromResponse = (
   response: Notifications.NotificationResponse | null
 ): PushNavigationTarget | null => {
-  const baseData = parseMaybeJson(response?.notification?.request?.content?.data);
-  const triggerPayload = parseMaybeJson((response as any)?.notification?.request?.trigger?.payload);
-  const triggerBody = parseMaybeJson(triggerPayload?.body);
-  const triggerData = parseMaybeJson(triggerPayload?.data);
-  const triggerCustom = parseMaybeJson(triggerPayload?.custom);
-  const nestedData = {
-    ...parseMaybeJson(baseData.payload),
-    ...parseMaybeJson(baseData.data),
-    ...parseMaybeJson(baseData.meta),
-    ...parseMaybeJson(baseData.custom),
-    ...triggerBody,
-    ...triggerData,
-    ...triggerCustom,
-  };
-  const data = { ...triggerPayload, ...baseData, ...nestedData };
+  const data = mergePushPayload({
+    baseData: response?.notification?.request?.content?.data,
+    triggerPayload: (response as any)?.notification?.request?.trigger?.payload,
+  });
   const targetTypeNorm = String(firstDefined(data.targetType, data.entity, data.notificationType) || '')
     .trim()
     .toUpperCase();
@@ -686,35 +667,9 @@ const parsePushTargetFromResponse = (
   const deeplinkOfferId = extractIdFromDeeplink(deeplink, 'offer');
   const deeplinkDealId = extractIdFromDeeplink(deeplink, 'deal');
 
-  const offerId = parseNumericOrStringId(
-    firstDefined(
-      data.offerId,
-      data.offer_id,
-      targetTypeLooksOffer ? data.targetId : null,
-      data.listingId,
-      data.propertyId,
-      data.property_id,
-      data.realEstateId,
-      data.real_estate_id,
-      data?.offer?.id,
-      deeplinkOfferId
-    )
-  );
-
-  const dealId = parseNumericOrStringId(
-    firstDefined(
-      data.dealId,
-      data.deal_id,
-      targetTypeLooksDeal ? data.targetId : null,
-      data.chatId,
-      data.threadId,
-      data.conversationId,
-      data.roomId,
-      data.room_id,
-      data?.deal?.id,
-      deeplinkDealId
-    )
-  );
+  const extractedIds = extractPushDealAndOfferIds(data);
+  const offerId = parseNumericOrStringId(extractedIds.offerId ?? deeplinkOfferId);
+  const dealId = parseNumericOrStringId(extractedIds.dealId ?? deeplinkDealId);
 
   const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
   const looksLikeDealOrChat =
@@ -740,6 +695,7 @@ const parsePushTargetFromResponse = (
     routeHint.startsWith('deal_') ||
     routeHint.startsWith('chat_') ||
     targetTypeLooksDeal;
+  const prioritizeDealroom = shouldPrioritizeDealroom(data, extractedIds.dealId);
   const textHint = `${String(response?.notification?.request?.content?.title || '')} ${String(
     response?.notification?.request?.content?.body || ''
   )}`.toLowerCase();
@@ -747,16 +703,30 @@ const parsePushTargetFromResponse = (
     /(ofert|offer|listing|nieruchomo|radar|aktywac|opublikow|dopasowan)/i.test(textHint) ||
     /(offer|listing|property|oferta|radar|match)/i.test(String(data.notificationType || '').toLowerCase());
 
-  // 0) Deeplink ma absolutny priorytet - jeśli backend go wysłał, to on decyduje o trasie.
-  if (deeplinkOfferId) {
-    const id = parseNumericOrStringId(deeplinkOfferId);
-    if (id) {
-      return {
-        screen: 'OfferDetail',
-        params: { offer: { id }, id, offerId: id },
-      };
-    }
+  // 0) Priorytet backend dealroom: target='dealroom' / targetType='DEAL' / dealId.
+  if (prioritizeDealroom && dealId) {
+    const offerIdForDeal = parseNumericOrStringId(
+      firstDefined(
+        data.offerId,
+        data.offer_id,
+        data.listingId,
+        data.propertyId,
+        data.property_id,
+        data?.offer?.id
+      )
+    );
+    const title = String(firstDefined(data.title, data.dealTitle, data.chatTitle, data.subject) || '').trim();
+    return {
+      screen: 'DealroomChat',
+      params: {
+        dealId,
+        ...(offerIdForDeal ? { offerId: offerIdForDeal } : {}),
+        ...(title ? { title } : {}),
+      },
+    };
   }
+
+  // 1) Deeplink ma wysoki priorytet (kompatybilność wsteczna).
   if (deeplinkDealId) {
     const id = parseNumericOrStringId(deeplinkDealId);
     if (id) {
@@ -781,8 +751,17 @@ const parsePushTargetFromResponse = (
       };
     }
   }
+  if (deeplinkOfferId) {
+    const id = parseNumericOrStringId(deeplinkOfferId);
+    if (id) {
+      return {
+        screen: 'OfferDetail',
+        params: { offer: { id }, id, offerId: id },
+      };
+    }
+  }
 
-  // 1) Ofertowy deeplink/offerId ma absolutny priorytet (nawet gdy payload niesie też dealId).
+  // 2) Fallback ofertowy po offerId (nowy kontrakt: dopiero po dealroom).
   if ((explicitOfferTarget || (offerId && (deeplinkLooksLikeOffer || offerSemanticHint || looksLikeOffer || looksLikeRadar))) && offerId) {
     return {
       screen: 'OfferDetail',
@@ -790,7 +769,7 @@ const parsePushTargetFromResponse = (
     };
   }
 
-  // 2) Jawny target dealroom/czat.
+  // 3) Jawny target dealroom/czat (stare payloady bez target='dealroom').
   if (
     (explicitDealTarget || looksLikeDealOrChat || deeplinkLooksLikeDeal || !!dealId) &&
     dealId &&
@@ -818,7 +797,7 @@ const parsePushTargetFromResponse = (
     };
   }
 
-  // 3) Powiadomienia ofertowe / radarowe z offerId
+  // 4) Powiadomienia ofertowe / radarowe z offerId
   if ((looksLikeOffer || looksLikeRadar || deeplinkLooksLikeOffer || deeplinkLooksLikeRadar || !!offerId) && offerId) {
     return {
       screen: 'OfferDetail',
@@ -826,7 +805,7 @@ const parsePushTargetFromResponse = (
     };
   }
 
-  // 4) Fallback po deeplinku bez id (np. "estateos://dealroom")
+  // 5) Fallback po deeplinku bez id (np. "estateos://dealroom")
   if (looksLikeDealOrChat || deeplinkLooksLikeDeal) {
     return {
       screen: 'MainTabs',
@@ -834,7 +813,7 @@ const parsePushTargetFromResponse = (
     };
   }
 
-  // 5) Fallback radar bez offerId
+  // 6) Fallback radar bez offerId
   if (looksLikeRadar || deeplinkLooksLikeRadar || deeplinkLower.includes('://radar')) {
     return {
       screen: 'MainTabs',

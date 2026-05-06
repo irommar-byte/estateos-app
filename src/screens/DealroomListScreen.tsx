@@ -24,6 +24,8 @@ import { API_URL } from '../config/network';
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
+import { isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
+import EliteStatusBadges from '../components/EliteStatusBadges';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
@@ -71,11 +73,9 @@ function tryParseDealEventPayload(content: string): Record<string, unknown> | nu
 
 /** Klasyfikacja na podstawie treści wiadomości w wątku (spójnie z czatem dealroom). */
 function classifyDealPhaseFromMessages(messages: any[]): DealPhase {
-  const finalizedRx =
-    /Decyzja właściciela: oferta została wycofana z publikacji|rezerwacja uzgodnionej ceny/i;
   for (const m of messages) {
     const body = String(m?.content ?? m?.text ?? '');
-    if (finalizedRx.test(body)) return 'finalized';
+    if (isFinalizedOwnerAcceptanceMessage(body)) return 'finalized';
   }
   for (const m of messages) {
     const body = String(m?.content ?? m?.text ?? '');
@@ -1493,6 +1493,7 @@ export default function DealroomListScreen() {
                     )}
                   </View>
                   <Text style={styles.profileName}>{selectedProfile?.user?.name || `Użytkownik #${selectedProfileId}`}</Text>
+                  <EliteStatusBadges subject={selectedProfile?.user || selectedProfile} isDark={isDark} compact />
                   <Text style={styles.profileIdText}>ID w systemie: {selectedProfile?.user?.id || selectedProfileId}</Text>
                   
                   {(() => {

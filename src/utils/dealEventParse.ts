@@ -1,8 +1,9 @@
 /**
  * Wspólne parsowanie zdarzeń dealroomu — spójne z DealroomChatScreen.
  */
+import { DEAL_EVENT_PREFIX, validateSharedDealEventPayload } from '../contracts/parityContracts';
 
-export const EVENT_PREFIX = '[[DEAL_EVENT]]';
+export const EVENT_PREFIX = DEAL_EVENT_PREFIX;
 
 const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
 
@@ -77,11 +78,43 @@ export function parseDealEvent(input?: string | any) {
     try {
       const parsed = JSON.parse(content.slice(EVENT_PREFIX.length));
       if (parsed && typeof parsed === 'object') {
-        return {
+        const normalizedAction = (() => {
+          const rawAction = String(parsed.action || '').trim().toUpperCase();
+          if (rawAction === 'ACCEPT') return 'ACCEPTED';
+          if (rawAction === 'DECLINE') return 'DECLINED';
+          if (rawAction === 'REJECT') return 'REJECTED';
+          if (rawAction === 'PROPOSE') return 'PROPOSED';
+          if (rawAction === 'COUNTER') return 'COUNTERED';
+          return rawAction;
+        })();
+        const derivedStatus = (() => {
+          const rawStatus = String(parsed.status || '').trim().toUpperCase();
+          if (rawStatus === 'ACCEPT') return 'ACCEPTED';
+          if (rawStatus === 'DECLINE') return 'DECLINED';
+          if (rawStatus === 'REJECT') return 'REJECTED';
+          if (rawStatus) return rawStatus;
+          if (normalizedAction === 'ACCEPTED') return 'ACCEPTED';
+          if (normalizedAction === 'REJECTED') return 'REJECTED';
+          if (normalizedAction === 'DECLINED') return 'DECLINED';
+          return 'PENDING';
+        })();
+        const merged = {
           ...parsed,
+          action: normalizedAction,
+          status: derivedStatus,
+          amount:
+            parsed.amount ??
+            parsed.counterAmount ??
+            parsed.value ??
+            parsed.bidAmount ??
+            null,
+          proposedDate: parsed.proposedDate ?? parsed.date ?? null,
+          note: String(firstDefined(parsed.note, parsed.message, messageRefs.note) || '').trim() || null,
           bidId: parsed.bidId ?? messageRefs.bidId ?? null,
           appointmentId: parsed.appointmentId ?? messageRefs.appointmentId ?? null,
         };
+        const valid = validateSharedDealEventPayload(merged);
+        return valid ? valid : null;
       }
       return null;
     } catch {

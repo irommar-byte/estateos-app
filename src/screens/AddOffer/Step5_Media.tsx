@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingVi
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
@@ -216,7 +216,12 @@ const aiVocabulary = {
 export default function Step5_Media({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
-  useFocusEffect(useCallback(() => { setCurrentStep(5); }, []));
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      requestAnimationFrame(() => setCurrentStep(5));
+    });
+    return unsubscribe;
+  }, [navigation, setCurrentStep]);
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);

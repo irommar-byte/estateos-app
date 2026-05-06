@@ -3,7 +3,7 @@
  * tego samego deala/oferty — treść i tak widzi na ekranie.
  */
 import type * as Notifications from 'expo-notifications';
-import { extractIdFromDeeplink } from './deeplinkParse';
+import { extractPushDealAndOfferIds, mergePushPayload as mergeCanonicalPushPayload } from '../contracts/parityContracts';
 
 let activeDealId: number | null = null;
 let activeOfferId: number | null = null;
@@ -15,98 +15,18 @@ export function setActiveDealroomContext(params: { dealId?: number | null; offer
   activeOfferId = Number.isFinite(o) && o > 0 ? o : null;
 }
 
-const parseMaybeJson = (value: unknown): Record<string, any> => {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
-const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
-
-function normalizePositiveInt(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') return null;
-  const n = Number(String(value).trim());
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 function mergePushPayload(notification: Notifications.Notification): Record<string, any> {
-  const req = notification.request;
-  const baseData = parseMaybeJson(req.content?.data);
-  const triggerPayload = parseMaybeJson((req as any)?.trigger?.payload);
-  const triggerBody = parseMaybeJson(triggerPayload?.body);
-  const triggerData = parseMaybeJson(triggerPayload?.data);
-  const triggerCustom = parseMaybeJson(triggerPayload?.custom);
-  const nestedData = {
-    ...parseMaybeJson(baseData.payload),
-    ...parseMaybeJson(baseData.data),
-    ...parseMaybeJson(baseData.meta),
-    ...parseMaybeJson(baseData.custom),
-    ...triggerBody,
-    ...triggerData,
-    ...triggerCustom,
-  };
-  return { ...triggerPayload, ...baseData, ...nestedData };
+  return mergeCanonicalPushPayload({
+    baseData: notification.request.content?.data,
+    triggerPayload: (notification.request as any)?.trigger?.payload,
+  });
 }
 
 function extractDealAndOfferIds(notification: Notifications.Notification): {
   dealId: number | null;
   offerId: number | null;
 } {
-  const data = mergePushPayload(notification);
-  const deeplink = String(firstDefined(data.deeplink, data.deepLink, data.link, data.url, data.dealroomLink) || '');
-  const deeplinkOfferId = extractIdFromDeeplink(deeplink, 'offer');
-  const deeplinkDealId = extractIdFromDeeplink(deeplink, 'deal');
-
-  const targetTypeNorm = String(firstDefined(data.targetType, data.entity, data.notificationType) || '')
-    .trim()
-    .toUpperCase();
-  const targetTypeLooksDeal =
-    targetTypeNorm.includes('DEAL') ||
-    targetTypeNorm.includes('CHAT') ||
-    targetTypeNorm.includes('THREAD') ||
-    targetTypeNorm.includes('CONVERSATION');
-
-  const dealId = normalizePositiveInt(
-    firstDefined(
-      data.dealId,
-      data.deal_id,
-      targetTypeLooksDeal ? data.targetId : null,
-      data.chatId,
-      data.threadId,
-      data.conversationId,
-      data.roomId,
-      data.room_id,
-      data?.deal?.id,
-      deeplinkDealId
-    )
-  );
-
-  const targetTypeLooksOffer =
-    targetTypeNorm.includes('OFFER') ||
-    targetTypeNorm.includes('LISTING') ||
-    targetTypeNorm.includes('PROPERTY');
-  const offerId = normalizePositiveInt(
-    firstDefined(
-      data.offerId,
-      data.offer_id,
-      targetTypeLooksOffer ? data.targetId : null,
-      data.listingId,
-      data.propertyId,
-      data.property_id,
-      data.realEstateId,
-      data.real_estate_id,
-      data?.offer?.id,
-      deeplinkOfferId
-    )
-  );
-
-  return { dealId, offerId };
+  return extractPushDealAndOfferIds(mergePushPayload(notification));
 }
 
 /** Wyłącz baner / listę / dźwięk (handler foreground), gdy push dotyczy tego samego wątku co otwarty czat. */

@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
+import { isValidLandRegistryNumber } from '../../utils/landRegistry';
 import {
   fetchCountableUserOffers,
   allowsMultipleCountableListings,
@@ -222,6 +223,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
     }
 
+    const landRegistryRaw = String(draft.landRegistryNumber || '').trim();
+    if (!isValidLandRegistryNumber(landRegistryRaw)) {
+      Alert.alert('Walidacja', 'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6');
+      return;
+    }
+
     setLoading(true);
     setUploadProgressText('Tworzenie oferty w bazie...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -246,7 +253,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       
       area: draft.area || '0',          
       price: draft.price || '0',
-      adminFee: draft.adminFee || (draft.transactionType !== 'RENT' ? draft.rent : null) || null,
+      adminFee: draft.transactionType !== 'RENT' && parseLocaleNumber(draft.adminFee || draft.rent) > 0
+        ? parseLocaleNumber(draft.adminFee || draft.rent)
+        : null,
       deposit: draft.deposit || null,
       plotArea: draft.plotArea || null,
       rooms: draft.rooms || '0',        
@@ -260,6 +269,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       hasParking: draft.hasParking || false,
       hasGarden: draft.hasGarden || false,
       isFurnished: draft.isFurnished || false,
+      heating: String(draft.heating || '').trim() || null,
+      apartmentNumber: String(draft.apartmentNumber || '').trim() || undefined,
+      landRegistryNumber: String(draft.landRegistryNumber || '').trim() || undefined,
       
       description: draft.description || '', 
       images: '[]', 
@@ -419,7 +431,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const pricePerSqm = areaNum > 0 && priceNum > 0 ? Math.round(priceNum / areaNum) : null;
   const yearLabel = String(draft.yearBuilt || draft.buildYear || '').trim();
   const depositNum = parseLocaleNumber(draft.deposit);
-  const adminExtra = parseLocaleNumber(draft.rent);
+  const adminFeeValue = parseLocaleNumber(draft.adminFee || draft.rent);
   const activeAmenities = AMENITY_META.filter((a) => draft[a.key]);
   const propertyTypeLabel =
     draft.propertyType === 'FLAT' || draft.propertyType === 'APARTMENT' ? 'Mieszkanie' :
@@ -486,8 +498,8 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 {draft.transactionType === 'RENT' && depositNum > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Kaucja {Math.round(depositNum).toLocaleString('pl-PL')} PLN</Text>
                 ) : null}
-                {draft.transactionType === 'SALE' && adminExtra > 0 ? (
-                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Czynsz administracyjny ~ {Math.round(adminExtra).toLocaleString('pl-PL')} PLN</Text>
+                {draft.transactionType === 'SALE' && adminFeeValue > 0 ? (
+                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Czynsz administracyjny ~ {Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN</Text>
                 ) : null}
               </View>
               <View style={[styles.typePill, { backgroundColor: draft.transactionType === 'RENT' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)' }]}>
@@ -518,6 +530,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               <InfoBadge label="Pokoje" value={draft.rooms ? `${draft.rooms} pok.` : ''} icon="bed-outline" />
               <InfoBadge label="Piętro" value={formatFloorSummary(draft.floor)} icon="layers-outline" />
               <InfoBadge label="Rok budowy" value={yearLabel} icon="calendar-outline" />
+              <InfoBadge label="Czynsz admin." value={adminFeeValue > 0 ? `${Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN` : ''} icon="wallet-outline" />
+              <InfoBadge label="Ogrzewanie" value={String(draft.heating || '').trim()} icon="flame-outline" />
+              <InfoBadge label="Umeblowanie" value={draft.isFurnished ? 'Tak' : 'Nie'} icon="bed-outline" />
               <InfoBadge label="Kondygnacje w bud." value={draft.totalFloors ? String(draft.totalFloors) : ''} icon="albums-outline" />
               <InfoBadge label="Działka" value={draft.plotArea ? `${draft.plotArea} m²` : ''} icon="trail-sign-outline" />
               <InfoBadge label="Stan" value={draft.propertyType !== 'PLOT' ? conditionLabel : ''} icon={conditionIcon} />
