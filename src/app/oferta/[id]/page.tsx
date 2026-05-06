@@ -6,6 +6,8 @@ import Link from "next/link";
 import { MapPin, ArchiveX, Eye, Shield, Briefcase, Phone, MessageCircle, Video, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 , ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
+import OfferShareLink from "@/components/offer/OfferShareLink";
+import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
   const ref = useRef(null);
@@ -59,8 +61,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
   const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
   
-  const createdAtTime = offer.createdAt ? new Date(offer.createdAt).getTime() : Date.now();
-  const unlockTime = createdAtTime + (12 * 60 * 60 * 1000); // 12 Godzin
+  const unlockTime = offerPremarketUnlockMs(offer.createdAt);
 
   useEffect(() => {
     const updateTimer = () => {
@@ -73,7 +74,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     return () => clearInterval(interval);
   }, [unlockTime]);
 
-  // Kłódka zatrzaskuje się, jeśli nie minęło 12h, user nie jest PRO i nie jest właścicielem
+  // Ukrycie szczegółów do „premiery na szerokim rynku” (PRO i właściciel widzą od razu)
   const isLocked = timeLeft > 0 && !isPro && !isOwner;
 
   // Formatowanie zegara (HH:MM:SS)
@@ -130,8 +131,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const locationParams = [
     { label: "Miejscowość", value: offer.city || 'Warszawa' },
-    { label: "Dzielnica", value: isLocked ? 'Ukryta (Off-Market)' : offer.district },
-    { label: "Adres (Ulica)", value: isLocked ? 'Ukryta (Off-Market)' : offer.address }
+    { label: "Dzielnica", value: isLocked ? 'Ukryta — przed premierą na szerokim rynku' : offer.district },
+    { label: "Adres (Ulica)", value: isLocked ? 'Ukryty — przed premierą na szerokim rynku' : offer.address }
   ].filter(p => p.value);
 
   const mainParams = [
@@ -229,7 +230,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             
             
 <h1 className="text-4xl sm:text-[7vw] font-bold tracking-tighter text-center leading-tight drop-shadow-2xl px-4 sm:px-8 max-w-7xl mx-auto [text-wrap:balance]">
-              {isLocked ? "Oferta Off-Market" : offer.title}
+              {isLocked ? "Przed premierą na szerokim rynku" : offer.title}
             </h1>
         </div>
         <div className="absolute bottom-0 w-full h-1/2 z-20 bg-gradient-to-t from-[#050505] to-transparent" />
@@ -257,8 +258,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <Lock size={40} className="text-emerald-500" />
               </div>
               
-              <h2 className="text-2xl sm:text-4xl font-black text-white mb-4 relative z-10 tracking-tighter">Oferta Zablokowana</h2>
-              <p className="text-white/50 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">Ta nieruchomość jest świeżo dodana i widoczna wyłącznie dla zweryfikowanych Inwestorów PRO i Agencji. Zostanie publicznie odblokowana za:</p>
+              <h2 className="text-2xl sm:text-4xl font-black text-white mb-4 relative z-10 tracking-tighter">Jeszcze nie na szerokim rynku</h2>
+              <p className="text-white/50 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">
+                Pierwsze 24 godziny po publikacji to okres premiery: adres, zdjęcia w pełnej rozdzielczości i kontakt widzi od razu wyłącznie właściciel oraz użytkownicy PRO. Po tym czasie szczegóły stają się widoczne dla wszystkich — tak jak na szerokim rynku.
+              </p>
               
               <div className="text-4xl sm:text-6xl font-mono font-black text-emerald-500 mb-10 tracking-widest drop-shadow-[0_0_20px_rgba(16,185,129,0.5)] relative z-10 flex items-center justify-center gap-4">
                 <Timer size={36} className="text-emerald-500/50" />
@@ -268,7 +271,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <Link href="/cennik" className="btn-action w-full block py-5 sm:py-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest relative z-10 shadow-[0_20px_40px_rgba(16,185,129,0.2)] bg-emerald-500 text-black hover:bg-emerald-400 transition-colors">
                 Przejdź na PRO i Odblokuj Teraz
               </Link>
-              <p className="mt-6 text-[10px] uppercase tracking-widest text-white/30 font-bold relative z-10">Omiń kolejkę i zobacz dokładny adres, zdjęcia oraz kontakt do właściciela.</p>
+              <p className="mt-6 text-[10px] uppercase tracking-widest text-white/30 font-bold relative z-10">Uzyskaj widok jak po premierze na szerokim rynku — od razu pełny adres, zdjęcia i kontakt.</p>
             </div>
           </div>
         )}
@@ -433,6 +436,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <Shield size={10} className="text-white" />
                     <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">Zabezpieczone przez EstateOS™</span>
                   </div>
+
+                  <OfferShareLink offerId={Number(offer.id ?? offer._id)} />
+
                   </>
                 )}
                 </div>

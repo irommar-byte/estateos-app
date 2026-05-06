@@ -19,6 +19,9 @@ const AMENITIES_LIST = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", 
 // --- FORMATOWANIE LICZB ---
 const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
+/** Zgodne z limitem w `/api/upload`. */
+const OFFER_MAX_IMAGES = 20;
+
 // --- KOMPONENT DRAG & DROP ZDJĘĆ ---
 const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url: string) => void, isMain: boolean }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: url });
@@ -82,12 +85,38 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   }, [offerId]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files; if (!files || files.length === 0) return;
-    setIsUploading(true); const formData = new FormData(); Array.from(files).forEach(f => formData.append("files", f));
+    const files = e.target.files;
+    if (!files || files.length === 0 || !offerId) return;
+    setIsUploading(true);
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (res.ok) { const d = await res.json(); const newImgs = [...imagesList, ...d.images].slice(0, 15); setImagesList(newImgs); updateData({ images: newImgs.join(","), imageUrl: newImgs[0] }); }
-    } finally { setIsUploading(false); }
+      const newUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files.item(i);
+        if (!f) continue;
+        const formData = new FormData();
+        formData.append('offerId', offerId);
+        formData.append('file', f);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || err.message || 'Upload się nie powiódł');
+        }
+        const d = await res.json();
+        if (d.url) newUrls.push(d.url);
+      }
+      const merged = [...imagesList, ...newUrls].slice(0, OFFER_MAX_IMAGES);
+      setImagesList(merged);
+      updateData({ images: merged.join(','), imageUrl: merged[0] });
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Upload zdjęć nie powiódł się.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleRemoveImage = (url: string) => { const n = imagesList.filter(u => u !== url); setImagesList(n); updateData({ images: n.join(","), imageUrl: n[0] || '' }); };

@@ -43,7 +43,7 @@ export default function ModeTransition() {
   const config = {
     BUYER: {
       title: "INWESTOR",
-      subtitle: "Inicjalizacja Radaru Off-Market",
+      subtitle: "Inicjalizacja Radaru (okres premiery)",
       color: "from-emerald-500/20 to-emerald-900/40",
       glow: "bg-emerald-500"
     },

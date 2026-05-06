@@ -1,0 +1,52 @@
+EstateOS — domena, wizytówki /o/:id, Universal Links, HTTPS
+==========================================================
+
+1) Zmienne środowiska (.env na serwerze, obok buildu)
+-----------------------------------------------------
+APPLE_TEAM_ID                  — Team ID z Apple Developer (wymagane do sensownego AASA).
+ANDROID_SHA256_CERT_FINGERPRINT — odcisk SHA-256 certyfikatu podpisu APK/AAB (release).
+                                 Kilka wartości: oddziel spacją lub przecinkiem.
+Opcjonalnie: IOS_BUNDLE_ID, ANDROID_PACKAGE_NAME (domyślnie pl.estateos.app).
+
+Treść plików:
+  GET https://estateos.pl/.well-known/apple-app-site-association
+  GET https://estateos.pl/.well-known/assetlinks.json
+jest generowana przez Next (Route Handlers) z powyższych zmiennych — nie edytuj ręcznie JSON na dysku.
+
+2) nginx
+--------
+• Dołącz fragment z deploy/nginx-www-to-apex.conf (HTTP → HTTPS dla apex i www).
+• Główny server { } dla estateos.pl na 443 powinien kończyć TLS i proxy_pass do Node (np. 127.0.0.1:3000).
+• Nagłówek dla backendu: proxy_set_header X-Forwarded-Proto $scheme;
+• WAŻNE: ścieżki /.well-known/ oraz /o/ muszą iść proxy_pass do Next — nie try_files z osobnego katalogu statycznego (inaczej AASA bez applinks albo stary HTML).
+• nginx -t && reload.
+
+3) Deploy backendu
+------------------
+cd .../estateos
+npm ci
+npm run build
+pm2 reload ...   # lub deploy:prod — ten sam cwd co ecosystem.config.cjs
+
+4) Weryfikacja po wdrożeniu
+---------------------------
+curl -sI https://estateos.pl/.well-known/apple-app-site-association | head
+curl -sI https://estateos.pl/.well-known/assetlinks.json | head
+curl -sI http://estateos.pl/o/1 | head -5          # powinno iść 301 na https://
+curl -sI https://www.estateos.pl/o/1 | head -5    # 301 na https://estateos.pl/o/1
+
+5) Aplikacja mobilna (estateos-app)
+-----------------------------------
+• app.json: scheme estateos, applinks:estateos.pl, intentFilters dla /o, /offer, /oferta.
+• Po zmianie Team ID / certyfikatu: eas build (nowy binary), potem Apple/Google weryfikują domenę.
+
+6) Adresy „jak z tego korzystać”
+-------------------------------
+• Publiczna wizytówka oferty (udostępnianie, QR, SMS):
+    https://estateos.pl/o/<idOferty>
+  Otwiera się landing (public/offer-landing.html przez rewrite), dane z GET /api/offers/<id>.
+• Otwarcie w aplikacji (custom scheme):
+    estateos://o/<idOferty>
+• Universal Link / App Link (jak zainstalowana aplikacja i zweryfikowana domena):
+    https://estateos.pl/o/<idOferty>  — system może otworzyć app zamiast przeglądarki.
+• Kanoniczna domena to zawsze https://estateos.pl (bez www); www → 301.

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/purge-legacy-middleware.cjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -11,6 +12,7 @@
     "pm2:reload": "pm2 startOrReload ecosystem.config.cjs --env production",
     "pm2:save": "pm2 save",
     "deploy:prod": "npm ci && npm run build && npm run pm2:reload && npm run pm2:save",
+    "deploy:server-only": "npm run build && npm run pm2:reload",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "check": "npm run type-check"

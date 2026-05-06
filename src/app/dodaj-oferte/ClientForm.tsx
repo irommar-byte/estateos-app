@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -14,13 +14,20 @@ import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from 
 import { SortableContext, useSortable, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+import {
+  canonicalizeCity,
+  inferCityFromMapboxFeature,
+  inferStrictDistrictFromMapboxFeature,
+} from "@/lib/location/locationCatalog";
+
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 }
 
 // Luksusowe style bazowe (Glassmorphism & Apple Dark Mode)
 const inputPremium = "w-full bg-white/5 border border-white/10 rounded-2xl text-[#f5f5f7] text-base md:text-lg py-4 px-5 focus:bg-white/10 focus:border-[#10b981] outline-none transition-all duration-300 placeholder:text-zinc-500 backdrop-blur-md shadow-inner";
-const labelPremium = "flex items-center gap-2 text-[11px] font-black text-zinc-400 uppercase tracking-[0.15em] mb-2 ml-1";
+const labelPremium =
+  "flex items-center gap-2 text-[12px] md:text-[13px] font-semibold text-zinc-300 uppercase tracking-[0.055em] mb-2.5 ml-0.5";
 const glassPanel = "bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden transition-all duration-500";
 
 const PROPERTY_TYPES = [
@@ -161,34 +168,41 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
   };
 
-  const resolveLocationFromCoordinates = async (lat: number, lng: number, fallbackAddress?: string) => {
+  const resolveLocationFromCoordinates = useCallback(async (lat: number, lng: number, fallbackAddress?: string) => {
     try {
       const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
       if (!response.ok) return;
       const reverse = await response.json();
 
-      updateData({
+      setData((prev: any) => ({
+        ...prev,
         lat,
         lng,
-        city: reverse.city || data.city,
-        district: reverse.district || '',
-        address: reverse.addressLabel || fallbackAddress || data.address,
-        street: reverse.street || data.street || null,
-      });
+        city: reverse.city || prev.city,
+        district: reverse.district || prev.district || "",
+        address: reverse.addressLabel || fallbackAddress || prev.address,
+        street: reverse.street ?? prev.street ?? null,
+      }));
     } catch {
       // no-op, manual selection still available
     }
-  };
+  }, []);
 
   const selectAddress = (feature: any) => {
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
     const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
 
+    const cityFromFeature = inferCityFromMapboxFeature(feature);
+    const cityCanon = canonicalizeCity(cityFromFeature) || canonicalizeCity(data.city) || data.city;
+    const districtGuess = cityCanon ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
+
     updateData({
       address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
       lng: nextLng,
       lat: nextLat,
+      ...(cityCanon ? { city: cityCanon } : {}),
+      ...(districtGuess ? { district: districtGuess } : {}),
     });
     setAddressSuggestions([]);
 
@@ -300,76 +314,147 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, []);
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstance.current) return;
+    if (currentStep !== 2) {
+      if (mapInstance.current) {
+        markerRef.current?.remove();
+        markerRef.current = null;
+        if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
+        if (orbitTimeoutRef.current) window.clearTimeout(orbitTimeoutRef.current);
+        orbitFrameRef.current = null;
+        orbitTimeoutRef.current = null;
+        try {
+          mapInstance.current.remove();
+        } catch {
+          /* Mapbox może rzucić przy drugim remove */
+        }
+        mapInstance.current = null;
+      }
+      return;
+    }
+
     if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
       setAddressError('Brak klucza mapy (NEXT_PUBLIC_MAPBOX_TOKEN).');
       return;
     }
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: [21.0122, 52.2297],
-      zoom: 12.5,
-      pitch: 55,
-      bearing: -20,
-      antialias: true,
-      attributionControl: false,
-    });
+    let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
+    let bootAttempts = 0;
+    let outerRaf = 0;
+    let innerRaf = 0;
 
-    mapInstance.current = map;
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
-    map.on('style.load', () => {
-      map.setFog({
-        range: [0.8, 8],
-        color: '#020617',
-        'high-color': '#0b1220',
-        'space-color': '#000000',
-        'star-intensity': 0.1,
-      } as any);
-
-      const layers = map.getStyle().layers || [];
-      const labelLayerId = layers.find((l) => l.type === 'symbol' && (l.layout as any)?.['text-field'])?.id;
-
-      if (!map.getLayer('estateos-3d-buildings')) {
-        map.addLayer(
-          {
-            id: 'estateos-3d-buildings',
-            source: 'composite',
-            'source-layer': 'building',
-            filter: ['==', 'extrude', 'true'],
-            type: 'fill-extrusion',
-            minzoom: 13,
-            paint: {
-              'fill-extrusion-color': '#1e293b',
-              'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 16, ['get', 'height']],
-              'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 16, ['get', 'min_height']],
-              'fill-extrusion-opacity': 0.85,
-            },
-          } as any,
-          labelLayerId,
-        );
-      }
-    });
-
-    map.on('click', (e) => {
-      const nextLng = +e.lngLat.lng.toFixed(6);
-      const nextLat = +e.lngLat.lat.toFixed(6);
-      setData((prev: any) => ({ ...prev, lng: nextLng, lat: nextLat }));
-      void resolveLocationFromCoordinates(nextLat, nextLng);
-    });
-
-    return () => {
+    const teardown = () => {
       markerRef.current?.remove();
       markerRef.current = null;
       if (orbitFrameRef.current) cancelAnimationFrame(orbitFrameRef.current);
       if (orbitTimeoutRef.current) window.clearTimeout(orbitTimeoutRef.current);
       orbitFrameRef.current = null;
       orbitTimeoutRef.current = null;
-      map.remove();
-      mapInstance.current = null;
+      resizeObserver?.disconnect();
+      resizeObserver = null;
+      const existing = mapInstance.current;
+      if (existing) {
+        try {
+          existing.remove();
+        } catch {
+          /* ignore */
+        }
+        mapInstance.current = null;
+      }
     };
-  }, []);
+
+    const boot = () => {
+      if (cancelled || mapInstance.current) return;
+      const el = mapContainerRef.current;
+      bootAttempts += 1;
+      if (!el || el.clientWidth < 32 || el.clientHeight < 32) {
+        if (bootAttempts < 120) {
+          innerRaf = requestAnimationFrame(boot);
+        }
+        return;
+      }
+
+      if (cancelled || mapInstance.current) return;
+
+      const map = new mapboxgl.Map({
+        container: el,
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: [21.0122, 52.2297],
+        zoom: 12.5,
+        pitch: 55,
+        bearing: -20,
+        antialias: true,
+        attributionControl: false,
+      });
+
+      mapInstance.current = map;
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "top-right");
+
+      map.on("style.load", () => {
+        map.setFog({
+          range: [0.8, 8],
+          color: "#0f172a",
+          "high-color": "#1e293b",
+          "space-color": "#000000",
+          "star-intensity": 0.08,
+        } as any);
+
+        const layers = map.getStyle().layers || [];
+        const labelLayerId = layers.find((l) => l.type === "symbol" && (l.layout as any)?.["text-field"])?.id;
+
+        if (!map.getLayer("estateos-3d-buildings")) {
+          try {
+            map.addLayer(
+              {
+                id: "estateos-3d-buildings",
+                source: "composite",
+                "source-layer": "building",
+                filter: ["==", "extrude", "true"],
+                type: "fill-extrusion",
+                minzoom: 13,
+                paint: {
+                  "fill-extrusion-color": "#1e293b",
+                  "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 13, 0, 16, ["get", "height"]],
+                  "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 13, 0, 16, ["get", "min_height"]],
+                  "fill-extrusion-opacity": 0.82,
+                },
+              } as any,
+              labelLayerId,
+            );
+          } catch {
+            /* brak warstwy building w danym stylu */
+          }
+        }
+      });
+
+      map.on("load", () => {
+        map.resize();
+      });
+
+      resizeObserver = new ResizeObserver(() => {
+        mapInstance.current?.resize();
+      });
+      resizeObserver.observe(el);
+
+      map.on("click", (e) => {
+        const nextLng = +e.lngLat.lng.toFixed(6);
+        const nextLat = +e.lngLat.lat.toFixed(6);
+        setData((prev: any) => ({ ...prev, lng: nextLng, lat: nextLat }));
+        void resolveLocationFromCoordinates(nextLat, nextLng);
+      });
+    };
+
+    outerRaf = requestAnimationFrame(() => {
+      innerRaf = requestAnimationFrame(boot);
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+      teardown();
+    };
+  }, [currentStep, resolveLocationFromCoordinates]);
 
   const startLuxuryOrbit = (target: [number, number]) => {
     const map = mapInstance.current;
@@ -493,7 +578,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             const formData = new FormData();
             formData.append('offerId', String(createdOfferId));
             formData.append('file', file);
-            const uploadRes = await fetch('/api/upload/mobile', { method: 'POST', body: formData });
+            const uploadRes = await fetch('/api/upload', {
+              method: 'POST',
+              body: formData,
+              credentials: 'include',
+            });
             if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
           }
 
@@ -503,7 +592,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             fpFormData.append('offerId', String(createdOfferId));
             fpFormData.append('file', floorPlanFile);
             fpFormData.append('isFloorPlan', 'true');
-            const fpRes = await fetch('/api/upload/mobile', { method: 'POST', body: fpFormData });
+            const fpRes = await fetch('/api/upload', {
+              method: 'POST',
+              body: fpFormData,
+              credentials: 'include',
+            });
             if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
           }
         }
@@ -696,7 +789,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             <section className={`${glassPanel} ${currentStep === 1 ? '' : 'hidden'} ring-1 ring-white/5`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTypeSelected ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>1</div>
-                <h2 className="text-2xl font-black uppercase tracking-widest text-white">Rodzaj Nieruchomości</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Rodzaj Nieruchomości</h2>
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -723,7 +816,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                           key={condition.id}
                           type="button"
                           onClick={() => updateData({ condition: condition.id })}
-                          className={`py-4 rounded-2xl border font-black uppercase tracking-widest text-[10px] transition-all ${isActive ? 'bg-emerald-500 text-black border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.25)]' : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'}`}
+                          className={`py-4 rounded-2xl border font-black uppercase tracking-widest text-[10px] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
+                            isActive ? "eos-chip-on" : "eos-chip-off"
+                          }`}
                         >
                           {condition.label}
                         </button>
@@ -740,7 +835,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isLocationDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isLocationDone ? <Check size={24} /> : '2'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-widest text-white">Lokalizacja i Mapa</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Lokalizacja i Mapa</h2>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
@@ -805,15 +900,15 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
                           <label className={labelPremium}>Nr Lokalu *</label>
                           <input type="text" placeholder="Np. 12" className={`${inputPremium} text-sm`} value={data.apartmentNumber || ''} onChange={(e) => updateData({ apartmentNumber: e.target.value })} />
-                          <p className="text-[9px] text-zinc-500 mt-2 flex items-start gap-1"><EyeOff size={12} className="shrink-0 mt-0.5"/> Pole chronione – widoczne tylko po umówieniu prezentacji.</p>
+                          <p className="text-[11px] text-zinc-400 mt-2.5 flex items-start gap-2 leading-snug"><EyeOff size={14} className="shrink-0 mt-0.5 text-zinc-500"/> Pole chronione – widoczne tylko po umówieniu prezentacji.</p>
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
                 </div>
 
-                <div className="w-full h-full min-h-[350px] rounded-[2rem] overflow-hidden bg-[#111] border border-white/10 relative shadow-[inset_0_0_50px_rgba(0,0,0,0.5)]">
-                  <div ref={mapContainerRef} className="w-full h-full absolute inset-0" />
+                <div className="relative w-full min-h-[420px] h-[clamp(360px,48svh,560px)] lg:min-h-[440px] rounded-[2rem] overflow-hidden bg-[#111] border border-white/10 shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] isolate">
+                  <div ref={mapContainerRef} className="absolute inset-0 h-full w-full min-h-[420px]" />
                 </div>
               </div>
             </section>
@@ -824,7 +919,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTechDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isTechDone ? <Check size={24} /> : '3'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-widest text-white">Parametry Finansowe</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Parametry Finansowe</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -935,7 +1030,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isMediaDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isMediaDone ? <Check size={24} /> : '4'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-widest text-white">Galeria i Prezentacja</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Galeria i Prezentacja</h2>
               </div>
 
               <div className="mb-10">
@@ -1094,7 +1189,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isContactDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                     {isContactDone ? <Check size={24} /> : '5'}
                   </div>
-                  <h2 className="text-2xl font-black uppercase tracking-widest text-white">Profil Ogłoszeniodawcy</h2>
+                  <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Profil Ogłoszeniodawcy</h2>
                 </div>
 
                 <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 w-full max-w-md mb-8">
@@ -1165,12 +1260,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             </div>
 
             <div className={`pb-12 ${currentStep === totalSteps ? 'hidden' : ''}`}>
-              <div className="flex gap-3 bg-white/[0.03] border border-white/10 rounded-[1.5rem] p-3 backdrop-blur-xl">
+              <div
+                className={`flex gap-3 rounded-[1.5rem] p-3 backdrop-blur-xl border ${
+                  currentStep === 1
+                    ? "bg-zinc-950/80 border-zinc-600/60 ring-1 ring-white/10"
+                    : "bg-white/[0.03] border-white/10"
+                }`}
+              >
                 <button
                   type="button"
                   onClick={prevStep}
                   disabled={currentStep === 1}
-                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${currentStep === 1 ? 'border-white/10 text-white/25 cursor-not-allowed' : 'border-white/20 text-white/70 hover:bg-white/10'}`}
+                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
+                    currentStep === 1
+                      ? "border-zinc-700 text-zinc-500 cursor-not-allowed bg-zinc-900/40"
+                      : "border-zinc-500/70 text-zinc-100 bg-zinc-900/50 hover:bg-zinc-800 hover:text-white"
+                  }`}
                 >
                   Wstecz
                 </button>
@@ -1178,10 +1283,14 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   type="button"
                   onClick={nextStep}
                   disabled={!canAdvanceStep(currentStep)}
-                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all ${
+                  className={`flex-1 py-4 rounded-xl border text-[10px] font-black uppercase tracking-[0.22em] transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
                     canAdvanceStep(currentStep)
-                      ? 'border-emerald-300/70 text-black bg-gradient-to-r from-emerald-300 to-emerald-500 hover:from-emerald-400 hover:to-emerald-500 hover:shadow-[0_0_24px_rgba(16,185,129,0.45)] hover:-translate-y-[1px]'
-                      : 'border-white/20 text-white/55 bg-white/5 cursor-not-allowed'
+                      ? currentStep === 1
+                        ? "eos-chip-on"
+                        : "border-emerald-300/70 text-black bg-gradient-to-r from-emerald-300 to-emerald-500 hover:from-emerald-400 hover:to-emerald-500 hover:shadow-[0_0_24px_rgba(16,185,129,0.45)] hover:-translate-y-[1px]"
+                      : currentStep === 1
+                        ? "border-zinc-600 text-zinc-200 bg-zinc-900/80 cursor-not-allowed"
+                        : "border-white/20 text-white/55 bg-white/5 cursor-not-allowed"
                   }`}
                 >
                   Dalej

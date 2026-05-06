@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { Prisma } from '@prisma/client';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -29,6 +30,70 @@ function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
 
 function buildEventContent(payload: Record<string, unknown>) {
   return `${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function buildDealroomPushData(dealId: number, offerId: number) {
+  return {
+    target: 'dealroom',
+    notificationType: 'dealroom_chat',
+    targetType: 'DEAL',
+    dealId,
+    offerId,
+    title: `Dealroom #${dealId}`,
+    deeplink: `estateos://dealroom/${dealId}`,
+    screen: 'DealroomChat',
+    route: 'DealroomChat',
+    entity: 'dealroom',
+  };
+}
+
+async function notifyNegotiationEvent(params: {
+  recipientUserId: number;
+  dealId: number;
+  offerId: number;
+  title: string;
+  body: string;
+  eventId: string;
+  type: 'BID_RECEIVED' | 'APPOINTMENT';
+}) {
+  const { recipientUserId, dealId, offerId, title, body, eventId, type } = params;
+  const idempotencyKey = `deal_event:${eventId}`;
+
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: recipientUserId,
+        idempotencyKey,
+        title,
+        body,
+        type,
+        targetType: 'DEAL',
+        targetId: String(dealId),
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return { deduplicated: true as const };
+    }
+    throw error;
+  }
+
+  try {
+    await notificationService.sendPushToUser(recipientUserId, {
+      title,
+      body,
+      sound: 'default',
+      priority: 'high',
+      data: buildDealroomPushData(dealId, offerId),
+    });
+  } catch (pushError) {
+    console.warn('[ACTIONS PUSH WARN][NEGOTIATION_EVENT]', pushError);
+  }
+
+  return { deduplicated: false as const };
 }
 
 export async function POST(req: Request) {
@@ -92,25 +157,15 @@ export async function POST(req: Request) {
       await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       const receiverId = deal.buyerId === actorId ? deal.sellerId : deal.buyerId;
-      await prisma.notification.create({
-        data: {
-          userId: receiverId,
-          title: 'Nowa propozycja ceny',
-          body: `Nowa oferta: ${amount.toLocaleString('pl-PL')} PLN`,
-          type: 'BID_RECEIVED',
-          targetType: 'DEAL',
-          targetId: String(dealId),
-        },
+      await notifyNegotiationEvent({
+        recipientUserId: receiverId,
+        dealId,
+        offerId: deal.offerId,
+        title: 'Nowa propozycja ceny',
+        body: `Nowa oferta: ${amount.toLocaleString('pl-PL')} PLN`,
+        eventId: `deal:${dealId}:bid:${bid.id}:PROPOSED`,
+        type: 'BID_RECEIVED',
       });
-      try {
-        await notificationService.sendPushToUser(receiverId, {
-          title: 'Nowa propozycja ceny',
-          body: `Nowa oferta: ${amount.toLocaleString('pl-PL')} PLN`,
-          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_proposed' },
-        });
-      } catch (pushError) {
-        console.warn('[ACTIONS PUSH WARN][BID_PROPOSE]', pushError);
-      }
 
       return NextResponse.json({ success: true, bidId: bid.id });
     }
@@ -169,31 +224,21 @@ export async function POST(req: Request) {
               }),
             },
           });
-          await tx.notification.create({
-            data: {
-              userId: senderOfOriginalBid,
-              title: 'Twoja oferta zostala zaakceptowana',
-              body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-              type: 'BID_RECEIVED',
-              targetType: 'DEAL',
-              targetId: String(dealId),
-            },
-          });
           return true;
         });
         if (!accepted) {
           return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
         }
         await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-        try {
-          await notificationService.sendPushToUser(senderOfOriginalBid, {
-            title: 'Twoja oferta zostala zaakceptowana',
-            body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_accepted' },
-          });
-        } catch (pushError) {
-          console.warn('[ACTIONS PUSH WARN][BID_ACCEPT]', pushError);
-        }
+        await notifyNegotiationEvent({
+          recipientUserId: senderOfOriginalBid,
+          dealId,
+          offerId: deal.offerId,
+          title: 'Twoja oferta zostala zaakceptowana',
+          body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
+          eventId: `deal:${dealId}:bid:${bidId}:ACCEPTED`,
+          type: 'BID_RECEIVED',
+        });
         return NextResponse.json({ success: true, status: 'ACCEPTED' });
       }
 
@@ -220,31 +265,21 @@ export async function POST(req: Request) {
               }),
             },
           });
-          await tx.notification.create({
-            data: {
-              userId: senderOfOriginalBid,
-              title: 'Twoja oferta zostala odrzucona',
-              body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-              type: 'BID_RECEIVED',
-              targetType: 'DEAL',
-              targetId: String(dealId),
-            },
-          });
           return true;
         });
         if (!rejected) {
           return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
         }
         await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-        try {
-          await notificationService.sendPushToUser(senderOfOriginalBid, {
-            title: 'Twoja oferta zostala odrzucona',
-            body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
-            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_rejected' },
-          });
-        } catch (pushError) {
-          console.warn('[ACTIONS PUSH WARN][BID_REJECT]', pushError);
-        }
+        await notifyNegotiationEvent({
+          recipientUserId: senderOfOriginalBid,
+          dealId,
+          offerId: deal.offerId,
+          title: 'Twoja oferta zostala odrzucona',
+          body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
+          eventId: `deal:${dealId}:bid:${bidId}:REJECTED`,
+          type: 'BID_RECEIVED',
+        });
         return NextResponse.json({ success: true, status: 'REJECTED' });
       }
 
@@ -286,28 +321,18 @@ export async function POST(req: Request) {
             }),
           },
         });
-        await tx.notification.create({
-          data: {
-            userId: senderOfOriginalBid,
-            title: 'Nowa kontroferta ceny',
-            body: `${counterAmount.toLocaleString('pl-PL')} PLN`,
-            type: 'BID_RECEIVED',
-            targetType: 'DEAL',
-            targetId: String(dealId),
-          },
-        });
         return created;
       });
       await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-      try {
-        await notificationService.sendPushToUser(senderOfOriginalBid, {
-          title: 'Nowa kontroferta ceny',
-          body: `${counterAmount.toLocaleString('pl-PL')} PLN`,
-          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'bid_countered' },
-        });
-      } catch (pushError) {
-        console.warn('[ACTIONS PUSH WARN][BID_COUNTER]', pushError);
-      }
+      await notifyNegotiationEvent({
+        recipientUserId: senderOfOriginalBid,
+        dealId,
+        offerId: deal.offerId,
+        title: 'Nowa kontroferta ceny',
+        body: `${counterAmount.toLocaleString('pl-PL')} PLN`,
+        eventId: `deal:${dealId}:bid:${counterBid.id}:COUNTERED`,
+        type: 'BID_RECEIVED',
+      });
 
       return NextResponse.json({ success: true, bidId: counterBid.id, status: 'PENDING' });
     }
@@ -348,25 +373,15 @@ export async function POST(req: Request) {
       await prisma.deal.update({ where: { id: dealId }, data: { status: 'NEGOTIATION', isActive: true } });
 
       const receiverId = deal.buyerId === actorId ? deal.sellerId : deal.buyerId;
-      await prisma.notification.create({
-        data: {
-          userId: receiverId,
-          title: 'Nowa propozycja terminu',
-          body: proposedDate.toLocaleString('pl-PL'),
-          type: 'APPOINTMENT',
-          targetType: 'DEAL',
-          targetId: String(dealId),
-        },
+      await notifyNegotiationEvent({
+        recipientUserId: receiverId,
+        dealId,
+        offerId: deal.offerId,
+        title: 'Nowa propozycja terminu',
+        body: proposedDate.toLocaleString('pl-PL'),
+        eventId: `deal:${dealId}:appointment:${appointment.id}:PROPOSED`,
+        type: 'APPOINTMENT',
       });
-      try {
-        await notificationService.sendPushToUser(receiverId, {
-          title: 'Nowa propozycja terminu',
-          body: proposedDate.toLocaleString('pl-PL'),
-          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_proposed' },
-        });
-      } catch (pushError) {
-        console.warn('[ACTIONS PUSH WARN][APPOINTMENT_PROPOSE]', pushError);
-      }
 
       return NextResponse.json({ success: true, appointmentId: appointment.id });
     }
@@ -419,31 +434,21 @@ export async function POST(req: Request) {
               }),
             },
           });
-          await tx.notification.create({
-            data: {
-              userId: senderOfOriginalAppointment,
-              title: 'Termin zostal zaakceptowany',
-              body: appointment.proposedDate.toLocaleString('pl-PL'),
-              type: 'APPOINTMENT',
-              targetType: 'DEAL',
-              targetId: String(dealId),
-            },
-          });
           return true;
         });
         if (!accepted) {
           return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
         }
         await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-        try {
-          await notificationService.sendPushToUser(senderOfOriginalAppointment, {
-            title: 'Termin zostal zaakceptowany',
-            body: appointment.proposedDate.toLocaleString('pl-PL'),
-            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_accepted' },
-          });
-        } catch (pushError) {
-          console.warn('[ACTIONS PUSH WARN][APPOINTMENT_ACCEPT]', pushError);
-        }
+        await notifyNegotiationEvent({
+          recipientUserId: senderOfOriginalAppointment,
+          dealId,
+          offerId: deal.offerId,
+          title: 'Termin zostal zaakceptowany',
+          body: appointment.proposedDate.toLocaleString('pl-PL'),
+          eventId: `deal:${dealId}:appointment:${appointmentId}:ACCEPTED`,
+          type: 'APPOINTMENT',
+        });
         return NextResponse.json({ success: true, status: 'ACCEPTED' });
       }
 
@@ -461,23 +466,13 @@ export async function POST(req: Request) {
               senderId: actorId,
               content: buildEventContent({
                 entity: 'APPOINTMENT',
-                action: 'DECLINED',
+                action: 'REJECTED',
                 appointmentId,
                 proposedDate: appointment.proposedDate.toISOString(),
                 note,
-                status: 'DECLINED',
+                status: 'REJECTED',
                 createdAt: new Date().toISOString(),
               }),
-            },
-          });
-          await tx.notification.create({
-            data: {
-              userId: senderOfOriginalAppointment,
-              title: 'Termin zostal odrzucony',
-              body: appointment.proposedDate.toLocaleString('pl-PL'),
-              type: 'APPOINTMENT',
-              targetType: 'DEAL',
-              targetId: String(dealId),
             },
           });
           return true;
@@ -486,15 +481,15 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
         }
         await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-        try {
-          await notificationService.sendPushToUser(senderOfOriginalAppointment, {
-            title: 'Termin zostal odrzucony',
-            body: appointment.proposedDate.toLocaleString('pl-PL'),
-            data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_declined' },
-          });
-        } catch (pushError) {
-          console.warn('[ACTIONS PUSH WARN][APPOINTMENT_DECLINE]', pushError);
-        }
+        await notifyNegotiationEvent({
+          recipientUserId: senderOfOriginalAppointment,
+          dealId,
+          offerId: deal.offerId,
+          title: 'Termin zostal odrzucony',
+          body: appointment.proposedDate.toLocaleString('pl-PL'),
+          eventId: `deal:${dealId}:appointment:${appointmentId}:REJECTED`,
+          type: 'APPOINTMENT',
+        });
         return NextResponse.json({ success: true, status: 'DECLINED' });
       }
 
@@ -537,28 +532,18 @@ export async function POST(req: Request) {
             }),
           },
         });
-        await tx.notification.create({
-          data: {
-            userId: senderOfOriginalAppointment,
-            title: 'Nowa kontroferta terminu',
-            body: counterDate.toLocaleString('pl-PL'),
-            type: 'APPOINTMENT',
-            targetType: 'DEAL',
-            targetId: String(dealId),
-          },
-        });
         return created;
       });
       await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
-      try {
-        await notificationService.sendPushToUser(senderOfOriginalAppointment, {
-          title: 'Nowa kontroferta terminu',
-          body: counterDate.toLocaleString('pl-PL'),
-          data: { targetType: 'DEAL', targetId: String(dealId), dealId: String(dealId), kind: 'appointment_countered' },
-        });
-      } catch (pushError) {
-        console.warn('[ACTIONS PUSH WARN][APPOINTMENT_COUNTER]', pushError);
-      }
+      await notifyNegotiationEvent({
+        recipientUserId: senderOfOriginalAppointment,
+        dealId,
+        offerId: deal.offerId,
+        title: 'Nowa kontroferta terminu',
+        body: counterDate.toLocaleString('pl-PL'),
+        eventId: `deal:${dealId}:appointment:${counterAppointment.id}:COUNTERED`,
+        type: 'APPOINTMENT',
+      });
 
       return NextResponse.json({ success: true, appointmentId: counterAppointment.id, status: 'PENDING' });
     }

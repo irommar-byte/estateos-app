@@ -3,6 +3,7 @@ import {
   canonicalizeCity,
   canonicalizeDistrict,
   getDistrictsForCity,
+  inferStrictDistrictFromMapboxFeature,
   isStrictCity,
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
@@ -37,15 +38,17 @@ export async function GET(req: Request) {
       getContextText(context, "place") ||
       getContextText(context, "locality") ||
       String(feature?.text || "").trim();
-    const districtRaw =
+    const legacyDistrictRaw =
       getContextText(context, "neighborhood") ||
-      getContextText(context, "locality") ||
-      getContextText(context, "district");
+      getContextText(context, "district") ||
+      getContextText(context, "locality");
     const streetRaw = String(feature?.text || "").trim();
     const numberRaw = String(feature?.address || "").trim();
 
     const city = canonicalizeCity(cityRaw);
-    const district = canonicalizeDistrict(city, districtRaw);
+    const inferredDistrict = inferStrictDistrictFromMapboxFeature(city, feature);
+    const districtMerged = inferredDistrict || legacyDistrictRaw;
+    const district = canonicalizeDistrict(city, districtMerged);
     const strictCity = isStrictCity(city);
     const validation = validateCityDistrict(city, district);
     const street = numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw;

@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Star, Briefcase, CalendarCheck, CalendarX, AlertCircle, Home, Eye } from "lucide-react";
 import Link from "next/link";
+import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 
 export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen: boolean, onClose: () => void, userId: string | null }) {
     const [mounted, setMounted] = useState(false);
@@ -59,6 +60,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                                 {data.user.type === 'AGENCY' ? <Briefcase size={32} className="text-blue-400" /> : <span className="text-4xl">👤</span>}
                             </div>
                             <h3 className="text-2xl font-black text-white tracking-tighter mb-2">{data.user.name}</h3>
+                            <EliteStatusBadges subject={data.user} isDark compact className="justify-center mb-2" />
                             <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                                 <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany {data.user.type === 'AGENCY' ? 'Agent' : 'Użytkownik'}</span>
@@ -73,6 +75,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                                 {[1,2,3,4,5].map(i => <Star key={i} size={16} className={i <= Math.round(averageRating) ? "text-yellow-500 fill-yellow-500" : "text-white/10"} />)}
                             </div>
                             <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{data.reviews.length} Ocen i Opinii</span>
+                            <EliteStatusBadges subject={data.user} isDark compact className="justify-center mt-3" />
                         </div>
 
                         {/* 3. Statystyki Prezentacji (Game Changer) */}

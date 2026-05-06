@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Crown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { OFFER_PREMARKET_EMBARGO_HOURS } from '@/lib/offerPremarket';
 
 type OffMarketModalProps = {
   isOpen: boolean;
@@ -58,9 +59,9 @@ export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }: OffM
               </div>
            </div>
            
-           <h2 className="text-2xl font-black text-center text-white mb-2 tracking-tight">Oferta Off-Market</h2>
+           <h2 className="text-2xl font-black text-center text-white mb-2 tracking-tight">Przed premierą na szerokim rynku</h2>
            <p className="text-white/50 text-center text-sm mb-8 leading-relaxed">
-             Ta ekskluzywna oferta zadebiutowała w systemie. Zostanie odblokowana dla zwykłych użytkowników za:
+             Oferta jest już w bazie, ale pierwsze {OFFER_PREMARKET_EMBARGO_HOURS} godzin to okres premiery — pełne szczegóły zobaczą wszyscy dopiero po tym czasie. Konto PRO otwiera je od razu.
            </p>
 
            {/* ZEGAR Z SEKUNDAMI */}

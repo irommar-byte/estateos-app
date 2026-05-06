@@ -311,7 +311,15 @@ export default function SzukajNieruchomosci() {
                 <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-5">Zaznacz dzielnice</label>
                 <div className="flex flex-wrap gap-2">
                   {districtOptions.map(d => (
-                    <div key={d} onClick={() => toggleDistrict(d)} className={`px-5 py-3 rounded-full text-[11px] font-bold uppercase tracking-widest cursor-pointer transition-all border ${formData.districts.includes(d) ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'bg-transparent text-white/30 border-white/10 hover:border-white/30 hover:text-white'}`}>{d}</div>
+                    <div
+                      key={d}
+                      onClick={() => toggleDistrict(d)}
+                      className={`px-5 py-3 rounded-full text-[11px] font-bold uppercase tracking-widest cursor-pointer transition-all border ${
+                        formData.districts.includes(d) ? "eos-chip-on" : "eos-chip-off"
+                      }`}
+                    >
+                      {d}
+                    </div>
                   ))}
                 </div>
               </div>

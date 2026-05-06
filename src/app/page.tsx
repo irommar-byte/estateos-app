@@ -16,8 +16,8 @@ export default function Home() {
   return (
     <main className="bg-black min-h-screen">
       <HeroDepthEffect />
-      {/* Dodany znacznik scroll-mt-2 zapobiega zasłonięciu wyszukiwarki przez Navbar */}
-      <div id="map-section" className="w-full relative scroll-mt-2">
+      {/* scroll-mt dobiera offset pod fixed Navbar (różnie na mobile/desktop) */}
+      <div id="map-section" className="w-full relative scroll-mt-[6.75rem] sm:scroll-mt-24">
         <InteractiveMap />
       </div>
     </main>

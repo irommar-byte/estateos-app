@@ -1,6 +1,7 @@
 import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { OFFER_PREMARKET_EMBARGO_HOURS } from '@/lib/offerPremarket';
 import { cookies } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
@@ -54,7 +55,7 @@ export async function GET(req: Request) {
        where: { searchType: { not: null } }
     });
 
-    // 3. Algorytm Swatania (Matchmaking) z Logiką 12-godzinnego Opóźnienia
+    // 3. Algorytm swatania: Basic nie widzi ID kupców do momentu „premiery na szerokim rynku” (embargo)
     const radarResults = myOffers.map(offer => {
        const offerPrice = toNumericPrice(offer.price);
        
@@ -70,20 +71,21 @@ export async function GET(req: Request) {
           return typeMatch && distMatch && priceMatch && transactionMatch;
        });
 
-       // 🔥 LOGIKA OPÓŹNIENIA 12H (RADAR FOMO) 🔥
-       // Liczymy ile godzin upłynęło od dodania oferty
-       const hoursSinceCreation = (Date.now() - new Date(offer.createdAt).getTime()) / (1000 * 60 * 60);
-       
-       // Użytkownik jest zablokowany, jeśli NIE ma PRO i nie minęło 12 godzin
-       const isLocked = !user.isPro && hoursSinceCreation < 12;
+       // Basic: przez pierwsze N godzin po dodaniu oferty sprzedający nie widzi listy dopasowanych kupców (PRO omija)
+       const hoursSinceCreation =
+         (Date.now() - new Date(offer.createdAt).getTime()) / (1000 * 60 * 60);
+       const isLocked =
+         !user.isPro &&
+         hoursSinceCreation < OFFER_PREMARKET_EMBARGO_HOURS;
 
        return {
          offer,
          matchCount: matches.length,
-         // Jeśli zablokowane (Basic < 12h), ukrywamy ID kupców, żeby użytkownik nie mógł do nich dotrzeć przez API!
          matchedBuyerIds: isLocked ? [] : matches.map(m => m.id),
-         isLocked: isLocked,
-         unlocksInHours: isLocked ? Math.ceil(12 - hoursSinceCreation) : 0
+         isLocked,
+         unlocksInHours: isLocked
+           ? Math.ceil(OFFER_PREMARKET_EMBARGO_HOURS - hoursSinceCreation)
+           : 0,
        };
     });
 

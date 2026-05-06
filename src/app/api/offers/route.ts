@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { createOffer } from '@/lib/services/offer.service';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
@@ -32,12 +33,21 @@ export async function GET() {
 
     const offers = await prisma.offer.findMany({
       where: { status: { in: ["ACTIVE"] } },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { role: true, planType: true, isPro: true } },
+      },
     });
+
+    const toPublicOffer = (offer: any, viewsCount: number) => {
+      const { user, ...rest } = offer;
+      const badges = resolveEliteBadges({ user });
+      return { ...rest, badges, views: viewsCount, viewsCount };
+    };
 
     const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
-      return NextResponse.json(offers);
+      return NextResponse.json(offers.map((o) => toPublicOffer(o, 0)));
     }
 
     const viewsRows = await prisma.$queryRawUnsafe<any[]>(
@@ -56,7 +66,7 @@ export async function GET() {
     return NextResponse.json(
       offers.map((offer: any) => {
         const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-        return { ...offer, views: viewsCount, viewsCount };
+        return toPublicOffer(offer, viewsCount);
       })
     );
 

@@ -8,7 +8,7 @@ import { startRegistration } from "@simplewebauthn/browser";
 const allNews = [
   { id: 1, type: 'PL', title: 'Warszawa: Popyt na apartamenty luksusowe wzrósł o 24% r/r.', source: 'Bankier' },
   { id: 2, type: 'WORLD', title: 'Nowy Jork: Najdroższa transakcja roku sfinalizowana na Manhattanie.', source: 'Bloomberg' },
-  { id: 3, type: 'TREND', title: 'Off-Market: Inwestorzy szukają okazji poza oficjalnym rynkiem.', source: 'EstateOS Intel' },
+  { id: 3, type: 'TREND', title: 'Premiera: nowe oferty pierwsze 24 h widział tylko PRO — potem trafiają na szeroki rynek.', source: 'EstateOS Intel' },
   { id: 4, type: 'PL', title: 'Kraków: Deficyt działek budowlanych winduje ceny domów premium.', source: 'Rzeczpospolita' },
   { id: 5, type: 'WORLD', title: 'Dubaj: Rejestr transakcji bije kolejne rekordy w Q1 2026.', source: 'Reuters' },
 ];

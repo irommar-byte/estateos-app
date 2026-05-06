@@ -6,6 +6,7 @@ import { User, LogOut, Menu, X, Home, Building2, PlusCircle, Shield, LogIn, Sear
 import NotificationCenter from "@/components/NotificationCenter";
 import ReviewPrompt from "@/components/ReviewPrompt";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
+import { useUserMode } from "@/contexts/UserModeContext";
 
 export default function Navbar() {
   const [user, setUser] = useState<any>(null);
@@ -13,6 +14,7 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { initModeFromUser } = useUserMode();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -23,9 +25,14 @@ export default function Navbar() {
   useEffect(() => {
     fetch('/api/user/profile')
       .then(res => res.json())
-      .then(data => { if (!data.error) setUser(data); })
+      .then(data => {
+        if (!data.error) {
+          setUser(data);
+          initModeFromUser(data);
+        }
+      })
       .catch(() => setUser(null));
-  }, []);
+  }, [initModeFromUser]);
 
   const handleLogout = async () => {
     // 1. Twarde żądanie do serwera (z uprawnieniami do ciastek)
@@ -77,10 +84,12 @@ export default function Navbar() {
           </span>
         </div>
 
-        {/* CENTRALNY PRZEŁĄCZNIK (ZAWSZE WIDOCZNY) */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center z-[12] top-9 sm:top-1 md:top-2">
-          <PremiumModeToggle currentUser={user} />
-        </div>
+        {/* CENTRALNY PRZEŁĄCZNIK – TYLKO DLA ZALOGOWANYCH */}
+        {user && (
+          <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center z-[12] top-9 sm:top-1 md:top-2">
+            <PremiumModeToggle currentUser={user} />
+          </div>
+        )}
 
         {/* DESKTOP NAV */}
         <div className="hidden lg:flex items-center justify-end flex-1 ml-10">

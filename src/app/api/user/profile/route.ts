@@ -2,6 +2,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
+import { resolveEliteBadges } from '@/lib/eliteStatus';
 
 function serializeOfferAmenityTokens(offer: {
   hasBalcony?: boolean | null;
@@ -103,9 +104,12 @@ export async function GET(req: NextRequest) {
       (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
     );
 
+    const badges = resolveEliteBadges(user);
+
     return NextResponse.json({
       ...user,
       isPro: isProActive,
+      badges,
       matchedOffers
     });
 

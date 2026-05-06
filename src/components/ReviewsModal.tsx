@@ -1,8 +1,9 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Star } from "lucide-react";
+import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 
-export default function ReviewsModal({ isOpen, onClose, reviewsData, userName }: { isOpen: boolean, onClose: () => void, reviewsData: any, userName: string }) {
+export default function ReviewsModal({ isOpen, onClose, reviewsData, userName, subject }: { isOpen: boolean, onClose: () => void, reviewsData: any, userName: string, subject?: any }) {
   if (!isOpen || !reviewsData) return null;
 
   return (
@@ -28,6 +29,7 @@ export default function ReviewsModal({ isOpen, onClose, reviewsData, userName }:
               <div>
                  <h3 className="text-3xl font-black text-white tracking-tighter mb-1">Opinie o Tobie</h3>
                  <p className="text-white/40 font-bold uppercase tracking-widest text-[10px]">{userName}</p>
+                 <EliteStatusBadges subject={subject} isDark compact className="mt-2" />
               </div>
               <button onClick={onClose} className="p-3 bg-white/5 hover:bg-red-500 hover:text-white rounded-full transition-colors text-white/50"><X size={20}/></button>
            </div>

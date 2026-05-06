@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ShieldCheck, Lock, Check, CheckCheck, Loader2, Building2 } from 'lucide-react';
+import { Send, ShieldCheck, Lock, Check, CheckCheck, Loader2, Building2, Paperclip, X } from 'lucide-react';
+import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -18,12 +19,18 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [bidActionModal, setBidActionModal] = useState<{ bidId: number; action: 'ACCEPT' | 'REJECT' | 'COUNTER' } | null>(null);
+  const [appointmentActionModal, setAppointmentActionModal] = useState<{ appointmentId: number; action: 'ACCEPT' | 'DECLINE' | 'RESCHEDULE' } | null>(null);
+  const [counterBidAmount, setCounterBidAmount] = useState('');
+  const [counterAppointmentNote, setCounterAppointmentNote] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isUserScrolling = useRef(false);
   const sseRef = useRef<EventSource | null>(null);
   const typingTimeout = useRef<any>(null);
@@ -152,48 +159,85 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || isSending) return;
+    const fileSnapshot = pendingFile;
+    const textSnapshot = inputText.trim();
+    if ((!textSnapshot && !fileSnapshot) || isSending) return;
 
     setIsSending(true);
     const token = getToken();
     const tempId = Date.now();
-    const typedContent = inputText.trim();
-    const tempMsg = { id: tempId, senderId: currentUserId, content: typedContent, createdAt: new Date().toISOString(), pending: true, isRead: false };
+    const typedContent = (textSnapshot || (fileSnapshot ? `📎 ${fileSnapshot.name}` : '')).trim();
+    const tempMsg = {
+      id: tempId,
+      senderId: currentUserId,
+      content: typedContent,
+      attachment: null as string | null,
+      createdAt: new Date().toISOString(),
+      pending: true,
+      isRead: false,
+    };
 
     setDeal((prev: any) => ({ ...prev, messages: [...(prev?.messages || []), tempMsg] }));
     setInputText('');
-    
+    setPendingFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
     isUserScrolling.current = false;
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
     try {
-      const res = await fetch(`/api/deals/${dealId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: typedContent, senderId: currentUserId })
-      });
+      let res: Response;
+      if (fileSnapshot) {
+        const fd = new FormData();
+        if (textSnapshot) fd.append('content', textSnapshot);
+        fd.append('file', fileSnapshot);
+        fd.append('senderId', String(currentUserId));
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        res = await fetch(`/api/deals/${dealId}/messages`, {
+          method: 'POST',
+          headers,
+          body: fd,
+        });
+      } else {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        res = await fetch(`/api/deals/${dealId}/messages`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ content: typedContent, senderId: currentUserId }),
+        });
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || 'Nie udało się wysłać wiadomości');
       }
       fetchDeal();
-    } catch (e) {
+    } catch (err) {
       setDeal((prev: any) => ({
         ...prev,
         messages: (prev?.messages || []).filter((m: any) => m.id !== tempId),
       }));
-      setInputText(typedContent);
-    } finally { setIsSending(false); }
+      setInputText(textSnapshot);
+      if (fileSnapshot) setPendingFile(fileSnapshot);
+      const errMsg =
+        err instanceof Error ? err.message : 'Nie udało się wysłać wiadomości';
+      alert(errMsg);
+    } finally {
+      setIsSending(false);
+    }
   };
 
-  const respondBid = async (bidId: number, action: 'ACCEPT' | 'REJECT' | 'COUNTER') => {
+  const respondBid = async (
+    bidId: number,
+    action: 'ACCEPT' | 'REJECT' | 'COUNTER',
+    counterAmount?: number
+  ) => {
     const token = getToken();
     if (!token) return;
     let payload: any = { action };
     if (action === 'COUNTER') {
-      const value = prompt('Podaj kwotę kontroferty (PLN):');
-      if (!value) return;
-      const numeric = Number(String(value).replace(/[^\d.,]/g, '').replace(',', '.'));
+      const numeric = Number(counterAmount);
       if (!Number.isFinite(numeric) || numeric <= 0) {
         alert('Nieprawidłowa kwota kontroferty.');
         return;
@@ -217,12 +261,16 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     }
   };
 
-  const respondAppointment = async (appointmentId: number, action: 'ACCEPT' | 'DECLINE' | 'RESCHEDULE') => {
+  const respondAppointment = async (
+    appointmentId: number,
+    action: 'ACCEPT' | 'DECLINE' | 'RESCHEDULE',
+    message?: string
+  ) => {
     const token = getToken();
     if (!token) return;
     let payload: any = { action };
     if (action === 'RESCHEDULE') {
-      const note = prompt('Podaj kontrofertę terminu (np. "Jutro 18:30"):');
+      const note = String(message || '').trim();
       if (!note) return;
       payload.message = note;
     }
@@ -250,6 +298,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const isBuyer = deal.buyerId === currentUserId;
   const actionableBids = (deal.bids || []).filter((b: any) => (b.status === 'PENDING' || b.status === 'COUNTER_OFFER') && b.senderId !== currentUserId);
   const actionableAppointments = (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId);
+  const activeBid = bidActionModal ? (deal.bids || []).find((b: any) => b.id === bidActionModal.bidId) : null;
+  const activeAppointment = appointmentActionModal ? (deal.appointments || []).find((a: any) => a.id === appointmentActionModal.appointmentId) : null;
 
   return (
     <div className="flex flex-col h-[750px] bg-[#080808] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.8),inset_0_0_80px_rgba(0,0,0,0.6)] relative isolate font-sans">
@@ -267,6 +317,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
               <span className="w-1 h-1 rounded-full bg-white/20"></span>
               <span className="text-white/40">{isBuyer ? 'Kupujesz od:' : 'Sprzedajesz dla:'} <span className="text-white/80">{otherParty?.name || otherParty?.email?.split('@')[0]}</span></span>
             </div>
+            <EliteStatusBadges subject={otherParty} isDark compact className="mt-2" />
           </div>
         </div>
         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
@@ -283,9 +334,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
               <div key={`action-bid-${bid.id}`} className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
                 <p className="text-[10px] uppercase tracking-widest font-black text-amber-300 mb-2">Oferta ceny od {bid.sender?.name || 'użytkownika'}: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN</p>
                 <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => respondBid(bid.id, 'ACCEPT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
-                  <button onClick={() => respondBid(bid.id, 'COUNTER')} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
-                  <button onClick={() => respondBid(bid.id, 'REJECT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
+                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
+                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'COUNTER' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
+                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'REJECT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
                 </div>
               </div>
             ))}
@@ -293,9 +344,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
               <div key={`action-app-${app.id}`} className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4">
                 <p className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-2">Propozycja terminu od {app.proposedBy?.name || 'użytkownika'}: {new Date(app.proposedDate).toLocaleString('pl-PL')}</p>
                 <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => respondAppointment(app.id, 'ACCEPT')} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
-                  <button onClick={() => respondAppointment(app.id, 'RESCHEDULE')} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
-                  <button onClick={() => respondAppointment(app.id, 'DECLINE')} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
+                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
+                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'RESCHEDULE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
+                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'DECLINE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
                 </div>
               </div>
             ))}
@@ -341,7 +392,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-blue-500/30 rounded-[2.5rem] p-8 max-w-sm w-full shadow-[0_20px_40px_rgba(0,0,0,0.5),inset_0_0_20px_rgba(59,130,246,0.07)] text-center relative overflow-hidden">
                     <p className="text-[9px] uppercase tracking-[0.4em] font-black text-blue-400/80 mb-3 relative z-10">Negocjacja Terminu</p>
                     <p className="text-xl font-black text-white relative z-10">
-                      {eventPayload.action === 'ACCEPTED' ? 'Termin zaakceptowany' : eventPayload.action === 'DECLINED' ? 'Termin odrzucony' : eventPayload.action === 'COUNTERED' ? 'Kontroferta terminu' : 'Nowa propozycja'}
+                      {eventPayload.action === 'ACCEPTED' ? 'Termin zaakceptowany' : (eventPayload.action === 'DECLINED' || eventPayload.action === 'REJECTED') ? 'Termin odrzucony' : eventPayload.action === 'COUNTERED' ? 'Kontroferta terminu' : 'Nowa propozycja'}
                     </p>
                     <p className="text-sm font-black text-blue-300 relative z-10 mt-2">
                       {eventPayload.proposedDate ? new Date(eventPayload.proposedDate).toLocaleString('pl-PL') : '-'}
@@ -376,6 +427,16 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   
                   <div className={`px-6 py-4 shadow-xl ${isMe ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-black rounded-[1.8rem] rounded-br-[0.5rem] shadow-[0_10px_25px_rgba(16,185,129,0.2)]' : 'bg-white/5 border border-white/10 text-white/90 rounded-[1.8rem] rounded-bl-[0.5rem] backdrop-blur-md'}`}>
                     <p className={`text-[15px] leading-relaxed tracking-wide ${isMe ? 'font-semibold' : 'font-normal'}`}>{msgContent}</p>
+                    {msg.attachment ? (
+                      <a
+                        href={msg.attachment}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`mt-3 block text-[13px] font-bold truncate max-w-[min(260px,70vw)] underline ${isMe ? 'text-black/85' : 'text-emerald-400'}`}
+                      >
+                        📎 Załącznik
+                      </a>
+                    ) : null}
                   </div>
                 </div>
                 
@@ -419,23 +480,139 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       {/* KONSOLA WPISYWANIA */}
       <div className="p-4 md:p-6 md:pb-8 relative z-20 bg-gradient-to-t from-[#080808] via-[#080808] to-transparent shrink-0">
-        <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">
+        <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            onChange={(ev) => {
+              const f = ev.target.files?.[0];
+              setPendingFile(f || null);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-10 h-10 shrink-0 rounded-[1.2rem] flex items-center justify-center text-white/50 hover:text-emerald-400 hover:bg-white/5 transition-colors cursor-pointer"
+            title="Dodaj załącznik"
+          >
+            <Paperclip size={18} />
+          </button>
+          {pendingFile ? (
+            <span className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold max-w-[40%] truncate">
+              {pendingFile.name}
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                className="p-0.5 rounded-full hover:bg-white/10 shrink-0"
+                aria-label="Usuń plik"
+              >
+                <X size={14} />
+              </button>
+            </span>
+          ) : null}
           <input
             type="text"
             value={inputText}
             onChange={handleTextChange}
             placeholder="Wiadomość..."
-            className="flex-1 bg-transparent text-white placeholder-white/30 text-[15px] px-5 py-2.5 outline-none font-medium tracking-wide"
+            className="flex-1 bg-transparent text-white placeholder-white/30 text-[15px] px-2 md:px-5 py-2.5 outline-none font-medium tracking-wide min-w-0"
           />
           <button
             type="submit"
-            disabled={!inputText.trim() || isSending}
+            disabled={(!inputText.trim() && !pendingFile) || isSending}
             className="w-10 h-10 shrink-0 bg-gradient-to-b from-emerald-400 to-emerald-600 rounded-[1.2rem] flex items-center justify-center text-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:grayscale transition-all duration-300 shadow-[0_5px_15px_rgba(16,185,129,0.4)] cursor-pointer"
           >
             {isSending ? <Loader2 size={16} className="animate-spin text-white" /> : <Send size={16} className="ml-0.5 text-white drop-shadow-md" />}
           </button>
         </form>
       </div>
+
+      <AnimatePresence>
+        {bidActionModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl">
+              <h4 className="text-white font-black text-lg mb-2">Decyzja negocjacyjna — cena</h4>
+              <p className="text-white/50 text-sm mb-4">
+                {bidActionModal.action === 'ACCEPT' && `Akceptujesz ofertę ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN.`}
+                {bidActionModal.action === 'REJECT' && `Odrzucasz ofertę ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN.`}
+                {bidActionModal.action === 'COUNTER' && 'Podaj kwotę kontroferty.'}
+              </p>
+              {bidActionModal.action === 'COUNTER' && (
+                <input
+                  value={counterBidAmount}
+                  onChange={(e) => setCounterBidAmount(e.target.value.replace(/[^\d.,]/g, ''))}
+                  placeholder="np. 485000"
+                  className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-white outline-none mb-4"
+                />
+              )}
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => { setBidActionModal(null); setCounterBidAmount(''); }} className="px-4 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-black uppercase tracking-widest">Anuluj</button>
+                <button
+                  disabled={!!actionLoading}
+                  onClick={async () => {
+                    const numeric = Number(String(counterBidAmount).replace(',', '.'));
+                    await respondBid(
+                      bidActionModal.bidId,
+                      bidActionModal.action,
+                      bidActionModal.action === 'COUNTER' ? numeric : undefined
+                    );
+                    setBidActionModal(null);
+                    setCounterBidAmount('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black uppercase tracking-widest disabled:opacity-40"
+                >
+                  Potwierdź
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {appointmentActionModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl">
+              <h4 className="text-white font-black text-lg mb-2">Decyzja negocjacyjna — termin</h4>
+              <p className="text-white/50 text-sm mb-4">
+                {appointmentActionModal.action === 'ACCEPT' && `Akceptujesz termin: ${activeAppointment?.proposedDate ? new Date(activeAppointment.proposedDate).toLocaleString('pl-PL') : '-'}.`}
+                {appointmentActionModal.action === 'DECLINE' && 'Odrzucasz zaproponowany termin.'}
+                {appointmentActionModal.action === 'RESCHEDULE' && 'Podaj propozycję nowego terminu (tekst).'}
+              </p>
+              {appointmentActionModal.action === 'RESCHEDULE' && (
+                <textarea
+                  value={counterAppointmentNote}
+                  onChange={(e) => setCounterAppointmentNote(e.target.value)}
+                  placeholder='np. "Jutro 18:30 lub pojutrze 9:00"'
+                  className="w-full min-h-[90px] rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-white outline-none mb-4"
+                />
+              )}
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => { setAppointmentActionModal(null); setCounterAppointmentNote(''); }} className="px-4 py-2 rounded-xl border border-white/15 text-white/70 text-xs font-black uppercase tracking-widest">Anuluj</button>
+                <button
+                  disabled={!!actionLoading}
+                  onClick={async () => {
+                    await respondAppointment(
+                      appointmentActionModal.appointmentId,
+                      appointmentActionModal.action,
+                      appointmentActionModal.action === 'RESCHEDULE' ? counterAppointmentNote : undefined
+                    );
+                    setAppointmentActionModal(null);
+                    setCounterAppointmentNote('');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 text-black text-xs font-black uppercase tracking-widest disabled:opacity-40"
+                >
+                  Potwierdź
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

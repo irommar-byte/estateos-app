@@ -25,6 +25,15 @@ function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   return null;
 }
 
+/** Szybki test z przeglądarki / curl GET — potwierdza TLS i routing bez body tokena Expo. */
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: '/api/notifications/device',
+    hint: 'Rejestracja push: POST + JSON { expoPushToken, platform?, ... } + Authorization: Bearer',
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();

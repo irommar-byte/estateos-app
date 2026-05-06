@@ -12,11 +12,11 @@ const ProStatusBar = ({ user }: any) => {
   const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
 
   return (
-    <div className="mb-10 rounded-[2rem] p-6 bg-white/5 backdrop-blur-xl border border-white/10">
-      <p className="text-xs tracking-[0.3em] text-emerald-400 font-black mb-2">PRO STATUS</p>
-      <p className="text-white font-bold">Ważny do: {expiry.toLocaleDateString()}</p>
-      <p className="text-sm text-white/60 mb-4">Pozostało {daysLeft} dni</p>
-      <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden">
+    <div className="mb-6 sm:mb-10 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-white/5 backdrop-blur-xl border border-white/10">
+      <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] text-emerald-400 font-black mb-2">PRO STATUS</p>
+      <p className="text-sm sm:text-base text-white font-bold">Ważny do: {expiry.toLocaleDateString()}</p>
+      <p className="text-xs sm:text-sm text-white/60 mb-3 sm:mb-4">Pozostało {daysLeft} dni</p>
+      <div className="w-full h-2.5 sm:h-3 bg-black/40 rounded-full overflow-hidden">
         <div className="h-full bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 transition-all duration-700" style={{ width: `${progress}%` }} />
       </div>
     </div>
@@ -24,13 +24,13 @@ const ProStatusBar = ({ user }: any) => {
 };
 
 import { Check } from "lucide-react";
-import PremiumModeToggle from '@/components/ui/PremiumModeToggle';
 import { useUserMode } from '@/contexts/UserModeContext';
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
 import ReviewsModal from "@/components/ReviewsModal";
+import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, Heart } from 'lucide-react';
 import AppointmentManager from "@/components/AppointmentManager";
 
@@ -201,7 +201,7 @@ const WowPlusOverlay = () => {
 
 export default function CRMDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const { mode } = useUserMode();
+  const { mode, initModeFromUser } = useUserMode();
 
   const [managingApp, setManagingApp] = useState<any>(null);
 
@@ -289,8 +289,14 @@ export default function CRMDashboard() {
     setIsEditRadarOpen(true);
   };
 
-  const isPremium = currentUser?.isPro === true || currentUser?.isPro === 'true' || currentUser?.role === 'ADMIN' || currentUser?.role === 'AGENCY' || currentUser?.advertiserType === 'agency';
-  
+  const isPartnerPlan = currentUser?.planType === 'AGENCY' || currentUser?.advertiserType === 'agency';
+  const isPremium =
+    currentUser?.isPro === true ||
+    currentUser?.isPro === 'true' ||
+    currentUser?.role === 'ADMIN' ||
+    isPartnerPlan;
+  const isPartnerMode = mode === 'AGENCY';
+
   const mockUsers = [
     { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
     { id: 'usr-s02', role: 'SELLER', firstName: 'Karolina', lastName: 'Wójcik', email: 'k.wojcik@example.com', phone: '+48 500 222 333', verificationStatus: 'VERIFIED' },
@@ -353,7 +359,7 @@ export default function CRMDashboard() {
      }
   }, [crmData]);
   
-  const [activeTab, setActiveTab] = useState<'radar' | 'offers' | 'planowanie' | 'transakcje'>('radar');
+  const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -509,7 +515,8 @@ export default function CRMDashboard() {
       const profileRes = await fetch('/api/user/profile');
       const uData = await profileRes.json();
       setCurrentUser(uData);
-      
+      initModeFromUser(uData);
+
       // Mamy usera! Odpalamy dane ofert i radaru z jego ID
       await fetchData(uData.id);
       await fetchRadarData();
@@ -655,7 +662,13 @@ export default function CRMDashboard() {
     }
   };
 
-  const baseOffersForView = mode === 'BUYER'
+  const isPrivateUser = !isPartnerPlan;
+  const isListingsTab = activeTab === 'my_offers' || (activeTab === 'offers' && mode !== 'BUYER');
+  const isFavoritesTab = activeTab === 'offers' && !isListingsTab;
+
+  const baseOffersForView = isListingsTab
+    ? (crmData.offers || [])
+    : mode === 'BUYER'
     ? (crmData.offers || []).filter((o: any) => likedOfferIds.includes(String(o.id)))
     : (crmData.offers || []);
 
@@ -698,9 +711,12 @@ export default function CRMDashboard() {
   };
 
   const offersVisibleInSection = offersBySection[offerSectionFilter];
+  const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = isPrivateUser
+    ? ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje']
+    : ['radar', 'offers', 'planowanie', 'transakcje'];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white p-6 pt-32 pb-40 font-sans relative">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white px-3 sm:px-6 pt-24 sm:pt-32 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
         <ProStatusBar user={currentUser} />
 
       <AnimatePresence>
@@ -710,11 +726,11 @@ export default function CRMDashboard() {
 
       <div className="max-w-7xl mx-auto">
         
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-2 md:px-4">
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">Panel Inwestora</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">{isPartnerMode ? 'Panel Partnera' : 'Panel Inwestora'}</p>
             <div className="flex items-center gap-4 flex-wrap">
-              <div className="w-14 h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
                 {avatarSrc ? (
                   <img
                     src={avatarSrc}
@@ -727,13 +743,14 @@ export default function CRMDashboard() {
                   </div>
                 )}
               </div>
-              <h1 className="text-3xl md:text-5xl font-black tracking-tighter text-white">
+              <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
                 {displayName}
               </h1>
+              <EliteStatusBadges subject={currentUser} isDark compact className="mt-1" />
               {currentUser?.id && (
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
+                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
                    <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">ID Użytkownika</span>
-                   <span className="text-sm md:text-base font-black text-emerald-500 tracking-widest drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{currentUser.id}</span>
+                   <span className="text-xs sm:text-sm md:text-base font-black text-emerald-500 tracking-widest drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{currentUser.id}</span>
                 </div>
               )}
             </div>
@@ -744,14 +761,20 @@ export default function CRMDashboard() {
                    <span className="text-[10px] font-black text-yellow-500">{reviewsData.averageRating?.toFixed(1)} / 5.0</span>
                    <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">Zobacz Profil ({reviewsData.totalReviews})</span>
                 </button>
-                <div className="mt-3 max-w-[420px]">
+                <EliteStatusBadges subject={currentUser} isDark compact className="mt-2" />
+                <div className="mt-3 w-full max-w-[420px]">
                   <PasskeyToggle user={currentUser} />
                 </div>
               </>
             )}
           </div>
-          <div className="flex items-center shrink-0 mb-1 md:mb-0">
-            {currentUser?.isPro ? (
+          <div className="flex items-center shrink-0 mb-1 md:mb-0 self-start md:self-auto">
+            {isPartnerPlan ? (
+              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-[#D4AF37]/10 border border-amber-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.12)]">
+                <Crown size={14} className="text-amber-400" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-200/90">EstateOS Partner</span>
+              </div>
+            ) : currentUser?.isPro ? (
               <div className="px-4 py-2 rounded-full bg-gradient-to-r from-[#D4AF37]/10 to-[#AA771C]/10 border border-[#D4AF37]/30 flex items-center gap-2 shadow-[0_0_20px_rgba(212,175,55,0.15)]">
                 <Crown size={14} className="text-[#D4AF37]" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">PRO</span>
@@ -766,17 +789,14 @@ export default function CRMDashboard() {
 
         {isPremium && <ProWidget currentUser={currentUser} />}
 
-        <div className="flex justify-center mb-8 relative z-30">
-          <PremiumModeToggle />
-        </div>
-
-        <div className="flex justify-center mb-10 relative z-20">
-          <div className="bg-[#111] border border-white/5 p-1.5 rounded-full flex relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)]">
-            {['radar', 'offers', 'planowanie', 'transakcje'].map((tab) => (
+        <div className="flex justify-center mb-8 sm:mb-10 relative z-20">
+          <div className="w-full md:w-auto max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="bg-[#111] border border-white/5 p-1.5 rounded-full inline-flex md:flex relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] min-w-max md:min-w-0">
+            {profileTabs.map((tab) => (
               <button
                 key={tab}
                 onClick={() => { setActiveTab(tab as any); setSelectedDealId(null); }}
-                className={`relative px-6 md:px-10 py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-colors z-10 ${activeTab === tab ? 'text-black' : 'text-white/40 hover:text-white/80'}`}
+                className={`relative px-4 sm:px-5 md:px-10 py-3 sm:py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.2em] transition-colors z-10 whitespace-nowrap ${activeTab === tab ? 'text-black' : 'text-white/40 hover:text-white/80'}`}
               >
                 {activeTab === tab && (
                   <motion.div
@@ -787,14 +807,17 @@ export default function CRMDashboard() {
                   />
                 )}
                 <span className="relative z-20">
-                    {tab === 'radar' 
-                        ? (mode === 'BUYER' ? 'Radar Inwestycji' : 'System Radar') 
+                    {tab === 'radar'
+                        ? (isPartnerMode ? 'Radar Pro' : mode === 'BUYER' ? 'Radar Inwestycji' : 'System Radar')
+                        : tab === 'my_offers'
+                        ? 'Moje Ogłoszenia'
                         : tab === 'offers'
-                        ? (mode === 'BUYER' ? 'Obserwowane' : 'Zarządzaj Ogłoszeniami')
+                        ? (isPrivateUser ? 'Ulubione' : mode === 'BUYER' ? 'Ulubione' : 'Moje Ogłoszenia')
                         : tab === 'planowanie' ? 'Planowanie' : 'Transakcje'}
                  </span>
               </button>
             ))}
+          </div>
           </div>
         </div>
 
@@ -803,28 +826,47 @@ export default function CRMDashboard() {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className={`bg-[#111] border rounded-[3rem] p-8 md:p-12 mb-8 flex flex-col md:flex-row items-center gap-8 relative overflow-hidden transition-colors duration-700
+          className={`bg-[#111] border rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-8 md:p-12 mb-8 flex flex-col md:flex-row items-center gap-5 sm:gap-8 relative overflow-hidden transition-colors duration-700
             ${activeTab === 'radar' ? 'border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.05)]' :
-              activeTab === 'offers' ? 'border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.05)]' :
+              (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.05)]' :
               activeTab === 'planowanie' ? 'border-purple-500/20 shadow-[0_0_50px_rgba(168,85,247,0.05)]' :
               'border-yellow-500/20 shadow-[0_0_50px_rgba(234,179,8,0.05)]'
             }`}
         >
           <div className={`absolute -top-20 -left-20 w-64 h-64 rounded-full blur-[100px] pointer-events-none transition-colors duration-700
             ${activeTab === 'radar' ? 'bg-emerald-500/10' :
-              activeTab === 'offers' ? 'bg-blue-500/10' :
+              (activeTab === 'offers' || activeTab === 'my_offers') ? 'bg-blue-500/10' :
               activeTab === 'planowanie' ? 'bg-purple-500/10' :
               'bg-yellow-500/10'
             }`}></div>
 
-          <div className={`relative w-24 h-24 bg-black/50 border rounded-full flex items-center justify-center shrink-0 transition-colors duration-700
+          <div className={`relative w-20 h-20 sm:w-24 sm:h-24 bg-black/50 border rounded-full flex items-center justify-center shrink-0 transition-colors duration-700
             ${activeTab === 'radar' ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.2)]' :
-              activeTab === 'offers' ? 'border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)]' :
+              (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.2)]' :
               activeTab === 'planowanie' ? 'border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.2)]' :
               'border-yellow-500/50 shadow-[0_0_30px_rgba(234,179,8,0.2)]'
             }`}>
               
              {activeTab === 'radar' && (
+  isPartnerMode ? (
+  <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-full perspective-1000">
+    <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(16,185,129,0.25),inset_0_0_24px_rgba(251,146,60,0.15)] bg-gradient-to-tr from-emerald-950/35 via-black/40 to-amber-950/35" />
+    <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }} className="absolute inset-0 rounded-full">
+      <div className="w-full h-full bg-[conic-gradient(from_0deg,transparent_72%,rgba(16,185,129,0.55)_100%)]" />
+      <div className="absolute top-0 right-1/2 w-[2px] h-1/2 bg-emerald-300 shadow-[0_0_12px_2px_rgba(16,185,129,1)] origin-bottom" />
+    </motion.div>
+    <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.4, repeat: Infinity, ease: 'linear' }} className="absolute inset-3 rounded-full">
+      <div className="w-full h-full bg-[conic-gradient(from_180deg,transparent_72%,rgba(251,146,60,0.5)_100%)]" />
+      <div className="absolute bottom-0 right-1/2 w-[2px] h-1/2 bg-amber-300 shadow-[0_0_12px_2px_rgba(251,146,60,0.95)] origin-top" />
+    </motion.div>
+    <div className="relative z-10 flex items-center shrink-0" style={{ marginLeft: -2 }}>
+      <Radar size={28} className="text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.85)] -mr-2" strokeWidth={1.5} />
+      <Radar size={28} className="text-amber-400 drop-shadow-[0_0_10px_rgba(251,146,60,0.85)]" strokeWidth={1.5} />
+    </div>
+    <motion.div animate={{ rotate: -360 }} transition={{ duration: 14, repeat: Infinity, ease: 'linear' }} className="absolute inset-1 border border-emerald-500/25 border-dashed rounded-full" />
+    <motion.div animate={{ rotate: 360 }} transition={{ duration: 11, repeat: Infinity, ease: 'linear' }} className="absolute -inset-2 border-2 border-transparent border-t-amber-500/45 border-b-emerald-500/20 rounded-full" />
+  </div>
+  ) : (
   <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-full perspective-1000">
     <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(16,185,129,0.4)] bg-gradient-to-tr from-emerald-950/40 to-transparent" />
     <Radar size={34} className="text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.8)] relative z-10" strokeWidth={1.5} />
@@ -835,13 +877,14 @@ export default function CRMDashboard() {
     <motion.div animate={{ rotate: -360 }} transition={{ duration: 15, repeat: Infinity, ease: 'linear' }} className="absolute inset-1 border border-emerald-500/30 border-dashed rounded-full" />
     <motion.div animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: 'linear' }} className="absolute -inset-2 border-2 border-transparent border-t-emerald-500/60 border-b-emerald-500/10 rounded-full" />
   </div>
+  )
 )}
              
-             {activeTab === 'offers' && (
+             {(activeTab === 'offers' || activeTab === 'my_offers') && (
   <div className="relative w-full h-full flex items-center justify-center perspective-[800px]">
     <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(59,130,246,0.4)] bg-gradient-to-tr from-blue-950/40 to-transparent" />
     <motion.div animate={{ y: [-3, 3, -3], rotateX: [0, 15, 0], rotateY: [-10, 10, -10] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative z-10">
-      {mode === 'BUYER' ? 
+      {isFavoritesTab ? 
         <Wallet size={38} className="text-blue-400 drop-shadow-[0_10px_10px_rgba(59,130,246,0.6)]" strokeWidth={1.5} /> : 
         <LayoutGrid size={38} className="text-blue-400 drop-shadow-[0_10px_10px_rgba(59,130,246,0.6)]" strokeWidth={1.5} />
       }
@@ -891,15 +934,35 @@ export default function CRMDashboard() {
           </div>
 
           <div className="relative z-10 text-center md:text-left">
-            <h2 className="text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
-               {activeTab === 'radar' && (mode === 'BUYER' ? <>Radar <span className="text-emerald-500">Okazji</span></> : <>Radar <span className="text-emerald-500">Kupców</span></>)}
-               {activeTab === 'offers' && (mode === 'BUYER' ? <>Moje <span className="text-blue-500">Obserwowane</span></> : <>Menedżer <span className="text-blue-500">Ogłoszeń</span></>)}
+            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
+               {activeTab === 'radar' &&
+                 (isPartnerMode ? (
+                   <>
+                     Radar <span className="text-amber-400">Pro</span>
+                   </>
+                 ) : mode === 'BUYER' ? (
+                   <>
+                     Radar <span className="text-emerald-500">Okazji</span>
+                   </>
+                 ) : (
+                   <>
+                     Radar <span className="text-emerald-500">Kupców</span>
+                   </>
+                 ))}
+              {activeTab === 'my_offers' && <>Moje <span className="text-blue-500">Ogłoszenia</span></>}
+              {activeTab === 'offers' && <>Moje <span className="text-blue-500">Ulubione</span></>}
                {activeTab === 'planowanie' && <>Centrum <span className="text-purple-500">Planowania</span></>}
                 {activeTab === 'transakcje' && <>Szyfrowane <span className="text-amber-500">Deal Roomy</span></>}
             </h2>
-            <p className="text-white/60 text-sm max-w-2xl leading-relaxed">
-               {activeTab === 'radar' && (mode === 'BUYER' ? 'Sztuczna inteligencja śledzi rynek i wyłapuje oferty off-market spełniające Twoje kryteria inwestycyjne w czasie rzeczywistym.' : 'Algorytm skanuje bazę zweryfikowanych inwestorów i dobiera kupców pod Twoje oferty. Wyślij im ekskluzywne powiadomienie PUSH, zanim ktokolwiek dowie się o sprzedaży.')}
-               {activeTab === 'offers' && (mode === 'BUYER' ? 'Śledź wybrane oferty, zarządzaj swoimi propozycjami cenowymi i otrzymuj alerty o zmianach cen interesujących Cię inwestycji.' : 'Edytuj ogłoszenia, sprawdzaj statystyki wyświetleń, zarządzaj zdjęciami i aktualizuj ceny swoich nieruchomości. Zyskaj pełną kontrolę nad procesem sprzedaży.')}
+            <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
+               {activeTab === 'radar' &&
+                 (isPartnerMode
+                   ? 'Dwa radar: kupujący (preferencje na radarze) i dopasowane oferty oraz Twoja prowadzona sprzedaż. Sygnały z obu strumieni pomagają zestawiać pary klient–nieruchomość i zbierać leady dla Twojego zaplecza.'
+                   : mode === 'BUYER'
+                   ? 'Radar śledzi pojawianie się ofert — z PRO widzisz dopasowania jak po 24‑godzinnej premierze na szerokim rynku, Basic zgodnie z ustawieniami czasu premiery.'
+                   : 'Algorytm dobiera zweryfikowanych kupców pod Twoje ogłoszenia. Wyślij im powiadomienie PUSH w oknie premiery, zanim oferta przejdzie na pełny, szeroki rynek (24 h od publikacji).')}
+               {activeTab === 'my_offers' && 'Edytuj ogłoszenia, sprawdzaj statystyki wyświetleń, zarządzaj zdjęciami i aktualizuj ceny swoich nieruchomości. Zyskaj pełną kontrolę nad procesem sprzedaży.'}
+               {activeTab === 'offers' && 'Śledź wybrane oferty, zarządzaj swoimi propozycjami cenowymi i otrzymuj alerty o zmianach cen interesujących Cię inwestycji.'}
                {activeTab === 'planowanie' && 'Umawiaj prezentacje nieruchomości, zarządzaj spotkaniami negocjacyjnymi i koordynuj kalendarz z agentami oraz klientami. Twój czas jest kluczowy.'}
                {activeTab === 'transakcje' && 'Szyfrowane Deal Roomy. Kontroluj oferty cenowe, wymieniaj bezpiecznie dokumenty i finalizuj transakcje w jednym miejscu.'}
             </p>
@@ -916,15 +979,32 @@ export default function CRMDashboard() {
               
               <div className="relative z-10 flex flex-col md:flex-row gap-8 justify-between items-start md:items-center border-b border-white/5 pb-8">
                 <div className="flex items-center gap-6">
-                  <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-black border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)]">
-                     <div className="absolute inset-0 rounded-full border border-emerald-500/30 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                     <Radar size={28} className="text-emerald-500 animate-[spin_4s_linear_infinite]" strokeWidth={1} />
+                  <div className="relative flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-black border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)] overflow-hidden">
+                     <div className="absolute inset-0 rounded-full border border-emerald-500/25 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
+                     {isPartnerMode ? (
+                       <>
+                         <motion.div animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }} className="absolute inset-2 rounded-full">
+                           <div className="w-full h-full bg-[conic-gradient(from_0deg,transparent_75%,rgba(16,185,129,0.45)_100%)]" />
+                         </motion.div>
+                         <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.2, repeat: Infinity, ease: 'linear' }} className="absolute inset-5 rounded-full">
+                           <div className="w-full h-full bg-[conic-gradient(from_180deg,transparent_75%,rgba(251,146,60,0.4)_100%)]" />
+                         </motion.div>
+                         <span className="relative z-10 flex items-center -space-x-2">
+                           <Radar size={26} className="text-emerald-400 shrink-0" strokeWidth={1} />
+                           <Radar size={26} className="text-amber-400 shrink-0" strokeWidth={1} />
+                         </span>
+                       </>
+                     ) : (
+                       <Radar size={28} className="relative z-10 text-emerald-500 animate-[spin_4s_linear_infinite]" strokeWidth={1} />
+                     )}
                   </div>
                   <div>
                     <h3 className="text-white text-2xl font-black tracking-tighter">Aktywne Skanowanie</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_10px_#10b981]" />
-                      <span className="text-emerald-500/80 text-[10px] uppercase font-bold tracking-[0.3em]">Radar w toku</span>
+                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${isPartnerMode ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
+                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${isPartnerMode ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
+                        {isPartnerMode ? 'Podwójny radar w toku' : 'Radar w toku'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1124,10 +1204,29 @@ export default function CRMDashboard() {
                  ))}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
-            <div className="col-span-full flex flex-col items-center justify-center py-20 border border-dashed border-emerald-500/20 rounded-[2.5rem] bg-[#050505] relative overflow-hidden">
-                <Radar size={48} className="text-emerald-500/20 mb-6 animate-spin-slow" />
+            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${isPartnerMode ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
+                <div className={`flex items-center gap-4 mb-6 relative z-10`}>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+                  >
+                  <Radar size={48} className={isPartnerMode ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
+                  </motion.div>
+                  {isPartnerMode && (
+                    <motion.div
+                      animate={{ rotate: -360 }}
+                      transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+                    >
+                      <Radar size={48} className="text-amber-500/25" />
+                    </motion.div>
+                  )}
+                </div>
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4">
-                  {mode === 'BUYER' ? 'Radar skanuje rynek off-market. Wyniki pojawią się tutaj.' : 'Czekamy na dopasowanie zweryfikowanych inwestorów do Twoich ogłoszeń.'}
+                  {mode === 'BUYER'
+                    ? 'Radar skanuje oferty w okresie premiery i po niej. Wyniki pojawią się tutaj.'
+                    : isPartnerMode
+                      ? 'Gdy pojawią się dopasowane preferencje kupujących i dopasowane oferty pod Twój profil prowadzenia, rekordy pokażemy tutaj jako leady Radar Pro.'
+                    : 'Czekamy na dopasowanie zweryfikowanych kupców do Twoich ogłoszeń.'}
                 </p>
                 <div className="mt-6 flex gap-2">
                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1141,9 +1240,9 @@ export default function CRMDashboard() {
           </div>
         )}
 
-        {activeTab === 'offers' && (
+        {(activeTab === 'offers' || activeTab === 'my_offers') && (
           <>
-          {mode === 'SELLER' && (
+          {isListingsTab && (
             <div className="mb-6">
               <div className="flex bg-[#111] border border-white/10 rounded-full p-1.5 shadow-inner relative w-full max-w-[560px]">
                 <div
@@ -1191,7 +1290,7 @@ export default function CRMDashboard() {
               <div className="col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
-                  {mode === 'BUYER'
+                  {isFavoritesTab
                     ? 'Nie obserwujesz jeszcze żadnych ofert.'
                     : offerSectionFilter === 'ACTIVE'
                       ? 'Brak aktywnych ogłoszeń.'
@@ -1199,7 +1298,7 @@ export default function CRMDashboard() {
                         ? 'Brak ogłoszeń oczekujących.'
                         : 'Brak zakończonych ogłoszeń.'}
                 </p>
-                {mode === 'SELLER' && (
+                {isListingsTab && (
                   <motion.button
                     animate={{ scale: [1, 1.05, 1], boxShadow: ['0px 0px 0px rgba(59,130,246,0)', '0px 0px 30px rgba(59,130,246,0.3)', '0px 0px 0px rgba(59,130,246,0)'] }}
                     transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
@@ -1207,14 +1306,14 @@ export default function CRMDashboard() {
                     <span className="text-xl leading-none text-blue-400 group-hover:text-white">+</span> DODAJ SWOJĄ NIERUCHOMOŚĆ
                   </motion.button>
                 )}
-                {mode === 'BUYER' && (
+                {isFavoritesTab && (
                   <button className="relative z-10 px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300">
                     Odkryj Rynek
                   </button>
                 )}
               </div>
             ) : (
-              [...(mode === 'SELLER' ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
+              [...(isListingsTab ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
                 if (offer.isDummy) return (
                   <motion.div 
                     key="add-new-btn"
@@ -1246,7 +1345,7 @@ export default function CRMDashboard() {
                     {!isArchived && <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
 
                     
-                    {mode === 'BUYER' && !offer.isDummy && (
+                    {isFavoritesTab && !offer.isDummy && (
                       <button 
                         onClick={(e) => {
                           e.preventDefault();
@@ -1329,7 +1428,7 @@ export default function CRMDashboard() {
 
                     
                     {/* MODUŁ NEGOCJACJI (BIDS) */}
-                    {offerBids.length > 0 && mode === 'SELLER' && !isArchived && (
+                    {offerBids.length > 0 && isListingsTab && !isArchived && (
                         <div className="mb-6 bg-gradient-to-br from-amber-500/10 to-amber-700/5 border border-amber-500/30 rounded-[1.5rem] p-4 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-[40px] pointer-events-none"></div>
                             <h4 className="text-[10px] uppercase tracking-widest font-black text-amber-500 mb-3 flex items-center gap-2"><DollarSign size={14} /> Oczekujące Propozycje</h4>
@@ -1475,9 +1574,10 @@ export default function CRMDashboard() {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openUserProfileModal(deal.otherParty); }}
-                            className="text-[10px] uppercase tracking-widest font-black text-blue-300 hover:text-white transition-colors"
+                            className="text-[10px] uppercase tracking-widest font-black text-blue-300 hover:text-white transition-colors flex items-center gap-2"
                           >
-                            Profil: {deal.otherParty.name}
+                            <span>Profil: {deal.otherParty.name}</span>
+                            <EliteStatusBadges subject={deal.otherParty} isDark compact />
                           </button>
                           <Link
                             href={`/profil/${deal.otherParty.id}`}
@@ -1869,7 +1969,7 @@ export default function CRMDashboard() {
                     </div>
                  </motion.div>
                  
-                 <ReviewsModal isOpen={profileReviewsOpen} onClose={() => setProfileReviewsOpen(false)} reviewsData={viewingProfile.reviewsData} userName={viewingProfile.name || viewingProfile.email?.split('@')[0]} />
+                 <ReviewsModal isOpen={profileReviewsOpen} onClose={() => setProfileReviewsOpen(false)} reviewsData={viewingProfile.reviewsData} userName={viewingProfile.name || viewingProfile.email?.split('@')[0]} subject={viewingProfile} />
 
               </motion.div>
             )}
@@ -1884,6 +1984,7 @@ export default function CRMDashboard() {
               </button>
               <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || 'Profil użytkownika'}</h3>
               <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-6">ID: {profileModalUser.id}</p>
+              <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 
               {profileModalLoading ? (
                 <div className="py-12 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>
@@ -1983,6 +2084,7 @@ export default function CRMDashboard() {
           onClose={() => setIsReviewsModalOpen(false)} 
           reviewsData={reviewsData} 
           userName={currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}` : (currentUser?.name || 'Inwestor')}
+          subject={currentUser}
       />
 </div>
   );

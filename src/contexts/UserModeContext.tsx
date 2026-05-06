@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode, useCallback } from "react";
 
 type UserMode = "BUYER" | "SELLER" | "AGENCY";
 
@@ -29,19 +29,17 @@ export function UserModeProvider({ children }: { children: ReactNode }) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [targetMode, setTargetMode] = useState<UserMode | null>(null);
 
-  const initModeFromUser = (currentUser: any) => {
+  const initModeFromUser = useCallback((currentUser: any) => {
     if (!currentUser) return;
 
-    const actualRole =
-      currentUser.accountType === "SELLER"
-        ? "SELLER"
-        : currentUser.planType === "AGENCY"
-        ? "AGENCY"
-        : "BUYER";
+    // Wymuszamy jeden spójny tryb dla zwykłego użytkownika:
+    // - partner/agencja może korzystać z trybów BUYER/SELLER/AGENCY
+    // - zwykły użytkownik zawsze działa jako BUYER ("Osoba Prywatna")
+    const actualRole = currentUser.planType === "AGENCY" ? "AGENCY" : "BUYER";
 
     setMode(actualRole);
     localStorage.setItem("estateos_user_mode", actualRole);
-  };
+  }, []);
 
   const forceMode = (newMode: UserMode) => {
     setMode(newMode);
@@ -52,10 +50,22 @@ export function UserModeProvider({ children }: { children: ReactNode }) {
   const selectMode = (newMode: UserMode, currentUser?: any) => {
     if (!currentUser) return;
 
-    // 🔥 AGENCY tylko dla planu AGENCY
-    if (newMode === "AGENCY" && currentUser.planType !== "AGENCY") {
+    const isPartnerPlan = currentUser.planType === "AGENCY";
+
+    // Zwykły użytkownik ma jeden stały tryb "Osoba Prywatna" (BUYER).
+    if (!isPartnerPlan) {
+      if (mode !== "BUYER") {
+        setMode("BUYER");
+        localStorage.setItem("estateos_user_mode", "BUYER");
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("userModeChanged"));
+        }
+      }
       return;
     }
+
+    // AGENCY tylko dla planu AGENCY (guard obronny)
+    if (newMode === "AGENCY" && !isPartnerPlan) return;
 
     if (isTransitioning || mode === newMode) return;
 

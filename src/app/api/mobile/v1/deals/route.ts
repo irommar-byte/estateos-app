@@ -31,14 +31,39 @@ export async function GET(req: Request) {
         isActive: true
       },
       include: {
+        buyer: {
+          select: { id: true, name: true, email: true, phone: true, image: true },
+        },
+        seller: {
+          select: { id: true, name: true, email: true, phone: true, image: true },
+        },
         // Pobieramy tylko ostatnią wiadomość, żeby wyświetlić ją w liście
         messages: {
           orderBy: { createdAt: 'desc' },
-          take: 1
+          take: 1,
+          include: {
+            sender: {
+              select: { id: true, name: true },
+            },
+          },
         }
       },
       orderBy: { updatedAt: 'desc' }
     });
+
+    const unreadCounters = await Promise.all(
+      deals.map(async (deal) => {
+        const unread = await prisma.dealMessage.count({
+          where: {
+            dealId: deal.id,
+            senderId: { not: userId },
+            isRead: false,
+          },
+        });
+        return [deal.id, unread] as const;
+      })
+    );
+    const unreadMap = new Map<number, number>(unreadCounters);
 
     // 3. Formatowanie danych specjalnie pod natywny interfejs aplikacji mobilnej EstateOS
     const formattedDeals = deals.map(deal => {
@@ -49,6 +74,12 @@ export async function GET(req: Request) {
         ? new Date(lastMsg.createdAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })
         : new Date(deal.updatedAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 
+      const otherParty = deal.buyerId === userId ? deal.seller : deal.buyer;
+      const otherPartyName =
+        otherParty?.name ||
+        (otherParty?.email ? String(otherParty.email).split('@')[0] : null) ||
+        `Użytkownik #${otherParty?.id || '?'}`;
+
       return {
         id: deal.id,
         offerId: deal.offerId,
@@ -56,7 +87,24 @@ export async function GET(req: Request) {
         status: deal.status,
         lastMessage: lastMsg ? lastMsg.content : 'Deal otwarty. Brak nowych wiadomości.',
         time: timeString,
-        unread: lastMsg && !lastMsg.isRead && lastMsg.senderId !== userId ? 1 : 0 // Prosty licznik nieprzeczytanych
+        unread: unreadMap.get(deal.id) || 0,
+        unreadCount: unreadMap.get(deal.id) || 0,
+        buyerId: deal.buyerId,
+        sellerId: deal.sellerId,
+        buyer: deal.buyer || null,
+        seller: deal.seller || null,
+        otherUserId: otherParty?.id || null,
+        otherUserName: otherPartyName,
+        otherParty: otherParty
+          ? {
+              id: otherParty.id,
+              name: otherPartyName,
+              email: otherParty.email || null,
+              phone: otherParty.phone || null,
+              image: otherParty.image || null,
+            }
+          : null,
+        lastMessageSenderName: lastMsg?.sender?.name || null,
       };
     });
 

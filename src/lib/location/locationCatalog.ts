@@ -156,3 +156,124 @@ export function validateCityDistrict(city?: string | null, district?: string | n
   };
 }
 
+type MapboxContextItem = { id?: string; text?: string; text_pl?: string };
+
+function mapboxContextText(item: MapboxContextItem | null | undefined): string {
+  return String(item?.text_pl || item?.text || "").trim();
+}
+
+/** Wyciąga nazwę miasta z odpowiedzi Geocoding API (forward / reverse). */
+export function inferCityFromMapboxFeature(feature: {
+  context?: MapboxContextItem[];
+  place_name?: string;
+  place_name_pl?: string;
+  text?: string;
+} | null | undefined): string {
+  const context = Array.isArray(feature?.context) ? feature.context : [];
+  const placeItem = context.find((c) => String(c?.id || "").startsWith("place"));
+  const localityItem = context.find((c) => String(c?.id || "").startsWith("locality"));
+  const fromContext = mapboxContextText(placeItem) || mapboxContextText(localityItem);
+  if (fromContext) {
+    return canonicalizeCity(fromContext);
+  }
+
+  const placeName = String(feature?.place_name_pl || feature?.place_name || "").trim();
+  if (placeName) {
+    const parts = placeName.split(",").map((s) => s.trim()).filter(Boolean);
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
+      if (!segment) continue;
+      if (/województwo|polska|poland|^pl$/i.test(segment)) continue;
+      const c = canonicalizeCity(segment);
+      if (c) return c;
+    }
+  }
+
+  return canonicalizeCity(String(feature?.text || "").trim());
+}
+
+/**
+ * Dopasowuje dzielnicę z katalogu EstateOS na podstawie kontekstu Mapbox (forward / reverse).
+ * Działa tylko dla „strict” miast z listy.
+ */
+export function inferStrictDistrictFromMapboxFeature(
+  canonicalCity: string,
+  feature: {
+    context?: MapboxContextItem[];
+    place_name?: string;
+    place_name_pl?: string;
+  } | null | undefined,
+): string {
+  if (!canonicalCity || !isStrictCity(canonicalCity)) {
+    return "";
+  }
+
+  const allowed = getDistrictsForCity(canonicalCity);
+  if (!allowed.length) return "";
+
+  const tryValidDistrict = (raw: string): string => {
+    const trimmed = String(raw || "").trim();
+    if (!trimmed) return "";
+    const v = validateCityDistrict(canonicalCity, trimmed);
+    return v.valid ? v.district : "";
+  };
+
+  const context = Array.isArray(feature?.context) ? feature.context : [];
+
+  const prefixesOrdered = ["neighborhood", "district", "locality"];
+  for (const prefix of prefixesOrdered) {
+    for (const item of context) {
+      if (!String(item?.id || "").startsWith(prefix)) continue;
+      const hit = tryValidDistrict(mapboxContextText(item));
+      if (hit) return hit;
+    }
+  }
+
+  for (const item of context) {
+    const id = String(item?.id || "");
+    if (id.startsWith("postcode") || id.startsWith("country") || id.startsWith("region") || id.startsWith("place")) {
+      continue;
+    }
+    const hit = tryValidDistrict(mapboxContextText(item));
+    if (hit) return hit;
+  }
+
+  const placeName = String(feature?.place_name_pl || feature?.place_name || "").trim();
+  if (placeName) {
+    const segments = placeName.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const seg of segments) {
+      const cleaned = seg.replace(/^\d{2}-\d{3}\s+/i, "").replace(/^dzielnica\s+/i, "").trim();
+      const hit = tryValidDistrict(cleaned) || tryValidDistrict(seg);
+      if (hit) return hit;
+    }
+  }
+
+  const texts: string[] = [];
+  for (const item of context) {
+    const t = mapboxContextText(item);
+    if (t) texts.push(t);
+  }
+  if (placeName) {
+    placeName.split(",").forEach((s) => {
+      const t = s.trim();
+      if (t) texts.push(t);
+    });
+  }
+
+  const norm = (s: string) => normalizeText(s);
+  for (const candidate of texts) {
+    const nc = norm(candidate);
+    if (!nc) continue;
+    for (const d of allowed) {
+      const nd = norm(d);
+      if (!nd) continue;
+      if (nc === nd || nc.includes(nd) || nd.includes(nc)) {
+        const v = validateCityDistrict(canonicalCity, d);
+        if (v.valid) return v.district;
+      }
+    }
+  }
+
+  return "";
+}
+

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveEliteBadges } from '@/lib/eliteStatus';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -36,12 +37,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             select: { status: true }
         });
 
+        const badges = resolveEliteBadges(user);
+
         return NextResponse.json({
             user: {
                 id: user.id,
                 name: user.name || (user.email ? user.email.split('@')[0] : 'Użytkownik'),
                 type: user.planType === 'AGENCY' ? 'agency' : 'private',
-                memberSince: user.createdAt
+                memberSince: user.createdAt,
+                badges,
             },
             offers,
             reviews,

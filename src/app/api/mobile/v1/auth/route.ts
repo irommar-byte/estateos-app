@@ -87,19 +87,21 @@ export async function POST(req: Request) {
       if (existing) return NextResponse.json({ success: false, message: 'Email zajęty' }, { status: 400 });
       
       const hashedPassword = await bcrypt.hash(password, 10);
-      
-      // Dopasowanie do bazy: Partner -> AGENT. Imię i Nazwisko -> name.
-      const dbRole = role === 'PARTNER' ? 'AGENT' : 'USER';
+
+      const isPartner = String(role || '').toUpperCase() === 'PARTNER';
       const fullName = `${firstName || ''} ${lastName || ''}`.trim();
 
+      // Partner (EstateOS™ Partner) = plan agencji w całym systemie — jak `/api/auth/register-agency`.
+      // Samo `role: AGENT` nie włącza trybu Partner w UI (tam wymagane jest `planType: AGENCY`).
       const user = await prisma.user.create({
-        data: { 
-          email, 
-          password: hashedPassword, 
+        data: {
+          email,
+          password: hashedPassword,
           name: fullName || email,
           phone: phone || null,
-          role: dbRole
-        }
+          role: 'USER',
+          planType: isPartner ? 'AGENCY' : 'NONE',
+        },
       });
 
       return NextResponse.json({ success: true, user });

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { decryptSession } from '@/lib/sessionUtils';
+import { resolveEliteBadges } from '@/lib/eliteStatus';
 
 export async function GET(req: Request) {
   try {
@@ -106,6 +107,11 @@ export async function GET(req: Request) {
               name: otherParty.name || (otherParty.email ? otherParty.email.split('@')[0] : 'Użytkownik'),
               email: otherParty.email || null,
               image: otherParty.image || null,
+              role: (otherParty as any).role || null,
+              accountType: (otherParty as any).accountType || null,
+              planType: (otherParty as any).planType || null,
+              isPro: Boolean((otherParty as any).isPro),
+              badges: resolveEliteBadges(otherParty),
             }
           : null,
         pendingBidCount: d.bids?.length || 0,

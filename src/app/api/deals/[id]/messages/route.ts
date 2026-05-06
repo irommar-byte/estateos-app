@@ -4,6 +4,11 @@ import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { decryptSession } from '@/lib/sessionUtils';
 import { notificationService } from '@/lib/services/notification.service';
+import { getWebFormData } from '@/lib/requestFormData';
+import {
+  MAX_OFFER_FILE_BYTES,
+  saveDealAttachmentForDealRoom,
+} from '@/lib/upload/offerMediaUpload';
 
 const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
 
@@ -68,7 +73,7 @@ export async function GET(
   }
 }
 
-// WYSYŁANIE WIADOMOŚCI (POST)
+// WYSYŁANIE WIADOMOŚCI (POST) — JSON lub multipart/form-data (file | attachment | document)
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
@@ -80,28 +85,118 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Nieprawidłowe ID transakcji' }, { status: 400 });
     }
 
-    const body = await req.json();
-    const content = String(body?.content || '').trim();
-    const senderIdFromBody = body?.senderId ? Number(body.senderId) : null;
-
-    if (!content) {
-      return NextResponse.json({ success: false, error: 'Brak treści wiadomości' }, { status: 400 });
-    }
-
-    const deal = await prisma.deal.findUnique({ where: { id: dealId }, select: { id: true, buyerId: true, sellerId: true } });
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, buyerId: true, sellerId: true },
+    });
     if (!deal) {
       return NextResponse.json({ success: false, error: 'Transakcja nie istnieje' }, { status: 404 });
     }
 
     let senderId = await resolveUserId(req);
-    if (!senderId && senderIdFromBody && (senderIdFromBody === deal.buyerId || senderIdFromBody === deal.sellerId)) {
-      senderId = senderIdFromBody;
-    }
-    if (!senderId) {
-      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
-    }
-    if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
-      return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
+    let senderIdFromBody: number | null = null;
+
+    const ct = (req.headers.get('content-type') || '').toLowerCase();
+    let content = '';
+    let attachment: string | null = null;
+
+    if (ct.includes('multipart/form-data')) {
+      const formData = await getWebFormData(req);
+      const sidRaw = formData.get('senderId');
+      if (sidRaw != null && String(sidRaw).trim() !== '') {
+        senderIdFromBody = Number(String(sidRaw));
+      }
+
+      if (!senderId && Number.isFinite(senderIdFromBody) && senderIdFromBody && senderIdFromBody > 0) {
+        if (senderIdFromBody === deal.buyerId || senderIdFromBody === deal.sellerId) {
+          senderId = senderIdFromBody;
+        }
+      }
+      if (!senderId) {
+        return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+      }
+      if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
+        return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
+      }
+
+      content = String(formData.get('content') ?? formData.get('message') ?? formData.get('text') ?? '').trim();
+      const rawFile = formData.get('file') ?? formData.get('attachment') ?? formData.get('document');
+
+      let uploadedName = '';
+      if (rawFile && typeof rawFile === 'object' && 'arrayBuffer' in rawFile) {
+        const file = rawFile as File;
+        uploadedName = String((file as Blob & { name?: string }).name || '').trim();
+        if (typeof file.size === 'number' && file.size > 0) {
+          if (file.size > MAX_OFFER_FILE_BYTES) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Plik jest za duży (max ${Math.round(MAX_OFFER_FILE_BYTES / (1024 * 1024))} MB).`,
+              },
+              { status: 413 }
+            );
+          }
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const saved = await saveDealAttachmentForDealRoom({
+            dealId,
+            participantUserId: senderId,
+            fileBuffer: buffer,
+            mimeTypeDeclared: String((file as Blob & { type?: string }).type || ''),
+            originalFileName: uploadedName,
+          });
+          if (!saved.ok) {
+            return NextResponse.json({ success: false, error: saved.error }, { status: saved.status });
+          }
+          attachment = saved.url;
+        }
+      }
+
+      if (!content && !attachment) {
+        return NextResponse.json(
+          { success: false, error: 'Brak treści wiadomości lub pliku.' },
+          { status: 400 }
+        );
+      }
+      if (!content && attachment) {
+        content = uploadedName ? `📎 ${uploadedName}` : '📎 Załącznik';
+      }
+    } else {
+      let body: Record<string, unknown>;
+      try {
+        body = (await req.json()) as Record<string, unknown>;
+      } catch {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Niepoprawny JSON lub użyj multipart/form-data dla pliku (pola file, attachment lub document).',
+          },
+          { status: 400 }
+        );
+      }
+
+      senderIdFromBody = body?.senderId ? Number(body.senderId) : null;
+      if (!senderId && senderIdFromBody && (senderIdFromBody === deal.buyerId || senderIdFromBody === deal.sellerId)) {
+        senderId = senderIdFromBody;
+      }
+      if (!senderId) {
+        return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+      }
+      if (senderId !== deal.buyerId && senderId !== deal.sellerId) {
+        return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
+      }
+
+      content = String(body?.content ?? '').trim();
+      const rawAtt = body?.attachment ?? body?.url ?? body?.path ?? null;
+      attachment =
+        rawAtt != null && String(rawAtt).trim() !== '' ? String(rawAtt).trim() : null;
+
+      if (!content && !attachment) {
+        return NextResponse.json({ success: false, error: 'Brak treści wiadomości lub załącznika.' }, { status: 400 });
+      }
+      if (!content && attachment) {
+        content = '📎 Załącznik';
+      }
     }
 
     const newMessage = await prisma.dealMessage.create({
@@ -109,12 +204,13 @@ export async function POST(
         dealId,
         senderId,
         content,
-      }
+        attachment: attachment || undefined,
+      },
     });
 
     await prisma.deal.update({
       where: { id: dealId },
-      data: { updatedAt: new Date() }
+      data: { updatedAt: new Date() },
     });
 
     const receiverId = deal.buyerId === senderId ? deal.sellerId : deal.buyerId;
@@ -129,7 +225,7 @@ export async function POST(
         type: 'DEAL_UPDATE',
         targetType: 'DEAL',
         targetId: String(dealId),
-      }
+      },
     });
 
     try {
@@ -143,19 +239,26 @@ export async function POST(
           kind: 'deal_message',
           senderId: String(senderId),
           senderName: senderUser?.name || 'Użytkownik',
-        }
+        },
       });
     } catch (pushError) {
       console.warn('[DEAL MESSAGE PUSH WARN]', pushError);
     }
 
     if (globalAny.sseClients) {
-      globalAny.sseClients.forEach((c) => c.send({ type: 'NEW_MESSAGE', payload: { dealId, messageId: newMessage.id } }));
+      globalAny.sseClients.forEach((c) =>
+        c.send({ type: 'NEW_MESSAGE', payload: { dealId, messageId: newMessage.id } })
+      );
     }
 
-    return NextResponse.json({ success: true, message: newMessage });
-  } catch (error: any) {
-    console.error('Błąd wysyłania wiadomości:', error.message);
-    return NextResponse.json({ success: false, error: 'Błąd serwera' }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      message: newMessage,
+      ...(attachment ? { url: attachment, path: attachment } : {}),
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Błąd serwera';
+    console.error('Błąd wysyłania wiadomości:', msg);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

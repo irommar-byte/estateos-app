@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, updateOffer } from '@/lib/services/offer.service';
+import { verifyMobileToken } from '@/lib/jwtMobile';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -20,6 +21,16 @@ function cleanupIdempotencyMap() {
       map.delete(key);
     }
   }
+}
+
+function parseUserIdFromBearer(req: Request): number | null {
+  const auth = req.headers.get('authorization') || req.headers.get('Authorization');
+  if (!auth) return null;
+  const rawToken = auth.replace(/^Bearer\s+/i, '').trim();
+  if (!rawToken) return null;
+  const payload = verifyMobileToken(rawToken) as any;
+  const userId = Number(payload?.id ?? payload?.userId ?? payload?.sub);
+  return Number.isFinite(userId) && userId > 0 ? userId : null;
 }
 
 // =======================
@@ -113,6 +124,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const authUserId = parseUserIdFromBearer(req);
+    if (!authUserId) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
+    }
+    const bodyUserId = Number(body?.userId);
+    if (!Number.isFinite(bodyUserId) || bodyUserId <= 0 || bodyUserId !== authUserId) {
+      return NextResponse.json({ success: false, message: 'Błędny użytkownik w żądaniu.' }, { status: 403 });
+    }
     cleanupIdempotencyMap();
 
     const reqId = String(body?.clientRequestId || '').trim();

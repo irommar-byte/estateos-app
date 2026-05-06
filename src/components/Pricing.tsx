@@ -51,7 +51,7 @@ export default function Pricing() {
             Inwestuj <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D4AF37] to-[#F9E498]">mądrzej</span>, nie ciężej.
           </h3>
           <p className="text-white/50 text-lg max-w-2xl mx-auto">
-            Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje off-market, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.
+            Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje zanim pojawią się na szerokim rynku, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.
           </p>
         </div>
 
@@ -93,7 +93,7 @@ export default function Pricing() {
               
               <ul className="flex flex-col gap-5 mb-10 flex-1">
                 <li className="flex items-start gap-3 text-white/80 text-sm"><Check className="text-white/30 shrink-0" size={20}/> <span><strong>1 aktywne ogłoszenie</strong> w naszej bazie.</span></li>
-                <li className="flex items-start gap-3 text-white/80 text-sm"><Clock className="text-orange-500/80 shrink-0" size={20}/> <span>System Radar z <strong>12-godzinnym opóźnieniem</strong>.</span></li>
+                <li className="flex items-start gap-3 text-white/80 text-sm"><Clock className="text-orange-500/80 shrink-0" size={20}/> <span>Radar: na Basic widzisz mniej w <strong>pierwszych 24 godzinach premiery</strong> — po tym czasie jak na szerokim rynku. PRO widzi pełny obraz od razu.</span></li>
                 <li className="flex items-start gap-3 text-white/80 text-sm"><Check className="text-white/30 shrink-0" size={20}/> <span>Podstawowe statystyki wyświetleń.</span></li>
                 <li className="flex items-start gap-3 text-white/40 text-sm italic"><Zap className="text-white/20 shrink-0" size={20}/> <span>Opcja: Dokup dodatkowe ogłoszenie za 29 PLN/msc.</span></li>
               </ul>
@@ -123,9 +123,9 @@ export default function Pricing() {
               </div>
               
               <ul className="flex flex-col gap-5 mb-10 flex-1">
-                <li className="flex items-start gap-3 text-white text-sm"><Radar className="text-[#D4AF37] shrink-0" size={20}/> <span><strong>Natychmiastowy Radar (0 opóźnienia).</strong> Powiadomienia PUSH w ułamek sekundy.</span></li>
+                <li className="flex items-start gap-3 text-white text-sm"><Radar className="text-[#D4AF37] shrink-0" size={20}/> <span><strong>Natychmiastowy Radar</strong> — bez 24‑godzinnego okna premiery jak na Basic. Powiadomienia PUSH w ułamek sekundy.</span></li>
                 <li className="flex items-start gap-3 text-white text-sm"><Check className="text-[#D4AF37] shrink-0" size={20}/> <span>Aż <strong>5 aktywnych ogłoszeń</strong> jednocześnie.</span></li>
-                <li className="flex items-start gap-3 text-white text-sm"><ShieldCheck className="text-[#D4AF37] shrink-0" size={20}/> <span>Dostęp do zamkniętych ofert <strong>Off-Market</strong>.</span></li>
+                <li className="flex items-start gap-3 text-white text-sm"><ShieldCheck className="text-[#D4AF37] shrink-0" size={20}/> <span><strong>Oglądasz od razu</strong>, zanim ogłoszenie trafi na szeroki rynek (24 h wcześniej niż publicznie).</span></li>
                 <li className="flex items-start gap-3 text-white text-sm"><Check className="text-[#D4AF37] shrink-0" size={20}/> <span>Złota rama wyróżniająca Twoje oferty.</span></li>
               </ul>
               
