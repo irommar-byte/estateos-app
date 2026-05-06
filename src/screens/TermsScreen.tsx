@@ -46,7 +46,7 @@ export default function TermsScreen() {
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>3. Ochrona Prywatności</Text>
         <Text style={[styles.paragraph, { color: textColor }]}>
-          Twoje dane są przetwarzane zgodnie z najwyższymi standardami bezpieczeństwa. Funkcja "Przybliżonej lokalizacji" chroni prywatność właścicieli, ukrywając dokładny adres przed nieautoryzowanym dostępem.
+          Twoje dane są przetwarzane zgodnie z najwyższymi standardami bezpieczeństwa. Funkcja „Przybliżonej lokalizacji” chroni prywatność właścicieli, ukrywając dokładny adres przed nieautoryzowanym dostępem.
         </Text>
         
         <View style={{ height: 100 }} />

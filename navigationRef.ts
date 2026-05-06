@@ -1,12 +1,12 @@
-import { createNavigationContainerRef } from '@react-navigation/native';
+import { CommonActions, createNavigationContainerRef } from '@react-navigation/native';
 
 export const navigationRef = createNavigationContainerRef();
-
-let pendingNavigation = null;
+type PendingNavigation = { name: string; params?: any } | null;
+let pendingNavigation: PendingNavigation = null;
 
 export function navigate(name: string, params?: any) {
   if (navigationRef.isReady()) {
-    navigationRef.navigate(name as never, params as never);
+    navigationRef.dispatch(CommonActions.navigate({ name, params }));
   } else {
     console.log('⚠️ NAV NOT READY - zapisuję akcję');
     pendingNavigation = { name, params };
@@ -16,7 +16,7 @@ export function navigate(name: string, params?: any) {
 export function flushNavigation() {
   if (pendingNavigation && navigationRef.isReady()) {
     console.log('🚀 WYKONUJĘ OPÓŹNIONĄ NAWIGACJĘ');
-    navigationRef.navigate(pendingNavigation.name as never, pendingNavigation.params as never);
+    navigationRef.dispatch(CommonActions.navigate({ name: pendingNavigation.name, params: pendingNavigation.params }));
     pendingNavigation = null;
   }
 }

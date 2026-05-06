@@ -1,7 +1,6 @@
 {
   "expo": {
     "name": "EstateOS™",
-    "displayName": "EstateOS™",
     "slug": "apple-style-app",
     "scheme": "estateos",
     "version": "1.0.0",
@@ -56,7 +55,10 @@
               "pathPrefix": "/offer"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -82,7 +84,8 @@
           "remindersPermission": "Powiązanie z przypomnieniami systemowymi jest opcjonalne."
         }
       ],
-      "react-native-iap"
+      "react-native-iap",
+      "expo-font"
     ]
   }
 }

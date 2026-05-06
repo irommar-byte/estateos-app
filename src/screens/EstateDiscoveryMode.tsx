@@ -455,7 +455,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       duration: 350,
       useNativeDriver: false,
     }).start(() => onSwipeComplete(direction));
-  }, [position, width, height, onSwipeComplete]);
+  }, [position, width, height]);
 
   const resetPosition = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -467,7 +467,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     }).start();
   }, [position]);
 
-  const onSwipeComplete = useCallback((direction: 'right' | 'left' | 'up') => {
+  function onSwipeComplete(direction: 'right' | 'left' | 'up') {
     const top = offers[0];
     if (top) {
       const price = parsePriceNumber(top.price);
@@ -515,7 +515,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
     setOffers((prev) => prev.slice(1));
     setActivePhotoIndex(0);
     position.setValue({ x: 0, y: 0 });
-  }, [position, offers, sendDiscoveryEvent]);
+  }
 
   const handleTopCardImageTap = useCallback((zone: 'left' | 'right') => {
     const top = offers[0];

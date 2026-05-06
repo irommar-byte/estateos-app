@@ -2,5 +2,23 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  "include": [
+    "App.tsx",
+    "index.ts",
+    "navigationRef.ts",
+    "src/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "ios",
+    "android",
+    ".expo",
+    "dist",
+    "estateos-server/**",
+    "**/* copy*.ts",
+    "**/* copy*.tsx",
+    "**/*.bak*"
+  ]
 }

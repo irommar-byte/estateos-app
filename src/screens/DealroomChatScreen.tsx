@@ -253,7 +253,7 @@ function stripChatAttachmentDecorations(rawContent: string | undefined, attachme
   return text.replace(/\s+/g, ' ').trim();
 }
 
-function parseDealReviewPayload(content?: string): { rating: number; review: string; senderId?: number | null } | null {
+function parseDealReviewPayload(content?: string): { rating: number; review?: string; senderId?: number | null } | null {
   const raw = String(content || '').trim();
   if (!raw.startsWith(DEAL_REVIEW_PREFIX)) return null;
   try {

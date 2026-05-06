@@ -118,7 +118,10 @@ export function parseDiscoveryFeedItems(raw: unknown): DiscoveryFeedItem[] {
       if (id == null || id === '') return null;
       const scoreRaw = item?.score ?? item?.matchScore ?? null;
       const scoreNum = scoreRaw == null ? null : Number(scoreRaw);
-      const score = Number.isFinite(scoreNum) ? Math.max(0, Math.min(100, Math.round(scoreNum))) : null;
+      const score =
+        typeof scoreNum === 'number' && Number.isFinite(scoreNum)
+          ? Math.max(0, Math.min(100, Math.round(scoreNum)))
+          : null;
       const reason = item?.reason == null ? null : String(item.reason);
       return { ...item, id, score, reason } as DiscoveryFeedItem;
     })

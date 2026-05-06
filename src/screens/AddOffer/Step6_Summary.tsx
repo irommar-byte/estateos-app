@@ -567,7 +567,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
       <View style={styles.absoluteBottom}>
         <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.blurWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.1)' }]}>
-          <Pressable onPress={handlePublish} disabled={loading} style={({ pressed }) => [styles.publishButton, { opacity: pressed || loading ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+          <Pressable onPress={() => { void handlePublish(); }} disabled={loading} style={({ pressed }) => [styles.publishButton, { opacity: pressed || loading ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
             {loading ? <ActivityIndicator color="#FFF" style={{ marginRight: 10 }} /> : <Ionicons name="rocket" size={20} color="#fff" style={{ marginRight: 10 }} />}
             <Text style={styles.publishButtonText}>
               {loading ? (uploadProgressText || 'Publikowanie...') : 'Opublikuj w Ekosystemie'}
