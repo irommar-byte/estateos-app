@@ -694,6 +694,7 @@ const parsePushTargetFromResponse = (
     ['dealroom', 'dealroom_chat', 'deal', 'chat', 'message', 'deal_chat'].includes(routeHint) ||
     routeHint.startsWith('deal_') ||
     routeHint.startsWith('chat_') ||
+    routeHint.includes('review') ||
     targetTypeLooksDeal;
   const prioritizeDealroom = shouldPrioritizeDealroom(data, extractedIds.dealId);
   const textHint = `${String(response?.notification?.request?.content?.title || '')} ${String(

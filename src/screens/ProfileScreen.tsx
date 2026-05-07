@@ -1298,7 +1298,7 @@ const AdminDealroomCheckModal = ({ visible, onClose, theme }) => {
                           navigation.navigate('DealroomChat', {
                             dealId,
                             offerId: offerId ?? undefined,
-                            title: deal?.title || `Dealroom #${dealId}`,
+                            title: deal?.title || `Transakcja #${dealId}`,
                           });
                         }, 140);
                       }}

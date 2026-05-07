@@ -8,6 +8,7 @@ import {
   canFinalizeTransition,
   extractPushDealAndOfferIds,
   isFinalizedOwnerAcceptanceMessage,
+  mergePushPayload,
   shouldPrioritizeDealroom,
   validateSharedDealReviewPayload,
   validateSharedDealEventPayload,
@@ -38,6 +39,37 @@ test('push dealId payload -> Dealroom priority over offer fallback', () => {
   assert.equal(ids.dealId, 91);
   assert.equal(ids.offerId, 22);
   assert.equal(shouldPrioritizeDealroom(payload, ids.dealId), true);
+});
+
+test('push parser supports nested payload/body/data fields', () => {
+  const merged = mergePushPayload({
+    baseData: {
+      data: { targetType: 'DEAL' },
+      payload: { offerId: 777 },
+    },
+    triggerPayload: {
+      body: JSON.stringify({
+        dealId: 314,
+        target: 'dealroom',
+      }),
+    },
+  });
+  const ids = extractPushDealAndOfferIds(merged);
+  assert.equal(ids.dealId, 314);
+  assert.equal(ids.offerId, 777);
+  assert.equal(shouldPrioritizeDealroom(merged, ids.dealId), true);
+});
+
+test('offer-only push falls back to OfferDetail', () => {
+  const payload = {
+    target: 'offer',
+    targetType: 'OFFER',
+    targetId: 1201,
+  };
+  const ids = extractPushDealAndOfferIds(payload);
+  assert.equal(ids.dealId, null);
+  assert.equal(ids.offerId, 1201);
+  assert.equal(shouldPrioritizeDealroom(payload, ids.dealId), false);
 });
 
 test('share /o/:id keeps app/web fallback parity', () => {
@@ -165,6 +197,8 @@ test('accept -> finalized -> review scenario parity', () => {
   assert.equal(canFinalizeTransition({ dealStatus: 'AGREED', acceptedBidId: 55 }), true);
   assert.equal(canFinalizeTransition({ dealStatus: 'PENDING', acceptedBidId: 55 }), false);
   assert.equal(canFinalizeTransition({ dealStatus: 'AGREED', acceptedBidId: null }), false);
+  assert.equal(canFinalizeTransition({ dealStatus: 'agreed', acceptedBidId: '55' }), true);
+  assert.equal(canFinalizeTransition({ dealStatus: 'AGREED', acceptedBidId: 0 }), false);
 
   const canonicalReviewPayload = buildSharedDealReviewPayload({
     dealId: 123,

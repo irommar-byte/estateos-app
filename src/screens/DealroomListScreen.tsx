@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { 
   StyleSheet, View, Text, ScrollView as RNScrollView, Pressable, Platform, 
-  ActivityIndicator, Modal, Appearance, Image, Alert,
+  ActivityIndicator, Modal, Appearance, Image, Alert, LayoutAnimation, UIManager,
   type ColorSchemeName,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,7 +13,7 @@ import Animated, {
 import { 
   ChevronRight, ChevronLeft, ChevronDown, MessageCircle, ShieldCheck, 
   AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles,
-  Trash2, Pin, CalendarClock,
+  Trash2, Pin, CalendarClock, HandCoins,
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -24,11 +24,12 @@ import { API_URL } from '../config/network';
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
-import { isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
+import { canFinalizeTransition, isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
+const DEALROOM_STACK_PINS_STORAGE_KEY = '@EstateOS_dealroom_stack_pins';
 
 // === LUKSUSOWA PALETA DYNAMICZNA (CERAMIC & DARK GLASS) ===
 const getColors = (isDark: boolean) => ({
@@ -72,7 +73,17 @@ function tryParseDealEventPayload(content: string): Record<string, unknown> | nu
 }
 
 /** Klasyfikacja na podstawie treści wiadomości w wątku (spójnie z czatem dealroom). */
-function classifyDealPhaseFromMessages(messages: any[]): DealPhase {
+function classifyDealPhaseFromMessages(messages: any[], deal?: any): DealPhase {
+  const rawStatus = String(firstDefined(deal?.status, deal?.dealStatus) || '').trim().toUpperCase();
+  if (['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD'].includes(rawStatus)) return 'finalized';
+  if (
+    canFinalizeTransition({
+      dealStatus: rawStatus,
+      acceptedBidId: firstDefined(deal?.acceptedBidId, deal?.acceptedBid?.id),
+    })
+  ) {
+    return 'finalized';
+  }
   for (const m of messages) {
     const body = String(m?.content ?? m?.text ?? '');
     if (isFinalizedOwnerAcceptanceMessage(body)) return 'finalized';
@@ -271,6 +282,75 @@ function extractOfferIdFromDeal(deal: any): number | null {
   const id = deal?.offerId ?? deal?.offer?.id ?? deal?.offer?.offerId ?? deal?.listingId ?? deal?.propertyId;
   const n = Number(id);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function buildOfferSummaryLine(deal: any): string {
+  const offer = deal?.offer || deal?.listing || deal?.property || {};
+  const city = String(firstDefined(offer?.city, offer?.location?.city, deal?.city) || '').trim();
+  const district = String(firstDefined(offer?.district, offer?.location?.district, deal?.district) || '').trim();
+  const rooms = Number(firstDefined(offer?.rooms, offer?.roomsCount, deal?.rooms) || 0);
+  const area = Number(firstDefined(offer?.area, offer?.metrage, deal?.area) || 0);
+  const left = [city, district].filter(Boolean).join(' • ');
+  const right = [
+    rooms > 0 ? `${rooms} pok.` : '',
+    area > 0 ? `${Math.round(area)} m²` : '',
+  ]
+    .filter(Boolean)
+    .join(' • ');
+  return [left, right].filter(Boolean).join('  |  ') || 'Brak opisu lokalizacji';
+}
+
+function getStackContactMeta(deal: any, dealMessagesById: Record<number, any[]>) {
+  const dealId = Number(deal?.id || 0);
+  const thread = dealMessagesById[dealId] || [];
+  const sorted = [...thread].sort(
+    (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+  );
+  for (const msg of sorted) {
+    const ev = tryParseDealEventPayload(String(msg?.content ?? msg?.text ?? ''));
+    if (!ev) continue;
+    const entity = String(ev.entity || '').toUpperCase();
+    const amount = Number(ev.amount || 0);
+    const at = new Date(msg?.createdAt || Date.now());
+    const atText = Number.isFinite(at.getTime())
+      ? at.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '-';
+    if (entity === 'APPOINTMENT') {
+      return {
+        kind: 'appointment' as const,
+        text: 'Negocjacja terminu',
+        atText,
+      };
+    }
+    if (entity === 'BID') {
+      return {
+        kind: 'price' as const,
+        text: amount > 0 ? `Oferta: ${amount.toLocaleString('pl-PL')} PLN` : 'Negocjacja ceny',
+        atText,
+      };
+    }
+  }
+  const fallbackAt = new Date(firstDefined(deal?.updatedAt, deal?.lastMessageAt, Date.now()) as any);
+  return {
+    kind: 'other' as const,
+    text: 'Kontakt w transakcji',
+    atText: Number.isFinite(fallbackAt.getTime())
+      ? fallbackAt.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '-',
+  };
+}
+
+function getTransactionBadge(deal: any): { label: 'Sprzedaż' | 'Najem'; color: string } {
+  const tx = String(
+    firstDefined(
+      deal?.offer?.transactionType,
+      deal?.listing?.transactionType,
+      deal?.property?.transactionType,
+      deal?.transactionType
+    ) || ''
+  ).toUpperCase();
+  if (tx === 'RENT') return { label: 'Najem', color: '#0A84FF' };
+  return { label: 'Sprzedaż', color: '#10B981' };
 }
 
 /** Pierwsze zdjęcie z obiektu oferty / listingu – jak w OfferDetail / Radar (images jako JSON lub tablica stringów). */
@@ -629,11 +709,45 @@ export default function DealroomListScreen() {
   const [phasesReady, setPhasesReady] = useState(false);
   const [phaseRefreshTick, setPhaseRefreshTick] = useState(0);
   const [pinnedDealIds, setPinnedDealIds] = useState<number[]>([]);
-  const [collapsedSections, setCollapsedSections] = useState<Record<DealPhase, boolean>>({
-    started: false,
-    active: false,
-    finalized: false,
+  const [pinnedStackKeysByPhase, setPinnedStackKeysByPhase] = useState<Record<DealPhase, string[]>>({
+    started: [],
+    active: [],
+    finalized: [],
   });
+  const [collapsedSections, setCollapsedSections] = useState<Record<DealPhase, boolean>>({
+    started: true,
+    active: true,
+    finalized: true,
+  });
+  const [expandedOfferStacks, setExpandedOfferStacks] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DEALROOM_STACK_PINS_STORAGE_KEY);
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return;
+        setPinnedStackKeysByPhase({
+          started: Array.isArray(parsed.started) ? parsed.started.map(String) : [],
+          active: Array.isArray(parsed.active) ? parsed.active.map(String) : [],
+          finalized: Array.isArray(parsed.finalized) ? parsed.finalized.map(String) : [],
+        });
+      } catch {
+        // noop
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -694,7 +808,7 @@ export default function DealroomListScreen() {
             const data = await res.json().catch(() => ({}));
             const messages = Array.isArray(data?.messages) ? data.messages : [];
             nextMsgs[id] = messages;
-            next[id] = classifyDealPhaseFromMessages(messages);
+            next[id] = classifyDealPhaseFromMessages(messages, deal);
           } catch {
             next[id] = 'started';
             nextMsgs[id] = [];
@@ -790,7 +904,37 @@ export default function DealroomListScreen() {
 
   const toggleSection = useCallback((phase: DealPhase) => {
     Haptics.selectionAsync();
-    setCollapsedSections((prev) => ({ ...prev, [phase]: !prev[phase] }));
+    setCollapsedSections((prev) => {
+      const willExpand = prev[phase] === true;
+      LayoutAnimation.configureNext({
+        duration: willExpand ? 420 : 260,
+        create: {
+          type: willExpand ? LayoutAnimation.Types.spring : LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+        update: {
+          type: LayoutAnimation.Types.spring,
+          springDamping: willExpand ? 0.58 : 0.82,
+        },
+        delete: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+      });
+      return { ...prev, [phase]: !prev[phase] };
+    });
+  }, []);
+
+  const toggleOfferStack = useCallback((phase: DealPhase, offerId: number) => {
+    const key = `${phase}:${offerId}`;
+    Haptics.selectionAsync();
+    LayoutAnimation.configureNext({
+      duration: 320,
+      create: { type: LayoutAnimation.Types.spring, property: LayoutAnimation.Properties.opacity },
+      update: { type: LayoutAnimation.Types.spring, springDamping: 0.8 },
+      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    });
+    setExpandedOfferStacks((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
   const dealsSortedFlat = useMemo(() => presentationAndPinSortDeals(deals), [deals, presentationAndPinSortDeals]);
@@ -1026,6 +1170,18 @@ export default function DealroomListScreen() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, []);
 
+  const togglePinForStack = useCallback((phase: DealPhase, stackKey: string) => {
+    setPinnedStackKeysByPhase((prev) => {
+      const current = Array.isArray(prev[phase]) ? prev[phase] : [];
+      const isPinned = current.includes(stackKey);
+      const nextPhasePins = isPinned ? current.filter((k) => k !== stackKey) : [stackKey, ...current.filter((k) => k !== stackKey)];
+      const next = { ...prev, [phase]: nextPhasePins };
+      void AsyncStorage.setItem(DEALROOM_STACK_PINS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
   const requestDeleteDeal = useCallback(
     (deal: any) => {
       const id = Number(deal?.id);
@@ -1146,7 +1302,7 @@ export default function DealroomListScreen() {
     return (
       <Animated.View
         key={deal.id}
-        entering={FadeInDown.delay(animDelayIndex * 90).springify().damping(12).stiffness(150).mass(0.8)}
+        entering={FadeInDown.delay(animDelayIndex * 70).springify().damping(9).stiffness(220).mass(0.62)}
         style={[styles.cardContainer, needsAttention && styles.cardContainerElevated]}
       >
         <Swipeable
@@ -1216,6 +1372,11 @@ export default function DealroomListScreen() {
               </View>
               <Text style={styles.timeText}>{deal.time}</Text>
             </View>
+            {isPinned ? (
+              <View style={styles.pinCornerBadge}>
+                <Pin size={12} color="#fff" fill="#FF3B30" />
+              </View>
+            ) : null}
 
             <View style={styles.cardBody}>
               <View style={styles.cardInfo}>
@@ -1285,6 +1446,211 @@ export default function DealroomListScreen() {
     );
   };
 
+  const renderPhaseDealsWalletStyle = (phase: DealPhase, phaseDeals: any[]) => {
+    const groups = new Map<string, any[]>();
+    for (const deal of phaseDeals) {
+      const offerId = extractOfferIdFromDeal(deal);
+      const key = offerId ? `offer-${offerId}` : `single-${deal?.id}`;
+      const arr = groups.get(key) || [];
+      arr.push(deal);
+      groups.set(key, arr);
+    }
+
+    let animIndex = 0;
+    const entries = Array.from(groups.entries()).sort((a, b) => {
+      const pins = pinnedStackKeysByPhase[phase] || [];
+      const ia = pins.indexOf(a[0]);
+      const ib = pins.indexOf(b[0]);
+      const ra = ia === -1 ? Number.MAX_SAFE_INTEGER : ia;
+      const rb = ib === -1 ? Number.MAX_SAFE_INTEGER : ib;
+      return ra - rb;
+    });
+
+    return entries.map(([groupKey, dealsInGroup]) => {
+      if (dealsInGroup.length <= 1) {
+        const node = renderDealCard(dealsInGroup[0], animIndex, phase);
+        animIndex += 1;
+        return node;
+      }
+      const offerId = extractOfferIdFromDeal(dealsInGroup[0]) || 0;
+      const stackKey = `${phase}:${offerId}`;
+      const isExpanded = !!expandedOfferStacks[stackKey];
+      const summaryTitle = getReadableDealTitle(dealsInGroup[0]);
+      const summaryMeta = buildOfferSummaryLine(dealsInGroup[0]);
+      const summaryThumb =
+        extractOfferImageFromDeal(dealsInGroup[0]) || (offerId ? offerImageByOfferId[offerId] : null);
+      const txBadge = getTransactionBadge(dealsInGroup[0]);
+      const isPinnedStack = (pinnedStackKeysByPhase[phase] || []).includes(groupKey);
+
+      if (!isExpanded) {
+        const topTabs = dealsInGroup.slice(0, 4);
+        const node = (
+          <Animated.View
+            key={`stack-${groupKey}`}
+            entering={FadeInDown.delay(animIndex * 80).springify().damping(13).stiffness(160).mass(0.75)}
+            style={styles.walletStackWrap}
+          >
+            <Swipeable
+              friction={2}
+              overshootLeft={false}
+              enableTrackpadTwoFingerGesture
+              containerStyle={styles.swipeableContainer}
+              childrenContainerStyle={styles.swipeableChild}
+              renderLeftActions={(_progress, _drag, swipeable) => (
+                <View style={styles.swipeLeftActions}>
+                  <RectButton
+                    style={[styles.swipePinBtn, isPinnedStack && styles.swipePinBtnActive]}
+                    onPress={() => {
+                      swipeable.close();
+                      togglePinForStack(phase, groupKey);
+                    }}
+                  >
+                    <Pin size={22} color="#fff" fill={isPinnedStack ? '#fff' : 'transparent'} strokeWidth={2.2} />
+                    <Text style={styles.swipeActionCaption}>{isPinnedStack ? 'Odepnij' : 'Przypnij'}</Text>
+                  </RectButton>
+                </View>
+              )}
+            >
+              <Pressable
+                style={({ pressed }) => [styles.walletStackPressable, pressed && { opacity: 0.92 }]}
+                onPress={() => toggleOfferStack(phase, offerId)}
+              >
+                <BlurView intensity={isDark ? 35 : 75} tint={isDark ? 'dark' : 'light'} style={styles.walletStackCard}>
+                  <View style={styles.walletNotebookSpine} />
+                  <View style={styles.walletNotebookHolesColumn}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <View key={`hole-${i}`} style={styles.walletNotebookHole} />
+                    ))}
+                  </View>
+                  <Text style={styles.walletStackEyebrow}>STOS TRANSAKCJI OFERTY #{offerId || '-'}</Text>
+                  <View style={styles.walletPreviewWrap}>
+                    <DealOfferThumb uri={summaryThumb} colors={COLORS} />
+                    <View style={[styles.walletTxBadgeOnImage, { backgroundColor: txBadge.color }]}>
+                      <Text style={styles.walletTxBadgeOnImageText}>{txBadge.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.walletStackTitle} numberOfLines={1}>{summaryTitle}</Text>
+                  <Text style={styles.walletStackMeta} numberOfLines={1}>{summaryMeta}</Text>
+                  <View style={styles.walletTabsWrap}>
+                    {topTabs.map((d, idx) => (
+                      (() => {
+                        const meta = getStackContactMeta(d, dealMessagesById);
+                        const isAppt = meta.kind === 'appointment';
+                        const isPrice = meta.kind === 'price';
+                        return (
+                      <View
+                        key={`tab-${d?.id}`}
+                        style={[
+                          styles.walletCalendarTab,
+                          {
+                            marginTop: idx === 0 ? 0 : -10,
+                            marginLeft: idx * 7,
+                            opacity: 1 - idx * 0.11,
+                            zIndex: 10 - idx,
+                            transform: [{ scale: 1 - idx * 0.012 }],
+                          },
+                        ]}
+                      >
+                        <View style={styles.walletTabRow}>
+                          <Text style={styles.walletCalendarTabText}>TX-{d?.id}</Text>
+                          <View style={styles.walletTabTopic}>
+                            {isAppt ? (
+                              <CalendarClock size={12} color={COLORS.textMuted} />
+                            ) : isPrice ? (
+                              <HandCoins size={12} color={COLORS.textMuted} />
+                            ) : (
+                              <MessageCircle size={12} color={COLORS.textMuted} />
+                            )}
+                            <Text style={styles.walletTabTopicText} numberOfLines={1}>{meta.text}</Text>
+                          </View>
+                          <Text style={styles.walletTabDateText}>{meta.atText}</Text>
+                        </View>
+                      </View>
+                        );
+                      })()
+                    ))}
+                  </View>
+                  <Text style={styles.walletStackHint}>Przesuń w prawo, aby przypiąć. Dotknij, aby rozłożyć stos.</Text>
+                  {isPinnedStack ? (
+                    <View style={styles.pinCornerBadge}>
+                      <Pin size={12} color="#fff" fill="#FF3B30" />
+                    </View>
+                  ) : null}
+                </BlurView>
+              </Pressable>
+            </Swipeable>
+          </Animated.View>
+        );
+        animIndex += 1;
+        return node;
+      }
+
+      return (
+        <View key={`stack-${groupKey}`} style={styles.walletExpandedWrap}>
+          <View style={styles.walletExpandedHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.walletStackEyebrow}>ROZŁOŻONE KARTY OFERTY #{offerId || '-'}</Text>
+              <Text style={styles.walletExpandedTitle} numberOfLines={1}>{summaryTitle}</Text>
+              <Text style={styles.walletStackMeta} numberOfLines={1}>{summaryMeta}</Text>
+            </View>
+            <Pressable onPress={() => toggleOfferStack(phase, offerId)} style={styles.walletCollapseBtn}>
+              <Text style={styles.walletCollapseBtnTxt}>Zwiń</Text>
+            </Pressable>
+          </View>
+          {isPinnedStack ? (
+            <View style={styles.pinInlineRow}>
+              <Pin size={12} color="#fff" fill="#FF3B30" />
+              <Text style={styles.pinInlineText}>Przypięty stos</Text>
+            </View>
+          ) : null}
+          {dealsInGroup.map((deal) => {
+            const node = renderDealCard(deal, animIndex, phase);
+            animIndex += 1;
+            return node;
+          })}
+        </View>
+      );
+    });
+  };
+
+  const renderCollapsedSectionDeck = useCallback(
+    (phase: DealPhase, count: number) => {
+      if (count <= 0 || !collapsedSections[phase]) return null;
+      const layerCount = Math.min(Math.max(count - 1, 1), 8);
+      const tint =
+        phase === 'started'
+          ? 'rgba(255,214,10,0.22)'
+          : phase === 'active'
+            ? 'rgba(50,215,75,0.22)'
+            : 'rgba(191,90,242,0.24)';
+
+      return (
+        <View style={styles.phaseDeckShell}>
+          {Array.from({ length: layerCount }).map((_, idx) => (
+            <View
+              key={`deck-${phase}-${idx}`}
+              style={[
+                styles.phaseDeckLayer,
+                {
+                  backgroundColor: tint,
+                  transform: [
+                    { perspective: 1200 },
+                    { translateY: (idx + 1) * 4.2 },
+                    { rotateX: `${(idx + 1) * 1.7}deg` },
+                    { rotateZ: `${(idx + 1) * -0.4}deg` },
+                    { scaleX: 1 - (idx + 1) * 0.012 },
+                  ],
+                  opacity: Math.max(0.16, 0.34 - idx * 0.03),
+                },
+              ]}
+            />
+          ))}
+        </View>
+      );
+    },
+    [collapsedSections, styles.phaseDeckLayer, styles.phaseDeckShell]
+  );
+
   return (
     <View style={styles.container}>
       {/* Tło pod szkło (Opcjonalne, daje głębię w light mode) */}
@@ -1301,7 +1667,7 @@ export default function DealroomListScreen() {
         </Pressable>
         <View style={styles.headerTextWrapper}>
           <Text style={styles.headerSubtitle}>TWOJE PORTFOLIO</Text>
-          <Text style={styles.headerTitle}>Dealroom</Text>
+          <Text style={styles.headerTitle}>EstateOS™ Dealrooms</Text>
         </View>
       </BlurView>
 
@@ -1351,8 +1717,20 @@ export default function DealroomListScreen() {
                 ) : null}
 
                 {groupedDeals.started.length > 0 ? (
-                  <View style={styles.phaseSection}>
-                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('started')}>
+                  <View
+                    style={[
+                      styles.phaseSection,
+                      !collapsedSections.started && styles.phaseSectionSurfaceStarted,
+                    ]}
+                  >
+                    <Pressable
+                      style={[
+                        styles.phaseSectionHeaderRow,
+                        collapsedSections.started && [styles.phaseFoldedCard, styles.phaseFoldedCardStarted],
+                        sectionNeedsAttention.started && styles.phaseNeedsAttention,
+                      ]}
+                      onPress={() => toggleSection('started')}
+                    >
                       <View style={styles.phaseSectionIconWrap}>
                         <PlayCircle size={20} color={COLORS.gold} strokeWidth={2.2} />
                       </View>
@@ -1372,15 +1750,27 @@ export default function DealroomListScreen() {
                         )}
                       </View>
                     </Pressable>
-                    {!collapsedSections.started
-                      ? groupedDeals.started.map((deal, idx) => renderDealCard(deal, idx, 'started'))
-                      : null}
+                    {collapsedSections.started
+                      ? renderCollapsedSectionDeck('started', groupedDeals.started.length)
+                      : renderPhaseDealsWalletStyle('started', groupedDeals.started)}
                   </View>
                 ) : null}
 
                 {groupedDeals.active.length > 0 ? (
-                  <View style={styles.phaseSection}>
-                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('active')}>
+                  <View
+                    style={[
+                      styles.phaseSection,
+                      !collapsedSections.active && styles.phaseSectionSurfaceActive,
+                    ]}
+                  >
+                    <Pressable
+                      style={[
+                        styles.phaseSectionHeaderRow,
+                        collapsedSections.active && [styles.phaseFoldedCard, styles.phaseFoldedCardActive],
+                        sectionNeedsAttention.active && styles.phaseNeedsAttention,
+                      ]}
+                      onPress={() => toggleSection('active')}
+                    >
                       <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapActive]}>
                         <Zap size={20} color={COLORS.green} strokeWidth={2.2} />
                       </View>
@@ -1400,15 +1790,27 @@ export default function DealroomListScreen() {
                         )}
                       </View>
                     </Pressable>
-                    {!collapsedSections.active
-                      ? groupedDeals.active.map((deal, idx) => renderDealCard(deal, idx, 'active'))
-                      : null}
+                    {collapsedSections.active
+                      ? renderCollapsedSectionDeck('active', groupedDeals.active.length)
+                      : renderPhaseDealsWalletStyle('active', groupedDeals.active)}
                   </View>
                 ) : null}
 
                 {groupedDeals.finalized.length > 0 ? (
-                  <View style={styles.phaseSection}>
-                    <Pressable style={styles.phaseSectionHeaderRow} onPress={() => toggleSection('finalized')}>
+                  <View
+                    style={[
+                      styles.phaseSection,
+                      !collapsedSections.finalized && styles.phaseSectionSurfaceFinalized,
+                    ]}
+                  >
+                    <Pressable
+                      style={[
+                        styles.phaseSectionHeaderRow,
+                        collapsedSections.finalized && [styles.phaseFoldedCard, styles.phaseFoldedCardFinalized],
+                        sectionNeedsAttention.finalized && styles.phaseNeedsAttention,
+                      ]}
+                      onPress={() => toggleSection('finalized')}
+                    >
                       <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapDone]}>
                         <CheckCircle2 size={20} color={COLORS.purple} strokeWidth={2.2} />
                       </View>
@@ -1428,9 +1830,9 @@ export default function DealroomListScreen() {
                         )}
                       </View>
                     </Pressable>
-                    {!collapsedSections.finalized
-                      ? groupedDeals.finalized.map((deal, idx) => renderDealCard(deal, idx, 'finalized'))
-                      : null}
+                    {collapsedSections.finalized
+                      ? renderCollapsedSectionDeck('finalized', groupedDeals.finalized.length)
+                      : renderPhaseDealsWalletStyle('finalized', groupedDeals.finalized)}
                   </View>
                 ) : null}
               </>
@@ -1517,6 +1919,18 @@ export default function DealroomListScreen() {
                   ) : selectedProfile.reviews.slice(0, 5).map((r: any) => (
                     <View key={r.id} style={styles.reviewCard}>
                       <View style={styles.reviewTop}>
+                        <Pressable
+                          onPress={() => {
+                            const reviewerId = Number(r?.reviewerId || 0);
+                            if (!reviewerId) return;
+                            void openCounterpartyProfile(reviewerId);
+                          }}
+                          style={({ pressed }) => [{ opacity: pressed ? 0.72 : 1 }]}
+                        >
+                          <Text style={styles.reviewAuthorName}>
+                            {r?.reviewerName || `Użytkownik #${r?.reviewerId || '-'}`}
+                          </Text>
+                        </Pressable>
                         <View style={{flexDirection: 'row', gap: 2}}>
                           {[1, 2, 3, 4, 5].map((s) => (
                              <Star key={`${r.id}_${s}`} size={10} color={s <= Number(r?.rating || 0) ? COLORS.gold : COLORS.border} fill={s <= Number(r?.rating || 0) ? COLORS.gold : 'transparent'} />
@@ -1591,8 +2005,99 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   phaseBannerText: { color: colors.textSec, fontSize: 13, fontWeight: '600' },
 
   phaseSection: { marginBottom: 28 },
+  phaseSectionSurfaceStarted: {
+    borderRadius: 22,
+    padding: 12,
+    backgroundColor: colors.yellowDimmed,
+    borderWidth: 1,
+    borderColor: 'rgba(255,214,10,0.28)',
+    shadowColor: '#FFB300',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  phaseSectionSurfaceActive: {
+    borderRadius: 22,
+    padding: 12,
+    backgroundColor: colors.greenDimmed,
+    borderWidth: 1,
+    borderColor: 'rgba(50,215,75,0.28)',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  phaseSectionSurfaceFinalized: {
+    borderRadius: 22,
+    padding: 12,
+    backgroundColor: colors.purpleDimmed,
+    borderWidth: 1,
+    borderColor: 'rgba(191,90,242,0.32)',
+    shadowColor: '#A855F7',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
   phaseSectionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14, paddingHorizontal: 2 },
+  phaseFoldedCard: {
+    borderRadius: 20,
+    padding: 14,
+    borderWidth: 1,
+    marginBottom: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
+  phaseNeedsAttention: {
+    borderColor: 'rgba(255,255,255,0.4)',
+    shadowColor: '#FFD60A',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    elevation: Platform.OS === 'android' ? 10 : 0,
+  },
+  phaseFoldedCardStarted: {
+    backgroundColor: 'rgba(255,214,10,0.1)',
+    borderColor: 'rgba(255,214,10,0.28)',
+  },
+  phaseFoldedCardActive: {
+    backgroundColor: 'rgba(50,215,75,0.1)',
+    borderColor: 'rgba(50,215,75,0.28)',
+  },
+  phaseFoldedCardFinalized: {
+    backgroundColor: 'rgba(191,90,242,0.11)',
+    borderColor: 'rgba(191,90,242,0.3)',
+  },
   phaseHeaderMeta: { alignItems: 'flex-end', justifyContent: 'space-between', minHeight: 44, paddingTop: 2, gap: 8 },
+  phaseDeckShell: {
+    marginTop: -10,
+    marginBottom: 8,
+    marginHorizontal: 16,
+    height: 52,
+    position: 'relative',
+  },
+  phaseDeckLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 38,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    elevation: Platform.OS === 'android' ? 4 : 0,
+    borderBottomWidth: 1.4,
+    borderBottomColor: 'rgba(0,0,0,0.18)',
+  },
   phaseSectionIconWrap: {
     width: 40,
     height: 40,
@@ -1633,6 +2138,215 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     fontWeight: '500',
     lineHeight: 18,
     marginTop: 6,
+  },
+  walletStackWrap: {
+    marginBottom: 16,
+  },
+  walletStackPressable: {
+    borderRadius: 22,
+    position: 'relative',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.34,
+    shadowRadius: 28,
+    elevation: Platform.OS === 'android' ? 16 : 0,
+  },
+  walletStackCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: colors.borderHighlight,
+    backgroundColor: colors.card,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingLeft: 30,
+    minHeight: 180,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: Platform.OS === 'android' ? 12 : 0,
+  },
+  walletNotebookSpine: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    bottom: 10,
+    width: 10,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+    borderWidth: 1,
+    borderColor: colors.borderHighlight,
+  },
+  walletNotebookHolesColumn: {
+    position: 'absolute',
+    left: 13,
+    top: 22,
+    bottom: 22,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  walletNotebookHole: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.52)',
+  },
+  walletPreviewWrap: {
+    width: '100%',
+    height: 146,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 10,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: colors.borderHighlight,
+  },
+  walletTxBadgeOnImage: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  walletTxBadgeOnImageText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  walletStackEyebrow: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  walletStackTitle: {
+    color: colors.textMain,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  walletStackMeta: {
+    color: colors.textSec,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  walletTabsWrap: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  walletCalendarTab: {
+    height: 30,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.borderHighlight,
+    backgroundColor: colors.cardSolid,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.24,
+    shadowRadius: 10,
+    elevation: Platform.OS === 'android' ? 6 : 0,
+  },
+  walletTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walletCalendarTabText: {
+    color: colors.textMain,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  walletTabTopic: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+    minWidth: 0,
+  },
+  walletTabTopicText: {
+    color: colors.textSec,
+    fontSize: 11,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  walletTabDateText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  walletStackHint: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  walletExpandedWrap: {
+    marginBottom: 12,
+  },
+  walletExpandedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+    gap: 10,
+  },
+  walletExpandedTitle: {
+    color: colors.textMain,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  walletCollapseBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: colors.borderHighlight,
+    backgroundColor: colors.cardSolid,
+  },
+  walletCollapseBtnTxt: {
+    color: colors.textSec,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  pinInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+    marginLeft: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,59,48,0.16)',
+    borderColor: 'rgba(255,59,48,0.4)',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  pinInlineText: {
+    color: '#FFB4AF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   
   cardContainer: { marginBottom: 16 },
@@ -1706,6 +2420,22 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   dealCardUnread: { borderColor: colors.gold, backgroundColor: colors.cardSolid, shadowOpacity: 0.15, shadowColor: colors.gold },
   /** Bez clip przy nieprzeczytanych — kółko badge wystaje poza szkło */
   dealCardBadgeBleed: { overflow: 'visible' },
+  pinCornerBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    elevation: Platform.OS === 'android' ? 8 : 0,
+  },
   
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -1789,6 +2519,7 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   
   reviewCard: { backgroundColor: colors.border, borderRadius: 16, padding: 14, marginBottom: 12 },
   reviewTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  reviewAuthorName: { color: colors.textMain, fontSize: 11, fontWeight: '800' },
   reviewDate: { color: colors.textMuted, fontSize: 10, fontWeight: '700' },
   reviewBody: { color: colors.textMain, fontSize: 13, lineHeight: 18, fontWeight: '500' },
   

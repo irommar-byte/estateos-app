@@ -37,7 +37,6 @@ yarn-error.*
 *.tsbuildinfo
 
 # generated native folders
-/ios
 /android
 
 # 🚫 build / native

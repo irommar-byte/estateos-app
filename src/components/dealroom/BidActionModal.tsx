@@ -161,7 +161,9 @@ export default function BidActionModal({
       return `Czy na pewno chcesz zaproponować cenę ${formatCurrency(Number(amount || 0))}?`;
     }
     if (decision === 'ACCEPT') {
-      return 'Czy na pewno chcesz zaakceptować tę cenę?';
+      return isListingOwner
+        ? 'Czy na pewno chcesz finalnie zaakceptować tę cenę jako właściciel? Ta akcja kończy transakcję.'
+        : 'Czy na pewno chcesz zaakceptować tę cenę?';
     }
     if (decision === 'REJECT') {
       return 'Czy na pewno chcesz odrzucić tę propozycję ceny?';
@@ -321,9 +323,9 @@ export default function BidActionModal({
         <Modal visible={withdrawPromptVisible} transparent animationType="fade" onRequestClose={() => setWithdrawPromptVisible(false)}>
           <View style={styles.confirmBackdrop}>
             <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>Rezerwacja ceny</Text>
+              <Text style={styles.confirmTitle}>Finalizacja transakcji</Text>
               <Text style={styles.confirmText}>
-                Finalna akceptacja ceny przez właściciela zakończy sprzedaż, przeniesie ofertę do archiwum i zamknie tę transakcję.
+                Jako właściciel finalnie akceptujesz sprzedaż tej nieruchomości za uzgodnioną cenę dla kupującego.
               </Text>
               <View style={styles.consequenceList}>
                 <Text style={styles.consequenceLine}>• Sprzedaż zostanie zakończona.</Text>
@@ -339,7 +341,8 @@ export default function BidActionModal({
                   <Text style={styles.ackBoxTick}>{ownerFinalConsent ? '✓' : ''}</Text>
                 </View>
                 <Text style={styles.ackText}>
-                  Akceptuję, że oferta zostanie wycofana i jej przywrócenie będzie wymagało kolejnych środków.
+                  Akceptuję sprzedaż za tę cenę oraz wycofanie oferty z rynku (status zakończona/sfinalizowana).
+                  Rozumiem, że ewentualne przywrócenie oferty będzie wymagało kolejnych środków.
                 </Text>
               </TouchableOpacity>
               <View style={styles.confirmRow}>
@@ -355,7 +358,7 @@ export default function BidActionModal({
                   onPress={() => finishReserveChoice()}
                   disabled={!ownerFinalConsent || loading}
                 >
-                  <Text style={styles.confirmPrimaryTxt}>Jestem świadomy</Text>
+                  <Text style={styles.confirmPrimaryTxt}>Akceptuję i finalizuję</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, 
-  Platform, ScrollView, ActivityIndicator, Alert, Linking 
+  Platform, ScrollView, ActivityIndicator, Alert, Linking, Keyboard, TouchableWithoutFeedback, Modal
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { 
@@ -314,7 +314,9 @@ export default function DealroomChatScreen() {
   
   const [resolvedOfferId, setResolvedOfferId] = useState<any>(offerId || null);
   const [isListingOwner, setIsListingOwner] = useState(false);
+  const [listingOwnerUserId, setListingOwnerUserId] = useState<number | null>(null);
   const [counterpartyUserId, setCounterpartyUserId] = useState<number | null>(null);
+  const [counterpartyName, setCounterpartyName] = useState<string>('Druga strona');
   const [dealStatusSnapshot, setDealStatusSnapshot] = useState<string | null>(null);
   const [acceptedBidIdSnapshot, setAcceptedBidIdSnapshot] = useState<number | null>(null);
   const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
@@ -322,12 +324,16 @@ export default function DealroomChatScreen() {
   const [myFinalReview, setMyFinalReview] = useState('');
   const [isSubmittingFinalReview, setIsSubmittingFinalReview] = useState(false);
   const [mySubmittedReview, setMySubmittedReview] = useState<{ rating: number; review: string; senderId: number | null } | null>(null);
+  const [isCounterpartyReviewsOpen, setIsCounterpartyReviewsOpen] = useState(false);
+  const [counterpartyPublicProfile, setCounterpartyPublicProfile] = useState<any>(null);
+  const [counterpartyProfileLoading, setCounterpartyProfileLoading] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
   const lastTypingTime = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const seenNegotiationEventKeysRef = useRef<Set<string>>(new Set());
   const negotiationBootstrappedRef = useRef(false);
+  const lastReviewNotificationKeyRef = useRef<string | null>(null);
 
   // Animations
   const attachmentUploadPulse = useSharedValue(0);
@@ -375,6 +381,7 @@ export default function DealroomChatScreen() {
   const fetchDealSnapshot = useCallback(async () => {
     if (!dealId || !token || !user?.id) {
       setIsListingOwner(false);
+      setListingOwnerUserId(null);
       setCounterpartyUserId(null);
       setDealStatusSnapshot(null);
       setAcceptedBidIdSnapshot(null);
@@ -399,6 +406,8 @@ export default function DealroomChatScreen() {
 
     const buyerId = Number(firstDefined(current?.buyerId, current?.buyer?.id) || 0);
     const sellerId = Number(firstDefined(current?.sellerId, current?.seller?.id) || 0);
+    const buyerName = String(firstDefined(current?.buyer?.name, current?.buyerName, current?.buyer?.fullName) || '').trim();
+    const sellerName = String(firstDefined(current?.seller?.name, current?.sellerName, current?.seller?.fullName) || '').trim();
     const meId = Number(user.id);
     const ownerId = firstDefined(
       current?.offer?.userId,
@@ -406,13 +415,22 @@ export default function DealroomChatScreen() {
       current?.offer?.user?.id,
       current?.userId
     );
+    const ownerIdNum = Number(ownerId || 0);
+    setListingOwnerUserId(Number.isFinite(ownerIdNum) && ownerIdNum > 0 ? ownerIdNum : null);
     const counterpart =
       buyerId > 0 && buyerId !== meId
         ? buyerId
         : sellerId > 0 && sellerId !== meId
           ? sellerId
           : null;
+    const counterpartLabel =
+      buyerId > 0 && buyerId !== meId
+        ? buyerName
+        : sellerId > 0 && sellerId !== meId
+          ? sellerName
+          : '';
     setCounterpartyUserId(counterpart);
+    setCounterpartyName(counterpartLabel || 'Druga strona');
     setIsListingOwner(ownerId != null && ownerId !== '' && Number(user.id) === Number(ownerId));
 
     const nextOfferId = firstDefined(
@@ -434,6 +452,45 @@ export default function DealroomChatScreen() {
     return current;
   }, [dealId, token, user?.id]);
 
+  const openCounterpartyReviews = useCallback(async () => {
+    if (!counterpartyUserId) return;
+    setIsCounterpartyReviewsOpen(true);
+    setCounterpartyProfileLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/users/${counterpartyUserId}/public`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && !data?.error) setCounterpartyPublicProfile(data);
+    } catch {
+      // noop
+    } finally {
+      setCounterpartyProfileLoading(false);
+    }
+  }, [counterpartyUserId, token]);
+
+  const openPublicReviewsProfile = useCallback(async (userId: number | null, fallbackName?: string) => {
+    if (!userId) return;
+    setCounterpartyProfileLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/users/${userId}/public`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && !data?.error) {
+        setCounterpartyPublicProfile(data);
+        const nextName = String(
+          firstDefined(data?.user?.name, data?.user?.fullName, data?.name, fallbackName || '')
+        ).trim();
+        if (nextName) setCounterpartyName(nextName);
+      }
+    } catch {
+      // noop
+    } finally {
+      setCounterpartyProfileLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -443,6 +500,7 @@ export default function DealroomChatScreen() {
       } catch {
         if (!cancelled) {
           setIsListingOwner(false);
+          setListingOwnerUserId(null);
           setCounterpartyUserId(null);
           setDealStatusSnapshot(null);
           setAcceptedBidIdSnapshot(null);
@@ -792,14 +850,19 @@ export default function DealroomChatScreen() {
     return Number.isFinite(ts) && ts > Date.now();
   }, [acceptedAppointment]);
 
-  const acceptedPrice = useMemo(
-    () =>
-      [...bidEvents]
-        .reverse()
-        .find((e) => String(e.event?.action || '').toUpperCase() === 'ACCEPTED' && Number(e.event?.amount || 0) > 0)
-        ?.event?.amount || 0,
-    [bidEvents]
-  );
+  const acceptedPrice = useMemo(() => {
+    const acceptedEvents = [...bidEvents]
+      .reverse()
+      .filter((e) => String(e.event?.action || '').toUpperCase() === 'ACCEPTED' && Number(e.event?.amount || 0) > 0);
+    if (acceptedEvents.length === 0) return 0;
+    if (listingOwnerUserId) {
+      const ownerAccepted = acceptedEvents.find(
+        (e) => String(e.msg?.senderId ?? '') === String(listingOwnerUserId)
+      );
+      if (ownerAccepted) return Number(ownerAccepted.event?.amount || 0);
+    }
+    return Number(acceptedEvents[0]?.event?.amount || 0);
+  }, [bidEvents, listingOwnerUserId]);
 
   const latestNegotiatedPrice = useMemo(
     () =>
@@ -818,10 +881,16 @@ export default function DealroomChatScreen() {
   const priceStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
     if (!latestBid) return 'IDLE';
     const action = String(latestBid.event?.action || '').toUpperCase();
-    if (action === 'ACCEPTED' || acceptedPrice > 0) return 'ACCEPTED';
+    if (
+      acceptedPrice > 0 ||
+      canFinalizeTransition({ dealStatus: dealStatusSnapshot, acceptedBidId: acceptedBidIdSnapshot })
+    ) {
+      return 'ACCEPTED';
+    }
+    if (action === 'ACCEPTED') return 'PENDING';
     if (['PROPOSED', 'COUNTERED'].includes(action)) return 'PENDING';
     return 'IDLE';
-  }, [acceptedPrice, latestBid]);
+  }, [acceptedPrice, latestBid, dealStatusSnapshot, acceptedBidIdSnapshot]);
 
   const appointmentStatusText = useMemo(() => {
     if (appointmentStatus === 'IDLE') return 'Brak ustaleń';
@@ -841,13 +910,19 @@ export default function DealroomChatScreen() {
     if (priceStatus === 'ACCEPTED' && acceptedPrice > 0) {
       return `Ustalona cena: ${acceptedPrice.toLocaleString('pl-PL')} PLN`;
     }
+    if (
+      String(latestBid?.event?.action || '').toUpperCase() === 'ACCEPTED' &&
+      !canFinalizeTransition({ dealStatus: dealStatusSnapshot, acceptedBidId: acceptedBidIdSnapshot })
+    ) {
+      return 'Oczekiwanie na finalną akceptację właściciela';
+    }
     const source = latestActionableBidFromOther || latestBid;
     if (source?.event?.amount) {
       const who = formatActorLabel(source.msg, user?.id);
       return `Zaproponowano ${Number(source.event.amount).toLocaleString('pl-PL')} PLN przez ${who}`;
     }
     return 'W trakcie negocjacji';
-  }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, user?.id]);
+  }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, dealStatusSnapshot, acceptedBidIdSnapshot, user?.id]);
 
   const transactionFinalized = useMemo(() => {
     const canonicalByDealState =
@@ -900,17 +975,64 @@ export default function DealroomChatScreen() {
       createdAt: new Date().toISOString(),
     };
   }, [finalReviews, user?.id, mySubmittedReview]);
+  const reviewSubmitted = Boolean(myFinalReviewEntry);
 
   const partnerFinalReviewEntry = useMemo(
     () => finalReviews.find((r) => String(r.senderId ?? '') !== String(user?.id ?? '')) || null,
     [finalReviews, user?.id]
   );
 
+  const finalizationTimestamp = useMemo(() => {
+    const finalizedMessage = messages.find((m) =>
+      isFinalizedOwnerAcceptanceMessage(String(m?.content || ''))
+    );
+    if (finalizedMessage?.createdAt) {
+      const ts = new Date(finalizedMessage.createdAt).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+    const acceptedBidEvent = [...bidEvents]
+      .reverse()
+      .find((e) => String(e.event?.action || '').toUpperCase() === 'ACCEPTED');
+    if (acceptedBidEvent?.msg?.createdAt) {
+      const ts = new Date(acceptedBidEvent.msg.createdAt).getTime();
+      if (Number.isFinite(ts)) return ts;
+    }
+    return null;
+  }, [messages, bidEvents]);
+
+  const reviewRevealUnlocked = useMemo(() => {
+    if (myFinalReviewEntry) return true;
+    if (!finalizationTimestamp) return false;
+    return Date.now() - finalizationTimestamp >= 14 * 24 * 60 * 60 * 1000;
+  }, [myFinalReviewEntry, finalizationTimestamp]);
+
   useEffect(() => {
     if (!myFinalReviewEntry) return;
     setMyFinalRating(Number(myFinalReviewEntry.rating || 0));
     setMyFinalReview(String(myFinalReviewEntry.review || ''));
   }, [myFinalReviewEntry]);
+
+  useEffect(() => {
+    if (!transactionFinalized || !partnerFinalReviewEntry || myFinalReviewEntry) return;
+    const key = `${dealId}:${partnerFinalReviewEntry.senderId || 'partner'}:${partnerFinalReviewEntry.createdAt || ''}`;
+    if (lastReviewNotificationKeyRef.current === key) return;
+    lastReviewNotificationKeyRef.current = key;
+    void Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Otrzymano ocenę kontrahenta',
+        body: 'Kliknij, aby przejść do dealroomu i dokończyć ocenę.',
+        data: {
+          target: 'dealroom',
+          targetType: 'DEAL',
+          notificationType: 'dealroom_review',
+          dealId,
+          offerId: resolvedOfferId || undefined,
+          deeplink: `estateos://dealroom/${dealId}`,
+        },
+      } as Notifications.NotificationContentInput,
+      trigger: null,
+    });
+  }, [transactionFinalized, partnerFinalReviewEntry, myFinalReviewEntry, dealId, resolvedOfferId]);
 
   const handlePostPresentationReserve = useCallback(async () => {
     if (!token || !dealId || !resolvedOfferId || !user?.id) return;
@@ -952,7 +1074,7 @@ export default function DealroomChatScreen() {
     );
   }, [token, dealId, resolvedOfferId, user?.id, fetchMessages, fetchDealSnapshot]);
 
-  const handleSubmitFinalReview = useCallback(async () => {
+  const submitFinalReviewRequest = useCallback(async () => {
     if (!token || !dealId || !user?.id) return;
     if (!transactionFinalized) return;
     if (!counterpartyUserId) {
@@ -976,7 +1098,7 @@ export default function DealroomChatScreen() {
         Alert.alert('Błąd', 'Nieprawidłowe dane opinii.');
         return;
       }
-      const res = await fetch(`${API_URL}/api/reviews`, {
+      let res = await fetch(`${API_URL}/api/reviews`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -984,8 +1106,36 @@ export default function DealroomChatScreen() {
         },
         body: JSON.stringify(reviewPayload),
       });
+      if (!res.ok && [404, 405].includes(res.status)) {
+        res = await fetch(`${API_URL}/api/reviews/submit`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(reviewPayload),
+        });
+      }
       if (!res.ok) {
-        Alert.alert('Błąd', 'Nie udało się zapisać opinii. Spróbuj ponownie.');
+        const errBody = await res.text();
+        const normalized = String(errBody || '').toLowerCase();
+        const isDuplicate =
+          res.status === 409 ||
+          normalized.includes('already') ||
+          normalized.includes('już') ||
+          normalized.includes('exists') ||
+          normalized.includes('wystaw');
+        if (isDuplicate) {
+          setMySubmittedReview({
+            rating: reviewPayload.rating,
+            review: reviewPayload.review || '',
+            senderId: reviewPayload.senderId ?? Number(user.id),
+          });
+          await fetchMessages();
+          Alert.alert('Informacja', 'Ocena została już wcześniej zapisana.');
+          return;
+        }
+        Alert.alert('Błąd', errBody || 'Nie udało się zapisać opinii. Spróbuj ponownie.');
         return;
       }
       setMySubmittedReview({
@@ -1001,6 +1151,38 @@ export default function DealroomChatScreen() {
       setIsSubmittingFinalReview(false);
     }
   }, [token, dealId, user?.id, transactionFinalized, myFinalRating, myFinalReview, fetchMessages, counterpartyUserId]);
+
+  const handleSubmitFinalReview = useCallback(() => {
+    if (!token || !dealId || !user?.id) return;
+    if (!transactionFinalized) return;
+    if (!counterpartyUserId) {
+      Alert.alert('Brak danych', 'Nie udało się ustalić kontrahenta do oceny. Odśwież czat i spróbuj ponownie.');
+      return;
+    }
+    if (myFinalRating < 1 || myFinalRating > 5) {
+      Alert.alert('Ocena', 'Wybierz liczbę gwiazdek od 1 do 5.');
+      return;
+    }
+    const trimmedReview = myFinalReview.trim();
+    if (trimmedReview.length > 1000) {
+      Alert.alert('Błąd', 'Opinia może mieć maksymalnie 1000 znaków.');
+      return;
+    }
+    Alert.alert(
+      'Potwierdź wysyłkę opinii',
+      `Sprawdź dane przed wysłaniem:\n• Ocena: ${myFinalRating}/5\n• Komentarz: ${trimmedReview ? 'dodany' : 'brak (opcjonalny)'}`,
+      [
+        { text: 'Wróć', style: 'cancel' },
+        {
+          text: 'Potwierdzam i wysyłam',
+          style: 'default',
+          onPress: () => {
+            void submitFinalReviewRequest();
+          },
+        },
+      ]
+    );
+  }, [token, dealId, user?.id, transactionFinalized, counterpartyUserId, myFinalRating, myFinalReview, submitFinalReviewRequest]);
 
   useEffect(() => {
     if (appointmentStatus === 'PENDING') {
@@ -1131,7 +1313,7 @@ export default function DealroomChatScreen() {
         content: {
           title: isPrice ? 'Zaproponowano cenę' : 'Zaproponowano termin prezentacji',
           body,
-          subtitle: dealId ? `Dealroom · TX-${dealId}` : undefined,
+          subtitle: dealId ? `Transakcja #${dealId}` : undefined,
           threadIdentifier,
           data: {
             target: 'dealroom',
@@ -1194,7 +1376,12 @@ export default function DealroomChatScreen() {
   // ==========================================
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
       {/* Header */}
       <View style={styles.header}>
         <Pressable
@@ -1205,7 +1392,7 @@ export default function DealroomChatScreen() {
           <ChevronLeft size={28} color={COLORS.textBase} />
         </Pressable>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerSubtitle}>DEALROOM #{dealId}</Text>
+          <Text style={styles.headerSubtitle}>TRANSAKCJA #{dealId}</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
         </View>
       </View>
@@ -1297,8 +1484,8 @@ export default function DealroomChatScreen() {
                   <View style={styles.royalSealWrap}>
                     <View style={styles.royalSealOuter}>
                       <Text style={styles.royalSealTop}>ESTATEOS™</Text>
-                      <Text style={styles.royalSealMain}>ODBYTE</Text>
-                      <Text style={styles.royalSealBottom}>TERMIN ZAAKCEPTOWANY</Text>
+                      <Text style={styles.royalSealMain}>ZAAKCEPTOWANY</Text>
+                      <Text style={styles.royalSealBottom}>TERMIN ZAAKCEPTOWANY PRZEZ OBIE STRONY</Text>
                     </View>
                   </View>
                 )}
@@ -1439,66 +1626,88 @@ export default function DealroomChatScreen() {
             </View>
           ) : null}
 
-          {transactionFinalized ? (
-            <View style={styles.finalizedWrap}>
-              <BlurView intensity={72} tint="dark" style={styles.finalizedInner}>
-                <Text style={styles.finalizedTitle}>Gratulacje! Transakcja została zamknięta.</Text>
-                <Text style={styles.finalizedSubtitle}>
-                  Oferta jest wycofana z rynku i przeniesiona do sekcji sfinalizowane / zarchiwizowane.
-                </Text>
-                <Text style={styles.finalizedSectionLabel}>Twoja ocena kontrahenta</Text>
-                <View style={styles.ratingRow}>
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Pressable
-                      key={`star-${star}`}
-                      onPress={() => setMyFinalRating(star)}
-                      style={({ pressed }) => [styles.starBtn, pressed && { opacity: 0.85 }]}
-                    >
-                      <Text style={[styles.starGlyph, myFinalRating >= star && styles.starGlyphOn]}>★</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  value={myFinalReview}
-                  onChangeText={setMyFinalReview}
-                  placeholder="Krótka opinia o przebiegu transakcji (opcjonalnie)"
-                  placeholderTextColor={COLORS.textMuted}
-                  style={styles.finalizedInput}
-                  multiline
-                />
-                <Pressable
-                  style={[styles.finalizedBtn, (isSubmittingFinalReview || myFinalRating < 1) && styles.finalizedBtnDisabled]}
-                  onPress={() => void handleSubmitFinalReview()}
-                  disabled={isSubmittingFinalReview || myFinalRating < 1}
-                >
-                  {isSubmittingFinalReview ? (
-                    <ActivityIndicator color="#041208" />
-                  ) : (
-                    <Text style={styles.finalizedBtnTxt}>{myFinalReviewEntry ? 'Zaktualizuj opinię' : 'Wyślij opinię'}</Text>
-                  )}
-                </Pressable>
-                {partnerFinalReviewEntry ? (
-                  <View style={styles.partnerReviewCard}>
-                    <Text style={styles.partnerReviewTitle}>Ocena od drugiej strony</Text>
-                    <Text style={styles.partnerReviewStars}>{'★'.repeat(partnerFinalReviewEntry.rating)}{'☆'.repeat(5 - partnerFinalReviewEntry.rating)}</Text>
-                    {partnerFinalReviewEntry.review ? (
-                      <Text style={styles.partnerReviewBody}>„{partnerFinalReviewEntry.review}”</Text>
-                    ) : null}
-                  </View>
-                ) : (
-                  <Text style={styles.partnerReviewPending}>Druga strona jeszcze nie dodała swojej opinii.</Text>
-                )}
-              </BlurView>
-            </View>
-          ) : null}
-
           {/* Chat Messages */}
           <ScrollView
             ref={scrollViewRef}
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
             contentContainerStyle={styles.chatArea}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
           >
+            {transactionFinalized ? (
+              <View style={styles.finalizedWrap}>
+                <BlurView intensity={72} tint="dark" style={styles.finalizedInner}>
+                  <Text style={styles.finalizedTitle}>Gratulacje! Transakcja została zamknięta.</Text>
+                  <Text style={styles.finalizedSubtitle}>
+                    Oferta jest wycofana z rynku i przeniesiona do sekcji sfinalizowane / zarchiwizowane.
+                  </Text>
+                  <Text style={styles.finalizedSectionLabel}>Kogo oceniasz</Text>
+                  <Pressable style={styles.reviewTargetRow} onPress={() => void openCounterpartyReviews()}>
+                    <Text style={styles.reviewTargetName}>{counterpartyName}</Text>
+                    <Text style={styles.reviewTargetHint}>Pokaż opinie i historię ocen</Text>
+                  </Pressable>
+                  {reviewSubmitted ? (
+                    <View style={styles.reviewSuccessStamp}>
+                      <Text style={styles.reviewSuccessStampIcon}>✓</Text>
+                      <Text style={styles.reviewSuccessStampText}>Pomyślnie wystawiono opinię</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={styles.ratingRow}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Pressable
+                            key={`star-${star}`}
+                            onPress={() => setMyFinalRating(star)}
+                            style={({ pressed }) => [styles.starBtn, pressed && { opacity: 0.85 }]}
+                          >
+                            <Text style={[styles.starGlyph, myFinalRating >= star && styles.starGlyphOn]}>★</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <TextInput
+                        value={myFinalReview}
+                        onChangeText={setMyFinalReview}
+                        placeholder="Krótka opinia o przebiegu transakcji (opcjonalnie)"
+                        placeholderTextColor={COLORS.textMuted}
+                        style={styles.finalizedInput}
+                        multiline
+                        onFocus={() => {
+                          setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 120);
+                        }}
+                      />
+                      <Pressable
+                        style={[styles.finalizedBtn, (isSubmittingFinalReview || myFinalRating < 1) && styles.finalizedBtnDisabled]}
+                        onPress={handleSubmitFinalReview}
+                        disabled={isSubmittingFinalReview || myFinalRating < 1}
+                      >
+                        {isSubmittingFinalReview ? (
+                          <ActivityIndicator color="#041208" />
+                        ) : (
+                          <Text style={styles.finalizedBtnTxt}>Wyślij opinię</Text>
+                        )}
+                      </Pressable>
+                    </>
+                  )}
+                  {partnerFinalReviewEntry && reviewRevealUnlocked ? (
+                    <View style={styles.partnerReviewCard}>
+                      <Text style={styles.partnerReviewTitle}>Ocena od drugiej strony</Text>
+                      <Text style={styles.partnerReviewStars}>{'★'.repeat(partnerFinalReviewEntry.rating)}{'☆'.repeat(5 - partnerFinalReviewEntry.rating)}</Text>
+                      {partnerFinalReviewEntry.review ? (
+                        <Text style={styles.partnerReviewBody}>„{partnerFinalReviewEntry.review}”</Text>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <Text style={styles.partnerReviewPending}>
+                      {partnerFinalReviewEntry
+                        ? 'Ocena drugiej strony odblokuje się po Twojej opinii lub po 14 dniach od finalizacji.'
+                        : 'Druga strona jeszcze nie dodała swojej opinii. Po 14 dniach uruchamia się domknięcie systemowe.'}
+                    </Text>
+                  )}
+                </BlurView>
+              </View>
+            ) : null}
+
             {messages.map((msg, index) => {
               const isMe = msg.senderId === user?.id;
               const dealEvent = parseDealEvent(msg);
@@ -1557,8 +1766,7 @@ export default function DealroomChatScreen() {
       )}
 
       {/* Input Area */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-        <BlurView intensity={80} tint="dark" style={styles.inputArea}>
+      <BlurView intensity={80} tint="dark" style={styles.inputArea}>
           
           {pendingAttachment && (
             <Animated.View style={[styles.pendingPill, isUploadingAttachment && uploadingPillAnim]}>
@@ -1588,6 +1796,15 @@ export default function DealroomChatScreen() {
               value={message}
               onChangeText={handleTyping}
               multiline
+              returnKeyType="send"
+              blurOnSubmit={false}
+              submitBehavior="submit"
+              onSubmitEditing={() => {
+                void handleSend();
+              }}
+              onFocus={() => {
+                setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 120);
+              }}
             />
             
             <Pressable 
@@ -1598,8 +1815,7 @@ export default function DealroomChatScreen() {
               {isUploadingAttachment ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color={(message.trim() || pendingAttachment) ? '#fff' : 'rgba(255,255,255,0.4)'} />}
             </Pressable>
           </View>
-        </BlurView>
-      </KeyboardAvoidingView>
+      </BlurView>
 
       {/* Modals */}
       <BidActionModal
@@ -1641,7 +1857,48 @@ export default function DealroomChatScreen() {
           await fetchDealSnapshot();
         }}
       />
-    </View>
+      <Modal
+        visible={isCounterpartyReviewsOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsCounterpartyReviewsOpen(false)}
+      >
+        <View style={styles.reviewModalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsCounterpartyReviewsOpen(false)} />
+          <View style={styles.reviewModalCard}>
+            <Text style={styles.reviewModalTitle}>Opinie użytkownika</Text>
+            <Text style={styles.reviewModalSubtitle}>{counterpartyName}</Text>
+            {counterpartyProfileLoading ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : (
+              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+                {(Array.isArray(counterpartyPublicProfile?.reviews) ? counterpartyPublicProfile.reviews : []).slice(0, 8).map((r: any, idx: number) => (
+                  <View key={`cp-rev-${r?.id || idx}`} style={styles.reviewItem}>
+                    <Pressable
+                      onPress={() => void openPublicReviewsProfile(Number(r?.reviewerId || 0), r?.reviewerName)}
+                      style={({ pressed }) => [styles.reviewItemAuthorBtn, pressed && { opacity: 0.7 }]}
+                    >
+                      <Text style={styles.reviewItemAuthorText}>
+                        {r?.reviewerName || `Użytkownik #${r?.reviewerId || '-'}`}
+                      </Text>
+                    </Pressable>
+                    <Text style={styles.reviewItemStars}>{'★'.repeat(Number(r?.rating || 0))}{'☆'.repeat(5 - Number(r?.rating || 0))}</Text>
+                    <Text style={styles.reviewItemBody}>{r?.comment || r?.review || 'Bez komentarza.'}</Text>
+                  </View>
+                ))}
+                {(!Array.isArray(counterpartyPublicProfile?.reviews) || counterpartyPublicProfile.reviews.length === 0) ? (
+                  <Text style={styles.reviewModalEmpty}>Brak publicznych opinii.</Text>
+                ) : null}
+              </ScrollView>
+            )}
+            <Pressable style={styles.reviewModalCloseBtn} onPress={() => setIsCounterpartyReviewsOpen(false)}>
+              <Text style={styles.reviewModalCloseTxt}>Zamknij</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -1813,6 +2070,42 @@ const styles = StyleSheet.create({
   finalizedTitle: { color: '#eaffef', fontSize: 17, fontWeight: '800', marginBottom: 6, letterSpacing: -0.2 },
   finalizedSubtitle: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 19, marginBottom: 12, fontWeight: '500' },
   finalizedSectionLabel: { color: '#a8f1bf', fontSize: 11, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 },
+  reviewTargetRow: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 10,
+  },
+  reviewTargetName: { color: COLORS.textBase, fontSize: 14, fontWeight: '800', marginBottom: 2 },
+  reviewTargetHint: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
+  reviewSuccessStamp: {
+    borderWidth: 1,
+    borderColor: 'rgba(52,199,89,0.45)',
+    backgroundColor: 'rgba(52,199,89,0.16)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reviewSuccessStampIcon: {
+    color: '#B9F8CC',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 16,
+  },
+  reviewSuccessStampText: {
+    color: '#CFFCE0',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
   ratingRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
   starBtn: {
     width: 38,
@@ -1861,6 +2154,43 @@ const styles = StyleSheet.create({
   partnerReviewStars: { color: '#FFD60A', fontSize: 15, fontWeight: '900', marginBottom: 4, letterSpacing: 0.4 },
   partnerReviewBody: { color: COLORS.textBase, fontSize: 13, lineHeight: 18, fontWeight: '500' },
   partnerReviewPending: { color: COLORS.textMuted, fontSize: 12, lineHeight: 18, fontWeight: '500' },
+  reviewModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  reviewModalCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#101214',
+    padding: 16,
+  },
+  reviewModalTitle: { color: COLORS.textBase, fontSize: 16, fontWeight: '800' },
+  reviewModalSubtitle: { color: COLORS.textMuted, fontSize: 12, marginBottom: 12, marginTop: 2 },
+  reviewItem: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: 10,
+    marginBottom: 8,
+  },
+  reviewItemAuthorBtn: { alignSelf: 'flex-start', marginBottom: 4 },
+  reviewItemAuthorText: { color: '#E5E7EB', fontSize: 12, fontWeight: '800' },
+  reviewItemStars: { color: '#FFD60A', fontSize: 13, fontWeight: '900', marginBottom: 4 },
+  reviewItemBody: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '500' },
+  reviewModalEmpty: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', paddingVertical: 6 },
+  reviewModalCloseBtn: {
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 10,
+  },
+  reviewModalCloseTxt: { color: '#041208', fontSize: 13, fontWeight: '900' },
 
   // Chat Area
   chatArea: { padding: 16, paddingBottom: 40 },

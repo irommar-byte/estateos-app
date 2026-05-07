@@ -35,6 +35,7 @@ import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrat
 import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 
 // --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
 const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, isDark: boolean, diameter: number }) => {
@@ -644,6 +645,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const modeIslandOpacity = useRef(new Animated.Value(1)).current;
   const modeIslandTranslateY = useRef(new Animated.Value(0)).current;
   const modeIslandScale = useRef(new Animated.Value(1)).current;
+  const lastLiveActivityFingerprintRef = useRef('');
 
   useEffect(() => {
     // Premium "snap-in" when changing Radar/Favor mode.
@@ -1320,6 +1322,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   const activeOffers = filteredOffers;
+
+  useEffect(() => {
+    const snapshot = {
+      enabled: isRadarEnabled,
+      transactionType: radarFilters.transactionType,
+      city: radarFilters.city,
+      minMatchThreshold: radarFilters.matchThreshold,
+      activeMatchesCount: activeOffers.length,
+    } as const;
+    const fingerprint = JSON.stringify(snapshot);
+    if (lastLiveActivityFingerprintRef.current === fingerprint) return;
+    lastLiveActivityFingerprintRef.current = fingerprint;
+    void syncRadarLiveActivity(snapshot);
+  }, [
+    isRadarEnabled,
+    radarFilters.transactionType,
+    radarFilters.city,
+    radarFilters.matchThreshold,
+    activeOffers.length,
+  ]);
 
   const focusMapToOffers = useCallback((items: MapOffer[]) => {
     if (!mapRef.current || items.length === 0) return;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert } from 'react-native';
 import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
+import { stopRadarLiveActivity, syncRadarLiveActivity } from '../services/radarLiveActivityService';
 
 const formatPhone = (p?: string) => {
   if (!p) return "Brak numeru";
@@ -77,6 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isRadarActive: isActive });
     try {
       await AsyncStorage.setItem('@estateos_radar_active', isActive ? '1' : '0');
+      await syncRadarLiveActivity({ enabled: isActive });
     } catch (e) {
       console.log("Error saving radar state", e);
     }
@@ -90,7 +91,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pass }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({} as any));
       if (!response.ok) throw new Error(data.error || 'Błąd logowania');
       
       const normUser = normalizeUser(data.user);
@@ -102,7 +103,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await get().refreshUser();
       return true;
     } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+      const message = String(err?.message || '').trim();
+      const normalizedMessage =
+        /network request failed|failed to fetch|timeout|timed out|przekroczono limit czasu/i.test(message)
+          ? 'Brak połączenia z serwerem logowania. Sprawdź internet i spróbuj ponownie.'
+          : message || 'Błąd logowania';
+      set({ error: normalizedMessage, isLoading: false });
       return false;
     }
   },
@@ -195,6 +201,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await AsyncStorage.removeItem('mobile_token');
     await AsyncStorage.removeItem('user_data');
     await AsyncStorage.removeItem('@estateos_radar_active'); // Czyścimy radar
+    await stopRadarLiveActivity();
     set({ user: null, token: null, isRadarActive: false });
   },
 
@@ -210,6 +217,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: normalizeUser(JSON.parse(userData)),
           isRadarActive: radarState === '1'
         });
+        await syncRadarLiveActivity({ enabled: radarState === '1' });
         await get().refreshUser();
       }
     } catch (e) {

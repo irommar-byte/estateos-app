@@ -23,7 +23,9 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
-        "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin z przypomnieniami systemowymi."
+        "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin z przypomnieniami systemowymi.",
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": true
       }
     },
     "android": {

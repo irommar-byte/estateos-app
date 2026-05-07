@@ -230,21 +230,6 @@ export default function AuthScreen({ theme }: { theme: any }) {
   const warpAnim = useRef(new Animated.Value(0)).current;
   const successGlowAnim = useRef(new Animated.Value(0)).current;
 
-  const autofillTimer = useRef<any>(null);
-  
-  useEffect(() => {
-    if (isLogin && email.length > 5 && email.includes('@') && password.length >= 6) {
-      if (autofillTimer.current) clearTimeout(autofillTimer.current);
-      autofillTimer.current = setTimeout(() => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        handleSubmit();
-      }, 800);
-    }
-    return () => {
-      if (autofillTimer.current) clearTimeout(autofillTimer.current);
-    };
-  }, [email, password, isLogin]);
-
   const handlePhoneChange = (text: string) => {
     const cleaned = text.replace(/\D/g, '').substring(0, 9);
     const parts = cleaned.match(/.{1,3}/g);
@@ -300,8 +285,13 @@ export default function AuthScreen({ theme }: { theme: any }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       if (isLogin) {
-        const ok = await store.login(email, password); 
-        if (!ok) return;
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedPassword = String(password || '');
+        const ok = await store.login(normalizedEmail, normalizedPassword);
+        if (!ok) {
+          Alert.alert('Błąd logowania', store.error || 'Nieprawidłowy e-mail lub hasło.');
+          return;
+        }
       } else {
         if (!firstName || !lastName || phone.replace(/\s/g, '').length < 9) {
           Alert.alert("Błąd", "Wypełnij poprawnie wizytówkę."); return;
