@@ -1,7 +1,9 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, FlatList, Platform, Pressable, ScrollView, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, Linking, ActivityIndicator, useColorScheme } from 'react-native';
+import { useThemeStore } from '../store/useThemeStore';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
@@ -13,8 +15,10 @@ import Animated, {
   withSequence
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import ImageViewing from 'react-native-image-viewing';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -22,6 +26,9 @@ import AppointmentActionModal from '../components/dealroom/AppointmentActionModa
 import { buildOfferShareMessage } from '../utils/offerShareUrls';
 import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
+import { formatLocationLabel, formatPublicAddress, resolveIsExactLocation } from '../constants/locationEcosystem';
+import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
+import { isPartnerIdentity } from '../utils/partnerIdentity';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -59,6 +66,17 @@ function formatFloorStat(f: unknown): string {
   return s ? s : '-';
 }
 
+function sanitizeOfferDescription(input: unknown): string {
+  const raw = String(input ?? '');
+  if (!raw) return '';
+  return raw
+    // ukryj techniczne markery backendowe np. <!-- ESTATEOS_VERIFY:... -->
+    .replace(/<!--\s*ESTATEOS_VERIFY:[\s\S]*?-->/gi, '')
+    .replace(/\bESTATEOS_VERIFY:[A-Za-z0-9._=-]+\b/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
 
 export default function OfferDetail({ route, navigation }: any) {
@@ -68,15 +86,44 @@ export default function OfferDetail({ route, navigation }: any) {
 
   // 🔥 FINALNY OBIEKT
   const offer = hydratedOffer || offerFromParams || (idFromParams ? { id: idFromParams } : null);
-  const theme = route?.params?.theme || { glass: 'light' };
+  // KLUCZOWE: theme musi pochodzić z globalnego store'a (useThemeStore),
+  // a NIE z `route.params.theme` — bo żadne miejsce nawigacji nie przekazuje
+  // tu theme w paramach, więc bez tego ekran wisi na sztywno w "light".
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const systemScheme = useColorScheme();
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
+  const theme = { glass: isDark ? 'dark' : 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
   const [isGuestGateVisible, setIsGuestGateVisible] = useState(isGuest);
   const [isPhoneVerifyGateVisible, setIsPhoneVerifyGateVisible] = useState(false);
-  const isPhoneVerified = Boolean(user?.isVerifiedPhone || user?.isVerified);
-  const isOwner = user?.id && offer?.userId === user?.id;
+  // Bramka kontaktu/umawiania spotkań — wymagamy WYŁĄCZNIE potwierdzonego numeru telefonu (SMS).
+  // Nie traktujemy ogólnego `isVerified` (np. e-mail) jako sygnału — kontakt bez SMS jest zablokowany.
+  const isPhoneVerified = Boolean(user?.isVerifiedPhone);
+  const viewerUserId = Number(user?.id || 0);
+  // W praktyce ownerId potrafi przychodzić pod różnymi kluczami (web/mobile/deal payload).
+  // Zbieramy wszystkie sensowne kandydaty i na tej podstawie rozstrzygamy rolę.
+  const ownerCandidateIds = useMemo(() => {
+    return Array.from(
+      new Set(
+        [
+          offer?.userId,
+          offer?.ownerId,
+          offer?.sellerId,
+          offer?.owner?.id,
+          offer?.seller?.id,
+          offer?.user?.id,
+          offer?.listingOwnerId,
+        ]
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    ) as number[];
+  }, [offer]);
+  const listingOwnerUserId = ownerCandidateIds[0] ?? null;
+  const isOwner = viewerUserId > 0 && ownerCandidateIds.includes(viewerUserId);
   const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
   const isProUser = Boolean(
@@ -89,7 +136,37 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const createdAtMs = offer?.createdAt ? new Date(offer.createdAt).getTime() : null;
   const unlockAtMs = createdAtMs ? createdAtMs + (24 * 60 * 60 * 1000) : null;
-  const isOffMarketLocked = Boolean(unlockAtMs && Date.now() < unlockAtMs && !isProUser && !isOwner);
+  /**
+   * Czy oferta pochodzi od PARTNERA (agent / agencja / pośrednik / broker).
+   *
+   * DLACZEGO TO ROZRÓŻNIENIE
+   * ────────────────────────
+   * Standardowo nowa oferta (od osoby prywatnej) jest blokowana 24 h jako
+   * „Off-Market" i odblokowuje się dla wszystkich po tym okienku — albo od
+   * razu dla użytkowników PRO. Oferty zaczepione przez partnerów (agencje,
+   * pośredników) są publikowane z myślą o jak najszerszej dystrybucji, więc
+   * NIE należy ich chować pod off-marketem. Reviewerzy Apple i końcowi
+   * użytkownicy też nie powinni widzieć tego ekranu blokady dla ofert
+   * od profesjonalnych partnerów.
+   *
+   * Detekcja: `isPartnerIdentity` patrzy na role/typ/plan w wielu miejscach
+   * obiektu oferty (samej oferty, owner, seller, user, partner flagi).
+   */
+  const isPartnerListing = useMemo(
+    () =>
+      Boolean(
+        offer &&
+          (isPartnerIdentity(offer) ||
+            isPartnerIdentity(offer?.owner) ||
+            isPartnerIdentity(offer?.seller) ||
+            isPartnerIdentity(offer?.user) ||
+            isPartnerIdentity(offer?.publisher))
+      ),
+    [offer]
+  );
+  const isOffMarketLocked = Boolean(
+    unlockAtMs && Date.now() < unlockAtMs && !isProUser && !isOwner && !isPartnerListing
+  );
 
   useEffect(() => {
     if (!unlockAtMs || !isOffMarketLocked) {
@@ -162,6 +239,14 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'Pakiet PRO',
+        'Wkrótce zakup pakietu PRO bezpośrednio w aplikacji. Tymczasem szczegóły oferty odblokują się po standardowym czasie oczekiwania.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     try {
       await Linking.openURL('https://estateos.pl/cennik');
     } catch (_error) {
@@ -191,9 +276,9 @@ export default function OfferDetail({ route, navigation }: any) {
 
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  const [initialGalleryIndex, setInitialGalleryIndex] = useState(0);
-  const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
-  const galleryRef = useRef<FlatList>(null);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
+  const [galleryCurrentIndex, setGalleryCurrentIndex] = useState(0);
+  const [isLocationPreviewOpen, setIsLocationPreviewOpen] = useState(false);
   const [dealId, setDealId] = useState<number | null>(null);
   const [isBidModalOpen, setIsBidModalOpen] = useState(false);
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
@@ -267,14 +352,58 @@ export default function OfferDetail({ route, navigation }: any) {
     } catch (e) {}
   }
   const imagesToShow = (realImages && realImages.length > 0) ? realImages : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
+  const lightboxImages = useMemo(() => imagesToShow.map((uri) => ({ uri })), [imagesToShow]);
 
   const displayOffer = {
     title: offer?.title || 'Apartament Premium',
     price: offer?.price ? new Intl.NumberFormat('pl-PL').format(offer.price) + ' PLN' : 'Cena na zapytanie',
-    location: offer?.city ? `${offer.city}, ${offer.district || ''}` : 'Warszawa',
-    description: offer?.description || 'Brak opisu dla tej nieruchomości.',
+    location: formatLocationLabel(offer?.city, offer?.district, 'Warszawa'),
+    description: sanitizeOfferDescription(offer?.description) || 'Brak opisu dla tej nieruchomości.',
     stats: { beds: offer?.rooms || '-', size: offer?.area ? `${offer.area} m²` : '- m²' }
   };
+  // Wskaźnik „PLN/m²” — kluczowy benchmark cenowy, pokazujemy go pod ceną
+  // w dolnym pasku. Liczymy z surowego `offer.price` i `offer.area`, żeby
+  // uniknąć parsowania sformatowanego stringa.
+  const pricePerSqmLabel = useMemo(() => {
+    const priceNum = Number(offer?.price);
+    const areaNum = Number(String(offer?.area ?? '').replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(priceNum) || priceNum <= 0) return null;
+    if (!Number.isFinite(areaNum) || areaNum <= 0) return null;
+    const perSqm = Math.round(priceNum / areaNum);
+    return `${perSqm.toLocaleString('pl-PL')} PLN/m²`;
+  }, [offer?.price, offer?.area]);
+  // „Dokładna lokalizacja" decyduje, czy publicznie pokazujemy ulicę i numer.
+  // Włączona (ON):  ulica + numer (np. „Reymonta 12").
+  // Wyłączona (OFF): tylko miasto i dzielnica (lub sama miejscowość) — adres ukryty.
+  const isExactLocation = resolveIsExactLocation(offer?.isExactLocation);
+  const streetRaw = firstDefined(offer?.street, offer?.addressStreet, offer?.location?.street);
+  const streetForPublic = String(streetRaw || '').trim();
+  const locationLine = formatPublicAddress(
+    offer?.city,
+    offer?.district,
+    streetForPublic,
+    isExactLocation,
+    'Polska',
+  );
+
+  const latRaw = Number(firstDefined(offer?.lat, offer?.latitude, offer?.location?.lat, offer?.location?.latitude));
+  const lngRaw = Number(firstDefined(offer?.lng, offer?.lon, offer?.longitude, offer?.location?.lng, offer?.location?.lon, offer?.location?.longitude));
+  const hasValidMapCoords = Number.isFinite(latRaw) && Number.isFinite(lngRaw);
+  // Prezentacja mapy zależy od dwóch rzeczy: czy właściciel pozwolił na pokazanie
+  // dokładnego adresu, oraz czy oglądający TO właściciel/partner (wtedy zawsze
+  // dokładnie). Dla anonimowych widzów stosujemy deterministyczny jitter, żeby
+  // środek okręgu nie zdradzał budynku — patrz `src/utils/publicLocationPrivacy.ts`.
+  const viewerSeesExact = isExactLocation || !!isOwner || !!isPartnerListing;
+  const mapPresentation = useMemo(() => {
+    return getPublicMapPresentation({
+      lat: hasValidMapCoords ? latRaw : 52.2297,
+      lng: hasValidMapCoords ? lngRaw : 21.0122,
+      offerId: offer?.id ?? null,
+      isExactLocation,
+      viewerIsOwner: !!isOwner || !!isPartnerListing,
+    });
+  }, [latRaw, lngRaw, hasValidMapCoords, offer?.id, isExactLocation, isOwner, isPartnerListing]);
+  const mapCoordinate = { latitude: mapPresentation.latitude, longitude: mapPresentation.longitude };
 
   const handleShare = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -309,6 +438,16 @@ export default function OfferDetail({ route, navigation }: any) {
   const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
   const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
   const adminFeeLabel = hasAdminFee ? `${Math.round(adminFeeNumber).toLocaleString('pl-PL')} PLN` : 'Brak';
+  const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
+  const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
+  const legalCheckStatus = String(firstDefined(offer?.legalCheckStatus, offer?.verificationStatus, '') || '').toUpperCase();
+  const isLegalSafeVerified =
+    isTrue(firstDefined(offer?.isLegalSafeVerified, offer?.isLandRegistryVerified, offer?.landRegistryVerified, offer?.isVerifiedLegal)) ||
+    legalCheckStatus === 'VERIFIED' ||
+    legalCheckStatus === 'SAFE';
+  const legalSafetyText = isLegalSafeVerified
+    ? 'Bezpieczna nieruchomość · księga i status zadłużenia potwierdzone'
+    : 'Niezweryfikowany status księgi wieczystej i zadłużenia';
 
   const formatCondition = (cond: string) => { const map: any = { NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry', TO_RENOVATION: 'Do remontu', DEVELOPER: 'Stan deweloperski', READY: 'Gotowe do zamieszkania' }; return map[cond] || cond || 'Brak danych'; };
   const formatDate = (dateString: string) => { if (!dateString) return 'Brak danych'; const d = new Date(dateString); return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }); };
@@ -326,8 +465,8 @@ export default function OfferDetail({ route, navigation }: any) {
   // --- FUNKCJE OTWIERANIA GALERII ---
   const openGallery = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setInitialGalleryIndex(index);
-    setCurrentGalleryIndex(index);
+    setGalleryInitialIndex(index);
+    setGalleryCurrentIndex(index);
     setIsGalleryOpen(true);
   };
 
@@ -335,10 +474,6 @@ export default function OfferDetail({ route, navigation }: any) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsGalleryOpen(false);
   };
-
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) setCurrentGalleryIndex(viewableItems[0].index);
-  }).current;
 
   const ensureDeal = async () => {
     if (!offer?.id) return null;
@@ -698,10 +833,15 @@ export default function OfferDetail({ route, navigation }: any) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#ffffff' }]}>
       <Animated.View style={[styles.imageContainer, imageAnimatedStyle]}>
         <Pressable onPress={() => openGallery(0)} style={{ flex: 1 }}>
           <Image source={{ uri: imagesToShow[0] }} style={styles.mainImage} contentFit="cover" transition={500} />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.4)']}
+            style={styles.heroGradient}
+            pointerEvents="none"
+          />
         </Pressable>
       </Animated.View>
 
@@ -726,42 +866,74 @@ export default function OfferDetail({ route, navigation }: any) {
       </View>
 
       <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 160 }}>
-        <View style={styles.contentSheet}>
-          <Text style={styles.price}>{displayOffer.price}</Text>
-          {hasAdminFee ? (
-            <View style={styles.adminFeeBadge}>
-              <Text style={styles.adminFeeBadgeText}>+ czynsz admin {adminFeeLabel}</Text>
+        <View style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}>
+          {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
+              w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
+          <View style={styles.topMetaBadgesRow}>
+            {hasAdminFee ? (
+              <View style={[styles.adminFeeBadge, { backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)', borderColor: isDark ? 'rgba(52,199,89,0.4)' : 'rgba(52,199,89,0.35)' }]}>
+                <Text style={[styles.adminFeeBadgeText, { color: isDark ? '#34d399' : '#1d1d1f' }]}>+ czynsz admin {adminFeeLabel}</Text>
+              </View>
+            ) : null}
+            <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
+              <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
+              <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>{viewsCount > 0 ? `${viewsCount.toLocaleString('pl-PL')} wyświetleń` : 'Nowa oferta'}</Text>
             </View>
-          ) : null}
-          <Text style={styles.title}>{displayOffer.title}</Text>
-          
-          <View style={styles.locationRow}>
-            <MapPin color="#86868b" size={16} />
-            <Text style={styles.locationText}>{displayOffer.location}</Text>
           </View>
-
-          {isOwner && (
-            <TouchableOpacity style={styles.editButtonSubtle} onPress={handleEdit}>
-              <Pencil color="#0071e3" size={16} strokeWidth={2.5} />
-              <Text style={styles.editButtonSubtleText}>Edytuj parametry oferty</Text>
-            </TouchableOpacity>
-          )}
+          
+          <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
+          
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              setIsLocationPreviewOpen(true);
+            }}
+            style={({ pressed }) => [styles.locationRow, pressed && { opacity: 0.72 }]}
+          >
+            <MapPin color={isDark ? "#9ca3af" : "#86868b"} size={16} />
+            <Text style={[styles.locationText, isDark && { color: '#9ca3af' }]}>{locationLine}</Text>
+          </Pressable>
+          
+          <View style={[styles.safetyBadgeCard, isLegalSafeVerified ? (isDark ? styles.safetyBadgeCardVerifiedDark : styles.safetyBadgeCardVerified) : (isDark ? styles.safetyBadgeCardPendingDark : styles.safetyBadgeCardPending)]}>
+            <View style={[styles.safetyBadgeIconWrap, isLegalSafeVerified ? (isDark ? styles.safetyBadgeIconWrapVerifiedDark : styles.safetyBadgeIconWrapVerified) : (isDark ? styles.safetyBadgeIconWrapPendingDark : null)]}>
+              <ShieldCheck color={isLegalSafeVerified ? '#10b981' : (isDark ? '#9ca3af' : '#6b7280')} size={16} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.safetyBadgeTitle, isLegalSafeVerified ? (isDark ? styles.safetyBadgeTitleVerifiedDark : styles.safetyBadgeTitleVerified) : (isDark ? styles.safetyBadgeTitlePendingDark : null)]}>
+                {isLegalSafeVerified ? 'Zweryfikowano prawnie' : 'Weryfikacja prawna w toku'}
+              </Text>
+              <Text style={[styles.safetyBadgeSub, isDark && { color: '#9ca3af' }]}>{legalSafetyText}</Text>
+            </View>
+          </View>
 
           <View style={styles.statsGrid}>
-            <View style={styles.statBox}><BedDouble color="#1d1d1f" size={24} /><Text style={styles.statText}>{displayOffer.stats.beds} Pokoje</Text></View>
-            <View style={styles.statBox}><Maximize color="#1d1d1f" size={24} /><Text style={styles.statText}>{displayOffer.stats.size}</Text></View>
-            <View style={styles.statBox}><Layers color="#1d1d1f" size={24} /><Text style={styles.statText}>Piętro {formatFloorStat(offer?.floor)}</Text></View>
-            <View style={styles.statBox}><Calendar color="#1d1d1f" size={24} /><Text style={styles.statText}>Rok {offer?.yearBuilt || offer?.buildYear || offer?.year || '-'}</Text></View>
+            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+              <BedDouble color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
+              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{displayOffer.stats.beds} Pokoje</Text>
+            </View>
+            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+              <Maximize color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
+              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{displayOffer.stats.size}</Text>
+            </View>
+            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+              <Layers color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
+              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Piętro {formatFloorStat(offer?.floor)}</Text>
+            </View>
+            <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+              <Calendar color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
+              <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Rok {offer?.yearBuilt || offer?.buildYear || offer?.year || '-'}</Text>
+            </View>
           </View>
 
-          <View style={styles.divider} />
-          <Text style={styles.sectionTitle}>Szczegóły</Text>
-          <View style={styles.detailsContainer}>
-            <View style={[styles.detailRow, { borderTopWidth: 0 }]}><Text style={styles.detailLabel}>Stan wykończenia</Text><Text style={styles.detailValue}>{formatCondition(offer?.condition)}</Text></View>
-            <View style={styles.detailRow}><Text style={styles.detailLabel}>Czynsz administracyjny</Text><Text style={styles.detailValue}>{adminFeeLabel}</Text></View>
-            <View style={styles.detailRow}><Text style={styles.detailLabel}>Ogrzewanie</Text><Text style={styles.detailValue}>{heatingLabel || 'Nie podano'}</Text></View>
-            <View style={styles.detailRow}><Text style={styles.detailLabel}>Umeblowanie</Text><Text style={styles.detailValue}>{furnishedLabel}</Text></View>
-            <View style={[styles.detailRow, { borderBottomWidth: 0 }]}><Text style={styles.detailLabel}>Na rynku od</Text><Text style={styles.detailValue}>{formatDate(offer?.createdAt)}</Text></View>
+          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>Szczegóły</Text>
+          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.1)' }]} pointerEvents="none" />
+            <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Stan wykończenia</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatCondition(offer?.condition)}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Czynsz administracyjny</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{adminFeeLabel}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Ogrzewanie</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{heatingLabel || 'Nie podano'}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Umeblowanie</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{furnishedLabel}</Text></View>
+            <View style={[styles.detailRow, { borderBottomWidth: 0 }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Na rynku od</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatDate(offer?.createdAt)}</Text></View>
           </View>
 
           {/* RZUT NIERUCHOMOŚCI */}
@@ -772,18 +944,18 @@ export default function OfferDetail({ route, navigation }: any) {
 
           {activeAmenities.length > 0 && (
             <>
-              <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Udogodnienia</Text>
+              <Text style={[styles.sectionTitle, { marginTop: 15 }, isDark && { color: '#ffffff' }]}>Udogodnienia</Text>
               <View style={styles.amenitiesWrapper}>
-                {activeAmenities.map((am, i) => <View key={i} style={styles.amenityPill}><Text style={styles.amenityText}>{am}</Text></View>)}
+                {activeAmenities.map((am, i) => <View key={i} style={[styles.amenityPill, isDark && { backgroundColor: '#1c1c1e', borderColor: 'rgba(255,255,255,0.05)' }]}><Text style={[styles.amenityText, isDark && { color: '#e5e7eb' }]}>{am}</Text></View>)}
               </View>
             </>
           )}
 
-          <View style={styles.divider} />
-          <Text style={styles.sectionTitle}>O nieruchomości</Text>
-          <Text style={styles.description}>{displayOffer.description}</Text>
+          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>O nieruchomości</Text>
+          <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
 
-          <Text style={[styles.sectionTitle, { marginTop: 40 }]}>Galeria zdjęć</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 40 }, isDark && { color: '#ffffff' }]}>Galeria zdjęć</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={width * 0.8 + 16} decelerationRate="fast" contentContainerStyle={styles.galleryContainer}>
             {imagesToShow.map((img, idx) => (
               <Pressable key={idx} onPress={() => openGallery(idx)}>
@@ -846,29 +1018,41 @@ export default function OfferDetail({ route, navigation }: any) {
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
       <View style={styles.bottomBarContainer}>
-        <BlurView intensity={95} tint="light" style={styles.bottomBar}>
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, isDark && { backgroundColor: 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           
           {/* TOP ROW: Cena i Użytkownik */}
           <View style={styles.bottomBarTopRow}>
-            <View>
+            <View style={{ flexShrink: 1, marginRight: 12 }}>
               <Text style={styles.bottomBarPriceLabel}>Cena ofertowa</Text>
-              <Text style={styles.bottomBarPrice}>{displayOffer.price}</Text>
+              <Text
+                style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {displayOffer.price}
+              </Text>
+              {pricePerSqmLabel ? (
+                <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                  {pricePerSqmLabel}
+                </Text>
+              ) : null}
             </View>
 
             {isOwner ? (
-              <View style={styles.ownerCompactPill}>
-                <Text style={styles.ownerPillName}>Twój panel zarządzania</Text>
+              <View style={[styles.ownerCompactPill, isDark && { backgroundColor: '#1c1c1e' }]}>
+                <Text style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>Twój panel zarządzania</Text>
               </View>
             ) : (
               <Pressable 
                 onPress={openOwnerProfileModal} 
-                style={({ pressed }) => [styles.ownerCompactPill, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [styles.ownerCompactPill, isDark && { backgroundColor: '#1c1c1e' }, pressed && { opacity: 0.7 }]}
               >
                 <View style={styles.ownerAvatarMock}>
                   <ShieldCheck size={12} color="#fff" />
                 </View>
                 <View style={styles.ownerPillInfo}>
-                  <Text numberOfLines={1} style={styles.ownerPillName}>
+                  <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
                     {ownerProfile?.user?.name?.split(' ')[0] || offer?.userName || 'Sprzedawca'}
                   </Text>
                   <View style={styles.ownerStarsRowMini}>
@@ -885,15 +1069,15 @@ export default function OfferDetail({ route, navigation }: any) {
           {/* BOTTOM ROW: Akcje */}
           <View style={styles.bottomActionsRow}>
             {isOwner ? (
-              <TouchableOpacity style={[styles.primaryAppleButton, { backgroundColor: '#1d1d1f', flex: 1 }]} onPress={handleEdit}>
-                <Pencil size={18} color="#fff" />
-                <Text style={styles.primaryAppleButtonText}>Edytuj ofertę</Text>
+              <TouchableOpacity style={[styles.primaryAppleButton, { backgroundColor: isDark ? '#ffffff' : '#1d1d1f', flex: 1 }]} onPress={handleEdit}>
+                <Pencil size={18} color={isDark ? '#000000' : '#fff'} />
+                <Text style={[styles.primaryAppleButtonText, { color: isDark ? '#000000' : '#ffffff' }]}>Edytuj ofertę</Text>
               </TouchableOpacity>
             ) : (
               <>
                 <Animated.View style={[styles.actionFlexWrap, apptBtnAnimatedStyle]}>
                   <TouchableOpacity
-                    style={styles.secondaryAppleButton}
+                    style={[styles.secondaryAppleButton, isDark && { backgroundColor: '#1c1c1e', borderColor: 'rgba(255,255,255,0.1)' }]}
                     onPress={() => {
                       if (guardPhoneVerification()) return;
                       animateAppointmentButton();
@@ -901,8 +1085,8 @@ export default function OfferDetail({ route, navigation }: any) {
                     }}
                     activeOpacity={0.8}
                   >
-                    <CalendarClock size={16} color="#1d1d1f" />
-                    <Text style={styles.secondaryAppleButtonText}>Spotkanie</Text>
+                    <CalendarClock size={16} color={isDark ? '#ffffff' : '#1d1d1f'} />
+                    <Text style={[styles.secondaryAppleButtonText, isDark && { color: '#ffffff' }]}>Spotkanie</Text>
                   </TouchableOpacity>
                 </Animated.View>
 
@@ -927,33 +1111,82 @@ export default function OfferDetail({ route, navigation }: any) {
         </BlurView>
       </View>
 
-      {/* --- PEŁNOEKRANOWA GALERIA ZDJĘĆ W STYLU APPLE --- */}
-      <Modal visible={isGalleryOpen} transparent={true} animationType="fade" onRequestClose={closeGallery}>
-        <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill}>
+      <ImageViewing
+        images={lightboxImages}
+        imageIndex={galleryInitialIndex}
+        visible={isGalleryOpen}
+        onRequestClose={closeGallery}
+        onImageIndexChange={(idx) => {
+          if (!Number.isFinite(idx as number)) return;
+          const safe = Number(idx);
+          setGalleryCurrentIndex(safe);
+        }}
+        doubleTapToZoomEnabled
+        swipeToCloseEnabled={false}
+        presentationStyle="fullScreen"
+        FooterComponent={({ imageIndex }) => (
           <View style={styles.galleryHeader}>
-            <Text style={styles.galleryCounter}>{currentGalleryIndex + 1} z {imagesToShow.length}</Text>
-            <TouchableOpacity onPress={closeGallery} style={styles.galleryCloseBtn} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
-              <X color="#FFF" size={24} />
-            </TouchableOpacity>
+            <Text style={styles.galleryCounter}>{(imageIndex ?? galleryCurrentIndex) + 1} z {imagesToShow.length}</Text>
           </View>
-          <FlatList
-            ref={galleryRef}
-            data={imagesToShow}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            initialScrollIndex={initialGalleryIndex}
-            getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
-            keyExtractor={(_, index) => index.toString()}
-            renderItem={({ item }) => (
-              <View style={{ width, height, justifyContent: 'center', alignItems: 'center' }}>
-                <Image source={{ uri: item }} style={{ width: '100%', height: height * 0.7 }} contentFit="contain" transition={200} />
-              </View>
-            )}
-          />
-        </BlurView>
+        )}
+      />
+
+      <Modal
+        visible={isLocationPreviewOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsLocationPreviewOpen(false)}
+      >
+        <View style={styles.locationModalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsLocationPreviewOpen(false)} />
+          <View style={styles.locationModalCard}>
+            <View style={styles.locationModalHeader}>
+              <Text style={styles.locationModalTitle}>Lokalizacja oferty</Text>
+              <TouchableOpacity onPress={() => setIsLocationPreviewOpen(false)} style={styles.locationModalCloseBtn}>
+                <X size={16} color="#111827" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.locationModalAddress}>{locationLine}</Text>
+            <View style={styles.locationMiniMapWrap}>
+              <MapView
+                style={styles.locationMiniMap}
+                pointerEvents="none"
+                initialRegion={{
+                  latitude: mapCoordinate.latitude,
+                  longitude: mapCoordinate.longitude,
+                  latitudeDelta: mapPresentation.latitudeDelta,
+                  longitudeDelta: mapPresentation.longitudeDelta,
+                }}
+                region={{
+                  latitude: mapCoordinate.latitude,
+                  longitude: mapCoordinate.longitude,
+                  latitudeDelta: mapPresentation.latitudeDelta,
+                  longitudeDelta: mapPresentation.longitudeDelta,
+                }}
+              >
+                {mapPresentation.mode === 'pin' ? (
+                  <Marker coordinate={mapCoordinate} title={displayOffer.title} />
+                ) : (
+                  <Circle
+                    center={mapCoordinate}
+                    radius={mapPresentation.circleRadiusM}
+                    strokeColor="rgba(220,38,38,0.9)"
+                    strokeWidth={2}
+                    fillColor="rgba(220,38,38,0.18)"
+                  />
+                )}
+              </MapView>
+            </View>
+            {!hasValidMapCoords ? (
+              <Text style={styles.locationModalHint}>Dokładne współrzędne nie są dostępne dla tej oferty.</Text>
+            ) : mapPresentation.mode === 'circle' ? (
+              <Text style={styles.locationModalHint}>
+                Właściciel ukrył dokładny adres — pokazujemy obszar ok. 250 m, a środek tarczy jest
+                celowo przesunięty (budynek leży gdzieś wewnątrz okręgu).
+              </Text>
+            ) : null}
+          </View>
+        </View>
       </Modal>
 
       <BidActionModal
@@ -966,10 +1199,12 @@ export default function OfferDetail({ route, navigation }: any) {
         eventAction={bidModalConfig.eventAction}
         quickAccept={bidModalConfig.quickAccept}
         history={bidModalConfig.history}
+        myUserId={user?.id != null ? Number(user.id) : null}
         title="Negocjacja ceny"
         offerId={offer?.id != null ? Number(offer.id) : null}
         userId={user?.id != null ? Number(user.id) : null}
         isListingOwner={!!isOwner}
+        listingOwnerUserId={listingOwnerUserId}
         onClose={() => setIsBidModalOpen(false)}
         onDone={openDealroom}
       />
@@ -983,6 +1218,7 @@ export default function OfferDetail({ route, navigation }: any) {
         eventAction={appointmentModalConfig.eventAction}
         proposedDate={appointmentModalConfig.proposedDate}
         history={appointmentModalConfig.history}
+        myUserId={user?.id != null ? Number(user.id) : null}
         title="Negocjacja terminu prezentacji"
         onClose={() => setIsAppointmentModalOpen(false)}
         onDone={openDealroom}
@@ -1235,11 +1471,18 @@ const styles = StyleSheet.create({
   topBar: { position: 'absolute', top: 55, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topBarRight: { flexDirection: 'row' },
   glassButton: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-  contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, minHeight: 800, shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 15, elevation: 10 },
+  heroGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 240,
+  },
+  contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, minHeight: 800, shadowColor: '#000', shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 10 },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
+  topMetaBadgesRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 },
   adminFeeBadge: {
     alignSelf: 'flex-start',
-    marginBottom: 10,
     backgroundColor: 'rgba(52,199,89,0.12)',
     borderColor: 'rgba(52,199,89,0.35)',
     borderWidth: 1,
@@ -1248,26 +1491,175 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   adminFeeBadgeText: { fontSize: 12, fontWeight: '800', color: '#1d1d1f', letterSpacing: 0.2 },
-  title: { fontSize: 24, fontWeight: '600', color: '#1d1d1f', marginBottom: 8 },
+  viewsBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.12)',
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+  },
+  viewsBadgeText: { color: '#374151', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  title: { fontSize: 26, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 8 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
-  locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 15, marginBottom: 32 },
-  statBox: { alignItems: 'center', backgroundColor: '#f5f5f7', padding: 16, borderRadius: 20, width: (width - 48 - 15) / 2 },
+  locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500', flexShrink: 1 },
+  locationModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.36)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
+  locationModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  locationModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  locationModalTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  locationModalCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationModalAddress: { fontSize: 13, color: '#6b7280', marginBottom: 10, fontWeight: '600' },
+  locationMiniMapWrap: { borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
+  locationMiniMap: { width: '100%', height: 190 },
+  locationModalHint: { marginTop: 8, fontSize: 12, color: '#9ca3af' },
+  safetyBadgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 24,
+    gap: 12,
+  },
+  safetyBadgeCardPending: {
+    backgroundColor: '#f4f4f5',
+    borderColor: 'rgba(107,114,128,0.24)',
+    borderTopColor: 'rgba(255,255,255,0.7)',
+  },
+  safetyBadgeCardPendingDark: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  safetyBadgeCardVerified: {
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    borderColor: 'rgba(16,185,129,0.25)',
+    borderTopColor: 'rgba(255,255,255,0.8)',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  safetyBadgeCardVerifiedDark: {
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderColor: 'rgba(16,185,129,0.3)',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  safetyBadgeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(107,114,128,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safetyBadgeIconWrapPendingDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  safetyBadgeIconWrapVerified: {
+    backgroundColor: 'rgba(16,185,129,0.15)',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+  },
+  safetyBadgeIconWrapVerifiedDark: {
+    backgroundColor: 'rgba(16,185,129,0.2)',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+  },
+  safetyBadgeTitle: { color: '#4b5563', fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  safetyBadgeTitlePendingDark: { color: '#d1d5db' },
+  safetyBadgeTitleVerified: { color: '#047857' },
+  safetyBadgeTitleVerifiedDark: { color: '#34d399' },
+  safetyBadgeSub: { color: '#6b7280', fontSize: 12, fontWeight: '600', marginTop: 1 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14, columnGap: '4%', marginBottom: 32 },
+  statBox: {
+    alignItems: 'center',
+    backgroundColor: '#f6f7f9',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+    borderTopColor: 'rgba(255,255,255,0.8)', // subtle highlight for 3D effect
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    borderRadius: 22,
+    width: '48%',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+  },
   statText: { marginTop: 8, fontSize: 13, fontWeight: '600', color: '#1d1d1f' },
   divider: { height: 1, backgroundColor: '#e5e5ea', marginBottom: 32 },
-  sectionTitle: { fontSize: 20, fontWeight: '700', color: '#1d1d1f', marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1d1d1f', marginBottom: 16, letterSpacing: -0.2 },
   description: { fontSize: 16, lineHeight: 26, color: '#424245', fontWeight: '400' },
-  detailsContainer: { backgroundColor: '#f5f5f7', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 32 },
+  detailsContainer: {
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#f5f6f8',
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.05)',
+    borderTopColor: 'rgba(255,255,255,0.8)',
+    shadowColor: '#111827',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.04,
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  detailsContainerInnerGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
   detailLabel: { color: '#86868b', fontSize: 15, fontWeight: '500' },
   detailValue: { color: '#1d1d1f', fontSize: 15, fontWeight: '600' },
   amenitiesWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 32 },
-  amenityPill: { backgroundColor: '#f5f5f7', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)' },
+  amenityPill: { backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
   offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 40, marginBottom: 20, letterSpacing: 0.5 },
   
   galleryContainer: { paddingRight: 24 },
-  galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16 },
+  galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
   
   // --- ZMIENIONA SEKCJA BOTTOM BAR ---
   bottomBarContainer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
@@ -1277,11 +1669,16 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 24, 
     borderTopWidth: 1, 
     borderTopColor: 'rgba(255,255,255,0.4)',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
   },
   bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   bottomBarPriceLabel: { fontSize: 11, fontWeight: '700', color: '#86868b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   bottomBarPrice: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5 },
+  bottomBarPriceSqm: { fontSize: 12, fontWeight: '600', color: '#6b7280', letterSpacing: 0.1, marginTop: 2 },
   
   ownerCompactPill: { 
     flexDirection: 'row', 
@@ -1295,7 +1692,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
-    maxWidth: '45%' // Zabezpieczenie dla małych ekranów
+    maxWidth: '50%' // Zabezpieczenie dla małych ekranów
   },
   ownerAvatarMock: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
   ownerPillInfo: { marginLeft: 8, justifyContent: 'center' },

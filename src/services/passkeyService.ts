@@ -24,17 +24,41 @@ const fetchWithTimeout = async (resource: string, options: any = {}) => {
 // Bezpieczne wykrywanie anulowania na iOS i Androidzie
 const isUserCancel = (error: any) => {
   const msg = String(error?.message || '').toLowerCase();
-  return /cancel|cancelled|canceled/i.test(msg);
+  return /cancel|cancelled|canceled|anulow|user canceled|user cancelled/i.test(msg);
 };
 
+// „Brak klucza" / „no credentials" / "Brak credential id" (PL natywne) — wszystko, co znaczy „nie ma czego użyć".
 const isNoCredentialsError = (error: any) => {
   const msg = String(error?.message || '').toLowerCase();
-  return /no credentials were returned|no credential|credentials were returned/i.test(msg);
+  return /no credentials? were returned|no credential|credentials were returned|credential id|credential[\s_-]?not[\s_-]?found|brak credential|brak klucza|no passkey|passkey not found|nie znaleziono klucza/i.test(
+    msg,
+  );
 };
 
 const isRpIdMismatchError = (error: any) => {
   const msg = String(error?.message || '').toLowerCase();
-  return /rp id|relying party|domain mismatch|origin/i.test(msg);
+  return /rp[\s_-]?id|relying party|domain mismatch|origin mismatch|niezgodno\u015b\u0107 domeny/i.test(msg);
+};
+
+// Telefon nie ma skonfigurowanej biometrii systemowej (Face ID/Touch ID off, brak PIN-u itp.).
+const isBiometryNotEnrolledError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return /not enrolled|biometry not available|biometric not enrolled|biometrics not available|face id (not|nie)|touch id (not|nie)|brak konfiguracji|passcode (not|nie) set/i.test(
+    msg,
+  );
+};
+
+// Brak sieci / timeout / serwer.
+const isNetworkError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return /network request failed|failed to fetch|timeout|timed out|przekroczono limit czasu|brak po\u0142\u0105czenia|abort/i.test(
+    msg,
+  );
+};
+
+const isServerError = (error: any) => {
+  const msg = String(error?.message || '');
+  return /\b5\d{2}\b|\[api\].*(failed|error)/i.test(msg);
 };
 
 const parseJsonSafely = async (response: Response) => {
@@ -153,9 +177,34 @@ export const PasskeyService = {
       return true;
 
     } catch (e: any) {
-      if (!isUserCancel(e)) {
-        console.error("🔑 [Passkey Register Error]:", e?.message);
-        Alert.alert("Błąd Rejestracji", e?.message || "Nie udało się dodać klucza.");
+      if (isUserCancel(e)) return false;
+      // console.warn (nie console.error) — by nie pokazywać czerwonego dev-bannera dla znanych przypadków.
+      console.warn("[Passkey] Register failed:", e?.message);
+      if (isBiometryNotEnrolledError(e)) {
+        Alert.alert(
+          "Face ID/Touch ID wyłączone",
+          "Aby dodać klucz Passkey, włącz biometrię w Ustawieniach iOS (Face ID / Touch ID) i ustaw kod dostępu, a następnie spróbuj ponownie.",
+        );
+      } else if (isRpIdMismatchError(e)) {
+        Alert.alert(
+          "Błąd konfiguracji",
+          "Wykryto niezgodność domeny Passkey. To problem konfiguracji aplikacji — zaloguj się hasłem i zgłoś nam to przez Ustawienia → Pomoc.",
+        );
+      } else if (isNetworkError(e)) {
+        Alert.alert(
+          "Brak połączenia",
+          "Nie udało się skontaktować z serwerem EstateOS™. Sprawdź internet i spróbuj ponownie.",
+        );
+      } else if (isServerError(e)) {
+        Alert.alert(
+          "Chwilowy problem serwera",
+          "Po stronie serwera wystąpił błąd przy rejestracji klucza. Spróbuj ponownie za chwilę.",
+        );
+      } else {
+        Alert.alert(
+          "Nie udało się dodać klucza",
+          "Spróbuj ponownie. Jeśli problem się powtarza, zaloguj się hasłem i włącz Passkey w profilu.",
+        );
       }
       return false;
     }
@@ -174,21 +223,39 @@ export const PasskeyService = {
       return await tryLoginFinishEndpoints({ ...assertion, sessionId: start.sessionId });
 
     } catch (e: any) {
-      if (!isUserCancel(e)) {
-        console.error("🔓 [Passkey Login Error]:", e?.message);
-        if (isNoCredentialsError(e)) {
-          Alert.alert(
-            "Brak klucza Passkey",
-            "Na tym urządzeniu nie znaleziono zapisanego klucza dla tego konta. Zaloguj się hasłem i włącz Passkey ponownie w profilu."
-          );
-        } else if (isRpIdMismatchError(e)) {
-          Alert.alert(
-            "Błąd konfiguracji Passkey",
-            "Wykryto niezgodność domeny Passkey (RP ID). Sprawdź konfigurację serwera i aplikacji dla estateos.pl."
-          );
-        } else {
-          Alert.alert("Błąd Logowania", e?.message || "Logowanie biometryczne nie powiodło się.");
-        }
+      if (isUserCancel(e)) return null;
+      // console.warn (nie console.error) — by nie pokazywać czerwonego dev-bannera dla znanych przypadków.
+      console.warn("[Passkey] Login failed:", e?.message);
+      if (isNoCredentialsError(e)) {
+        Alert.alert(
+          "Brak zapisanego klucza",
+          'Na tym urządzeniu nie znaleziono klucza Passkey dla Twojego konta. Zaloguj się e-mailem i hasłem, a następnie w „Profil → Bezpieczeństwo” włącz Passkey, by od razu logować się Face ID.',
+        );
+      } else if (isBiometryNotEnrolledError(e)) {
+        Alert.alert(
+          "Face ID/Touch ID wyłączone",
+          "Włącz biometrię w Ustawieniach iOS (Face ID / Touch ID) i ustaw kod dostępu, aby logować się Passkey. Tymczasem możesz zalogować się e-mailem i hasłem.",
+        );
+      } else if (isRpIdMismatchError(e)) {
+        Alert.alert(
+          "Błąd konfiguracji Passkey",
+          "Aplikacja i serwer nie zgadzają się co do domeny. Zaloguj się e-mailem i hasłem i zgłoś nam to przez Ustawienia → Pomoc.",
+        );
+      } else if (isNetworkError(e)) {
+        Alert.alert(
+          "Brak połączenia",
+          "Nie udało się skontaktować z serwerem EstateOS™. Sprawdź internet i spróbuj ponownie.",
+        );
+      } else if (isServerError(e)) {
+        Alert.alert(
+          "Chwilowy problem serwera",
+          "Logowanie Passkey jest tymczasowo niedostępne. Spróbuj e-mailem i hasłem albo ponów za chwilę.",
+        );
+      } else {
+        Alert.alert(
+          "Logowanie Face ID nie powiodło się",
+          "Nie udało się potwierdzić tożsamości. Spróbuj ponownie albo zaloguj się e-mailem i hasłem.",
+        );
       }
       return null;
     }

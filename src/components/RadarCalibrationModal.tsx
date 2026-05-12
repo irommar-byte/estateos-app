@@ -371,6 +371,14 @@ export default function RadarCalibrationModal({
       void onApply(draftFilters);
       return;
     }
+    // Jeśli użytkownik wyłącza radar (pushNotifications=false) — pomijamy „scan ritual"
+    // i od razu commit'ujemy zmianę. Inaczej button nie miałby sensu: animacja skanu
+    // przy wyłączaniu jest myląca, a bez wywołania onApply radar nie wyłączyłby się
+    // (modal zamykany od tła nie commit'uje stanu).
+    if (!draftFilters.pushNotifications) {
+      void onApply(draftFilters);
+      return;
+    }
     setShowApplyRitual(true);
   };
 
@@ -799,14 +807,16 @@ export default function RadarCalibrationModal({
                             <Text style={[styles.switchTitle, { color: COLORS.textMain }]}>Prywatność kwot</Text>
                           </View>
                           <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
-                            Jeśli wyłączysz, powiadomienia nie będą zawierały konkretnych kwot (bezpieczniej na ekranie blokady).
+                            Włączone: ukrywamy konkretne kwoty w treści powiadomień (bezpieczniej na ekranie blokady).
+                            Wyłączone: push może zawierać pełne kwoty.
                           </Text>
                         </View>
                         <Switch
-                          value={draftFilters.favoritesNotifyIncludeAmounts}
-                          onValueChange={(v) => {
+                          accessibilityLabel="Prywatność kwot w powiadomieniach"
+                          value={!draftFilters.favoritesNotifyIncludeAmounts}
+                          onValueChange={(privacyOn) => {
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            handleFilterSelect('favoritesNotifyIncludeAmounts', v);
+                            handleFilterSelect('favoritesNotifyIncludeAmounts', !privacyOn);
                           }}
                           trackColor={{ false: COLORS.trackBg, true: accentMetal }}
                           thumbColor="#FFF"
@@ -932,21 +942,44 @@ export default function RadarCalibrationModal({
               
             </ScrollView>
 
-            {/* Stopka tylko przy włączonym nasłuchu — wyłączony pierwszy switch = sam nagłówek + karta, zamknięcie z tła / gestu. */}
-            {keyboardHeight === 0 && radarAwake && (
+            {/* Stopka zawsze widoczna (gdy klawiatura schowana) — przy wyłączonym
+                nasłuchu zmieniamy etykietę na „Wyłącz radar”, żeby użytkownik
+                miał świadomy sposób na commit `pushNotifications=false`.
+                Bez tego przełącznik off + zamknięcie modala = zmiana ginęła
+                i radar pozostawał aktywny. */}
+            {keyboardHeight === 0 && (
               <View style={[styles.footer, { borderTopColor: COLORS.border }]}>
                 <Pressable
                   disabled={showApplyRitual}
                   style={({ pressed }) => [
                     styles.applyBtn,
-                    { backgroundColor: draftFilters.pushNotifications ? accentMetal : activeColor },
+                    {
+                      backgroundColor: draftFilters.pushNotifications
+                        ? accentMetal
+                        : isFavoritesVariant
+                          ? COLORS.textMuted
+                          : '#8E8E93',
+                    },
                     pressed && !showApplyRitual && { transform: [{ scale: 0.97 }] },
                     showApplyRitual && { opacity: 0.6 },
                   ]}
                   onPress={handleApply}
                 >
-                  <Text style={styles.applyBtnTxt}>{isFavoritesVariant ? 'Zapisz ustawienia' : 'Zastosuj i Skanuj'}</Text>
-                  <Ionicons name="scan-outline" size={20} color="#FFF" style={{ marginLeft: 8 }} />
+                  <Text style={styles.applyBtnTxt}>
+                    {isFavoritesVariant
+                      ? draftFilters.pushNotifications
+                        ? 'Zapisz ustawienia'
+                        : 'Wyłącz Favor'
+                      : draftFilters.pushNotifications
+                        ? 'Zastosuj i Skanuj'
+                        : 'Wyłącz radar'}
+                  </Text>
+                  <Ionicons
+                    name={draftFilters.pushNotifications ? 'scan-outline' : 'power-outline'}
+                    size={20}
+                    color="#FFF"
+                    style={{ marginLeft: 8 }}
+                  />
                 </Pressable>
               </View>
             )}

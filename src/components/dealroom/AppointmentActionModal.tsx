@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, ChevronLeft } from 'lucide-react-native';
 import PresentationCountdown from './PresentationCountdown';
 
@@ -18,7 +18,13 @@ interface AppointmentActionModalProps {
     action?: string;
     proposedDate?: string | null;
     note?: string | null;
+    /** ID użytkownika, który wysłał dany event. Bez tego nie można powiedzieć,
+     *  czy ostatnia propozycja terminu pochodzi od „mnie" czy „drugiej strony". */
+    senderId?: number | string | null;
   }>;
+  /** ID zalogowanego użytkownika — używane do wykrywania, czy ostatni event
+   *  w historii pochodzi od nas (wtedy blokujemy wysyłanie kolejnej kontroferty). */
+  myUserId?: number | string | null;
   onClose: () => void;
   onDone?: () => void;
   onSavedDate?: (iso: string) => void;
@@ -60,6 +66,7 @@ export default function AppointmentActionModal({
   eventAction,
   proposedDate,
   history = [],
+  myUserId = null,
   onClose,
   onDone,
   onSavedDate,
@@ -89,21 +96,41 @@ export default function AppointmentActionModal({
     [mode, eventAction]
   );
 
+  /**
+   * „Pending od mojej strony" — ostatnia propozycja w historii pochodzi ode
+   * mnie i czeka na decyzję drugiej strony. W tym stanie nie wolno wysłać
+   * kolejnej kontroferty (i tak backend zwróci 400 „Ta propozycja terminu
+   * została już rozpatrzona"), więc lepiej zakomunikować to user-friendly
+   * z banerem + zablokowanym przyciskiem zamiast pozwolić mu wypełnić formularz
+   * i dostać alert dopiero po kliknięciu „Wyślij".
+   */
+  const isWaitingForOther = useMemo(() => {
+    if (mode !== 'respond') return false;
+    if (myUserId == null || !history.length) return false;
+    const myId = Number(myUserId);
+    if (!Number.isFinite(myId) || myId <= 0) return false;
+    const last = history[history.length - 1];
+    const action = String(last?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;
+    const senderId = Number(last?.senderId ?? 0);
+    return Number.isFinite(senderId) && senderId === myId;
+  }, [mode, myUserId, history]);
+
   /** Akceptacja terminu jest w czacie (panel); modal służy wyłącznie do wysłania własnej propozycji / create. */
   const isSchedulerVisible = useMemo(
-    () => !isLocked && (mode === 'create' || mode === 'respond'),
-    [mode, isLocked]
+    () => !isLocked && !isWaitingForOther && (mode === 'create' || mode === 'respond'),
+    [mode, isLocked, isWaitingForOther]
   );
 
   const canSubmit = useMemo(() => {
     const safeToken = normalizeToken(token);
-    if (isLocked) return false;
+    if (isLocked || isWaitingForOther) return false;
     if (!dealId || !safeToken) return false;
     if (mode === 'respond') {
       if (!appointmentId) return false;
     }
     return Boolean(selectedDate && selectedHour);
-  }, [isLocked, dealId, token, mode, appointmentId, selectedDate, selectedHour]);
+  }, [isLocked, isWaitingForOther, dealId, token, mode, appointmentId, selectedDate, selectedHour]);
 
   const submit = async () => {
     const safeToken = normalizeToken(token);
@@ -148,9 +175,11 @@ export default function AppointmentActionModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        const msg = data?.error || 'Nie udalo sie zapisac terminu.';
-        setError(msg);
-        Alert.alert('Błąd', msg);
+        // Inline error pod stopką modala — bez centralnego natywnego alertu.
+        // Backend zwraca m.in. „Ta propozycja terminu została już rozpatrzona"
+        // jako 400; w tym wypadku banner `isWaitingForOther` powinien już
+        // wcześniej zablokować przycisk, ale zostawiamy też fallback inline'owy.
+        setError(data?.error || 'Nie udało się zapisać terminu.');
         return;
       }
       if (proposedIso) {
@@ -159,9 +188,7 @@ export default function AppointmentActionModal({
       onDone?.();
       onClose();
     } catch {
-      const msg = 'Błąd połączenia z serwerem.';
-      setError(msg);
-      Alert.alert('Błąd', msg);
+      setError('Błąd połączenia z serwerem.');
     } finally {
       setLoading(false);
     }
@@ -181,21 +208,30 @@ export default function AppointmentActionModal({
 
   const handleSubmitPress = () => {
     if (loading) return;
+    // Wszystkie błędy walidacji pokazujemy WEW. modala — przez `setError` lub
+    // przez banner `isWaitingForOther`. Nie odpalamy natywnego `Alert.alert`,
+    // bo zachodzi on na sam modal i wygląda jak błąd techniczny zamiast
+    // miękkiej podpowiedzi.
     if (isLocked) {
-      Alert.alert('Termin zamknięty', 'Ta propozycja została już rozpatrzona.');
+      setError('Ten termin został już zaakceptowany.');
+      return;
+    }
+    if (isWaitingForOther) {
+      // Banner widoczny w body modala wyjaśnia szczegółowo — tu zostawiamy
+      // ciszę żeby user nie dostawał dwóch komunikatów na raz.
       return;
     }
     const safeToken = normalizeToken(token);
     if (!dealId || !safeToken) {
-      Alert.alert('Brak sesji', 'Odśwież czat i spróbuj ponownie.');
+      setError('Brak sesji. Odśwież czat i spróbuj ponownie.');
       return;
     }
     if (!selectedDate || !selectedHour) {
-      Alert.alert('Wybierz termin', 'Najpierw wybierz dzień i godzinę.');
+      setError('Najpierw wybierz dzień i godzinę.');
       return;
     }
     if (!canSubmit) {
-      Alert.alert('Brak danych', 'Nie udało się przygotować terminu. Spróbuj ponownie.');
+      setError('Nie udało się przygotować terminu. Spróbuj ponownie.');
       return;
     }
 
@@ -254,6 +290,25 @@ export default function AppointmentActionModal({
               <View style={styles.stamp}>
                 <Text style={styles.stampText}>ZAAKCEPTOWANO</Text>
               </View>
+            </View>
+          )}
+
+          {isWaitingForOther && !isLocked && (
+            <View style={styles.waitingBox}>
+              <Text style={styles.waitingIcon}>⏳</Text>
+              <Text style={styles.waitingTitle}>Czekasz na odpowiedź drugiej strony</Text>
+              <Text style={styles.waitingSub}>
+                Twoja ostatnia propozycja terminu została wysłana — partner musi ją zaakceptować
+                lub zaproponować inny termin. Do tego czasu nie możesz wysłać kolejnej kontroferty.
+              </Text>
+              {proposedDate ? (
+                <View style={styles.waitingChip}>
+                  <Text style={styles.waitingChipLabel}>OSTATNIA PROPOZYCJA</Text>
+                  <Text style={styles.waitingChipValue}>
+                    {new Date(proposedDate).toLocaleString('pl-PL')}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           )}
 
@@ -542,6 +597,54 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  waitingBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,159,10,0.55)',
+    backgroundColor: 'rgba(255,159,10,0.10)',
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  waitingIcon: { fontSize: 26, marginBottom: 6 },
+  waitingTitle: {
+    color: '#FFD79A',
+    fontWeight: '800',
+    fontSize: 15,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+  waitingSub: {
+    color: '#E8C390',
+    fontSize: 12,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 6,
+  },
+  waitingChip: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,159,10,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,159,10,0.4)',
+    alignItems: 'center',
+  },
+  waitingChipLabel: {
+    color: '#FFB44A',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  waitingChipValue: {
+    color: '#FFEDD0',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 3,
+    letterSpacing: 0.2,
   },
   lockIcon: { fontSize: 24, marginBottom: 6 },
   lockTitle: { color: '#e5ffe5', fontWeight: '800', fontSize: 15 },

@@ -27,6 +27,7 @@ import * as Haptics from 'expo-haptics';
 import { useThemeStore, ThemeMode } from './src/store/useThemeStore';
 import { useOfferStore } from './src/store/useOfferStore';
 import { useAuthStore } from './src/store/useAuthStore';
+import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import AppleHover from './src/components/AppleHover';
 
 import Radar from './src/screens/Radar';
@@ -173,6 +174,14 @@ const FloatingNextButton = ({ onPress }: any) => {
       }
     } else if (step !== 6) {
       if (isValid) {
+        // GATE: bieżący krok może chcieć przejąć kontrolę (np. Step 2 pokazuje
+        // modal potwierdzenia adresu i sam wywoła navigate po decyzji usera).
+        const gate = useOfferStore.getState().navigationGate;
+        if (gate && !gate(step + 1)) {
+          // Gate już zareagował (otworzył modal); zatrzymujemy nawigację tutaj.
+          Haptics.selectionAsync();
+          return;
+        }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         navigation.navigate('Dodaj', { screen: 'Step' + (step + 1) });
       } else {
@@ -496,43 +505,32 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const token = useAuthStore((state: any) => state.token);
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
-  const [hasUnreadDeals, setHasUnreadDeals] = useState(false);
+  /**
+   * Liczba dealroomów z aktywną czerwoną kropką (z `DealroomListScreen`).
+   *
+   * UWAGA: nie sumujemy `deal.unread` (liczba nieprzeczytanych WIADOMOŚCI).
+   * Bierzemy liczbę KART z czerwoną kropką, ponieważ kropka pojawia się także
+   * przy zdarzeniach typu „partner skontrował termin/cenę — czeka na Twoją
+   * reakcję", nawet gdy `unread === 0`. Synchronizacja przez globalny store
+   * `useUnreadBadgeStore` — `DealroomListScreen` jest źródłem prawdy, my tylko
+   * odzwierciedlamy jego liczbę na tabBarBadge i na ikonie aplikacji.
+   */
+  const unreadDealCount = useUnreadBadgeStore((state) => state.unreadDealCount);
 
   useEffect(() => { restoreSession(); }, []);
 
+  // Application Icon Badge — czerwone „1" na ikonie aplikacji (lockscreen / app
+  // library / home screen). Aktualizujemy je za każdym razem, gdy zmieni się
+  // liczba dealroomów wymagających uwagi, łącznie ze spadkiem do 0 (po wejściu
+  // w czat backend resetuje `unread`, kropka znika z karty → store schodzi do 0
+  // → badge na ikonie aplikacji znika automatycznie).
   useEffect(() => {
-    let mounted = true;
-    const fetchUnread = async () => {
-      if (!token) {
-        if (mounted) setHasUnreadDeals(false);
-        return;
-      }
-      try {
-        const res = await fetch('https://estateos.pl/api/mobile/v1/deals', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const json = await res.json();
-        const deals = Array.isArray(json)
-          ? json
-          : Array.isArray(json?.deals)
-            ? json.deals
-            : Array.isArray(json?.items)
-              ? json.items
-              : [];
-        const unread = deals.some((deal: any) => Number(deal?.unread || 0) > 0);
-        if (mounted) setHasUnreadDeals(unread);
-      } catch {
-        // noop
-      }
-    };
-    fetchUnread();
-    const t = setInterval(fetchUnread, 12000);
-    return () => {
-      mounted = false;
-      clearInterval(t);
-    };
-  }, [token]);
+    if (!token) {
+      void Notifications.setBadgeCountAsync(0).catch(() => undefined);
+      return;
+    }
+    void Notifications.setBadgeCountAsync(unreadDealCount).catch(() => undefined);
+  }, [unreadDealCount, token]);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
   const currentColors = Colors[resolvedTheme];
@@ -562,31 +560,31 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         name="Wiadomości"
         options={{
           tabBarIcon: ({ color }) => (
-            <View>
-              <Ionicons name="chatbubble-ellipses" size={23} color={color} />
-              {hasUnreadDeals ? (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: -2,
-                    right: -4,
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: '#FF3B30',
-                    borderWidth: 1.5,
-                    borderColor: '#FFFFFF',
-                  }}
-                />
-              ) : null}
-            </View>
+            <Ionicons name="chatbubble-ellipses" size={23} color={color} />
           ),
+          // Natywny czerwony badge Apple-style — pokazuje DOKŁADNĄ liczbę
+          // nieprzeczytanych wiadomości (1, 3, 12). React Navigation rysuje go
+          // identycznie jak iOS rysuje badge na ikonie aplikacji.
+          tabBarBadge: unreadDealCount > 0 ? (unreadDealCount > 99 ? '99+' : unreadDealCount) : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#FF3B30',
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontWeight: '700',
+            minWidth: 18,
+            height: 18,
+            lineHeight: 14,
+            borderRadius: 9,
+            paddingHorizontal: 5,
+          },
         }}
       >
         {() => <DealroomListScreen />}
       </Tab.Screen>
       <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>
-        {() => <ProfileScreen theme={currentColors} />}
+        {(props) => (
+          <ProfileScreen theme={currentColors} tabRouteParams={props.route.params as { authIntent?: 'login' | 'register' } | undefined} />
+        )}
       </Tab.Screen>
     </Tab.Navigator>
   );
@@ -605,7 +603,10 @@ type PushNavigationTarget =
     }
   | {
       screen: 'MainTabs';
-      params: { screen: 'Radar' | 'Ulubione' | 'Wiadomości' };
+      params: {
+        screen: 'Radar' | 'Ulubione' | 'Wiadomości';
+        params?: Record<string, unknown>;
+      };
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -814,11 +815,15 @@ const parsePushTargetFromResponse = (
     };
   }
 
-  // 6) Fallback radar bez offerId
+  // 6) Fallback radar bez offerId — to typowy „Radar znalazł X ofert" zbiorczy
+  // alert. Oprócz przekierowania na zakładkę Radar dostarczamy sygnał
+  // `radarFocus: 'matches'`, dzięki któremu RadarHomeScreen sam podniesie
+  // dedykowany tryb „Dopasowania Radaru" (banner + fit mapy + sama lista
+  // dopasowań). Bez tego user wracał do generycznego widoku „Oferty w okolicy".
   if (looksLikeRadar || deeplinkLooksLikeRadar || deeplinkLower.includes('://radar')) {
     return {
       screen: 'MainTabs',
-      params: { screen: 'Radar' },
+      params: { screen: 'Radar', params: { radarFocus: 'matches' } },
     };
   }
 

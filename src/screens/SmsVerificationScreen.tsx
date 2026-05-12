@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, Platform, KeyboardAvoidingView, ActivityIndicator, Animated, useColorScheme } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../store/useThemeStore';
-import { useAuthStore } from '../store/useAuthStore';
+import { useAuthStore, persistLocalPhoneVerified } from '../store/useAuthStore';
 
 export default function SmsVerificationScreen({ route }: any) {
   const navigation = useNavigation<any>();
   const { fromRegister } = route.params || {};
   const themeMode = useThemeStore(s => s.themeMode);
-  const isDark = themeMode === 'dark';
+  const systemScheme = useColorScheme();
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   
   const store = useAuthStore() as any;
   const user = store.user;
@@ -158,7 +159,11 @@ export default function SmsVerificationScreen({ route }: any) {
 
       if (res.ok && data.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
+        // Trwały lokalny ślad — jeśli backend nie zwróci `phoneVerified` w `/me`,
+        // apka i tak utrzyma status między sesjami.
+        if (user?.id != null) await persistLocalPhoneVerified(user.id, true);
+
         const updatedUser = { ...user, isVerified: true, isVerifiedPhone: true };
         useAuthStore.setState({ user: updatedUser });
         await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));

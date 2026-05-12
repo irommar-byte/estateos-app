@@ -10,7 +10,8 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
-import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
+import { REST_OF_COUNTRY_CITY, formatLocationLabel, stripHouseNumber } from '../../constants/locationEcosystem';
+import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
 import {
   fetchCountableUserOffers,
@@ -20,6 +21,7 @@ import {
   openPlusStripeCheckout,
 } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
+import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
 
 const { width } = Dimensions.get('window');
 const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
@@ -84,6 +86,7 @@ function SummaryLocationMap({
   subtitleColor,
   cardBorderColor,
   cardBgColor,
+  draftSalt,
 }: {
   latitude: number;
   longitude: number;
@@ -92,9 +95,37 @@ function SummaryLocationMap({
   subtitleColor: string;
   cardBorderColor: string;
   cardBgColor: string;
+  /**
+   * Stabilny „salt" do deterministycznego przesunięcia środka okręgu.
+   * Dla draftu (brak `offer.id`) używamy stringa z adresu — żeby przy każdym
+   * wejściu w podgląd pokazywać dokładnie ten sam zjitterowany punkt.
+   */
+  draftSalt?: string | null;
 }) {
-  const camera = useMemo(() => buildPreviewCamera(latitude, longitude, isExact), [latitude, longitude, isExact]);
-  const coordinate = useMemo(() => ({ latitude, longitude }), [latitude, longitude]);
+  // PODGLĄD W SUMMARY = TO, CO ZOBACZY PUBLICZNOŚĆ.
+  // Owner sam jest autorem, więc jeśli wyłącza „Dokładną lokalizację", powinien
+  // zobaczyć dokładnie takie pole tarczy, jakie potem zobaczy kupujący — łącznie
+  // z przesuniętym środkiem (żeby nie zdziwił się, że pin „skoczył" po publikacji).
+  const publicPresentation = useMemo(
+    () =>
+      getPublicMapPresentation({
+        lat: latitude,
+        lng: longitude,
+        offerId: draftSalt ?? null,
+        isExactLocation: isExact,
+        viewerIsOwner: false,
+      }),
+    [latitude, longitude, draftSalt, isExact],
+  );
+  const camera = useMemo(
+    () =>
+      buildPreviewCamera(publicPresentation.latitude, publicPresentation.longitude, isExact),
+    [publicPresentation.latitude, publicPresentation.longitude, isExact],
+  );
+  const coordinate = useMemo(
+    () => ({ latitude: publicPresentation.latitude, longitude: publicPresentation.longitude }),
+    [publicPresentation.latitude, publicPresentation.longitude],
+  );
 
   return (
     <View style={{ marginTop: 6 }}>
@@ -115,12 +146,12 @@ function SummaryLocationMap({
           pointerEvents="none"
           userInterfaceStyle={isDark ? 'dark' : 'light'}
         >
-          {isExact ? (
+          {publicPresentation.mode === 'pin' ? (
             <Marker coordinate={coordinate} title="Lokalizacja oferty" pinColor="#ef4444" />
           ) : (
             <Circle
               center={coordinate}
-              radius={200}
+              radius={publicPresentation.circleRadiusM}
               strokeColor="rgba(239,68,68,0.9)"
               fillColor="rgba(239,68,68,0.14)"
               strokeWidth={2}
@@ -129,7 +160,9 @@ function SummaryLocationMap({
         </MapView>
       </View>
       <Text style={[styles.mapPreviewCaption, { color: subtitleColor }]}>
-        {isExact ? 'Dokładny punkt — widok z perspektywy (budynki 3D)' : 'Obszar przybliżony (~200 m)'}
+        {publicPresentation.mode === 'pin'
+          ? 'Dokładny punkt — widok z perspektywy (budynki 3D)'
+          : `Obszar ~${publicPresentation.circleRadiusM} m · środek przesunięty losowo (budynek leży gdzieś wewnątrz okręgu)`}
       </Text>
     </View>
   );
@@ -152,6 +185,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const [uploadProgressText, setUploadProgressText] = useState('');
   const isDark = Boolean(theme?.dark || theme?.glass === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
+  const isCompactScreen = width <= 390;
 
   useFocusEffect(useCallback(() => { setCurrentStep(6); }, []));
 
@@ -170,55 +204,60 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       if (!canPublishCountableListing(latestUser, existingCount)) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         const slots = getAdditionalListingSlots(latestUser);
-        Alert.alert(
-          'Limit darmowej publikacji',
-          `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dokupione sloty aktywne: ${slots}. Kolejne ogłoszenia wymagają Pakietu Plus (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni za 1 dodatkowy slot). Natywna płatność: App Store / Google Play; alternatywnie Stripe na estateos.pl.`,
-          [
-            { text: 'Zamknij', style: 'cancel' },
-            {
-              text: 'Wykup na stronie (Stripe)',
-              onPress: () => {
-                void openPlusStripeCheckout(API_URL, token);
-              },
+        const quotaBody =
+          Platform.OS === 'ios'
+            ? `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dokupione sloty aktywne: ${slots}. Kolejne ogłoszenia wymagają Pakietu Plus (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni za 1 dodatkowy slot). Zakup w App Store.`
+            : `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dokupione sloty aktywne: ${slots}. Kolejne ogłoszenia wymagają Pakietu Plus (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni za 1 dodatkowy slot). Natywna płatność: App Store / Google Play; alternatywnie Stripe na estateos.pl.`;
+        const quotaButtons: {
+          text: string;
+          style?: 'cancel' | 'default' | 'destructive';
+          onPress?: () => void;
+        }[] = [{ text: 'Zamknij', style: 'cancel' }];
+        if (Platform.OS !== 'ios') {
+          quotaButtons.push({
+            text: 'Wykup na stronie (Stripe)',
+            onPress: () => {
+              void openPlusStripeCheckout(API_URL, token);
             },
-            {
-              text: `Kup w sklepie (~${PAKIET_PLUS_PRICE_LABEL})`,
-              onPress: () => {
-                void (async () => {
-                  const r = await purchasePakietPlusConsumable(API_URL, token);
-                  if (r.ok) {
-                    await refreshUser();
-                    if (r.backendRegistered) {
-                      Alert.alert('Pakiet Plus', 'Płatność potwierdzona. Publikuję ofertę...', [
-                        {
-                          text: 'OK',
-                          onPress: () => {
-                            void handlePublish(true);
-                          },
+          });
+        }
+        quotaButtons.push({
+          text: Platform.OS === 'ios' ? `Kup w App Store (~${PAKIET_PLUS_PRICE_LABEL})` : `Kup w sklepie (~${PAKIET_PLUS_PRICE_LABEL})`,
+          onPress: () => {
+            void (async () => {
+              const r = await purchasePakietPlusConsumable(API_URL, token);
+              if (r.ok) {
+                await refreshUser();
+                if (r.backendRegistered) {
+                  Alert.alert('Pakiet Plus', 'Płatność potwierdzona. Publikuję ofertę...', [
+                    {
+                      text: 'OK',
+                      onPress: () => {
+                        void handlePublish(true);
+                      },
+                    },
+                  ]);
+                } else {
+                  Alert.alert(
+                    'Pakiet Plus',
+                    'Zakup w sklepie został dokończony. Publikuję ofertę jednorazowo na podstawie potwierdzonej płatności. Jeśli backend jeszcze nie odświeżył slotu, synchronizacja dojdzie chwilę później.',
+                    [
+                      {
+                        text: 'OK',
+                        onPress: () => {
+                          void handlePublish(true);
                         },
-                      ]);
-                    } else {
-                      Alert.alert(
-                        'Pakiet Plus',
-                        'Zakup w sklepie został dokończony. Publikuję ofertę jednorazowo na podstawie potwierdzonej płatności. Jeśli backend jeszcze nie odświeżył slotu, synchronizacja dojdzie chwilę później.',
-                        [
-                          {
-                            text: 'OK',
-                            onPress: () => {
-                              void handlePublish(true);
-                            },
-                          },
-                        ]
-                      );
-                    }
-                  } else if (!r.cancelled && r.message) {
-                    Alert.alert('Sklep', r.message);
-                  }
-                })();
-              },
-            },
-          ]
-        );
+                      },
+                    ]
+                  );
+                }
+              } else if (!r.cancelled && r.message) {
+                Alert.alert('Sklep', r.message);
+              }
+            })();
+          },
+        });
+        Alert.alert('Limit darmowej publikacji', quotaBody, quotaButtons);
         return;
       }
     }
@@ -279,9 +318,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       floorPlanUrl: ''
     };
 
+    let createdOfferId: number | null = null;
+
     try {
-      let createdOfferId = null;
-      
       // 1. ZAPIS TEKSTOWY
       const response = await fetch(`${API_URL}/api/mobile/v1/offers`, {
         method: 'POST',
@@ -298,7 +337,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
 
       const data = await response.json();
-      createdOfferId = data.offer.id;
+      createdOfferId = Number(data.offer.id);
 
       // 2. WGRYWANIE ZDJĘĆ
       if (createdOfferId && draft.images && draft.images.length > 0) {
@@ -380,7 +419,16 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Błąd', error.message || 'Wystąpił problem z połączeniem.');
+
+      let detail = '';
+      if (createdOfferId != null && token) {
+        const archived = await archiveOwnOfferViaMobileAdmin(API_URL, token, createdOfferId);
+        detail = archived
+          ? '\n\nNieukończoną ofertę wycofaliśmy automatycznie — możesz bezpiecznie spróbować ponownie.'
+          : `\n\nNie udało się automatycznie wycofać oferty z błędem publikacji (ID: ${createdOfferId}). Napisz do pomocy, żeby usunęli duplikat.`;
+      }
+
+      Alert.alert('Błąd', `${error.message || 'Wystąpił problem z połączeniem.'}${detail}`);
     } finally {
       setLoading(false);
       setUploadProgressText('');
@@ -403,12 +451,40 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   }) => {
     if (!value) return null;
     return (
-      <View style={[styles.badgeContainer, { backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(17,24,39,0.08)' }]}>
+      <View
+        style={[
+          styles.badgeContainer,
+          isCompactScreen && styles.badgeContainerCompact,
+          { backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(17,24,39,0.08)' },
+        ]}
+      >
         <View style={styles.badgeTextCol}>
-          <Text style={[styles.badgeLabel, { color: colors.subtitle }]}>{label}</Text>
-          <Text style={[styles.badgeValue, { color: colors.text }]} numberOfLines={2}>{value}</Text>
+          <Text
+            style={[styles.badgeLabel, { color: colors.subtitle }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.82}
+            allowFontScaling={false}
+          >
+            {label}
+          </Text>
+          <Text
+            style={[styles.badgeValue, { color: colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.78}
+            allowFontScaling={false}
+          >
+            {value}
+          </Text>
         </View>
-        <View style={[styles.badgeIconWrap, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.18)' }]}>
+        <View
+          style={[
+            styles.badgeIconWrap,
+            isCompactScreen && styles.badgeIconWrapCompact,
+            { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.18)' },
+          ]}
+        >
           <Ionicons name={icon} size={22} color={colors.primary} />
         </View>
       </View>
@@ -509,8 +585,27 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               </View>
             </View>
             <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)' }]} />
-            <DetailRow icon="location" label="Lokalizacja" value={`${draft.city}, ${draft.district}`} />
-            {draft.street ? <DetailRow icon="map" label="Adres" value={draft.street} /> : null}
+            <DetailRow icon="location" label="Lokalizacja" value={formatLocationLabel(draft.city, draft.district, 'Polska')} />
+            {/* Publiczna widoczność adresu:
+                  • ON  — pełen adres („Reymonta 12") + dokładny pin,
+                  • OFF — sama nazwa ulicy („Reymonta", bez numeru) + obszar ~200 m.
+                Tutaj pokazujemy DOKŁADNIE to, co zobaczy kupujący, żeby decyzja
+                o przełączeniu była jednoznaczna. */}
+            {draft.street ? (
+              mapExact ? (
+                <DetailRow icon="map" label="Adres publiczny" value={draft.street} />
+              ) : (
+                <DetailRow
+                  icon="shield-checkmark-outline"
+                  label="Adres publiczny"
+                  value={`${stripHouseNumber(draft.street) || draft.street} · numer ukryty (obszar ~200 m)`}
+                />
+              )
+            ) : (
+              !mapExact ? (
+                <DetailRow icon="shield-checkmark-outline" label="Adres publiczny" value="Ukryty (obszar ~200 m)" />
+              ) : null
+            )}
             <SummaryLocationMap
               latitude={mapLat}
               longitude={mapLng}
@@ -519,6 +614,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               subtitleColor={colors.subtitle}
               cardBorderColor={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.12)'}
               cardBgColor={isDark ? '#141416' : '#E5E7EB'}
+              draftSalt={`${draft.city || ''}|${draft.district || ''}|${draft.street || ''}|${mapLat.toFixed(5)}:${mapLng.toFixed(5)}`}
             />
           </View>
 
@@ -634,9 +730,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  badgeContainerCompact: {
+    width: '100%',
+    paddingVertical: 12,
+  },
   badgeTextCol: { flex: 1, minWidth: 0 },
-  badgeLabel: { fontSize: 11, fontWeight: '600', color: Colors.subtitle, marginBottom: 4 },
-  badgeValue: { fontSize: 15, fontWeight: '800', color: Colors.text },
+  badgeLabel: { fontSize: 11, fontWeight: '600', color: Colors.subtitle, marginBottom: 4, lineHeight: 14 },
+  badgeValue: { fontSize: 15, fontWeight: '800', color: Colors.text, lineHeight: 20 },
   badgeIconWrap: {
     width: 44,
     height: 44,
@@ -645,6 +745,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
+  },
+  badgeIconWrapCompact: {
+    width: 40,
+    height: 40,
+    borderRadius: 11,
   },
   descriptionText: { fontSize: 15, lineHeight: 24, color: '#D1D1D6', fontWeight: '400' },
   absoluteBottom: { position: 'absolute', bottom: 0, left: 0, right: 0 },

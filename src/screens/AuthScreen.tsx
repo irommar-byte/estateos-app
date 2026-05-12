@@ -206,9 +206,16 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
 };
 
 
-export default function AuthScreen({ theme }: { theme: any }) {
+export default function AuthScreen({
+  theme,
+  authIntent,
+}: {
+  theme: any;
+  /** Z nawigacji (np. gość z oferty): który formularz pokazać od razu. */
+  authIntent?: 'login' | 'register';
+}) {
   const navigation = useNavigation<any>();
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' ? false : true));
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
   const [role, setRole] = useState<'PRIVATE' | 'PARTNER'>('PRIVATE');
   const [email, setEmail] = useState('');
@@ -281,6 +288,11 @@ export default function AuthScreen({ theme }: { theme: any }) {
     setPasswordVisible(false);
   }, [isLogin]);
 
+  useEffect(() => {
+    if (authIntent === 'register') setIsLogin(false);
+    else if (authIntent === 'login') setIsLogin(true);
+  }, [authIntent]);
+
   const handleSubmit = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -311,9 +323,16 @@ export default function AuthScreen({ theme }: { theme: any }) {
           const isLogged = await store.login(email, password);
           if (isLogged) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            // Od razu po rejestracji wysyłamy kod weryfikacyjny na podany e-mail (jeśli backend wspiera).
+            const verifySend = await store
+              .sendCurrentEmailVerification()
+              .catch(() => ({ ok: false, error: 'Wysyłka kodu nieudana.' } as { ok: boolean; error?: string }));
+            const verifiedMsg = verifySend?.ok
+              ? `Wysłaliśmy 6-cyfrowy kod weryfikacyjny na ${email}.\nOtwórz skrzynkę i potwierdź adres w „Profil → Edytuj dane”.\n\nDodatkowo zweryfikuj numer telefonu (SMS), aby odblokować wszystkie funkcje.`
+              : `Witamy w gronie EstateOS™!\n\nZweryfikuj swój numer telefonu (SMS) oraz adres e-mail w profilu, aby odblokować wszystkie funkcje.`;
             Alert.alert(
-              "Konto pomyślnie założone!", 
-              "Witamy w gronie EstateOS™!\n\nZweryfikuj swój numer telefonu (SMS) w profilu, aby odblokować wszystkie funkcje.",
+              "Konto pomyślnie założone!",
+              verifiedMsg,
               [{ text: "Rozumiem", style: "default" }]
             );
           } else {
@@ -357,12 +376,22 @@ export default function AuthScreen({ theme }: { theme: any }) {
           navigation.navigate('Profil'); 
         });
       }
-    } catch (e: any) { 
-      if (e?.message && !e.message.includes('cancel') && !e.message.includes('User canceled')) {
-        Alert.alert('Błąd', e.message || 'Logowanie biometryczne nie powiodło się.'); 
+    } catch (e: any) {
+      // PasskeyService już pokaże konkretny, przyjazny komunikat (Brak klucza / Face ID wyłączone /
+      // Brak sieci / Błąd konfiguracji). Tu wyłapujemy tylko sytuacje, których nie objęła warstwa serwisu
+      // (np. błędy w samym storze przy zapisie tokena/AsyncStorage) — wówczas pokazujemy generyczny komunikat.
+      const msg = String(e?.message || '').toLowerCase();
+      const isCancelLike = /cancel|cancelled|canceled|anulow/.test(msg);
+      const handledByService =
+        /brak klucza|face id|touch id|brak po\u0142\u0105czenia|niezgodno\u015b\u0107|logowanie face id|chwilowy problem|nie uda\u0142o si\u0119 doda\u0107|biometri/i.test(msg);
+      if (!isCancelLike && !handledByService && msg) {
+        Alert.alert(
+          'Nie udało się zalogować',
+          'Spróbuj ponownie albo zaloguj się e-mailem i hasłem.',
+        );
       }
-    } finally { 
-      setIsPasskeyLoading(false); 
+    } finally {
+      setIsPasskeyLoading(false);
     }
   };
 
@@ -431,7 +460,17 @@ export default function AuthScreen({ theme }: { theme: any }) {
                 <Pressable onPress={() => { Haptics.selectionAsync(); setRole('PRIVATE'); }} style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}>
                   <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>Osoba prywatna</Text>
                 </Pressable>
-                <Pressable onPress={() => { Haptics.selectionAsync(); setRole('PARTNER'); }} style={[styles.roleButton, role === 'PARTNER' && styles.roleButtonActivePartner]}>
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    Alert.alert(
+                      'Partner EstateOS™',
+                      'Ta opcja będzie dostępna wkrótce.',
+                      [{ text: 'OK', onPress: () => setRole('PRIVATE') }]
+                    );
+                  }}
+                  style={[styles.roleButton, role === 'PARTNER' && styles.roleButtonActivePartner]}
+                >
                   <Text style={[styles.roleText, { color: role === 'PARTNER' ? '#FFF' : theme.subtitle }]}>Partner EstateOS™</Text>
                 </Pressable>
               </View>

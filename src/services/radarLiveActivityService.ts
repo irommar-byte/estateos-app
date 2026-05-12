@@ -4,6 +4,7 @@ import { NativeModules, Platform } from 'react-native';
 
 import {
   buildRadarLiveActivitySnapshot,
+  formatRadarLiveActivityLines,
   type RadarLiveActivitySnapshot,
 } from '../contracts/radarLiveActivityContract';
 
@@ -19,11 +20,18 @@ const NativeRadarLiveActivityModule = (NativeModules?.RadarLiveActivityModule ||
 
 const hasNativeLiveActivityModule = Platform.OS === 'ios' && !!NativeRadarLiveActivityModule;
 
-const fallbackTitle = 'Radar aktywny';
+const fallbackTitle = 'EstateOS™ · Radar';
 
+/**
+ * Body sticky-notification: skupiamy się na konkretnej konfiguracji radaru
+ * (tryb, lokalizacja, cena, metraż, próg, dopasowania, wymagania).
+ * Linie z `formatRadarLiveActivityLines` rozdzielamy znakami nowej linii,
+ * pomijając duplikat „Radar aktywny · skan rynku trwa" — tytuł i status
+ * pokazuje już osobno powiadomienie (`subtitle` na iOS).
+ */
 const formatFallbackBody = (snapshot: RadarLiveActivitySnapshot): string => {
-  const mode = snapshot.transactionType === 'RENT' ? 'Najem' : 'Sprzedaz';
-  return `Monitoring rynku trwa • ${mode} • ${snapshot.city} • Prog ${snapshot.minMatchThreshold}% • Oferty ${snapshot.activeMatchesCount}`;
+  const lines = formatRadarLiveActivityLines(snapshot).slice(1);
+  return lines.join('\n');
 };
 
 const dismissFallbackNotification = async () => {
@@ -46,11 +54,13 @@ const updateFallbackNotification = async (snapshot: RadarLiveActivitySnapshot) =
   const identifier = await Notifications.scheduleNotificationAsync({
     content: {
       title: fallbackTitle,
+      subtitle: 'Radar aktywny · skan rynku trwa',
       body: formatFallbackBody(snapshot),
       sound: false,
       sticky: true,
       data: {
         feature: 'radar_live_activity',
+        snapshot,
       },
     },
     trigger: null,
@@ -74,7 +84,12 @@ const stopNative = async () => {
 };
 
 export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivitySnapshot>) => {
-  const snapshot = buildRadarLiveActivitySnapshot(incoming);
+  // Zawsze stempel czasu „teraz" — chcemy, żeby widget wiedział, że dostał nowy update,
+  // nawet jeśli wszystkie inne pola pozostały takie same (heartbeat).
+  const snapshot = buildRadarLiveActivitySnapshot({
+    ...incoming,
+    updatedAtIso: new Date().toISOString(),
+  });
   if (!snapshot.enabled) {
     await stopRadarLiveActivity();
     return;
@@ -84,12 +99,20 @@ export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivityS
     try {
       await callNative('updateMonitoring', snapshot);
       return;
-    } catch {
+    } catch (updateError) {
+      console.warn('[RadarLiveActivity] updateMonitoring failed — próbuję start:', updateError);
+      try {
+        // Stara Activity może być w niezgodnym ContentState (po przebudowie widgetu).
+        // Forsujemy stop + start, żeby uzyskać świeżą instancję.
+        await stopNative();
+      } catch {
+        // noop
+      }
       try {
         await callNative('startMonitoring', snapshot);
         return;
-      } catch {
-        // If native ActivityKit fails (e.g. missing extension on current build), keep user-visible fallback.
+      } catch (startError) {
+        console.warn('[RadarLiveActivity] startMonitoring failed — używam fallback notification:', startError);
       }
     }
   }
@@ -101,8 +124,8 @@ export const stopRadarLiveActivity = async () => {
   if (hasNativeLiveActivityModule) {
     try {
       await stopNative();
-    } catch {
-      // noop
+    } catch (error) {
+      console.warn('[RadarLiveActivity] stopMonitoring failed:', error);
     }
   }
   await dismissFallbackNotification();

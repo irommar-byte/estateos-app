@@ -1,6 +1,84 @@
 /** Oferty spoza listy głównych aglomeracji — miejscowość trzymamy w `district` (np. „Przemyśl”). */
 export const REST_OF_COUNTRY_CITY = 'Reszta kraju' as const;
 
+export function formatLocationLabel(cityInput: unknown, districtInput: unknown, fallback = 'Polska'): string {
+  const city = String(cityInput ?? '').trim();
+  const district = String(districtInput ?? '').trim();
+  if (city === REST_OF_COUNTRY_CITY) return district || fallback;
+  if (city && district) return `${city}, ${district}`;
+  if (city) return city;
+  if (district) return district;
+  return fallback;
+}
+
+/**
+ * Czy oferta ma włączoną „Dokładną lokalizację".
+ * Domyślnie TRUE (zgodnie z polem domyślnym w useOfferStore i Step2).
+ * Wyłączone tylko wtedy, gdy wartość jednoznacznie wskazuje na FALSE.
+ */
+export function resolveIsExactLocation(value: unknown): boolean {
+  if (value === false || value === 0 || value === '0' || value === 'false') return false;
+  return true;
+}
+
+/**
+ * Usuwa końcowy numer budynku/mieszkania z nazwy ulicy.
+ *
+ * KIEDY UŻYWAMY
+ * ─────────────
+ * Przełącznik „Dokładna lokalizacja" w aplikacji rozróżnia dwa publicznie
+ * widoczne tryby:
+ *  • ON  → pokazujemy ulicę razem z numerem (pełny adres),
+ *  • OFF → pokazujemy SAMĄ ulicę (bez numeru) — kupujący wie, „w której
+ *          ulicy" jest oferta, ale nie zna dokładnego adresu.
+ *
+ * Ten helper bezpiecznie odcina TYLKO ostatni segment numerowy, łącznie
+ * z opcjonalną literą („5A"), separatorem „/" lub „-" i drugim numerem
+ * („27/29", „23a/15"), oraz „nr/numer" prefix („nr 12", „numer 12").
+ *
+ * Co świadomie ZACHOWUJEMY
+ * ────────────────────────
+ *  • cyfry w ŚRODKU nazwy ulicy („3 Maja", „Aleja 700-lecia", „1 Sierpnia"),
+ *  • cyfry rzymskie po nazwie („Jana Pawła II"),
+ *  • prefiksy „ul.", „al.", „pl." w oryginalnej formie.
+ */
+export function stripHouseNumber(streetInput: unknown): string {
+  const street = String(streetInput ?? '').trim();
+  if (!street) return '';
+  // 1) Najpierw zdejmujemy końcowe „nr 12", „nr 12a/3", „numer 12".
+  let cleaned = street.replace(/\s+(?:nr\.?|numer)\s*\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:[\/\-]\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?)?\s*$/iu, '');
+  // 2) Następnie czysty końcowy numer typu „12", „5A", „27/29", „23a-15".
+  cleaned = cleaned.replace(/\s+\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:[\/\-]\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?)?\s*$/u, '');
+  return cleaned.trim();
+}
+
+/**
+ * Buduje publiczny napis lokalizacji oferty zgodnie z trybem prywatności:
+ *  - isExact === true  → "Miasto, Dzielnica • Ulica 12" (pełny adres),
+ *  - isExact === false → "Miasto, Dzielnica • Ulica"   (sama nazwa ulicy
+ *                                                       bez numeru — kupujący
+ *                                                       wie w której ulicy
+ *                                                       jest oferta, ale nie
+ *                                                       zna dokładnego adresu).
+ *
+ * Jeśli ulicy nie znamy lub jest pusta — zwracamy `baseLabel` jak dotąd.
+ */
+export function formatPublicAddress(
+  cityInput: unknown,
+  districtInput: unknown,
+  streetInput: unknown,
+  isExactInput: unknown,
+  fallback = 'Polska',
+): string {
+  const baseLabel = formatLocationLabel(cityInput, districtInput, fallback);
+  const isExact = resolveIsExactLocation(isExactInput);
+  const street = String(streetInput ?? '').trim();
+  if (!street) return baseLabel;
+  const visibleStreet = isExact ? street : stripHouseNumber(street);
+  if (!visibleStreet) return baseLabel;
+  return `${baseLabel} • ${visibleStreet}`;
+}
+
 export const STRICT_CITIES = [
   'Warszawa',
   'Kraków',

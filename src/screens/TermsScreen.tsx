@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Platform, useColorScheme } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import { useThemeStore } from '../store/useThemeStore';
@@ -8,7 +8,8 @@ import * as Haptics from 'expo-haptics';
 export default function TermsScreen() {
   const navigation = useNavigation();
   const themeMode = useThemeStore(s => s.themeMode);
-  const isDark = themeMode === 'dark';
+  const systemScheme = useColorScheme();
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const bgColor = isDark ? '#000000' : '#f5f5f7';
   const textColor = isDark ? '#ffffff' : '#1d1d1f';
   const subColor = isDark ? '#86868b' : '#86868b';

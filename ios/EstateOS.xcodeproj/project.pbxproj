@@ -3,42 +3,42 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		564A7B632FACB302000D5E02 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 564A7B442FACB238000D5E02 /* WidgetKit.framework */; };
-		564A7B642FACB302000D5E02 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 564A7B462FACB238000D5E02 /* SwiftUI.framework */; };
-		564A7B712FACB309000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 564A7B622FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		9F8F0BC3FDF85E43A5C05E5E /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ECB014808554DFC9B6EDBC /* ExpoModulesProvider.swift */; };
-		B4FA1064F663AE7FE6609589 /* libPods-EstateOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = ADD430767228628D7D313CD4 /* libPods-EstateOS.a */; };
+		569AEEB42FACEF3B0019F923 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 569AEEB32FACEF3B0019F923 /* WidgetKit.framework */; };
+		569AEEB62FACEF3B0019F923 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 569AEEB52FACEF3B0019F923 /* SwiftUI.framework */; };
+		569AEEC32FACEF3D0019F923 /* EstateOSRadarWidgetExtensionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		569AEECB2FACF1420019F923 /* RadarLiveActivityModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 569AEEC92FACF1410019F923 /* RadarLiveActivityModule.swift */; };
+		569AEECC2FACF1420019F923 /* RadarLiveActivityModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 569AEECA2FACF1410019F923 /* RadarLiveActivityModuleBridge.m */; };
+		5EDC1BFC3FB0C2247450AA40 /* libPods-EstateOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5B74376DE268D50ECBD8D6DE /* libPods-EstateOS.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		D41F4E919AC528A0BA2DC1F8 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D2E6DEEE36C84C4FDB55A967 /* PrivacyInfo.xcprivacy */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		F2A1B3C62D6E7F8101A1B2C3 /* RadarLiveActivityModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A1B3C42D6E7F8101A1B2C3 /* RadarLiveActivityModule.swift */; };
-		F2A1B3C72D6E7F8101A1B2C3 /* RadarLiveActivityModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A1B3C52D6E7F8101A1B2C3 /* RadarLiveActivityModuleBridge.m */; };
-		F6021F244A7521A6F55AEFFD /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 37E580D62023AD9EF7F77E7E /* PrivacyInfo.xcprivacy */; };
+		F4D628C75A06E861897B67D7 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8CA87BA5AE40A2557800FC /* ExpoModulesProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		564A7B6F2FACB309000D5E02 /* PBXContainerItemProxy */ = {
+		569AEEC12FACEF3D0019F923 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 564A7B612FACB302000D5E02;
+			remoteGlobalIDString = 569AEEB12FACEF3B0019F923;
 			remoteInfo = EstateOSRadarWidgetExtensionExtension;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		564A7B5D2FACB242000D5E02 /* Embed Foundation Extensions */ = {
+		569AEEC42FACEF3D0019F923 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				564A7B712FACB309000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex in Embed Foundation Extensions */,
+				569AEEC32FACEF3D0019F923 /* EstateOSRadarWidgetExtensionExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -46,39 +46,49 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		087CB94DA5578AE4EC01FBBE /* Pods-EstateOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EstateOS.release.xcconfig"; path = "Target Support Files/Pods-EstateOS/Pods-EstateOS.release.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* EstateOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EstateOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = EstateOS/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = EstateOS/Info.plist; sourceTree = "<group>"; };
-		37E580D62023AD9EF7F77E7E /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = EstateOS/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		3B5742A54D55DC9D47F15817 /* Pods-EstateOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EstateOS.debug.xcconfig"; path = "Target Support Files/Pods-EstateOS/Pods-EstateOS.debug.xcconfig"; sourceTree = "<group>"; };
-		564A7B442FACB238000D5E02 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
-		564A7B462FACB238000D5E02 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
-		564A7B622FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EstateOSRadarWidgetExtensionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		564A7B7A2FACB411000D5E02 /* EstateOSRadarWidgetExtensionExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = EstateOSRadarWidgetExtensionExtension.entitlements; sourceTree = "<group>"; };
-		884C57E4CAC5D97CFD81EF94 /* Pods-EstateOS.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EstateOS.release.xcconfig"; path = "Target Support Files/Pods-EstateOS/Pods-EstateOS.release.xcconfig"; sourceTree = "<group>"; };
-		A1ECB014808554DFC9B6EDBC /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-EstateOS/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = EstateOSRadarWidgetExtensionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		569AEEB32FACEF3B0019F923 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		569AEEB52FACEF3B0019F923 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		569AEEC92FACF1410019F923 /* RadarLiveActivityModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarLiveActivityModule.swift; sourceTree = "<group>"; };
+		569AEECA2FACF1410019F923 /* RadarLiveActivityModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RadarLiveActivityModuleBridge.m; sourceTree = "<group>"; };
+		5B74376DE268D50ECBD8D6DE /* libPods-EstateOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-EstateOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7B8CA87BA5AE40A2557800FC /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-EstateOS/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		98B789BA1EECB2617913150B /* Pods-EstateOS.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EstateOS.debug.xcconfig"; path = "Target Support Files/Pods-EstateOS/Pods-EstateOS.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = EstateOS/SplashScreen.storyboard; sourceTree = "<group>"; };
-		ADD430767228628D7D313CD4 /* libPods-EstateOS.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-EstateOS.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		D2E6DEEE36C84C4FDB55A967 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = EstateOS/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = EstateOS/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* EstateOS-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "EstateOS-Bridging-Header.h"; path = "EstateOS/EstateOS-Bridging-Header.h"; sourceTree = "<group>"; };
-		F2A1B3C42D6E7F8101A1B2C3 /* RadarLiveActivityModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RadarLiveActivityModule.swift; path = EstateOS/RadarLiveActivityModule.swift; sourceTree = "<group>"; };
-		F2A1B3C52D6E7F8101A1B2C3 /* RadarLiveActivityModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = RadarLiveActivityModuleBridge.m; path = EstateOS/RadarLiveActivityModuleBridge.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		564A7B722FACB309000D5E02 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+		569AEEC72FACEF3D0019F923 /* Exceptions for "EstateOSRadarWidgetExtension" folder in "EstateOSRadarWidgetExtensionExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 564A7B612FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension */;
+			target = 569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		564A7B652FACB302000D5E02 /* EstateOSRadarWidgetExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (564A7B722FACB309000D5E02 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = EstateOSRadarWidgetExtension; sourceTree = "<group>"; };
+		569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				569AEEC72FACEF3D0019F923 /* Exceptions for "EstateOSRadarWidgetExtension" folder in "EstateOSRadarWidgetExtensionExtension" target */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = EstateOSRadarWidgetExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,16 +96,16 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B4FA1064F663AE7FE6609589 /* libPods-EstateOS.a in Frameworks */,
+				5EDC1BFC3FB0C2247450AA40 /* libPods-EstateOS.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		564A7B5F2FACB302000D5E02 /* Frameworks */ = {
+		569AEEAF2FACEF3B0019F923 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				564A7B642FACB302000D5E02 /* SwiftUI.framework in Frameworks */,
-				564A7B632FACB302000D5E02 /* WidgetKit.framework in Frameworks */,
+				569AEEB62FACEF3B0019F923 /* SwiftUI.framework in Frameworks */,
+				569AEEB42FACEF3B0019F923 /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,45 +115,45 @@
 		13B07FAE1A68108700A75B9A /* EstateOS */ = {
 			isa = PBXGroup;
 			children = (
+				569AEEC92FACF1410019F923 /* RadarLiveActivityModule.swift */,
+				569AEECA2FACF1410019F923 /* RadarLiveActivityModuleBridge.m */,
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				F2A1B3C42D6E7F8101A1B2C3 /* RadarLiveActivityModule.swift */,
-				F2A1B3C52D6E7F8101A1B2C3 /* RadarLiveActivityModuleBridge.m */,
 				F11748442D0722820044C1D9 /* EstateOS-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				37E580D62023AD9EF7F77E7E /* PrivacyInfo.xcprivacy */,
+				D2E6DEEE36C84C4FDB55A967 /* PrivacyInfo.xcprivacy */,
 			);
 			name = EstateOS;
+			sourceTree = "<group>";
+		};
+		22308234ECDABB74FC919D94 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				98B789BA1EECB2617913150B /* Pods-EstateOS.debug.xcconfig */,
+				087CB94DA5578AE4EC01FBBE /* Pods-EstateOS.release.xcconfig */,
+			);
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				ADD430767228628D7D313CD4 /* libPods-EstateOS.a */,
-				564A7B442FACB238000D5E02 /* WidgetKit.framework */,
-				564A7B462FACB238000D5E02 /* SwiftUI.framework */,
+				569AEEB32FACEF3B0019F923 /* WidgetKit.framework */,
+				569AEEB52FACEF3B0019F923 /* SwiftUI.framework */,
+				5B74376DE268D50ECBD8D6DE /* libPods-EstateOS.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		5D69B133459C2AD8BADA5658 /* EstateOS */ = {
+		5DFDE66F5213355A741C3ABF /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				A1ECB014808554DFC9B6EDBC /* ExpoModulesProvider.swift */,
+				8F2F6DE830AC3EF055EEEE46 /* EstateOS */,
 			);
-			name = EstateOS;
-			sourceTree = "<group>";
-		};
-		63B7323A8EFB829A70C70AAA /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				3B5742A54D55DC9D47F15817 /* Pods-EstateOS.debug.xcconfig */,
-				884C57E4CAC5D97CFD81EF94 /* Pods-EstateOS.release.xcconfig */,
-			);
-			path = Pods;
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -156,14 +166,13 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				564A7B7A2FACB411000D5E02 /* EstateOSRadarWidgetExtensionExtension.entitlements */,
 				13B07FAE1A68108700A75B9A /* EstateOS */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
-				564A7B652FACB302000D5E02 /* EstateOSRadarWidgetExtension */,
+				569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				63B7323A8EFB829A70C70AAA /* Pods */,
-				C66CEC60D8E71C98D03D842D /* ExpoModulesProviders */,
+				22308234ECDABB74FC919D94 /* Pods */,
+				5DFDE66F5213355A741C3ABF /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -174,9 +183,17 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* EstateOS.app */,
-				564A7B622FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex */,
+				569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8F2F6DE830AC3EF055EEEE46 /* EstateOS */ = {
+			isa = PBXGroup;
+			children = (
+				7B8CA87BA5AE40A2557800FC /* ExpoModulesProvider.swift */,
+			);
+			name = EstateOS;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -188,14 +205,6 @@
 			path = EstateOS/Supporting;
 			sourceTree = "<group>";
 		};
-		C66CEC60D8E71C98D03D842D /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				5D69B133459C2AD8BADA5658 /* EstateOS */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -203,46 +212,44 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "EstateOS" */;
 			buildPhases = (
-				5AAF0319C6051C218707DE4C /* [CP] Check Pods Manifest.lock */,
-				9940C17067142C41A4C0D03C /* [Expo] Configure project */,
+				4A6DA7E78EE2A053339808BB /* [CP] Check Pods Manifest.lock */,
+				47FEEB13FA75A8A10AFCFD32 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				928E7B6580FB521DEAB51C75 /* [CP] Embed Pods Frameworks */,
-				464347E4B9F192D62C874D18 /* [CP] Copy Pods Resources */,
-				564A7B5D2FACB242000D5E02 /* Embed Foundation Extensions */,
+				569AEEC42FACEF3D0019F923 /* Embed Foundation Extensions */,
+				1D2C010B6316710CEB8BC9ED /* [CP] Embed Pods Frameworks */,
+				1CCC95C67C50A2C5B488581C /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				564A7B702FACB309000D5E02 /* PBXTargetDependency */,
+				569AEEC22FACEF3D0019F923 /* PBXTargetDependency */,
 			);
 			name = EstateOS;
 			productName = EstateOS;
 			productReference = 13B07F961A680F5B00A75B9A /* EstateOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		564A7B612FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension */ = {
+		569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 564A7B732FACB309000D5E02 /* Build configuration list for PBXNativeTarget "EstateOSRadarWidgetExtensionExtension" */;
+			buildConfigurationList = 569AEEC82FACEF3D0019F923 /* Build configuration list for PBXNativeTarget "EstateOSRadarWidgetExtensionExtension" */;
 			buildPhases = (
-				564A7B5E2FACB302000D5E02 /* Sources */,
-				564A7B5F2FACB302000D5E02 /* Frameworks */,
-				564A7B602FACB302000D5E02 /* Resources */,
+				569AEEAE2FACEF3B0019F923 /* Sources */,
+				569AEEAF2FACEF3B0019F923 /* Frameworks */,
+				569AEEB02FACEF3B0019F923 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				564A7B652FACB302000D5E02 /* EstateOSRadarWidgetExtension */,
+				569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */,
 			);
 			name = EstateOSRadarWidgetExtensionExtension;
-			packageProductDependencies = (
-			);
 			productName = EstateOSRadarWidgetExtensionExtension;
-			productReference = 564A7B622FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension.appex */;
+			productReference = 569AEEB22FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -251,19 +258,16 @@
 		83CBB9F71A601CBA00E9B192 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsInParallel = YES;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						DevelopmentTeam = NW3YW69KL9;
 						LastSwiftMigration = 1250;
 						ProvisioningStyle = Automatic;
 					};
-					564A7B612FACB302000D5E02 = {
+					569AEEB12FACEF3B0019F923 = {
 						CreatedOnToolsVersion = 26.4.1;
-						DevelopmentTeam = NW3YW69KL9;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -281,7 +285,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* EstateOS */,
-				564A7B612FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension */,
+				569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -294,11 +298,11 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				F6021F244A7521A6F55AEFFD /* PrivacyInfo.xcprivacy in Resources */,
+				D41F4E919AC528A0BA2DC1F8 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		564A7B602FACB302000D5E02 /* Resources */ = {
+		569AEEB02FACEF3B0019F923 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -325,7 +329,7 @@
 			shellPath = /bin/sh;
 			shellScript = "if [[ -f \"$PODS_ROOT/../.xcode.env\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env\"\nfi\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n# The project root by default is one level up from the ios directory\nexport PROJECT_ROOT=\"$PROJECT_DIR\"/..\n\nif [[ \"$CONFIGURATION\" = *Debug* ]]; then\n  export SKIP_BUNDLING=1\nfi\nif [[ -z \"$ENTRY_FILE\" ]]; then\n  # Set the entry JS file using the bundler's entry resolution.\n  export ENTRY_FILE=\"$(\"$NODE_BINARY\" -e \"require('expo/scripts/resolveAppEntry')\" \"$PROJECT_ROOT\" ios absolute | tail -n 1)\"\nfi\n\nif [[ -z \"$CLI_PATH\" ]]; then\n  # Use Expo CLI\n  export CLI_PATH=\"$(\"$NODE_BINARY\" --print \"require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })\")\"\nfi\nif [[ -z \"$BUNDLE_COMMAND\" ]]; then\n  # Default Expo CLI command for bundling\n  export BUNDLE_COMMAND=\"export:embed\"\nfi\n\n# Source .xcode.env.updates if it exists to allow\n# SKIP_BUNDLING to be unset if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.updates\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.updates\"\nfi\n# Source local changes to allow overrides\n# if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n`\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('react-native/package.json')) + '/scripts/react-native-xcode.sh'\"`\n\n";
 		};
-		464347E4B9F192D62C874D18 /* [CP] Copy Pods Resources */ = {
+		1CCC95C67C50A2C5B488581C /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -369,29 +373,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-EstateOS/Pods-EstateOS-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		5AAF0319C6051C218707DE4C /* [CP] Check Pods Manifest.lock */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
-				"${PODS_ROOT}/Manifest.lock",
-			);
-			name = "[CP] Check Pods Manifest.lock";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-EstateOS-checkManifestLockResult.txt",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
-			showEnvVarsInLog = 0;
-		};
-		928E7B6580FB521DEAB51C75 /* [CP] Embed Pods Frameworks */ = {
+		1D2C010B6316710CEB8BC9ED /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -413,7 +395,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-EstateOS/Pods-EstateOS-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		9940C17067142C41A4C0D03C /* [Expo] Configure project */ = {
+		47FEEB13FA75A8A10AFCFD32 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -437,6 +419,28 @@
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-EstateOS/expo-configure-project.sh\"\n";
 		};
+		4A6DA7E78EE2A053339808BB /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-EstateOS-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -445,13 +449,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				F2A1B3C62D6E7F8101A1B2C3 /* RadarLiveActivityModule.swift in Sources */,
-				F2A1B3C72D6E7F8101A1B2C3 /* RadarLiveActivityModuleBridge.m in Sources */,
-				9F8F0BC3FDF85E43A5C05E5E /* ExpoModulesProvider.swift in Sources */,
+				F4D628C75A06E861897B67D7 /* ExpoModulesProvider.swift in Sources */,
+				569AEECB2FACF1420019F923 /* RadarLiveActivityModule.swift in Sources */,
+				569AEECC2FACF1420019F923 /* RadarLiveActivityModuleBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		564A7B5E2FACB302000D5E02 /* Sources */ = {
+		569AEEAE2FACEF3B0019F923 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -461,17 +465,17 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		564A7B702FACB309000D5E02 /* PBXTargetDependency */ = {
+		569AEEC22FACEF3D0019F923 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 564A7B612FACB302000D5E02 /* EstateOSRadarWidgetExtensionExtension */;
-			targetProxy = 564A7B6F2FACB309000D5E02 /* PBXContainerItemProxy */;
+			target = 569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */;
+			targetProxy = 569AEEC12FACEF3D0019F923 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 3B5742A54D55DC9D47F15817 /* Pods-EstateOS.debug.xcconfig */;
+			baseConfigurationReference = 98B789BA1EECB2617913150B /* Pods-EstateOS.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -486,19 +490,19 @@
 					"FB_SONARKIT_ENABLED=1",
 				);
 				INFOPLIST_FILE = EstateOS/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.radarwidget;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app;
 				PRODUCT_NAME = EstateOS;
 				SWIFT_OBJC_BRIDGING_HEADER = "EstateOS/EstateOS-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -510,7 +514,7 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 884C57E4CAC5D97CFD81EF94 /* Pods-EstateOS.release.xcconfig */;
+			baseConfigurationReference = 087CB94DA5578AE4EC01FBBE /* Pods-EstateOS.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -520,19 +524,19 @@
 				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				INFOPLIST_FILE = EstateOS/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.radarwidget;
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app;
 				PRODUCT_NAME = EstateOS;
 				SWIFT_OBJC_BRIDGING_HEADER = "EstateOS/EstateOS-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -541,7 +545,7 @@
 			};
 			name = Release;
 		};
-		564A7B742FACB309000D5E02 /* Debug */ = {
+		569AEEC52FACEF3D0019F923 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -552,11 +556,11 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_ENTITLEMENTS = EstateOSRadarWidgetExtensionExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 20;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -565,17 +569,18 @@
 				INFOPLIST_FILE = EstateOSRadarWidgetExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = EstateOSRadarWidgetExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.radarwidget.EstateOSRadarWidgetExtension;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.EstateOSRadarWidgetExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -589,7 +594,7 @@
 			};
 			name = Debug;
 		};
-		564A7B752FACB309000D5E02 /* Release */ = {
+		569AEEC62FACEF3D0019F923 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -600,12 +605,12 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CODE_SIGN_ENTITLEMENTS = EstateOSRadarWidgetExtensionExtension.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 20;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -614,20 +619,22 @@
 				INFOPLIST_FILE = EstateOSRadarWidgetExtension/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = EstateOSRadarWidgetExtension;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.0;
 				MTL_FAST_MATH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.radarwidget.EstateOSRadarWidgetExtension;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
+				PRODUCT_BUNDLE_IDENTIFIER = pl.estateos.app.EstateOSRadarWidgetExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -658,7 +665,6 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -666,10 +672,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
-				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -695,7 +699,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				USE_HERMES = true;
@@ -725,7 +728,6 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -733,10 +735,8 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = YES;
-				DEVELOPMENT_TEAM = NW3YW69KL9;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -754,8 +754,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				USE_HERMES = true;
 				VALIDATE_PRODUCT = YES;
@@ -774,11 +772,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		564A7B732FACB309000D5E02 /* Build configuration list for PBXNativeTarget "EstateOSRadarWidgetExtensionExtension" */ = {
+		569AEEC82FACEF3D0019F923 /* Build configuration list for PBXNativeTarget "EstateOSRadarWidgetExtensionExtension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				564A7B742FACB309000D5E02 /* Debug */,
-				564A7B752FACB309000D5E02 /* Release */,
+				569AEEC52FACEF3D0019F923 /* Debug */,
+				569AEEC62FACEF3D0019F923 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

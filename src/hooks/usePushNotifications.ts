@@ -36,6 +36,38 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildFavoritesPayload(input: any): {
+  enabled: boolean;
+  notifyPriceChange: boolean;
+  notifyDealProposals: boolean;
+  notifyNegotiation: boolean;
+  notifyIncludeAmounts: boolean;
+  notifyStatusChange: boolean;
+  notifyNewSimilar: boolean;
+  ids?: number[];
+} {
+  const rawEnabled = input?.enabled;
+  const enabled = typeof rawEnabled === 'boolean' ? rawEnabled : Array.isArray(input?.ids) ? input.ids.length > 0 : false;
+  const boolOr = (value: any, fallback = true) => (typeof value === 'boolean' ? value : fallback);
+  const notifyDealProposals = boolOr(input?.notifyDealProposals, boolOr(input?.notifyNegotiation, true));
+  const notifyNegotiation = boolOr(input?.notifyNegotiation, notifyDealProposals);
+  const ids = Array.isArray(input?.ids)
+    ? input.ids
+        .map((v: any) => Number(v))
+        .filter((v: number) => Number.isFinite(v) && v > 0)
+    : undefined;
+  const base = {
+    enabled,
+    notifyPriceChange: boolOr(input?.notifyPriceChange, true),
+    notifyDealProposals,
+    notifyNegotiation,
+    notifyIncludeAmounts: boolOr(input?.notifyIncludeAmounts, true),
+    notifyStatusChange: boolOr(input?.notifyStatusChange, true),
+    notifyNewSimilar: boolOr(input?.notifyNewSimilar, true),
+  };
+  return ids && ids.length > 0 ? { ...base, ids } : base;
+}
+
 export async function syncPushDevicePreferences(params: {
   authToken: string;
   /** Preferencje per-device (np. Ulubione / Radar) — backend może ignorować nieznane pola. */
@@ -60,12 +92,15 @@ export async function syncPushDevicePreferences(params: {
     }
     if (!pushToken) return false;
 
+    const favorites = buildFavoritesPayload(params.devicePreferences?.favorites);
     const payload = {
       expoPushToken: pushToken,
       platform: Platform.OS.toUpperCase(),
       deviceModel: Device.modelName ?? 'Unknown',
       appVersion: Constants.expoConfig?.version ?? '1.0',
       devicePreferences: params.devicePreferences,
+      // Backward compatibility: część backendów czyta `favorites` na root body.
+      favorites,
     };
 
     const res = await fetch(PUSH_REGISTER_URL, {
@@ -118,7 +153,18 @@ export function usePushNotifications(authToken: string | null) {
           });
           return false;
         }
-        const { status } = await Notifications.requestPermissionsAsync();
+        // Explicit prośba o alert + dźwięk + BADGE.
+        // Bez `allowsBadge: true` iOS nie pozwoli `setBadgeCountAsync` ustawić
+        // czerwonego „1" na ikonie aplikacji — domyślne flagi czasem nie
+        // obejmują tej kategorii (zwłaszcza po starszych zezwoleniach).
+        const { status } = await Notifications.requestPermissionsAsync({
+          ios: {
+            allowAlert: true,
+            allowBadge: true,
+            allowSound: true,
+            allowAnnouncements: true,
+          },
+        });
         finalStatus = status;
       }
 
@@ -151,11 +197,17 @@ export function usePushNotifications(authToken: string | null) {
       }
       if (!pushToken) return false;
 
+      const favorites = buildFavoritesPayload(null);
       const payload = {
         expoPushToken: pushToken,
         platform: Platform.OS.toUpperCase(),
         deviceModel: Device.modelName ?? 'Unknown',
         appVersion: Constants.expoConfig?.version ?? '1.0',
+        // Backend wymaga root `favorites` z boolean `enabled`.
+        favorites,
+        devicePreferences: {
+          favorites,
+        },
       };
 
       let registerPostOk = false;

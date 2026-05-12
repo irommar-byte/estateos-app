@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { BlurView } from 'expo-blur';
@@ -22,8 +22,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-const { width, height } = Dimensions.get('window');
-
 // === KONSTANTY BARWNE I TECHNICZNE ===
 const RR_BLACK = '#040405';
 const RR_GRAPHITE = '#101014';
@@ -32,18 +30,20 @@ const RR_GOLD_SOFT = 'rgba(201, 176, 125, 0.45)';
 const RR_IVORY = '#ebe7df';
 const STATUS_GREEN = '#32D74B'; // Apple iOS Green
 
-const RADAR_SIZE = Math.min(width, height) * 0.44;
-
 // === TIMINGI FAZ ===
+// UWAGA: skan (PHASE_SCAN_MS) i odsłonięcie liczby ofert (COUNT_SHOW_DELAY_MS)
+// pozostają bez zmian — to jest ten kluczowy „moment ofert", od którego user
+// chce dynamicznego pchnięcia tempa. Wszystkie poniższe fazy (msg → gears →
+// brand) zostały skrócone, ale ŻADNA nie została wycięta.
 const PHASE_SCAN_MS = 4600;
 const COUNT_SHOW_DELAY_MS = 160;
-const MESSAGE_AFTER_COUNT_MS = 1500;
-const GEARS_AFTER_MSG_MS = 380;
+const MESSAGE_AFTER_COUNT_MS = 950;   // 1500 → szybsze pojawienie się komunikatu kalibracji
+const GEARS_AFTER_MSG_MS = 220;       // 380 → krótsza pauza przed zębatkami
 
-const GEARS_APPEAR_MS = 400;     
-const GEARS_FAST_SPIN_MS = 1400; 
-const GEARS_MERGE_MS = 1000;      
-const GEARS_SLOW_SPIN_MS = 2000; 
+const GEARS_APPEAR_MS = 240;          // 400 → ostrzejszy fade-in
+const GEARS_FAST_SPIN_MS = 800;       // 1400 → znacznie szybsze rozpędzanie (same ±1440° = większa prędkość kątowa)
+const GEARS_MERGE_MS = 460;           // 1000 → dynamiczny zatrzask
+const GEARS_SLOW_SPIN_MS = 700;       // 2000 → krótkie dotoczenie po sczepieniu, brand wskakuje szybciej
 
 const BRAND_HOLD_MS = 2600;
 const CINEMATIC_OUT_MS = 720;
@@ -51,8 +51,9 @@ const CINEMATIC_OUT_MS = 720;
 const GEARS_PHASE_START_MS =
   PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS + GEARS_AFTER_MSG_MS;
 
+// Brand pokazuje się 80 ms po sczepieniu (zamiast 200) — wrażenie „klik → tabliczka”.
 const BRAND_VISIBLE_AT_MS =
-  GEARS_PHASE_START_MS + GEARS_APPEAR_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS + 200;
+  GEARS_PHASE_START_MS + GEARS_APPEAR_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS + 80;
 
 const GOLD_COG = '#F4E8CC';
 const GOLD_COG_SHADOW = '#C9A227';
@@ -110,12 +111,33 @@ const STAR_SEEDS = Array.from({ length: 56 }, (_, i) => ({
   s: 0.6 + (((i * 17) % 40) / 100),
 }));
 
-function Star({ x, y, size, phase }: { x: number; y: number; size: number; phase: SharedValue<number> }) {
+function Star({
+  x,
+  y,
+  size,
+  phase,
+  screenWidth,
+  screenHeight,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  phase: SharedValue<number>;
+  screenWidth: number;
+  screenHeight: number;
+}) {
   const style = useAnimatedStyle(() => ({
     opacity: interpolate(phase.value, [0, 0.35, 0.7, 1], [0, 0.12 + (x + y) * 0.15, 0.45 + x * 0.2, 0.18], 'clamp'),
   }));
   return (
-    <Animated.View pointerEvents="none" style={[styles.starDot, { left: x * width, top: y * height * 0.72, width: size, height: size, borderRadius: size / 2 }, style]} />
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.starDot,
+        { left: x * screenWidth, top: y * screenHeight * 0.72, width: size, height: size, borderRadius: size / 2 },
+        style,
+      ]}
+    />
   );
 }
 
@@ -181,14 +203,26 @@ function RadarBlip({ center, angleDeg, dist, opacitySv }: { center: number; angl
   );
 }
 
-function OfferCount3D({ count, accentHex, scale, opacity }: { count: number; accentHex: string; scale: SharedValue<number>; opacity: SharedValue<number> }) {
+function OfferCount3D({
+  count,
+  accentHex,
+  scale,
+  opacity,
+  screenWidth,
+}: {
+  count: number;
+  accentHex: string;
+  scale: SharedValue<number>;
+  opacity: SharedValue<number>;
+  screenWidth: number;
+}) {
   const wrapStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ scale: scale.value }],
   }));
   const label = String(Math.max(0, count));
   const fs = label.length > 2 ? 96 : 124;
-  const textW = width;
+  const textW = screenWidth;
   
   return (
     <Animated.View style={[styles.countStage, wrapStyle]}>
@@ -201,7 +235,74 @@ function OfferCount3D({ count, accentHex, scale, opacity }: { count: number; acc
   );
 }
 
+function CascadedMicroText({
+  text,
+  progress,
+  baseStyle,
+  charDelay = 0.042,
+  staggerDirection = 'forward',
+}: {
+  text: string;
+  progress: SharedValue<number>;
+  baseStyle: any;
+  charDelay?: number;
+  staggerDirection?: 'forward' | 'backward';
+}) {
+  const chars = useMemo(() => text.split(''), [text]);
+  return (
+    <View style={styles.cascadeWrap}>
+      {chars.map((ch, i) => (
+        <CascadeChar
+          key={`${ch}-${i}`}
+          ch={ch}
+          progress={progress}
+          index={staggerDirection === 'forward' ? i : chars.length - 1 - i}
+          total={chars.length}
+          baseStyle={baseStyle}
+          charDelay={charDelay}
+        />
+      ))}
+    </View>
+  );
+}
+
+function CascadeChar({
+  ch,
+  progress,
+  index,
+  total,
+  baseStyle,
+  charDelay,
+}: {
+  ch: string;
+  progress: SharedValue<number>;
+  index: number;
+  total: number;
+  baseStyle: any;
+  charDelay: number;
+}) {
+  const unit = total > 1 ? 1 / (total - 1) : 1;
+  const charStyle = useAnimatedStyle(() => {
+    const t = Math.max(0, Math.min(1, (progress.value - index * charDelay) / Math.max(0.001, 0.28)));
+    return {
+      opacity: t,
+      transform: [{ translateY: (1 - t) * 8 }, { scale: 0.985 + t * 0.015 }],
+    };
+  });
+  return (
+    <Animated.Text style={[baseStyle, charStyle, { marginRight: ch === ' ' ? 3 : 0, letterSpacing: unit < 0.05 ? 0.4 : undefined }]}>
+      {ch === ' ' ? '\u00A0' : ch}
+    </Animated.Text>
+  );
+}
+
 export default function RadarCalibrationRitualOverlay({ visible, cityLabel, transactionType, matchingOffersCount, onComplete }: Props) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const shorterSide = Math.min(screenWidth, screenHeight);
+  const isTabletLike = shorterSide >= 700;
+  const radarSize = Math.min(shorterSide * (isTabletLike ? 0.42 : 0.44), isTabletLike ? 420 : 312);
+  const cardWidth = Math.min(screenWidth - (isTabletLike ? 120 : 58), isTabletLike ? 540 : 360);
+  const countOverlayTop = Math.max(isTabletLike ? 32 : 20, Math.min(72, screenHeight * 0.072));
   const completeRef = useRef(onComplete);
   completeRef.current = onComplete;
   const radarSoundRef = useRef<Audio.Sound | null>(null);
@@ -233,6 +334,8 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
   const gearSepR = useSharedValue(INITIAL_GEAR_SEP);  
   
   const brandOpacity = useSharedValue(0);
+  const brandMicroTextIn = useSharedValue(0);
+  const bottomMicroTextIn = useSharedValue(0);
   const statusPulse = useSharedValue(0);
   const exitOpacity = useSharedValue(1);
   const exitScale = useSharedValue(1);
@@ -273,7 +376,7 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
       scanActive.value = 0; dotMask.value = 0;
       dotOp0.value = 0; dotOp1.value = 0; dotOp2.value = 0; dotOp3.value = 0; dotOp4.value = 0; dotOp5.value = 0; dotOp6.value = 0; dotOp7.value = 0;
       radarGroupOpacity.value = 1; flashOpacity.value = 0; dustOpacity.value = 0; countScale.value = 0.12; countOpacity.value = 0; calibMsgOpacity.value = 0;
-      brandOpacity.value = 0; statusPulse.value = 0; exitOpacity.value = 1; exitScale.value = 1;
+      brandOpacity.value = 0; brandMicroTextIn.value = 0; bottomMicroTextIn.value = 0; statusPulse.value = 0; exitOpacity.value = 1; exitScale.value = 1;
       gearsOpacity.value = 0; gearRotL.value = 0; gearRotR.value = 0;
       gearSepL.value = -INITIAL_GEAR_SEP; gearSepR.value = INITIAL_GEAR_SEP;
       cancelAnimation(sweep);
@@ -312,37 +415,44 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
     }, PHASE_SCAN_MS + 520);
 
     const tCalibMsg = setTimeout(() => {
-      calibMsgOpacity.value = withTiming(1, { duration: 520, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
+      calibMsgOpacity.value = withTiming(1, { duration: 360, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
     }, PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS);
 
     const tGearsStart = setTimeout(() => {
       gearsOpacity.value = withTiming(1, { duration: GEARS_APPEAR_MS });
-      gearRotL.value = withTiming(-1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.in(Easing.quad) });
-      gearRotR.value = withTiming(1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.in(Easing.quad) });
+      // Bardziej agresywny rozpęd — mocniej „in", żeby ostatnie 200 ms latały już bardzo szybko.
+      gearRotL.value = withTiming(-1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.bezier(0.7, 0, 0.84, 0.2) });
+      gearRotR.value = withTiming(1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.bezier(0.7, 0, 0.84, 0.2) });
     }, GEARS_PHASE_START_MS);
 
     const tGearsMerge = setTimeout(() => {
-      gearSepL.value = withTiming(-5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.4, 0, 0.2, 1) });
-      gearSepR.value = withTiming(5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.4, 0, 0.2, 1) });
-      
+      // Sczepienie zębatek — dynamiczny zatrzask z lekkim „back" easingiem.
+      gearSepL.value = withTiming(-5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.34, 1.2, 0.4, 1) });
+      gearSepR.value = withTiming(5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.34, 1.2, 0.4, 1) });
+
+      // Krótkie dotoczenie po sczepieniu — zachowane, ale wyraźnie skrócone (GEARS_SLOW_SPIN_MS = 700).
       gearRotL.value = withSequence(
-        withTiming(-1500, { duration: 200, easing: Easing.out(Easing.quad) }),
-        withTiming(-1500 + 720, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 200, easing: Easing.out(Easing.quad) })
+        withTiming(-1500, { duration: 140, easing: Easing.out(Easing.quad) }),
+        withTiming(-1500 + 360, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 140, easing: Easing.out(Easing.quad) })
       );
-      
+
       gearRotR.value = withSequence(
-        withTiming(1560, { duration: 200, easing: Easing.out(Easing.quad) }),
-        withTiming(1560 - 735, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 200, easing: Easing.out(Easing.quad) })
+        withTiming(1560, { duration: 140, easing: Easing.out(Easing.quad) }),
+        withTiming(1560 - 372, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 140, easing: Easing.out(Easing.quad) })
       );
     }, GEARS_PHASE_START_MS + GEARS_FAST_SPIN_MS);
 
     const tGearsLockHaptic = setTimeout(() => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       Haptics.selectionAsync();
-    }, GEARS_PHASE_START_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS - 100);
+    }, GEARS_PHASE_START_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS - 80);
 
     const tBrand = setTimeout(() => {
-      brandOpacity.value = withTiming(1, { duration: 480, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
+      // Tabliczka „radar aktywny" wskakuje już 80 ms po sczepieniu — czuć efekt
+      // „klik → kompletny system". Wszystkie sub-animacje też dostały krótsze duration.
+      brandOpacity.value = withTiming(1, { duration: 340, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
+      brandMicroTextIn.value = withTiming(1, { duration: 380, easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
+      bottomMicroTextIn.value = withDelay(80, withTiming(1, { duration: 440, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }));
       statusPulse.value = withRepeat(
         withSequence(withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) }), withTiming(0.2, { duration: 720, easing: Easing.inOut(Easing.cubic) })),
         -1, true
@@ -408,14 +518,14 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
   if (!visible) return null;
 
   const cityText = cityLabel.trim() ? cityLabel : 'Wybrana metropolia';
-  const cx = RADAR_SIZE / 2;
+  const cx = radarSize / 2;
 
   return (
     <Animated.View style={[styles.fill, finaleRootStyle]} pointerEvents="auto">
       <LinearGradient colors={[RR_BLACK, RR_GRAPHITE, '#060608', RR_BLACK]} locations={[0, 0.38, 0.72, 1]} style={StyleSheet.absoluteFill} />
 
       {stars.map((st) => (
-        <Star key={st.id} x={st.x} y={st.y} size={st.s} phase={phase} />
+        <Star key={st.id} x={st.x} y={st.y} size={st.s} phase={phase} screenWidth={screenWidth} screenHeight={screenHeight} />
       ))}
 
       <Animated.View style={[styles.vignette, vignetteStyle]} pointerEvents="none">
@@ -428,7 +538,7 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
 
       <Animated.View style={[styles.dustLayer, dustStyle]} pointerEvents="none">
         {STAR_SEEDS.slice(0, 24).map((st) => (
-          <View key={`d-${st.id}`} style={[styles.dustMote, { left: st.x * width, top: st.y * height * 0.85, width: 2 + (st.id % 4), height: 2 + (st.id % 4), opacity: 0.35 + (st.id % 7) / 30 }]} />
+          <View key={`d-${st.id}`} style={[styles.dustMote, { left: st.x * screenWidth, top: st.y * screenHeight * 0.85, width: 2 + (st.id % 4), height: 2 + (st.id % 4), opacity: 0.35 + (st.id % 7) / 30 }]} />
         ))}
       </Animated.View>
 
@@ -443,36 +553,36 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
         </Animated.View>
 
         <Animated.View style={[radarFadeStyle, { alignItems: 'center' }]}>
-          <View style={[styles.radarPedestal, { width: RADAR_SIZE + 52, height: RADAR_SIZE + 52 }]}>
-            <BlurView intensity={Platform.OS === 'ios' ? 34 : 22} tint="dark" experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined} style={[styles.radarBlurUnder, { borderRadius: (RADAR_SIZE + 52) / 2 }]} />
-            <LinearGradient colors={['rgba(45,42,36,0.95)', 'rgba(12,12,16,1)', 'rgba(8,8,10,1)']} style={[styles.radarBezelOuter, { width: RADAR_SIZE + 44, height: RADAR_SIZE + 44, borderRadius: (RADAR_SIZE + 44) / 2 }]}>
-              <View style={[styles.radarWrap, { width: RADAR_SIZE + 38, height: RADAR_SIZE + 38 }]}>
-                <Animated.View style={[styles.ringOuter, ring2Style, { width: RADAR_SIZE + 36, height: RADAR_SIZE + 36, borderRadius: (RADAR_SIZE + 36) / 2 }]} />
-                <Animated.View style={[styles.ringMid, ring1Style, { width: RADAR_SIZE + 14, height: RADAR_SIZE + 14, borderRadius: (RADAR_SIZE + 14) / 2 }]} />
+          <View style={[styles.radarPedestal, { width: radarSize + 52, height: radarSize + 52 }]}>
+            <BlurView intensity={Platform.OS === 'ios' ? 34 : 22} tint="dark" experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined} style={[styles.radarBlurUnder, { borderRadius: (radarSize + 52) / 2 }]} />
+            <LinearGradient colors={['rgba(45,42,36,0.95)', 'rgba(12,12,16,1)', 'rgba(8,8,10,1)']} style={[styles.radarBezelOuter, { width: radarSize + 44, height: radarSize + 44, borderRadius: (radarSize + 44) / 2 }]}>
+              <View style={[styles.radarWrap, { width: radarSize + 38, height: radarSize + 38 }]}>
+                <Animated.View style={[styles.ringOuter, ring2Style, { width: radarSize + 36, height: radarSize + 36, borderRadius: (radarSize + 36) / 2 }]} />
+                <Animated.View style={[styles.ringMid, ring1Style, { width: radarSize + 14, height: radarSize + 14, borderRadius: (radarSize + 14) / 2 }]} />
 
-                <LinearGradient colors={['#4a453c', '#2c2a26', '#18181c']} start={{ x: 0.2, y: 0 }} end={{ x: 0.85, y: 1 }} style={[styles.metalBezel, { width: RADAR_SIZE + 10, height: RADAR_SIZE + 10, borderRadius: (RADAR_SIZE + 10) / 2 }]}>
-                  <View style={[styles.radarDisk, { width: RADAR_SIZE, height: RADAR_SIZE, borderRadius: RADAR_SIZE / 2 }]}>
-                    <LinearGradient colors={['rgba(210,195,155,0.14)', 'rgba(22,22,28,0.97)', 'rgba(6,6,9,1)', RR_GRAPHITE]} locations={[0, 0.35, 0.72, 1]} start={{ x: 0.35, y: 0 }} end={{ x: 0.65, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: RADAR_SIZE / 2 }]} />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.62)']} locations={[0, 0.45, 1]} style={[StyleSheet.absoluteFill, { borderRadius: RADAR_SIZE / 2 }]} pointerEvents="none" />
-                    <LinearGradient colors={['rgba(255,255,255,0.11)', 'transparent', 'transparent']} locations={[0, 0.35, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 0.55 }} style={[styles.rimLight, { borderRadius: RADAR_SIZE / 2 }]} pointerEvents="none" />
-                    <RadarTicks radius={RADAR_SIZE} />
+                <LinearGradient colors={['#4a453c', '#2c2a26', '#18181c']} start={{ x: 0.2, y: 0 }} end={{ x: 0.85, y: 1 }} style={[styles.metalBezel, { width: radarSize + 10, height: radarSize + 10, borderRadius: (radarSize + 10) / 2 }]}>
+                  <View style={[styles.radarDisk, { width: radarSize, height: radarSize, borderRadius: radarSize / 2 }]}>
+                    <LinearGradient colors={['rgba(210,195,155,0.14)', 'rgba(22,22,28,0.97)', 'rgba(6,6,9,1)', RR_GRAPHITE]} locations={[0, 0.35, 0.72, 1]} start={{ x: 0.35, y: 0 }} end={{ x: 0.65, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: radarSize / 2 }]} />
+                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.62)']} locations={[0, 0.45, 1]} style={[StyleSheet.absoluteFill, { borderRadius: radarSize / 2 }]} pointerEvents="none" />
+                    <LinearGradient colors={['rgba(255,255,255,0.11)', 'transparent', 'transparent']} locations={[0, 0.35, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 0.55 }} style={[styles.rimLight, { borderRadius: radarSize / 2 }]} pointerEvents="none" />
+                    <RadarTicks radius={radarSize} />
 
                     {BLIP_SCATTER.map((b, i) => (
-                      <RadarBlip key={`blip-${b.angleDeg}-${i}`} center={cx} angleDeg={b.angleDeg} dist={(RADAR_SIZE / 2) * b.distMul} opacitySv={blipOpacityByIndex[i]} />
+                      <RadarBlip key={`blip-${b.angleDeg}-${i}`} center={cx} angleDeg={b.angleDeg} dist={(radarSize / 2) * b.distMul} opacitySv={blipOpacityByIndex[i]} />
                     ))}
 
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: RADAR_SIZE, height: RADAR_SIZE }]}>
-                      <SweepTrailPie radarSize={RADAR_SIZE} accentMid={trailB} accentBright={trailC} />
+                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
+                      <SweepTrailPie radarSize={radarSize} accentMid={trailB} accentBright={trailC} />
                     </Animated.View>
 
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: RADAR_SIZE, height: RADAR_SIZE }]}>
-                      <LinearGradient colors={['transparent', 'rgba(201,176,125,0.1)', 'rgba(201,176,125,0.04)', 'transparent']} start={{ x: 0.12, y: 1 }} end={{ x: 0.88, y: 0 }} style={{ marginTop: RADAR_SIZE * 0.024, width: RADAR_SIZE * 0.38, height: RADAR_SIZE * 0.44, borderRadius: 8, opacity: 0.75 }} />
+                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
+                      <LinearGradient colors={['transparent', 'rgba(201,176,125,0.1)', 'rgba(201,176,125,0.04)', 'transparent']} start={{ x: 0.12, y: 1 }} end={{ x: 0.88, y: 0 }} style={{ marginTop: radarSize * 0.024, width: radarSize * 0.38, height: radarSize * 0.44, borderRadius: 8, opacity: 0.75 }} />
                     </Animated.View>
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: RADAR_SIZE, height: RADAR_SIZE }]}>
-                      <LinearGradient colors={['transparent', RR_GOLD_SOFT, 'rgba(255,250,240,0.55)', 'transparent']} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} style={[styles.sweepCore, { marginTop: RADAR_SIZE * 0.026, width: Math.max(2.5, RADAR_SIZE * 0.036), height: RADAR_SIZE * 0.46 }]} />
+                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
+                      <LinearGradient colors={['transparent', RR_GOLD_SOFT, 'rgba(255,250,240,0.55)', 'transparent']} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} style={[styles.sweepCore, { marginTop: radarSize * 0.026, width: Math.max(2.5, radarSize * 0.036), height: radarSize * 0.46 }]} />
                     </Animated.View>
-                    <View style={[styles.centerDot, { position: 'absolute', left: RADAR_SIZE / 2 - 5, top: RADAR_SIZE / 2 - 5, width: 10, height: 10, borderRadius: 5 }]} />
-                    <View pointerEvents="none" style={[styles.centerDotInner, { position: 'absolute', left: RADAR_SIZE / 2 - 2, top: RADAR_SIZE / 2 - 2, width: 4, height: 4, borderRadius: 2 }]} />
+                    <View style={[styles.centerDot, { position: 'absolute', left: radarSize / 2 - 5, top: radarSize / 2 - 5, width: 10, height: 10, borderRadius: 5 }]} />
+                    <View pointerEvents="none" style={[styles.centerDotInner, { position: 'absolute', left: radarSize / 2 - 2, top: radarSize / 2 - 2, width: 4, height: 4, borderRadius: 2 }]} />
                   </View>
                 </LinearGradient>
               </View>
@@ -487,10 +597,10 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
           <Text style={styles.whisper}>Nasłuchiwanie rynku w toku...</Text>
         </Animated.View>
 
-        <View style={styles.countOverlay} pointerEvents="none">
-          <OfferCount3D count={matchingOffersCount} accentHex={accentHex} scale={countScale} opacity={countOpacity} />
+        <View style={[styles.countOverlay, { paddingTop: countOverlayTop, paddingHorizontal: isTabletLike ? 44 : 20 }]} pointerEvents="none">
+          <OfferCount3D count={matchingOffersCount} accentHex={accentHex} scale={countScale} opacity={countOpacity} screenWidth={screenWidth} />
           
-          <Animated.View style={[styles.calibMsgWrap, calibMsgStyle]}>
+          <Animated.View style={[styles.calibMsgWrap, calibMsgStyle, { maxWidth: screenWidth - (isTabletLike ? 140 : 44) }]}>
             <Text style={styles.calibMsgTitle}>
               Radar został poprawnie skalibrowany i jest gotowy do natychmiastowego informowania. Tryb czuwania został załączony.
             </Text>
@@ -505,16 +615,16 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
             </Animated.View>
           </View>
 
-          <Animated.View style={[styles.brandBlock, brandStyle]}>
-            <View style={styles.brandCard}>
+          <Animated.View style={[styles.brandBlock, brandStyle, { marginTop: isTabletLike ? 40 : 32 }]}>
+            <View style={[styles.brandCard, { width: cardWidth, borderRadius: isTabletLike ? 28 : 24, paddingVertical: isTabletLike ? 28 : 24, paddingHorizontal: isTabletLike ? 28 : 22 }]}>
               <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
               <LinearGradient colors={['rgba(212,175,55,0.15)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFill} />
               
-              <View style={styles.brandBorder} />
+              <View style={[styles.brandBorder, { borderRadius: isTabletLike ? 28 : 24 }]} />
               <View style={styles.brandTopRule} />
               
-              <Text style={styles.brandEyebrow}>INTELLIGENCE CORE</Text>
-              <Text style={styles.brandTitle}>EstateOS™ Radar</Text>
+              <CascadedMicroText text="INTELLIGENCE CORE" progress={brandMicroTextIn} baseStyle={[styles.brandEyebrow, isTabletLike && { fontSize: 11.5, letterSpacing: 4.2 }]} />
+              <Text style={[styles.brandTitle, isTabletLike && { fontSize: 44 }]}>EstateOS™ Radar</Text>
               
               <View style={styles.brandDivider} />
               <View style={styles.statusRow}>
@@ -530,7 +640,13 @@ export default function RadarCalibrationRitualOverlay({ visible, cityLabel, tran
       </View>
 
       <View style={styles.bottomMark} pointerEvents="none">
-        <Text style={styles.bottomText}>PRECYZJA W CISZY · RADAR ESTATEOS</Text>
+        <CascadedMicroText
+          text="PRECYZJA W CISZY · RADAR ESTATEOS"
+          progress={bottomMicroTextIn}
+          baseStyle={[styles.bottomText, isTabletLike && { fontSize: 10.5, letterSpacing: 3.3 }]}
+          charDelay={0.028}
+          staggerDirection="backward"
+        />
       </View>
     </Animated.View>
   );
@@ -568,8 +684,8 @@ const styles = StyleSheet.create({
 
   centerBlock: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, marginTop: -14 },
   
-  countOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'flex-start', alignItems: 'center', paddingTop: height * 0.07, paddingHorizontal: 20, zIndex: 1600 },
-  calibMsgWrap: { marginTop: 14, maxWidth: width - 44 },
+  countOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'flex-start', alignItems: 'center', zIndex: 1600 },
+  calibMsgWrap: { marginTop: 14 },
   calibMsgTitle: { color: RR_IVORY, fontSize: 14, lineHeight: 21, textAlign: 'center', fontWeight: '500' },
   
   gearsRow: { 
@@ -587,7 +703,6 @@ const styles = StyleSheet.create({
   
   brandBlock: { marginTop: 32, width: '100%', paddingHorizontal: 10 },
   brandCard: { 
-    width: Math.min(width - 58, 360), 
     borderRadius: 24, 
     overflow: 'hidden', 
     borderWidth: 1, 
@@ -650,7 +765,7 @@ const styles = StyleSheet.create({
   statusSignalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: STATUS_GREEN, shadowColor: STATUS_GREEN, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 10, elevation: 10 },
   brandStatus: { color: STATUS_GREEN, fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
   
-  countStage: { alignItems: 'center', justifyContent: 'center', width, minHeight: 230 },
+  countStage: { alignItems: 'center', justifyContent: 'center', minHeight: 230 },
   countDeep: { position: 'absolute', fontWeight: '900', color: 'rgba(0,0,0,0.45)', letterSpacing: -3, transform: [{ translateX: 5 }, { translateY: 7 }] },
   countShadow: { position: 'absolute', fontWeight: '900', letterSpacing: -3, opacity: 0.35, transform: [{ translateX: 3 }, { translateY: 4 }] },
   countBody: { position: 'absolute', fontWeight: '900', letterSpacing: -4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 6 }, textShadowRadius: 18 },
@@ -682,4 +797,5 @@ const styles = StyleSheet.create({
   whisper: { marginTop: 18, color: 'rgba(235,231,223,0.42)', fontSize: 12, fontWeight: '500', letterSpacing: 2, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   bottomMark: { paddingBottom: Platform.OS === 'ios' ? 48 : 32, alignItems: 'center' },
   bottomText: { color: 'rgba(235,231,223,0.22)', fontSize: 9, letterSpacing: 2.8, fontWeight: '600' },
+  cascadeWrap: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
 });

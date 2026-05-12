@@ -1,11 +1,28 @@
 import { create } from 'zustand';
 
+/**
+ * Gate przed nawigacją z kreatora "Dodaj ofertę".
+ *
+ * Wywoływany ZAWSZE przez `FloatingNextButton` (główny FAB w tab barze) oraz
+ * przez `AddOfferStepper` (numerki 1..6) zanim wykonają `navigation.navigate`.
+ *
+ * Jeśli gate zwróci `false`, to znaczy że bieżący ekran:
+ *  - przejął kontrolę nad nawigacją (np. otworzył modal potwierdzenia),
+ *  - sam wykona finalny `navigate` po decyzji usera.
+ *
+ * Jeśli zwróci `true` (lub gate nie jest zarejestrowany) — nawigacja idzie
+ * standardową ścieżką.
+ */
+type NavigationGate = (targetStep: number) => boolean;
+
 interface OfferStore {
   currentStep: number;
   draft: any;
+  navigationGate: NavigationGate | null;
   setCurrentStep: (step: number) => void;
   updateDraft: (data: any) => void;
   resetDraft: () => void;
+  setNavigationGate: (gate: NavigationGate | null) => void;
 }
 
 // CZYSTE MAPOWANIE 1:1 Z MYSQL (Bez petsAllowed i airConditioning)
@@ -57,10 +74,12 @@ const initialDraft = {
 export const useOfferStore = create<OfferStore>((set) => ({
   currentStep: 0,
   draft: initialDraft,
+  navigationGate: null,
   setCurrentStep: (step) => set({ currentStep: step }),
   updateDraft: (data) => set((state) => ({ draft: { ...state.draft, ...data } })),
   resetDraft: () => set({ 
     currentStep: 0, 
     draft: initialDraft 
   }),
+  setNavigationGate: (gate) => set({ navigationGate: gate }),
 }));

@@ -19,13 +19,29 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const Colors = { primary: '#10b981' };
 
 const DISTRICT_COORDS: Record<string, { lat: number, lng: number }> = {
-  // WARSZAWA
-  'Warszawa': { lat: 52.2297, lng: 21.0122 }, 'Bemowo': { lat: 52.2460, lng: 20.9100 }, 'Białołęka': { lat: 52.3240, lng: 20.9700 },
-  'Bielany': { lat: 52.2850, lng: 20.9320 }, 'Mokotów': { lat: 52.1939, lng: 21.0287 }, 'Ochota': { lat: 52.2120, lng: 20.9690 },
-  'Praga-Południe': { lat: 52.2390, lng: 21.0825 }, 'Praga-Północ': { lat: 52.2581, lng: 21.0334 }, 'Rembertów': { lat: 52.2580, lng: 21.1620 },
-  'Śródmieście': { lat: 52.2297, lng: 21.0122 }, 'Targówek': { lat: 52.2800, lng: 21.0500 }, 'Ursus': { lat: 52.1890, lng: 20.8850 },
-  'Ursynów': { lat: 52.1484, lng: 21.0456 }, 'Wawer': { lat: 52.2000, lng: 21.1660 }, 'Wesoła': { lat: 52.2610, lng: 21.2280 },
-  'Wilanów': { lat: 52.1643, lng: 21.0894 }, 'Włochy': { lat: 52.1940, lng: 20.9330 }, 'Wola': { lat: 52.2361, lng: 20.9575 }, 'Żoliborz': { lat: 52.2688, lng: 20.9820 },
+  // WARSZAWA — centroidy poprawione na faktyczne geometryczne środki dzielnic
+  // (poprzednie wartości miały Białołękę w NW narożniku, przez co Echa Leśne
+  // — fizycznie Białołęka, geograficznie ~52.31, 21.02 — przegrywały dystans
+  // z centroidem Targówka 52.28, 21.05 i były błędnie klasyfikowane).
+  'Warszawa': { lat: 52.2297, lng: 21.0122 },
+  'Bemowo': { lat: 52.2540, lng: 20.9100 },
+  'Białołęka': { lat: 52.3300, lng: 21.0400 },     // FIX: było 52.324/20.97 (NW narożnik); poprawne ~52.33/21.04
+  'Bielany': { lat: 52.2900, lng: 20.9400 },
+  'Mokotów': { lat: 52.1930, lng: 21.0290 },
+  'Ochota': { lat: 52.2110, lng: 20.9850 },
+  'Praga-Południe': { lat: 52.2470, lng: 21.0900 },  // FIX: było 52.239/21.0825; przesunięcie na E
+  'Praga-Północ': { lat: 52.2600, lng: 21.0400 },    // FIX: było 52.258/21.033
+  'Rembertów': { lat: 52.2650, lng: 21.1900 },       // FIX: było 21.162; właściwe ~21.19
+  'Śródmieście': { lat: 52.2310, lng: 21.0120 },
+  'Targówek': { lat: 52.2950, lng: 21.0450 },        // FIX: było 52.28/21.05; centroid leży nieco wyżej
+  'Ursus': { lat: 52.1960, lng: 20.8860 },
+  'Ursynów': { lat: 52.1400, lng: 21.0450 },
+  'Wawer': { lat: 52.2150, lng: 21.1830 },           // FIX: było 21.166; właściwe ~21.183
+  'Wesoła': { lat: 52.2470, lng: 21.2300 },
+  'Wilanów': { lat: 52.1660, lng: 21.0900 },
+  'Włochy': { lat: 52.1960, lng: 20.9450 },
+  'Wola': { lat: 52.2360, lng: 20.9580 },
+  'Żoliborz': { lat: 52.2730, lng: 20.9840 },
   
   // ŁÓDŹ
   'Łódź': { lat: 51.7592, lng: 19.4560 }, 'Bałuty': { lat: 51.8003, lng: 19.4244 }, 'Górna': { lat: 51.7225, lng: 19.4756 },
@@ -91,6 +107,172 @@ const DISTRICTS_DATA: Record<string, string[]> = {
 const STRICT_CITY_SET = new Set<string>(STRICT_CITIES as unknown as string[]);
 const DEFAULT_STRICT_CITY = STRICT_CITIES[0];
 
+/**
+ * Polilinia trasy S8 (Trasa Armii Krajowej / Toruńska) — fizyczna północna
+ * granica Targówka i Pragi-Północ z Białołęką w Warszawie.
+ *
+ * UŻYTKOWNIK JAKO ŹRÓDŁO PRAWDY
+ * ─────────────────────────────
+ * Mieszkańcy Warszawy znają tę regułę: wszystko po PÓŁNOCNEJ stronie S8
+ * (między Wisłą a węzłem Marki) administracyjnie należy do Białołęki.
+ * Apple `place.district` potrafi się pomylić przy granicy, Voronoi też
+ * nie ma sztywnej wiedzy o trasach — więc dajemy mu deterministyczną
+ * regułę „za S8 = Białołęka".
+ *
+ * GEOMETRIA
+ * ─────────
+ * S8 nie biegnie idealnie po szerokości — od mostu Grota (zachód) lekko
+ * opada na południe ku węzłowi Marki (wschód). Reprezentujemy ją jako
+ * polilinię 6 punktów; dla dowolnej długości geograficznej znajdujemy
+ * szerokość trasy przez liniową interpolację między dwoma sąsiednimi
+ * węzłami. Reguła obowiązuje WYŁĄCZNIE w zakresie lng 20.975-21.095
+ * (od mostu Grota do węzła Marki) — poza tym zakresem S8 biegnie przez
+ * Bielany / inne dzielnice, gdzie reguła „N=Białołęka" nie obowiązuje.
+ */
+const S8_LINE: Array<{ lng: number; lat: number }> = [
+  // WAŻNE: poprzednia wersja miała S8 przesuniętą za bardzo na południe
+  // (ok. 500-900 m), przez co część Bródna łapała się jako „N od S8”.
+  // Ten przebieg jest podniesiony do realnej osi Toruńskiej/AK nad Bródnem.
+  { lng: 20.9750, lat: 52.3060 }, // Most Grota-Roweckiego (Wisła)
+  { lng: 21.0000, lat: 52.3056 }, // rejon Wisłostrady / Tarchomin
+  { lng: 21.0200, lat: 52.3050 }, // Modlińska / Annopol
+  { lng: 21.0450, lat: 52.3044 }, // nad Bródnem (Kondratowicza/Krasnobrodzka zostają S od linii)
+  { lng: 21.0700, lat: 52.3039 }, // Zacisze / Targówek Fabryczny
+  { lng: 21.0950, lat: 52.3034 }, // Marki / Drewnica
+];
+
+/**
+ * Zwraca szerokość geograficzną trasy S8 dla zadanej długości geograficznej,
+ * używając liniowej interpolacji między węzłami polilinii.
+ *
+ * Zwraca `null` jeśli lng wykracza poza zakres polilinii — wtedy reguła
+ * „za S8 = Białołęka" się NIE stosuje (np. punkty w Bielanach na zachodzie
+ * od mostu Grota lub w Markach na wschodzie od Drewnicy).
+ */
+function s8LatitudeAtLongitude(lng: number): number | null {
+  if (lng < S8_LINE[0].lng || lng > S8_LINE[S8_LINE.length - 1].lng) return null;
+  for (let i = 0; i < S8_LINE.length - 1; i++) {
+    const a = S8_LINE[i];
+    const b = S8_LINE[i + 1];
+    if (lng >= a.lng && lng <= b.lng) {
+      const t = (lng - a.lng) / (b.lng - a.lng);
+      return a.lat + t * (b.lat - a.lat);
+    }
+  }
+  return null;
+}
+
+/**
+ * Voronoi-style „zarodki" dla dzielnic Warszawy.
+ *
+ * DLACZEGO TO ISTNIEJE
+ * ─────────────────────
+ * Apple Maps reverse-geocoding (`place.district`) jest źródłem prawdy, ale:
+ *  • na iPad/iOS simulatorze pole `district` często wraca puste/null,
+ *  • dla adresów blisko granic dzielnic API zwraca czasem street-level locality
+ *    zamiast administracyjnej dzielnicy.
+ *
+ * Stary fallback miał JEDEN centroid per dzielnica i liczył haversine. To
+ * było beznadziejne dla dzielnic-gigantów (Białołęka ciągnie się ~12 km
+ * z południa na północ od Annopola po Choszczówkę — centroid w środku
+ * geometrycznym nie pomaga punktom w jej południowej połowie, bo bliżej
+ * jest do centroidu Targówka).
+ *
+ * Z wieloma zarodkami:
+ *  1. Dla każdej dzielnicy mamy 2-8 reprezentatywnych punktów rozsianych
+ *     po jej rzeczywistym obszarze (osiedla, węzły, granice).
+ *  2. Dystans punktu do dzielnicy = MIN(distance do każdego zarodka tej dzielnicy).
+ *  3. Wybieramy dzielnicę z najmniejszą wartością.
+ *
+ * To jest aproksymacja diagramu Voronoi — bez ciężaru polygonów (GeoJSON),
+ * ale praktycznie tak samo dokładna dla naszego celu (poprawne dopasowanie
+ * adresu do dzielnicy administracyjnej).
+ *
+ * Współrzędne wybrane ręcznie — środki osiedli i charakterystyczne lokacje,
+ * NIE czyste centroidy geometryczne (które zawodzą dla dzielnic L-shaped).
+ */
+const WARSZAWA_DISTRICT_SEEDS: Record<string, Array<{ lat: number; lng: number }>> = {
+  // Białołęka — olbrzymia dzielnica, 8 zarodków
+  'Białołęka': [
+    { lat: 52.3450, lng: 20.9750 }, // Tarchomin
+    { lat: 52.3550, lng: 20.9850 }, // Nowodwory
+    { lat: 52.3500, lng: 21.0200 }, // Henryków
+    { lat: 52.3580, lng: 21.0450 }, // Białołęka Dworska
+    { lat: 52.3650, lng: 21.0300 }, // Choszczówka
+    { lat: 52.3200, lng: 20.9850 }, // Brzeziny / Marywilska N
+    { lat: 52.3100, lng: 20.9800 }, // Marywilska / Echa Leśne S
+    { lat: 52.3050, lng: 21.0050 }, // Annopol / Żerań
+  ],
+  // Targówek — 4 zarodki, dzielnica L-shaped
+  'Targówek': [
+    { lat: 52.3000, lng: 21.0430 }, // Bródno-Podgrodzie
+    { lat: 52.2920, lng: 21.0500 }, // Targówek Mieszkaniowy
+    { lat: 52.2950, lng: 21.0700 }, // Zacisze
+    { lat: 52.2820, lng: 21.0750 }, // Targówek Fabryczny
+  ],
+  // Praga-Północ — 3 zarodki
+  'Praga-Północ': [
+    { lat: 52.2600, lng: 21.0400 }, // Stara Praga
+    { lat: 52.2660, lng: 21.0550 }, // Szmulowizna
+    { lat: 52.2540, lng: 21.0350 }, // Nowa Praga
+  ],
+  // Praga-Południe — 5 zarodków, rozciągnięta na E
+  'Praga-Południe': [
+    { lat: 52.2470, lng: 21.0750 }, // Saska Kępa
+    { lat: 52.2450, lng: 21.0950 }, // Grochów
+    { lat: 52.2380, lng: 21.0700 }, // Kamionek
+    { lat: 52.2280, lng: 21.1050 }, // Gocław
+    { lat: 52.2540, lng: 21.0820 }, // Kępa Gocławska
+  ],
+  // Mokotów — 4 zarodki
+  'Mokotów': [
+    { lat: 52.1980, lng: 21.0190 }, // Stary Mokotów
+    { lat: 52.1850, lng: 21.0250 }, // Stegny
+    { lat: 52.1900, lng: 21.0450 }, // Sadyba
+    { lat: 52.1950, lng: 21.0050 }, // Mokotów Górny
+  ],
+  // Wola — 3 zarodki
+  'Wola': [
+    { lat: 52.2380, lng: 20.9580 }, // Centrum Woli
+    { lat: 52.2260, lng: 20.9700 }, // Mirów
+    { lat: 52.2480, lng: 20.9500 }, // Ulrychów
+  ],
+  // Bielany — 3 zarodki
+  'Bielany': [
+    { lat: 52.2900, lng: 20.9450 }, // Centrum Bielan
+    { lat: 52.3000, lng: 20.9100 }, // Wrzeciono
+    { lat: 52.2800, lng: 20.9550 }, // Marymont
+  ],
+  // Bemowo — 3 zarodki
+  'Bemowo': [
+    { lat: 52.2520, lng: 20.9100 }, // Bemowo Centrum
+    { lat: 52.2400, lng: 20.8950 }, // Jelonki
+    { lat: 52.2620, lng: 20.9050 }, // Boernerowo
+  ],
+  // Ursynów — 3 zarodki
+  'Ursynów': [
+    { lat: 52.1480, lng: 21.0450 }, // Imielin
+    { lat: 52.1380, lng: 21.0300 }, // Kabaty
+    { lat: 52.1600, lng: 21.0500 }, // Stokłosy
+  ],
+  // Wawer — 4 zarodki, ogromna dzielnica
+  'Wawer': [
+    { lat: 52.2200, lng: 21.1400 }, // Marysin
+    { lat: 52.1950, lng: 21.1850 }, // Anin
+    { lat: 52.2050, lng: 21.1700 }, // Międzylesie
+    { lat: 52.2300, lng: 21.1550 }, // Gocławek
+  ],
+  // Pojedyncze centroidy wystarczą dla małych dzielnic
+  'Śródmieście': [{ lat: 52.2310, lng: 21.0120 }, { lat: 52.2400, lng: 21.0080 }],
+  'Ochota': [{ lat: 52.2110, lng: 20.9850 }, { lat: 52.2200, lng: 20.9900 }],
+  'Włochy': [{ lat: 52.1960, lng: 20.9450 }, { lat: 52.1860, lng: 20.9250 }],
+  'Ursus': [{ lat: 52.1960, lng: 20.8860 }],
+  'Wilanów': [{ lat: 52.1660, lng: 21.0900 }, { lat: 52.1550, lng: 21.0950 }],
+  'Żoliborz': [{ lat: 52.2730, lng: 20.9840 }, { lat: 52.2680, lng: 20.9900 }],
+  'Rembertów': [{ lat: 52.2650, lng: 21.1900 }],
+  'Wesoła': [{ lat: 52.2470, lng: 21.2300 }, { lat: 52.2550, lng: 21.2200 }],
+};
+
 const DISTRICT_CITY_USAGE = Object.values(STRICT_CITY_DISTRICTS).reduce<Record<string, number>>((acc, districts) => {
   districts.forEach((district) => {
     acc[district] = (acc[district] || 0) + 1;
@@ -136,23 +318,301 @@ const BreathingCircle = () => {
   return <Animated.View style={[styles.approximateArea, styles.glowShadow, { transform: [{ scale: pulseValue }], opacity: pulseValue.interpolate({ inputRange: [1, 1.12], outputRange: [0.9, 0.5] }) }]} />;
 };
 
-const getClosestDistrict = (lat: number, lng: number, city: string) => {
+/**
+ * MapInteractionTip — luksusowa, samowyjaśniająca się instrukcja gestów mapy.
+ *
+ * KIEDY SIĘ POJAWIA
+ * ─────────────────
+ * Pojawia się natychmiast po wejściu w Krok 2 (Lokalizacja) Add Offer i pozostaje
+ * widoczna, dopóki użytkownik faktycznie nie przesunie/nie zooma mapy. Po pierwszej
+ * interakcji z mapą `dismissed` przełącza się na true i tip płynnie znika (fade +
+ * lift) — nie zaśmieca widoku, gdy user już rozumie zasadę. Wraca tylko po
+ * pełnym remount'cie ekranu.
+ *
+ * CZEMU SŁUŻY
+ * ───────────
+ * Bez tej podpowiedzi user często nie wie, że:
+ *   • mapę można przesuwać palcem (drag), żeby ustawić pinezkę dokładnie tam,
+ *     gdzie jest jego nieruchomość,
+ *   • mapę można zbliżać/oddalać szczypcami (pinch), żeby trafić precyzyjnie,
+ *   • pole „Wyszukaj adres" musi pokrywać się z punktem pinezki — pinezka to
+ *     źródło prawdy, pole adresu aktualizuje się z reverse-geocoding po
+ *     każdym ruchu, ale to USER decyduje gdzie pinezka stoi.
+ *
+ * CO ZAWIERA
+ * ──────────
+ *   • Animowana ikona „przesuwającego się palca" (drag-gesture loop)
+ *   • Tytuł „Przesuń mapę, by ustawić pinezkę" (15pt 800)
+ *   • Subtitle wyjaśniający „Mapę można przybliżać szczypcami. Pinezka musi
+ *     wskazywać dokładny adres nieruchomości."
+ *   • Glassmorphic BlurView + delikatny czerwony halo (zgodny z kolorem pinezki)
+ */
+const MapInteractionTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: boolean }) => {
+  const fingerX = useRef(new Animated.Value(0)).current;
+  const fingerOpacity = useRef(new Animated.Value(0)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardLift = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(cardOpacity, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.spring(cardLift, { toValue: 0, friction: 9, tension: 80, useNativeDriver: true }),
+    ]).start();
+  }, [cardOpacity, cardLift]);
+
+  useEffect(() => {
+    if (dismissed) {
+      Animated.parallel([
+        Animated.timing(cardOpacity, { toValue: 0, duration: 320, useNativeDriver: true }),
+        Animated.timing(cardLift, { toValue: -12, duration: 320, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [dismissed, cardOpacity, cardLift]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(fingerOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+          Animated.timing(fingerX, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]),
+        Animated.timing(fingerX, { toValue: 24, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(fingerOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.delay(420),
+        Animated.parallel([
+          Animated.timing(fingerOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+          Animated.timing(fingerX, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ]),
+        Animated.timing(fingerX, { toValue: -24, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(fingerOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.delay(420),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [fingerOpacity, fingerX]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.mapTipWrapper,
+        { opacity: cardOpacity, transform: [{ translateY: cardLift }] },
+      ]}
+    >
+      <BlurView
+        intensity={isDark ? 50 : 70}
+        tint={isDark ? 'dark' : 'light'}
+        style={[
+          styles.mapTipCard,
+          {
+            backgroundColor: isDark ? 'rgba(20,20,22,0.72)' : 'rgba(255,255,255,0.82)',
+            borderColor: 'rgba(220,38,38,0.35)',
+          },
+        ]}
+      >
+        <View style={styles.mapTipGestureBubble}>
+          {/* Tor po którym sunie palec — wizualnie „kierunek przesuwania" */}
+          <View style={styles.mapTipGestureTrack} />
+          <Animated.View
+            style={[
+              styles.mapTipFingerDot,
+              { opacity: fingerOpacity, transform: [{ translateX: fingerX }] },
+            ]}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.mapTipTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+            Przesuń mapę, by ustawić pinezkę
+          </Text>
+          <Text style={[styles.mapTipSubtitle, { color: isDark ? 'rgba(235,235,245,0.74)' : 'rgba(60,60,67,0.7)' }]}>
+            Szczypcami przybliżysz. Pinezka musi wskazywać dokładny punkt nieruchomości.
+          </Text>
+        </View>
+      </BlurView>
+    </Animated.View>
+  );
+};
+
+/**
+ * Normalizuje string do porównań — usuwa znaki diakrytyczne,
+ * sprowadza do małych liter, scala spacje, ujednolica myślniki.
+ * „Białołęka" / „Bialoleka" / „BIAŁOŁĘKA" → „bialoleka".
+ */
+const normalizeForMatch = (raw: string): string => {
+  return String(raw || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[ł]/g, 'l')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
+ * Próbuje dopasować nazwę dzielnicy zwróconą z `Location.reverseGeocodeAsync`
+ * (`place.district`) do naszej listy dzielnic dla danego miasta.
+ *
+ * Apple Maps zwraca nazwę dzielnicy w wielu wariantach — z polskimi znakami,
+ * bez nich, czasem z dopiskami typu „Stara" / „Nowa". Stosujemy 3 strategie
+ * po kolei: 1) dopasowanie 1:1 po normalizacji, 2) prefix-match, 3) substring.
+ * Zwraca dokładnie tę nazwę z naszej listy (z polskimi znakami), albo null.
+ */
+const matchDistrictByName = (rawDistrict: string | null | undefined, city: string): string | null => {
+  if (!rawDistrict) return null;
+  const cityDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA];
+  if (!cityDistricts || cityDistricts.length === 0) return null;
+  const needle = normalizeForMatch(rawDistrict);
+  if (!needle) return null;
+
+  // 1) exact match po normalizacji
+  for (const district of cityDistricts) {
+    if (normalizeForMatch(district) === needle) return district;
+  }
+  // 2) prefix — np. „Praga" w place.district vs „Praga-Północ" w naszej liście
+  for (const district of cityDistricts) {
+    const n = normalizeForMatch(district);
+    if (n.startsWith(needle) || needle.startsWith(n)) return district;
+  }
+  // 3) substring — np. „Stare Mokotów" → „Mokotów"
+  for (const district of cityDistricts) {
+    const n = normalizeForMatch(district);
+    if (n.includes(needle) || needle.includes(n)) return district;
+  }
+  return null;
+};
+
+/**
+ * Geograficzny dystans między dwoma punktami w sferze ziemskiej (km, haversine).
+ * Używamy do porównań między centroidem dzielnicy a wskazanym punktem.
+ * Pythagoras na surowych lat/lng był BŁĘDNY — na 52°N stopień długości
+ * ma ~67 km a stopień szerokości ~111 km, więc nieważony dystans
+ * w stopniach faworyzował błędne dzielnice.
+ */
+const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371; // promień Ziemi w km
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+};
+
+/**
+ * Wybiera najlepszą dzielnicę dla punktu (lat, lng) w danym mieście.
+ *
+ * 4-poziomowy priorytet:
+ *   0. **HARD GEO RULE — Warszawa, S8 (DWUSTRONNA)**:
+ *      - pin na N od S8 (z buforem) => zawsze Białołęka,
+ *      - pin na S od S8 (z buforem) => Białołęka jest zabroniona.
+ *      To eliminuje oba rodzaje pomyłek:
+ *        a) Białołęka oznaczana jako Targówek,
+ *        b) Targówek oznaczany jako Białołęka.
+ *   1. `place.district` z reverse-geocoding (z fuzzy match) — gdy OS go zwrócił.
+ *      Uwaga: jeśli `place.district === "Białołęka"` ale pin leży po stronie
+ *      południowej S8, ignorujemy tę wartość jako błąd geokodera.
+ *   2. Voronoi po WIELU zarodkach na dzielnicę (`WARSZAWA_DISTRICT_SEEDS`).
+ *   3. Stary jednocentroidowy fallback (haversine) — dla miast bez seedów.
+ */
+const getClosestDistrict = (
+  lat: number,
+  lng: number,
+  city: string,
+  placeDistrict?: string | null
+) => {
   if (city === REST_OF_COUNTRY_CITY) return '';
   const cityDistricts = DISTRICTS_DATA[city as keyof typeof DISTRICTS_DATA];
-  if (!cityDistricts || cityDistricts.length === 0) {
-    return '';
+  if (!cityDistricts || cityDistricts.length === 0) return '';
+
+  const isWarszawa = city === 'Warszawa';
+  const s8Lat = isWarszawa ? s8LatitudeAtLongitude(lng) : null;
+  const s8Tolerance = 0.0009; // ~100 m marginesu na niepewność GPS/geokodera
+  const isNorthOfS8 = s8Lat !== null && lat >= s8Lat + s8Tolerance;
+  const isSouthOfS8 = s8Lat !== null && lat <= s8Lat - s8Tolerance;
+
+  // POZIOM 0A: twarda reguła północna — ponad S8 = Białołęka.
+  if (isWarszawa && cityDistricts.includes('Białołęka') && isNorthOfS8) {
+    if (__DEV__) {
+      console.log(
+        `[district-detect] S8 north override → Białołęka (pin ${lat.toFixed(4)} > S8 ${s8Lat?.toFixed(4)} @ ${lng.toFixed(4)})`
+      );
+    }
+    return 'Białołęka';
   }
-  let closest = cityDistricts[0];
-  let minDistance = Infinity;
-  for (const district of cityDistricts) {
+
+  // POZIOM 1: priorytetowo — dzielnica zwrócona z systemu reverse-geocoding
+  const matched = matchDistrictByName(placeDistrict, city);
+  if (matched) {
+    // POZIOM 0B: twarda reguła południowa — pod S8 nie dopuszczamy Białołęki.
+    if (isWarszawa && isSouthOfS8 && matched === 'Białołęka') {
+      if (__DEV__) {
+        console.log(
+          `[district-detect] S8 south guard: ignoruję place.district=Białołęka (pin ${lat.toFixed(4)} < S8 ${s8Lat?.toFixed(4)} @ ${lng.toFixed(4)})`
+        );
+      }
+    } else {
+      return matched;
+    }
+  }
+
+  // Diagnostyka: gdy reverse-geocoding nie zwrócił dzielnicy (na simulatorze
+  // częste), logujemy z którego mechanizmu fallback skorzystaliśmy.
+  if (__DEV__ && (!placeDistrict || !String(placeDistrict).trim())) {
+    console.log(
+      `[district-detect] ${city}: place.district pusty dla (${lat.toFixed(4)}, ${lng.toFixed(4)}), używam fallback (zarodki/centroidy).`
+    );
+  }
+
+  // POZIOM 2: Voronoi po wielu zarodkach (Warszawa — z `WARSZAWA_DISTRICT_SEEDS`)
+  if (city === 'Warszawa') {
+    const candidateDistricts =
+      isSouthOfS8 && cityDistricts.includes('Białołęka')
+        ? cityDistricts.filter((d) => d !== 'Białołęka')
+        : cityDistricts;
+
+    let bestDistrict = '';
+    let bestKm = Infinity;
+    for (const district of candidateDistricts) {
+      const seeds = WARSZAWA_DISTRICT_SEEDS[district];
+      if (!seeds || seeds.length === 0) continue;
+      let minKmForThisDistrict = Infinity;
+      for (const seed of seeds) {
+        const km = haversineKm(lat, lng, seed.lat, seed.lng);
+        if (km < minKmForThisDistrict) minKmForThisDistrict = km;
+      }
+      if (minKmForThisDistrict < bestKm) {
+        bestKm = minKmForThisDistrict;
+        bestDistrict = district;
+      }
+    }
+    if (bestDistrict) {
+      if (__DEV__) {
+        console.log(
+          `[district-detect] Warszawa: zarodek-Voronoi → ${bestDistrict} (${bestKm.toFixed(2)} km)`
+        );
+      }
+      return bestDistrict;
+    }
+  }
+
+  // POZIOM 3: stary fallback — najbliższy pojedynczy centroid (Kraków/Łódź/etc.)
+  const centroidCandidateDistricts =
+    isWarszawa && isSouthOfS8 && cityDistricts.includes('Białołęka')
+      ? cityDistricts.filter((d) => d !== 'Białołęka')
+      : cityDistricts;
+  let closest = centroidCandidateDistricts[0];
+  let minKm = Infinity;
+  for (const district of centroidCandidateDistricts) {
     const key = coordKeyForCityDistrict(city, district);
     const coords = DISTRICT_COORDS[key];
-    if (coords) {
-      const distance = Math.pow(lat - coords.lat, 2) + Math.pow(lng - coords.lng, 2);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closest = district;
-      }
+    if (!coords) continue;
+    const km = haversineKm(lat, lng, coords.lat, coords.lng);
+    if (km < minKm) {
+      minKm = km;
+      closest = district;
     }
   }
   return closest;
@@ -205,10 +665,17 @@ const normalizeStrictLocation = (
 };
 
 export default function Step2_Location({ theme }: { theme: any }) {
-  const { draft, updateDraft, setCurrentStep } = useOfferStore();
+  const { draft, updateDraft, setCurrentStep, setNavigationGate } = useOfferStore();
   const [streetInput, setStreetInput] = useState(draft.street || '');
   const [showLocationConfirm, setShowLocationConfirm] = useState(false);
-  const [pendingTargetStep, setPendingTargetStep] = useState<number | null>(null);
+  // Zapamiętujemy całą akcję nawigacji (GO_BACK / NAVIGATE / POP / PUSH itd.),
+  // żeby po wciśnięciu "Zatwierdź" dispatchować dokładnie to, co user chciał,
+  // niezależnie od kierunku ruchu w kreatorze.
+  const pendingNavActionRef = useRef<any>(null);
+  // Flaga: czy user już rzeczywiście dotknął mapy (drag/pinch). Sterujemy nią
+  // widocznością `MapInteractionTip` — po pierwszej interakcji tip zanika,
+  // żeby nie zaśmiecać widoku po tym, jak user zrozumiał zasadę.
+  const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
   
@@ -217,31 +684,38 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const allowStep3NavigationRef = useRef(false);
   const reverseGeocodeSeq = useRef(0);
   
-  useFocusEffect(useCallback(() => { setCurrentStep(2); }, []));
+  useFocusEffect(
+    useCallback(() => {
+      setCurrentStep(2);
+      // Rejestrujemy gate, który przechwytuje wszystkie próby nawigacji w obrębie
+      // kreatora — zarówno z FAB (FloatingNextButton w App.tsx) jak i z numerków
+      // steppera. Zwracamy `false` żeby anulować nawigację i pokazać modal.
+      setNavigationGate((targetStep: number) => {
+        if (targetStep === 2) return true;
+        pendingNavActionRef.current = {
+          type: 'NAVIGATE',
+          payload: { name: `Step${targetStep}` },
+        };
+        setShowLocationConfirm(true);
+        return false;
+      });
+      return () => {
+        setNavigationGate(null);
+      };
+    }, [setCurrentStep, setNavigationGate]),
+  );
 
   useEffect(() => {
-    const navigationActionTargetsStep3 = (action: any): boolean => {
-      const p = action?.payload;
-      if (!p) return false;
-      if (p.name === 'Step3') return true;
-      if (p.params?.screen === 'Step3') return true;
-      const routes = p.params?.state?.routes;
-      if (Array.isArray(routes) && routes.length > 0) {
-        const last = routes[routes.length - 1];
-        if (last?.name === 'Step3') return true;
-      }
-      return false;
-    };
-
+    // ZAWSZE przy próbie opuszczenia Step 2 (czy to "Dalej" → Step 3, "Wstecz" → Step 1,
+    // zamknięcie kreatora, czy dowolna nawigacja w jego trakcie) wyświetlamy okno
+    // potwierdzenia adresu. Po "Zatwierdź" wykonujemy oryginalną akcję, po "Popraw"
+    // pozostajemy na Step 2.
     const unsubscribe = navigation.addListener('beforeRemove', (event: any) => {
       if (allowStep3NavigationRef.current) return;
       const action = event?.data?.action;
       if (!action) return;
-      const type = String(action.type || '');
-      if (!['NAVIGATE', 'PUSH', 'REPLACE'].includes(type)) return;
-      if (!navigationActionTargetsStep3(action)) return;
       event.preventDefault();
-      setPendingTargetStep(3);
+      pendingNavActionRef.current = action;
       setShowLocationConfirm(true);
     });
     return unsubscribe;
@@ -310,7 +784,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
           const place = reverse[0];
           const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
           const normalized = strictCity
-            ? normalizeStrictLocation(strictCity, getClosestDistrict(latitude, longitude, strictCity))
+            ? normalizeStrictLocation(
+                strictCity,
+                getClosestDistrict(latitude, longitude, strictCity, place.district)
+              )
             : normalizeStrictLocation(null, null, localityFromPlace(place));
           finalCity = normalized.city;
           finalDistrict = normalized.district;
@@ -352,7 +829,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
           const place = reverse[0];
           const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
           const normalized = strictCity
-            ? normalizeStrictLocation(strictCity, getClosestDistrict(latitude, longitude, strictCity))
+            ? normalizeStrictLocation(
+                strictCity,
+                getClosestDistrict(latitude, longitude, strictCity, place.district)
+              )
             : normalizeStrictLocation(null, null, localityFromPlace(place));
           finalCity = normalized.city;
           finalDistrict = normalized.district;
@@ -375,6 +855,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
     if (isProgrammaticMove.current) return;
     if (details && details.isGesture === false) return;
 
+    // Pierwszy faktyczny gest na mapie — chowamy MapInteractionTip.
+    // Sprawdzamy `details.isGesture` (iOS RN-Maps), żeby nie liczyć ruchów
+    // wyzwolonych programowo przez `animateCamera`.
+    if (!userInteractedWithMap) {
+      setUserInteractedWithMap(true);
+    }
+
     const seq = ++reverseGeocodeSeq.current;
 
     try {
@@ -394,7 +881,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
         const normalized = strictCity
-          ? normalizeStrictLocation(strictCity, getClosestDistrict(region.latitude, region.longitude, strictCity))
+          ? normalizeStrictLocation(
+              strictCity,
+              getClosestDistrict(region.latitude, region.longitude, strictCity, place.district)
+            )
           : normalizeStrictLocation(null, null, localityFromPlace(place));
         const finalCity = normalized.city;
         const finalDistrict = normalized.district;
@@ -443,24 +933,49 @@ export default function Step2_Location({ theme }: { theme: any }) {
     }
   };
 
+  // Przechwycenie nawigacji ze steppera (numerki 1..6).
+  //
+  // KLUCZOWE: navigation.navigate('Step3') NIE usuwa Step 2 ze stosu, więc
+  // `beforeRemove` w ogóle nie wystrzeli. Dlatego musimy zatrzymać przejście
+  // tutaj — zwracając `false` AddOfferStepper anuluje wywołanie navigate().
+  // Zapisujemy zamiar w `pendingNavActionRef` i pokazujemy modal. Po Zatwierdź
+  // wykonujemy oryginalną navigation.navigate(`Step${targetStep}`).
   const handleBeforeStepChange = (targetStep: number) => {
-    if (targetStep !== 3) return true;
-    setPendingTargetStep(targetStep);
+    if (targetStep === 2) return true;
+    pendingNavActionRef.current = {
+      type: 'NAVIGATE',
+      payload: { name: `Step${targetStep}` },
+    };
     setShowLocationConfirm(true);
     return false;
   };
 
-  const locationCityDistrict = [safeDraftCity, safeDraftDistrict].filter(Boolean).join(', ');
+  // Etykieta "Miasto i dzielnica" w modalu potwierdzenia.
+  // Reguły:
+  //  1) Gdy "Reszta kraju" — pokazujemy SAMĄ nazwę miejscowości (district zawiera
+  //     wynik geokodowania, np. "Białystok"). Nie chcemy słów "Reszta kraju".
+  //  2) Gdy district to "Ogólna" lub pusty — pokazujemy tylko miasto.
+  //  3) W pozostałych przypadkach — "Miasto, Dzielnica".
+  const locationCityDistrict = (() => {
+    const districtTrim = String(safeDraftDistrict || '').trim();
+    if (isRestOfCountry) {
+      return districtTrim || 'Miejscowość nieustalona';
+    }
+    if (!districtTrim || districtTrim.toLowerCase() === 'ogólna') {
+      return safeDraftCity;
+    }
+    return `${safeDraftCity}, ${districtTrim}`;
+  })();
   const locationStreet = streetInput?.trim() || draft.street || 'Brak dokładnego adresu';
 
   const confirmAndGoNext = () => {
     if (streetInput?.trim()) updateDraft({ street: streetInput.trim() });
-    const step = pendingTargetStep;
+    const action = pendingNavActionRef.current;
+    pendingNavActionRef.current = null;
     setShowLocationConfirm(false);
-    setPendingTargetStep(null);
-    if (step) {
+    if (action) {
       allowStep3NavigationRef.current = true;
-      navigation.navigate(`Step${step}`);
+      navigation.dispatch(action);
       setTimeout(() => {
         allowStep3NavigationRef.current = false;
       }, 0);
@@ -484,6 +999,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
         />
         <View style={styles.centerPinContainer} pointerEvents="none">{currentIsExact ? <RedNeedlePin /> : <BreathingCircle />}</View>
         <View style={[styles.mapGradient, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.4)' }]} pointerEvents="none" />
+        {/* Floating-tip nad dolną krawędzią mapy — wyjaśnia że mapę
+            trzeba przesuwać palcem i zoomować szczypcami. Znika po pierwszym
+            gestem usera (handleRegionChangeComplete → userInteractedWithMap). */}
+        <MapInteractionTip isDark={isDark} dismissed={userInteractedWithMap} />
       </View>
 
       <ScrollView style={styles.controlsContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -544,7 +1063,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
             <View style={styles.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.label, { color: theme.text }]}>Dokładna lokalizacja</Text>
-                <Text style={[styles.subLabel, { color: theme.subtitle }]}>Obszar ok. 200m dla ochrony prywatności.</Text>
+                <Text style={[styles.subLabel, { color: theme.subtitle }]}>
+                  {currentIsExact
+                    ? 'WŁ.: kupujący widzi nazwę ulicy + numer (np. „Reymonta 12") oraz precyzyjny pin na mapie.'
+                    : 'WYŁ.: kupujący widzi tylko nazwę ulicy (np. „Reymonta", bez numeru) i przybliżony obszar ~200 m.'}
+                </Text>
               </View>
               <Switch value={currentIsExact} onValueChange={(val) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ isExactLocation: val }); if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val); }} trackColor={{ false: '#D1D1D6', true: '#10b981' }} />
             </View>
@@ -554,7 +1077,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
         <View style={{ height: 200 }} />
       </ScrollView>
 
-      <Modal visible={showLocationConfirm} transparent animationType="fade" onRequestClose={() => setShowLocationConfirm(false)}>
+      <Modal
+        visible={showLocationConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowLocationConfirm(false);
+          pendingNavActionRef.current = null;
+        }}
+      >
         <View style={styles.confirmOverlay}>
           <BlurView intensity={36} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           <View style={[styles.confirmCard, { backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : 'rgba(255,255,255,0.96)' }]}>
@@ -573,7 +1104,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
             </View>
 
             <View style={styles.confirmActions}>
-              <Pressable style={[styles.confirmBtn, styles.confirmSecondary]} onPress={() => { setShowLocationConfirm(false); setPendingTargetStep(null); }}>
+              <Pressable
+                style={[styles.confirmBtn, styles.confirmSecondary]}
+                onPress={() => {
+                  setShowLocationConfirm(false);
+                  pendingNavActionRef.current = null;
+                }}
+              >
                 <Text style={styles.confirmSecondaryText}>Popraw</Text>
               </Pressable>
               <Pressable style={[styles.confirmBtn, styles.confirmPrimary]} onPress={confirmAndGoNext}>
@@ -700,5 +1237,73 @@ const styles = StyleSheet.create({
   },
   
   pillBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(150,150,150,0.3)', backgroundColor: 'rgba(150,150,150,0.05)' },
-  pillText: { fontSize: 14, fontWeight: '600', color: '#8E8E93' }
+  pillText: { fontSize: 14, fontWeight: '600', color: '#8E8E93' },
+
+  // === MAP INTERACTION TIP — floating glass pill nad dolną krawędzią mapy ===
+  mapTipWrapper: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 22,
+    zIndex: 5,
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  mapTipCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  mapTipGestureBubble: {
+    width: 60,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: 'rgba(220,38,38,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(220,38,38,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  mapTipGestureTrack: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    height: 1,
+    backgroundColor: 'rgba(220,38,38,0.35)',
+    top: '50%',
+    marginTop: -0.5,
+  },
+  mapTipFingerDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#dc2626',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+  },
+  mapTipTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  mapTipSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
 });

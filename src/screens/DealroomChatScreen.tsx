@@ -17,6 +17,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
@@ -48,6 +49,14 @@ import {
 
 const ATTACHMENT_PREFIX = '[[DEAL_ATTACHMENT]]';
 const ATTACHMENT_PREFIX_LEGACY = '[[deal_attachment]]';
+
+/** Lokalny cache wystawionej przez nas oceny dla danego deala — żeby po
+ *  reloadzie ekranu nie pokazywać znowu formularza i nie generować pop-upu
+ *  „Ocena została już wcześniej zapisana". Klucz scope'owany na deal+user. */
+function dealReviewCacheKey(dealId: number | string | null, userId: number | string | null | undefined) {
+  if (!dealId || !userId) return null;
+  return `dealReview:${dealId}:${userId}`;
+}
 const DEALROOM_ATTACHMENT_LIMIT_BYTES = 50 * 1024 * 1024;
 
 // Złagodzona, natywna paleta iOS Dark Mode
@@ -65,6 +74,22 @@ const COLORS = {
 };
 
 const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
+
+function toPositiveInt(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.trunc(n);
+}
+
+function toUniquePositiveInts(values: unknown[]): number[] {
+  return Array.from(
+    new Set(
+      values
+        .map((v) => toPositiveInt(v))
+        .filter((v): v is number => Number.isFinite(v as number) && (v as number) > 0)
+    )
+  );
+}
 
 function formatActorLabel(msg: any, myUserId: any) {
   if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return 'Ty';
@@ -404,19 +429,24 @@ export default function DealroomChatScreen() {
     const current = deals.find((d: any) => String(d?.id) === String(dealId));
     if (!current) return null;
 
-    const buyerId = Number(firstDefined(current?.buyerId, current?.buyer?.id) || 0);
-    const sellerId = Number(firstDefined(current?.sellerId, current?.seller?.id) || 0);
+    const buyerId = toPositiveInt(firstDefined(current?.buyerId, current?.buyer?.id)) || 0;
+    const sellerId = toPositiveInt(firstDefined(current?.sellerId, current?.seller?.id)) || 0;
     const buyerName = String(firstDefined(current?.buyer?.name, current?.buyerName, current?.buyer?.fullName) || '').trim();
     const sellerName = String(firstDefined(current?.seller?.name, current?.sellerName, current?.seller?.fullName) || '').trim();
     const meId = Number(user.id);
-    const ownerId = firstDefined(
+    const ownerCandidateIds = toUniquePositiveInts([
+      current?.sellerId,
+      current?.seller?.id,
+      sellerId,
       current?.offer?.userId,
       current?.listing?.userId,
       current?.offer?.user?.id,
-      current?.userId
-    );
-    const ownerIdNum = Number(ownerId || 0);
-    setListingOwnerUserId(Number.isFinite(ownerIdNum) && ownerIdNum > 0 ? ownerIdNum : null);
+      current?.listing?.user?.id,
+      current?.ownerId,
+      current?.owner?.id,
+    ]);
+    const resolvedOwnerId = ownerCandidateIds[0] ?? null;
+    setListingOwnerUserId(resolvedOwnerId);
     const counterpart =
       buyerId > 0 && buyerId !== meId
         ? buyerId
@@ -431,7 +461,16 @@ export default function DealroomChatScreen() {
           : '';
     setCounterpartyUserId(counterpart);
     setCounterpartyName(counterpartLabel || 'Druga strona');
-    setIsListingOwner(ownerId != null && ownerId !== '' && Number(user.id) === Number(ownerId));
+    const myRoleRaw = String(
+      firstDefined(current?.myRole, current?.viewerRole, current?.roleInDeal, current?.ownerRole, '')
+    ).toUpperCase();
+    const isOwnerByRole =
+      myRoleRaw.includes('SELL') || myRoleRaw.includes('OWNER') || myRoleRaw.includes('SPRZED');
+    const isOwnerByIds = meId > 0 && (
+      (resolvedOwnerId != null && meId === resolvedOwnerId) ||
+      (sellerId > 0 && meId === sellerId)
+    );
+    setIsListingOwner(Boolean(isOwnerByIds || isOwnerByRole));
 
     const nextOfferId = firstDefined(
       current?.offerId,
@@ -815,7 +854,7 @@ export default function DealroomChatScreen() {
         .reverse()
         .find(
           (e) =>
-            e.msg?.senderId !== user?.id &&
+            String(e.msg?.senderId ?? '') !== String(user?.id ?? '') &&
             ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
             Number(e.event?.amount || 0) > 0
         ) || null,
@@ -828,7 +867,7 @@ export default function DealroomChatScreen() {
         .reverse()
         .find(
           (e) =>
-            e.msg?.senderId !== user?.id &&
+            String(e.msg?.senderId ?? '') !== String(user?.id ?? '') &&
             ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
             !!e.event?.proposedDate
         ) || null,
@@ -870,6 +909,13 @@ export default function DealroomChatScreen() {
     [bidEvents]
   );
 
+  const isWaitingForOtherOnPrice = useMemo(() => {
+    if (!latestBid) return false;
+    const action = String(latestBid.event?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;
+    return String(latestBid.msg?.senderId ?? '') === String(user?.id ?? '');
+  }, [latestBid, user?.id]);
+
   const appointmentStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
     if (!latestAppointment) return 'IDLE';
     const action = String(latestAppointment.event?.action || '').toUpperCase();
@@ -878,9 +924,24 @@ export default function DealroomChatScreen() {
     return 'IDLE';
   }, [acceptedAppointment, latestAppointment]);
 
+  /** Cena w wątku jest „ACCEPTED”, ale deal nie jest jeszcze AGREED+acceptedBidId — ostatnie słowo ma właściciel (jak w BidActionModal). */
+  const awaitingOwnerPriceFinalize = useMemo(() => {
+    if (!latestBid) return false;
+    const action = String(latestBid.event?.action || '').toUpperCase();
+    if (action !== 'ACCEPTED') return false;
+    if (['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD'].includes(String(dealStatusSnapshot || '').toUpperCase())) {
+      return false;
+    }
+    return !canFinalizeTransition({
+      dealStatus: dealStatusSnapshot,
+      acceptedBidId: acceptedBidIdSnapshot,
+    });
+  }, [latestBid, dealStatusSnapshot, acceptedBidIdSnapshot]);
+
   const priceStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
     if (!latestBid) return 'IDLE';
     const action = String(latestBid.event?.action || '').toUpperCase();
+    if (awaitingOwnerPriceFinalize) return 'PENDING';
     if (
       acceptedPrice > 0 ||
       canFinalizeTransition({ dealStatus: dealStatusSnapshot, acceptedBidId: acceptedBidIdSnapshot })
@@ -890,7 +951,7 @@ export default function DealroomChatScreen() {
     if (action === 'ACCEPTED') return 'PENDING';
     if (['PROPOSED', 'COUNTERED'].includes(action)) return 'PENDING';
     return 'IDLE';
-  }, [acceptedPrice, latestBid, dealStatusSnapshot, acceptedBidIdSnapshot]);
+  }, [acceptedPrice, awaitingOwnerPriceFinalize, latestBid, dealStatusSnapshot, acceptedBidIdSnapshot]);
 
   const appointmentStatusText = useMemo(() => {
     if (appointmentStatus === 'IDLE') return 'Brak ustaleń';
@@ -907,14 +968,14 @@ export default function DealroomChatScreen() {
 
   const priceStatusText = useMemo(() => {
     if (priceStatus === 'IDLE') return 'Brak ofert';
+    if (awaitingOwnerPriceFinalize) {
+      return 'Oczekiwanie na finalną akceptację właściciela';
+    }
     if (priceStatus === 'ACCEPTED' && acceptedPrice > 0) {
       return `Ustalona cena: ${acceptedPrice.toLocaleString('pl-PL')} PLN`;
     }
-    if (
-      String(latestBid?.event?.action || '').toUpperCase() === 'ACCEPTED' &&
-      !canFinalizeTransition({ dealStatus: dealStatusSnapshot, acceptedBidId: acceptedBidIdSnapshot })
-    ) {
-      return 'Oczekiwanie na finalną akceptację właściciela';
+    if (isWaitingForOtherOnPrice && Number(latestBid?.event?.amount || 0) > 0) {
+      return `Twoja propozycja ${Number(latestBid?.event?.amount || 0).toLocaleString('pl-PL')} PLN czeka na odpowiedź drugiej strony`;
     }
     const source = latestActionableBidFromOther || latestBid;
     if (source?.event?.amount) {
@@ -922,7 +983,15 @@ export default function DealroomChatScreen() {
       return `Zaproponowano ${Number(source.event.amount).toLocaleString('pl-PL')} PLN przez ${who}`;
     }
     return 'W trakcie negocjacji';
-  }, [acceptedPrice, latestActionableBidFromOther, latestBid, priceStatus, dealStatusSnapshot, acceptedBidIdSnapshot, user?.id]);
+  }, [
+    acceptedPrice,
+    awaitingOwnerPriceFinalize,
+    latestActionableBidFromOther,
+    latestBid,
+    isWaitingForOtherOnPrice,
+    priceStatus,
+    user?.id,
+  ]);
 
   const transactionFinalized = useMemo(() => {
     const canonicalByDealState =
@@ -1011,6 +1080,40 @@ export default function DealroomChatScreen() {
     setMyFinalRating(Number(myFinalReviewEntry.rating || 0));
     setMyFinalReview(String(myFinalReviewEntry.review || ''));
   }, [myFinalReviewEntry]);
+
+  /** Po finalizacji transakcji wczytujemy lokalny cache mojej opinii — żeby po
+   *  ponownym wejściu w deal nie pokazywać już formularza (i tym samym nie
+   *  generować pop-upu „Ocena została już wcześniej zapisana" przy próbie
+   *  ponownego kliknięcia „Wyślij"). */
+  useEffect(() => {
+    if (!transactionFinalized || mySubmittedReview) return;
+    const key = dealReviewCacheKey(dealId, user?.id);
+    if (!key) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(key);
+        if (cancelled || !raw) return;
+        const parsed = JSON.parse(raw) as {
+          rating?: number;
+          review?: string;
+          senderId?: number | null;
+        };
+        if (parsed && Number(parsed.rating) >= 1 && Number(parsed.rating) <= 5) {
+          setMySubmittedReview({
+            rating: Number(parsed.rating),
+            review: String(parsed.review || ''),
+            senderId: parsed.senderId ?? Number(user?.id || 0),
+          });
+        }
+      } catch {
+        // noop — brak cache jest OK, leci dalej oryginalny flow
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transactionFinalized, mySubmittedReview, dealId, user?.id]);
 
   useEffect(() => {
     if (!transactionFinalized || !partnerFinalReviewEntry || myFinalReviewEntry) return;
@@ -1116,6 +1219,26 @@ export default function DealroomChatScreen() {
           body: JSON.stringify(reviewPayload),
         });
       }
+      // Wspólna logika: stempelka „już oceniłem" pokazujemy zawsze, gdy backend
+      // potwierdził zapis ALBO zwrócił duplikat — formularz znika i nie pojawia
+      // się żaden pop-up.
+      const persistLocalReview = async () => {
+        const cached = {
+          rating: reviewPayload.rating,
+          review: reviewPayload.review || '',
+          senderId: reviewPayload.senderId ?? Number(user.id),
+        };
+        setMySubmittedReview(cached);
+        const key = dealReviewCacheKey(dealId, user.id);
+        if (key) {
+          try {
+            await AsyncStorage.setItem(key, JSON.stringify(cached));
+          } catch {
+            // cache best-effort — UI nadal pokaże stamp w tej sesji
+          }
+        }
+      };
+
       if (!res.ok) {
         const errBody = await res.text();
         const normalized = String(errBody || '').toLowerCase();
@@ -1126,27 +1249,19 @@ export default function DealroomChatScreen() {
           normalized.includes('exists') ||
           normalized.includes('wystaw');
         if (isDuplicate) {
-          setMySubmittedReview({
-            rating: reviewPayload.rating,
-            review: reviewPayload.review || '',
-            senderId: reviewPayload.senderId ?? Number(user.id),
-          });
+          await persistLocalReview();
           await fetchMessages();
-          Alert.alert('Informacja', 'Ocena została już wcześniej zapisana.');
+          // brak alertu — formularz znika i tyle, zgodnie z UX
           return;
         }
         Alert.alert('Błąd', errBody || 'Nie udało się zapisać opinii. Spróbuj ponownie.');
         return;
       }
-      setMySubmittedReview({
-        rating: reviewPayload.rating,
-        review: reviewPayload.review || '',
-        senderId: reviewPayload.senderId ?? Number(user.id),
-      });
+      await persistLocalReview();
       // backward compatibility: jeśli backend jeszcze emituje review w czacie, odśwież i pokaż partnera
       await fetchMessages();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Dziękujemy', 'Twoja ocena została zapisana.');
+      // brak alertu — UI od razu pokazuje stempel „Pomyślnie wystawiono opinię"
     } finally {
       setIsSubmittingFinalReview(false);
     }
@@ -1502,7 +1617,14 @@ export default function DealroomChatScreen() {
                     </Pressable>
                     <Pressable 
                       style={[styles.actionBtn, styles.actionSecondary]} 
-                      onPress={() => { setSelectedAppointmentEvent(latestActionableAppointmentFromOther.event); setSelectedAppointmentHistory(appointmentEvents.map(e => e.event)); }}
+                      onPress={() => {
+                        setSelectedAppointmentEvent(latestActionableAppointmentFromOther.event);
+                        // Wzbogacamy historię o `senderId` z wiadomości — modal używa go do
+                        // wykrycia, czy ostatnia propozycja terminu pochodzi od „mnie".
+                        setSelectedAppointmentHistory(
+                          appointmentEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
+                        );
+                      }}
                     >
                       <Text style={styles.actionSecondaryTxt}>Zmień</Text>
                     </Pressable>
@@ -1586,17 +1708,27 @@ export default function DealroomChatScreen() {
                     </View>
                   </View>
                 )}
-                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && (
+                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && !isWaitingForOtherOnPrice && (
                   <View style={styles.actionRow}>
                     <Pressable 
                       style={[styles.actionBtn, styles.actionPrimary]} 
-                      onPress={() => { setSelectedBidEvent({ ...latestActionableBidFromOther.event, quickAccept: true }); setSelectedBidHistory(bidEvents.map(e => e.event)); }}
+                      onPress={() => {
+                        setSelectedBidEvent({ ...latestActionableBidFromOther.event, quickAccept: true });
+                        setSelectedBidHistory(
+                          bidEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
+                        );
+                      }}
                     >
                       <Text style={styles.actionPrimaryTxt}>Zgoda</Text>
                     </Pressable>
                     <Pressable 
                       style={[styles.actionBtn, styles.actionSecondary]} 
-                      onPress={() => { setSelectedBidEvent(latestActionableBidFromOther.event); setSelectedBidHistory(bidEvents.map(e => e.event)); }}
+                      onPress={() => {
+                        setSelectedBidEvent(latestActionableBidFromOther.event);
+                        setSelectedBidHistory(
+                          bidEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
+                        );
+                      }}
                     >
                       <Text style={styles.actionSecondaryTxt}>Kontroferta</Text>
                     </Pressable>
@@ -1709,7 +1841,7 @@ export default function DealroomChatScreen() {
             ) : null}
 
             {messages.map((msg, index) => {
-              const isMe = msg.senderId === user?.id;
+              const isMe = String(msg.senderId ?? '') === String(user?.id ?? '');
               const dealEvent = parseDealEvent(msg);
               if (dealEvent?.entity === 'BID' || dealEvent?.entity === 'APPOINTMENT') return null;
               if (String(msg?.content || '').trim().startsWith(DEAL_REVIEW_PREFIX)) return null;
@@ -1828,10 +1960,12 @@ export default function DealroomChatScreen() {
         eventAction={selectedBidEvent?.action || null}
         quickAccept={Boolean(selectedBidEvent?.quickAccept)}
         history={selectedBidHistory}
+        myUserId={user?.id != null ? Number(user.id) : null}
         title="Ustalenia cenowe"
         offerId={resolvedOfferId != null ? Number(resolvedOfferId) : null}
         userId={user?.id != null ? Number(user.id) : null}
         isListingOwner={isListingOwner}
+        listingOwnerUserId={listingOwnerUserId}
         onClose={() => setSelectedBidEvent(null)}
         onDone={async () => {
           await fetchMessages();
@@ -1848,6 +1982,7 @@ export default function DealroomChatScreen() {
         eventAction={selectedAppointmentEvent?.action || null}
         proposedDate={selectedAppointmentEvent?.proposedDate || null}
         history={selectedAppointmentHistory}
+        myUserId={user?.id != null ? Number(user.id) : null}
         title="Termin prezentacji"
         onClose={() => {
           setSelectedAppointmentEvent(null);

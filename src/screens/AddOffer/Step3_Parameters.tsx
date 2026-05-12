@@ -45,6 +45,13 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
   const shadowOpacity = isDark ? 0 : 0.06;
 
+  // Refs do auto-scrolla: po odblokowaniu kolejnej sekcji przewijamy ekran tak, by user widział co ma kliknąć.
+  const scrollRef = useRef<ScrollView>(null);
+  const detailsYRef = useRef<number>(0);
+  const amenitiesYRef = useRef<number>(0);
+  const wasDetailsUnlockedRef = useRef<boolean>(false);
+  const wasAmenitiesUnlockedRef = useRef<boolean>(false);
+
   // --- LOGIKA KASKADY ---
   const isPlot = draft.propertyType === 'PLOT';
 
@@ -60,11 +67,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
   const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
+  // Sekcja „Szczegóły” jako całość — pojawia się dopiero gdy user wpisał metraż.
+  const detailsAnim = useRef(new Animated.Value(isAreaFilled ? 1 : 0)).current;
   const roomsAnim = useRef(new Animated.Value(isRoomsUnlocked ? 1 : 0.3)).current;
   const floorAnim = useRef(new Animated.Value(isFloorUnlocked ? 1 : 0.3)).current;
   const yearAnim = useRef(new Animated.Value(isYearUnlocked ? 1 : 0.3)).current;
   const amenitiesAnim = useRef(new Animated.Value(isAmenitiesUnlocked ? 1 : 0)).current; // Zaczyna całkowicie ukryte
 
+  useEffect(() => { Animated.timing(detailsAnim, { toValue: isAreaFilled ? 1 : 0, duration: 500, useNativeDriver: true }).start(); }, [isAreaFilled]);
   useEffect(() => { Animated.timing(roomsAnim, { toValue: isRoomsUnlocked ? 1 : 0.3, duration: 350, useNativeDriver: true }).start(); }, [isRoomsUnlocked]);
   useEffect(() => { Animated.timing(floorAnim, { toValue: isFloorUnlocked ? 1 : 0.3, duration: 350, useNativeDriver: true }).start(); }, [isFloorUnlocked]);
   useEffect(() => { Animated.timing(yearAnim, { toValue: isYearUnlocked ? 1 : 0.3, duration: 350, useNativeDriver: true }).start(); }, [isYearUnlocked]);
@@ -76,6 +86,30 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
       duration: 500, 
       useNativeDriver: true 
     }).start(); 
+  }, [isAmenitiesUnlocked]);
+
+  // Auto-scroll po odblokowaniu sekcji "Szczegóły" (pierwsze wpisanie metrażu).
+  useEffect(() => {
+    if (isAreaFilled && !wasDetailsUnlockedRef.current) {
+      wasDetailsUnlockedRef.current = true;
+      setTimeout(() => {
+        const y = Math.max(0, detailsYRef.current - 24);
+        scrollRef.current?.scrollTo({ y, animated: true });
+      }, 520);
+    }
+    if (!isAreaFilled) wasDetailsUnlockedRef.current = false;
+  }, [isAreaFilled]);
+
+  // Auto-scroll po odblokowaniu "Udogodnienia" (komplet: metraż + pokoje + piętro + rok).
+  useEffect(() => {
+    if (isAmenitiesUnlocked && !wasAmenitiesUnlockedRef.current) {
+      wasAmenitiesUnlockedRef.current = true;
+      setTimeout(() => {
+        const y = Math.max(0, amenitiesYRef.current - 24);
+        scrollRef.current?.scrollTo({ y, animated: true });
+      }, 520);
+    }
+    if (!isAmenitiesUnlocked) wasAmenitiesUnlockedRef.current = false;
   }, [isAmenitiesUnlocked]);
 
   const TogglePill = ({ label, icon, field }: { label: string, icon: any, field: keyof typeof draft }) => {
@@ -98,7 +132,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={3} draft={draft} theme={theme} navigation={navigation} />
         
@@ -118,8 +152,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           <Text style={[styles.areaUnit, { color: draft.area ? theme.text : theme.subtitle }]}>m²</Text>
         </View>
 
-        {!isPlot && (
-          <>
+        {!isPlot && isAreaFilled && (
+          <Animated.View
+            onLayout={(e) => { detailsYRef.current = e.nativeEvent.layout.y; }}
+            style={{
+              opacity: detailsAnim,
+              transform: [{ translateY: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+            }}
+          >
             <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Szczegóły</Text>
             <View style={styles.triplePickerWrapper}>
               
@@ -151,11 +191,12 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               </Animated.View>
 
             </View>
-          </>
+          </Animated.View>
         )}
 
         {!isPlot && (
           <Animated.View
+            onLayout={(e) => { amenitiesYRef.current = e.nativeEvent.layout.y; }}
             style={{ opacity: amenitiesAnim, transform: [{ translateY: amenitiesAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}
             pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
           >

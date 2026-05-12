@@ -17,9 +17,10 @@ import {
   TouchableOpacity,
   InteractionManager,
   Dimensions,
+  useColorScheme,
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
-import MapViewCore, { Marker, Region } from 'react-native-maps';
+import MapViewCore, { Marker, Region, Circle } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -27,6 +28,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,7 +36,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
 import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
-import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { STRICT_CITIES, STRICT_CITY_DISTRICTS, resolveIsExactLocation } from '../constants/locationEcosystem';
+import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 
 // --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
@@ -115,6 +118,38 @@ function markerLuxuryGradient(accentHex: string): [string, string, string] {
     return ['#FFD08A', '#FFB648', '#FF8A00'];
   }
   return ['#6EE7B7', '#22C993', '#0A9F6E'];
+}
+
+/**
+ * Konwersja hex → rgba z dowolną alfą. Używana przy rysowaniu okręgów
+ * prywatności na mapie radaru — bardzo niska alfa daje gładkie nakładanie się
+ * kilku okręgów (suma jasności rośnie miękko, bez „twardych" przecięć).
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  const cleaned = hex.replace('#', '');
+  const full = cleaned.length === 3
+    ? cleaned.split('').map((c) => c + c).join('')
+    : cleaned;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha)).toFixed(3)})`;
+}
+
+/**
+ * Parametry okręgu „obszaru" rysowanego pod markerem oferty z ukrytą dokładną
+ * lokalizacją. Apple-style: bardzo subtelny fill, czysta cienka obwódka,
+ * mocniejsze wartości tylko przy aktywnej karcie.
+ *
+ * Dlaczego tak niska alfa: przy 4–6 nakładających się okręgach finalna jasność
+ * to ~0.30, czyli wciąż delikatny pastel — nie tworzy „plamy" na mapie.
+ */
+function radarPrivacyCircleStyle(accentHex: string, isSelected: boolean) {
+  return {
+    strokeColor: hexToRgba(accentHex, isSelected ? 0.55 : 0.32),
+    fillColor: hexToRgba(accentHex, isSelected ? 0.14 : 0.07),
+    strokeWidth: isSelected ? 1.6 : 1,
+  };
 }
 
 function clusterBubbleDimensions(points: number) {
@@ -500,11 +535,239 @@ function isRadarFactoryDefaults(f: RadarFilters): boolean {
   );
 }
 
+/**
+ * Brama logowania dla funkcji radaru.
+ *
+ * Pokazywana, gdy niezalogowany użytkownik próbuje otworzyć kalibrację
+ * Radaru lub Ulubionych. Bez konta:
+ *   • backend nie przyjmuje preferencji radaru (`syncRadarPreferencesToBackend`
+ *     ma `if (!user?.id) return`),
+ *   • token push nie jest rejestrowany (`usePushNotifications` wymaga authTokena),
+ *   • więc Live Activity i powiadomienia byłyby placebo (Apple Review 4.2 / 5.1.1).
+ *
+ * UI: glassmorphic sheet w stylu Apple, identyczny z confirmCard ze Step2_Location,
+ * z dwoma CTA — „Zaloguj się" (primary) i „Załóż konto" (secondary).
+ */
+const RadarAuthGateModal = ({
+  visible,
+  context,
+  isDark,
+  onCancel,
+  onLoginPress,
+  onRegisterPress,
+}: {
+  visible: boolean;
+  context: 'radar' | 'favorites' | null;
+  isDark: boolean;
+  onCancel: () => void;
+  onLoginPress: () => void;
+  onRegisterPress: () => void;
+}) => {
+  const fade = useRef(new Animated.Value(0)).current;
+  const lift = useRef(new Animated.Value(40)).current;
+  const scale = useRef(new Animated.Value(0.94)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fade, { toValue: 1, duration: 260, useNativeDriver: true }),
+        Animated.spring(lift, { toValue: 0, friction: 9, tension: 80, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, friction: 9, tension: 80, useNativeDriver: true }),
+      ]).start();
+    } else {
+      fade.setValue(0);
+      lift.setValue(40);
+      scale.setValue(0.94);
+    }
+  }, [visible, fade, lift, scale]);
+
+  const isFavorites = context === 'favorites';
+  const title = isFavorites ? 'Zaloguj się, by zarządzać Ulubionymi' : 'Zaloguj się, by aktywować Radar';
+  const subtitle = isFavorites
+    ? 'Powiadomienia o zmianach cen, propozycjach od kupujących i nowych podobnych ofertach wymagają konta — dzięki temu wiemy, do kogo wysłać alert.'
+    : 'Radar EstateOS™ wysyła powiadomienia push o ofertach pasujących do Twoich kryteriów. Bez konta nie ma do kogo przypisać preferencji ani komu wysłać alertu.';
+
+  const accent = '#10b981';
+  const cardBg = isDark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.96)';
+  const textColor = isDark ? '#FFFFFF' : '#1C1C1E';
+  const subtitleColor = isDark ? 'rgba(235,235,245,0.72)' : 'rgba(60,60,67,0.7)';
+  const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel} statusBarTranslucent>
+      <Animated.View style={[authGateStyles.overlay, { opacity: fade }]}>
+        <BlurView intensity={42} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
+
+        <Animated.View
+          style={[
+            authGateStyles.card,
+            { backgroundColor: cardBg, borderColor, transform: [{ translateY: lift }, { scale }] },
+          ]}
+        >
+          <View style={[authGateStyles.iconBubble, { backgroundColor: `${accent}22`, borderColor: `${accent}55` }]}>
+            <Ionicons name={isFavorites ? 'heart' : 'radio'} size={28} color={accent} />
+          </View>
+
+          <Text style={[authGateStyles.title, { color: textColor }]}>{title}</Text>
+          <Text style={[authGateStyles.subtitle, { color: subtitleColor }]}>{subtitle}</Text>
+
+          <View style={[authGateStyles.bulletList, { borderColor }]}>
+            <View style={authGateStyles.bulletRow}>
+              <Ionicons name="notifications-outline" size={16} color={accent} />
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Powiadomienia push o nowych dopasowaniach</Text>
+            </View>
+            <View style={authGateStyles.bulletRow}>
+              <Ionicons name="sync-outline" size={16} color={accent} />
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Synchronizacja filtrów między urządzeniami</Text>
+            </View>
+            <View style={authGateStyles.bulletRow}>
+              <Ionicons name="lock-closed-outline" size={16} color={accent} />
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Bezpieczne zapisanie Twoich preferencji</Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              authGateStyles.primaryBtn,
+              { backgroundColor: accent, opacity: pressed ? 0.85 : 1 },
+            ]}
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onLoginPress();
+            }}
+          >
+            <Text style={authGateStyles.primaryBtnText}>Zaloguj się</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [authGateStyles.secondaryBtn, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              onRegisterPress();
+            }}
+          >
+            <Text style={[authGateStyles.secondaryBtnText, { color: accent }]}>Załóż konto</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [authGateStyles.ghostBtn, { opacity: pressed ? 0.6 : 1 }]}
+            onPress={onCancel}
+          >
+            <Text style={[authGateStyles.ghostBtnText, { color: subtitleColor }]}>Może później</Text>
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+const authGateStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 22,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.32,
+    shadowRadius: 30,
+    elevation: 22,
+  },
+  iconBubble: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  bulletList: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 20,
+    gap: 10,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  bulletText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  primaryBtn: {
+    height: 50,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+    marginBottom: 10,
+  },
+  primaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  secondaryBtn: {
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  secondaryBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  ghostBtn: {
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ghostBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+});
+
 export default function RadarHomeScreen({ navigation, route, splashDone }: any) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const themeMode = useThemeStore((s) => s.themeMode);
-  const isDark = themeMode === 'dark';
+  const systemScheme = useColorScheme();
+  const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
 
   const mapRef = useRef<MapViewCore | null>(null);
@@ -520,10 +783,46 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
   const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('FAVORITES');
+  const [unreadDealroomMessagesCount, setUnreadDealroomMessagesCount] = useState(0);
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
   const [mapType, setMapType] = useState<'standard' | 'hybrid'>('standard');
   const [showCalibration, setShowCalibration] = useState(false);
   const [showFavoritesCalibration, setShowFavoritesCalibration] = useState(false);
+  // Brama logowania dla kalibracji radaru / Ulubionych — bez konta nie pozwalamy
+  // włączać push, zapisywać preferencji w backendzie ani uruchamiać Live Activity
+  // (które bez konta nie miałyby sensu — push token nie jest rejestrowany,
+  // a snapshot nigdy nie zostanie odświeżony przez backend).
+  // `authGateContext` steruje widocznością modalu (null = ukryty).
+  // `pendingAuthTargetRef` pamięta cel po zamknięciu modalu, żeby auto-resume po
+  // loginie nadal wiedział do której kalibracji wrócić — modal MUSI zniknąć
+  // natychmiast po kliknięciu „Zaloguj się", inaczej native overlay Modal RN
+  // zasłania ekran AuthScreen na zakładce Profil.
+  const [authGateContext, setAuthGateContext] = useState<null | 'radar' | 'favorites'>(null);
+  const pendingAuthTargetRef = useRef<null | 'radar' | 'favorites'>(null);
+  /**
+   * Tryb „Dopasowania Radaru" — gdy `true`, karuzela ofert pokazuje WYŁĄCZNIE
+   * to, co Radar realnie złowił (`radarMatchingOffers`), zamiast domyślnej listy
+   * „Oferty w Twojej okolicy / Filtry / Ulubione".
+   *
+   * KIEDY SIĘ WŁĄCZA
+   * ─────────────────
+   *  • automatycznie po tapnięciu pusha typu „Radar znalazł X ofert"
+   *    (gdy push nie miał konkretnego offerId — wtedy `App.tsx` przekierowuje
+   *     na zakładkę Radar i sygnalizuje to przez `route.params.radarFocus = 'matches'`),
+   *  • ręcznie z mini-CTA „Pokaż N dopasowań" pod pillem „EstateOS™ Radar",
+   *  • mapa fituje się do dopasowań przy każdym wejściu w ten tryb.
+   *
+   * KIEDY SIĘ WYŁĄCZA
+   * ─────────────────
+   *  • akcja „Wszystkie" w banerze powodu,
+   *  • dowolne aktywne wyszukiwanie/filtry/„tylko ulubione" (effecty poniżej),
+   *  • wyłączenie Radaru (`isRadarEnabled = false`) — bez Radaru nie ma sensu
+   *    pokazywać „dopasowań".
+   *
+   * MA NAJWYŻSZY PRIORYTET w `offerDisplayReason`, więc nigdy nie miesza się
+   * wizualnie z innymi trybami — to jest „dedykowany widok wyników Radaru".
+   */
+  const [showRadarMatchesOnly, setShowRadarMatchesOnly] = useState(false);
   const [calibrationSessionId, setCalibrationSessionId] = useState(0);
   const [favoritesCalibrationSessionId, setFavoritesCalibrationSessionId] = useState(0);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -604,6 +903,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     latitudeDelta: DEFAULT_REGION.latitudeDelta,
     longitudeDelta: DEFAULT_REGION.longitudeDelta,
   });
+  const [areaPickerResolvedLocality, setAreaPickerResolvedLocality] = useState('');
   const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 });
   const areaRegionRef = useRef<Region | null>(null);
   const areaReticleScale = useRef(new Animated.Value(1)).current;
@@ -646,6 +946,35 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const modeIslandTranslateY = useRef(new Animated.Value(0)).current;
   const modeIslandScale = useRef(new Animated.Value(1)).current;
   const lastLiveActivityFingerprintRef = useRef('');
+  /** Ostatni snapshot Live Activity — używany przez heartbeat co 15 s. */
+  const liveActivitySnapshotRef = useRef<any>(null);
+  /** Bufor filtrów z modala kalibracji podczas wejścia do „Obszaru mapy”. */
+  const pendingRadarCalibrationFiltersRef = useRef<RadarFilters | null>(null);
+
+  /**
+   * Zbiór ID ofert, które użytkownik już widział od ostatniego wejścia
+   * na zakładkę Radar. Persystowany w AsyncStorage. Dzięki temu w Live Activity
+   * pokazujemy „NOWE! N” tylko dla świeżo wpadających dopasowań.
+   */
+  const [seenRadarOfferIds, setSeenRadarOfferIds] = useState<Set<number>>(new Set());
+  const seenRadarOfferIdsRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    seenRadarOfferIdsRef.current = seenRadarOfferIds;
+  }, [seenRadarOfferIds]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('@estateos_radar_seen_offer_ids');
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          setSeenRadarOfferIds(new Set(arr.map((n) => Number(n)).filter((n) => Number.isFinite(n))));
+        }
+      } catch {
+        // noop — przy błędzie startujemy z pustym zbiorem
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Premium "snap-in" when changing Radar/Favor mode.
@@ -672,6 +1001,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       // noop
     }
   }, []);
+
+  // Wylogowanie / brak sesji → wymusza wyłączenie radaru, niezależnie od tego co
+  // zostało zapisane w AsyncStorage z poprzedniej sesji. Bez tego user mógłby
+  // przegapić logout (Live Activity dalej świecący po wyjściu z konta) — Apple
+  // Reviewer też złapie ten case przy teście „log out".
+  useEffect(() => {
+    if (!user && (isRadarActive || isRadarEnabled)) {
+      setIsRadarEnabled(false);
+      void setRadarActive(false);
+    }
+  }, [user, isRadarActive, isRadarEnabled, setRadarActive]);
 
   useEffect(() => {
     let pulseAAnim: Animated.CompositeAnimation | null = null;
@@ -775,7 +1115,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (route?.params?.favoritesScope === 'FAVORITES' || route?.params?.favoritesScope === 'MINE') {
         setFavoritesMapScope(route.params.favoritesScope);
       }
-    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope])
+      // Deep-link z pusha: gdy App.tsx przekierował tu z intencją „pokaż
+      // dopasowania Radaru", podnosimy tryb tu, na ekranie docelowym.
+      if (route?.params?.radarFocus === 'matches') {
+        setShowRadarMatchesOnly(true);
+      }
+    }, [route?.params?.favoritesOnly, route?.params?.favoritesScope, route?.params?.radarFocus])
   );
 
   useEffect(() => {
@@ -1005,8 +1350,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const favoritesUiAccent = '#F777B2';
   const favoritesUiBg = isDark ? 'rgba(90, 24, 56, 0.62)' : 'rgba(255, 210, 234, 0.9)';
   const favoritesUiSubtleBg = isDark ? 'rgba(247,119,178,0.22)' : 'rgba(247,119,178,0.16)';
+  const mineUiAccent = '#10b981';
+  const mineUiBg = isDark ? 'rgba(20, 60, 48, 0.62)' : 'rgba(214, 246, 232, 0.9)';
+  const mineUiSubtleBg = isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.14)';
+  const isMineScope = showOnlyFavorites && favoritesMapScope === 'MINE';
+  const favoritesScopeAccent = isMineScope ? mineUiAccent : favoritesUiAccent;
+  const favoritesScopeBg = isMineScope ? mineUiBg : favoritesUiBg;
+  const favoritesScopeSubtleBg = isMineScope ? mineUiSubtleBg : favoritesUiSubtleBg;
   const modeAccentColor = showOnlyFavorites
-    ? favoritesUiAccent
+    ? favoritesScopeAccent
     : advancedFilters.transactionType === 'RENT'
       ? RENT_MARKER_COLOR
       : SELL_MARKER_COLOR;
@@ -1127,63 +1479,108 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }, [locateUserAndCenterMap, splashDone])
   );
 
+  /**
+   * Mapowanie surowej oferty z backendu → `MapOffer` używane przez listę i mapę.
+   * Wydzielone z `fetchOffers`, żeby ten sam normalizer mógł być użyty zarówno
+   * w focus-fetchu (oryginalny), jak i w background-pollerze (Live Activity).
+   */
+  const mapRawOffer = useCallback((o: any): MapOffer | null => {
+    if (!Number.isFinite(Number(o?.lat)) || !Number.isFinite(Number(o?.lng))) return null;
+    let firstImage: string | null = null;
+    try {
+      const parsed = typeof o.images === 'string' ? JSON.parse(o.images) : o.images;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        firstImage = toAbsoluteImage(parsed[0]);
+      }
+    } catch {
+      firstImage = null;
+    }
+    const propertyLabel = o.propertyType === 'FLAT'
+      ? 'Mieszkanie'
+      : o.propertyType === 'HOUSE'
+        ? 'Dom'
+        : o.propertyType === 'PLOT'
+          ? 'Działka'
+          : 'Lokal';
+    return {
+      id: o.id,
+      price: `${Number(o.price || 0).toLocaleString('pl-PL')} PLN`,
+      type: `${propertyLabel} • ${o.district || o.city || 'Lokalizacja'}`,
+      area: `${o.area || 0} m²`,
+      rooms: `${o.rooms || '-'} pok.`,
+      lat: Number(o.lat),
+      lng: Number(o.lng),
+      image: firstImage,
+      raw: o,
+    };
+  }, []);
+
+  /**
+   * Pobranie ofert z backendu. `showSpinner=false` używamy w tle (Radar pollujący)
+   * — wtedy nie migamy spinnerem, bo ekran nie ma fokusu i nikt go nie widzi.
+   */
+  const fetchOffersOnce = useCallback(
+    async (showSpinner: boolean): Promise<boolean> => {
+      if (showSpinner) setLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
+        const data = await res.json();
+        if (res.ok && data?.success && Array.isArray(data?.offers)) {
+          const mapped = data.offers
+            .map((o: any) => mapRawOffer(o))
+            .filter((m: MapOffer | null): m is MapOffer => m !== null);
+          setOffers(mapped);
+          return true;
+        }
+        setOffers([]);
+        return false;
+      } catch {
+        setOffers([]);
+        return false;
+      } finally {
+        if (showSpinner) setLoading(false);
+      }
+    },
+    [mapRawOffer]
+  );
+
   useFocusEffect(
     useCallback(() => {
-      let mounted = true;
-      const fetchOffers = async () => {
-        setLoading(true);
-        try {
-          const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
-          const data = await res.json();
-          if (!mounted) return;
-          if (res.ok && data?.success && Array.isArray(data?.offers)) {
-            const mapped = data.offers
-              .filter((o: any) => Number.isFinite(Number(o?.lat)) && Number.isFinite(Number(o?.lng)))
-              .map((o: any): MapOffer => {
-                let firstImage: string | null = null;
-                try {
-                  const parsed = typeof o.images === 'string' ? JSON.parse(o.images) : o.images;
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                    firstImage = toAbsoluteImage(parsed[0]);
-                  }
-                } catch {
-                  firstImage = null;
-                }
-                const propertyLabel = o.propertyType === 'FLAT'
-                  ? 'Mieszkanie'
-                  : o.propertyType === 'HOUSE'
-                    ? 'Dom'
-                    : o.propertyType === 'PLOT'
-                      ? 'Działka'
-                      : 'Lokal';
-                return {
-                  id: o.id,
-                  price: `${Number(o.price || 0).toLocaleString('pl-PL')} PLN`,
-                  type: `${propertyLabel} • ${o.district || o.city || 'Lokalizacja'}`,
-                  area: `${o.area || 0} m²`,
-                  rooms: `${o.rooms || '-'} pok.`,
-                  lat: Number(o.lat),
-                  lng: Number(o.lng),
-                  image: firstImage,
-                  raw: o,
-                };
-              });
-            setOffers(mapped);
-          } else {
-            setOffers([]);
-          }
-        } catch {
-          if (mounted) setOffers([]);
-        } finally {
-          if (mounted) setLoading(false);
-        }
-      };
-      fetchOffers();
+      let cancelled = false;
+      void (async () => {
+        if (cancelled) return;
+        await fetchOffersOnce(true);
+      })();
       return () => {
-        mounted = false;
+        cancelled = true;
       };
-    }, [])
+    }, [fetchOffersOnce])
   );
+
+  /**
+   * BACKGROUND POLLING dla Live Activity.
+   *
+   * Bez tego: gdy user przełączy się na zakładkę „Wiadomości" lub „Profil",
+   * `fetchOffers` w `useFocusEffect` przestaje się odpalać → `radarMatchingOffers`
+   * pozostaje stary → snapshot wysyłany heartbeatem co 15s ma ZAWSZE tę samą
+   * liczbę dopasowań. Skutek: Live Activity na lock screenie nigdy nie pokaże
+   * „NOWE! N" dla świeżych ofert, choć radar je teoretycznie monitoruje.
+   *
+   * Z tym effectem: dopóki radar jest włączony, w tle co 30 s odświeżamy listę
+   * ofert. `setOffers` zatrzaska nowy stan → przeliczy się `radarMatchingOffers`
+   * → przeliczy się `newRadarMatchesCount` → snapshot w useEffect-cie poniżej
+   * pojawi się z nowym fingerprintem → Live Activity dostanie update.
+   * Niezależnie od tego, na którą zakładkę przełączył się user.
+   *
+   * Spinner wyłączony — to czysty background poll.
+   */
+  useEffect(() => {
+    if (!isRadarEnabled) return;
+    const interval = setInterval(() => {
+      void fetchOffersOnce(false);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isRadarEnabled, fetchOffersOnce]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1261,6 +1658,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     };
     const favoriteOffers = offers.filter((o) => favorites.includes(Number(o.id)));
     const myOffers = offers.filter(isMyOffer);
+
+    /**
+     * Najwyższy priorytet: tryb „Dopasowania Radaru".
+     *
+     * Bierzemy oferty, które przechodzą predykat kalibracji
+     * (`matchesRadarCalibration`) — bez nakładania wyszukiwania/filtrów/scope
+     * Ulubionych. To celowo „izolowany widok": użytkownik tu trafia z pusha
+     * albo z mini-CTA na pillu Radaru — i widzi DOKŁADNIE to, co Radar złowił.
+     * Sortujemy po dystansie od użytkownika (jeśli mamy GPS), żeby najbliższe
+     * dopasowania były pierwsze.
+     */
+    if (showRadarMatchesOnly && isRadarEnabled) {
+      const radarHits = offers.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
+      if (!userLocation) return radarHits;
+      return radarHits
+        .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
+        .sort((a, b) => a.distance - b.distance)
+        .map((x) => x.offer);
+    }
+
     const queryFiltered =
       normalizedSearchTokens.length === 0
         ? offers
@@ -1273,10 +1690,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const applyRadar = (list: MapOffer[]) =>
       shouldApplyRadarToMapResults ? list.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds)) : list;
     const radarFiltered = applyRadar(advancedFiltered);
+    const applyFavoritesRadar = (list: MapOffer[]) =>
+      isFavoritesRadarEnabled
+        ? list.filter((o) => matchesRadarCalibration(o, favoritesRadarFilters, radarMapBounds))
+        : list;
 
     if (showOnlyFavorites) {
       const scopedBase = favoritesMapScope === 'MINE' ? myOffers : favoriteOffers;
-      const scopedAndAdvanced = applyRadar(scopedBase.filter(matchesAdvancedFilters));
+      const scopedAndAdvanced = applyFavoritesRadar(applyRadar(scopedBase.filter(matchesAdvancedFilters)));
       if (!userLocation) return scopedAndAdvanced;
       const sortedScoped = scopedAndAdvanced
         .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
@@ -1318,19 +1739,466 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     hasAdvancedFiltersActive,
     mapUsesRadarFilters,
     radarFilters,
+    favoritesRadarFilters,
+    isFavoritesRadarEnabled,
     radarMapBounds,
+    showRadarMatchesOnly,
+    isRadarEnabled,
   ]);
 
   const activeOffers = filteredOffers;
 
+  /**
+   * Powód, dla którego użytkownik widzi aktualnie te konkretne oferty
+   * — wyświetlany w pasku „dlaczego to widzę?" nad karuzelą ofert.
+   *
+   * Tryby (od najwyższego priorytetu, bo nakładają się logicznie):
+   *  1. Tryb „Moje oferty"     — Ulubione + scope=MINE.
+   *  2. Tryb „Ulubione"        — Ulubione + scope=FAVORITES.
+   *  3. Tryb „Rozszerzone"     — aktywne `advancedFilters` (cena, dzielnica, typ…).
+   *  4. Tryb „Wyszukiwanie"    — wpisana fraza w pasku wyszukiwania.
+   *  5. Tryb „Okolica"         — masz GPS, brak innych filtrów → oferty do 25 km.
+   *  6. Tryb „Wszystkie"       — brak filtrów, brak lokalizacji → cała baza.
+   *
+   * Każdy tryb dostaje krótki tytuł („Wyszukiwanie rozszerzone"),
+   * podtytuł z konkretami (np. „Sprzedaż · Mokotów · do 800 tys.")
+   * oraz licznik wyników, żeby użytkownik nie pogubił się dlaczego
+   * lista ma akurat tyle pozycji.
+   */
+  const offerDisplayReason = useMemo(() => {
+    const count = activeOffers.length;
+    const trimmedQuery = (searchQuery || '').trim();
+    const isEmpty = count === 0;
+
+    // Helpery formatujące — lokalne, żeby nie zaśmiecać globalnego scope.
+    const fmtThousands = (v: number) => {
+      if (v >= 1_000_000) {
+        const mln = v / 1_000_000;
+        return `${mln >= 10 ? mln.toFixed(0) : mln.toFixed(1)} mln`;
+      }
+      if (v >= 1_000) return `${Math.round(v / 1000)} tys.`;
+      return `${v}`;
+    };
+    const propertyTypeShortLabel = (raw: string) => {
+      switch ((raw || '').toUpperCase()) {
+        case 'FLAT': return 'Mieszkanie';
+        case 'HOUSE': return 'Dom';
+        case 'PLOT': return 'Działka';
+        case 'PREMISES': return 'Lokal';
+        default: return '';
+      }
+    };
+    const joinNonEmpty = (parts: (string | null | undefined)[]) =>
+      parts.filter((p): p is string => !!p && p.trim().length > 0).join(' · ');
+
+    type Reason = {
+      icon: string;
+      title: string;
+      subtitle: string;
+      accent: string;
+      severity: 'normal' | 'empty';
+      action: null | { label: string; onPress: () => void };
+    };
+
+    // Tryb 0 — Dopasowania Radaru (PRIORYTET NAJWYŻSZY).
+    // Wchodzi tylko gdy user świadomie wszedł w ten tryb (push lub mini-CTA).
+    // Każde inne aktywne kryterium (search/filtry/Ulubione) wcześniej już
+    // zostało skasowane przez efekty „auto-dismiss radar matches mode".
+    if (showRadarMatchesOnly && isRadarEnabled) {
+      // Liczymy „nowe" inline — `newRadarMatchesCount` deklarowane jest
+      // niżej w pliku (TDZ), a w tym trybie `activeOffers === radarMatchingOffers`.
+      let newCount = 0;
+      for (const o of activeOffers) {
+        if (!seenRadarOfferIds.has(Number(o.id))) newCount += 1;
+      }
+      const newSuffix = newCount > 0 ? ` · ${newCount} ${newCount === 1 ? 'nowa' : 'nowych'}` : '';
+      const r: Reason = isEmpty
+        ? {
+            icon: 'radio-outline',
+            title: 'Dopasowania Radaru',
+            subtitle:
+              'Aktualnie żadna oferta nie pasuje do Twojej kalibracji. Rozszerz kryteria — Radar nadal czuwa w tle.',
+            accent: '#10b981',
+            severity: 'empty',
+            action: { label: 'Kalibruj', onPress: () => setShowCalibration(true) },
+          }
+        : {
+            icon: 'radio',
+            title: 'Dopasowania Radaru',
+            subtitle: `${count} ${pluralOffers(count)} pasuje do Twojej kalibracji${newSuffix}`,
+            accent: '#10b981',
+            severity: 'normal',
+            action: { label: 'Wszystkie', onPress: () => setShowRadarMatchesOnly(false) },
+          };
+      return r;
+    }
+
+    // Tryb 1 — Moje oferty
+    if (showOnlyFavorites && favoritesMapScope === 'MINE') {
+      const r: Reason = isEmpty
+        ? {
+            icon: 'briefcase-outline',
+            title: 'Moje oferty',
+            subtitle: 'Nie masz aktywnych ogłoszeń. Dodaj pierwsze, aby pojawiło się tutaj.',
+            accent: mineUiAccent,
+            severity: 'empty',
+            action: { label: 'Dodaj', onPress: () => navigation.navigate('Dodaj') },
+          }
+        : {
+            icon: 'briefcase-outline',
+            title: 'Moje oferty',
+            subtitle: `${count} ${pluralOffers(count)} · tylko Twoje aktywne ogłoszenia`,
+            accent: mineUiAccent,
+            severity: 'normal',
+            action: null,
+          };
+      return r;
+    }
+
+    // Tryb 2 — Ulubione (polubione)
+    if (showOnlyFavorites) {
+      const r: Reason = isEmpty
+        ? {
+            icon: 'heart-outline',
+            title: 'Twoje ulubione',
+            subtitle: 'Nie masz jeszcze ulubionych. Stuknij serce na karcie oferty, aby ją zapisać.',
+            accent: favoritesUiAccent,
+            severity: 'empty',
+            action: null,
+          }
+        : {
+            icon: 'heart',
+            title: 'Twoje ulubione',
+            subtitle: `${count} ${pluralOffers(count)} · oznaczone sercem`,
+            accent: favoritesUiAccent,
+            severity: 'normal',
+            action: null,
+          };
+      return r;
+    }
+
+    // Tryb 3 — Wyszukiwanie rozszerzone
+    if (hasAdvancedFiltersActive) {
+      const txLabel = advancedFilters.transactionType === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+      const propLabel = advancedFilters.propertyType !== 'ALL'
+        ? propertyTypeShortLabel(advancedFilters.propertyType)
+        : null;
+      let locLabel: string | null = null;
+      if (advancedFilters.locationMode === 'MAP' && advancedFilters.mapBounds) {
+        locLabel = `Obszar ${advancedFilters.mapBounds.radiusKm.toFixed(1)} km`;
+      } else if (advancedFilters.city.trim()) {
+        const districtSuffix = advancedFilters.districts.length > 0
+          ? ` · ${advancedFilters.districts[0]}${advancedFilters.districts.length > 1 ? ` +${advancedFilters.districts.length - 1}` : ''}`
+          : '';
+        locLabel = `${advancedFilters.city.trim()}${districtSuffix}`;
+      }
+      const priceParts: string[] = [];
+      if (advancedFilters.minPrice != null) priceParts.push(`od ${fmtThousands(advancedFilters.minPrice)} zł`);
+      if (advancedFilters.maxPrice != null) priceParts.push(`do ${fmtThousands(advancedFilters.maxPrice)} zł`);
+      const priceLabel = priceParts.length > 0 ? priceParts.join(' ') : null;
+      const areaLabel = advancedFilters.minArea != null ? `od ${advancedFilters.minArea} m²` : null;
+      const roomsLabel = advancedFilters.minRooms != null ? `od ${advancedFilters.minRooms} pok.` : null;
+
+      const details = joinNonEmpty([txLabel, propLabel, locLabel, priceLabel, areaLabel, roomsLabel]);
+      const accent = advancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
+
+      const r: Reason = isEmpty
+        ? {
+            icon: 'options-outline',
+            title: 'Brak ofert dla filtrów',
+            subtitle: `Żadna oferta nie pasuje do: ${details}. Spróbuj rozszerzyć kryteria.`,
+            accent,
+            severity: 'empty',
+            action: { label: 'Resetuj', onPress: () => resetAdvancedFilters() },
+          }
+        : {
+            icon: 'options-outline',
+            title: 'Wyszukiwanie rozszerzone',
+            subtitle: `${count} ${pluralOffers(count)} · ${details}`,
+            accent,
+            severity: 'normal',
+            action: { label: 'Zmień', onPress: () => setShowAdvancedSearch(true) },
+          };
+      return r;
+    }
+
+    // Tryb 4 — Wyszukiwanie tekstowe (bez filtrów rozszerzonych)
+    if (trimmedQuery.length > 0) {
+      const r: Reason = isEmpty
+        ? {
+            icon: 'search-outline',
+            title: 'Brak wyników wyszukiwania',
+            subtitle: `Żadna oferta nie pasuje do frazy „${trimmedQuery}". Sprawdź pisownię lub zmień zapytanie.`,
+            accent: '#10B981',
+            severity: 'empty',
+            action: { label: 'Wyczyść', onPress: () => setSearchQuery('') },
+          }
+        : {
+            icon: 'search-outline',
+            title: 'Wyszukiwanie',
+            subtitle: `${count} ${pluralOffers(count)} dla frazy „${trimmedQuery}"`,
+            accent: '#10B981',
+            severity: 'normal',
+            action: { label: 'Wyczyść', onPress: () => setSearchQuery('') },
+          };
+      return r;
+    }
+
+    // Tryb 5 — Okolica (GPS bez filtrów)
+    if (userLocation) {
+      const r: Reason = isEmpty
+        ? {
+            icon: 'location-outline',
+            title: 'Brak ofert w okolicy',
+            subtitle: 'W promieniu 25 km od Twojej lokalizacji nie ma jeszcze ofert. Spróbuj wyszukiwania rozszerzonego.',
+            accent: '#10B981',
+            severity: 'empty',
+            action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+          }
+        : {
+            icon: 'location-outline',
+            title: 'Oferty w Twojej okolicy',
+            subtitle: `${count} ${pluralOffers(count)} · do 25 km od Twojej lokalizacji`,
+            accent: '#10B981',
+            severity: 'normal',
+            action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+          };
+      return r;
+    }
+
+    // Tryb 6 — Wszystko, brak filtrów, brak lokalizacji
+    const r: Reason = isEmpty
+      ? {
+          icon: 'apps-outline',
+          title: 'Brak ofert w bazie',
+          subtitle: 'Aktualnie nie ma żadnych ogłoszeń do wyświetlenia. Zajrzyj później lub dodaj swoje.',
+          accent: isDark ? '#94A3B8' : '#64748B',
+          severity: 'empty',
+          action: { label: 'Dodaj', onPress: () => navigation.navigate('Dodaj') },
+        }
+      : {
+          icon: 'apps-outline',
+          title: 'Wszystkie oferty',
+          subtitle: `${count} ${pluralOffers(count)} · brak aktywnych filtrów`,
+          accent: isDark ? '#94A3B8' : '#64748B',
+          severity: 'normal',
+          action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+        };
+    return r;
+  }, [
+    activeOffers,
+    activeOffers.length,
+    showOnlyFavorites,
+    favoritesMapScope,
+    hasAdvancedFiltersActive,
+    advancedFilters,
+    searchQuery,
+    userLocation,
+    isDark,
+    mineUiAccent,
+    favoritesUiAccent,
+    navigation,
+    showRadarMatchesOnly,
+    isRadarEnabled,
+    seenRadarOfferIds,
+  ]);
+
+  /**
+   * Licznik nieprzeczytanych wiadomości w Dealroomach.
+   * Odświeżamy go:
+   *  • przy starcie ekranu i co 20 s (siatka bezpieczeństwa),
+   *  • przy KAŻDYM przychodzącym powiadomieniu push (real-time — patrz listener niżej),
+   *  • przy kliknięciu w powiadomienie (np. otwarcie aplikacji z lock-screena).
+   * Dzięki temu liczba na Live Activity i sticky-notification rośnie od razu,
+   * a nie dopiero po wejściu do appki.
+   */
+  const refreshUnreadDealroomCountRef = useRef<() => Promise<void>>(async () => {});
+
   useEffect(() => {
+    let cancelled = false;
+
+    const normalizeDealsPayload = (payload: any): any[] => {
+      if (!payload) return [];
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload.deals)) return payload.deals;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.data?.deals)) return payload.data.deals;
+      if (Array.isArray(payload.data?.items)) return payload.data.items;
+      if (Array.isArray(payload.data)) return payload.data;
+      return [];
+    };
+
+    const refreshUnread = async () => {
+      if (!token) {
+        if (!cancelled) setUnreadDealroomMessagesCount(0);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        const total = normalizeDealsPayload(data).reduce(
+          (sum, deal) => sum + Math.max(0, Number(deal?.unread || 0)),
+          0
+        );
+        if (!cancelled) setUnreadDealroomMessagesCount(Number.isFinite(total) ? total : 0);
+      } catch {
+        if (!cancelled) setUnreadDealroomMessagesCount(0);
+      }
+    };
+
+    refreshUnreadDealroomCountRef.current = refreshUnread;
+    void refreshUnread();
+    const interval = setInterval(refreshUnread, 20000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [token]);
+
+  /**
+   * Real-time refresh licznika przy KAŻDYM przychodzącym pushu.
+   * Reagujemy szeroko (każdy nie-radarowy push) — koszt to jedno żądanie `/api/mobile/v1/deals`,
+   * a użytkownik widzi liczbę natychmiast, bez czekania na 20-sekundowy interwał.
+   * Bezpiecznie pomijamy własne sticky-notification Radaru (feature: radar_live_activity),
+   * żeby nie tworzyć pętli przy aktualizacji Live Activity.
+   *
+   * Dodatkowo: gdy tap-em wraca odpowiedź na pusha typu „Radar znalazł X ofert"
+   * (push BEZ konkretnego offerId — bo to alert zbiorczy), AUTOMATYCZNIE
+   * przełączamy ekran w tryb „Dopasowania Radaru", żeby user od razu widział
+   * to co Radar złowił, a nie ogólny widok „Oferty w okolicy".
+   */
+  useEffect(() => {
+    if (!token) return;
+
+    const looksLikeRadarMatchPush = (data: Record<string, unknown>) => {
+      const feature = String(data?.feature || '').toLowerCase();
+      if (feature === 'radar_match' || feature === 'radar_matches') return true;
+      const candidates = [data?.target, data?.targetType, data?.type, data?.notificationType, data?.entity]
+        .map((v) => String(v || '').toLowerCase());
+      // Heurystyka: dowolne pole wskazujące „radar"/„match", BEZ jednoczesnego
+      // wskazania konkretnej oferty czy dealroomu (te idą do OfferDetail/Chat).
+      const mentionsRadar = candidates.some((c) => c.includes('radar') || c.includes('match'));
+      const hasOfferIdHint = !!(
+        data?.offerId || (data as any)?.offer_id || (data as any)?.listingId || (data as any)?.propertyId
+      );
+      const hasDealIdHint = !!(data?.dealId || (data as any)?.deal_id || (data as any)?.threadId);
+      return mentionsRadar && !hasOfferIdHint && !hasDealIdHint;
+    };
+
+    const handleIncomingNotification = (notification: Notifications.Notification) => {
+      try {
+        const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+        if (data?.feature === 'radar_live_activity') return;
+        void refreshUnreadDealroomCountRef.current?.();
+      } catch {
+        // noop
+      }
+    };
+
+    const receivedSub = Notifications.addNotificationReceivedListener(handleIncomingNotification);
+    const responseSub = Notifications.addNotificationResponseReceivedListener(({ notification }) => {
+      handleIncomingNotification(notification);
+      try {
+        const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+        if (looksLikeRadarMatchPush(data)) {
+          // App.tsx już przekierował na zakładkę Radar (fallback radar bez offerId).
+          // Tu tylko podnosimy tryb „Dopasowania Radaru" — fit mapy i banner
+          // zrobi efekt poniżej.
+          setShowRadarMatchesOnly(true);
+        }
+      } catch {
+        // noop
+      }
+    });
+
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
+  }, [token]);
+
+  /**
+   * Rzeczywiste dopasowania konfiguracji radaru, nie lista wyświetlana na mapie.
+   * Wcześniej `activeMatchesCount` brał `activeOffers.length`, ale ta lista
+   * z premedytacją IGNORUJE filtry radaru (komentarz w `filteredOffers`).
+   * Tu liczymy „co radar realnie monitoruje" przez ten sam predykat,
+   * którego używa preview kalibracji.
+   */
+  const radarMatchingOffers = useMemo(() => {
+    if (!isRadarEnabled) return [] as MapOffer[];
+    return offers.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
+  }, [offers, radarFilters, radarMapBounds, isRadarEnabled]);
+
+  const newRadarMatchesCount = useMemo(() => {
+    let count = 0;
+    for (const o of radarMatchingOffers) {
+      if (!seenRadarOfferIds.has(Number(o.id))) count += 1;
+    }
+    return count;
+  }, [radarMatchingOffers, seenRadarOfferIds]);
+
+  /**
+   * Auto-wygaszanie trybu „Dopasowania Radaru" gdy pojawia się jakikolwiek
+   * konkurencyjny stan filtrowania. Trzymamy obietnicę z komentarza przy
+   * `showRadarMatchesOnly`: to ma być widok IZOLOWANY — gdy user zaczyna
+   * szukać/filtrować/zaznacza ulubione, automatycznie wracamy do normalnego
+   * widoku, żeby nic się nie poplątało wizualnie.
+   */
+  useEffect(() => {
+    if (!showRadarMatchesOnly) return;
+    if (
+      !isRadarEnabled ||
+      showOnlyFavorites ||
+      hasAdvancedFiltersActive ||
+      (searchQuery || '').trim().length > 0
+    ) {
+      setShowRadarMatchesOnly(false);
+    }
+  }, [
+    showRadarMatchesOnly,
+    isRadarEnabled,
+    showOnlyFavorites,
+    hasAdvancedFiltersActive,
+    searchQuery,
+  ]);
+
+  useEffect(() => {
+    // Sentinele „brak limitu” z `defaultRadarFilters` traktujemy jako pustki.
+    // Inaczej Live Activity rysowała „Rok budowy: od 1900 r.” nawet wtedy,
+    // gdy użytkownik niczego nie ustawił.
+    const sanitizedMinYear = radarFilters.minYear && radarFilters.minYear > 1900 ? radarFilters.minYear : null;
+    const sanitizedMinArea = radarFilters.minArea && radarFilters.minArea > 0 ? radarFilters.minArea : null;
+    const RENT_DEFAULT_MAX = 50000;
+    const SELL_DEFAULT_MAX = 5_000_000;
+    const defaultMax = radarFilters.transactionType === 'RENT' ? RENT_DEFAULT_MAX : SELL_DEFAULT_MAX;
+    const sanitizedMaxPrice = radarFilters.maxPrice && radarFilters.maxPrice > 0 && radarFilters.maxPrice < defaultMax
+      ? radarFilters.maxPrice
+      : null;
+
     const snapshot = {
       enabled: isRadarEnabled,
       transactionType: radarFilters.transactionType,
       city: radarFilters.city,
+      districts: radarFilters.selectedDistricts || [],
+      propertyType: radarFilters.propertyType,
+      maxPrice: sanitizedMaxPrice,
+      minArea: sanitizedMinArea,
+      minYear: sanitizedMinYear,
+      areaRadiusKm: radarMapBounds?.radiusKm ?? null,
       minMatchThreshold: radarFilters.matchThreshold,
-      activeMatchesCount: activeOffers.length,
+      activeMatchesCount: radarMatchingOffers.length,
+      newMatchesCount: newRadarMatchesCount,
+      unreadDealroomMessagesCount,
+      requireBalcony: !!radarFilters.requireBalcony,
+      requireGarden: !!radarFilters.requireGarden,
+      requireElevator: !!radarFilters.requireElevator,
+      requireParking: !!radarFilters.requireParking,
+      requireFurnished: !!radarFilters.requireFurnished,
     } as const;
+    liveActivitySnapshotRef.current = snapshot;
     const fingerprint = JSON.stringify(snapshot);
     if (lastLiveActivityFingerprintRef.current === fingerprint) return;
     lastLiveActivityFingerprintRef.current = fingerprint;
@@ -1339,9 +2207,38 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     isRadarEnabled,
     radarFilters.transactionType,
     radarFilters.city,
+    radarFilters.selectedDistricts,
+    radarFilters.propertyType,
+    radarFilters.maxPrice,
+    radarFilters.minArea,
+    radarFilters.minYear,
     radarFilters.matchThreshold,
-    activeOffers.length,
+    radarFilters.requireBalcony,
+    radarFilters.requireGarden,
+    radarFilters.requireElevator,
+    radarFilters.requireParking,
+    radarFilters.requireFurnished,
+    radarMapBounds?.radiusKm,
+    radarMatchingOffers.length,
+    newRadarMatchesCount,
+    unreadDealroomMessagesCount,
   ]);
+
+  /**
+   * Heartbeat Live Activity co 15 s — wymusza re-emit snapshotu z nowym `updatedAtIso`,
+   * dzięki czemu iOS „odświeża" Activity i widzimy ruch (zegarek + kropka pulsu).
+   * Bez tego widget potrafi wyglądać na zamrożony, kiedy nic w filtrach się nie zmienia.
+   */
+  useEffect(() => {
+    if (!isRadarEnabled) return;
+    const interval = setInterval(() => {
+      const snap = liveActivitySnapshotRef.current;
+      if (!snap) return;
+      // Wymuszamy nowy fingerprint przez świeży `updatedAtIso` (service i tak go nadpisuje).
+      void syncRadarLiveActivity(snap);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isRadarEnabled]);
 
   const focusMapToOffers = useCallback((items: MapOffer[]) => {
     if (!mapRef.current || items.length === 0) return;
@@ -1367,6 +2264,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
   }, []);
 
+  /**
+   * Gdy wchodzimy w tryb „Dopasowania Radaru" (z pusha, deep-linku albo z
+   * mini-CTA), automatycznie fitujemy mapę do markerów dopasowań, scrollujemy
+   * karuzelę na początek i wyzwalamy lekki haptic. To zamyka pętlę „push →
+   * widzę dokładnie co Radar złowił" bez żadnych dodatkowych klików.
+   */
+  useEffect(() => {
+    if (!showRadarMatchesOnly || !isRadarEnabled) return;
+    let cancelled = false;
+    Haptics.selectionAsync();
+    InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      setTimeout(() => {
+        if (cancelled) return;
+        if (radarMatchingOffers.length === 0) return;
+        focusMapToOffers(radarMatchingOffers);
+        setActiveIndex(0);
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, Platform.OS === 'ios' ? 220 : 160);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showRadarMatchesOnly, isRadarEnabled, radarMatchingOffers, focusMapToOffers]);
+
   useEffect(() => {
     const pending = pendingSearchMapFocusRef.current;
     if (pending === null) return;
@@ -1389,17 +2311,102 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     };
   }, [searchQuery, activeOffers, focusMapToOffers]);
 
+  /**
+   * Auto-fokus mapy po wejściu w „Ulubione" / „Moje" (lub po przełączeniu między
+   * tymi scopami).
+   *
+   * Bez tego efektu mapa zostaje tam, gdzie była — typowo nad Warszawą, podczas
+   * gdy jedyne ulubione/własne ogłoszenie znajduje się np. w Górze Kalwarii.
+   * User widzi kartę oferty na dole, ale na mapie pinezki nie ma (jest poza
+   * widokiem). Aby ją zobaczyć, musi sam przewinąć listę → wtedy `focusOffer`
+   * przeskakuje na markerze. To kontrintuicyjne.
+   *
+   * Logika: śledzimy ostatnio auto-zfokusowany scope. Auto-focus odpala się:
+   *   • przy pierwszym wejściu w „Ulubione" (z innej zakładki),
+   *   • przy przełączeniu zakładki wewnętrznej „Ulubione ↔ Moje".
+   *
+   * Nie odpala się przy każdej drobnej zmianie `activeOffers` (np. polling
+   * radaru w tle), więc user nie zostaje wyrzucony z miejsca, w które sam
+   * przesunął mapę.
+   */
+  const lastAutoFocusedFavoritesScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!showOnlyFavorites) {
+      lastAutoFocusedFavoritesScopeRef.current = null;
+      return;
+    }
+    if (activeOffers.length === 0) return;
+    if (lastAutoFocusedFavoritesScopeRef.current === favoritesMapScope) return;
+    lastAutoFocusedFavoritesScopeRef.current = favoritesMapScope;
+
+    let cancelled = false;
+    InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+      setTimeout(() => {
+        if (cancelled) return;
+        if (activeOffers.length === 0) return;
+        focusMapToOffers(activeOffers);
+        setActiveIndex(0);
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      }, Platform.OS === 'ios' ? 220 : 160);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showOnlyFavorites, favoritesMapScope, activeOffers, focusMapToOffers]);
+
   const openRadarCalibration = () => {
+    // Bez aktywnej sesji: pokazujemy bramę logowania zamiast otwierać kalibrację.
+    // Powód: bez `user.id` backend nie przyjmuje preferencji (`syncRadarPreferencesToBackend`
+    // ma early return), push token nie jest rejestrowany (`usePushNotifications`
+    // wymaga auth tokena), więc Live Activity i „powiadomienia" stałyby się
+    // wizualnym placebo — czego App Review nie zaakceptuje (4.2 / 5.1.1).
+    if (!user) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      pendingAuthTargetRef.current = 'radar';
+      setAuthGateContext('radar');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setCalibrationSessionId((prev) => prev + 1);
     setShowCalibration(true);
   };
 
   const openFavoritesCalibration = () => {
+    if (!user) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      pendingAuthTargetRef.current = 'favorites';
+      setAuthGateContext('favorites');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setFavoritesCalibrationSessionId((prev) => prev + 1);
     setShowFavoritesCalibration(true);
   };
+
+  // Reset bramy logowania po faktycznym zalogowaniu — i automatyczne przeniesienie
+  // do tej kalibracji, którą user pierwotnie chciał otworzyć (UX: nie tracimy intencji).
+  // Czytamy `pendingAuthTargetRef.current`, bo modal już mógł być zamknięty
+  // (`authGateContext === null`) zanim user zdążył się zalogować.
+  useEffect(() => {
+    if (!user) return;
+    const target = pendingAuthTargetRef.current;
+    if (!target) return;
+    pendingAuthTargetRef.current = null;
+    setAuthGateContext(null);
+    // Krótkie opóźnienie — czas, by nawigacja wróciła z zakładki Profil
+    // na zakładkę Radar/Ulubione i widok się ustabilizował.
+    const t = setTimeout(() => {
+      if (target === 'radar') {
+        setCalibrationSessionId((prev) => prev + 1);
+        setShowCalibration(true);
+      } else {
+        setFavoritesCalibrationSessionId((prev) => prev + 1);
+        setShowFavoritesCalibration(true);
+      }
+    }, 320);
+    return () => clearTimeout(t);
+  }, [user]);
 
   const resolveOfferById = useCallback(async (id: number): Promise<any | null> => {
     const headers = token ? ({ Authorization: `Bearer ${token}` } as Record<string, string>) : undefined;
@@ -1502,6 +2509,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }, [pendingMapFocusAfterApply, activeOffers, focusMapToOffers])
   );
 
+  /**
+   * Po wejściu na zakładkę Radar oznaczamy wszystkie aktualne dopasowania jako „widziane”.
+   * Dzięki temu badge „NOWE! N” na Live Activity gaśnie po obejrzeniu ekranu radaru.
+   * Zapis trzymamy w AsyncStorage z ograniczeniem do ostatnich 500 ID,
+   * żeby zbiór nie rósł w nieskończoność.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const ids = radarMatchingOffers
+        .map((o) => Number(o?.id))
+        .filter((n) => Number.isFinite(n) && n > 0);
+      if (ids.length === 0) return;
+      const prev = seenRadarOfferIdsRef.current;
+      const hasAllAlready = ids.every((id) => prev.has(id));
+      if (hasAllAlready) return;
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      // bezpieczne ograniczenie zbioru — trzymamy ostatnie 500
+      const trimmed = next.size > 500 ? new Set(Array.from(next).slice(-500)) : next;
+      setSeenRadarOfferIds(trimmed);
+      seenRadarOfferIdsRef.current = trimmed;
+      void AsyncStorage.setItem('@estateos_radar_seen_offer_ids', JSON.stringify(Array.from(trimmed)));
+    }, [radarMatchingOffers])
+  );
+
   const syncRadarPreferencesToBackend = async (payload: typeof radarFilters) => {
     if (!user?.id) return;
     try {
@@ -1525,6 +2557,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   };
 
   const applyRadarCalibration = async (filtersToApply: RadarFilters) => {
+    pendingRadarCalibrationFiltersRef.current = null;
     setRadarFilters(filtersToApply);
     if (isRadarFactoryDefaults(filtersToApply)) {
       setMapUsesRadarFilters(false);
@@ -1568,8 +2601,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     })();
 
     // Preferencje push per-device (produkcyjnie: backend może upsert po expoPushToken).
+    let pushPrefsSynced = true;
     if (token) {
-      void syncPushDevicePreferences({
+      pushPrefsSynced = await syncPushDevicePreferences({
         authToken: token,
         devicePreferences: {
           favorites: {
@@ -1584,6 +2618,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       });
     }
     setShowFavoritesCalibration(false);
+    if (!pushPrefsSynced) {
+      Alert.alert(
+        'Nie udało się zapisać ustawień push',
+        'Sprawdź, czy powiadomienia systemowe dla EstateOS są włączone i ponów zapis ustawień.'
+      );
+    }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -1706,6 +2746,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const openAreaPickerFromCalibration = (currentFilters: RadarFilters) => {
     setAreaPickerReturnTo('RADAR');
+    pendingRadarCalibrationFiltersRef.current = currentFilters;
     setRadarFilters(currentFilters);
     const baseCenter = userLocation || areaPickerDraft.center;
     setAreaPickerDraft((prev) => ({
@@ -1733,37 +2774,48 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const radius = areaPickerDraft.radiusKm;
     const offersInArea = offers.filter((o) => distanceKm(center.latitude, center.longitude, o.lat, o.lng) <= radius);
 
+    // ZASADA: w trybie „obszar na mapie" miastem radaru jest miasto środka koła z reverse-geocodingu.
+    // Heurystyka ofertowa była niepoprawna w pustym lub mieszanym obszarze — pokazywała sąsiednią
+    // metropolię zamiast miasta, w które użytkownik faktycznie wycelował.
+    let reverseCity = '';
+    try {
+      const reverse = await Location.reverseGeocodeAsync(center);
+      const place = reverse?.[0];
+      reverseCity = String(
+        place?.city || place?.district || place?.subregion || place?.region || ''
+      ).trim();
+    } catch {
+      // noop
+    }
+
     const cityCount = new Map<string, number>();
     for (const offer of offersInArea) {
-      const city = String(offer.raw?.city || '').trim();
-      if (!city) continue;
-      cityCount.set(city, (cityCount.get(city) || 0) + 1);
+      const cityRaw = String(offer.raw?.city || '').trim();
+      const districtRaw = String(offer.raw?.district || '').trim();
+      const locality = normalizeSearchText(cityRaw) === normalizeSearchText('Reszta kraju')
+        ? districtRaw
+        : cityRaw || districtRaw;
+      if (!locality) continue;
+      cityCount.set(locality, (cityCount.get(locality) || 0) + 1);
     }
-
-    let selectedCity =
+    const topOffersLocality =
       cityCount.size > 0
         ? Array.from(cityCount.entries()).sort((a, b) => b[1] - a[1])[0][0]
-        : radarFilters.city;
+        : '';
 
-    if (cityCount.size === 0) {
-      try {
-        const reverse = await Location.reverseGeocodeAsync(center);
-        const place = reverse?.[0];
-        const cityGuess = String(place?.city || place?.subregion || place?.region || '').trim();
-        if (cityGuess) selectedCity = cityGuess;
-      } catch {
-        // noop
-      }
-    }
-
-    const strictMatchCity =
-      STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(selectedCity)) ||
-      STRICT_CITIES.find((cityName) => normalizeSearchText(cityName) === normalizeSearchText(radarFilters.city)) ||
-      STRICT_CITIES[0];
+    const cityForFilters =
+      reverseCity ||
+      areaPickerResolvedLocality ||
+      topOffersLocality ||
+      (normalizeSearchText(String(radarFilters.city || '').trim()) === normalizeSearchText('Reszta kraju')
+        ? ''
+        : String(radarFilters.city || '').trim()) ||
+      'Wybrany obszar';
+    const baseRadarFilters = pendingRadarCalibrationFiltersRef.current || radarFilters;
     const updated: RadarFilters = {
-      ...radarFilters,
+      ...baseRadarFilters,
       calibrationMode: 'MAP',
-      city: strictMatchCity,
+      city: cityForFilters,
       selectedDistricts: [],
     };
 
@@ -1775,9 +2827,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
     setMapUsesRadarFilters(true);
     setAreaSummary(
-      `${strictMatchCity} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
+      `${cityForFilters} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
     );
     if (areaPickerReturnTo === 'ADVANCED') {
+      pendingRadarCalibrationFiltersRef.current = null;
       setDraftAdvancedFilters((prev) => ({
         ...prev,
         locationMode: 'MAP',
@@ -1786,7 +2839,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           centerLng: center.longitude,
           radiusKm: radius,
         },
-        city: strictMatchCity,
+        city: cityForFilters,
         districts: [],
       }));
       setShowAreaPicker(false);
@@ -1796,9 +2849,81 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
 
     setShowAreaPicker(false);
+    pendingRadarCalibrationFiltersRef.current = updated;
+    // Wymuszamy nową sesję modala po powrocie z mapy, aby draft nie „łapał” starej Warszawy.
+    setCalibrationSessionId((prev) => prev + 1);
     setShowCalibration(true);
     void pulseHaptic('success');
   };
+
+  const areaPickerLiveStats = useMemo(() => {
+    const center = areaPickerDraft.center;
+    const radiusKm = areaPickerDraft.radiusKm;
+    const offersInArea = offers.filter((o) => distanceKm(center.latitude, center.longitude, o.lat, o.lng) <= radiusKm);
+
+    const localityCount = new Map<string, number>();
+    for (const offer of offersInArea) {
+      const cityRaw = String(offer.raw?.city || '').trim();
+      const districtRaw = String(offer.raw?.district || '').trim();
+      const locality = normalizeSearchText(cityRaw) === normalizeSearchText('Reszta kraju')
+        ? districtRaw
+        : cityRaw || districtRaw;
+      if (!locality) continue;
+      localityCount.set(locality, (localityCount.get(locality) || 0) + 1);
+    }
+
+    const topLocalityFromOffers =
+      localityCount.size > 0
+        ? Array.from(localityCount.entries()).sort((a, b) => b[1] - a[1])[0][0]
+        : (normalizeSearchText(String(radarFilters.city || '').trim()) === normalizeSearchText('Reszta kraju')
+            ? 'Wybrany obszar'
+            : String(radarFilters.city || '').trim()) || 'Wybrany obszar';
+    const topLocality = areaPickerResolvedLocality || topLocalityFromOffers;
+    const areaKm2 = Math.PI * radiusKm * radiusKm;
+
+    return {
+      offersCount: offersInArea.length,
+      locality: topLocality,
+      areaKm2,
+      radiusKm,
+    };
+  }, [areaPickerDraft, offers, radarFilters.city, areaPickerResolvedLocality]);
+
+  useEffect(() => {
+    if (!showAreaPicker) return;
+    const latitude = areaPickerDraft.center.latitude;
+    const longitude = areaPickerDraft.center.longitude;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    let cancelled = false;
+    const timeoutId = setTimeout(async () => {
+      try {
+        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (cancelled) return;
+        const place = reverse?.[0];
+        const locality = String(
+          place?.city ||
+            place?.district ||
+            place?.subregion ||
+            place?.region ||
+            ''
+        ).trim();
+        if (locality) setAreaPickerResolvedLocality(locality);
+      } catch {
+        // noop - zostawiamy ostatnią znaną miejscowość
+      }
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [showAreaPicker, areaPickerDraft.center.latitude, areaPickerDraft.center.longitude]);
+
+  useEffect(() => {
+    if (showAreaPicker) return;
+    setAreaPickerResolvedLocality('');
+  }, [showAreaPicker]);
 
   const toggleFavorite = async (offerId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1837,12 +2962,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         {
           width: width * 0.85,
           backgroundColor: showOnlyFavorites
-            ? favoritesUiBg
+            ? favoritesScopeBg
             : isDark
               ? 'rgba(28, 28, 30, 0.85)'
               : 'rgba(255, 255, 255, 0.9)',
           borderColor: showOnlyFavorites
-            ? 'rgba(247,119,178,0.5)'
+            ? (isMineScope ? 'rgba(16,185,129,0.5)' : 'rgba(247,119,178,0.5)')
             : isDark
               ? 'rgba(255,255,255,0.1)'
               : 'rgba(0,0,0,0.05)',
@@ -1866,7 +2991,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <Text
             style={[
               styles.cardPrice,
-              { color: showOnlyFavorites ? (isDark ? '#FFD4E7' : '#5E1C3F') : isDark ? '#FFF' : '#1C1C1E' },
+              {
+                color: showOnlyFavorites
+                  ? (isMineScope ? (isDark ? '#C9F9E7' : '#0B5B43') : isDark ? '#FFD4E7' : '#5E1C3F')
+                  : isDark
+                    ? '#FFF'
+                    : '#1C1C1E',
+              },
             ]}
             numberOfLines={1}
           >
@@ -1886,13 +3017,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         <Text style={styles.cardSubtitle} numberOfLines={1}>{item.type}</Text>
 
         <View style={styles.cardBadgesRow}>
-          <View style={[styles.badge, { backgroundColor: showOnlyFavorites ? favoritesUiSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
+          <View style={[styles.badge, { backgroundColor: showOnlyFavorites ? favoritesScopeSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
             <Ionicons name="resize" size={12} color="#8E8E93" />
-            <Text style={[styles.badgeText, { color: showOnlyFavorites ? favoritesUiAccent : isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.area}</Text>
+            <Text style={[styles.badgeText, { color: showOnlyFavorites ? favoritesScopeAccent : isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.area}</Text>
           </View>
-          <View style={[styles.badge, { backgroundColor: showOnlyFavorites ? favoritesUiSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
+          <View style={[styles.badge, { backgroundColor: showOnlyFavorites ? favoritesScopeSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
             <Ionicons name="bed" size={12} color="#8E8E93" />
-            <Text style={[styles.badgeText, { color: showOnlyFavorites ? favoritesUiAccent : isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
+            <Text style={[styles.badgeText, { color: showOnlyFavorites ? favoritesScopeAccent : isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
           </View>
         </View>
 
@@ -1960,36 +3091,70 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           const lat = Number(offer.lat);
           const lng = Number(offer.lng);
           if (!hasFiniteCoords(lat, lng)) return null;
+
+          // Prywatność lokalizacji na publicznej mapie:
+          //  • `isExactLocation === true`  → pełen pin z ceną w dokładnym punkcie
+          //  • `isExactLocation === false` → pin (z ceną) PRZESUNIĘTY deterministycznie
+          //    + delikatny okrąg ~250 m, który komunikuje „obszar". Środek okręgu i pin
+          //    leżą w tym samym, zjitterowanym punkcie — budynek znajduje się gdzieś
+          //    wewnątrz okręgu, ale nigdy w jego centrum.
+          // Helper `getPublicMapPresentation` jest deterministyczny względem `offer.id`,
+          // więc te same coords są zwracane przy każdym renderze (nie da się ich uśrednić
+          // do prawdziwego punktu).
+          const isExact = resolveIsExactLocation(offer.raw?.isExactLocation);
+          const presentation = getPublicMapPresentation({
+            lat,
+            lng,
+            offerId: offer.id ?? null,
+            isExactLocation: isExact,
+            viewerIsOwner: false,
+          });
+          const pinCoord = { latitude: presentation.latitude, longitude: presentation.longitude };
+          const circleStyle = presentation.mode === 'circle'
+            ? radarPrivacyCircleStyle(markerAccent, isSelected)
+            : null;
+
           return (
-            <Marker
-              key={String(offer.id ?? idx)}
-              coordinate={{ latitude: lat, longitude: lng }}
-              tracksViewChanges={false}
-              onPress={() => {
-                Haptics.selectionAsync();
-                focusOffer(idx);
-                listRef.current?.scrollToIndex({ index: idx, animated: true });
-              }}
-            >
-              <View style={[styles.markerOuter, isSelected && styles.markerOuterSelected, { shadowColor: markerAccent }]}>
-                <LinearGradient
-                  colors={luxColors}
-                  start={{ x: 0.12, y: 0 }}
-                  end={{ x: 0.88, y: 1 }}
-                  style={[styles.markerCapsule, isSelected && styles.markerCapsuleSelected]}
-                >
+            <React.Fragment key={`offer-${String(offer.id ?? idx)}`}>
+              {circleStyle ? (
+                <Circle
+                  center={pinCoord}
+                  radius={presentation.circleRadiusM}
+                  strokeColor={circleStyle.strokeColor}
+                  fillColor={circleStyle.fillColor}
+                  strokeWidth={circleStyle.strokeWidth}
+                  zIndex={isSelected ? 2 : 1}
+                />
+              ) : null}
+              <Marker
+                coordinate={pinCoord}
+                tracksViewChanges={false}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  focusOffer(idx);
+                  listRef.current?.scrollToIndex({ index: idx, animated: true });
+                }}
+              >
+                <View style={[styles.markerOuter, isSelected && styles.markerOuterSelected, { shadowColor: markerAccent }]}>
                   <LinearGradient
-                    colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)', 'transparent']}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 0.55 }}
-                    style={styles.markerHighlight}
-                    pointerEvents="none"
-                  />
-                  <Text style={styles.mapMarkerText}>{formatMarkerPrice(offer.price)}</Text>
-                </LinearGradient>
-                <View style={[styles.markerPinTail, { borderTopColor: luxColors[2] }]} />
-              </View>
-            </Marker>
+                    colors={luxColors}
+                    start={{ x: 0.12, y: 0 }}
+                    end={{ x: 0.88, y: 1 }}
+                    style={[styles.markerCapsule, isSelected && styles.markerCapsuleSelected]}
+                  >
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0)', 'transparent']}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 0.55 }}
+                      style={styles.markerHighlight}
+                      pointerEvents="none"
+                    />
+                    <Text style={styles.mapMarkerText}>{formatMarkerPrice(offer.price)}</Text>
+                  </LinearGradient>
+                  <View style={[styles.markerPinTail, { borderTopColor: luxColors[2] }]} />
+                </View>
+              </Marker>
+            </React.Fragment>
           );
         })}
       </RadarMapComponent>
@@ -2042,19 +3207,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <BlurView
             intensity={isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.searchGlass, showOnlyFavorites && { backgroundColor: favoritesUiBg, borderColor: 'rgba(247,119,178,0.55)' }]}
+            style={[
+              styles.searchGlass,
+              showOnlyFavorites && {
+                backgroundColor: favoritesScopeBg,
+                borderColor: isMineScope ? 'rgba(16,185,129,0.55)' : 'rgba(247,119,178,0.55)',
+              },
+            ]}
           >
             <Ionicons
               name="search"
               size={20}
-              color={showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E'}
+              color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
               style={{ marginLeft: 16 }}
             />
             <TextInput
               ref={searchInputRef}
-              style={[styles.searchInput, { color: showOnlyFavorites ? (isDark ? '#FFD4E7' : '#5E1C3F') : isDark ? '#FFF' : '#1C1C1E' }]}
+              style={[
+                styles.searchInput,
+                {
+                  color: showOnlyFavorites
+                    ? (isMineScope ? (isDark ? '#C9F9E7' : '#0B5B43') : isDark ? '#FFD4E7' : '#5E1C3F')
+                    : isDark
+                      ? '#FFF'
+                      : '#1C1C1E',
+                },
+              ]}
               placeholder="Miasto, dzielnica, ulica…"
-              placeholderTextColor={showOnlyFavorites ? 'rgba(247,119,178,0.9)' : '#8E8E93'}
+              placeholderTextColor={showOnlyFavorites ? (isMineScope ? 'rgba(16,185,129,0.9)' : 'rgba(247,119,178,0.9)') : '#8E8E93'}
               value={searchQuery}
               onChangeText={setSearchQuery}
               onFocus={() => setIsSearchFocused(true)}
@@ -2079,30 +3259,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               </Pressable>
             )}
           </BlurView>
-          <View
-            style={[
-              styles.searchModeChip,
-              showOnlyFavorites
-                ? { backgroundColor: isDark ? 'rgba(247,119,178,0.16)' : 'rgba(247,119,178,0.14)', borderColor: 'rgba(247,119,178,0.38)' }
-                : { backgroundColor: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.34)' },
-            ]}
-          >
-            <Ionicons
-              name={showOnlyFavorites ? 'heart' : 'compass'}
-              size={12}
-              color={showOnlyFavorites ? favoritesUiAccent : '#10b981'}
-            />
-            <Text
-              style={[
-                styles.searchModeChipText,
-                { color: showOnlyFavorites ? favoritesUiAccent : '#10b981' },
-              ]}
-            >
-              {showOnlyFavorites
-                ? 'Tryb ulubione: wyszukujesz wyłącznie zapisane oferty'
-                : 'Tryb radar: wyszukujesz globalnie w całym rynku'}
-            </Text>
-          </View>
         </View>
 
         <Pressable
@@ -2115,9 +3271,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <BlurView
             intensity={isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesUiBg }]}
+            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
           >
-            <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E'} />
+            <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
           </BlurView>
         </Pressable>
         <Pressable
@@ -2127,14 +3283,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             setDraftAdvancedFilters(advancedFilters);
             setShowAdvancedSearch(true);
           }}
+          accessibilityLabel="Wyszukiwanie rozszerzone"
         >
           <BlurView
             intensity={isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesUiBg }]}
+            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
           >
-            <Ionicons name="options" size={22} color={showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E'} />
-            {hasAdvancedFiltersActive && <View style={[styles.filterActiveDot, { backgroundColor: modeAccentColor }]} />}
+            <Ionicons
+              name="options"
+              size={22}
+              color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
+            />
+            {hasAdvancedFiltersActive && (
+              <View style={[styles.filterActiveDot, { backgroundColor: showOnlyFavorites ? favoritesScopeAccent : modeAccentColor }]} />
+            )}
           </BlurView>
         </Pressable>
       </View>
@@ -2150,6 +3313,81 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             },
           ]}
         >
+          <View style={styles.favoritesScopeRailOuter}>
+            <BlurView
+              intensity={isDark ? 85 : 92}
+              tint={isDark ? 'dark' : 'light'}
+              style={[
+                styles.favoritesScopeRailBlur,
+                {
+                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                  backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
+                },
+              ]}
+            >
+              <View style={styles.favoritesScopeRailRow}>
+                <Pressable
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: favoritesMapScope === 'FAVORITES' }}
+                  onPress={() => {
+                    if (favoritesMapScope === 'FAVORITES') return;
+                    Haptics.selectionAsync();
+                    setFavoritesMapScope('FAVORITES');
+                  }}
+                  style={({ pressed }) => [
+                    styles.favoritesScopeHalf,
+                    favoritesMapScope === 'FAVORITES' && styles.favoritesScopeHalfActiveFav,
+                    pressed && { opacity: 0.88 },
+                  ]}
+                >
+                  <Ionicons
+                    name={favoritesMapScope === 'FAVORITES' ? 'heart' : 'heart-outline'}
+                    size={16}
+                    color={favoritesMapScope === 'FAVORITES' ? '#F777B2' : '#8E8E93'}
+                  />
+                  <Text
+                    style={[
+                      styles.favoritesScopeHalfLabel,
+                      { color: favoritesMapScope === 'FAVORITES' ? (isDark ? '#FFD4E7' : '#5E1C3F') : '#8E8E93' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Ulubione
+                  </Text>
+                </Pressable>
+                <View style={[styles.favoritesScopeDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
+                <Pressable
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: favoritesMapScope === 'MINE' }}
+                  onPress={() => {
+                    if (favoritesMapScope === 'MINE') return;
+                    Haptics.selectionAsync();
+                    setFavoritesMapScope('MINE');
+                  }}
+                  style={({ pressed }) => [
+                    styles.favoritesScopeHalf,
+                    favoritesMapScope === 'MINE' && styles.favoritesScopeHalfActiveMine,
+                    pressed && { opacity: 0.88 },
+                  ]}
+                >
+                  <Ionicons
+                    name={favoritesMapScope === 'MINE' ? 'person' : 'person-outline'}
+                    size={16}
+                    color={favoritesMapScope === 'MINE' ? '#10b981' : '#8E8E93'}
+                  />
+                  <Text
+                    style={[
+                      styles.favoritesScopeHalfLabel,
+                      { color: favoritesMapScope === 'MINE' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Moje
+                  </Text>
+                </Pressable>
+              </View>
+            </BlurView>
+          </View>
           <View style={styles.radarHeroWrap}>
             {isFavoritesRadarEnabled && (
               <View pointerEvents="none" style={styles.radarPulseLayer}>
@@ -2450,11 +3688,120 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 </View>
               </BlurView>
             </Pressable>
+            {/* Mini-CTA: „Pokaż N dopasowań" — pokazujemy gdy Radar ma realne
+                trafienia, a tryb dedykowanego widoku jest jeszcze nieaktywny.
+                To zamyka pętlę dla użytkownika, który nie tapnął pusha: jednym
+                klikiem przełącza widok listy/mapy na tylko-dopasowania. */}
+            {isRadarEnabled && !showRadarMatchesOnly && radarMatchingOffers.length > 0 && (
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowRadarMatchesOnly(true);
+                }}
+                style={({ pressed }) => [
+                  styles.radarMatchesCta,
+                  pressed && { transform: [{ scale: 0.97 }] },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Pokaż ${radarMatchingOffers.length} dopasowań Radaru`}
+              >
+                <View style={styles.radarMatchesCtaDot} />
+                <Text style={styles.radarMatchesCtaText}>
+                  Pokaż {radarMatchingOffers.length} {pluralOffers(radarMatchingOffers.length)}
+                  {newRadarMatchesCount > 0 ? ` · ${newRadarMatchesCount} NOWE` : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={12} color="#10b981" />
+              </Pressable>
+            )}
           </View>
         </Animated.View>
       )}
 
       <View style={styles.offersPreviewContainer}>
+        {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
+            Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
+            z parametrami. Gdy brak ofert, ta sama karta zmienia ton (severity
+            = 'empty'): tytuł staje się komunikatem „Brak…", subtitle wyjaśnia
+            DLACZEGO nie ma wyników, a akcja kontekstowo zachęca do naprawy
+            (Resetuj / Wyczyść / Filtruj / Dodaj). Wcześniej znikała → user
+            myślał, że appka się zawiesiła. */}
+        {!loading && (() => {
+          const isEmpty = offerDisplayReason.severity === 'empty';
+          // W pustym stanie nakładamy delikatny amber halo na akcent trybu —
+          // info wizualne, że to nie awaria, tylko brak wyników dla filtrów.
+          const reasonAccent = isEmpty ? '#F59E0B' : offerDisplayReason.accent;
+          const reasonIcon = isEmpty ? 'alert-circle' : offerDisplayReason.icon;
+          return (
+            <View style={styles.offerReasonRow} pointerEvents="box-none">
+              <BlurView
+                intensity={isDark ? 60 : 80}
+                tint={isDark ? 'dark' : 'light'}
+                style={[
+                  styles.offerReasonPill,
+                  {
+                    backgroundColor: isDark
+                      ? 'rgba(20,20,22,0.62)'
+                      : 'rgba(255,255,255,0.78)',
+                    borderColor: `${reasonAccent}${isEmpty ? '55' : '33'}`,
+                    minHeight: isEmpty ? 64 : undefined,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.offerReasonIconBubble,
+                    { backgroundColor: `${reasonAccent}22` },
+                  ]}
+                >
+                  <Ionicons
+                    name={reasonIcon as any}
+                    size={14}
+                    color={reasonAccent}
+                  />
+                </View>
+                <View style={{ flex: 1, paddingHorizontal: 10 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.offerReasonTitle,
+                      { color: isDark ? '#FFFFFF' : '#0F172A' },
+                    ]}
+                  >
+                    {offerDisplayReason.title}
+                  </Text>
+                  <Text
+                    numberOfLines={isEmpty ? 2 : 1}
+                    ellipsizeMode="tail"
+                    style={[
+                      styles.offerReasonSubtitle,
+                      { color: isDark ? 'rgba(255,255,255,0.66)' : 'rgba(15,23,42,0.62)' },
+                    ]}
+                  >
+                    {offerDisplayReason.subtitle}
+                  </Text>
+                </View>
+                {offerDisplayReason.action && (
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      offerDisplayReason.action?.onPress();
+                    }}
+                    style={({ pressed }) => [
+                      styles.offerReasonAction,
+                      { backgroundColor: `${reasonAccent}1F`, borderColor: `${reasonAccent}55` },
+                      pressed && { transform: [{ scale: 0.96 }] },
+                    ]}
+                  >
+                    <Text style={[styles.offerReasonActionText, { color: reasonAccent }]}>
+                      {offerDisplayReason.action.label}
+                    </Text>
+                  </Pressable>
+                )}
+              </BlurView>
+            </View>
+          );
+        })()}
+
         {loading ? (
           <View style={{ paddingBottom: bottomCardsInset, alignItems: 'center' }}>
             <ActivityIndicator color={isDark ? '#FFF' : '#111'} />
@@ -2511,6 +3858,33 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         onClose={() => setShowFavoritesCalibration(false)}
         onApply={applyFavoritesCalibration}
         onOpenAreaPicker={openAreaPickerFromCalibration}
+      />
+
+      <RadarAuthGateModal
+        visible={authGateContext !== null}
+        context={authGateContext}
+        isDark={isDark}
+        onCancel={() => {
+          pendingAuthTargetRef.current = null;
+          setAuthGateContext(null);
+        }}
+        onLoginPress={() => {
+          // KOLEJNOŚĆ KRYTYCZNA: najpierw zamykamy modal (RN renderuje go jako
+          // native overlay nad WSZYSTKIM — tabami, stackiem itd.), dopiero potem
+          // nawigujemy. Bez tego AuthScreen jest renderowany, ale niewidoczny,
+          // bo zasłania go native window Modal'a. setTimeout daje fade-outowi
+          // animacji modalu dokończyć, zanim user zobaczy ekran logowania.
+          setAuthGateContext(null);
+          setTimeout(() => {
+            navigation.navigate('Profil', { authIntent: 'login' });
+          }, 220);
+        }}
+        onRegisterPress={() => {
+          setAuthGateContext(null);
+          setTimeout(() => {
+            navigation.navigate('Profil', { authIntent: 'register' });
+          }, 220);
+        }}
       />
       
       {showAreaPicker && (
@@ -2577,13 +3951,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   {formatRadiusLabel(areaPickerDraft.radiusKm)}
                 </Text>
               </View>
+              <View style={styles.areaInsightsCard}>
+                <View style={styles.areaInsightRow}>
+                  <Text style={styles.areaInsightLabel}>Miejscowość</Text>
+                  <Text style={styles.areaInsightValue}>{areaPickerLiveStats.locality}</Text>
+                </View>
+                <View style={styles.areaInsightRow}>
+                  <Text style={styles.areaInsightLabel}>Obszar</Text>
+                  <Text style={styles.areaInsightValue}>
+                    {areaPickerLiveStats.areaKm2.toFixed(1)} km² ({areaPickerLiveStats.radiusKm.toFixed(1)} km)
+                  </Text>
+                </View>
+                <View style={styles.areaInsightRow}>
+                  <Text style={styles.areaInsightLabel}>Oferty w obszarze</Text>
+                  <Text style={styles.areaInsightValue}>
+                    {areaPickerLiveStats.offersCount} {pluralOffers(areaPickerLiveStats.offersCount)}
+                  </Text>
+                </View>
+              </View>
               <View style={styles.areaActionRow}>
                 <Pressable
                   style={styles.areaGhostBtn}
                   onPress={() => {
                     setShowAreaPicker(false);
                     if (areaPickerReturnTo === 'ADVANCED') setShowAdvancedSearch(true);
-                    else setShowCalibration(true);
+                    else {
+                      setCalibrationSessionId((prev) => prev + 1);
+                      setShowCalibration(true);
+                    }
                   }}
                 >
                   <Text style={styles.areaGhostText}>Wróć</Text>
@@ -2996,8 +4391,51 @@ const styles = StyleSheet.create({
   favorFloatingIslandWrap: {
     position: 'absolute',
     alignSelf: 'center',
+    alignItems: 'center',
     zIndex: 48,
     elevation: 48,
+  },
+  favoritesScopeRailOuter: {
+    width: '100%',
+    maxWidth: 300,
+    alignSelf: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  favoritesScopeRailBlur: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  favoritesScopeRailRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 44,
+  },
+  favoritesScopeHalf: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  favoritesScopeHalfActiveFav: {
+    backgroundColor: 'rgba(247,119,178,0.16)',
+  },
+  favoritesScopeHalfActiveMine: {
+    backgroundColor: 'rgba(16,185,129,0.16)',
+  },
+  favoritesScopeDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    marginVertical: 6,
+  },
+  favoritesScopeHalfLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.15,
   },
   searchGlass: {
     flex: 1,
@@ -3030,15 +4468,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    maxWidth: '92%',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchModeChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.15,
+    lineHeight: 11,
   },
   smartSectionTitle: {
     fontSize: 11,
@@ -3347,6 +4787,46 @@ const styles = StyleSheet.create({
     marginTop: 1,
     letterSpacing: 0.7,
   },
+  /**
+   * Mini-CTA pod pillem „EstateOS™ Radar / Status: LIVE" — pojawia się tylko,
+   * gdy Radar realnie złowił coś, a użytkownik nie jest jeszcze w trybie
+   * „Dopasowania Radaru". Jedno tapnięcie ⇒ przełączenie listy/mapy na same
+   * dopasowania (alternatywna ścieżka dla user-a, który nie tapnął pusha).
+   */
+  radarMatchesCta: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(16,185,129,0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(16,185,129,0.55)',
+    borderRadius: 16,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.22,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  radarMatchesCtaDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+    shadowColor: '#10b981',
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  radarMatchesCtaText: {
+    color: '#10b981',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   favoritesScopeContainer: {
     position: 'absolute',
     right: 20,
@@ -3360,6 +4840,47 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     elevation: 20,
+  },
+  offerReasonRow: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  offerReasonPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  offerReasonIconBubble: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offerReasonTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+  },
+  offerReasonSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  offerReasonAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  offerReasonActionText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   offerCard: {
     flexDirection: 'row',
@@ -3527,6 +5048,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  areaInsightsCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  areaInsightRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  areaInsightLabel: {
+    color: '#D1D1D6',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  areaInsightValue: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right',
+    maxWidth: '62%',
   },
   areaRadiusLabel: {
     color: '#8E8E93',

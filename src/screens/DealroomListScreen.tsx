@@ -20,12 +20,14 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
+import { useUnreadBadgeStore } from '../store/useUnreadBadgeStore';
 import { API_URL } from '../config/network';
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
 import { canFinalizeTransition, isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
+import { formatLocationLabel } from '../constants/locationEcosystem';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
@@ -290,7 +292,7 @@ function buildOfferSummaryLine(deal: any): string {
   const district = String(firstDefined(offer?.district, offer?.location?.district, deal?.district) || '').trim();
   const rooms = Number(firstDefined(offer?.rooms, offer?.roomsCount, deal?.rooms) || 0);
   const area = Number(firstDefined(offer?.area, offer?.metrage, deal?.area) || 0);
-  const left = [city, district].filter(Boolean).join(' • ');
+  const left = formatLocationLabel(city, district, '');
   const right = [
     rooms > 0 ? `${rooms} pok.` : '',
     area > 0 ? `${Math.round(area)} m²` : '',
@@ -669,6 +671,307 @@ function DealOfferThumb({ uri, colors }: { uri: string | null; colors: ReturnTyp
   );
 }
 
+// =============================================================================
+// DEALROOMS — LUKSUSOWY EMPTY-STATE / ONBOARDING
+// =============================================================================
+/**
+ * Empty-state ekranu „EstateOS™ Dealrooms".
+ *
+ * KIEDY SIĘ POJAWIA
+ * ─────────────────
+ * Wyłącznie wtedy, gdy backend zwrócił pustą listę transakcji
+ * (`deals.length === 0`) ORAZ pierwsze pobranie się zakończyło
+ * (`loading === false`). Czyli: użytkownik jest zalogowany, ekran załadowany,
+ * ale jeszcze nie ma żadnego aktywnego Dealroomu (ani jako kupujący, ani jako
+ * sprzedający). Nie pokazuje się podczas wczytywania (`loading === true`),
+ * gdzie renderowany jest osobny `ActivityIndicator` w `loaderCenter`.
+ *
+ * CZEMU SŁUŻY TEN EKRAN
+ * ─────────────────────
+ * EstateOS™ Dealroom to dwustronny pokój transakcyjny tworzony AUTOMATYCZNIE
+ * w momencie wzajemnego zainteresowania ofertą:
+ *   1. Kupujący w widoku oferty wysyła „Propozycję transakcji" (cena + warunki).
+ *   2. Sprzedający akceptuje rozmowę → backend tworzy parę
+ *      (`buyerId`, `sellerId`, `offerId`) i wystawia Dealroom z czatem,
+ *      tablicą propozycji cenowych, planowaniem prezentacji i finalizacją
+ *      (z opcjonalnym depozytem zabezpieczającym).
+ *
+ * Po stworzeniu pierwszego Dealroomu — empty-state znika, a ekran prezentuje
+ * grupowanie po fazach:
+ *   • Rozpoczęte  — propozycja wysłana, oczekiwanie na akcję
+ *   • W toku      — negocjacja cenowa / planowanie prezentacji
+ *   • Sfinalizowane — umowa podpisana, depozyt rozliczony
+ *
+ * CO ZAWIERA EMPTY-STATE
+ * ──────────────────────
+ *   • Hero: glow'owa bańka z ikoną `HandCoins` (gold) + warstwa „pyłku" `Sparkles`
+ *   • Eyebrow „WITAJ W DEALROOMS" w firmowym złocie
+ *   • Tytuł „Tu pojawią się Twoje transakcje" (38pt, weight 800)
+ *   • Krótki opis czym jest Dealroom
+ *   • Trzy karty-kroki (1 → 2 → 3) tłumaczące jak otworzyć pierwszą transakcję:
+ *       1. Znajdź ofertę w Radarze
+ *       2. Wyślij propozycję transakcji ze szczegółów oferty
+ *       3. Po akceptacji pojawi się tutaj Dealroom z czatem
+ *   • Primary CTA „Otwórz Radar" → wraca do zakładki Radar (główne wejście do flow)
+ *
+ * Cały blok wchodzi z animacją `FadeInDown` z lekkim staggerem między kartami.
+ */
+function DealroomsEmptyState({
+  colors,
+  onOpenRadar,
+}: {
+  colors: ReturnType<typeof getColors>;
+  onOpenRadar: () => void;
+}) {
+  const steps = [
+    {
+      icon: Star,
+      title: 'Znajdź ofertę w Radarze',
+      desc: 'Otwórz zakładkę Radar, przejrzyj mapę i listę nieruchomości pasujących do Twoich kryteriów.',
+    },
+    {
+      icon: HandCoins,
+      title: 'Wyślij propozycję transakcji',
+      desc: 'W szczegółach oferty stuknij „Zaproponuj transakcję" i wprowadź cenę oraz warunki.',
+    },
+    {
+      icon: ShieldCheck,
+      title: 'Negocjuj i finalizuj bezpiecznie',
+      desc: 'Po akceptacji drugiej strony pojawi się tu Dealroom z czatem, propozycjami cen i finalizacją.',
+    },
+  ];
+
+  return (
+    <Animated.View entering={FadeIn.duration(360)} style={emptyStateStyles.root}>
+      <ScrollView
+        contentContainerStyle={emptyStateStyles.scroll}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        {/* HERO ICON — gold halo + sparkle drobinki */}
+        <Animated.View entering={FadeInDown.duration(420)} style={emptyStateStyles.heroWrap}>
+          <View style={[emptyStateStyles.heroHaloOuter, { backgroundColor: colors.goldDimmed }]} />
+          <View style={[emptyStateStyles.heroHaloInner, { backgroundColor: colors.goldDimmed, borderColor: colors.gold + '55' }]}>
+            <HandCoins size={36} color={colors.gold} strokeWidth={1.8} />
+          </View>
+          <View style={emptyStateStyles.sparkleA} pointerEvents="none">
+            <Sparkles size={14} color={colors.gold} strokeWidth={1.6} />
+          </View>
+          <View style={emptyStateStyles.sparkleB} pointerEvents="none">
+            <Sparkles size={10} color={colors.gold} strokeWidth={1.6} />
+          </View>
+        </Animated.View>
+
+        {/* HEADER TEXT */}
+        <Animated.View entering={FadeInDown.delay(100).duration(420)} style={emptyStateStyles.headerBlock}>
+          <Text style={[emptyStateStyles.eyebrow, { color: colors.gold }]}>WITAJ W DEALROOMS</Text>
+          <Text style={[emptyStateStyles.title, { color: colors.textMain }]}>
+            Tu pojawią się{'\n'}Twoje transakcje
+          </Text>
+          <Text style={[emptyStateStyles.subtitle, { color: colors.textMuted }]}>
+            EstateOS™ Dealroom to bezpieczny pokój negocjacyjny — czat, propozycje cenowe,
+            planowanie prezentacji i finalizacja w jednym miejscu. Otwiera się automatycznie,
+            gdy obie strony zgodzą się rozmawiać o ofercie.
+          </Text>
+        </Animated.View>
+
+        {/* 3-CROOK ONBOARDING */}
+        <View style={emptyStateStyles.stepsBlock}>
+          {steps.map((step, idx) => {
+            const StepIcon = step.icon;
+            return (
+              <Animated.View
+                key={step.title}
+                entering={FadeInDown.delay(200 + idx * 110).duration(420)}
+                style={[emptyStateStyles.stepCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                <View style={[emptyStateStyles.stepNumberBubble, { backgroundColor: colors.goldDimmed, borderColor: colors.gold + '44' }]}>
+                  <Text style={[emptyStateStyles.stepNumber, { color: colors.gold }]}>{idx + 1}</Text>
+                </View>
+                <View style={emptyStateStyles.stepTextBlock}>
+                  <View style={emptyStateStyles.stepTitleRow}>
+                    <StepIcon size={16} color={colors.gold} strokeWidth={2} />
+                    <Text style={[emptyStateStyles.stepTitle, { color: colors.textMain }]}>{step.title}</Text>
+                  </View>
+                  <Text style={[emptyStateStyles.stepDesc, { color: colors.textMuted }]}>{step.desc}</Text>
+                </View>
+              </Animated.View>
+            );
+          })}
+        </View>
+
+        {/* PRIMARY CTA */}
+        <Animated.View entering={FadeInDown.delay(560).duration(420)} style={emptyStateStyles.ctaBlock}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onOpenRadar();
+            }}
+            style={({ pressed }) => [
+              emptyStateStyles.ctaPrimary,
+              { backgroundColor: colors.gold, opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+            ]}
+          >
+            <Text style={emptyStateStyles.ctaPrimaryText}>Otwórz Radar i znajdź ofertę</Text>
+            <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.5} />
+          </Pressable>
+
+          <Text style={[emptyStateStyles.ctaFootnote, { color: colors.textMuted }]}>
+            Dealroom utworzymy automatycznie po wzajemnej akceptacji.
+          </Text>
+        </Animated.View>
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
+const emptyStateStyles = StyleSheet.create({
+  root: { flex: 1 },
+  scroll: {
+    paddingTop: 24,
+    paddingBottom: 140,
+    paddingHorizontal: 22,
+    alignItems: 'stretch',
+  },
+  heroWrap: {
+    alignSelf: 'center',
+    width: 132,
+    height: 132,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+  },
+  heroHaloOuter: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    opacity: 0.55,
+  },
+  heroHaloInner: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  sparkleA: {
+    position: 'absolute',
+    top: 8,
+    right: 14,
+    opacity: 0.85,
+  },
+  sparkleB: {
+    position: 'absolute',
+    bottom: 14,
+    left: 10,
+    opacity: 0.7,
+  },
+  headerBlock: {
+    alignItems: 'center',
+    marginBottom: 28,
+    paddingHorizontal: 8,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2.5,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    textAlign: 'center',
+    lineHeight: 38,
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  stepsBlock: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  stepCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 16,
+  },
+  stepNumberBubble: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumber: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  stepTextBlock: {
+    flex: 1,
+  },
+  stepTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  stepTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  stepDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '500',
+  },
+  ctaBlock: {
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  ctaPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  ctaPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  ctaFootnote: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 12,
+    textAlign: 'center',
+    letterSpacing: 0.1,
+  },
+});
+
 // === GŁÓWNY EKRAN ===
 export default function DealroomListScreen() {
   const navigation = useNavigation<any>();
@@ -893,6 +1196,21 @@ export default function DealroomListScreen() {
     return out;
   }, [deals, dealMessagesById, user?.id]);
 
+  /**
+   * Propagujemy sumę „kart wymagających uwagi" do globalnego store'u, z którego
+   * `App.tsx` czyta liczbę na zakładce „Wiadomości" oraz na ikonie aplikacji.
+   *
+   * Liczymy KARTY, nie sumę `unread` w wiadomościach — bo czerwona kropka na
+   * karcie jest binarna („potrzebuje uwagi" / „nie"). Dzięki temu badge "1"
+   * znika natychmiast po wejściu w czat i oznaczeniu wątku przez backend,
+   * bez czekania na pełną synchronizację licznika wiadomości.
+   */
+  const setUnreadBadgeCount = useUnreadBadgeStore((state) => state.setUnreadDealCount);
+  useEffect(() => {
+    const attentionCount = Object.values(dealNeedsAttentionById).filter(Boolean).length;
+    setUnreadBadgeCount(attentionCount);
+  }, [dealNeedsAttentionById, setUnreadBadgeCount]);
+
   const sectionNeedsAttention = useMemo(
     () => ({
       started: groupedDeals.started.some((d) => dealNeedsAttentionById[Number(d?.id)]),
@@ -907,14 +1225,14 @@ export default function DealroomListScreen() {
     setCollapsedSections((prev) => {
       const willExpand = prev[phase] === true;
       LayoutAnimation.configureNext({
-        duration: willExpand ? 420 : 260,
+        duration: willExpand ? 300 : 220,
         create: {
-          type: willExpand ? LayoutAnimation.Types.spring : LayoutAnimation.Types.easeInEaseOut,
+          type: LayoutAnimation.Types.easeInEaseOut,
           property: LayoutAnimation.Properties.opacity,
         },
         update: {
           type: LayoutAnimation.Types.spring,
-          springDamping: willExpand ? 0.58 : 0.82,
+          springDamping: willExpand ? 0.9 : 0.95,
         },
         delete: {
           type: LayoutAnimation.Types.easeInEaseOut,
@@ -929,9 +1247,9 @@ export default function DealroomListScreen() {
     const key = `${phase}:${offerId}`;
     Haptics.selectionAsync();
     LayoutAnimation.configureNext({
-      duration: 320,
-      create: { type: LayoutAnimation.Types.spring, property: LayoutAnimation.Properties.opacity },
-      update: { type: LayoutAnimation.Types.spring, springDamping: 0.8 },
+      duration: 240,
+      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      update: { type: LayoutAnimation.Types.spring, springDamping: 0.94 },
       delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
     });
     setExpandedOfferStacks((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -1302,7 +1620,6 @@ export default function DealroomListScreen() {
     return (
       <Animated.View
         key={deal.id}
-        entering={FadeInDown.delay(animDelayIndex * 70).springify().damping(9).stiffness(220).mass(0.62)}
         style={[styles.cardContainer, needsAttention && styles.cardContainerElevated]}
       >
         <Swipeable
@@ -1381,7 +1698,13 @@ export default function DealroomListScreen() {
             <View style={styles.cardBody}>
               <View style={styles.cardInfo}>
                 <Pressable onPress={(e) => { e.stopPropagation(); openOfferPreview(deal); }} hitSlop={10}>
-                  <Text style={styles.offerTitle} numberOfLines={1}>
+                  <Text
+                    style={styles.offerTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    allowFontScaling={false}
+                  >
                     {openingOfferId === Number(extractOfferIdFromDeal(deal) || 0)
                       ? 'Otwieranie...'
                       : getReadableDealTitle(deal)}
@@ -1404,8 +1727,25 @@ export default function DealroomListScreen() {
                   <View style={styles.userAvatar}>
                     <User size={12} color={COLORS.gold} strokeWidth={2.5} />
                   </View>
-                  <Text style={styles.userLabel}>{counterparty.sideLabel}: </Text>
-                  <Text style={styles.userName}>{counterparty.name}</Text>
+                  <Text
+                    style={styles.userLabel}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    {counterparty.sideLabel}:{' '}
+                  </Text>
+                  <Text
+                    style={[styles.userName, { flexShrink: 1 }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    allowFontScaling={false}
+                  >
+                    {counterparty.name}
+                  </Text>
                 </Pressable>
               </View>
 
@@ -1487,7 +1827,6 @@ export default function DealroomListScreen() {
         const node = (
           <Animated.View
             key={`stack-${groupKey}`}
-            entering={FadeInDown.delay(animIndex * 80).springify().damping(13).stiffness(160).mass(0.75)}
             style={styles.walletStackWrap}
           >
             <Swipeable
@@ -1529,8 +1868,24 @@ export default function DealroomListScreen() {
                       <Text style={styles.walletTxBadgeOnImageText}>{txBadge.label}</Text>
                     </View>
                   </View>
-                  <Text style={styles.walletStackTitle} numberOfLines={1}>{summaryTitle}</Text>
-                  <Text style={styles.walletStackMeta} numberOfLines={1}>{summaryMeta}</Text>
+                  <Text
+                    style={styles.walletStackTitle}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    allowFontScaling={false}
+                  >
+                    {summaryTitle}
+                  </Text>
+                  <Text
+                    style={styles.walletStackMeta}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    {summaryMeta}
+                  </Text>
                   <View style={styles.walletTabsWrap}>
                     {topTabs.map((d, idx) => (
                       (() => {
@@ -1590,8 +1945,24 @@ export default function DealroomListScreen() {
           <View style={styles.walletExpandedHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.walletStackEyebrow}>ROZŁOŻONE KARTY OFERTY #{offerId || '-'}</Text>
-              <Text style={styles.walletExpandedTitle} numberOfLines={1}>{summaryTitle}</Text>
-              <Text style={styles.walletStackMeta} numberOfLines={1}>{summaryMeta}</Text>
+              <Text
+                style={styles.walletExpandedTitle}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                allowFontScaling={false}
+              >
+                {summaryTitle}
+              </Text>
+              <Text
+                style={styles.walletStackMeta}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                allowFontScaling={false}
+              >
+                {summaryMeta}
+              </Text>
             </View>
             <Pressable onPress={() => toggleOfferStack(phase, offerId)} style={styles.walletCollapseBtn}>
               <Text style={styles.walletCollapseBtnTxt}>Zwiń</Text>
@@ -1677,10 +2048,23 @@ export default function DealroomListScreen() {
           <Text style={styles.loaderText}>Wczytywanie transakcji...</Text>
         </Animated.View>
       ) : deals.length === 0 ? (
-        <Animated.View entering={FadeIn} style={styles.loaderCenter}>
-          <AlertCircle size={36} color={COLORS.textMuted} strokeWidth={1.5} />
-          <Text style={styles.loaderText}>Brak aktywnych transakcji.</Text>
-        </Animated.View>
+        <DealroomsEmptyState
+          colors={COLORS}
+          onOpenRadar={() => {
+            // Wracamy do głównego stacka i przełączamy na zakładkę Radar
+            // (`DealroomList` jest pchany ze stacka — `goBack` przywraca tabbar
+            // bez utraty stanu Radaru). Jeśli `goBack` nie ma do czego wrócić,
+            // fallback: nawigacja imperatywna do MainTabs.
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+              setTimeout(() => {
+                navigation.navigate('MainTabs', { screen: 'Radar' });
+              }, 80);
+            } else {
+              navigation.navigate('MainTabs', { screen: 'Radar' });
+            }
+          }}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {!phasesReady && deals.length > 0 ? (
@@ -1955,7 +2339,15 @@ export default function DealroomListScreen() {
                       }}
                       style={({ pressed }) => [styles.offerLinkCard, pressed && { opacity: 0.5 }]}
                     >
-                      <Text style={styles.offerLinkTitle} numberOfLines={1}>{o?.title || `Oferta #${o?.id || '-'}`}</Text>
+                      <Text
+                        style={[styles.offerLinkTitle, { flex: 1 }]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                        allowFontScaling={false}
+                      >
+                        {o?.title || `Oferta #${o?.id || '-'}`}
+                      </Text>
                       <ChevronRight size={16} color={COLORS.textMuted} />
                     </Pressable>
                   ))}
@@ -2448,7 +2840,7 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   activityDesc: { color: colors.textSec, fontSize: 13, fontWeight: '500', lineHeight: 18 },
   countdownInCard: { marginTop: 6, alignSelf: 'stretch' },
 
-  userRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: colors.border, borderRadius: 12 },
+  userRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, alignSelf: 'flex-start', maxWidth: '100%', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: colors.border, borderRadius: 12 },
   userAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.goldDimmed, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   userLabel: { color: colors.textSec, fontSize: 12, fontWeight: '500' },
   userName: { color: colors.gold, fontSize: 12, fontWeight: '800' },

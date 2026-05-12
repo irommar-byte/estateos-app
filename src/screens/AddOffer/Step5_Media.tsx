@@ -1,9 +1,11 @@
 import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, Dimensions, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
@@ -20,6 +22,77 @@ const MAX_BYTES = MAX_MB * 1024 * 1024;
 function sumImageBytes(uris: string[], sizes: Record<string, number> | undefined): number {
   const map = sizes || {};
   return uris.reduce((acc, uri) => acc + (map[uri] ?? FALLBACK_BYTES_PER_IMAGE), 0);
+}
+
+function countUnknownImageSizes(uris: string[], sizes: Record<string, number> | undefined): number {
+  const map = sizes || {};
+  return uris.reduce((acc, uri) => acc + (typeof map[uri] === 'number' && map[uri] > 0 ? 0 : 1), 0);
+}
+
+/** Mapa rozmiarów bez wpisów dla URI których już nie ma na liście (oraz przy duplikatach kluczy w obiekcie bez zmian wartości). */
+function pruneImageByteSizes(images: string[], sizes: Record<string, number>): Record<string, number> {
+  const unique = [...new Set(images)];
+  const out: Record<string, number> = {};
+  for (const uri of unique) {
+    const b = sizes[uri];
+    if (typeof b === 'number' && b > 0) out[uri] = Math.round(b);
+  }
+  return out;
+}
+
+function uniqueImages(uris: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const uri of uris) {
+    if (!uri || seen.has(uri)) continue;
+    seen.add(uri);
+    out.push(uri);
+  }
+  return out;
+}
+
+/**
+ * Rozmiar „do limitu aplikacji” musi pasować do tego co później wysyła Step6 (_JPEG compress 0.8_ dla HEIC).
+ * Sam rozmiar z pickera dla HEIC bywa znacznie mniejszy niż wyjściowy JPG → fałszywy zapas lub fałszywy limit.
+ */
+async function estimateBytesForDraftImage(uri: string, pickerFileSize?: number | null): Promise<number> {
+  const lower = uri.toLowerCase();
+  const looksHeic = lower.endsWith('.heic') || lower.endsWith('.heif');
+
+  try {
+    let measureUri = uri;
+    let tempConvert: string | null = null;
+    if (looksHeic) {
+      const converted = await ImageManipulator.manipulateAsync(uri, [], {
+        format: ImageManipulator.SaveFormat.JPEG,
+        compress: 0.8,
+      });
+      measureUri = converted.uri;
+      tempConvert = converted.uri;
+    }
+
+    const info = await FileSystem.getInfoAsync(measureUri, { size: true });
+    if (info.exists && typeof info.size === 'number' && info.size > 0) {
+      if (tempConvert) {
+        FileSystem.deleteAsync(tempConvert, { idempotent: true }).catch(() => {});
+      }
+      return Math.round(info.size);
+    }
+
+    if (tempConvert) {
+      FileSystem.deleteAsync(tempConvert, { idempotent: true }).catch(() => {});
+    }
+  } catch {
+    // przejdź po fallbackach
+  }
+
+  if (typeof pickerFileSize === 'number' && pickerFileSize > 0) {
+    /** HEIC bez pomiaru: bufor w górę, żeby limit nie uwierzył w mały rozmiar z biblioteki. */
+    const mul = looksHeic ? 2.4 : 1;
+    return Math.round(Math.max(pickerFileSize * mul, pickerFileSize + 220 * 1024));
+  }
+
+  return looksHeic ? Math.round(2.8 * FALLBACK_BYTES_PER_IMAGE) : FALLBACK_BYTES_PER_IMAGE;
 }
 
 // --- MATEMATYKA SIATKI ---
@@ -101,11 +174,20 @@ const DraggableSquare = ({
 
   const finishDrag = useCallback(() => {
     setIsActive(false);
-    onDragEndRef.current();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true }).start();
+    Animated.parallel([
+      Animated.spring(pos, {
+        toValue: getPosition(indexRef.current),
+        useNativeDriver: true,
+        friction: 9,
+        tension: 85,
+      }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true }),
+    ]).start(() => {
+      onDragEndRef.current();
+    });
     isDragging.current = false;
-  }, [scaleAnim]);
+  }, [pos, scaleAnim]);
 
   const finishDragRef = useRef(finishDrag);
   finishDragRef.current = finishDrag;
@@ -113,6 +195,8 @@ const DraggableSquare = ({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
         onMoveShouldSetPanResponder: (_, gesture) =>
           Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
         onPanResponderGrant: () => {
@@ -210,31 +294,70 @@ const DraggableSquare = ({
 
 const aiVocabulary = {
   intros: ["Przekrocz próg przestrzeni, która redefiniuje pojęcie luksusu i komfortu.", "Rzadka okazja na rynku. Nieruchomość, która natychmiast przykuwa uwagę.", "Oto miejsce stworzone z myślą o osobach ceniących miejski styl życia.", "Harmonia, spokój i doskonały design. Ta propozycja zadowoli najbardziej wymagających."],
-  poi: ["W promieniu 500 metrów znajdziesz renomowane szkoły i nowoczesny kompleks.", "Zaledwie 3 minuty spacerem do głównych węzłów komunikacyjnych.", "Otoczenie to kwintesencja wielkomiejskiego życia: kawiarnie i restauracje.", "Dla aktywnych: ścieżki rowerowe, kluby fitness i bliskość rzeki."]
+  poi: ["W promieniu 500 metrów znajdziesz renomowane szkoły i nowoczesny kompleks.", "Zaledwie 3 minuty spacerem do głównych węzłów komunikacyjnych.", "Otoczenie to kwintesencja wielkomiejskiego życia: kawiarnie i restauracje.", "Dla aktywnych: ścieżki rowerowe, kluby fitness i bliskość rzeki."],
+  marketOccasion: [
+    "To propozycja o charakterze okazji rynkowej — relacja ceny do metrażu wypada bardzo konkurencyjnie.",
+    "Analiza porównawcza wskazuje na atrakcyjną wycenę względem podobnych ofert w najbliższej okolicy.",
+    "W tym segmencie lokalnym to jedna z ciekawszych ofert cenowych dostępnych obecnie na rynku."
+  ],
+  marketFair: [
+    "Cena pozostaje na poziomie rynkowym, spójnym z aktualnymi transakcjami dla podobnych nieruchomości.",
+    "Wycena jest wyważona i dobrze wpisuje się w lokalne widełki cenowe.",
+    "To stabilna, rynkowa propozycja — bez sztucznego zawyżenia, z zachowaniem jakości oferty."
+  ],
+  marketPremium: [
+    "Oferta pozycjonowana jest jako ekskluzywna — wyższa cena odzwierciedla standard, lokalizację i potencjał.",
+    "To segment premium: wycena ponad średnią rynkową wynika z jakości i profilu nieruchomości.",
+    "Nieruchomość celuje w klienta premium, który szuka jakości ponad przeciętność rynkową."
+  ],
 };
+
+const formatNumber = (value: number | string): string =>
+  String(value || '')
+    .replace(/\D/g, '')
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 export default function Step5_Media({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      requestAnimationFrame(() => setCurrentStep(5));
-    });
-    return unsubscribe;
-  }, [navigation, setCurrentStep]);
+  useFocusEffect(
+    useCallback(() => {
+      const id = setTimeout(() => {
+        setCurrentStep(5);
+        const { draft: d } = useOfferStore.getState();
+        const dedupedImages = uniqueImages(d.images || []);
+        const cleaned = pruneImageByteSizes(dedupedImages, d.imageByteSizes || {});
+        const prev = d.imageByteSizes || {};
+        const sameSizes =
+          Object.keys(cleaned).length === Object.keys(prev).length &&
+          Object.keys(cleaned).every((k) => cleaned[k] === prev[k]);
+        const sameImages =
+          Array.isArray(d.images) &&
+          d.images.length === dedupedImages.length &&
+          d.images.every((v: string, i: number) => v === dedupedImages[i]);
+        if (!sameSizes || !sameImages) {
+          updateDraft({ images: dedupedImages, imageByteSizes: cleaned });
+        }
+      }, 0);
+      return () => clearTimeout(id);
+    }, [setCurrentStep, updateDraft])
+  );
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDraggingGlobal, setIsDraggingGlobal] = useState(false);
   const glowAnim = useRef(new Animated.Value(0)).current;
 
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [sizingGallery, setSizingGallery] = useState(false);
   /** Kolejność podczas przeciągania — bez ciągłego zapisu do Zustand (brak „skakania”). */
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
+  const dragSnapshotRef = useRef<string[] | null>(null);
 
   const displayImages = dragSnapshot ?? draft.images;
   const imageSizes: Record<string, number> = draft.imageByteSizes || {};
   const usedMB =
     sumImageBytes(displayImages, imageSizes) / (1024 * 1024);
+  const estimatedCount = countUnknownImageSizes(displayImages, imageSizes);
 
   const isTitleValid = (draft.title?.length || 0) >= 10;
   const isDescValid = (draft.description?.length || 0) >= 10;
@@ -260,6 +383,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   };
 
   const pickGallery = async () => {
+    if (sizingGallery) return;
     if (draft.images.length >= MAX_IMAGES) {
       return Alert.alert('Limit zdjęć', 'Osiągnięto maksymalny limit 20 zdjęć.');
     }
@@ -272,35 +396,43 @@ export default function Step5_Media({ theme }: { theme: any }) {
     if (result.canceled) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    let nextImages = [...draft.images];
-    let nextSizes = { ...(draft.imageByteSizes || {}) };
-    let runningBytes = sumImageBytes(nextImages, nextSizes);
 
-    for (const asset of result.assets) {
-      if (nextImages.length >= MAX_IMAGES) break;
+    try {
+      setSizingGallery(true);
+      let nextImages = uniqueImages([...draft.images]);
+      /** Zawsze start od oczyszczonej mapy — usuwa zombie wpisy blokujące miejsce. */
+      let nextSizes = pruneImageByteSizes(nextImages, { ...(draft.imageByteSizes || {}) });
+      updateDraft({ imageByteSizes: nextSizes });
 
-      const sizeBytes =
-        typeof asset.fileSize === 'number' && asset.fileSize > 0
-          ? asset.fileSize
-          : FALLBACK_BYTES_PER_IMAGE;
+      let runningBytes = sumImageBytes(nextImages, nextSizes);
 
-      if (runningBytes + sizeBytes > MAX_BYTES) {
-        Alert.alert(
-          'Limit miejsca',
-          `Łączny rozmiar zdjęć nie może przekroczyć ${MAX_MB} MB. Zmniejsz liczbę plików lub usuń inne zdjęcia.`
-        );
-        break;
+      for (const asset of result.assets) {
+        if (nextImages.length >= MAX_IMAGES) break;
+
+        const measured = await estimateBytesForDraftImage(asset.uri, asset.fileSize ?? null);
+
+        if (runningBytes + measured > MAX_BYTES) {
+          Alert.alert(
+            'Limit miejsca',
+            `Po konwersji (np. HEIC→JPEG) zestaw zbliża się do pojemności maksimum ${MAX_MB} MB.` +
+              `\nSpróbuj usunąć zdjęcia z listy albo dopisać jeśli jest miejsce, albo prześlij kilka pojedynczych plików.`
+          );
+          break;
+        }
+
+        if (!nextImages.includes(asset.uri)) nextImages.push(asset.uri);
+        nextSizes[asset.uri] = measured;
+        nextSizes = pruneImageByteSizes(nextImages, nextSizes);
+        runningBytes = sumImageBytes(nextImages, nextSizes);
+        setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
+        startFakeUploadProgress(asset.uri);
       }
 
-      nextImages.push(asset.uri);
-      nextSizes[asset.uri] = sizeBytes;
-      runningBytes += sizeBytes;
-      setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
-      startFakeUploadProgress(asset.uri);
-    }
-
-    if (nextImages.length > draft.images.length) {
-      updateDraft({ images: nextImages, imageByteSizes: nextSizes });
+      if (nextImages.length > draft.images.length) {
+        updateDraft({ images: uniqueImages(nextImages), imageByteSizes: nextSizes });
+      }
+    } finally {
+      setSizingGallery(false);
     }
   };
 
@@ -311,27 +443,31 @@ export default function Step5_Media({ theme }: { theme: any }) {
     delete newProgress[uriToRemove];
     setUploadProgress(newProgress);
 
-    const filtered = displayImages.filter((_: string, i: number) => i !== indexToRemove);
-    const nextSizes = { ...(draft.imageByteSizes || {}) };
-    delete nextSizes[uriToRemove];
+    const filtered = uniqueImages(displayImages.filter((_: string, i: number) => i !== indexToRemove));
+    const mergedSizes = { ...(draft.imageByteSizes || {}) };
+    const nextSizes = pruneImageByteSizes(filtered, mergedSizes);
 
     setDragSnapshot(null);
     updateDraft({ images: filtered, imageByteSizes: nextSizes });
   };
 
   const handleDragStart = useCallback(() => {
-    setDragSnapshot([...draft.images]);
+    const next = uniqueImages([...draft.images]);
+    dragSnapshotRef.current = next;
+    setDragSnapshot(next);
     setIsDraggingGlobal(true);
   }, [draft.images]);
 
   const handleDragEnd = useCallback(() => {
     setIsDraggingGlobal(false);
-    setDragSnapshot((snap) => {
-      if (snap != null) {
-        updateDraft({ images: snap });
-      }
-      return null;
-    });
+    const snap = dragSnapshotRef.current ? uniqueImages(dragSnapshotRef.current) : null;
+    if (snap != null) {
+      const { draft: d } = useOfferStore.getState();
+      const nextSizes = pruneImageByteSizes(snap, d.imageByteSizes || {});
+      updateDraft({ images: snap, imageByteSizes: nextSizes });
+    }
+    dragSnapshotRef.current = null;
+    setDragSnapshot(null);
   }, [updateDraft]);
 
   const handleHoverSwap = useCallback(
@@ -343,6 +479,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
         const next = [...arr];
         const [item] = next.splice(currentIndex, 1);
         next.splice(targetIndex, 0, item);
+        dragSnapshotRef.current = next;
         return next;
       });
     },
@@ -366,14 +503,119 @@ export default function Step5_Media({ theme }: { theme: any }) {
     const propType = draft.propertyType === 'HOUSE' ? 'dom' : draft.propertyType === 'PLOT' ? 'działkę' : 'apartament';
     const condition = draft.condition === 'READY' ? 'gotowy do wprowadzenia' : draft.condition === 'RENOVATION' ? 'z potencjałem do remontu' : 'w stanie deweloperskim';
     const transactionType = draft.transactionType === 'RENT' ? 'wynajem' : 'sprzedaż';
+    const isRestOfCountry = String(draft.city || '').trim() === 'Reszta kraju';
+    const district = String(draft.district || '').trim();
+    const city = String(draft.city || '').trim();
+    const locationName =
+      isRestOfCountry
+        ? (district && district.toLowerCase() !== 'ogólna' ? district : 'wybranej miejscowości')
+        : (district && district.toLowerCase() !== 'ogólna' ? `${city}, ${district}` : (city || 'wybranej miejscowości'));
+
+    const areaNum = Number(String(draft.area || '').replace(/\s/g, '').replace(',', '.')) || 0;
+    const priceNum = Number(String(draft.price || '').replace(/\s/g, '')) || 0;
+    const adminFeeNum = Number(String(draft.adminFee || draft.rent || '').replace(/\s/g, '')) || 0;
+    const depositNum = Number(String(draft.deposit || '').replace(/\s/g, '')) || 0;
+    const pricePerSqm = areaNum > 0 ? Math.round(priceNum / areaNum) : 0;
+    const avgPrice =
+      city === 'Warszawa'
+        ? 16500
+        : city === 'Łódź'
+          ? 8500
+          : city === 'Kraków' || city === 'Wrocław' || city === 'Poznań' || city === 'Trójmiasto'
+            ? 13000
+            : 12000;
+    const diffPercent = avgPrice > 0 && pricePerSqm > 0 ? Math.round(((pricePerSqm - avgPrice) / avgPrice) * 100) : 0;
+
+    const marketHeader =
+      diffPercent <= -5
+        ? 'OKAZJA'
+        : diffPercent >= 5
+          ? 'EKSKLUZYWNA'
+          : 'CENA RYNKOWA';
+    const marketNarrativePool =
+      diffPercent <= -5
+        ? aiVocabulary.marketOccasion
+        : diffPercent >= 5
+          ? aiVocabulary.marketPremium
+          : aiVocabulary.marketFair;
+    const marketNarrative = marketNarrativePool[Math.floor(Math.random() * marketNarrativePool.length)];
+
+    const heatingLabel = draft.heating ? String(draft.heating) : 'Nie podano';
+    const amenities: string[] = [];
+    if (draft.hasBalcony) amenities.push('Balkon / taras');
+    if (draft.hasParking) amenities.push('Garaż / parking');
+    if (draft.hasStorage) amenities.push('Piwnica / komórka lokatorska');
+    if (draft.hasElevator) amenities.push('Winda');
+    if (draft.hasGarden) amenities.push('Ogródek');
+    if (draft.isFurnished) amenities.push('Umeblowane wnętrze');
+
+    const poiCandidates = [
+      "🚇 Komunikacja miejska w wygodnym zasięgu (autobus/tramwaj) — codzienne dojazdy są szybkie i przewidywalne.",
+      "🛍 W pobliżu dostępne są punkty usługowe: sklepy, piekarnie, apteki i strefa gastronomiczna.",
+      "🌿 W otoczeniu znajdziesz tereny rekreacyjne idealne na spacer, bieganie lub rower po pracy.",
+      "☕ Lokalizacja wspiera wygodny styl życia — kawiarnie, restauracje i codzienna infrastruktura są pod ręką.",
+      "🚗 Dogodny wyjazd na główne trasy ułatwia poruszanie się po mieście i poza nim.",
+      "🏫 Rodzinna infrastruktura (szkoły/przedszkola) jest osiągalna w krótkim czasie."
+    ];
+    if (city === 'Warszawa') {
+      poiCandidates.push("Ⓜ️ W zależności od dzielnicy stacje metra pozostają w praktycznym zasięgu komunikacji miejskiej.");
+      poiCandidates.push("🍔 W okolicy nie brakuje rozpoznawalnych marek gastronomicznych oraz punktów typu drive.");
+    }
+    if (draft.lat && draft.lng) {
+      poiCandidates.push("📍 Adres został wskazany pinezką na mapie, co zwiększa precyzję dopasowania względem lokalnych potrzeb klienta.");
+    }
+    const shuffledPoi = [...poiCandidates].sort(() => Math.random() - 0.5);
+    const enrichedPoi = shuffledPoi.slice(0, 3).join('\n');
 
     let bullets = "";
+    if (draft.transactionType) bullets += `\n🔁 Typ transakcji: ${transactionType === 'sprzedaż' ? 'Sprzedaż' : 'Wynajem'}`;
+    if (draft.propertyType) {
+      const propertyTypeLabel =
+        draft.propertyType === 'HOUSE'
+          ? 'Dom'
+          : draft.propertyType === 'PLOT'
+            ? 'Działka'
+            : draft.propertyType === 'PREMISES'
+              ? 'Lokal'
+              : 'Mieszkanie';
+      bullets += `\n🏷 Typ nieruchomości: ${propertyTypeLabel}`;
+    }
     if (draft.area) bullets += `\n📐 Powierzchnia: ${draft.area} m²`;
+    if (draft.plotArea) bullets += `\n🌿 Powierzchnia działki: ${draft.plotArea} m²`;
     if (draft.rooms) bullets += `\n🛏 Pokoje: ${draft.rooms}`;
     if (draft.floor) bullets += `\n🏢 Piętro: ${draft.floor}`;
-    if (draft.rent) bullets += `\n💶 Czynsz adm.: ${draft.rent} PLN`;
+    if (draft.totalFloors) bullets += `\n🏙 Liczba pięter w budynku: ${draft.totalFloors}`;
+    if (draft.yearBuilt || draft.buildYear) bullets += `\n🗓 Rok budowy: ${draft.yearBuilt || draft.buildYear}`;
+    if (draft.price) bullets += `\n💰 Cena: ${formatNumber(draft.price)} PLN`;
+    if (pricePerSqm > 0) bullets += `\n📊 Cena za m²: ${formatNumber(pricePerSqm)} PLN`;
+    if (adminFeeNum > 0 && transactionType === 'sprzedaż') bullets += `\n💶 Czynsz adm.: ${formatNumber(adminFeeNum)} PLN`;
+    if (depositNum > 0 && transactionType === 'wynajem') bullets += `\n🔐 Kaucja: ${formatNumber(depositNum)} PLN`;
+    if (draft.condition && draft.propertyType !== 'PLOT') {
+      const conditionLabel =
+        draft.condition === 'READY'
+          ? 'Gotowe do wprowadzenia'
+          : draft.condition === 'RENOVATION'
+            ? 'Do remontu'
+            : 'Stan deweloperski';
+      bullets += `\n🧱 Stan: ${conditionLabel}`;
+    }
+    bullets += `\n🔥 Ogrzewanie: ${heatingLabel}`;
+    if (draft.city || draft.district) bullets += `\n📍 Lokalizacja: ${locationName}`;
+    if (draft.street) bullets += `\n🧭 Adres: ${draft.street}`;
+    if (draft.apartmentNumber) bullets += `\n🔢 Numer lokalu: ${draft.apartmentNumber}`;
+    if (draft.isExactLocation !== undefined) {
+      bullets += `\n🛰 Tryb lokalizacji: ${draft.isExactLocation ? 'Dokładna (pin precyzyjny)' : 'Przybliżona (obszar prywatności)'}`;
+    }
 
-    const fullText = `${randomIntro}\n\nPrezentujemy wyjątkowy ${propType} na ${transactionType}, zlokalizowany w sercu: ${draft.city || 'Miejscowości'}. Nieruchomość jest ${condition}, co czyni ją niezwykle atrakcyjną ofertą.\n\n✧ ANALIZA OKOLICY ✧\n${randomPoi}\n\n✧ KLUCZOWE PARAMETRY ✧${bullets}\n\nZapraszamy do kontaktu w celu umówienia prywatnej prezentacji.`;
+    const amenitiesText = amenities.length > 0
+      ? amenities.map((item) => `✓ ${item}`).join('\n')
+      : '✓ Brak dodatkowych udogodnień zaznaczonych na tym etapie.';
+
+    const marketSpread = pricePerSqm > 0
+      ? `\n📌 Cena ofertowa / średnia lokalna: ${formatNumber(pricePerSqm)} vs ${formatNumber(avgPrice)} PLN/m² (${diffPercent > 0 ? '+' : ''}${diffPercent}%)`
+      : '';
+
+    const fullText = `${randomIntro}\n\nPrezentujemy wyjątkowy ${propType} na ${transactionType}, zlokalizowany w sercu: ${locationName}. Nieruchomość jest ${condition}, co czyni ją niezwykle atrakcyjną ofertą.\n\n✧ ANALIZA OKOLICY ✧\n${randomPoi}\n${enrichedPoi}\n\n✧ ANALIZA RYNKU ✧\n${marketHeader}\n${marketNarrative}${marketSpread}\n\n✧ UDOGODNIENIA ✧\n${amenitiesText}\n\n✧ KLUCZOWE PARAMETRY ✧${bullets}\n\nZapraszamy do kontaktu w celu umówienia prywatnej prezentacji.`;
     
     updateDraft({ description: '' });
     const words = fullText.split(' ');
@@ -427,6 +669,11 @@ export default function Step5_Media({ theme }: { theme: any }) {
           <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
             <CapacityBar label="Wgrane Zdjęcia" current={displayImages.length} max={MAX_IMAGES} suffix="Szt." theme={theme} />
             <CapacityBar label="Przestrzeń Dysku" current={usedMB} max={MAX_MB} suffix="MB" theme={theme} />
+            {estimatedCount > 0 && (
+              <Text style={[styles.capacityHint, { color: theme.subtitle }]}>
+                {estimatedCount} {estimatedCount === 1 ? 'plik ma' : 'pliki mają'} rozmiar szacunkowy do czasu pełnego pomiaru.
+              </Text>
+            )}
           </View>
 
           <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>Siatka Zdjęć</Text>
@@ -452,10 +699,14 @@ export default function Step5_Media({ theme }: { theme: any }) {
           )}
 
           <AppleHover onPress={pickGallery} scaleTo={0.98}>
-             <View style={[styles.addMediaBtn, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)' }]}>
-                <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
+             <View style={[styles.addMediaBtn, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', opacity: sizingGallery ? 0.65 : 1 }]}>
+                {sizingGallery ? (
+                  <ActivityIndicator color={theme.text} style={{ marginRight: 12 }} />
+                ) : (
+                  <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
+                )}
                 <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>
-                  {displayImages.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
+                  {sizingGallery ? 'Liczenie miejsca (konwersja podglądowa)...' : displayImages.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
                 </Text>
              </View>
           </AppleHover>
@@ -532,6 +783,7 @@ const styles = StyleSheet.create({
   capacityValue: { fontSize: 13, fontWeight: '800' },
   capacityTrack: { width: '100%', height: 6, borderRadius: 3, overflow: 'hidden' },
   capacityFill: { height: '100%', borderRadius: 3 },
+  capacityHint: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
   gridContainer: { position: 'relative', width: '100%', marginBottom: 20 },
   squareContainer: { position: 'absolute', width: SQUARE_SIZE, height: SQUARE_SIZE, borderRadius: 16, backgroundColor: '#e5e5ea' },

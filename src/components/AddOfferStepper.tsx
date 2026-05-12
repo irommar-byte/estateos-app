@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { ADD_OFFER_TOTAL_STEPS, getStepBlockMessage, isStepValid } from '../screens/AddOffer/flow';
+import { useOfferStore } from '../store/useOfferStore';
 
 type AddOfferStepperProps = {
   currentStep: number;
@@ -12,10 +13,17 @@ type AddOfferStepperProps = {
 };
 
 export default function AddOfferStepper({ currentStep, draft, theme, navigation, onBeforeStepChange }: AddOfferStepperProps) {
+  const navigationGate = useOfferStore((s) => s.navigationGate);
   const canMoveForward = isStepValid(currentStep, draft);
   const completedStep = currentStep > 1 && isStepValid(currentStep - 1, draft);
 
   const goToStep = (targetStep: number) => {
+    // KLUCZOWE: gate musi działać niezależnie od kierunku (wstecz / dalej),
+    // bo Step 2 chce potwierdzenia adresu nawet gdy user klika w "Krok 1".
+    if (targetStep !== currentStep && navigationGate && !navigationGate(targetStep)) {
+      return;
+    }
+
     if (targetStep <= currentStep) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       navigation.navigate(`Step${targetStep}`);
