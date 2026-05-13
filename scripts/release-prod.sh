@@ -8,7 +8,7 @@
 #   RELEASE_AUTO_COMMIT=1     — jeśli working tree nieczysty: git add -A + commit (bez śledzonego .env)
 #   RELEASE_SKIP_PUSH=1       — pomiń push (np. po ręcznym pushu; tylko deploy)
 #   RELEASE_SKIP_PREBUILD=1   — pomiń npm run type-check + build przed pushem (niezalecane)
-#   RELEASE_SKIP_GITHUB_SSH_TEST=1 — pomiń test `ssh -T git@github.com` (np. fałszywy alarm sieciowy; push i tak może zadziałać)
+#   RELEASE_SKIP_GITHUB_SSH_TEST=1 — pomiń test `ssh -T git@github.com` (nie usuwa wymogu klucza przy `git push` dla origin git@…)
 #   PROD_URL=https://estateos.pl — dodatkowe curle publiczne w raporcie (domyślnie ta domena)
 #   SMOKE_BASE_URL, PM2_APP — przekazywane do deploy-prod.sh
 #   DEPLOY_LOCK_TRIGGER — opcjonalnie; domyślnie npm-release przy kroku deploy (wpis w .deploy/deploy.lock)
@@ -155,6 +155,10 @@ echo "==> [4/10] dostęp SSH / GitHub (gdy origin = git@…)"
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || echo "")"
 if [[ "${RELEASE_SKIP_GITHUB_SSH_TEST:-0}" == "1" ]]; then
   echo "WARN: RELEASE_SKIP_GITHUB_SSH_TEST=1 — pomijam test ssh -T do git@github.com (świadoma decyzja)."
+  if [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
+    echo "NOTE: origin=${ORIGIN_URL} — krok „git push” (6/10) NADAL wymaga klucza SSH (ssh-agent / IdentityFile)." >&2
+    echo "      Ten skip nie naprawia „Permission denied (publickey)” przy push." >&2
+  fi
 elif [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
   echo "origin: ${ORIGIN_URL}"
   set +e
@@ -200,7 +204,21 @@ else
     echo "ERROR: detached HEAD / brak nazwy gałęzi — nie wykonuję push." >&2
     exit 5
   fi
-  GIT_TERMINAL_PROMPT=0 git push -u origin "${CURRENT_BRANCH}"
+  set +e
+  PUSH_OUT="$(GIT_TERMINAL_PROMPT=0 git push -u origin "${CURRENT_BRANCH}" 2>&1)"
+  PUSH_EC=$?
+  set -e
+  if [[ "${PUSH_EC}" != "0" ]]; then
+    echo "${PUSH_OUT}" >&2
+    echo "ERROR: git push nieudany (exit ${PUSH_EC}). origin=${ORIGIN_URL:-?}" >&2
+    if echo "${PUSH_OUT}" | grep -qiE 'Permission denied \(publickey\)|publickey|Authentication failed'; then
+      echo "  SSH: brak ważnego klucza dla GitHuba — np. eval \"\$(ssh-agent -s)\"; ssh-add ~/.ssh/<klucz>; sprawdź ssh -T git@github.com." >&2
+      echo "  RELEASE_SKIP_GITHUB_SSH_TEST=1 pomija wyłącznie diagnostyczny ssh -T; nie zastępuje uwierzytelnienia przy push." >&2
+      echo "  Alternatywa: remote HTTPS + PAT/credential helper, albo RELEASE_SKIP_PUSH=1 gdy push zrobisz z innej maszyny." >&2
+    fi
+    exit 5
+  fi
+  echo "${PUSH_OUT}"
   echo "OK: push zakończony."
 fi
 
