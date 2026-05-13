@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
-
-const prisma = new PrismaClient();
 
 const PAKIET_PLUS_IOS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
 const PAKIET_PLUS_ANDROID_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';

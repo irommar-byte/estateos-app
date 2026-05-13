@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { normalizePhoneForStorage } from '@/lib/phoneLookup';
 import nodemailer from 'nodemailer';
 
 // TWARDY KONFIG GMAILA Z SSL
@@ -22,7 +23,12 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       user = await prisma.user.create({
-        data: { email: body.email, password: generatedPassword, phone: body.phone || null, name: "Poszukujący" }
+        data: {
+          email: body.email,
+          password: generatedPassword,
+          phone: normalizePhoneForStorage(body.phone ?? null),
+          name: 'Poszukujący',
+        },
       });
       isNewUser = true;
     }

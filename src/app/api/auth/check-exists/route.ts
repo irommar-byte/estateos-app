@@ -1,58 +1,49 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { expandPhoneSearchVariants, normalizePhoneForStorage } from '@/lib/phoneLookup';
+import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
+import { getClientIp } from '@/lib/observability';
 
-const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
-const normalizePhoneDigits = (value: unknown) => String(value || '').replace(/\D/g, '');
-
-function buildPhoneVariants(rawPhone: unknown) {
-  const digits = normalizePhoneDigits(rawPhone);
-  if (!digits) return [];
-  const local = digits.startsWith('48') ? digits.slice(2) : digits;
-  if (local.length !== 9) return [String(rawPhone || '').trim(), digits];
-  const withCountryDigits = `48${local}`;
-  const formatted = `+48 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
-  return Array.from(new Set([
-    String(rawPhone || '').trim(),
-    digits,
-    withCountryDigits,
-    `+${withCountryDigits}`,
-    `+48${local}`,
-    formatted,
-  ])).filter(Boolean);
-}
-
+/**
+ * POST /api/auth/check-exists
+ * Body: { phone?: string, email?: string } — przynajmniej jedno pole.
+ * Odpowiedź: { exists: boolean, field?: 'phone'|'email' } (bez ujawniania czyje to konto).
+ */
 export async function POST(req: Request) {
+  const ip = getClientIp(req);
+  const bucket = checkRateLimit(`check-exists:ip:${ip}`, 60, 60_000);
+  if (!bucket.allowed) return rateLimitResponse(bucket.retryAfterSeconds);
+
   try {
-    const body = await req.json();
-    const field = String(body?.field || '').toLowerCase();
-    const rawEmail = body?.email ?? (field === 'email' ? body?.value : undefined);
-    const rawPhone = body?.phone ?? (field === 'phone' ? body?.value : undefined);
+    const body = await req.json().catch(() => ({}));
+    const emailRaw = String(body?.email || '').trim().toLowerCase();
+    const phoneRaw = String(body?.phone || '').trim();
 
-    // 1. Sprawdzanie zajętości E-maila
-    if (rawEmail) {
-      const email = normalizeEmail(rawEmail);
-      if (!email) return NextResponse.json({ exists: false, field: 'email' });
-      const user = await prisma.user.findUnique({ 
-        where: { email } 
-      });
-      return NextResponse.json({ exists: !!user, field: 'email' });
-    }
-    
-    // 2. Sprawdzanie zajętości Telefonu (z uwzględnieniem formatu +48)
-    if (rawPhone) {
-      const variants = buildPhoneVariants(rawPhone);
-      if (variants.length === 0) return NextResponse.json({ exists: false, field: 'phone' });
-
-      const user = await prisma.user.findFirst({
-        where: {
-          OR: variants.map((phone) => ({ phone })),
-        }
-      });
-      return NextResponse.json({ exists: !!user, field: 'phone' });
+    if (!emailRaw && !phoneRaw) {
+      return NextResponse.json({ success: false, error_code: 'MISSING_FIELDS', message: 'Brak email lub telefonu.' }, { status: 400 });
     }
 
-    return NextResponse.json({ exists: false });
-  } catch (error) {
-    return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
+    if (emailRaw) {
+      const u = await prisma.user.findUnique({ where: { email: emailRaw }, select: { id: true } });
+      if (u) return NextResponse.json({ success: true, exists: true, field: 'email' });
+    }
+
+    if (phoneRaw) {
+      const canonical = normalizePhoneForStorage(phoneRaw);
+      if (!canonical) {
+        return NextResponse.json({ success: true, exists: false, field: 'phone' });
+      }
+      const variants = expandPhoneSearchVariants(phoneRaw);
+      const u = await prisma.user.findFirst({
+        where: { OR: variants.map((p) => ({ phone: p })) },
+        select: { id: true },
+      });
+      if (u) return NextResponse.json({ success: true, exists: true, field: 'phone' });
+    }
+
+    return NextResponse.json({ success: true, exists: false });
+  } catch (e) {
+    console.error('[check-exists]', e);
+    return NextResponse.json({ success: false, error_code: 'INTERNAL_ERROR', message: 'Błąd serwera.' }, { status: 500 });
   }
 }

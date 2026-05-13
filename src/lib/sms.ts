@@ -1,6 +1,7 @@
+import { parsePhoneToE164Digits } from '@/lib/phoneE164';
+
 export async function sendSMS(phone: string, message: string) {
-  let cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length === 9) cleanPhone = `48${cleanPhone}`;
+  const cleanPhone = parsePhoneToE164Digits(phone);
 
   const params = new URLSearchParams();
   params.append('key', '3a28df0a-8038-44d7-ac7b-e2d8b03fd698');

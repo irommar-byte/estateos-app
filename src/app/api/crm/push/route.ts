@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
+import { parsePhoneToE164Digits } from '@/lib/phoneE164';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Dłuższy czas na wysyłkę wielu SMSów
@@ -45,9 +46,10 @@ export async function POST(req: Request) {
       if (radar.phone) {
         try {
           const smsMsg = `EstateOS VIP: Znaleziono idealne dopasowanie do Twojego radaru! ${offer.propertyType}, ${offer.district}, ${offer.price} PLN. Zobacz ofertę: https://estateos.pl/oferta/${offer.id}`;
-          
+          const toDigits = parsePhoneToE164Digits(radar.phone);
+
           const params = new URLSearchParams();
-          params.append('to', radar.phone);
+          params.append('to', toDigits);
           params.append('from', 'TEST');
           params.append('msg', smsMsg);
 
