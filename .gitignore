@@ -51,3 +51,5 @@ releases/
 # raport z automatycznego pipeline agenta (nie commituj)
 scripts/.agent-deploy-report.txt
 scripts/.release-report.txt
+
+tsconfig.tsbuildinfo
