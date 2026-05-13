@@ -1,0 +1,49 @@
+name: EstateOS health monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check public health endpoint
+        env:
+          HEALTH_URL: ${{ secrets.PROD_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          URL="${HEALTH_URL:-https://estateos.pl/api/health}"
+          code="$(curl -sS -o /tmp/health.json -w '%{http_code}' "$URL" || echo ERR)"
+          echo "HTTP $code $URL"
+          if [ "$code" != "200" ]; then
+            echo "::error::Health check failed ($code)"
+            exit 1
+          fi
+          node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));if(!j.ok){process.exit(1)}"
+
+      - name: Alert Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MSG: EstateOS health ALERT | PROD health non-200 or body not ok | run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then exit 0; fi
+          PAYLOAD="$(node -e 'const m=process.env.MSG||""; process.stdout.write(JSON.stringify({content:m}))')"
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true
+
+  pm2-metrics:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Snapshot PM2 via SSH (manual)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd '${{ secrets.PROD_APP_PATH }}'
+            pm2 jlist | head -c 12000 || true

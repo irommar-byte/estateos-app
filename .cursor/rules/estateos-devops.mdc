@@ -1,24 +1,71 @@
 ---
-description: EstateOS™ — automatyczny operator DevOps (prod deploy, SSH, brak „wklej poleceń”).
+description: EstateOS™ — operational release workflow; agent wykonuje commit→push→npm run release→weryfikacja lub raportuje blokadę z dokładnym błędem (bez udawania deployu).
 alwaysApply: true
 ---
 
-# EstateOS™ DevOps operator
+# EstateOS™ — operational release workflow
 
-Gdy pracujesz nad tym repozytorium i kontekst to **produkcja / serwer aplikacji EstateOS™**:
+## Tryb pracy
 
-1. **Nie podawaj bloków poleceń do ręcznego wklejania**, jeśli masz działający terminal z dostępem do właściwego hosta (`hostname`, ścieżka `APP_ROOT`, git remote) — **wykonuj operacje samodzielnie** etapami i raportuj wynik (stdout/skroty, bez sekretów z `.env`).
+EstateOS™ działa w trybie **operational release**: po zmianach produkcyjnych agent **nie kończy** na samej zmianie kodu, opisie „co zrobić” ani liście komend do wklejenia — **jeśli** masz działający **shell/SSH**, dostęp do **repo**, **PM2**, **GitHub (push)** oraz **skryptów deploy** (`scripts/release-prod.sh`, `deploy-prod.sh`).
 
-2. **Deploy produkcyjny** zawsze przez główny entrypoint: **`npm run deploy:prod`** (czyli `bash scripts/deploy-prod.sh`). Nie pomijaj smoke ani healthchecków opisanych w skrypcie.
+## Obowiązek wykonania (gdy środowisko na to pozwala)
 
-3. **Źródło prawdy:** GitHub (`git pull --ff-only` na serwerze). **Rollout:** `pm2 reload ecosystem.config.cjs --env production --update-env` + `pm2 save`.
+Operacyjnie, w tej kolejności (zgodnie z `npm run release` / `release-prod.sh`, uzupełnione o jawny commit jeśli drzewo nieczyste):
 
-4. **Przed deployem** (jeśli wykonujesz kroki ręcznie zamiast jednego skryptu): hostname, `pwd`, gałąź, `git status`, `pm2 list`, `npm run verify:prod-env`, obecność `package.json`, brak „brudnych” śledzonych plików vs `HEAD` na prod (chyba że `DEPLOY_ALLOW_DIRTY=1`).
+1. `git status` — branch, dirty, ahead/behind  
+2. **Commit** — sensowny komunikat; albo `RELEASE_AUTO_COMMIT=1 npm run release` (skrypt odczepia śledzony `.env` przed auto-commit)  
+3. **`git push`** — do `origin` (w `release-prod.sh` jest krok push; jeśli commit był poza release, i tak upewnij się że zmiany są na remote przed lub w ramach release)  
+4. **`npm run release`** — type-check + build (gate), SSH test (dla `git@`), PM2 przed deployem, push, `deploy:prod`, powtórka smoke, health lokalny, curle `PROD_URL`, PM2 końcowo  
+5. **Smoke / health / PM2 / HTTP** — już w release; przy awarii nie raportuj sukcesu  
 
-5. **Po deployu:** `/api/health`, `/.well-known/assetlinks.json`, `/.well-known/apple-app-site-association`, logi PM2 (`pm2 logs … --nostream`), status procesu (`pm2 describe`).
+## Raport po **udanym** release (MUSI być w odpowiedzi)
 
-6. **Gdy deploy się wywali:** nie twierdź sukcesu; wykorzystaj output `deploy-prod.sh` (trap ERR): **SHA sprzed pull**, listę **snapshotów** w `.deploy/recovery/`, logi PM2. **Auto-rollback `git reset --hard` bez zgody użytkownika nie wykonuj** — zaproponuj sekwencję i ewentualnie uruchom ją dopiero po potwierdzeniu, jeśli ryzyko jest niejednoznaczne.
+Wklej / podsumuj z **rzeczywistego** outputu (albo `scripts/.release-report.txt`):
 
-7. **Uszkodzone repo / brak `.git`:** najpierw diagnoza (`git status`, `git fsck` jeśli sensowne), **backup katalogu** (`scripts/recover-prod-worktree.sh` z `BACKUP_APP_DIR=1` i `RECOVER_CONFIRM=1`), potem fetch/reset zgodnie ze skryptem recovery, dopiero potem ponowny deploy.
+- **SHA** HEAD (+ `pre_release` rollback z sesji, `last_success_commit` jeśli jest)  
+- **Build:** OK / FAIL (`BUILD_GATE` z release)  
+- **Deploy:** OK / FAIL (`DEPLOY_STATUS`)  
+- **Smoke:** OK / FAIL (`SMOKE_STATUS`)  
+- **PM2:** skrót statusu (`PM2_SUMMARY` / `pm2 describe`)  
+- **HTTP** (kody) dla `PROD_URL` (domyślnie `https://estateos.pl`):  
+  - `/`  
+  - `/api/health`  
+  - `/.well-known/assetlinks.json`  
+  - `/.well-known/apple-app-site-association`  
 
-8. Sekrety: **nigdy** nie loguj wartości zmiennych z `.env`; wystarczą **nazwy** kluczy i wynik verify/smoke.
+Blok końcowy skryptu: **„EstateOS™ RELEASE REPORT”**.
+
+## Gdy release **nie został** realnie wykonany
+
+- **Wyraźnie** napisz, **który krok** został zablokowany (np. `git push`, `npm run build`, `deploy:prod`, smoke, curl na PROD).  
+- Pokaż **dokładny** stderr/stdout błędu (shell / SSH / git / npm), bez streszczania na „coś poszło nie tak”.  
+- **Zabronione:** udawanie, że deploy lub produkcja zostały zaktualizowane.  
+- Jeśli **Cursor shell nie zwraca outputu**, brak sieci, brak klucza GitHub albo brak dostępu do serwera — napisz to wprost jako **blokadę środowiska**, a nie jako sukces release.
+
+## Zasady uczciwości
+
+- Nie wracaj do trybu „tu masz komendy do ręcznego wklejenia”, **jeśli** możesz te same komendy **wykonać samodzielnie** w dostępnym shellu.  
+- Jeśli **nie możesz** — jedna zdawkowa sekcja „blokada” + błąd + co naprawić po stronie użytkownika (np. agent na innym hoście niż serwer aplikacji).
+
+## Standard produktowy
+
+**Zmiana → `npm run release` (z commit/push w środku lub przed) → zweryfikowana produkcja** (HTTP + PM2 + smoke w raporcie).
+
+## Skróty / zmienne
+
+- `RELEASE_AUTO_COMMIT=1` — auto-commit przed pushem przy brudnym drzewie.  
+- `RELEASE_SKIP_PUSH=1` — pomiń push (np. push już zrobiony).  
+- `RELEASE_SKIP_PROD_CURL=1` — pomiń curle na zewnętrzne `PROD_URL`.  
+- `RELEASE_SKIP_PREBUILD=1` — pomiń type-check + build przed pushem (tylko świadomie).  
+- `PROD_URL`, `SMOKE_BASE_URL`, `PM2_APP`, `DEPLOY_LOCK_TRIGGER` — jak w `release-prod.sh` / `deploy-prod.sh`.
+
+## Gdy deploy / release się wywali
+
+- Nie raportuj sukcesu produkcji.  
+- Rollback SHA: `pre_release` (sesja release), `pre_pull_commit` (deploy), snapshoty `.deploy/recovery/source_*.tgz`.  
+- Bez automatycznego `git reset --hard` na prod bez wyraźnej decyzji użytkownika.
+
+## Dokumentacja repo
+
+- `docs/ESTATEOS_RELEASE_AUTOMATION.md`

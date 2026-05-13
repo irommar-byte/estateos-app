@@ -8,7 +8,8 @@ const path = require('path');
 const { config } = require('dotenv');
 
 const APP_ROOT = process.env.APP_ROOT || path.join(__dirname, '..');
-config({ path: path.join(APP_ROOT, '.env'), quiet: true });
+const envPath = process.env.DEPLOY_ENV_FILE || path.join(APP_ROOT, '.env');
+config({ path: envPath, quiet: true });
 
 function isSet(key) {
   const v = process.env[key];

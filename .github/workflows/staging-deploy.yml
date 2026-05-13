@@ -1,0 +1,41 @@
+name: EstateOS staging deploy
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: estateos-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy staging over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          command_timeout: 45m
+          script: |
+            set -euo pipefail
+            export ESTATEOS_APP_PATH='${{ secrets.STAGING_APP_PATH }}'
+            export ESTATEOS_GIT_BRANCH='${{ secrets.STAGING_GIT_BRANCH }}'
+            export ESTATEOS_DEPLOY_CMD='npm run deploy:staging'
+            if [ -z "${ESTATEOS_GIT_BRANCH:-}" ]; then export ESTATEOS_GIT_BRANCH=staging; fi
+            bash "${ESTATEOS_APP_PATH}/scripts/ci-remote-deploy.sh"
+
+      - name: Notify Discord (staging failure)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MSG: EstateOS STAGING deploy FAILED | SHA=${{ github.sha }} | branch=${{ github.ref_name }} | run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then exit 0; fi
+          PAYLOAD="$(node -e 'const m=process.env.MSG||""; process.stdout.write(JSON.stringify({content:m}))')"
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true

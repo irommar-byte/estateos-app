@@ -1,0 +1,87 @@
+name: EstateOS production deploy
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+concurrency:
+  group: estateos-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy staging first (gate)
+        if: ${{ vars.ESTATEOS_STAGING_FIRST == '1' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_SSH_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          command_timeout: 45m
+          script: |
+            set -euo pipefail
+            export ESTATEOS_APP_PATH='${{ secrets.STAGING_APP_PATH }}'
+            export ESTATEOS_GIT_BRANCH='${{ secrets.STAGING_GIT_BRANCH }}'
+            export ESTATEOS_DEPLOY_CMD='npm run deploy:staging'
+            if [ -z "${ESTATEOS_GIT_BRANCH:-}" ]; then export ESTATEOS_GIT_BRANCH=staging; fi
+            bash "${ESTATEOS_APP_PATH}/scripts/ci-remote-deploy.sh"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script_stop: true
+          command_timeout: 45m
+          script: |
+            set -euo pipefail
+            export DEPLOY_LOCK_TRIGGER=github-actions
+            export ESTATEOS_APP_PATH='${{ secrets.PROD_APP_PATH }}'
+            export ESTATEOS_GIT_BRANCH='${{ secrets.PROD_GIT_BRANCH }}'
+            export ESTATEOS_DEPLOY_CMD='npm run deploy:prod'
+            if [ -z "${ESTATEOS_GIT_BRANCH:-}" ]; then export ESTATEOS_GIT_BRANCH=production; fi
+            bash "${ESTATEOS_APP_PATH}/scripts/ci-remote-deploy.sh"
+
+      - name: Create deploy tag
+        if: success()
+        run: |
+          set -euo pipefail
+          TAG="deploy/${{ github.run_id }}-$(date -u +%Y%m%dT%H%M%SZ)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Production deploy ${{ github.sha }}" "${{ github.sha }}"
+          git push origin "refs/tags/$TAG"
+
+      - name: Notify Discord (failure)
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MSG: EstateOS production deploy FAILED | SHA=${{ github.sha }} | branch=${{ github.ref_name }} | run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then exit 0; fi
+          PAYLOAD="$(node -e 'const m=process.env.MSG||""; process.stdout.write(JSON.stringify({content:m}))')"
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true
+
+      - name: Notify Discord (success)
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MSG: EstateOS production deploy OK | SHA=${{ github.sha }} | branch=${{ github.ref_name }} | run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then exit 0; fi
+          PAYLOAD="$(node -e 'const m=process.env.MSG||""; process.stdout.write(JSON.stringify({content:m}))')"
+          curl -sS -X POST "$DISCORD_WEBHOOK_URL" -H "Content-Type: application/json" -d "$PAYLOAD" || true

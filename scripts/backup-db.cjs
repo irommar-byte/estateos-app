@@ -9,7 +9,8 @@ const { spawn } = require('child_process');
 const { config } = require('dotenv');
 
 const APP_ROOT = process.env.APP_ROOT || path.join(__dirname, '..');
-config({ path: path.join(APP_ROOT, '.env'), quiet: true });
+const envPath = process.env.DEPLOY_ENV_FILE || path.join(APP_ROOT, '.env');
+config({ path: envPath, quiet: true });
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {

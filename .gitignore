@@ -44,3 +44,10 @@ audyt*.txt
 
 # lokalny stan deploy / rollback (SHA, znaczniki czasu)
 .deploy/
+
+# snapshoty artefaktów release (serwer; duże pliki)
+releases/
+
+# raport z automatycznego pipeline agenta (nie commituj)
+scripts/.agent-deploy-report.txt
+scripts/.release-report.txt
