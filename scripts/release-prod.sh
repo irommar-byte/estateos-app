@@ -117,11 +117,14 @@ fi
 if [[ "${DIRTY}" == "1" ]]; then
   if [[ "${RELEASE_AUTO_COMMIT:-0}" != "1" ]]; then
     echo "ERROR: working tree nie jest czysty." >&2
-    echo "  Zrób ręczny commit albo uruchom ponownie z RELEASE_AUTO_COMMIT=1" >&2
-    echo "  (auto-commit: git add -A, odczepienie .env jeśli śledzony, commit komunikatem release)." >&2
+    echo "  Uruchom z auto-commit:  RELEASE_AUTO_COMMIT=1 npm run release" >&2
+    echo "  lub skrót npm:          npm run release:ship" >&2
+    echo "  (auto-commit: git add -A, odczepienie .env jeśli śledzony, commit chore(release): …)." >&2
     exit 2
   fi
   echo "RELEASE_AUTO_COMMIT=1 — tworzę commit…"
+  # Nie włączaj do commitu artefaktu incremental TS (często „M” mimo *.tsbuildinfo w .gitignore, jeśli plik był kiedyś śledzony).
+  git restore tsconfig.tsbuildinfo 2>/dev/null || true
   git add -A
   if git ls-files --error-unmatch .env >/dev/null 2>&1; then
     git reset HEAD -- .env 2>/dev/null || true

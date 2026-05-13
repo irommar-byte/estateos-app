@@ -1,15 +1,6 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import Link from "next/link";
-
-const HomeOffersMap = dynamic(() => import("@/components/map/HomeOffersMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="flex min-h-[420px] items-center justify-center rounded-[2rem] border border-white/10 bg-black/40 text-sm text-white/50">
-      Ładowanie mapy…
-    </div>
-  ),
-});
+import HomeOffersMapGate from "@/components/map/HomeOffersMapGate";
 
 export const metadata: Metadata = {
   title: "EstateOS | Ekskluzywne Nieruchomości w Warszawie",
@@ -87,7 +78,7 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="mt-6">
-          <HomeOffersMap />
+          <HomeOffersMapGate />
         </div>
       </section>
     </main>

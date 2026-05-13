@@ -14,7 +14,7 @@ EstateOS™ działa w trybie **operational release**: po zmianach produkcyjnych 
 Operacyjnie, w tej kolejności (zgodnie z `npm run release` / `release-prod.sh`, uzupełnione o jawny commit jeśli drzewo nieczyste):
 
 1. `git status` — branch, dirty, ahead/behind  
-2. **Commit** — sensowny komunikat; albo `RELEASE_AUTO_COMMIT=1 npm run release` (skrypt odczepia śledzony `.env` przed auto-commit)  
+2. **Commit** — sensowny komunikat; albo **`npm run release:ship`** (= `RELEASE_AUTO_COMMIT=1 npm run release`; skrypt odczepia śledzony `.env` przed auto-commit, przed `git add` próbuje `git restore tsconfig.tsbuildinfo`)  
 3. **`git push`** — do `origin` (w `release-prod.sh` jest krok push; jeśli commit był poza release, i tak upewnij się że zmiany są na remote przed lub w ramach release)  
 4. **`npm run release`** — type-check + build (gate), SSH test (dla `git@`), PM2 przed deployem, push, `deploy:prod`, powtórka smoke, health lokalny, curle `PROD_URL`, PM2 końcowo  
 5. **Smoke / health / PM2 / HTTP** — już w release; przy awarii nie raportuj sukcesu  
@@ -54,7 +54,7 @@ Blok końcowy skryptu: **„EstateOS™ RELEASE REPORT”**.
 
 ## Skróty / zmienne
 
-- `RELEASE_AUTO_COMMIT=1` — auto-commit przed pushem przy brudnym drzewie.  
+- `RELEASE_AUTO_COMMIT=1` — auto-commit przed pushem przy brudnym drzewie (lub użyj **`npm run release:ship`**).  
 - `RELEASE_SKIP_PUSH=1` — pomiń push (np. push już zrobiony).  
 - `RELEASE_SKIP_PROD_CURL=1` — pomiń curle na zewnętrzne `PROD_URL`.  
 - `RELEASE_SKIP_PREBUILD=1` — pomiń type-check + build przed pushem (tylko świadomie).  
