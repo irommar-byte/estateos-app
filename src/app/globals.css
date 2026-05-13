@@ -1,0 +1,362 @@
+html, body {
+  padding-top: 80px !important;
+}
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  background-color: #000;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Reset pól formularza — NIE obejmuje `button`, bo globalne `background: transparent` kasuje Tailwindowe stany (chipsy / „selected”). */
+input,
+select,
+textarea {
+  appearance: none;
+  outline: none;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+button {
+  appearance: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
+}
+
+/* Zapobieganie autouzupełnianiu na biało w Chrome */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: white;
+  -webkit-box-shadow: 0 0 0px 1000px #0a0a0a inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Luksusowa karta do formularza */
+.apple-card {
+  background: #0c0c0c;
+  border: 1px solid #1a1a1a;
+  border-radius: 32px;
+  padding: 40px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.apple-card:focus-within {
+  border-color: #333;
+  background: #111;
+}
+
+/* --- GLOBALNA TARCZA DLA PRZYCISKÓW PREMIUM --- */
+.btn-action {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #000000;
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+}
+
+.btn-action:hover:not(:disabled) {
+  transform: scale(1.02);
+  box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
+  filter: brightness(1.1);
+}
+
+button:disabled, .btn-action:disabled {
+  background: #111111;
+  color: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+
+/* GLOBALNE STYLE PRZYCISKÓW APPLE */
+.global-apple-btn {
+  width: 100%;
+  padding: 1.5rem;
+  border-radius: 2rem;
+  font-weight: 900;
+  font-size: 1.125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.global-apple-btn-green { 
+  background-color: #10b981; 
+  color: #000; 
+  box-shadow: 0 0 40px rgba(16,185,129,0.3); 
+  border: 1px solid transparent; 
+}
+.global-apple-btn-green:hover:not(:disabled) { 
+  background-color: #34d399; 
+  transform: scale(1.02); 
+}
+
+.global-apple-btn-orange { 
+  background-color: #f97316; 
+  color: #000; 
+  box-shadow: 0 0 40px rgba(249,115,22,0.3); 
+  border: 1px solid transparent; 
+}
+.global-apple-btn-orange:hover:not(:disabled) { 
+  background-color: #fb923c; 
+  transform: scale(1.02); 
+}
+
+/* TWARDY STYL DLA NIEAKTYWNEGO PRZYCISKU (Czytelny na czarnym tle) */
+.global-apple-btn:disabled {
+  background-color: #151515;
+  color: #666666;
+  border: 1px solid #2a2a2a;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+
+/* KULO-ODPORNE PRZYCISKI PREMIUM - EFEKT SKANERA */
+.premium-action-btn { transition: all 0.3s ease; position: relative; overflow: hidden; border-radius: 2rem; }
+
+/* STAN WYŁĄCZONY */
+button.premium-action-btn:disabled { 
+  background-color: #151515; 
+  color: #888888; 
+  border: 1px solid #2a2a2a; 
+  box-shadow: none; 
+  cursor: not-allowed; 
+  transform: none; 
+  pointer-events: none; 
+}
+
+/* STAN WŁĄCZONY - BAZA (Lżejszy blask) */
+button.premium-action-btn.color-green:not(:disabled) { 
+  background-color: #10b981; 
+  color: #000000; 
+  border: 1px solid #10b981; 
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15); 
+}
+button.premium-action-btn.color-orange:not(:disabled) { 
+  background-color: #f97316; 
+  color: #000000; 
+  border: 1px solid #f97316; 
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.15); 
+}
+
+/* ANIMACJA LASERA (SKANERA) */
+@keyframes laser-sweep {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+button.premium-action-btn:not(:disabled)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.05) 70%, transparent);
+  transform: skewX(-20deg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* URUCHOMIENIE SKANERA NA HOVER */
+button.premium-action-btn:not(:disabled):hover::before {
+  animation: laser-sweep 1.2s infinite linear;
+}
+
+/* HOVER - Lżejszy blask */
+button.premium-action-btn.color-green:not(:disabled):hover { 
+  background-color: #059669; 
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.35);
+  transform: scale(1.02); 
+}
+button.premium-action-btn.color-orange:not(:disabled):hover { 
+  background-color: #ea580c; 
+  box-shadow: 0 0 30px rgba(249, 115, 22, 0.35);
+  transform: scale(1.02); 
+}
+button.premium-action-btn > * { position: relative; z-index: 10; }
+
+
+@layer components {
+  .btn-apple-glass {
+    @apply relative overflow-hidden bg-white/5 backdrop-blur-2xl border border-white/10 text-white transition-all duration-500 shadow-[0_0_20px_rgba(255,255,255,0.05)];
+  }
+  .btn-apple-glass:hover {
+    @apply bg-white/20 border-white/40 text-white shadow-[0_0_60px_rgba(255,255,255,0.3)];
+    transform: scale(1.03);
+  }
+  .btn-apple-glass::after {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full transition-transform duration-700 ease-in-out pointer-events-none;
+  }
+  .btn-apple-glass:hover::after {
+    @apply translate-x-full;
+  }
+
+  .btn-premium-green {
+    @apply bg-[#10b981] hover:bg-[#34d399] text-black font-black uppercase tracking-[0.2em] rounded-full transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_50px_rgba(16,185,129,0.6)] hover:scale-105 cursor-pointer;
+  }
+
+  /* Stabilne stany „zaznaczone” na czarnym tle (chipsy / toggles) — nie polegają na kruchych substringach w selektorach globalnych */
+  .eos-chip-on {
+    background-color: #10b981 !important;
+    color: #020617 !important;
+    border-color: #6ee7b7 !important;
+    box-shadow:
+      0 0 0 1px rgba(16, 185, 129, 0.35),
+      0 14px 40px rgba(16, 185, 129, 0.28) !important;
+  }
+  .eos-chip-on:hover {
+    filter: brightness(1.06);
+  }
+  .eos-chip-off {
+    background-color: rgba(24, 24, 27, 0.92) !important;
+    color: #f4f4f5 !important;
+    border-color: rgba(82, 82, 91, 0.9) !important;
+    box-shadow: none !important;
+  }
+  .eos-chip-off:hover {
+    background-color: rgba(39, 39, 42, 0.95) !important;
+    border-color: rgba(161, 161, 170, 0.55) !important;
+    color: #ffffff !important;
+  }
+}
+
+
+/* --- ESTATE OS DARK THEME GLOBAL FIXES --- */
+/* Wymuszenie białego tekstu w polach */
+input, textarea, select {
+    color: #ffffff !important;
+    color-scheme: dark;
+}
+input::placeholder, textarea::placeholder {
+    color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* BLOKADA CZARNEGO TEKSTU PRZY AUTOUZUPEŁNIANIU PRZEGLĄDARKI */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #0a0a0a inset !important;
+    -webkit-text-fill-color: #10b981 !important;
+    transition: background-color 5000s ease-in-out 0s;
+}
+
+/* TWARDY, ODPORNY NA BŁĘDY STYL CHECKBOXA */
+.estate-checkbox {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+}
+.estate-checkbox:hover {
+    border-color: rgba(16, 185, 129, 0.5);
+    background-color: rgba(255, 255, 255, 0.1);
+}
+.estate-checkbox.checked {
+    background-color: #10b981;
+    border-color: #10b981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+}
+.estate-checkbox svg {
+    color: #000000;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.estate-checkbox.checked svg {
+    opacity: 1;
+    transform: scale(1);
+}
+/* ----------------------------------------- */
+
+
+/* ==========================================================================
+   ESTATEOS LUXURY INTERFACE (APPLE STYLE DARK MODE) - V2
+   ========================================================================== */
+
+/* Globalne „skalowanie + brightness” na KAŻDYM button psuje widoczność stanów selected (chipsy, toggles).
+   Zostawiamy lekkie przejścia; motion tylko dla wybranych klas premium. */
+button {
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease,
+    transform 0.25s ease, filter 0.25s ease;
+}
+
+.submit-btn:hover:not(:disabled),
+.btn-action:hover:not(:disabled),
+.global-apple-btn:hover:not(:disabled),
+button.premium-action-btn:hover:not(:disabled) {
+  transform: scale(1.04);
+  filter: brightness(1.12);
+}
+
+.submit-btn:active:not(:disabled),
+.btn-action:active:not(:disabled),
+.global-apple-btn:active:not(:disabled),
+button.premium-action-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.92);
+}
+
+/* 2. Domyślne przyciski (Nieaktywne / Tło) - Czytelne szkło */
+.submit-btn,
+button[class*="bg-white/5"],
+button[class*="bg-[#111]"] {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #a1a1aa !important; /* Szary cynk - widoczny, ale nie dominujący */
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* Hover dla nieaktywnych */
+.submit-btn:hover,
+button[class*="bg-white/5"]:hover,
+button[class*="bg-[#111]"]:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 25px rgba(255, 255, 255, 0.1) !important; 
+}
+
+/* Obsługa placeholdera dla edytora tekstu Premium */
+[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: #71717a;
+  pointer-events: none;
+  display: block;
+}
+
+@keyframes scan {
+  0% { top: 0%; }
+  100% { top: 100%; }
+}
+
