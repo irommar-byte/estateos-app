@@ -59,6 +59,7 @@ deploy_notify_and_record() {
     rb="$(tr -d ' \n\r' <"$PRE_PULL_COMMIT_FILE")"
   fi
   hint="cd \"${APP_ROOT}\" && git reset --hard ${rb} && npm ci && npx prisma generate && npm run build && pm2 reload ${DEPLOY_ECOSYSTEM} --env ${DEPLOY_PM2_ENV} --update-env && pm2 save"
+sleep 12
   if [[ "${RELEASE_IMMUTABLE}" == "1" && -d "${REL_DIR}/.next" ]]; then
     hint="${hint} | artifact rollback: ROLLBACK_CONFIRM=1 bash scripts/rollback-to-release.sh ${RELEASE_ID}"
   fi
@@ -108,6 +109,7 @@ deploy_failed() {
     echo "  git reset --hard ${old_commit}" >&2
     echo "  npm ci && npx prisma generate && npm run build" >&2
     echo "  pm2 reload ${DEPLOY_ECOSYSTEM} --env ${DEPLOY_PM2_ENV} --update-env && pm2 save" >&2
+sleep 12
     echo "  SMOKE_BASE_URL=${SMOKE_BASE_URL} node scripts/postdeploy-smoke.cjs" >&2
   else
     echo "Brak pliku pre_pull_commit — nie można bezpiecznie podać SHA rollbacku z tego skryptu." >&2
@@ -422,7 +424,9 @@ snapshot_release_artifacts() {
 snapshot_release_artifacts
 
 echo "==> pm2 reload (--update-env) ${DEPLOY_ECOSYSTEM} env=${DEPLOY_PM2_ENV}"
+sleep 12
 pm2 reload "${DEPLOY_ECOSYSTEM}" --env "${DEPLOY_PM2_ENV}" --update-env
+sleep 12
 pm2 save
 
 echo "==> verify prod env (po reloadzie)"
