@@ -15,6 +15,7 @@
     "verify:prod-env": "node scripts/verify-prod-env.cjs",
     "smoke:prod": "node scripts/postdeploy-smoke.cjs",
     "deploy:prod": "bash scripts/deploy-prod.sh",
+    "recover:prod": "bash scripts/recover-prod-worktree.sh",
     "deploy:server-only": "npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
