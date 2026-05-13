@@ -8,7 +8,7 @@
 #   RELEASE_AUTO_COMMIT=1     — jeśli working tree nieczysty: git add -A + commit (bez śledzonego .env)
 #   RELEASE_SKIP_PUSH=1       — pomiń push (np. po ręcznym pushu; tylko deploy)
 #   RELEASE_SKIP_PREBUILD=1   — pomiń npm run type-check + build przed pushem (niezalecane)
-#   RELEASE_SKIP_PROD_CURL=1  — pomiń zewnętrzne curle na PROD_URL (np. brak trasy z serwera do CDN)
+#   RELEASE_SKIP_GITHUB_SSH_TEST=1 — pomiń test `ssh -T git@github.com` (np. fałszywy alarm sieciowy; push i tak może zadziałać)
 #   PROD_URL=https://estateos.pl — dodatkowe curle publiczne w raporcie (domyślnie ta domena)
 #   SMOKE_BASE_URL, PM2_APP — przekazywane do deploy-prod.sh
 #   DEPLOY_LOCK_TRIGGER — opcjonalnie; domyślnie npm-release przy kroku deploy (wpis w .deploy/deploy.lock)
@@ -153,22 +153,31 @@ fi
 echo ""
 echo "==> [4/10] dostęp SSH / GitHub (gdy origin = git@…)"
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || echo "")"
-if [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
+if [[ "${RELEASE_SKIP_GITHUB_SSH_TEST:-0}" == "1" ]]; then
+  echo "WARN: RELEASE_SKIP_GITHUB_SSH_TEST=1 — pomijam test ssh -T do git@github.com (świadoma decyzja)."
+elif [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
   echo "origin: ${ORIGIN_URL}"
   set +e
   SSH_OUT="$(ssh -o BatchMode=yes -o ConnectTimeout=12 -T git@github.com 2>&1)"
   SSH_EC=$?
   set -e
   echo "${SSH_OUT}"
-  if echo "${SSH_OUT}" | grep -qiE 'Permission denied|publickey|Connection refused|Could not resolve|Operation timed out|No route to host'; then
-    echo "ERROR: SSH do GitHuba nie działa (klucz / sieć). Napraw ssh-agent lub known_hosts." >&2
+  if echo "${SSH_OUT}" | grep -qiE \
+    'Permission denied|publickey|Connection refused|Could not resolve|Operation timed out|No route to host|Host key verification failed|kex_exchange_identification|Network is unreachable'; then
+    echo "ERROR: SSH do GitHuba — wykryto typowy komunikat błędu (klucz / sieć / known_hosts)." >&2
+    echo "  Pełny output powyżej; exit ssh: ${SSH_EC}" >&2
     exit 3
   fi
-  if [[ "${SSH_EC}" != "0" ]] && ! echo "${SSH_OUT}" | grep -qiE 'successfully authenticated|Welcome to GitHub'; then
-    echo "ERROR: nieoczekiwany wynik SSH (exit ${SSH_EC})." >&2
+  # GitHub: przy `ssh -T git@github.com` **sukces** to zwykle exit **1** („authenticated, GitHub does not provide shell”).
+  if [[ "${SSH_EC}" == "0" ]] || [[ "${SSH_EC}" == "1" ]]; then
+    echo "OK: SSH do GitHuba (exit ${SSH_EC} — oczekiwane dla git@github.com)."
+  elif echo "${SSH_OUT}" | grep -qiE 'successfully authenticated|Welcome to GitHub|does not provide shell|GitHub does not provide'; then
+    echo "OK: SSH do GitHuba (sukces po treści komunikatu, exit ${SSH_EC})."
+  else
+    echo "ERROR: nieoczekiwany wynik SSH do GitHuba (exit ${SSH_EC})." >&2
+    echo "  Jeśli to fałszywy alarm (np. proxy), ustaw RELEASE_SKIP_GITHUB_SSH_TEST=1 i powtórz release." >&2
     exit 3
   fi
-  echo "OK: SSH do GitHuba wygląda na dostępny."
 else
   echo "origin nie jest git@ (HTTPS/inne): pomijam test ssh -T; push może wymagać credential helpera."
 fi
