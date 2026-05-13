@@ -41,3 +41,6 @@ debug_*.js
 audyt*.txt
 
 .DS_Store
+
+# lokalny stan deploy / rollback (SHA, znaczniki czasu)
+.deploy/
