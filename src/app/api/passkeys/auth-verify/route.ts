@@ -1,4 +1,7 @@
-import { verifyAuthenticationResponse } from '@simplewebauthn/server';
+import {
+  verifyAuthenticationResponse,
+  type AuthenticatorTransportFuture,
+} from '@simplewebauthn/server';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -7,20 +10,37 @@ import { applyEstateosSessionCookie } from '@/lib/passwordAuth';
 
 export const runtime = 'nodejs';
 
-function parseTransports(raw: string | null): string[] | undefined {
+const WEBAUTHN_TRANSPORTS = new Set<AuthenticatorTransportFuture>([
+  'ble',
+  'cable',
+  'hybrid',
+  'internal',
+  'nfc',
+  'smart-card',
+  'usb',
+]);
+
+function isAuthenticatorTransportFuture(v: string): v is AuthenticatorTransportFuture {
+  return WEBAUTHN_TRANSPORTS.has(v as AuthenticatorTransportFuture);
+}
+
+function parseTransports(raw: string | null): AuthenticatorTransportFuture[] | undefined {
   if (!raw) return undefined;
   const s = raw.trim();
   if (!s) return undefined;
   try {
     const j = JSON.parse(s) as unknown;
-    if (Array.isArray(j)) return j.map(String).filter(Boolean);
+    if (Array.isArray(j)) {
+      const out = j.map(String).filter(Boolean).filter(isAuthenticatorTransportFuture);
+      return out.length ? out : undefined;
+    }
   } catch {
     /* ignore */
   }
   const parts = s
     .split(',')
     .map((x) => x.trim())
-    .filter(Boolean);
+    .filter(isAuthenticatorTransportFuture);
   return parts.length ? parts : undefined;
 }
 
