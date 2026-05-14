@@ -15,6 +15,13 @@ const { spawn, execFileSync } = require('child_process');
 const path = require('path');
 
 const root = path.join(__dirname, '..');
+
+try {
+  require('dotenv').config({ path: path.join(root, '.env') });
+} catch {
+  /* optional */
+}
+
 const port = String(process.env.VERIFY_PORT || '3010').trim() || '3010';
 const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -46,9 +53,17 @@ async function main() {
 
   console.log(`[verify:recon] starting Next on port ${port} …`);
 
+  const childEnv = { ...process.env, NODE_ENV: 'production' };
+  if (!String(childEnv.PASSKEY_RP_ID || '').trim()) {
+    childEnv.PASSKEY_RP_ID = 'estateos.pl';
+  }
+  if (!String(childEnv.PASSKEY_ORIGIN || '').trim()) {
+    childEnv.PASSKEY_ORIGIN = String(childEnv.NEXTAUTH_URL || '').trim() || 'https://estateos.pl';
+  }
+
   const child = spawn('npx', ['next', 'start', '-p', port], {
     cwd: root,
-    env: { ...process.env, NODE_ENV: 'production' },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
   });
