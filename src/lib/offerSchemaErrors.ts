@@ -1,13 +1,22 @@
 export function isOfferLegalColumnMissingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
+  const legalColumnsPattern =
+    /(landregistrynumber|apartmentnumber|legalcheckstatus|legalchecksubmittedat|legalcheckreviewedat|legalcheckreviewedby|legalcheckrejectionreason|legalcheckrejectiontext|legalcheckownernote|islegalsafeverified)/i;
   return (
     /offer\.landregistrynumber/i.test(message) ||
     /offer\.apartmentnumber/i.test(message) ||
     /offer\.legalcheckstatus/i.test(message) ||
+    /offer\.legalchecksubmittedat/i.test(message) ||
+    /offer\.legalcheckreviewedat/i.test(message) ||
+    /offer\.legalcheckreviewedby/i.test(message) ||
+    /offer\.legalcheckrejectionreason/i.test(message) ||
+    /offer\.legalcheckrejectiontext/i.test(message) ||
+    /offer\.legalcheckownernote/i.test(message) ||
+    /offer\.islegalsafeverified/i.test(message) ||
     (/unknown column/i.test(message) &&
-      /(landregistrynumber|apartmentnumber|legalcheckstatus)/i.test(message)) ||
+      legalColumnsPattern.test(message)) ||
     (/does not exist/i.test(message) &&
-      /(landregistrynumber|apartmentnumber|legalcheckstatus)/i.test(message))
+      legalColumnsPattern.test(message))
   );
 }
 

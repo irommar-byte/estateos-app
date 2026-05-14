@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { createOffer, updateOffer } from '@/lib/services/offer.service';
+import { createOffer, OfferValidationError, updateOffer } from '@/lib/services/offer.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -42,6 +42,17 @@ function parseUserIdFromBearer(req: Request): number | null {
   const payload = verifyMobileToken(rawToken) as any;
   const userId = Number(payload?.id ?? payload?.userId ?? payload?.sub);
   return Number.isFinite(userId) && userId > 0 ? userId : null;
+}
+
+function schemaCompatibilityResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      message: getOfferSchemaCompatibilityMessage(),
+      code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE',
+    },
+    { status: 409 }
+  );
 }
 
 // =======================
@@ -122,14 +133,7 @@ export async function GET(req: Request) {
 
   } catch (error: unknown) {
     if (isOfferSchemaCompatibilityError(error)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: getOfferSchemaCompatibilityMessage(),
-          code: 'OFFER_SCHEMA_COMPATIBILITY',
-        },
-        { status: 503 }
-      );
+      return schemaCompatibilityResponse();
     }
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     console.error("🔥 MOBILE API ERROR:", error);
@@ -182,15 +186,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, offer });
   } catch (e: unknown) {
-    if (isOfferSchemaCompatibilityError(e)) {
+    if (e instanceof OfferValidationError) {
       return NextResponse.json(
-        {
-          success: false,
-          message: getOfferSchemaCompatibilityMessage(),
-          code: 'OFFER_SCHEMA_COMPATIBILITY',
-        },
-        { status: 503 }
+        { success: false, message: e.message, code: 'OFFER_VALIDATION' },
+        { status: 400 }
       );
+    }
+    if (isOfferSchemaCompatibilityError(e)) {
+      return schemaCompatibilityResponse();
     }
     const message = e instanceof Error ? e.message : 'Błąd serwera';
     return NextResponse.json({ success: false, message }, { status: 500 });
@@ -216,17 +219,20 @@ export async function PUT(req: Request) {
     const offer = await updateOffer(body);
     return NextResponse.json({ success: true, offer });
   } catch (e: unknown) {
-    if (isOfferSchemaCompatibilityError(e)) {
+    if (e instanceof OfferValidationError) {
       return NextResponse.json(
-        {
-          success: false,
-          message: getOfferSchemaCompatibilityMessage(),
-          code: 'OFFER_SCHEMA_COMPATIBILITY',
-        },
-        { status: 503 }
+        { success: false, message: e.message, code: 'OFFER_VALIDATION' },
+        { status: 400 }
       );
+    }
+    if (isOfferSchemaCompatibilityError(e)) {
+      return schemaCompatibilityResponse();
     }
     const message = toPublicOfferErrorMessage(e);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
+}
+
+export async function PATCH(req: Request) {
+  return PUT(req);
 }

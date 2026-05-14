@@ -161,7 +161,7 @@ model Offer {
   videoUrl        String?
   floorPlanUrl    String?
   landRegistryNumber String?        @db.VarChar(64)
-  apartmentNumber String?           @db.VarChar(64)
+  apartmentNumber    String?        @db.VarChar(32)
   legalCheckStatus String           @default("NONE") @db.VarChar(16)
   legalCheckSubmittedAt DateTime?
   legalCheckReviewedAt DateTime?

@@ -57,5 +57,17 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
   },
 } as const;
 
+/**
+ * Odpowiedź po zapisie oferty (create/update) — jawny select, żeby Prisma nie odczytywała
+ * pełnego wiersza z kolumnami, których jeszcze nie ma w DB (oraz spójny kształt z listą mobile).
+ */
+export const MOBILE_OFFER_WRITE_RESPONSE_SELECT = {
+  ...MOBILE_OFFER_PRISMA_SELECT,
+  landRegistryNumber: true,
+  apartmentNumber: true,
+  legalCheckStatus: true,
+  isLegalSafeVerified: true,
+} as const;
+
 /** Alias: ten sam zestaw pól co lista publiczna `/api/offers` (bezpieczny na starszą bazę). */
 export const WEB_OFFER_PUBLIC_PRISMA_SELECT = MOBILE_OFFER_PRISMA_SELECT;

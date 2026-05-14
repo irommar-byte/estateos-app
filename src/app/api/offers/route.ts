@@ -141,8 +141,8 @@ export async function GET() {
   } catch (error) {
     if (isOfferSchemaCompatibilityError(error)) {
       return NextResponse.json(
-        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
-        { status: 503 }
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
       );
     }
     console.error('OFFERS ERROR:', error);
@@ -199,8 +199,8 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     if (isOfferSchemaCompatibilityError(e)) {
       return NextResponse.json(
-        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
-        { status: 503 }
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
       );
     }
     const message = e instanceof Error ? e.message : 'Błąd serwera';

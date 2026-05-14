@@ -167,6 +167,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       viewsCount,
     });
   } catch (error) {
+    if (isOfferSchemaCompatibilityError(error)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
+      );
+    }
     console.error('[GET /api/offers/:id]', error);
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }
@@ -309,8 +315,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   } catch (error) {
     if (isOfferSchemaCompatibilityError(error)) {
       return NextResponse.json(
-        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
-        { status: 503 }
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
       );
     }
     return NextResponse.json({ error: "Błąd serwera przy zapisie" }, { status: 500 });

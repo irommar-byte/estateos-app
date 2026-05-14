@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import {
+  MOBILE_OFFER_PRISMA_SELECT,
+  MOBILE_OFFER_WRITE_RESPONSE_SELECT,
+} from '@/lib/mobileOfferPrismaSelect';
+import {
   TransactionType,
   PropertyType,
   PropertyCondition,
@@ -17,6 +21,42 @@ import {
   isOfferAlterPrivilegeError,
   isOfferLegalColumnMissingError,
 } from '@/lib/offerSchemaErrors';
+
+/** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
+export class OfferValidationError extends Error {
+  readonly statusCode = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = 'OfferValidationError';
+  }
+}
+
+/** Format pełnego numeru księgi wieczystej (PL) — po `trim` + `toUpperCase`. */
+const POLISH_KW_FULL_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
+
+export function validateLandRegistryNumberInput(raw: unknown): void {
+  if (raw === undefined || raw === null) return;
+  const value = String(raw).trim().toUpperCase();
+  if (!value) return;
+  if (!POLISH_KW_FULL_REGEX.test(value)) {
+    throw new OfferValidationError(
+      'Nieprawidłowy format numeru KW. Wymagany format: 2 litery + 2 znaki alfanumeryczne, ukośnik, 8 cyfr, ukośnik, 1 cyfra (np. WA3D/00012345/9).'
+    );
+  }
+}
+
+function stripLegacyLegalColumns(data: Record<string, unknown>) {
+  delete data.landRegistryNumber;
+  delete data.apartmentNumber;
+  delete data.legalCheckStatus;
+  delete data.legalCheckSubmittedAt;
+  delete data.legalCheckReviewedAt;
+  delete data.legalCheckReviewedBy;
+  delete data.legalCheckRejectionReason;
+  delete data.legalCheckRejectionText;
+  delete data.legalCheckOwnerNote;
+  delete data.isLegalSafeVerified;
+}
 
 let offerLegalColumnsEnsured = false;
 let offerLegalColumnsPromise: Promise<void> | null = null;
@@ -45,9 +85,9 @@ async function hasOfferColumn(columnName: string): Promise<boolean> {
   return Number(rows?.[0]?.total || 0) > 0;
 }
 
-async function ensureOfferColumn(columnName: string) {
+async function ensureOfferColumn(columnName: string, columnSqlType: string) {
   const quotedColumn = `\`${columnName}\``;
-  const alterSql = `ALTER TABLE \`Offer\` ADD COLUMN IF NOT EXISTS ${quotedColumn} VARCHAR(64) NULL`;
+  const alterSql = `ALTER TABLE \`Offer\` ADD COLUMN IF NOT EXISTS ${quotedColumn} ${columnSqlType} NULL`;
   try {
     await prisma.$executeRawUnsafe(alterSql);
     return;
@@ -60,7 +100,7 @@ async function ensureOfferColumn(columnName: string) {
   const exists = await hasOfferColumn(columnName);
   if (!exists) {
     await prisma.$executeRawUnsafe(
-      `ALTER TABLE \`Offer\` ADD COLUMN ${quotedColumn} VARCHAR(64) NULL`
+      `ALTER TABLE \`Offer\` ADD COLUMN ${quotedColumn} ${columnSqlType} NULL`
     );
   }
 }
@@ -74,8 +114,23 @@ export async function ensureOfferLegalColumns() {
   if (offerLegalColumnsPromise) return offerLegalColumnsPromise;
 
   offerLegalColumnsPromise = (async () => {
-    await ensureOfferColumn('landRegistryNumber');
-    await ensureOfferColumn('apartmentNumber');
+    await ensureOfferColumn('landRegistryNumber', 'VARCHAR(64)');
+    await ensureOfferColumn('apartmentNumber', 'VARCHAR(32)');
+    await ensureOfferColumn('legalCheckStatus', 'VARCHAR(16)');
+    await ensureOfferColumn('legalCheckSubmittedAt', 'DATETIME(3)');
+    await ensureOfferColumn('legalCheckReviewedAt', 'DATETIME(3)');
+    await ensureOfferColumn('legalCheckReviewedBy', 'INT');
+    await ensureOfferColumn('legalCheckRejectionReason', 'VARCHAR(64)');
+    await ensureOfferColumn('legalCheckRejectionText', 'TEXT');
+    await ensureOfferColumn('legalCheckOwnerNote', 'TEXT');
+    await ensureOfferColumn('isLegalSafeVerified', 'BOOLEAN');
+    // Legacy rows may have NULL in fields now modeled as non-null in Prisma.
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`legalCheckStatus\` = 'NONE' WHERE \`legalCheckStatus\` IS NULL OR TRIM(\`legalCheckStatus\`) = ''`
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`isLegalSafeVerified\` = 0 WHERE \`isLegalSafeVerified\` IS NULL`
+    );
 
     offerLegalColumnsEnsured = true;
   })();
@@ -146,6 +201,10 @@ function mapStatus(val?: string): OfferStatus {
 export async function createOffer(body: any) {
   const { userId, lat, lng } = body;
   await ensureOfferLegalColumns();
+
+  if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
+    validateLandRegistryNumberInput(body.landRegistryNumber);
+  }
 
   if (!userId) throw new Error('Brak ID użytkownika');
   if (lat === undefined || lng === undefined || lat === null || lng === null) {
@@ -233,15 +292,18 @@ export async function createOffer(body: any) {
 
   try {
     return await prisma.offer.create({
-      data: createData
+      data: createData,
+      select: MOBILE_OFFER_WRITE_RESPONSE_SELECT as any,
     });
   } catch (error) {
     if (!isOfferLegalColumnMissingError(error)) throw error;
 
     const fallbackData = { ...createData };
-    delete fallbackData.landRegistryNumber;
-    delete fallbackData.apartmentNumber;
-    return prisma.offer.create({ data: fallbackData });
+    stripLegacyLegalColumns(fallbackData);
+    return prisma.offer.create({
+      data: fallbackData,
+      select: MOBILE_OFFER_PRISMA_SELECT as any,
+    });
   }
 }
 
@@ -251,6 +313,10 @@ export async function createOffer(body: any) {
 export async function updateOffer(body: any) {
   const { id, userId } = body;
   await ensureOfferLegalColumns();
+
+  if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
+    validateLandRegistryNumberInput(body.landRegistryNumber);
+  }
 
   if (!id || !userId) {
     throw new Error('Brak ID oferty lub użytkownika');
@@ -325,11 +391,15 @@ export async function updateOffer(body: any) {
   const existingVerification = extractVerificationMeta(String(existing.description || ''));
   const nextLandRegistryNumber =
     body.landRegistryNumber !== undefined
-      ? String(body.landRegistryNumber || '').trim().toUpperCase().slice(0, 64)
+      ? body.landRegistryNumber === null
+        ? null
+        : String(body.landRegistryNumber).trim().toUpperCase().slice(0, 64) || null
       : existingVerification.verification.landRegistryNumber;
   const nextApartmentNumber =
     body.apartmentNumber !== undefined
-      ? String(body.apartmentNumber || '').trim().slice(0, 64)
+      ? body.apartmentNumber === null
+        ? null
+        : String(body.apartmentNumber).trim().slice(0, 32) || null
       : existingVerification.verification.apartmentNumber;
   const legalFieldsChanged =
     body.landRegistryNumber !== undefined || body.apartmentNumber !== undefined;
@@ -445,16 +515,17 @@ export async function updateOffer(body: any) {
   try {
     updatedOffer = await prisma.offer.update({
       where: { id: Number(id) },
-      data: updateData
+      data: updateData,
+      select: MOBILE_OFFER_WRITE_RESPONSE_SELECT as any,
     });
   } catch (error) {
     if (!isOfferLegalColumnMissingError(error)) throw error;
     const fallbackData = { ...updateData };
-    delete fallbackData.landRegistryNumber;
-    delete fallbackData.apartmentNumber;
+    stripLegacyLegalColumns(fallbackData);
     updatedOffer = await prisma.offer.update({
       where: { id: Number(id) },
-      data: fallbackData
+      data: fallbackData,
+      select: MOBILE_OFFER_PRISMA_SELECT as any,
     });
   }
   const newPrice = Number(updatedOffer.price);
