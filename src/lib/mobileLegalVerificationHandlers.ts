@@ -1,10 +1,26 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { setVerificationStatusInDescription } from '@/lib/offerVerification';
 import {
   extractBearerToken,
   parseUserIdFromMobileJwt,
   requireMobileAdmin,
 } from '@/lib/mobileAdminAuth';
+
+/** Pola legalne — obiekt jako `any`, żeby TS nie porównywał do starego `OfferSelect` z cache Prisma. */
+const OFFER_LEGAL_SELECT: any = {
+  id: true,
+  userId: true,
+  legalCheckStatus: true,
+  legalCheckSubmittedAt: true,
+  legalCheckReviewedAt: true,
+  legalCheckReviewedBy: true,
+  legalCheckRejectionReason: true,
+  legalCheckRejectionText: true,
+  landRegistryNumber: true,
+  apartmentNumber: true,
+  isLegalSafeVerified: true,
+};
 
 const QUEUE_STATUSES = ['PENDING', 'REJECTED', 'VERIFIED'] as const;
 const REJECTION_REASONS = [
@@ -31,6 +47,7 @@ function normalizeRejectionReason(raw: unknown): string {
 
 function requestStatusToMobile(status: string | null | undefined) {
   const value = String(status || '').toUpperCase();
+  if (value === 'VERIFIED') return 'VERIFIED';
   if (value === 'APPROVED') return 'VERIFIED';
   if (value === 'REJECTED') return 'REJECTED';
   if (value === 'PENDING') return 'PENDING';
@@ -70,26 +87,33 @@ async function latestRequestForOffer(offerId: number) {
   });
 }
 
-async function offerViewFromRequest(offerId: number, requestRow: any) {
-  const status = requestStatusToMobile(requestRow?.status);
-  const reviewedBy = requestRow?.status !== 'PENDING' ? requestRow?.requesterId ?? null : null;
+async function offerViewFromState(offerId: number, offer: any, requestRow: any) {
+  const offerStatus = requestStatusToMobile(offer?.legalCheckStatus);
+  const requestStatus = requestStatusToMobile(requestRow?.status);
+  const status = offerStatus !== 'NONE' ? offerStatus : requestStatus;
+  const reviewedBy = offer?.legalCheckReviewedBy ?? null;
+  const submittedAt = offer?.legalCheckSubmittedAt ?? requestRow?.createdAt ?? null;
+  const reviewedAt = offer?.legalCheckReviewedAt ?? requestRow?.updatedAt ?? null;
+  const rejectionReason = offer?.legalCheckRejectionReason || (status === 'REJECTED' ? 'OTHER' : null);
+  const rejectionText = offer?.legalCheckRejectionText || requestRow?.note || null;
   return {
     offerId,
     status,
-    landRegistryNumber: requestRow?.landRegistryNumber || null,
-    apartmentNumber: requestRow?.apartmentNumber || null,
-    submittedAt: requestRow?.createdAt ? requestRow.createdAt.toISOString() : null,
-    reviewedAt:
-      requestRow?.updatedAt && requestRow?.status !== 'PENDING' ? requestRow.updatedAt.toISOString() : null,
+    legalCheckStatus: status,
+    legal_check_status: status,
+    landRegistryNumber: offer?.landRegistryNumber || requestRow?.landRegistryNumber || null,
+    apartmentNumber: offer?.apartmentNumber || requestRow?.apartmentNumber || null,
+    submittedAt: submittedAt ? submittedAt.toISOString() : null,
+    reviewedAt: reviewedAt && status !== 'PENDING' ? reviewedAt.toISOString() : null,
     reviewedByName: await reviewedByName(reviewedBy),
     rejection:
       status === 'REJECTED'
         ? {
-            reasonCode: normalizeRejectionReason('OTHER'),
-            reasonText: requestRow?.note || null,
+            reasonCode: normalizeRejectionReason(rejectionReason),
+            reasonText: rejectionText,
           }
         : null,
-    isLegalSafeVerified: status === 'VERIFIED',
+    isLegalSafeVerified: status === 'VERIFIED' || Boolean(offer?.isLegalSafeVerified),
   };
 }
 
@@ -117,9 +141,9 @@ export async function getOwnerLegalVerification(req: Request, offerId: number) {
     return NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 });
   }
 
-  const offer = await prisma.offer.findUnique({
+  const offer: any = await prisma.offer.findUnique({
     where: { id: offerId },
-    select: { id: true, userId: true },
+    select: OFFER_LEGAL_SELECT,
   });
   if (!offer) {
     return NextResponse.json({ success: false, message: 'Nie znaleziono oferty' }, { status: 404 });
@@ -129,20 +153,9 @@ export async function getOwnerLegalVerification(req: Request, offerId: number) {
   }
 
   const row = await latestRequestForOffer(offerId);
-  if (!row) {
-    return NextResponse.json({
-      offerId,
-      status: 'NONE',
-      landRegistryNumber: null,
-      apartmentNumber: null,
-      submittedAt: null,
-      reviewedAt: null,
-      reviewedByName: null,
-      rejection: null,
-      isLegalSafeVerified: false,
-    });
-  }
-  return NextResponse.json(await offerViewFromRequest(offerId, row));
+  return NextResponse.json(await offerViewFromState(offerId, offer, row), {
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  });
 }
 
 export async function submitOwnerLegalVerification(req: Request, offerId: number) {
@@ -186,17 +199,44 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
     return NextResponse.json({ success: false, message: 'Brak uprawnień do tej oferty.' }, { status: 403 });
   }
 
-  const created = await prisma.legalVerificationRequest.create({
-    data: {
-      offerId,
-      requesterId: userId,
-      status: 'PENDING',
-      landRegistryNumber,
-      apartmentNumber,
-      note: ownerNote,
-    },
+  const now = new Date();
+  const created = await prisma.$transaction(async (tx) => {
+    const prev = await tx.offer.findUnique({
+      where: { id: offerId },
+      select: { description: true },
+    });
+    const request = await tx.legalVerificationRequest.create({
+      data: {
+        offerId,
+        requesterId: userId,
+        status: 'PENDING',
+        landRegistryNumber,
+        apartmentNumber,
+        note: ownerNote,
+      },
+    });
+    const updatedOffer = await tx.offer.update({
+      where: { id: offerId },
+      data: {
+        landRegistryNumber,
+        apartmentNumber,
+        legalCheckStatus: 'PENDING',
+        legalCheckSubmittedAt: now,
+        legalCheckReviewedAt: null,
+        legalCheckReviewedBy: null,
+        legalCheckRejectionReason: null,
+        legalCheckRejectionText: null,
+        legalCheckOwnerNote: ownerNote,
+        isLegalSafeVerified: false,
+        description: setVerificationStatusInDescription(prev?.description, 'PENDING_REVIEW'),
+      } as any,
+      select: OFFER_LEGAL_SELECT,
+    });
+    return { request, updatedOffer };
   });
-  return NextResponse.json(await offerViewFromRequest(offerId, created));
+  return NextResponse.json(await offerViewFromState(offerId, created.updatedOffer, created.request), {
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  });
 }
 
 export async function getAdminLegalVerificationQueue(req: Request) {
@@ -248,11 +288,36 @@ export async function approveLegalVerification(req: Request, offerId: number) {
     return NextResponse.json({ success: false, message: 'Brak zgłoszenia do zatwierdzenia.' }, { status: 404 });
   }
 
-  const updated = await prisma.legalVerificationRequest.update({
-    where: { id: target.id },
-    data: { status: 'APPROVED' },
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    const prev = await tx.offer.findUnique({
+      where: { id: offerId },
+      select: { description: true },
+    });
+    const updatedRequest = await tx.legalVerificationRequest.update({
+      where: { id: target.id },
+      data: { status: 'APPROVED' },
+    });
+    const updatedOffer = await tx.offer.update({
+      where: { id: offerId },
+      data: {
+        landRegistryNumber: target.landRegistryNumber || undefined,
+        apartmentNumber: target.apartmentNumber || undefined,
+        legalCheckStatus: 'VERIFIED',
+        legalCheckReviewedAt: now,
+        legalCheckReviewedBy: gate.adminId,
+        legalCheckRejectionReason: null,
+        legalCheckRejectionText: null,
+        isLegalSafeVerified: true,
+        description: setVerificationStatusInDescription(prev?.description, 'VERIFIED'),
+      } as any,
+      select: OFFER_LEGAL_SELECT,
+    });
+    return { updatedRequest, updatedOffer };
   });
-  return NextResponse.json(await offerViewFromRequest(offerId, updated));
+  return NextResponse.json(await offerViewFromState(offerId, result.updatedOffer, result.updatedRequest), {
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  });
 }
 
 export async function rejectLegalVerification(req: Request, offerId: number) {
@@ -276,10 +341,33 @@ export async function rejectLegalVerification(req: Request, offerId: number) {
     return NextResponse.json({ success: false, message: 'Brak zgłoszenia do odrzucenia.' }, { status: 404 });
   }
 
+  const now = new Date();
   const note = reasonText || `REJECTION:${reasonCode}`;
-  const updated = await prisma.legalVerificationRequest.update({
-    where: { id: target.id },
-    data: { status: 'REJECTED', note },
+  const result = await prisma.$transaction(async (tx) => {
+    const prev = await tx.offer.findUnique({
+      where: { id: offerId },
+      select: { description: true },
+    });
+    const updatedRequest = await tx.legalVerificationRequest.update({
+      where: { id: target.id },
+      data: { status: 'REJECTED', note },
+    });
+    const updatedOffer = await tx.offer.update({
+      where: { id: offerId },
+      data: {
+        legalCheckStatus: 'REJECTED',
+        legalCheckReviewedAt: now,
+        legalCheckReviewedBy: gate.adminId,
+        legalCheckRejectionReason: reasonCode,
+        legalCheckRejectionText: reasonText,
+        isLegalSafeVerified: false,
+        description: setVerificationStatusInDescription(prev?.description, 'UNVERIFIED'),
+      } as any,
+      select: OFFER_LEGAL_SELECT,
+    });
+    return { updatedRequest, updatedOffer };
   });
-  return NextResponse.json(await offerViewFromRequest(offerId, updated));
+  return NextResponse.json(await offerViewFromState(offerId, result.updatedOffer, result.updatedRequest), {
+    headers: { 'Cache-Control': 'no-store, max-age=0' },
+  });
 }

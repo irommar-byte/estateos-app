@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * analiza → pull → verify → SQL (idempotent) → release:ship → smoke → przy fail: reset + release:ship
+ * analiza → pull → check → [verify:recon tylko gdy DEPLOY_RUN_VERIFY_E2E=1] → SQL → release:ship → smoke → przy fail: reset + release:ship
  * Uruchom w katalogu repo na serwerze, z .env (DATABASE_URL, NEXTAUTH_URL).
  *
  * DEPLOY_BRANCH — domyślnie recovery-local-snapshot
  * DEPLOY_REMOTE — domyślnie origin
  * SMOKE_BASE_URL — domyślnie z NEXTAUTH_URL
- * DEPLOY_SKIP_VERIFY_E2E=1 — pomiń verify:recon
+ * DEPLOY_RUN_VERIFY_E2E=1 — uruchom pełny verify:recon (build + lokalny next + smoke); domyślnie OFF (szybszy deploy).
+ * DEPLOY_SKIP_VERIFY_E2E=0 — to samo co wyżej (wymuś verify); legacy: DEPLOY_SKIP_VERIFY_E2E=1 nadal pomija verify.
+ * DEPLOY_ALLOW_DIRTY=1 — pozwól uruchomić deploy przy lokalnych zmianach (tylko diagnostyka/awaryjnie).
  */
 
 const { spawnSync } = require('child_process');
@@ -23,9 +25,20 @@ try {
 
 const branch = String(process.env.DEPLOY_BRANCH || 'recovery-local-snapshot').trim();
 const remote = String(process.env.DEPLOY_REMOTE || 'origin').trim();
-const skipE2e = ['1', 'true', 'yes'].includes(
+const legacySkip = ['1', 'true', 'yes'].includes(
   String(process.env.DEPLOY_SKIP_VERIFY_E2E || '').trim().toLowerCase()
 );
+const runVerify = ['1', 'true', 'yes'].includes(
+  String(process.env.DEPLOY_RUN_VERIFY_E2E || '').trim().toLowerCase()
+);
+const legacyForce = ['0', 'false', 'no'].includes(
+  String(process.env.DEPLOY_SKIP_VERIFY_E2E || '').trim().toLowerCase()
+);
+const allowDirty = ['1', 'true', 'yes'].includes(
+  String(process.env.DEPLOY_ALLOW_DIRTY || '').trim().toLowerCase()
+);
+/** Domyślnie pomijamy verify:recon (oszczędność czasu); pełna weryfikacja tylko na żądanie. */
+const skipE2e = legacySkip || (!runVerify && !legacyForce);
 
 const sqlAgentCommissionFile = path.join(
   root,
@@ -35,12 +48,17 @@ const sqlLegalVerificationFile = path.join(
   root,
   'docs/reconciliation/sql/add_legal_verification_request.sql'
 );
+const sqlOfferLandLegalColumnsFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_offer_land_registry_and_legal_columns_if_missing.sql'
+);
 
 const summary = {
   rollbackSha: null,
   headAfterPull: null,
   sqlAgentCommission: null,
   sqlLegalVerification: null,
+  sqlOfferLandLegal: null,
   check: null,
   verifyE2e: null,
   releaseShip: null,
@@ -103,7 +121,7 @@ function releaseShipOrThrow(label) {
 
 function main() {
   console.log('[deploy:recon] analiza');
-  if (dirtyWorkingTree()) {
+  if (!allowDirty && dirtyWorkingTree()) {
     throw new Error('Brudny working tree — zacommituj lub stash.');
   }
 
@@ -170,6 +188,15 @@ function main() {
     throw new Error('sql:legalVerification');
   }
 
+  console.log('[deploy:recon] SQL prisma db execute (Offer land + legal columns, idempotent)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlOfferLandLegalColumnsFile]);
+  if (r.ok) summary.sqlOfferLandLegal = 'APPLIED';
+  else {
+    summary.sqlOfferLandLegal = 'FAIL';
+    summary.error = r.out.slice(-4000);
+    throw new Error('sql:offerLandLegal');
+  }
+
   console.log('[deploy:recon] release:ship');
   releaseShipOrThrow('deploy');
   summary.releaseShip = 'PASS';
@@ -229,6 +256,7 @@ function printReport(ok) {
   console.log('SHA po pull:', summary.headAfterPull);
   console.log('SQL agentCommission:', summary.sqlAgentCommission);
   console.log('SQL legalVerification:', summary.sqlLegalVerification);
+  console.log('SQL offerLandLegal:', summary.sqlOfferLandLegal);
   console.log('check:', summary.check);
   console.log('verify:recon:', summary.verifyE2e);
   console.log('release:ship:', summary.releaseShip);

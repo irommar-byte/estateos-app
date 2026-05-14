@@ -53,6 +53,7 @@ model User {
   dealsAsSeller        Deal[]                   @relation("DealSeller")
   sentDealMessages     DealMessage[]            @relation("SentDealMessages")
   offers               Offer[]
+  legalVerificationRequests LegalVerificationRequest[]
   reviewsReceived      Review[]                 @relation("ReviewsReceived")
   reviewsGiven         Review[]                 @relation("ReviewsGiven")
   sessions             Session[]
@@ -65,25 +66,6 @@ model User {
   calendarNotes      CalendarNote[]
   discoveryEvents    DiscoveryEvent[]
   discoveryProfile   DiscoveryProfile?
-  legalVerificationRequests LegalVerificationRequest[]
-}
-
-model LegalVerificationRequest {
-  id                 Int      @id @default(autoincrement())
-  offerId            Int
-  requesterId        Int
-  status             String   @default("PENDING") @db.VarChar(24)
-  landRegistryNumber String   @db.VarChar(128)
-  apartmentNumber    String?  @db.VarChar(64)
-  note               String?  @db.Text
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  offer     Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  requester User  @relation(fields: [requesterId], references: [id], onDelete: Cascade)
-
-  @@index([status, createdAt])
-  @@index([offerId])
 }
 
 model Alert {
@@ -178,6 +160,16 @@ model Offer {
   images          String?        @db.Text
   videoUrl        String?
   floorPlanUrl    String?
+  landRegistryNumber String?        @db.VarChar(64)
+  apartmentNumber String?           @db.VarChar(64)
+  legalCheckStatus String           @default("NONE") @db.VarChar(16)
+  legalCheckSubmittedAt DateTime?
+  legalCheckReviewedAt DateTime?
+  legalCheckReviewedBy Int?
+  legalCheckRejectionReason String? @db.VarChar(64)
+  legalCheckRejectionText String?   @db.Text
+  legalCheckOwnerNote String?       @db.Text
+  isLegalSafeVerified Boolean       @default(false)
   status          OfferStatus    @default(ACTIVE)
   expiresAt       DateTime?
   promotedUntil   DateTime?
@@ -189,6 +181,26 @@ model Offer {
   legalVerificationRequests LegalVerificationRequest[]
 
   @@index([userId], map: "Offer_userId_fkey")
+  @@index([legalCheckStatus, legalCheckSubmittedAt])
+}
+
+/// Kolejka / historia zgłoszeń weryfikacji prawnej (mobile). Tabela: `LegalVerificationRequest` (patrz docs/reconciliation/sql/add_legal_verification_request.sql).
+model LegalVerificationRequest {
+  id                 Int      @id @default(autoincrement())
+  offerId            Int
+  requesterId        Int
+  status             String   @default("PENDING") @db.VarChar(24)
+  landRegistryNumber String   @db.VarChar(128)
+  apartmentNumber    String?  @db.VarChar(64)
+  note               String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  offer     Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  requester User  @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt], map: "LegalVerificationRequest_status_createdAt_idx")
+  @@index([offerId], map: "LegalVerificationRequest_offerId_idx")
 }
 
 model FavoriteOffer {

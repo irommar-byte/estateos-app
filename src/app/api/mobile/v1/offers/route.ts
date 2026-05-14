@@ -5,6 +5,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, updateOffer } from '@/lib/services/offer.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
+import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -76,21 +78,14 @@ export async function GET(req: Request) {
     const offers = await prisma.offer.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            role: true,
-            planType: true,
-            isPro: true,
-          },
-        },
-      },
+      select: MOBILE_OFFER_PRISMA_SELECT as any,
     });
 
     const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
-      return NextResponse.json({ success: true, offers });
+      return NextResponse.json({ success: true, offers: [] }, {
+        headers: { 'Cache-Control': 'no-store, max-age=0' },
+      });
     }
 
     const viewsRows = await prisma.$queryRawUnsafe<any[]>(
@@ -107,10 +102,12 @@ export async function GET(req: Request) {
 
     const normalizedOffers = offers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-      return { ...offer, views: viewsCount, viewsCount };
+      return enrichOfferWithLegalAliases({ ...offer, views: viewsCount, viewsCount });
     });
 
-    return NextResponse.json({ success: true, offers: normalizedOffers });
+    return NextResponse.json({ success: true, offers: normalizedOffers }, {
+      headers: { 'Cache-Control': 'no-store, max-age=0' },
+    });
 
   } catch (error: any) {
     console.error("🔥 MOBILE API ERROR:", error);

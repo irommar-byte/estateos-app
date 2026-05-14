@@ -7,7 +7,6 @@ import {
 } from '@prisma/client';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
 import {
-  attachVerificationMetaToDescription,
   buildOfferVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
@@ -79,7 +78,9 @@ export async function createOffer(body: any) {
     apartmentNumber: body.apartmentNumber,
     landRegistryNumber: body.landRegistryNumber,
   });
-  const descriptionWithVerification = attachVerificationMetaToDescription(body.description || "", verificationMeta);
+  const hasLegalVerificationSeed = Boolean(
+    verificationMeta.apartmentNumber && verificationMeta.landRegistryNumber
+  );
 
   let agentCommissionPercent: number | null | undefined = undefined;
   if (body.agentCommissionPercent !== undefined && body.agentCommissionPercent !== null) {
@@ -91,7 +92,7 @@ export async function createOffer(body: any) {
   return prisma.offer.create({
     data: {
       title: body.title || "Nowa Oferta",
-      description: descriptionWithVerification,
+      description: body.description || "",
 
       transactionType: mapTransactionType(body.transactionType),
       propertyType: mapPropertyType(body.propertyType),
@@ -123,6 +124,11 @@ export async function createOffer(body: any) {
 
       videoUrl: body.videoUrl || null,
       floorPlanUrl: body.floorPlanUrl || null,
+      landRegistryNumber: verificationMeta.landRegistryNumber || null,
+      apartmentNumber: verificationMeta.apartmentNumber || null,
+      legalCheckStatus: hasLegalVerificationSeed ? 'PENDING' : 'NONE',
+      legalCheckSubmittedAt: hasLegalVerificationSeed ? new Date() : null,
+      isLegalSafeVerified: false,
 
       hasBalcony: !!body.hasBalcony,
       hasElevator: !!body.hasElevator,
@@ -180,6 +186,19 @@ export async function updateOffer(body: any) {
   }
 
   const oldPrice = Number(existing.price);
+  const nextLandRegistryNumber =
+    body.landRegistryNumber !== undefined
+      ? String(body.landRegistryNumber || '').trim().toUpperCase().slice(0, 64)
+      : existing.landRegistryNumber;
+  const nextApartmentNumber =
+    body.apartmentNumber !== undefined
+      ? String(body.apartmentNumber || '').trim().slice(0, 64)
+      : existing.apartmentNumber;
+  const legalFieldsChanged =
+    body.landRegistryNumber !== undefined || body.apartmentNumber !== undefined;
+  const shouldResetLegalVerification = Boolean(
+    legalFieldsChanged && nextLandRegistryNumber && nextApartmentNumber
+  );
   const updatedOffer = await prisma.offer.update({
     where: { id: Number(id) },
     data: {
@@ -273,6 +292,21 @@ export async function updateOffer(body: any) {
       }),
       ...(body.buildingNumber !== undefined && {
         buildingNumber: body.buildingNumber ? String(body.buildingNumber).trim() : null,
+      }),
+      ...(body.landRegistryNumber !== undefined && {
+        landRegistryNumber: nextLandRegistryNumber || null,
+      }),
+      ...(body.apartmentNumber !== undefined && {
+        apartmentNumber: nextApartmentNumber || null,
+      }),
+      ...(shouldResetLegalVerification && {
+        legalCheckStatus: 'PENDING',
+        legalCheckSubmittedAt: new Date(),
+        legalCheckReviewedAt: null,
+        legalCheckReviewedBy: null,
+        legalCheckRejectionReason: null,
+        legalCheckRejectionText: null,
+        isLegalSafeVerified: false,
       }),
 
       ...(body.status !== undefined && {

@@ -48,8 +48,25 @@ const mobileReconciliationChecks = [
     expectStatus: [401],
   },
   {
-    name: 'mobile offer legal-verification alias requires auth',
+    name: 'mobile offer legal-verification status requires auth',
     url: '/api/mobile/v1/offers/153/legal-verification',
+    expectStatus: [401],
+  },
+  {
+    name: 'mobile offer legal-verification submit requires auth',
+    url: '/api/mobile/v1/offers/153/legal-verification/submit',
+    method: 'POST',
+    expectStatus: [401],
+  },
+  {
+    name: 'mobile admin legal-verification approve requires auth',
+    url: '/api/mobile/v1/admin/legal-verification/153/approve',
+    method: 'POST',
+    expectStatus: [401],
+  },
+  {
+    name: 'mobile admin legal-verification reject requires auth',
+    url: '/api/mobile/v1/admin/legal-verification/153/reject',
     method: 'POST',
     expectStatus: [401],
   },

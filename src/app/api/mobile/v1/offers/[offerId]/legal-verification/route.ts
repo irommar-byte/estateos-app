@@ -3,6 +3,9 @@ import {
   submitOwnerLegalVerification,
 } from '@/lib/mobileLegalVerificationHandlers';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
 };

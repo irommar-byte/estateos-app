@@ -8,6 +8,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { extractVerificationMeta } from '@/lib/offerVerification';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,13 +86,18 @@ export async function GET() {
       const { user, ...rest } = offer;
       const badges = resolveEliteBadges({ user });
       const { cleanDescription, verification } = extractVerificationMeta(rest.description);
+      const legal = computePublicLegalFields({
+        description: rest.description,
+        legalCheckStatus: rest.legalCheckStatus,
+        isLegalSafeVerified: rest.isLegalSafeVerified,
+      });
       return {
         ...rest,
         imageUrl: resolveOfferPrimaryImage(rest),
         description: cleanDescription,
-        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || "",
-        landRegistryNumber: verification.landRegistryNumber || "",
-        verificationStatus: verification.status,
+        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
+        landRegistryNumber: verification.landRegistryNumber || '',
+        ...legal,
         badges,
         views: viewsCount,
         viewsCount,
