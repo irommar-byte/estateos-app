@@ -9,6 +9,8 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,9 +32,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    const offer = await prisma.offer.findUnique({ 
+    const offer = await prisma.offer.findUnique({
       where: { id: Number(resolvedParams.id) },
-      include: { user: true }
+      select: WEB_OFFER_PUBLIC_PRISMA_SELECT as any,
     });
     
     if (!offer) return NextResponse.json({ error: "Nie znaleziono oferty" }, { status: 404 });
@@ -65,20 +67,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const viewsCount = Number(viewsRows?.[0]?.total || 0);
 
     const { cleanDescription, verification } = extractVerificationMeta(offer.description);
+    const dbLegal = String((offer as any).legalCheckStatus || '').toUpperCase();
+    const legalStatus =
+      dbLegal ||
+      (verification.status === 'VERIFIED'
+        ? 'VERIFIED'
+        : verification.status === 'PENDING_REVIEW'
+          ? 'PENDING'
+          : 'NONE');
 
     return NextResponse.json({
       ...offer,
       description: cleanDescription,
-      apartmentNumber: verification.apartmentNumber || offer.buildingNumber || "",
-      landRegistryNumber: verification.landRegistryNumber || "",
-      verificationStatus: verification.status,
+      apartmentNumber: (offer as any).apartmentNumber || verification.apartmentNumber || offer.buildingNumber || '',
+      landRegistryNumber: (offer as any).landRegistryNumber || verification.landRegistryNumber || '',
+      verificationStatus: legalStatus,
+      legalCheckStatus: legalStatus,
+      isLegalSafeVerified: Boolean((offer as any).isLegalSafeVerified),
       _viewerIsPro: isRealPro,
       views: viewsCount,
-      viewsCount
+      viewsCount,
     });
-
   } catch (error) {
-    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+    console.error('[GET /api/offers/:id]', error);
+    return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }
 }
 
