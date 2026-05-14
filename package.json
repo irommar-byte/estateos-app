@@ -16,7 +16,7 @@
     "deploy:server-only": "npm run build && npm run pm2:reload",
     "release:ship": "npm run check && npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit --incremental false",
     "check": "npm run type-check",
     "smoke:postdeploy": "node scripts/postdeploy-smoke.cjs",
     "verify:recon": "npm run check && node scripts/verify-reconciliation-e2e.cjs",
