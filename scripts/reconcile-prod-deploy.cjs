@@ -140,6 +140,7 @@ function main() {
     console.log('[deploy:recon] verify:recon (VERIFY_SKIP_DB_PUSH=1)');
     r = run('npm', ['run', 'verify:recon'], {
       VERIFY_SKIP_DB_PUSH: '1',
+      VERIFY_PORT: '3110',
     });
     summary.verifyE2e = r.ok ? 'PASS' : 'FAIL';
     if (!r.ok) {
