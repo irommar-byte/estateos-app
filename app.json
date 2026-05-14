@@ -23,7 +23,14 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
-        "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin z przypomnieniami systemowymi.",
+        "NSCalendarsFullAccessUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
+        "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
+        "NSRemindersFullAccessUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
+        "NSCameraUsageDescription": "EstateOS używa aparatu, aby robić zdjęcia nieruchomości publikowanych w ofercie oraz aby zeskanować kod QR przy logowaniu.",
+        "NSPhotoLibraryUsageDescription": "EstateOS używa zdjęć z Twojej biblioteki, aby dodać je do publikowanej oferty nieruchomości.",
+        "NSPhotoLibraryAddUsageDescription": "EstateOS zapisuje wybrane materiały (np. plan PDF mieszkania) do Twojej biblioteki na życzenie.",
+        "NSFaceIDUsageDescription": "EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).",
+        "NSLocationWhenInUseUsageDescription": "EstateOS używa Twojej lokalizacji tylko podczas korzystania z aplikacji, aby pokazywać oferty nieruchomości w okolicy, mierzyć odległość do prezentacji i ustawiać radar na Twoją lokalizację.",
         "NSSupportsLiveActivities": true,
         "NSSupportsLiveActivitiesFrequentUpdates": true
       }

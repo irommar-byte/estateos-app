@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   StyleSheet, View, Text, Pressable, TextInput, KeyboardAvoidingView, 
-  Platform, ScrollView, ActivityIndicator, Alert, Linking, Keyboard, TouchableWithoutFeedback, Modal
+  Platform, ActivityIndicator, Alert, Linking, Modal
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { 
   ChevronLeft, Send, Paperclip, Check, CheckCheck, 
-  FileText, Play, Pause, CalendarClock, HandCoins 
+  FileText, Play, Pause, CalendarClock, HandCoins, MoreHorizontal, Flag, Ban
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -21,6 +22,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
+import HeartbeatWaitingPulse from '../components/dealroom/HeartbeatWaitingPulse';
+import FinalConfirmationModal from '../components/dealroom/FinalConfirmationModal';
 import { API_URL } from '../config/network';
 import { postDealroomTextMessage, setOfferStatusPending } from '../utils/dealroomOfferReserve';
 import { setActiveDealroomContext } from '../utils/activeDealroomPush';
@@ -30,6 +33,9 @@ import {
   cancelPresentationTwoHourReminder,
 } from '../utils/presentationReminderNotification';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
+import ReportSheet from '../components/ReportSheet';
+import BlockUserSheet from '../components/BlockUserSheet';
+import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import {
   parseDealEvent,
   normalizeDealEvent,
@@ -342,6 +348,10 @@ export default function DealroomChatScreen() {
   const [listingOwnerUserId, setListingOwnerUserId] = useState<number | null>(null);
   const [counterpartyUserId, setCounterpartyUserId] = useState<number | null>(null);
   const [counterpartyName, setCounterpartyName] = useState<string>('Druga strona');
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isBlockOpen, setIsBlockOpen] = useState(false);
+  const blockUser = useBlockedUsersStore((s) => s.block);
   const [dealStatusSnapshot, setDealStatusSnapshot] = useState<string | null>(null);
   const [acceptedBidIdSnapshot, setAcceptedBidIdSnapshot] = useState<number | null>(null);
   const [playingAudioUrl, setPlayingAudioUrl] = useState<string | null>(null);
@@ -354,6 +364,8 @@ export default function DealroomChatScreen() {
   const [counterpartyProfileLoading, setCounterpartyProfileLoading] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
+  /** Auto-scroll tylko przy nowej ostatniej wiadomości — nie przy rozwinięciu panelu / ticku zegara (unik blokady przewijania). */
+  const lastAutoScrolledMessageIdRef = useRef<string | number | null>(null);
   const lastTypingTime = useRef(0);
   const soundRef = useRef<Audio.Sound | null>(null);
   const seenNegotiationEventKeysRef = useRef<Set<string>>(new Set());
@@ -378,6 +390,21 @@ export default function DealroomChatScreen() {
     opacity: priceAttentionPulse.value,
     transform: [{ rotate: `${priceSuccessNudge.value}deg` }],
   }));
+
+  useEffect(() => {
+    lastAutoScrolledMessageIdRef.current = null;
+  }, [dealId]);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastId = messages[messages.length - 1]?.id;
+    if (lastId === undefined || lastId === null) return;
+    if (lastId === lastAutoScrolledMessageIdRef.current) return;
+    lastAutoScrolledMessageIdRef.current = lastId;
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [messages]);
 
   useEffect(() => {
     if (isUploadingAttachment) {
@@ -860,6 +887,94 @@ export default function DealroomChatScreen() {
         ) || null,
     [bidEvents, user?.id]
   );
+
+  /**
+   * ====================================================================
+   *  Detektor „kupujący wysłał finalną akceptację — czeka się na ostatnie
+   *  słowo właściciela".
+   * ====================================================================
+   *
+   *  Wzorzec wytwarzany przez `BidActionModal` w bloku `isBuyerAcceptingOwnersPrice`:
+   *    • mode = 'respond', decision = 'ACCEPT' (kupujący klika „Zgoda"),
+   *    • payload leci jednak jako `COUNTER` z `counterAmount = initialAmount`,
+   *      czyli z TĄ SAMĄ kwotą, którą zaproponował właściciel,
+   *    • z notą „Akceptuję Twoją cenę. Proszę o ostateczne potwierdzenie sprzedaży."
+   *
+   *  Czyli sygnatura ostatniego bid w wątku to:
+   *      action     = 'COUNTERED'
+   *      senderId   = kupujący (czyli != listingOwner)
+   *      amount     = previousBid.amount (poprzedni bid OD WŁAŚCICIELA)
+   *      note       = zawiera „Akceptuję" / „ostateczne potwierdzenie" (soft check)
+   *
+   *  Wystarczają nam pierwsze 3 sygnały (action, senderId, amount-match);
+   *  notę traktujemy jako dodatkowy potwierdzający „heurystyczny" sygnał.
+   *  W razie gdyby backend dopisał kiedyś flagę semantyczną (np.
+   *  `event.intent === 'FINAL_ACCEPTANCE'`) — od razu też ją honorujemy.
+   */
+  const finalAcceptanceContext = useMemo(() => {
+    if (bidEvents.length < 2) return null;
+    const last = bidEvents[bidEvents.length - 1];
+    const prev = bidEvents[bidEvents.length - 2];
+    if (!last || !prev) return null;
+
+    const lastAction = String(last.event?.action || '').toUpperCase();
+    const lastAmount = Number(last.event?.amount || last.event?.counterAmount || 0);
+    const prevAmount = Number(prev.event?.amount || prev.event?.counterAmount || 0);
+    const lastSenderId = String(last.msg?.senderId ?? '');
+    const prevSenderId = String(prev.msg?.senderId ?? '');
+    const lastNote = String(
+      firstDefined(last.event?.note, last.event?.message, '') || '',
+    ).toLowerCase();
+
+    const isCountered = lastAction === 'COUNTERED';
+    const isExplicitIntent =
+      String(last.event?.intent || '').toUpperCase() === 'FINAL_ACCEPTANCE';
+    const isSameAmount =
+      lastAmount > 0 && prevAmount > 0 && Math.round(lastAmount) === Math.round(prevAmount);
+    const notesAcceptance =
+      lastNote.includes('akceptuję twoją cenę') ||
+      lastNote.includes('akceptuje twoja cene') ||
+      lastNote.includes('ostateczne potwierdzenie') ||
+      lastNote.includes('ostateczne potw');
+
+    const matchesAcceptancePattern = isExplicitIntent || (isCountered && isSameAmount && notesAcceptance);
+    if (!matchesAcceptancePattern) return null;
+
+    // Bid musi być OD INNEJ STRONY niż autor poprzedniego — to gwarantuje,
+    // że to faktyczny „handshake" (kupujący → właściciel), a nie sam właściciel
+    // wysyłający w kółko tę samą kwotę do siebie.
+    if (lastSenderId === prevSenderId) return null;
+
+    return {
+      bidEvent: last,
+      previousBidEvent: prev,
+      amount: Math.round(lastAmount),
+      // Kto wysłał finalną akceptację — to powinien być kupujący (nie-owner).
+      // Sprawdzamy to po stronie konsumenta tej zmiennej (`isBuyerWaitingOnOwner`,
+      // `ownerNeedsFinalDecision`), żeby ten memo był „neutralny semantycznie".
+      buyerSenderId: lastSenderId,
+      // ID bid-a, na który backend oczekuje BID_RESPOND od właściciela.
+      bidId: Number(
+        firstDefined(last.event?.bidId, last.event?.id, last.msg?.id) ?? 0,
+      ),
+    };
+  }, [bidEvents]);
+
+  /** Stan KUPUJĄCEGO: wysłałem finalną akceptację, czekam na właściciela. */
+  const isBuyerWaitingOnOwnerDecision = useMemo(() => {
+    if (!finalAcceptanceContext) return false;
+    return String(user?.id ?? '') === finalAcceptanceContext.buyerSenderId;
+  }, [finalAcceptanceContext, user?.id]);
+
+  /** Stan WŁAŚCICIELA: kupujący wysłał finalną akceptację, ja muszę zdecydować. */
+  const ownerNeedsFinalDecision = useMemo(() => {
+    if (!finalAcceptanceContext) return false;
+    if (!isListingOwner) return false;
+    return String(user?.id ?? '') !== finalAcceptanceContext.buyerSenderId;
+  }, [finalAcceptanceContext, isListingOwner, user?.id]);
+
+  /** Modal `FinalConfirmationModal` jest osobnym instance'em — trzymamy stan tutaj. */
+  const [isFinalConfirmOpen, setIsFinalConfirmOpen] = useState(false);
 
   const latestActionableAppointmentFromOther = useMemo(
     () =>
@@ -1491,7 +1606,6 @@ export default function DealroomChatScreen() {
   // ==========================================
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1510,13 +1624,32 @@ export default function DealroomChatScreen() {
           <Text style={styles.headerSubtitle}>TRANSAKCJA #{dealId}</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
         </View>
+        {counterpartyUserId ? (
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setIsMoreMenuOpen(true); }}
+            style={({ pressed }) => [styles.headerMenuBtn, pressed && { opacity: 0.6 }]}
+            hitSlop={{ top: 16, bottom: 16, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Więcej opcji"
+          >
+            <MoreHorizontal size={22} color={COLORS.textBase} />
+          </Pressable>
+        ) : null}
       </View>
 
       {loading ? (
         <View style={styles.loaderCenter}><ActivityIndicator color={COLORS.primary} /></View>
       ) : (
         <>
-          {/* Negotiation Sticky Panel */}
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.chatScrollView}
+            contentContainerStyle={styles.chatScrollContent}
+            showsVerticalScrollIndicator
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            bounces
+          >
           <View style={styles.negotiationPanel}>
             
             {/* Terminy */}
@@ -1708,10 +1841,58 @@ export default function DealroomChatScreen() {
                     </View>
                   </View>
                 )}
-                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && !isWaitingForOtherOnPrice && (
+                {/*
+                  GAŁĄŹ 1 — kupujący wysłał finalną akceptację i czeka.
+                  Zamiast Zgoda/Kontroferta (które byłyby semantycznie błędne —
+                  nie da się akceptować swojej własnej akceptacji) pokazujemy
+                  spokojny neon „bicie serca" potwierdzający, że piłeczka
+                  jest po stronie właściciela.
+                */}
+                {isBuyerWaitingOnOwnerDecision && priceStatus !== 'ACCEPTED' && !transactionFinalized ? (
+                  <HeartbeatWaitingPulse
+                    amount={finalAcceptanceContext?.amount ?? null}
+                    headline="Twoja akceptacja dotarła do właściciela"
+                    sublabel="Ostateczne potwierdzenie sprzedaży należy teraz do właściciela. Dostaniesz powiadomienie, gdy podejmie decyzję."
+                  />
+                ) : null}
+
+                {/*
+                  GAŁĄŹ 2 — właściciel ma do podjęcia finalną decyzję.
+                  Pokazujemy uroczystą pigułkę „Ostateczna decyzja sprzedaży"
+                  zamiast zwykłych przycisków negocjacji — kliknięcie otwiera
+                  `FinalConfirmationModal` z dużą kwotą i pytaniem
+                  POTWIERDZAM / NIE POTWIERDZAM.
+                */}
+                {ownerNeedsFinalDecision && priceStatus !== 'ACCEPTED' && !transactionFinalized ? (
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      setIsFinalConfirmOpen(true);
+                    }}
+                    style={({ pressed }) => [
+                      styles.finalCtaBtn,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    <Text style={styles.finalCtaEyebrow}>OSTATECZNA DECYZJA SPRZEDAŻY</Text>
+                    <Text style={styles.finalCtaAmount} numberOfLines={1} adjustsFontSizeToFit>
+                      {Number(finalAcceptanceContext?.amount || 0).toLocaleString('pl-PL')} PLN
+                    </Text>
+                    <Text style={styles.finalCtaSub}>Kupujący zaakceptował — Twoje słowo zamyka transakcję</Text>
+                  </Pressable>
+                ) : null}
+
+                {/*
+                  GAŁĄŹ 3 — standardowe Zgoda/Kontroferta. Pokazujemy je TYLKO
+                  jeśli żaden ze stanów „finalnej akceptacji" nie jest aktywny.
+                  Bez tego dodatkowego warunku przyciski czasem migały razem
+                  z neonem (np. gdy `latestActionableBidFromOther` to wcześniejszy
+                  bid, ale ostatnia akcja to już finalna akceptacja).
+                */}
+                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && !isWaitingForOtherOnPrice && !isBuyerWaitingOnOwnerDecision && !ownerNeedsFinalDecision && (
                   <View style={styles.actionRow}>
-                    <Pressable 
-                      style={[styles.actionBtn, styles.actionPrimary]} 
+                    <Pressable
+                      style={[styles.actionBtn, styles.actionPrimary]}
                       onPress={() => {
                         setSelectedBidEvent({ ...latestActionableBidFromOther.event, quickAccept: true });
                         setSelectedBidHistory(
@@ -1721,8 +1902,8 @@ export default function DealroomChatScreen() {
                     >
                       <Text style={styles.actionPrimaryTxt}>Zgoda</Text>
                     </Pressable>
-                    <Pressable 
-                      style={[styles.actionBtn, styles.actionSecondary]} 
+                    <Pressable
+                      style={[styles.actionBtn, styles.actionSecondary]}
                       onPress={() => {
                         setSelectedBidEvent(latestActionableBidFromOther.event);
                         setSelectedBidHistory(
@@ -1758,15 +1939,6 @@ export default function DealroomChatScreen() {
             </View>
           ) : null}
 
-          {/* Chat Messages */}
-          <ScrollView
-            ref={scrollViewRef}
-            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-            contentContainerStyle={styles.chatArea}
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-            keyboardShouldPersistTaps="handled"
-          >
             {transactionFinalized ? (
               <View style={styles.finalizedWrap}>
                 <BlurView intensity={72} tint="dark" style={styles.finalizedInner}>
@@ -1992,6 +2164,30 @@ export default function DealroomChatScreen() {
           await fetchDealSnapshot();
         }}
       />
+
+      {/*
+        Modal „Ostatecznej decyzji" — otwiera się WYŁĄCZNIE dla właściciela,
+        gdy kupujący wysłał finalną akceptację (`ownerNeedsFinalDecision`).
+        Zastępuje standardowy `BidActionModal` w tym jednym, finalnym kroku.
+      */}
+      <FinalConfirmationModal
+        visible={isFinalConfirmOpen && ownerNeedsFinalDecision && !!finalAcceptanceContext}
+        dealId={dealId ? Number(dealId) : null}
+        bidId={finalAcceptanceContext?.bidId || null}
+        amount={Number(finalAcceptanceContext?.amount || 0)}
+        token={token || null}
+        offerId={resolvedOfferId != null ? Number(resolvedOfferId) : null}
+        buyerLabel={(() => {
+          const last = finalAcceptanceContext?.bidEvent;
+          if (!last) return null;
+          return formatActorLabel(last.msg, user?.id);
+        })()}
+        onClose={() => setIsFinalConfirmOpen(false)}
+        onDone={async () => {
+          await fetchMessages();
+          await fetchDealSnapshot();
+        }}
+      />
       <Modal
         visible={isCounterpartyReviewsOpen}
         transparent
@@ -2032,8 +2228,86 @@ export default function DealroomChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Apple Guideline 1.2 — UGC: Report + Block. */}
+      <Modal
+        visible={isMoreMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMoreMenuOpen(false)}
+      >
+        <Pressable style={styles.moreOverlay} onPress={() => setIsMoreMenuOpen(false)}>
+          <View style={styles.moreSheet}>
+            <Pressable
+              onPress={() => {
+                setIsMoreMenuOpen(false);
+                setTimeout(() => setIsReportOpen(true), 180);
+              }}
+              style={({ pressed }) => [styles.moreItem, pressed && { backgroundColor: 'rgba(255,255,255,0.05)' }]}
+              accessibilityRole="button"
+            >
+              <Flag color="#FF9F0A" size={18} />
+              <Text style={styles.moreItemText}>Zgłoś użytkownika</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setIsMoreMenuOpen(false);
+                setTimeout(() => setIsBlockOpen(true), 180);
+              }}
+              style={({ pressed }) => [
+                styles.moreItem,
+                { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border },
+                pressed && { backgroundColor: 'rgba(255,255,255,0.05)' },
+              ]}
+              accessibilityRole="button"
+            >
+              <Ban color={COLORS.danger} size={18} />
+              <Text style={styles.moreItemText}>Zablokuj użytkownika</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setIsMoreMenuOpen(false)}
+              style={({ pressed }) => [
+                styles.moreCancel,
+                { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border },
+                pressed && { backgroundColor: 'rgba(255,255,255,0.05)' },
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={styles.moreCancelText}>Anuluj</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <ReportSheet
+        visible={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        targetType="user"
+        targetId={Number(counterpartyUserId || 0)}
+        targetLabel={counterpartyName ? `Użytkownik: ${counterpartyName}` : undefined}
+        token={token}
+        isDark
+      />
+
+      <BlockUserSheet
+        visible={isBlockOpen}
+        onClose={() => setIsBlockOpen(false)}
+        targetLabel={counterpartyName || undefined}
+        affectsConversations
+        isDark
+        onConfirm={async () => {
+          const targetId = Number(counterpartyUserId || 0);
+          if (!targetId || !token || !user?.id) {
+            return { ok: false, error: 'MISSING_CONTEXT' };
+          }
+          const result = await blockUser(targetId, token, user.id);
+          if (result.ok) {
+            setTimeout(() => navigation?.goBack?.(), 220);
+          }
+          return result;
+        }}
+      />
     </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
   );
 }
 
@@ -2134,7 +2408,7 @@ const styles = StyleSheet.create({
   negotiationExpanded: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 },
   negotiationExpandedText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
   timelineWrap: { marginTop: 2, marginBottom: 4 },
-  timelineRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
+  timelineRow: { flexDirection: 'row', alignItems: 'stretch', marginBottom: 8 },
   timelineRail: { width: 14, alignItems: 'center', marginTop: 2 },
   timelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary },
   timelineLine: { width: 1.5, flex: 1, minHeight: 18, marginTop: 2, backgroundColor: 'rgba(255,255,255,0.16)' },
@@ -2150,6 +2424,50 @@ const styles = StyleSheet.create({
   actionSecondary: { backgroundColor: COLORS.surfaceElevated },
   actionPrimaryTxt: { color: '#000', fontWeight: '700', fontSize: 13 },
   actionSecondaryTxt: { color: COLORS.textBase, fontWeight: '600', fontSize: 13 },
+
+  /**
+   * „Final CTA" — uroczysty przycisk dla WŁAŚCICIELA, gdy kupujący wysłał
+   * finalną akceptację. Klik otwiera `FinalConfirmationModal`. Wygląda jak
+   * pieczęć: złota ramka, środek wypełniony zielonym tłem (kolor finalizacji),
+   * z eyebrow uppercase i wielką kwotą w środku.
+   */
+  finalCtaBtn: {
+    marginTop: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(16,185,129,0.14)',
+    borderWidth: 1.4,
+    borderColor: 'rgba(245,197,106,0.7)',
+    alignItems: 'center',
+    shadowColor: '#F5C56A',
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  finalCtaEyebrow: {
+    color: '#F5C56A',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+  },
+  finalCtaAmount: {
+    color: '#E7FFEF',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+    marginTop: 6,
+    fontVariant: ['tabular-nums'],
+  },
+  finalCtaSub: {
+    color: '#A8DCC0',
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginTop: 5,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
   royalSealWrap: {
     marginTop: 12,
     alignItems: 'center',
@@ -2328,7 +2646,9 @@ const styles = StyleSheet.create({
   reviewModalCloseTxt: { color: '#041208', fontSize: 13, fontWeight: '900' },
 
   // Chat Area
-  chatArea: { padding: 16, paddingBottom: 40 },
+  chatScrollView: { flex: 1 },
+  /** Panel negocjacji + czat w jednym scrollu — bez flexGrow (lepiej liczy się wysokość treści przy długich panelach). */
+  chatScrollContent: { padding: 16, paddingBottom: 40 },
   msgWrapper: { marginBottom: 16, maxWidth: '82%' },
   msgMe: { alignSelf: 'flex-end' },
   msgThem: { alignSelf: 'flex-start' },
@@ -2382,4 +2702,35 @@ const styles = StyleSheet.create({
   pendingText: { color: COLORS.textBase, fontSize: 13, fontWeight: '500' },
   pendingClose: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   pendingCloseTxt: { color: COLORS.textBase, fontSize: 16, fontWeight: '600', lineHeight: 18 },
+  headerMenuBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  moreOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+    padding: 12,
+    paddingBottom: 26,
+  },
+  moreSheet: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  moreItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  moreItemText: { color: COLORS.textBase, fontSize: 16, fontWeight: '600' },
+  moreCancel: { paddingVertical: 16, alignItems: 'center' },
+  moreCancelText: { color: COLORS.textBase, fontSize: 16, fontWeight: '700' },
 });

@@ -71,7 +71,8 @@ async function estimateBytesForDraftImage(uri: string, pickerFileSize?: number |
       tempConvert = converted.uri;
     }
 
-    const info = await FileSystem.getInfoAsync(measureUri, { size: true });
+    /** Expo SDK 54: `getInfoAsync` zwraca m.in. `size` bez opcji `{ size: true }` (typ `InfoOptions` jej nie ma). */
+    const info = await FileSystem.getInfoAsync(measureUri);
     if (info.exists && typeof info.size === 'number' && info.size > 0) {
       if (tempConvert) {
         FileSystem.deleteAsync(tempConvert, { idempotent: true }).catch(() => {});
@@ -195,10 +196,15 @@ const DraggableSquare = ({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        /** Od razu łapiemy dotyk na kafelku (bez fazy capture), żeby ScrollView / stack nie wygrał przed ruchem. */
+        onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
+          Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
+          Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
+        /** Nie oddajemy respondenta nawigacji „w tył” w trakcie przeciągania zdjęcia. */
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
         onPanResponderGrant: () => {
           isDragging.current = true;
           setIsActive(true);

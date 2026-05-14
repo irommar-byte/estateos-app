@@ -4,6 +4,17 @@ import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Pla
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import type { CountryCode } from 'libphonenumber-js';
+import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
+import PhoneCountryPickerModal from '../components/phone/PhoneCountryPickerModal';
+import { API_URL } from '../config/network';
+import {
+  buildE164FromNational,
+  dialCodeFor,
+  formatNationalAsYouType,
+  getDeviceRegionCountry,
+  flagEmojiFromIso2,
+} from '../utils/phoneRegions';
 
 // --- LUKSUSOWE IKONY WALIDACJI ---
 const StatusIcon = ({ status }: { status: string }) => {
@@ -114,7 +125,7 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
     if (!email.includes('@')) return Alert.alert("Błąd", "Wpisz poprawny adres e-mail.");
     setLoading(true);
     try {
-      const res = await fetch('https://estateos.pl/api/auth/reset-password', {
+      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: email })
       });
       if (res.ok) {
@@ -134,7 +145,7 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
     
     setLoading(true);
     try {
-      const res = await fetch('https://estateos.pl/api/auth/reset-password', {
+      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ identifier: email, otp, newPassword })
       });
@@ -217,17 +228,32 @@ export default function AuthScreen({
   const navigation = useNavigation<any>();
   const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' ? false : true));
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
-  const [role, setRole] = useState<'PRIVATE' | 'PARTNER'>('PRIVATE');
+  /**
+   * Role dostępne przy rejestracji:
+   *  • PRIVATE — osoba prywatna sprzedająca/wynajmująca własną
+   *    nieruchomość.
+   *  • AGENT   — agent nieruchomości reprezentujący biuro / agencję.
+   *    Wymaga podania `companyName` (nazwa biura).
+   *
+   * UWAGA: rola PARTNER (do współpracy z EstateOS™) celowo NIE jest
+   * dostępna przy rejestracji mobilnej — partner zakłada konto przez
+   * dedykowany onboarding na stronie WWW. Nie mylić z AGENT.
+   */
+  const [role, setRole] = useState<'PRIVATE' | 'AGENT'>('PRIVATE');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  /** Pełna nazwa biura / agencji — widoczna i wymagana TYLKO dla AGENT. */
+  const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   
   const [emailStatus, setEmailStatus] = useState<'idle' | 'loading' | 'available' | 'taken'>('idle');
   const [phoneStatus, setPhoneStatus] = useState<'idle' | 'loading' | 'available' | 'taken'>('idle');
+  const [phoneCountryIso, setPhoneCountryIso] = useState<CountryCode>(() => getDeviceRegionCountry());
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
   const store = useAuthStore() as any;
@@ -238,17 +264,21 @@ export default function AuthScreen({
   const successGlowAnim = useRef(new Animated.Value(0)).current;
 
   const handlePhoneChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, '').substring(0, 9);
-    const parts = cleaned.match(/.{1,3}/g);
-    setPhone(parts ? parts.join(' ') : cleaned);
+    const d = text.replace(/\D/g, '');
+    setPhone(formatNationalAsYouType(phoneCountryIso, d));
   };
+
+  useEffect(() => {
+    if (isLogin) return;
+    setPhone((prev) => formatNationalAsYouType(phoneCountryIso, prev.replace(/\D/g, '')));
+  }, [phoneCountryIso, isLogin]);
 
   useEffect(() => {
     if (isLogin || email.length < 5 || !email.includes('@')) { setEmailStatus('idle'); return; }
     const timer = setTimeout(async () => {
       setEmailStatus('loading');
       try {
-        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
+        const res = await fetch(`${API_URL}/api/auth/check-exists`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, field: 'email', value: email })
         });
         if (!res.ok) throw new Error();
@@ -264,13 +294,22 @@ export default function AuthScreen({
   }, [email, isLogin]);
 
   useEffect(() => {
-    const cleanPhone = phone.replace(/\s/g, '');
-    if (isLogin || cleanPhone.length < 9) { setPhoneStatus('idle'); return; }
+    const cleanDigits = phone.replace(/\D/g, '');
+    if (isLogin || !cleanDigits) {
+      setPhoneStatus('idle');
+      return;
+    }
+    const e164 = buildE164FromNational(phoneCountryIso, cleanDigits);
+    if (!e164 || !isValidPhoneNumber(e164)) {
+      setPhoneStatus('idle');
+      return;
+    }
     const timer = setTimeout(async () => {
       setPhoneStatus('loading');
       try {
-        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: '+48 ' + cleanPhone, field: 'phone', value: '+48 ' + cleanPhone })
+        const display = parsePhoneNumberFromString(e164)?.formatInternational() || e164;
+        const res = await fetch(`${API_URL}/api/auth/check-exists`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: display, field: 'phone', value: display })
         });
         if (!res.ok) throw new Error();
         const d = await res.json();
@@ -282,7 +321,7 @@ export default function AuthScreen({
       } catch { setPhoneStatus('idle'); }
     }, 600);
     return () => clearTimeout(timer);
-  }, [phone, isLogin]);
+  }, [phone, isLogin, phoneCountryIso]);
 
   useEffect(() => {
     setPasswordVisible(false);
@@ -305,8 +344,19 @@ export default function AuthScreen({
           return;
         }
       } else {
-        if (!firstName || !lastName || phone.replace(/\s/g, '').length < 9) {
-          Alert.alert("Błąd", "Wypełnij poprawnie wizytówkę."); return;
+        const regDigits = phone.replace(/\D/g, '');
+        const regE164 = buildE164FromNational(phoneCountryIso, regDigits);
+        if (!firstName || !lastName || !regE164 || !isValidPhoneNumber(regE164)) {
+          Alert.alert('Błąd', 'Wypełnij poprawnie wizytówkę (imię, nazwisko i pełny numer telefonu dla wybranego kraju).');
+          return;
+        }
+        if (role === 'AGENT' && companyName.trim().length < 2) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert(
+            'Brakuje nazwy biura',
+            'Jako agent musisz wpisać nazwę swojego biura / agencji. To pole pojawi się publicznie obok Twojego imienia w ofertach i radarze.',
+          );
+          return;
         }
         if (emailStatus === 'taken') { Alert.alert("Błąd", "Ten adres e-mail jest już zarejestrowany."); return; }
         if (phoneStatus === 'taken') { Alert.alert("Błąd", "Ten numer telefonu jest już używany."); return; }
@@ -317,7 +367,15 @@ export default function AuthScreen({
           return;
         }
 
-        const isRegistered = await store.register(email, password, firstName, lastName, '+48 ' + phone.replace(/\s/g, ''), role);
+        const isRegistered = await store.register(
+          email,
+          password,
+          firstName,
+          lastName,
+          parsePhoneNumberFromString(regE164)?.formatInternational() || regE164,
+          role,
+          role === 'AGENT' ? companyName.trim() : null,
+        );
         
         if (isRegistered) {
           const isLogged = await store.login(email, password);
@@ -450,28 +508,32 @@ export default function AuthScreen({
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 50 }}>
           
           <View style={[styles.iconWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-            <Ionicons name={isLogin ? "lock-closed" : "person-add"} size={45} color={isLogin ? "#10b981" : (role === 'PARTNER' ? "#FF9F0A" : "#10b981")} />
+            <Ionicons
+              name={isLogin ? 'lock-closed' : 'person-add'}
+              size={45}
+              color={isLogin ? '#10b981' : role === 'AGENT' ? '#FF9F0A' : '#10b981'}
+            />
           </View>
           <Text style={[styles.title, { color: theme.text }]}>{isLogin ? 'Witaj ponownie' : 'Stwórz Wizytówkę'}</Text>
           
           {!isLogin && (
             <View style={{ marginBottom: 25 }}>
               <View style={[styles.roleSwitchContainer, { backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }]}>
-                <Pressable onPress={() => { Haptics.selectionAsync(); setRole('PRIVATE'); }} style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}>
-                  <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>Osoba prywatna</Text>
+                <Pressable
+                  onPress={() => { Haptics.selectionAsync(); setRole('PRIVATE'); }}
+                  style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}
+                >
+                  <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>
+                    Osoba prywatna
+                  </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    Alert.alert(
-                      'Partner EstateOS™',
-                      'Ta opcja będzie dostępna wkrótce.',
-                      [{ text: 'OK', onPress: () => setRole('PRIVATE') }]
-                    );
-                  }}
-                  style={[styles.roleButton, role === 'PARTNER' && styles.roleButtonActivePartner]}
+                  onPress={() => { Haptics.selectionAsync(); setRole('AGENT'); }}
+                  style={[styles.roleButton, role === 'AGENT' && styles.roleButtonActiveAgent]}
                 >
-                  <Text style={[styles.roleText, { color: role === 'PARTNER' ? '#FFF' : theme.subtitle }]}>Partner EstateOS™</Text>
+                  <Text style={[styles.roleText, { color: role === 'AGENT' ? '#FFF' : theme.subtitle }]}>
+                    Agent
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -486,10 +548,49 @@ export default function AuthScreen({
               <View style={styles.inputRow}>
                 <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Nazwisko" placeholderTextColor={theme.subtitle} value={lastName} onChangeText={setLastName} />
               </View>
+              {/*
+                Pole „Nazwa firmy" pojawia się TYLKO dla roli AGENT —
+                między nazwiskiem a telefonem, żeby formularz wizytówki
+                czytał się jak naturalna kolejność „Kto + Skąd". Dla
+                osoby prywatnej pole nie istnieje w drzewie (nie miga
+                opacity, więc nie ma layout-shake).
+              */}
+              {role === 'AGENT' && (
+                <>
+                  <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+                  <View style={styles.inputRow}>
+                    <Ionicons
+                      name="business"
+                      size={18}
+                      color="#FF9F0A"
+                      style={{ marginRight: 10 }}
+                    />
+                    <TextInput
+                      style={[styles.input, { color: theme.text, flex: 1 }]}
+                      placeholder="Nazwa biura / agencji"
+                      placeholderTextColor={theme.subtitle}
+                      value={companyName}
+                      onChangeText={setCompanyName}
+                      autoCapitalize="words"
+                      maxLength={80}
+                    />
+                  </View>
+                </>
+              )}
               <View style={[styles.divider, { backgroundColor: dividerColor }]} />
               <View style={styles.inputRow}>
-                <Text style={{ fontSize: 17, fontWeight: '700', color: theme.subtitle, marginRight: 8 }}>+48</Text>
-                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="000 000 000" placeholderTextColor={theme.subtitle} keyboardType="numeric" value={phone} onChangeText={handlePhoneChange} />
+                <Pressable
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setPhonePickerOpen(true);
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10, paddingVertical: 4, paddingHorizontal: 6, borderRadius: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }}
+                >
+                  <Text style={{ fontSize: 22, marginRight: 6 }}>{flagEmojiFromIso2(phoneCountryIso)}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>+{dialCodeFor(phoneCountryIso)}</Text>
+                  <Ionicons name="chevron-down" size={16} color={theme.subtitle} style={{ marginLeft: 4 }} />
+                </Pressable>
+                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Numer" placeholderTextColor={theme.subtitle} keyboardType="numeric" value={phone} onChangeText={handlePhoneChange} />
                 <StatusIcon status={phoneStatus} />
               </View>
             </View>
@@ -537,8 +638,8 @@ export default function AuthScreen({
 
           <Pressable onPress={handleSubmit} style={({ pressed }) => [
               styles.mainButton, 
-              { opacity: pressed ? 0.8 : 1, backgroundColor: isLogin ? '#10b981' : (role === 'PARTNER' ? '#FF9F0A' : '#10b981') },
-              !isLogin && role === 'PARTNER' && { shadowColor: '#FF9F0A' }
+              { opacity: pressed ? 0.8 : 1, backgroundColor: isLogin ? '#10b981' : (role === 'AGENT' ? '#FF9F0A' : '#10b981') },
+              !isLogin && role === 'AGENT' && { shadowColor: '#FF9F0A' }
             ]}>
             <Text style={styles.mainButtonText}>{isLogin ? 'Zaloguj się' : 'Dołącz do ekosystemu EstateOS™'}</Text>
           </Pressable>
@@ -565,7 +666,7 @@ export default function AuthScreen({
           <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsLogin(!isLogin); }} style={{ marginTop: 25, alignItems: 'center' }}>
             <Text style={{ color: theme.subtitle, fontSize: 15 }}>
               {isLogin ? 'Nie masz konta? ' : 'Masz już konto? '}
-              <Text style={{ color: isLogin ? '#10b981' : (role === 'PARTNER' ? '#FF9F0A' : '#10b981'), fontWeight: '700' }}>
+              <Text style={{ color: isLogin ? '#10b981' : (role === 'AGENT' ? '#FF9F0A' : '#10b981'), fontWeight: '700' }}>
                 {isLogin ? 'Zarejestruj się' : 'Zaloguj się'}
               </Text>
             </Text>
@@ -573,6 +674,13 @@ export default function AuthScreen({
 
         </ScrollView>
       </Animated.View>
+      <PhoneCountryPickerModal
+        visible={phonePickerOpen}
+        onClose={() => setPhonePickerOpen(false)}
+        selectedIso={phoneCountryIso}
+        onSelect={setPhoneCountryIso}
+        isDark={isDark}
+      />
       <ForgotPasswordModal visible={isForgotModalVisible} onClose={() => setIsForgotModalVisible(false)} theme={theme} />
     </KeyboardAvoidingView>
   );
@@ -585,7 +693,13 @@ const styles = StyleSheet.create({
   roleButton: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
   roleText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
   roleButtonActivePrivate: { backgroundColor: '#10b981', shadowColor: '#10b981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
-  roleButtonActivePartner: { backgroundColor: '#FF9F0A', shadowColor: '#FF9F0A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
+  /**
+   * Aktywny przycisk roli „Agent" — bursztynowy (Apple Orange / FF9F0A),
+   * świadomie inny od zielonego dla Osoby prywatnej. Ten sam akcent
+   * przejmuje submit-button przy AGENT, żeby cały formularz miał spójny
+   * „business-tone".
+   */
+  roleButtonActiveAgent: { backgroundColor: '#FF9F0A', shadowColor: '#FF9F0A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
   card: { borderRadius: 20, overflow: 'hidden', borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18 },
   input: { fontSize: 17, fontWeight: '600' },

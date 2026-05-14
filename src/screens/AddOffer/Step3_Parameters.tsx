@@ -132,7 +132,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="none"
+        automaticallyAdjustKeyboardInsets
+      >
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={3} draft={draft} theme={theme} navigation={navigation} />
         
@@ -266,9 +273,13 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
                 placeholderTextColor={theme.subtitle}
                 value={draft.landRegistryNumber || ''}
                 onChangeText={(t) => updateDraft({ landRegistryNumber: normalizeLandRegistryNumber(t) })}
+                onFocus={() => {
+                  setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 280);
+                }}
                 autoCapitalize="characters"
+                autoCorrect={false}
               />
-              {landRegistrySuggestions.length > 0 && landRegistryRaw.indexOf('/') < 0 ? (
+              {landRegistrySuggestions.length > 0 && !isLandRegistryValid ? (
                 <View style={[styles.suggestionsWrap, { borderColor: cardBorder, backgroundColor: isDark ? '#111214' : '#F8FAFC' }]}>
                   {landRegistrySuggestions.map((item) => (
                     <Pressable

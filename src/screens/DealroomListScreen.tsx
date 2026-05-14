@@ -10,28 +10,35 @@ import Animated, {
   FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, 
   withRepeat, withSequence, withTiming, withDelay, withSpring, Easing 
 } from 'react-native-reanimated';
+// Wykorzystywane przez „Apple-spring stagger" przy pierwszym pokazaniu sekcji
+// po wejściu na ekran — `springify()` z sensownym `damping`/`stiffness` daje
+// efekt ciężaru i dostojeństwa zamiast tanio sprężynującego skoku.
 import { 
   ChevronRight, ChevronLeft, ChevronDown, MessageCircle, ShieldCheck, 
   AlertCircle, User, X, Star, ImageIcon, PlayCircle, Zap, CheckCircle2, Sparkles,
   Trash2, Pin, CalendarClock, HandCoins,
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { useUnreadBadgeStore } from '../store/useUnreadBadgeStore';
+import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { API_URL } from '../config/network';
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
 import { canFinalizeTransition, isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
+import UserRegionFlag from '../components/UserRegionFlag';
 import { formatLocationLabel } from '../constants/locationEcosystem';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
 const DEALROOM_STACK_PINS_STORAGE_KEY = '@EstateOS_dealroom_stack_pins';
+const DEALROOM_COLLAPSED_SECTIONS_KEY = '@EstateOS_dealroom_collapsed_sections';
 
 // === LUKSUSOWA PALETA DYNAMICZNA (CERAMIC & DARK GLASS) ===
 const getColors = (isDark: boolean) => ({
@@ -639,6 +646,129 @@ function AttentionBadge({
   );
 }
 
+/**
+ * Premium 3D-pinezka „przybita do deski".
+ *
+ * Renderowana POZA `Swipeable` (który ma `overflow: hidden`) i POZA samą
+ * kartą — leży w `cardContainer` / `walletStackOuterWrap`. Pozycjonowanie
+ * `top: -14` względem rodzica oznacza, że główka pinezki znajduje się
+ * NAD krawędzią karty, a jej dolny brzeg wpada w strefę paddingu (16 px)
+ * — czyli w miejsce, gdzie z definicji NIE ma żadnego tekstu ani ikon.
+ * Dzięki temu pinezka nigdy nie zakrywa zegara, tytułu, nazwy oferty itd.
+ *
+ * Wygląd jest 3D: 5 nakładek (cień rzucany, gradient metaliczny, kant,
+ * refleks światła, środkowy punkcik) + delikatna rotacja `-6°` symuluje
+ * ręcznie wbitą pinezkę. Cień rzucany NA papier sugeruje, że pinezka
+ * unosi się ułamek nad powierzchnią.
+ *
+ * Style są **inline statyczne** (a nie z `useMemo(createStyles, …)`), bo
+ * komponent siedzi poza klamrami głównego ekranu i nie ma dostępu do
+ * lokalnego `styles`. To również najtańsza forma — żadnej alokacji
+ * obiektu stylu na rerender.
+ */
+const PIN_3D_STYLES = StyleSheet.create({
+  anchor: {
+    position: 'absolute',
+    top: -14,
+    right: 16,
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-6deg' }],
+    zIndex: 30,
+    elevation: 14,
+  },
+  shadow: {
+    position: 'absolute',
+    top: 4,
+    width: 28,
+    height: 14,
+    borderRadius: 14,
+    backgroundColor: '#000',
+    opacity: 0.22,
+    transform: [{ scaleX: 1.1 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  head: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    overflow: 'hidden',
+    shadowColor: '#FF3B30',
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: Platform.OS === 'android' ? 10 : 0,
+  },
+  rim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 13,
+    borderWidth: 1.1,
+    borderColor: 'rgba(120,0,0,0.55)',
+  },
+  highlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 13,
+    borderTopWidth: 1.2,
+    borderLeftWidth: 1.2,
+    borderTopColor: 'rgba(255,255,255,0.7)',
+    borderLeftColor: 'rgba(255,255,255,0.45)',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  shine: {
+    position: 'absolute',
+    top: 3,
+    left: 5,
+    width: 10,
+    height: 6,
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    opacity: 0.9,
+  },
+  core: {
+    position: 'absolute',
+    top: 11,
+    left: 11,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(120,0,0,0.55)',
+  },
+});
+
+function Pin3DBadge({ style }: { style?: any }) {
+  return (
+    <View style={[PIN_3D_STYLES.anchor, style]} pointerEvents="none">
+      <View style={PIN_3D_STYLES.shadow} />
+      <View style={PIN_3D_STYLES.head}>
+        <LinearGradient
+          colors={['#FF7A6E', '#FF3B30', '#B81705']}
+          start={{ x: 0.25, y: 0.05 }}
+          end={{ x: 0.75, y: 0.95 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={PIN_3D_STYLES.highlight} />
+        <View style={PIN_3D_STYLES.rim} />
+        <View style={PIN_3D_STYLES.shine} />
+        <View style={PIN_3D_STYLES.core} />
+      </View>
+    </View>
+  );
+}
+
 function DealOfferThumb({ uri, colors }: { uri: string | null; colors: ReturnType<typeof getColors> }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [uri]);
@@ -1017,18 +1147,79 @@ export default function DealroomListScreen() {
     active: [],
     finalized: [],
   });
+  /**
+   * Domyślnie sekcje są ROZWINIĘTE — wcześniej każde wejście do „Wiadomości"
+   * resetowało je do stanu zwiniętego (`true`), więc lista za każdym razem
+   * skakała w trakcie pierwszego renderu. Stan jest dodatkowo utrwalany w
+   * AsyncStorage (patrz efekt poniżej), więc gdy użytkownik raz coś zwinie
+   * — zostanie zwinięte także po powrocie z czata albo restarcie aplikacji.
+   */
   const [collapsedSections, setCollapsedSections] = useState<Record<DealPhase, boolean>>({
-    started: true,
-    active: true,
-    finalized: true,
+    started: false,
+    active: false,
+    finalized: false,
   });
+  const [collapsedSectionsHydrated, setCollapsedSectionsHydrated] = useState(false);
   const [expandedOfferStacks, setExpandedOfferStacks] = useState<Record<string, boolean>>({});
+
+  /**
+   * Bramka „premium reveal" dla sekcji.
+   *
+   * Wcześniej, gdy użytkownik wchodził w „Wiadomości", lista próbowała się
+   * narysować równolegle z hydratacją grup, danymi wątków i obliczaniem faz
+   * — i widać było, jak elementy doczepiają się po kolei, co dawało wrażenie
+   * szarpania. Tutaj wymuszamy krótką (≈750 ms) chwilę zatrzymania, podczas
+   * której pokazujemy spokojny, animowany komunikat „przygotowywania
+   * portfolio". Po czasie ustawiamy `sectionsReady = true` i sekcje
+   * wystrzeliwują w dół jako spring-stagger — wszystko w jednym, pełnym
+   * gracji ruchu, bez gubionych klatek.
+   */
+  const [sectionsReady, setSectionsReady] = useState(false);
+  const sectionsReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
   }, []);
+
+  // Hydratacja stanu zwinięcia sekcji z AsyncStorage — odzwierciedla wybór
+  // użytkownika z poprzedniej sesji, więc Wiadomości nie „resetują się" przy
+  // każdym wejściu.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(DEALROOM_COLLAPSED_SECTIONS_KEY);
+        if (cancelled) return;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            setCollapsedSections({
+              started: !!parsed.started,
+              active: !!parsed.active,
+              finalized: !!parsed.finalized,
+            });
+          }
+        }
+      } catch {
+        /* noop */
+      } finally {
+        if (!cancelled) setCollapsedSectionsHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!collapsedSectionsHydrated) return;
+    void AsyncStorage.setItem(
+      DEALROOM_COLLAPSED_SECTIONS_KEY,
+      JSON.stringify(collapsedSections)
+    ).catch(() => undefined);
+  }, [collapsedSections, collapsedSectionsHydrated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1080,6 +1271,26 @@ export default function DealroomListScreen() {
   useFocusEffect(
     useCallback(() => {
       setPhaseRefreshTick((t) => t + 1);
+
+      // Premium reveal: każde wejście w „Wiadomości" zaczyna od delikatnego
+      // „oddechu" (krótki loader) → sekcje wstrzykiwane są dopiero po nim,
+      // przez co cała animacja wjazdu odbywa się na statycznym tle bez
+      // konkurencji z hydratacją danych.
+      setSectionsReady(false);
+      if (sectionsReadyTimerRef.current) {
+        clearTimeout(sectionsReadyTimerRef.current);
+      }
+      sectionsReadyTimerRef.current = setTimeout(() => {
+        setSectionsReady(true);
+        sectionsReadyTimerRef.current = null;
+      }, 760);
+
+      return () => {
+        if (sectionsReadyTimerRef.current) {
+          clearTimeout(sectionsReadyTimerRef.current);
+          sectionsReadyTimerRef.current = null;
+        }
+      };
     }, [])
   );
 
@@ -1220,42 +1431,80 @@ export default function DealroomListScreen() {
     [groupedDeals, dealNeedsAttentionById]
   );
 
-  const toggleSection = useCallback((phase: DealPhase) => {
-    Haptics.selectionAsync();
-    setCollapsedSections((prev) => {
-      const willExpand = prev[phase] === true;
-      LayoutAnimation.configureNext({
-        duration: willExpand ? 300 : 220,
-        create: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-          property: LayoutAnimation.Properties.opacity,
-        },
-        update: {
-          type: LayoutAnimation.Types.spring,
-          springDamping: willExpand ? 0.9 : 0.95,
-        },
-        delete: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-          property: LayoutAnimation.Properties.opacity,
-        },
-      });
-      return { ...prev, [phase]: !prev[phase] };
-    });
-  }, []);
-
-  const toggleOfferStack = useCallback((phase: DealPhase, offerId: number) => {
-    const key = `${phase}:${offerId}`;
-    Haptics.selectionAsync();
+  /**
+   * Dostojna, Apple-style krzywa rozwijania grup w „Wiadomościach".
+   *
+   * Świadomie używamy `keyboard` (CAMediaTimingFunction `(0.32, 0.72, 0, 1)`
+   * — ta sama, której iOS używa do otwierania klawiatury) — daje miękkie
+   * wejście i decelerację. NIE używamy `spring`, bo lista pełna szklanych
+   * kafli przy każdej drgającej klatce sprężyny musi się przerysować.
+   */
+  const configureWalletLayoutAnimation = useCallback((duration: number) => {
     LayoutAnimation.configureNext({
-      duration: 240,
-      create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
-      update: { type: LayoutAnimation.Types.spring, springDamping: 0.94 },
-      delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+      duration,
+      create: {
+        type: LayoutAnimation.Types.easeIn,
+        property: LayoutAnimation.Properties.opacity,
+        duration: Math.round(duration * 0.85),
+      },
+      update: { type: LayoutAnimation.Types.keyboard },
+      delete: {
+        type: LayoutAnimation.Types.easeOut,
+        property: LayoutAnimation.Properties.opacity,
+        duration: Math.round(duration * 0.7),
+      },
     });
-    setExpandedOfferStacks((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  const dealsSortedFlat = useMemo(() => presentationAndPinSortDeals(deals), [deals, presentationAndPinSortDeals]);
+  const toggleSection = useCallback(
+    (phase: DealPhase) => {
+      Haptics.selectionAsync();
+      // Rozwijanie wolniejsze (płynne ujawnianie), zwijanie nieco szybsze.
+      setCollapsedSections((prev) => {
+        const isCurrentlyCollapsed = prev[phase] === true;
+        configureWalletLayoutAnimation(isCurrentlyCollapsed ? 360 : 280);
+        return { ...prev, [phase]: !prev[phase] };
+      });
+    },
+    [configureWalletLayoutAnimation]
+  );
+
+  const toggleOfferStack = useCallback(
+    (phase: DealPhase, offerId: number) => {
+      const key = `${phase}:${offerId}`;
+      Haptics.selectionAsync();
+      setExpandedOfferStacks((prev) => {
+        const isCurrentlyExpanded = !!prev[key];
+        configureWalletLayoutAnimation(isCurrentlyExpanded ? 240 : 320);
+        return { ...prev, [key]: !prev[key] };
+      });
+    },
+    [configureWalletLayoutAnimation]
+  );
+
+  /**
+   * Apple Guideline 1.2 — UGC: pomijamy dealroomy z zablokowanym kontrahentem.
+   * Lista jest reaktywna na zmiany `blockedIds`, więc kliknięcie „Zablokuj"
+   * w czacie powoduje natychmiastowe zniknięcie karty z listy „Wiadomości".
+   */
+  const blockedIds = useBlockedUsersStore((s) => s.blockedIds);
+  const visibleDeals = useMemo(() => {
+    if (blockedIds.size === 0) return deals;
+    const meId = Number(user?.id || 0);
+    return deals.filter((d) => {
+      const buyerId = Number(d?.buyerId ?? d?.buyer?.id ?? 0);
+      const sellerId = Number(d?.sellerId ?? d?.seller?.id ?? d?.offer?.userId ?? d?.listing?.userId ?? 0);
+      const counter =
+        buyerId > 0 && buyerId !== meId
+          ? buyerId
+          : sellerId > 0 && sellerId !== meId
+            ? sellerId
+            : 0;
+      return counter <= 0 || !blockedIds.has(counter);
+    });
+  }, [deals, blockedIds, user?.id]);
+
+  const dealsSortedFlat = useMemo(() => presentationAndPinSortDeals(visibleDeals), [visibleDeals, presentationAndPinSortDeals]);
 
   const resolvedPartnerAvatarUrl = useMemo(() => {
     const fromApi = selectedProfile ? extractPublicProfileAvatarUrl(selectedProfile) : null;
@@ -1293,7 +1542,7 @@ export default function DealroomListScreen() {
     const fetchDeals = async () => {
       if (!token) { setDeals([]); setLoading(false); return; }
       try {
-        const res = await fetch('https://estateos.pl/api/mobile/v1/deals', { headers: { 'Authorization': `Bearer ${token}` } });
+        const res = await fetch(`${API_URL}/api/mobile/v1/deals`, { headers: { 'Authorization': `Bearer ${token}` } });
         const data = await res.json();
         const activeDeals = normalizeDealsPayload(data).filter(isActiveDeal);
 
@@ -1311,13 +1560,14 @@ export default function DealroomListScreen() {
           if (!offerImageCacheRef.current[oid]) missingOfferIds.add(oid);
         }
         if (missingOfferIds.size > 0 && token) {
+          const patch: Record<number, string> = {};
+          // 1) Najtańszy strzał — single batch z mobile listingu (`includeAll=true`).
           try {
             const offersRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
               headers: { Authorization: `Bearer ${token}` },
             });
             const offersJson = await offersRes.json();
             const offersList = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
-            const patch: Record<number, string> = {};
             for (const o of offersList) {
               const id = Number(o?.id || 0);
               if (!missingOfferIds.has(id)) continue;
@@ -1325,11 +1575,40 @@ export default function DealroomListScreen() {
               const url = raw ? normalizeMediaUrl(raw) : null;
               if (url) patch[id] = url;
             }
-            if (Object.keys(patch).length > 0) {
-              setOfferImageByOfferId((prev) => ({ ...prev, ...patch }));
-            }
           } catch {
-            // noop
+            // noop — przejdziemy do fallbacku per-ID
+          }
+          /*
+           * 2) Fallback — dla każdego ID, którego nie pokrył listing (np. oferta
+           * agentowska/archiwalna/zamknięta, której endpoint `?includeAll=true`
+           * nie pokazuje), strzelamy do pojedynczego web endpointa `/api/offers/:id`.
+           * Ten sam wzór, którego używa `OfferDetail` do hydration zamkniętych ofert.
+           * Bez tego placeholder z ikoną pozostawał na zawsze.
+           */
+          const stillMissing: number[] = [];
+          missingOfferIds.forEach((id) => {
+            if (!patch[id] && !offerImageCacheRef.current[id]) stillMissing.push(id);
+          });
+          if (stillMissing.length > 0) {
+            try {
+              const results = await Promise.allSettled(
+                stillMissing.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => r.ok ? r.json() : null)),
+              );
+              results.forEach((res, idx) => {
+                if (res.status !== 'fulfilled' || !res.value) return;
+                const id = stillMissing[idx];
+                const offer = res.value?.offer || res.value?.data || (res.value?.id ? res.value : null);
+                if (!offer) return;
+                const raw = pickFirstImageFromOfferLike(offer);
+                const url = raw ? normalizeMediaUrl(raw) : null;
+                if (url) patch[id] = url;
+              });
+            } catch {
+              // noop — placeholder pozostanie, bez awarii UI
+            }
+          }
+          if (Object.keys(patch).length > 0) {
+            setOfferImageByOfferId((prev) => ({ ...prev, ...patch }));
           }
         }
       } catch (e) { setDeals([]); } finally { setLoading(false); }
@@ -1579,7 +1858,7 @@ export default function DealroomListScreen() {
     Haptics.selectionAsync();
     setOpeningOfferId(offerId);
     try {
-      const res = await fetch(`https://estateos.pl/api/mobile/v1/offers?includeAll=true`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
       const data = await res.json();
       const fullOffer = (Array.isArray(data?.offers) ? data.offers : []).find((o: any) => Number(o?.id || 0) === offerId);
       navigation.navigate('OfferDetail', fullOffer ? { offer: fullOffer } : { id: offerId });
@@ -1673,15 +1952,31 @@ export default function DealroomListScreen() {
               });
             }}
           >
-          <BlurView
-            intensity={isDark ? 30 : 60}
-            tint={isDark ? 'dark' : 'light'}
+          {/*
+            Wcześniej każda karta dealroomu była osobnym `BlurView`. Przy
+            zwijaniu/rozwijaniu sekcji oraz przewijaniu listy iOS musiał
+            przerysować rozmytą warstwę szkła dla KAŻDEJ karty — to powodowało
+            wyraźne szarpanie. Tu używamy natywnego prostokąta z subtelnym
+            gradientem, który wygląda jak szkło, ale jest praktycznie darmowy
+            renderowo.
+          */}
+          <View
             style={[
               styles.dealCard,
               needsAttention && styles.dealCardUnread,
               needsAttention && styles.dealCardBadgeBleed,
             ]}
           >
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['rgba(34,34,40,0.92)', 'rgba(20,20,24,0.96)']
+                  : ['rgba(255,255,255,0.95)', 'rgba(247,248,252,0.97)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
+            />
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderLeft}>
                 <Text style={styles.dealId}>TX-{deal?.id || '-'}</Text>
@@ -1689,11 +1984,11 @@ export default function DealroomListScreen() {
               </View>
               <Text style={styles.timeText}>{deal.time}</Text>
             </View>
-            {isPinned ? (
-              <View style={styles.pinCornerBadge}>
-                <Pin size={12} color="#fff" fill="#FF3B30" />
-              </View>
-            ) : null}
+            {/*
+              Pinezka jest renderowana POZA tą kartą — w `cardContainer`
+              (Animated.View) na końcu wątku, tak żeby nie wpadała pod
+              `overflow: 'hidden'` Swipeable i nie zakrywała zegara.
+            */}
 
             <View style={styles.cardBody}>
               <View style={styles.cardInfo}>
@@ -1779,9 +2074,16 @@ export default function DealroomListScreen() {
               </View>
               <ChevronRight size={18} color={COLORS.textMuted} />
             </View>
-          </BlurView>
+          </View>
         </Pressable>
         </Swipeable>
+        {/*
+          3D-pinezka NA wierzchu cardContainer, POZA Swipeable. Dzięki temu
+          nie jest klipowana przez `swipeableContainer.overflow: hidden` i
+          siedzi PONAD krawędzią karty, w obszarze paddingu — żadnego
+          zakrywania zegara ani tytułu.
+        */}
+        {isPinned ? <Pin3DBadge /> : null}
       </Animated.View>
     );
   };
@@ -1854,7 +2156,26 @@ export default function DealroomListScreen() {
                 style={({ pressed }) => [styles.walletStackPressable, pressed && { opacity: 0.92 }]}
                 onPress={() => toggleOfferStack(phase, offerId)}
               >
-                <BlurView intensity={isDark ? 35 : 75} tint={isDark ? 'dark' : 'light'} style={styles.walletStackCard}>
+                {/*
+                  Wcześniej każdy zwinięty stos był osobnym `BlurView`. Mając
+                  na liście kilkanaście takich kart, GPU musiało odświeżać
+                  mocno rozmytą warstwę szkła przy KAŻDYM ruchu palca, co
+                  powodowało wyraźne szarpanie podczas grupowania/przewijania.
+                  Tu używamy lekkiego, statycznego tła z subtelnym gradientem,
+                  które wygląda jak szkło, ale renderuje się jako natywny
+                  prostokąt — animacje grupowania są teraz w pełni płynne.
+                */}
+                <View style={styles.walletStackCard}>
+                  <LinearGradient
+                    colors={
+                      isDark
+                        ? ['rgba(40,40,50,0.92)', 'rgba(22,22,30,0.95)']
+                        : ['rgba(255,255,255,0.92)', 'rgba(248,249,252,0.95)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                  />
                   <View style={styles.walletNotebookSpine} />
                   <View style={styles.walletNotebookHolesColumn}>
                     {[0, 1, 2, 3].map((i) => (
@@ -1926,14 +2247,12 @@ export default function DealroomListScreen() {
                     ))}
                   </View>
                   <Text style={styles.walletStackHint}>Przesuń w prawo, aby przypiąć. Dotknij, aby rozłożyć stos.</Text>
-                  {isPinnedStack ? (
-                    <View style={styles.pinCornerBadge}>
-                      <Pin size={12} color="#fff" fill="#FF3B30" />
-                    </View>
-                  ) : null}
-                </BlurView>
+                  {/* Pinezka jest renderowana POZA tym kafelkiem (na zewnątrz Swipeable),
+                      aby nie zakrywała zawartości stosu. */}
+                </View>
               </Pressable>
             </Swipeable>
+            {isPinnedStack ? <Pin3DBadge /> : null}
           </Animated.View>
         );
         animIndex += 1;
@@ -2042,12 +2361,14 @@ export default function DealroomListScreen() {
         </View>
       </BlurView>
 
-      {loading ? (
-        <Animated.View entering={FadeIn} style={styles.loaderCenter}>
+      {loading || !sectionsReady ? (
+        <Animated.View entering={FadeIn.duration(220)} style={styles.loaderCenter}>
           <ActivityIndicator size="large" color={COLORS.gold} />
-          <Text style={styles.loaderText}>Wczytywanie transakcji...</Text>
+          <Text style={styles.loaderText}>
+            {loading ? 'Wczytywanie transakcji…' : 'Przygotowywanie portfolio…'}
+          </Text>
         </Animated.View>
-      ) : deals.length === 0 ? (
+      ) : visibleDeals.length === 0 ? (
         <DealroomsEmptyState
           colors={COLORS}
           onOpenRadar={() => {
@@ -2067,7 +2388,7 @@ export default function DealroomListScreen() {
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {!phasesReady && deals.length > 0 ? (
+          {!phasesReady && visibleDeals.length > 0 ? (
             <View style={styles.phaseBanner}>
               <ActivityIndicator size="small" color={COLORS.gold} />
               <Text style={styles.phaseBannerText}>Układanie według etapów…</Text>
@@ -2081,7 +2402,10 @@ export default function DealroomListScreen() {
             : (
               <>
                 {presentationTopDealsSorted.length > 0 ? (
-                  <View style={styles.phaseSection}>
+                  <Animated.View
+                    entering={FadeInDown.delay(0).springify().damping(15).stiffness(135).mass(0.85)}
+                    style={styles.phaseSection}
+                  >
                     <View style={styles.phaseSectionHeaderRow}>
                       <View style={[styles.phaseSectionIconWrap, styles.phaseSectionIconWrapActive]}>
                         <CalendarClock size={20} color={COLORS.green} strokeWidth={2.2} />
@@ -2097,11 +2421,12 @@ export default function DealroomListScreen() {
                     {presentationTopDealsSorted.map((deal, idx) =>
                       renderDealCard(deal, idx, dealPhaseById[Number(deal.id)] ?? 'active')
                     )}
-                  </View>
+                  </Animated.View>
                 ) : null}
 
                 {groupedDeals.started.length > 0 ? (
-                  <View
+                  <Animated.View
+                    entering={FadeInDown.delay(90).springify().damping(15).stiffness(135).mass(0.85)}
                     style={[
                       styles.phaseSection,
                       !collapsedSections.started && styles.phaseSectionSurfaceStarted,
@@ -2137,11 +2462,12 @@ export default function DealroomListScreen() {
                     {collapsedSections.started
                       ? renderCollapsedSectionDeck('started', groupedDeals.started.length)
                       : renderPhaseDealsWalletStyle('started', groupedDeals.started)}
-                  </View>
+                  </Animated.View>
                 ) : null}
 
                 {groupedDeals.active.length > 0 ? (
-                  <View
+                  <Animated.View
+                    entering={FadeInDown.delay(180).springify().damping(15).stiffness(135).mass(0.85)}
                     style={[
                       styles.phaseSection,
                       !collapsedSections.active && styles.phaseSectionSurfaceActive,
@@ -2177,11 +2503,12 @@ export default function DealroomListScreen() {
                     {collapsedSections.active
                       ? renderCollapsedSectionDeck('active', groupedDeals.active.length)
                       : renderPhaseDealsWalletStyle('active', groupedDeals.active)}
-                  </View>
+                  </Animated.View>
                 ) : null}
 
                 {groupedDeals.finalized.length > 0 ? (
-                  <View
+                  <Animated.View
+                    entering={FadeInDown.delay(270).springify().damping(15).stiffness(135).mass(0.85)}
                     style={[
                       styles.phaseSection,
                       !collapsedSections.finalized && styles.phaseSectionSurfaceFinalized,
@@ -2217,7 +2544,7 @@ export default function DealroomListScreen() {
                     {collapsedSections.finalized
                       ? renderCollapsedSectionDeck('finalized', groupedDeals.finalized.length)
                       : renderPhaseDealsWalletStyle('finalized', groupedDeals.finalized)}
-                  </View>
+                  </Animated.View>
                 ) : null}
               </>
             )}
@@ -2277,6 +2604,13 @@ export default function DealroomListScreen() {
                     ) : (
                       <User size={36} color={COLORS.gold} strokeWidth={2} />
                     )}
+                    <View style={styles.profileAvatarFlag} pointerEvents="none">
+                      <UserRegionFlag
+                        phone={selectedProfile?.user?.phone || selectedProfile?.user?.contactPhone}
+                        fallbackIso="PL"
+                        size={28}
+                      />
+                    </View>
                   </View>
                   <Text style={styles.profileName}>{selectedProfile?.user?.name || `Użytkownik #${selectedProfileId}`}</Text>
                   <EliteStatusBadges subject={selectedProfile?.user || selectedProfile} isDark={isDark} compact />
@@ -2553,6 +2887,8 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     paddingLeft: 30,
     minHeight: 180,
     justifyContent: 'center',
+    // klipowanie gradientu do zaokrąglonych rogów
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.28,
@@ -2812,6 +3148,13 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   dealCardUnread: { borderColor: colors.gold, backgroundColor: colors.cardSolid, shadowOpacity: 0.15, shadowColor: colors.gold },
   /** Bez clip przy nieprzeczytanych — kółko badge wystaje poza szkło */
   dealCardBadgeBleed: { overflow: 'visible' },
+  /**
+   * STARY badge — pozostawiony tylko jako fallback, NIE używać.
+   * Aktualnie pinezki kart i stosów są renderowane jako
+   * `Pin3DBadge` w `cardContainer` / `walletStackOuterWrap`
+   * (patrz `pinHead*` style poniżej) — przez to **nie zakrywają**
+   * żadnej zawartości karty (zegara, tytułu itd.).
+   */
   pinCornerBadge: {
     position: 'absolute',
     top: 10,
@@ -2828,6 +3171,11 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     shadowRadius: 6,
     elevation: Platform.OS === 'android' ? 8 : 0,
   },
+  /*
+   * 3D-pinezka jest renderowana przez `Pin3DBadge` ze statycznym
+   * `PIN_3D_STYLES` (zdefiniowany powyżej). Tu nie powtarzamy stylów,
+   * żeby uniknąć desynchronizacji wyglądu w przyszłości.
+   */
   
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -2898,6 +3246,13 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
     borderWidth: 1,
     borderColor: colors.goldDimmed,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  profileAvatarFlag: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    zIndex: 3,
   },
   profileBigAvatarImage: { width: 70, height: 70, borderRadius: 35 },
   profileName: { color: colors.textMain, fontSize: 26, fontWeight: '800', letterSpacing: 0.5 },

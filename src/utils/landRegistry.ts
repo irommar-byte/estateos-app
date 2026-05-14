@@ -4,11 +4,12 @@ export type LandRegistryCourtPrefix = {
 };
 
 const LAND_REGISTRY_PREFIX_DATA: LandRegistryCourtPrefix[] = [
-  // Warszawa - komplet najczęściej spotykanych prefiksów (legacy + aktualne)
   { prefix: 'WA1M', courtName: 'Warszawa-Mokotów (historyczny wydział KW)' },
   { prefix: 'WA2M', courtName: 'Warszawa-Śródmieście / Mokotów (historyczny wydział KW)' },
   { prefix: 'WA3M', courtName: 'Warszawa-Wola (historyczny wydział KW)' },
   { prefix: 'WA4M', courtName: 'Warszawa-Praga / Mokotów (historyczny wydział KW)' },
+  /** Typowy aktywny kod — SR dla Warszawy-Mokotowa (Wydział KW) */
+  { prefix: 'WA4N', courtName: 'SR dla Warszawy-Mokotowa w Warszawie — Wydział Ksiąg Wieczystych' },
   { prefix: 'WA5M', courtName: 'Warszawa (historyczny wydział KW)' },
   { prefix: 'WA6M', courtName: 'SR dla Warszawy-Mokotowa - VI Wydział Ksiąg Wieczystych' },
   { prefix: 'WA1G', courtName: 'SR dla Warszawy-Żoliborza (historyczny wydział KW)' },
@@ -40,11 +41,57 @@ const LAND_REGISTRY_PREFIX_DATA: LandRegistryCourtPrefix[] = [
 
 export const LAND_REGISTRY_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
 
-export function normalizeLandRegistryNumber(input: string): string {
-  return input
+/**
+ * Formatuje numer KW podczas wpisywania: `XXXX` → po 8 cyfrach `XXXX/12345678/`
+ * i cyfra kontrolna. Usuwa zbędne znaki, wstawia ukośniki zgodnie z konwencją EKW.
+ */
+export function formatLandRegistryNumberInput(input: string): string {
+  const flat = String(input || '')
     .toUpperCase()
-    .replace(/[^A-Z0-9/]/g, '')
-    .replace(/\/{2,}/g, '/');
+    .replace(/[^A-Z0-9]/g, '');
+
+  let pos = 0;
+  const buf1: string[] = [];
+
+  while (pos < flat.length && buf1.length < 4) {
+    const c = flat[pos];
+    if (buf1.length < 2) {
+      if (/[A-Z]/.test(c)) buf1.push(c);
+      pos++;
+    } else {
+      if (/[A-Z0-9]/.test(c)) buf1.push(c);
+      pos++;
+    }
+  }
+
+  const s1 = buf1.join('');
+  if (!s1) return '';
+
+  const buf2: string[] = [];
+  while (pos < flat.length && buf2.length < 8) {
+    const c = flat[pos++];
+    if (/[0-9]/.test(c)) buf2.push(c);
+  }
+  const s2 = buf2.join('');
+
+  let s3 = '';
+  while (pos < flat.length) {
+    const c = flat[pos++];
+    if (/[0-9]/.test(c)) {
+      s3 = c;
+      break;
+    }
+  }
+
+  if (!s2) return s1;
+  if (s2.length < 8) return `${s1}/${s2}`;
+  if (!s3) return `${s1}/${s2}/`;
+  return `${s1}/${s2}/${s3}`;
+}
+
+/** Alias dla pól formularza — zawsze używaj tej funkcji w `onChangeText`. */
+export function normalizeLandRegistryNumber(input: string): string {
+  return formatLandRegistryNumberInput(input);
 }
 
 export function isValidLandRegistryNumber(value: string): boolean {
@@ -54,9 +101,9 @@ export function isValidLandRegistryNumber(value: string): boolean {
 }
 
 export function getLandRegistryPrefixInput(value: string): string {
-  const normalized = normalizeLandRegistryNumber(value);
-  const token = normalized.split('/')[0] || '';
-  return token.slice(0, 4);
+  const formatted = formatLandRegistryNumberInput(value);
+  const seg = formatted.split('/')[0] || '';
+  return seg.slice(0, 4);
 }
 
 export function getLandRegistryPrefixSuggestions(value: string, limit = 12): LandRegistryCourtPrefix[] {
@@ -66,7 +113,7 @@ export function getLandRegistryPrefixSuggestions(value: string, limit = 12): Lan
 }
 
 export function applyLandRegistryPrefix(currentValue: string, prefix: string): string {
-  const normalized = normalizeLandRegistryNumber(currentValue);
+  const normalized = formatLandRegistryNumberInput(currentValue);
   const parts = normalized.split('/');
   const afterPrefix = parts.length > 1 ? parts.slice(1).join('/') : '';
   return afterPrefix ? `${prefix}/${afterPrefix}` : `${prefix}/`;

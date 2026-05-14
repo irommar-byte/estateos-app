@@ -1,8 +1,9 @@
 import { Passkey } from 'react-native-passkey';
 import { Alert } from 'react-native';
+import { API_URL as API_ORIGIN } from '../config/network';
 
-const API_URL = 'https://estateos.pl/api/passkey';
-const API_URL_MOBILE = 'https://estateos.pl/api/mobile/v1/passkeys';
+const API_URL = `${API_ORIGIN.replace(/\/$/, '')}/api/passkey`;
+const API_URL_MOBILE = `${API_ORIGIN.replace(/\/$/, '')}/api/mobile/v1/passkeys`;
 
 // Timeout dla słabych sieci
 const fetchWithTimeout = async (resource: string, options: any = {}) => {
@@ -262,33 +263,47 @@ export const PasskeyService = {
   },
 
   revoke: async (token: string, userId: string) => {
-    const endpoints = [
-      `${API_URL}/revoke`,
-      `${API_URL}/register/revoke`,
-      `${API_URL}/delete`,
+    const t = String(token || '').trim();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${t}`,
+      'x-access-token': t,
+      'auth-token': t,
+    };
+    const body = JSON.stringify({ userId });
+
+    /**
+     * Rejestracja / logowanie korzystają z obu rodzin URL (`/api/passkey/*` i `/api/mobile/v1/passkeys/*`).
+     * Wyłączenie Passkey musi odwołać ten sam zapis co backend — inaczej UI wyłączy się lokalnie,
+     * a po wylogowaniu `login/start` nadal zwróci klucz z bazy.
+     */
+    const candidates: { method: 'POST' | 'DELETE'; url: string; sendBody: boolean }[] = [
+      { method: 'POST', url: `${API_URL_MOBILE}/revoke`, sendBody: true },
+      { method: 'POST', url: `${API_URL_MOBILE}/unregister`, sendBody: true },
+      { method: 'DELETE', url: `${API_URL_MOBILE}`, sendBody: false },
+      { method: 'POST', url: `${API_URL}/revoke`, sendBody: true },
+      { method: 'POST', url: `${API_URL}/register/revoke`, sendBody: true },
+      { method: 'POST', url: `${API_URL}/delete`, sendBody: true },
     ];
 
     let lastError: any = null;
 
-    for (const endpoint of endpoints) {
+    for (const { method, url, sendBody } of candidates) {
       try {
-        const response = await fetchWithTimeout(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ userId }),
+        const response = await fetchWithTimeout(url, {
+          method,
+          headers,
+          ...(sendBody ? { body } : {}),
         });
-
-        const text = await response.text();
-        const data = text ? JSON.parse(text) : {};
-
-        if (response.ok && (data?.success !== false)) {
+        const data = await parseJsonSafely(response);
+        if (response.ok && data?.success !== false) {
           return true;
         }
-
-        lastError = new Error(data?.error || `Revoke failed (${response.status})`);
+        lastError = new Error(
+          (typeof data?.error === 'string' && data.error) ||
+            (typeof data?.message === 'string' && data.message) ||
+            `Revoke failed (${response.status})`,
+        );
       } catch (e: any) {
         lastError = e;
       }

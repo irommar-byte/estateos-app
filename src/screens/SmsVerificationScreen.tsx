@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore, persistLocalPhoneVerified } from '../store/useAuthStore';
+import { API_URL } from '../config/network';
 
 export default function SmsVerificationScreen({ route }: any) {
   const navigation = useNavigation<any>();
@@ -103,14 +104,14 @@ export default function SmsVerificationScreen({ route }: any) {
     await AsyncStorage.setItem(`@sms_time_${user.id}`, now.toString());
 
     try {
-      await fetch('https://estateos.pl/api/mobile/v1/auth/sms/send', {
+      await fetch(`${API_URL}/api/mobile/v1/auth/sms/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id })
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      console.log("Błąd wysyłki SMS", e);
+      if (__DEV__) console.warn('Błąd wysyłki SMS', e);
     }
   };
 
@@ -149,7 +150,7 @@ export default function SmsVerificationScreen({ route }: any) {
     const finalCode = finalCodeParam || code.join('');
 
     try {
-      const res = await fetch('https://estateos.pl/api/mobile/v1/auth/sms/verify', {
+      const res = await fetch(`${API_URL}/api/mobile/v1/auth/sms/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, code: finalCode })

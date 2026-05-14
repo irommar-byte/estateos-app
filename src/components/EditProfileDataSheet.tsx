@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
+import { API_URL } from '../config/network';
 
 const nameChangeStorageKey = (userId: number | string) => `@estateos_profile_name_change_used_${userId}`;
 
@@ -27,6 +28,8 @@ type Props = {
   onClose: () => void;
   theme: { text: string; subtitle: string; background?: string; glass?: string };
   isDark?: boolean;
+  /** Po otwarciu przewiń listę do sekcji (np. z profilu: weryfikacja e-mail). */
+  initialScrollSection?: 'personal' | 'email' | null;
 };
 
 function digitsToPhoneDraft(phone?: string | null): string {
@@ -35,8 +38,16 @@ function digitsToPhoneDraft(phone?: string | null): string {
   return nine.replace(/(\d{3})(?=\d)/g, '$1 ').trim();
 }
 
-export default function EditProfileDataSheet({ visible, onClose, theme, isDark = false }: Props) {
+export default function EditProfileDataSheet({
+  visible,
+  onClose,
+  theme,
+  isDark = false,
+  initialScrollSection = null,
+}: Props) {
   const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const [emailSectionY, setEmailSectionY] = useState(0);
   const navigation = useNavigation<any>();
   const user = useAuthStore((s) => s.user);
   const updateProfileBasics = useAuthStore((s: any) => s.updateProfileBasics);
@@ -94,6 +105,24 @@ export default function EditProfileDataSheet({ visible, onClose, theme, isDark =
     };
   }, [visible, user?.id]);
 
+  useEffect(() => {
+    if (!visible) {
+      setEmailSectionY(0);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !scrollRef.current) return;
+    const id = setTimeout(() => {
+      if (initialScrollSection === 'email' && emailSectionY > 0) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, emailSectionY - 24), animated: true });
+      } else if (initialScrollSection === 'personal') {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }
+    }, 320);
+    return () => clearTimeout(id);
+  }, [visible, initialScrollSection, emailSectionY]);
+
   const handlePhoneChange = (text: string) => {
     const cleaned = text.replace(/\D/g, '').substring(0, 9);
     const parts = cleaned.match(/.{1,3}/g);
@@ -123,7 +152,7 @@ export default function EditProfileDataSheet({ visible, onClose, theme, isDark =
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
+        const res = await fetch(`${API_URL}/api/auth/check-exists`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: v, field: 'email', value: v }),
@@ -176,7 +205,7 @@ export default function EditProfileDataSheet({ visible, onClose, theme, isDark =
     const e164 = '+48 ' + clean;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch('https://estateos.pl/api/auth/check-exists', {
+        const res = await fetch(`${API_URL}/api/auth/check-exists`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: e164, field: 'phone', value: e164 }),
@@ -459,7 +488,12 @@ export default function EditProfileDataSheet({ visible, onClose, theme, isDark =
               Imię i nazwisko można poprawić tylko raz (np. literówka po rejestracji), potem pola są zablokowane. Nowy e-mail działa dopiero po weryfikacji kodu. Telefon można zmienić wyłącznie zanim zostanie potwierdzony SMS-em — potem jest zablokowany.
             </Text>
 
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+            <ScrollView
+              ref={scrollRef}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.scroll}
+            >
               {/* ───── Sekcja: Dane osobowe ───── */}
               <View style={[styles.sectionCard, { backgroundColor: cardBg, borderColor: border }]}>
                 <View style={styles.sectionTitleRow}>
@@ -610,7 +644,12 @@ export default function EditProfileDataSheet({ visible, onClose, theme, isDark =
               </View>
 
               {/* ───── Sekcja: Adres e-mail ───── */}
-              <View style={[styles.sectionCard, { backgroundColor: cardBg, borderColor: border, marginTop: 14 }]}>
+              <View
+                onLayout={(e) => {
+                  setEmailSectionY(e.nativeEvent.layout.y);
+                }}
+                style={[styles.sectionCard, { backgroundColor: cardBg, borderColor: border, marginTop: 14 }]}
+              >
                 <View style={styles.sectionTitleRow}>
                   <View style={styles.sectionTitleLeft}>
                     <Ionicons name="mail-outline" size={18} color={String(textMuted)} />

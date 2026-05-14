@@ -1,14 +1,27 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
 import { stopRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
+import { ALLOWED_PHONE_COUNTRY_SET } from '../utils/phoneRegions';
 
 const formatPhone = (p?: string) => {
-  if (!p) return "Brak numeru";
-  const digits = p.replace(/\D/g, "").replace(/^48/, "");
-  if (digits.length !== 9) return p;
-  return "+48 " + digits.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
+  if (!p || !String(p).trim()) return 'Brak numeru';
+  const raw = String(p).trim();
+  if (raw === 'Brak numeru') return 'Brak numeru';
+  const n = parsePhoneNumberFromString(raw);
+  if (n?.isValid()) return n.formatInternational();
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 9 && !raw.includes('+')) {
+    const pl = parsePhoneNumberFromString(digits, 'PL');
+    if (pl?.isValid()) return pl.formatInternational();
+  }
+  if (digits.startsWith('48') && digits.length >= 11) {
+    const intl = parsePhoneNumberFromString(`+${digits}`);
+    if (intl?.isValid()) return intl.formatInternational();
+  }
+  return raw;
 };
 
 interface User {
@@ -33,6 +46,12 @@ interface User {
   pendingEmail?: string | null;
   /** Serwer: jednorazowa korekta imienia/nazwiska już wykorzystana. */
   profileNameLocked?: boolean;
+  /**
+   * Nazwa biura / agencji — wypełniana tylko gdy `role === 'AGENT'`.
+   * Backend zwraca przy rejestracji oraz w `GET /api/mobile/v1/user/me`.
+   * Dla osób prywatnych zawsze `null`.
+   */
+  companyName?: string | null;
 }
 
 interface AuthState {
@@ -43,7 +62,21 @@ interface AuthState {
   isRadarActive: boolean; // 🔥 Nowość
   setRadarActive: (isActive: boolean) => Promise<void>; // 🔥 Nowość
   login: (email: string, pass: string) => Promise<boolean>;
-  register: (email: string, pass: string, fName: string, lName: string, phone: string, role: string) => Promise<boolean>;
+  register: (
+    email: string,
+    pass: string,
+    fName: string,
+    lName: string,
+    phone: string,
+    role: string,
+    /**
+     * Dla `role === 'AGENT'` — nazwa biura/agencji. Backend powinien
+     * zapisać to w nowym polu `companyName` w tabeli `users` (patrz:
+     * `deploy/BACKEND_AGENT_REGISTRATION_API.md`). Dla innych ról
+     * przekazujemy `null` / pomijamy.
+     */
+    companyName?: string | null,
+  ) => Promise<boolean>;
   loginWithPasskey: () => Promise<boolean>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
@@ -247,14 +280,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await stopRadarLiveActivity();
       }
     } catch (e) {
-      console.log("Error saving radar state", e);
+      if (__DEV__) console.warn('Error saving radar state', e);
     }
   },
 
   login: async (email: string, pass: string) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch('https://estateos.pl/api/mobile/v1/auth/login', {
+      const response = await fetch(`${API_URL}/api/mobile/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: pass }),
@@ -301,19 +334,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (email, pass, fName, lName, phone, role) => {
+  register: async (email, pass, fName, lName, phone, role, companyName = null) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch('https://estateos.pl/api/register', {
+      // Kontrakt z backendem: dla role === 'AGENT' wysyłamy dodatkowo
+      // `companyName` (string, wymagane przez backend dla tej roli).
+      // Dla pozostałych ról pole jest pomijane — backend powinien
+      // zwalidować po stronie serwera, że AGENT ma niepuste companyName.
+      const payload: Record<string, unknown> = {
+        email,
+        password: pass,
+        name: `${fName} ${lName}`,
+        phone,
+        role,
+      };
+      if (role === 'AGENT' && companyName && companyName.trim().length > 0) {
+        payload.companyName = companyName.trim();
+      }
+      const response = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email, 
-          password: pass, 
-          name: `${fName} ${lName}`, 
-          phone: phone,
-          role: role 
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Błąd rejestracji');
@@ -333,12 +374,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
     
     try {
-      await fetch('https://estateos.pl/api/mobile/v1/user/avatar', {
+      await fetch(`${API_URL}/api/mobile/v1/user/avatar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ image: base64Image, userId: user.id })
       });
-    } catch (e) { console.log("Avatar sync error", e); }
+    } catch (e) {
+      if (__DEV__) console.warn('Avatar sync error', e);
+    }
   },
 
   // 🔥 PRAWDZIWE LOGOWANIE PASSKEY 🔥
@@ -370,7 +413,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { token, user } = get();
     if (!token || !user?.id) return;
     try {
-      const res = await fetch('https://estateos.pl/api/mobile/v1/auth', {
+      const res = await fetch(`${API_URL}/api/mobile/v1/auth`, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -383,7 +426,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await AsyncStorage.setItem('user_data', JSON.stringify(refreshed));
       }
     } catch (e) {
-      console.log('Refresh user error', e);
+      if (__DEV__) console.warn('Refresh user error', e);
     }
   },
 
@@ -506,17 +549,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     let phoneIsChanging = false;
     if (phone !== undefined && !user.isVerifiedPhone) {
-      let d = String(phone).replace(/\D/g, '');
-      if (d.startsWith('48')) d = d.slice(2);
-      const nine = d.slice(0, 9);
-      if (/^\d{9}$/.test(nine)) {
-        const e164 = `+48${nine}`;
-        body.phone = e164;
-        body.contactPhone = e164;
-        // Porównanie z dotychczasowym numerem (cyfry, bez prefiksu) — jeśli różny, czyścimy lokalny status weryfikacji.
-        const currentNine = String(user.phone || '').replace(/\D/g, '').slice(-9);
-        if (currentNine && currentNine !== nine) phoneIsChanging = true;
+      const parsed = parsePhoneNumberFromString(String(phone).trim());
+      if (!parsed?.isValid()) {
+        return { ok: false, error: 'Podaj prawidłowy numer telefonu (z kodem kraju).' };
       }
+      if (!ALLOWED_PHONE_COUNTRY_SET.has(String(parsed.country))) {
+        return { ok: false, error: 'Ten kraj nie jest dostępny przy numerze telefonu w aplikacji.' };
+      }
+      const e164 = parsed.number;
+      body.phone = e164;
+      body.contactPhone = e164;
+      let prevE164: string | null = null;
+      const prevParsed = parsePhoneNumberFromString(String(user.phone || '').trim());
+      if (prevParsed?.isValid()) prevE164 = prevParsed.number;
+      else {
+        const d = String(user.phone || '').replace(/\D/g, '');
+        const nine = d.slice(-9);
+        if (/^\d{9}$/.test(nine)) {
+          const pl = parsePhoneNumberFromString(nine, 'PL');
+          if (pl?.isValid()) prevE164 = pl.number;
+        }
+      }
+      if (prevE164 !== e164) phoneIsChanging = true;
     }
     if (Object.keys(body).length === 0) {
       return { ok: false, error: 'Brak zmian do zapisu.' };
@@ -831,7 +885,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await get().refreshUser();
       }
     } catch (e) {
-      console.log("Restore session error", e);
+      if (__DEV__) console.warn('Restore session error', e);
     }
   }
 }));

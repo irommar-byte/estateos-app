@@ -1,20 +1,21 @@
 import * as Device from "expo-device";
-import { usePushNotifications } from "./src/hooks/usePushNotifications";
+import { usePushNotifications } from './src/hooks/usePushNotifications';
 import PushOnboardingSheet from "./src/components/PushOnboardingSheet";
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
 import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
+import CircularLabelRing from './src/components/CircularLabelRing';
+import { IAPManager } from './src/services/iapManager';
+import { API_URL } from './src/config/network';
+import { stopRadarLiveActivity } from './src/services/radarLiveActivityService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking, AppState } from 'react-native';
 
 import * as Notifications from "expo-notifications";
-
-Notifications.addNotificationReceivedListener(notification => {
-  console.log("📩 FULL NOTIFICATION:", JSON.stringify(notification, null, 2));
-});
 
 import { createNavigationContainerRef } from "@react-navigation/native";
 
@@ -23,10 +24,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useThemeStore, ThemeMode } from './src/store/useThemeStore';
 import { useOfferStore } from './src/store/useOfferStore';
 import { useAuthStore } from './src/store/useAuthStore';
+import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import AppleHover from './src/components/AppleHover';
 
@@ -61,12 +65,27 @@ import {
   shouldPrioritizeDealroom,
 } from './src/contracts/parityContracts';
 
+if (__DEV__) {
+  Notifications.addNotificationReceivedListener((notification) => {
+    console.log('[push] received (dev):', notification.request?.content?.title ?? '');
+  });
+}
+
 const navigationRef = createNavigationContainerRef();
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
   return (
-    <AddOfferStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+    <AddOfferStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+        animationDuration: 320,
+        /** Wyłączone globalnie: edge-swipe i „pełny ekran” kolidują z przewijaniem i gestami w formularzach (np. galeria). */
+        gestureEnabled: false,
+        fullScreenGestureEnabled: false,
+      }}
+    >
       <AddOfferStack.Screen name="Step1">{props => <Step1_Type {...props} theme={theme} />}</AddOfferStack.Screen>
       <AddOfferStack.Screen name="Step2">{props => <Step2_Location {...props} theme={theme} />}</AddOfferStack.Screen>
       <AddOfferStack.Screen name="Step3">{props => <Step3_Parameters {...props} theme={theme} />}</AddOfferStack.Screen>
@@ -122,8 +141,17 @@ const FloatingNextButton = ({ onPress }: any) => {
   const menuOpacity = useRef(new Animated.Value(0)).current;
   const menuProgress = useRef(new Animated.Value(0)).current;
   const itemScales = useRef([new Animated.Value(1), new Animated.Value(1), new Animated.Value(1)]).current;
+  // Crossfade między napisami „DODAJ OFERTĘ" i „DALEJ". Każdy napis to
+  // OSOBNY, stale-zamontowany CircularLabelRing z FIXED propsami — przy
+  // przełączaniu tylko opacity migra od 0 do 1. Dzięki temu SVG NIGDY się
+  // nie remountuje, łuk nie skacze pozycyjnie i nie ma „migotania" znanego
+  // wcześniej przy zmianie isArrow.
+  const plusLabelOpacity = useRef(new Animated.Value(1)).current;
+  const arrowLabelOpacity = useRef(new Animated.Value(0)).current;
   
   const themeMode = useThemeStore(s => s.themeMode);
+  const setThemeMode = useThemeStore((s) => s.setThemeMode);
+  const resolvedDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const isDark = themeMode === 'dark';
   
   const longPressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,6 +184,26 @@ const FloatingNextButton = ({ onPress }: any) => {
       pulseAnim.setValue(1);
     }
   }, [isValid, step, isFocused]);
+
+  // CROSSFADE NAPISÓW — przełączamy się PŁYNNIE między „DODAJ OFERTĘ"
+  // a „DALEJ" tylko przez zmianę opacity (oba SVG zawsze są zamontowane,
+  // pozycje i geometria stałe). Dzięki temu napis nie skacze pomiędzy
+  // ekranami i nie ma efektu „znika i pojawia się".
+  const isArrowForLabel = isFocused && step > 0;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(plusLabelOpacity, {
+        toValue: isArrowForLabel ? 0 : 1,
+        duration: 240,
+        useNativeDriver: true,
+      }),
+      Animated.timing(arrowLabelOpacity, {
+        toValue: isArrowForLabel ? 1 : 0,
+        duration: 240,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isArrowForLabel, plusLabelOpacity, arrowLabelOpacity]);
 
   const handlePress = (e: any) => {
     if (!isFocused) {
@@ -191,39 +239,42 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
   };
 
-  // Ustawione kąty: 180 (lewo), 270 (góra), 0 (prawo)
-  const quickActions = [
-    {
-      key: 'MINE',
-      label: 'Moje',
-      icon: 'home',
-      angleDeg: 180,
-      distance: 90,
-      tint: '#10B981',
-      glassBg: isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.2)',
-      target: () => navigation.navigate('Ulubione', { favoritesOnly: true, favoritesScope: 'MINE' }),
-    },
-    {
-      key: 'DISCOVERY',
-      label: 'Discovery',
-      icon: 'sparkles',
-      angleDeg: 270,
-      distance: 105,
-      tint: '#D4AF37',
-      glassBg: isDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
-      target: () => navigation.navigate('EstateDiscovery'),
-    },
-    {
-      key: 'FAVORITES',
-      label: 'Ulubione',
-      icon: 'heart',
-      angleDeg: 0,
-      distance: 130,
-      tint: '#F777B2',
-      glassBg: isDark ? 'rgba(247,119,178,0.28)' : 'rgba(247,119,178,0.2)',
-      target: () => navigation.navigate('Ulubione', { favoritesOnly: true, favoritesScope: 'FAVORITES' }),
-    },
-  ] as const;
+  // Ustawione kąty: 180° (lewo) = tryb ciemny, 270° (góra) = Discovery, 0° (prawo) = tryb jasny
+  const quickActions = useMemo(
+    () => [
+      {
+        key: 'THEME_DARK',
+        label: 'Ciemny',
+        icon: 'moon',
+        angleDeg: 180,
+        distance: 90,
+        tint: '#818CF8',
+        glassBg: resolvedDark ? 'rgba(129,140,248,0.32)' : 'rgba(99,102,241,0.22)',
+        target: () => setThemeMode('dark'),
+      },
+      {
+        key: 'DISCOVERY',
+        label: 'Discovery',
+        icon: 'sparkles',
+        angleDeg: 270,
+        distance: 105,
+        tint: '#D4AF37',
+        glassBg: resolvedDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
+        target: () => navigation.navigate('EstateDiscovery'),
+      },
+      {
+        key: 'THEME_LIGHT',
+        label: 'Jasny',
+        icon: 'sunny',
+        angleDeg: 0,
+        distance: 130,
+        tint: '#FBBF24',
+        glassBg: resolvedDark ? 'rgba(251,191,36,0.28)' : 'rgba(251,191,36,0.2)',
+        target: () => setThemeMode('light'),
+      },
+    ],
+    [navigation, resolvedDark, setThemeMode],
+  );
 
   const clearLongPressTimer = useCallback(() => {
     if (!longPressTimeoutRef.current) return;
@@ -232,7 +283,7 @@ const FloatingNextButton = ({ onPress }: any) => {
   }, []);
 
   const openQuickMenu = useCallback(() => {
-    console.log("[PLUS] openQuickMenu");
+    if (__DEV__) console.log('[PLUS] openQuickMenu');
     setIsQuickMenuOpen(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     quickActions.forEach((_, i) => itemScales[i].setValue(1));
@@ -277,7 +328,7 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
 
     if (!best) return null;
-    const limit = best.key === "FAVORITES" ? 8 : 35;
+    const limit = best.key === 'THEME_LIGHT' ? 8 : 35;
     if (best.diff > limit) return null;
 
     return best.key;
@@ -292,9 +343,9 @@ const FloatingNextButton = ({ onPress }: any) => {
       return;
     }
 
-    console.log("[PLUS] release", { dx, dy, button: buttonLayoutRef.current });
+    if (__DEV__) console.log('[PLUS] release', { dx, dy, button: buttonLayoutRef.current });
     const selected = resolveHoveredAction(dx, dy);
-    console.log("[PLUS] selected", selected);
+    if (__DEV__) console.log('[PLUS] selected', selected);
     if (selected) {
       const target = quickActions.find((q) => q.key === selected);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -313,7 +364,7 @@ const FloatingNextButton = ({ onPress }: any) => {
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true, // Zatrzymuje Map/ScrollView przed przejęciem dotyku
       onPanResponderGrant: () => {
-        console.log("[PLUS] grant");
+        if (__DEV__) console.log('[PLUS] grant');
         clearLongPressTimer();
         setHoveredAction(null);
         initialDirectionRef.current = null;
@@ -336,7 +387,7 @@ const FloatingNextButton = ({ onPress }: any) => {
         if (initialDirectionRef.current === "HORIZONTAL") dy = 0;
 
         const hovered = resolveHoveredAction(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y );
-        console.log("[PLUS] move", { moveX: gestureState.moveX, moveY: gestureState.moveY, button: buttonLayoutRef.current, hovered });
+        if (__DEV__) console.log('[PLUS] move', { moveX: gestureState.moveX, moveY: gestureState.moveY, button: buttonLayoutRef.current, hovered });
         setHoveredAction((prev) => {
           if (prev === hovered) return prev;
           if (hovered) void Haptics.selectionAsync();
@@ -370,40 +421,84 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   const isArrow = isFocused && step > 0;
   const isReady = !isFocused || step === 0 || isValid;
+  // Apple-glass grawer: w obu motywach FILL jest CZYSTY BIAŁY (max
+  // jasność), a STROKE robi „halo" w opposite-tone, żeby litery były
+  // czytelne ZARÓWNO na zielonym plus-przycisku, JAK i na szklanym tab
+  // barze (jasnym lub ciemnym). To samo podejście stosuje Apple w iOS
+  // HUD-ach (np. AirPods connect, AirDrop) — białe litery z mikro-obrysem.
+  const circularLabelColor = '#FFFFFF';
+  const circularLabelStroke = isDark
+    ? 'rgba(0,0,0,0.70)'
+    : 'rgba(15,23,42,0.62)';
 
   return (
     <View style={{ top: -35, justifyContent: 'center', alignItems: 'center' }}>
+      {/*
+        Diamentowy pierścień (108×108): krystalicznie przezroczysty z
+        zewnętrznym halo światła. Wewnątrz dwa subtelne gradienty dają efekt
+        szlifu diamentu — łukowy odblask u góry i miękki rozbłysk po skosie,
+        ale CAŁOŚĆ pozostaje przejrzysta — widać przez nią tło tab bara.
+      */}
       <View
         style={{
           position: 'absolute',
           width: 108,
           height: 108,
           borderRadius: 54,
-          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.76)',
-          borderWidth: 1.5,
-          borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.92)',
+          backgroundColor: 'transparent',
+          borderWidth: 1.2,
+          borderColor: isDark ? 'rgba(255,255,255,0.42)' : 'rgba(255,255,255,0.95)',
+          overflow: 'hidden',
           shadowColor: '#FFFFFF',
-          shadowOpacity: isDark ? 0.08 : 0.38,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: isDark ? 0.22 : 0.6,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 0 },
           elevation: 4,
         }}
-      />
+      >
+        <LinearGradient
+          colors={
+            isDark
+              ? ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.02)', 'rgba(255,255,255,0.10)']
+              : ['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.00)', 'rgba(255,255,255,0.20)']
+          }
+          locations={[0, 0.55, 1]}
+          start={{ x: 0.15, y: 0 }}
+          end={{ x: 0.85, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            top: 5,
+            left: 18,
+            right: 18,
+            height: 12,
+            borderRadius: 12,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.7)',
+            opacity: 0.85,
+          }}
+        />
+      </View>
+      {/*
+        Cień pod diamentem — przejrzysty kółkowy „kosz" trzymający świecący
+        plus. Bez własnego mlecznego tła; pełni rolę wyłącznie cieniującą.
+      */}
       <View
         style={{
           position: 'absolute',
           width: 98,
           height: 98,
           borderRadius: 49,
-          backgroundColor: isDark ? 'rgba(0,0,0,0.32)' : 'rgba(180,190,200,0.18)',
+          backgroundColor: 'transparent',
           shadowColor: '#000',
-          shadowOpacity: 0.22,
+          shadowOpacity: isDark ? 0.32 : 0.22,
           shadowRadius: 14,
           shadowOffset: { width: 0, height: 7 },
           elevation: 6,
         }}
       />
-      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { buttonLayoutRef.current = { x: x + w/2, y: y + h/2 }; console.log("[PLUS] measureInWindow", { x, y, w, h, centerX: x + w/2, centerY: y + h/2 }); }); }); }}>
+      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { buttonLayoutRef.current = { x: x + w/2, y: y + h/2 }; if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, centerX: x + w/2, centerY: y + h/2 }); }); }); }}>
         <Animated.View style={{
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
           width: 80,
@@ -414,6 +509,76 @@ const FloatingNextButton = ({ onPress }: any) => {
           alignItems: 'center'
         }}>
           <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
+
+          {/*
+            ╔══════════════════════════════════════════════════════════╗
+            ║  GRAWEROWANE ETYKIETY APPLE-WATCH STYLE                 ║
+            ║                                                          ║
+            ║  Dwa OSOBNE komponenty zamontowane RÓWNOLEGLE — każdy   ║
+            ║  ma WŁASNE, FIXED propsy (tekst, łuk, gap, font, offset).║
+            ║  Przy przełączaniu między stanem plus-button a strzałką ║
+            ║  zmienia się TYLKO `opacity` przez `Animated.timing`     ║
+            ║  (crossfade 240 ms) — żaden SVG się nie remountuje,      ║
+            ║  pozycje są zafiksowane, łuki nie skaczą.                ║
+            ║                                                          ║
+            ║  Dzięki temu napis zachowuje się DOKŁADNIE jak grawer    ║
+            ║  na tarczy Apple Watch: stoi w miejscu, tylko zmienia    ║
+            ║  treść z gładkim przejściem światła.                     ║
+            ║                                                          ║
+            ║  `pointerEvents='none'` na obu — żadnego konfliktu       ║
+            ║  z gestami pan-responder / long-press.                   ║
+            ╚══════════════════════════════════════════════════════════╝
+          */}
+          <Animated.View
+            pointerEvents="none"
+            style={{ position: 'absolute', opacity: plusLabelOpacity }}
+          >
+            <CircularLabelRing
+              text="DODAJ OFERTĘ"
+              arcPosition="top"
+              buttonDiameter={108}
+              // Gap=17 → r≈77, czyli ~5 px POZA halo pierścienia
+              // diamentowego (shadowRadius:18 sięga do r≈72). Skrajne
+              // litery „DO" i „TĘ" przestają być wybielane przez halo.
+              gap={17}
+              fontSize={11.8}
+              letterSpacing={2.2}
+              // arcFraction 0.62 zamiast 0.72 — skrajne litery
+              // skupiają się bliżej GÓRY łuku, daleko od bocznej
+              // krawędzi pierścienia gdzie halo jest najgęstsze.
+              arcFraction={0.62}
+              color={circularLabelColor}
+              strokeColor={circularLabelStroke}
+              strokeWidth={0.85}
+              submerge
+              submergeMidpoint={0.56}
+              // offset +60 → baseline napisu siada na linii krawędzi
+              // szkła tab bara (dolne połówki znikają w pasku).
+              verticalOffset={60}
+            />
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={{ position: 'absolute', opacity: arrowLabelOpacity }}
+          >
+            <CircularLabelRing
+              text="DALEJ"
+              arcPosition="bottom"
+              buttonDiameter={108}
+              gap={8}
+              fontSize={11}
+              letterSpacing={3.4}
+              arcFraction={0.42}
+              color={circularLabelColor}
+              strokeColor={circularLabelStroke}
+              strokeWidth={0.55}
+              submerge
+              submergeMidpoint={0.5}
+              // offset −40 → baseline „DALEJ" w środku pasa szkła,
+              // między ikonami tab bara, bez nachodzenia.
+              verticalOffset={-40}
+            />
+          </Animated.View>
         </Animated.View>
       </View>
       {isQuickMenuOpen && (
@@ -477,17 +642,17 @@ const FloatingNextButton = ({ onPress }: any) => {
                     gap: 6,
                     backgroundColor: isHovered
                       ? item.glassBg
-                      : (isDark ? 'rgba(22,22,24,0.85)' : 'rgba(255,255,255,0.92)'),
+                      : (resolvedDark ? 'rgba(22,22,24,0.85)' : 'rgba(255,255,255,0.92)'),
                     borderWidth: 1.5,
-                    borderColor: isHovered ? item.tint : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
+                    borderColor: isHovered ? item.tint : (resolvedDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'),
                     shadowColor: '#000',
                     shadowOpacity: isHovered ? 0.3 : 0.12,
                     shadowRadius: isHovered ? 14 : 8,
                     shadowOffset: { width: 0, height: 6 },
                   }}
                 >
-                  <Ionicons name={item.icon as any} size={15} color={isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E')} />
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: isHovered ? item.tint : (isDark ? '#FFF' : '#1C1C1E') }}>{item.label}</Text>
+                  <Ionicons name={item.icon as any} size={15} color={isHovered ? item.tint : (resolvedDark ? '#FFF' : '#1C1C1E')} />
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: isHovered ? item.tint : (resolvedDark ? '#FFF' : '#1C1C1E') }}>{item.label}</Text>
                 </View>
               </Animated.View>
             );
@@ -499,6 +664,82 @@ const FloatingNextButton = ({ onPress }: any) => {
 }
 
 const Tab = createBottomTabNavigator();
+const LUXURY_TAB_PRESS_DELAY_MS = 68;
+
+/**
+ * Globalny Apple-style micro interaction dla zwykłych zakładek.
+ *
+ * Daje odczucie „premium delay”: najpierw lekki haptic + miękkie wciśnięcie
+ * ikonki, dopiero po krótkiej pauzie przełącza ekran. Dzięki temu Radar,
+ * Ulubione, Wiadomości i Profil zachowują się jak jeden dopracowany mechanizm,
+ * bez dopisywania animacji w każdym ekranie osobno.
+ */
+function LuxuryTabBarButton(props: any) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const lift = useRef(new Animated.Value(0)).current;
+
+  const animateTo = useCallback((pressed: boolean) => {
+    Animated.parallel([
+      Animated.spring(scale, {
+        toValue: pressed ? 0.92 : 1,
+        friction: 7,
+        tension: 170,
+        useNativeDriver: true,
+      }),
+      Animated.spring(lift, {
+        toValue: pressed ? 1 : 0,
+        friction: 8,
+        tension: 140,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [lift, scale]);
+
+  const baseStyle = typeof props.style === 'function' ? props.style({ pressed: false }) : props.style;
+  const isSelected = Boolean(props.accessibilityState?.selected);
+
+  return (
+    <Pressable
+      {...props}
+      style={[baseStyle, styles.luxuryTabButton]}
+      onPressIn={(e) => {
+        props.onPressIn?.(e);
+        animateTo(true);
+        void Haptics.selectionAsync().catch(() => undefined);
+      }}
+      onPressOut={(e) => {
+        props.onPressOut?.(e);
+        animateTo(false);
+      }}
+      onPress={(e) => {
+        if (isSelected) {
+          props.onPress?.(e);
+          return;
+        }
+        setTimeout(() => props.onPress?.(e), LUXURY_TAB_PRESS_DELAY_MS);
+      }}
+    >
+      <Animated.View
+        style={[
+          styles.luxuryTabButtonInner,
+          {
+            transform: [
+              { scale },
+              {
+                translateY: lift.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -2],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        {props.children}
+      </Animated.View>
+    </Pressable>
+  );
+}
 
 function MainTabs({ splashDone }: { splashDone: boolean }) {
   const restoreSession = useAuthStore(state => state.restoreSession);
@@ -519,6 +760,54 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
 
   useEffect(() => { restoreSession(); }, []);
 
+  // ──────────────────────────────────────────────────────────────────────
+  // IAP BOOTSTRAP (App Store / Google Play)
+  // ──────────────────────────────────────────────────────────────────────
+  // Wymóg Apple Review Guideline 3.1.1: `purchaseUpdatedListener` musi
+  // być zarejestrowany OD MOMENTU STARTU aplikacji — bo system może
+  // doręczyć transakcję asynchronicznie (deferred / Ask to Buy / family
+  // share / odzysk po crashu). Robimy to RAZ na poziomie root layout,
+  // a wszystkie wywołania `purchaseConsumable` / `restorePurchases`
+  // używają tego samego singletonu (`IAPManager`).
+  //
+  // `getToken` jako funkcja (a nie wartość) — bo użytkownik może
+  // zalogować/wylogować się między startem aplikacji a kupnem; manager
+  // bierze świeży token w momencie weryfikacji backendu.
+  useEffect(() => {
+    void IAPManager.init({
+      apiUrl: API_URL,
+      getToken: () => useAuthStore.getState().token,
+    });
+    // Brak `teardown` — manager jest singletonem i ma żyć dopóki żyje
+    // proces aplikacji. React-native-iap nie lubi częstych
+    // `endConnection`/`initConnection`, dlatego trzymamy jedno
+    // połączenie do końca sesji.
+  }, []);
+
+  // ──────────────────────────────────────────────────────────────────────
+  // BLOKADY UŻYTKOWNIKÓW (Apple Guideline 1.2 — UGC)
+  // ──────────────────────────────────────────────────────────────────────
+  // Hydrujemy lokalną listę zablokowanych USERÓW przy każdej zmianie
+  // zalogowanego konta, a potem (jeśli mamy token) wołamy backend po
+  // autorytatywną wersję. Filtry w listach ofert / czatów odpytują
+  // `useBlockedUsersStore.isBlocked(userId)` synchronicznie — dzięki
+  // hydracji w tym efekcie pierwszy render po starcie aplikacji już
+  // pokazuje listę bez treści zablokowanych userów.
+  useEffect(() => {
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) {
+      useBlockedUsersStore.getState().clear();
+      return;
+    }
+    const tokenSnapshot = useAuthStore.getState().token;
+    void (async () => {
+      await useBlockedUsersStore.getState().hydrate(userId);
+      if (tokenSnapshot) {
+        void useBlockedUsersStore.getState().syncFromBackend(tokenSnapshot);
+      }
+    })();
+  }, [token]);
+
   // Application Icon Badge — czerwone „1" na ikonie aplikacji (lockscreen / app
   // library / home screen). Aktualizujemy je za każdym razem, gdy zmieni się
   // liczba dealroomów wymagających uwagi, łącznie ze spadkiem do 0 (po wejściu
@@ -536,13 +825,78 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const currentColors = Colors[resolvedTheme];
 
   return (
-    <Tab.Navigator screenOptions={{ 
+    <Tab.Navigator
+      /**
+       * RN 0.81 + bottom-tabs `animation: 'shift'` + domyślne detach inactive screens
+       * potrafią dać **pusty / biały ekran** przy pierwszym wejściu w zakładkę (iOS).
+       * Zob. react-navigation#12755 — `detachInactiveScreens={false}` usuwa regresję.
+       */
+      detachInactiveScreens={false}
+      screenOptions={{
       headerShown: false, 
+      lazy: true,
+      animation: 'shift',
+      tabBarHideOnKeyboard: true,
+      tabBarButton: (props) => <LuxuryTabBarButton {...props} />,
       tabBarShowLabel: true, 
       tabBarActiveTintColor: Colors.primary, 
       tabBarInactiveTintColor: currentColors.subtitle, 
-      tabBarStyle: { backgroundColor: resolvedTheme === 'dark' ? '#111' : '#ffffff', borderTopWidth: 0, height: 95, paddingBottom: 30, paddingTop: 10 } 
-    }}>
+      tabBarLabelStyle: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: -0.15,
+        marginTop: 1,
+      },
+      tabBarItemStyle: {
+        borderRadius: 20,
+        marginHorizontal: 2,
+      },
+      tabBarBackground: () => (
+        // Owijka klipuje BlurView tylko w obrębie tab bara, ale samej grupy
+        // przycisków NIE klipujemy — dzięki temu wystający centralny „plus"
+        // (FloatingNextButton) ma swobodę wychodzenia ponad krawędź paska.
+        <View style={StyleSheet.absoluteFill as any} pointerEvents="none">
+          <View style={{ flex: 1, overflow: 'hidden' }}>
+            <BlurView
+              intensity={resolvedTheme === 'dark' ? 62 : 78}
+              tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor:
+                    resolvedTheme === 'dark'
+                      ? 'rgba(10,10,12,0.55)'
+                      : 'rgba(255,255,255,0.55)',
+                },
+              ]}
+            />
+          </View>
+        </View>
+      ),
+      tabBarStyle: {
+        backgroundColor: 'transparent',
+        borderTopWidth: 0,
+        height: 95,
+        paddingBottom: 30,
+        paddingTop: 10,
+        // Plusik (FloatingNextButton) ma być widoczny w pełnej krasie nad paskiem,
+        // dlatego sam tab bar nie klipuje swojej zawartości — klipuje tylko
+        // tło (BlurView) wewnątrz `tabBarBackground`.
+        overflow: 'visible',
+        shadowColor: '#000',
+        shadowOpacity: resolvedTheme === 'dark' ? 0.45 : 0.1,
+        shadowRadius: 22,
+        shadowOffset: { width: 0, height: -8 },
+        elevation: 14,
+      },
+      sceneStyle: {
+        backgroundColor: resolvedTheme === 'dark' ? '#000000' : '#F2F2F7',
+      },
+    }}
+    >
       <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>
@@ -834,6 +1188,34 @@ export default function App() {
   const { token } = useAuthStore();
   const { askForPermission } = usePushNotifications(token);
   const systemColorScheme = useColorScheme();
+
+  /** Live Activity: gasimy, gdy w store radar jest wyłączony. Z dysku NIGDY nie wyłączamy radaru w store (tylko użytkownik w kalibracji) — na `active` ewentualnie tylko „podciągamy” włączenie, gdy na dysku jest `1`, a store jeszcze `false` (race po hydratacji). */
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      void (async () => {
+        try {
+          const { user, isRadarActive, setRadarActive } = useAuthStore.getState();
+          if (!user?.id) {
+            await stopRadarLiveActivity();
+            return;
+          }
+          const raw = await AsyncStorage.getItem('@estateos_radar_active');
+          const diskOn = raw === '1';
+          if (diskOn && !isRadarActive) {
+            await setRadarActive(true);
+          }
+          if (!useAuthStore.getState().isRadarActive) {
+            await stopRadarLiveActivity();
+          }
+        } catch {
+          /* noop */
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, []);
+
   const [isSplashVisible, setSplashVisible] = useState(true);
   const themeMode = useThemeStore((state) => state.themeMode);
   const pendingPushTargetRef = useRef<PushNavigationTarget | null>(null);
@@ -856,7 +1238,7 @@ export default function App() {
     }
 
     lastNavigationKeyRef.current = { key: navigationKey, at: now };
-    console.log('[PUSH][NAVIGATE]', navigationKey);
+    if (__DEV__) console.log('[PUSH][NAVIGATE]', navigationKey);
     if (target.screen === 'OfferDetail' || target.screen === 'DealroomChat') {
       (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
     } else {
@@ -891,16 +1273,18 @@ export default function App() {
       handledResponseKeysRef.current[dedupeKey] = now;
 
       const target = parsePushTargetFromResponse(response);
-      console.log(
-        '[PUSH][RESPONSE]',
-        JSON.stringify({
-          dedupeKey,
-          requestIdentifier,
-          actionIdentifier,
-          target,
-          data: response.notification?.request?.content?.data || {},
-        })
-      );
+      if (__DEV__) {
+        console.log(
+          '[PUSH][RESPONSE]',
+          JSON.stringify({
+            dedupeKey,
+            requestIdentifier,
+            actionIdentifier,
+            target,
+            data: response.notification?.request?.content?.data || {},
+          })
+        );
+      }
       if (!target) return;
 
       const navigated = navigateFromPushTarget(target);
@@ -953,14 +1337,30 @@ export default function App() {
           }}
         >
           <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />
-          <AppStack.Navigator screenOptions={{ headerShown: false }}>
+          <AppStack.Navigator
+            screenOptions={{
+              headerShown: false,
+              animation: 'fade_from_bottom',
+              animationDuration: 320,
+              /**
+               * Wyłączone w całej aplikacji: gest „przesuń w prawo / z krawędzi” zamykał ekrany
+               * zamiast przewijać treść (częsty konflikt ze ScrollView). Powrót: przyciski w UI.
+               */
+              gestureEnabled: false,
+              fullScreenGestureEnabled: false,
+              contentStyle: { backgroundColor: resolvedTheme === 'dark' ? '#000000' : '#F2F2F7' },
+            }}
+          >
             <AppStack.Screen name="MainTabs">
               {() => <MainTabs splashDone={!isSplashVisible} />}
             </AppStack.Screen>
             <AppStack.Screen name="RadarLegacy">
               {(props) => <Radar {...props} theme={Colors[resolvedTheme]} />}
             </AppStack.Screen>
-            <AppStack.Screen name="OfferDetail" component={OfferDetail} />
+            <AppStack.Screen
+              name="OfferDetail"
+              component={OfferDetail}
+            />
             <AppStack.Screen name="EditOffer" component={EditOfferScreen} />
             <AppStack.Screen name="Terms" component={TermsScreen} options={{ presentation: 'modal' }} />
             <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
@@ -977,3 +1377,18 @@ export default function App() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  luxuryTabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  luxuryTabButtonInner: {
+    minWidth: 56,
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+  },
+});

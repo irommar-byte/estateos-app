@@ -18,21 +18,29 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import ImageViewing from 'react-native-image-viewing';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
-import { buildOfferShareMessage } from '../utils/offerShareUrls';
+import { buildOfferShareMessage, SITE_ORIGIN } from '../utils/offerShareUrls';
 import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
+import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
+import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
+import { getOfferLifecycleState } from '../utils/offerLifecycle';
 import { formatLocationLabel, formatPublicAddress, resolveIsExactLocation } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
+import { describeOfferAgentCommission, parseOfferNumeric } from '../lib/agentCommission';
+import ReportSheet from '../components/ReportSheet';
+import BlockUserSheet from '../components/BlockUserSheet';
+import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
+import UserRegionFlag from '../components/UserRegionFlag';
+import { API_URL } from '../config/network';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
-const API_URL = 'https://estateos.pl';
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
 
 function parseDealEvent(content?: string) {
@@ -83,6 +91,13 @@ export default function OfferDetail({ route, navigation }: any) {
   const offerFromParams = route?.params?.offer;
   const idFromParams = firstDefined(route?.params?.id, route?.params?.offerId, route?.params?.offer?.id);
   const [hydratedOffer, setHydratedOffer] = useState<any>(null);
+  /**
+   * Status hydratacji — potrzebny, żeby rozróżnić „jeszcze nie próbowano"
+   * od „próbowano i backend zwrócił NIC" (np. oferta zarchiwizowana,
+   * niedostępna dla mobile API). Bez tego stary deeplink do skasowanej
+   * oferty pokazywałby pusty ekran — teraz pokazujemy zaślepkę.
+   */
+  const [hydrationStatus, setHydrationStatus] = useState<'idle' | 'success' | 'missing'>('idle');
 
   // 🔥 FINALNY OBIEKT
   const offer = hydratedOffer || offerFromParams || (idFromParams ? { id: idFromParams } : null);
@@ -94,6 +109,16 @@ export default function OfferDetail({ route, navigation }: any) {
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const theme = { glass: isDark ? 'dark' : 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
+  /*
+   * Wysokość bottom baru mierzymy dynamicznie. Bottom bar może mieć różną wysokość:
+   *   • baseline (cena + CTA),
+   *   • + pigułka „Prowizja agenta" (pełna szerokość) gdy oferta agentowska,
+   *   • + safe-area iOS.
+   * Statyczny `paddingBottom: 160` w `ScrollView` powodował, że galeria/ID oferty/
+   * boksy „Termin spotkania" znikały pod barem. Teraz dorzucamy mierzoną wartość
+   * + 24px komfortu, dzięki czemu ostatnia treść zawsze siedzi luźno nad CTA.
+   */
+  const [bottomBarHeight, setBottomBarHeight] = useState(220);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -197,45 +222,67 @@ export default function OfferDetail({ route, navigation }: any) {
   })();
 
   useEffect(() => {
-    const shouldHydrate = !!idFromParams && (!offerFromParams || !offerFromParams?.title || !offerFromParams?.price);
-    if (!shouldHydrate) return;
+    const id = Number(idFromParams);
+    if (!id) return;
     let mounted = true;
     const run = async () => {
       try {
-        const id = Number(idFromParams);
-        const [mobileRes, webRes] = await Promise.allSettled([
-          fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          }),
-          fetch(`${API_URL}/api/offers/${id}`),
-        ]);
+        const seed = route?.params?.offer && typeof route.params.offer === 'object' ? route.params.offer : null;
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
+        /** Pełny rekord z mobile (lista lub pojedynczy GET) — zawiera m.in. prowizję agenta. */
         let candidate: any = null;
-        if (mobileRes.status === 'fulfilled' && mobileRes.value.ok) {
-          const mobileJson = await mobileRes.value.json();
-          const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
-          candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
+        try {
+          const detailRes = await fetch(`${API_URL}/api/mobile/v1/offers/${id}`, { headers });
+          if (detailRes.ok) {
+            const detailJson = await detailRes.json();
+            candidate =
+              detailJson?.offer ??
+              detailJson?.data?.offer ??
+              detailJson?.data ??
+              (detailJson?.id ? detailJson : null);
+          }
+        } catch {
+          /* endpoint może nie istnieć na starszym backendzie */
         }
 
-        if (!candidate && webRes.status === 'fulfilled' && webRes.value.ok) {
-          const webJson = await webRes.value.json();
-          candidate = webJson?.offer || webJson?.data || (webJson?.id ? webJson : null);
+        if (!candidate) {
+          const mobileRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers });
+          if (mobileRes.ok) {
+            const mobileJson = await mobileRes.json();
+            const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
+            candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
+          }
+        }
+
+        if (!candidate) {
+          const webRes = await fetch(`${API_URL}/api/offers/${id}`);
+          if (webRes.ok) {
+            const webJson = await webRes.json();
+            candidate = webJson?.offer || webJson?.data || (webJson?.id ? webJson : null);
+          }
         }
 
         if (mounted && candidate) {
-          setHydratedOffer(candidate);
+          // Lista Radaru bywa „chuda" (bez prowizji / ról) — zawsze nadbijamy seed świeżym GET-em.
+          setHydratedOffer({
+            ...(seed || {}),
+            ...candidate,
+            id: Number(candidate?.id) || id,
+          });
+          setHydrationStatus('success');
+        } else if (mounted) {
+          setHydrationStatus('missing');
         }
       } catch {
-        // noop
-      } finally {
-        // noop
+        if (mounted) setHydrationStatus('missing');
       }
     };
     run();
     return () => {
       mounted = false;
     };
-  }, [idFromParams, offerFromParams, token]);
+  }, [idFromParams, token]);
 
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -248,7 +295,7 @@ export default function OfferDetail({ route, navigation }: any) {
       return;
     }
     try {
-      await Linking.openURL('https://estateos.pl/cennik');
+      await Linking.openURL(`${SITE_ORIGIN}/cennik`);
     } catch (_error) {
       Alert.alert('EstateOS', 'Nie udało się otworzyć strony cennika PRO.');
     }
@@ -273,6 +320,59 @@ export default function OfferDetail({ route, navigation }: any) {
   useEffect(() => {
     setIsGuestGateVisible(isGuest);
   }, [isGuest]);
+
+  /**
+   * Zgłoszenie wyświetlenia oferty do backendu — fire-and-forget.
+   *
+   * Wcześniej nikt nie pingował serwera, gdy ktoś otwierał `OfferDetail` —
+   * pole `offer.views` mogło rosnąć tylko jeśli backend sam doliczał view
+   * przy GET-ach listy/szczegółu, co byłoby błędem analitycznym (każdy
+   * scroll Radaru bumpałby liczniki).
+   *
+   * Tu wysyłamy JEDEN dedykowany POST przy wejściu w widok oferty:
+   *   POST {API_URL}/api/mobile/v1/offers/{id}/view
+   *
+   * Reguły po stronie klienta:
+   *   • strzelamy tylko gdy mamy realne `offer.id` (po hydratacji),
+   *   • pomijamy własne wyświetlenia właściciela (`isOwner`),
+   *   • blokujemy podwójne strzały w obrębie tej samej instancji ekranu
+   *     (ref) — refresh tej samej karty nie wymusza kolejnego POST-a,
+   *   • błędy łykamy cicho (w DEV logujemy w konsoli) — gdyby endpoint
+   *     jeszcze nie był wdrożony, UI nadal działa.
+   *
+   * Dedupe „1 view per user / IP / N minut" zostaje po stronie backendu —
+   * patrz briefing dla backend-agenta (#offer-view-tracking).
+   */
+  const viewTrackedRef = useRef<number | null>(null);
+  useEffect(() => {
+    const offerIdNum = Number(offer?.id || 0);
+    if (!offerIdNum || offerIdNum <= 0) return;
+    if (viewTrackedRef.current === offerIdNum) return;
+    if (isOwner) return;
+    // Zamknięta oferta to widok „read-only memento" — nie pompujemy
+    // licznika ani statystyk, bo to fałszuje analitykę aktywnego rynku.
+    if (getOfferLifecycleState(offer).isClosed) return;
+
+    viewTrackedRef.current = offerIdNum;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(`${API_URL}/api/mobile/v1/offers/${offerIdNum}/view`, {
+      method: 'POST',
+      headers,
+    })
+      .then((res) => {
+        if (__DEV__) {
+          console.log('[offer-view-track]', offerIdNum, 'status:', res.status);
+        }
+      })
+      .catch((err) => {
+        if (__DEV__) {
+          console.warn('[offer-view-track] failed', err);
+        }
+      });
+  }, [offer?.id, isOwner, token]);
 
   // --- STAN GALERII PEŁNOEKRANOWEJ ---
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
@@ -302,6 +402,10 @@ export default function OfferDetail({ route, navigation }: any) {
   const [ownerProfile, setOwnerProfile] = useState<any>(null);
   const [isOwnerProfileOpen, setIsOwnerProfileOpen] = useState(false);
   const [ownerProfileLoading, setOwnerProfileLoading] = useState(false);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isBlockOpen, setIsBlockOpen] = useState(false);
+  const blockUser = useBlockedUsersStore((s) => s.block);
   const [activeProfileData, setActiveProfileData] = useState<any>(null);
   const [activeProfileLoading, setActiveProfileLoading] = useState(false);
   const [activeProfileUserId, setActiveProfileUserId] = useState<number | null>(null);
@@ -354,9 +458,13 @@ export default function OfferDetail({ route, navigation }: any) {
   const imagesToShow = (realImages && realImages.length > 0) ? realImages : ['https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?q=80&w=1200&auto=format&fit=crop'];
   const lightboxImages = useMemo(() => imagesToShow.map((uri) => ({ uri })), [imagesToShow]);
 
+  const priceNumeric = parseOfferNumeric(offer?.price);
   const displayOffer = {
     title: offer?.title || 'Apartament Premium',
-    price: offer?.price ? new Intl.NumberFormat('pl-PL').format(offer.price) + ' PLN' : 'Cena na zapytanie',
+    price:
+      Number.isFinite(priceNumeric) && priceNumeric > 0
+        ? new Intl.NumberFormat('pl-PL').format(Math.round(priceNumeric)) + ' PLN'
+        : 'Cena na zapytanie',
     location: formatLocationLabel(offer?.city, offer?.district, 'Warszawa'),
     description: sanitizeOfferDescription(offer?.description) || 'Brak opisu dla tej nieruchomości.',
     stats: { beds: offer?.rooms || '-', size: offer?.area ? `${offer.area} m²` : '- m²' }
@@ -365,8 +473,8 @@ export default function OfferDetail({ route, navigation }: any) {
   // w dolnym pasku. Liczymy z surowego `offer.price` i `offer.area`, żeby
   // uniknąć parsowania sformatowanego stringa.
   const pricePerSqmLabel = useMemo(() => {
-    const priceNum = Number(offer?.price);
-    const areaNum = Number(String(offer?.area ?? '').replace(/\s/g, '').replace(',', '.'));
+    const priceNum = parseOfferNumeric(offer?.price);
+    const areaNum = parseOfferNumeric(offer?.area);
     if (!Number.isFinite(priceNum) || priceNum <= 0) return null;
     if (!Number.isFinite(areaNum) || areaNum <= 0) return null;
     const perSqm = Math.round(priceNum / areaNum);
@@ -438,6 +546,136 @@ export default function OfferDetail({ route, navigation }: any) {
   const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
   const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
   const adminFeeLabel = hasAdminFee ? `${Math.round(adminFeeNumber).toLocaleString('pl-PL')} PLN` : 'Brak';
+
+  /**
+   * ====================================================================
+   *  Cykl życia oferty (czy NIE można już z nią nic zrobić)
+   * ====================================================================
+   *
+   *  Cała logika siedzi w `src/utils/offerLifecycle.ts` — tu tylko czytamy
+   *  wynik. Memoizowane, żeby zaślepka nie remountowała się przy każdym
+   *  re-renderze (animacja `fade-in` ma trwać raz, przy wejściu na ekran).
+   *
+   *  Wynik kontroluje:
+   *    1. czy renderujemy `ClosedOfferOverlay` (pełnoekranowa zaślepka),
+   *    2. czy chowamy dolny pasek CTA (Skontaktuj się / Spotkanie / Negocjuj),
+   *    3. czy blokujemy „Polub" w pasku górnym (po co lajkować zamkniętą).
+   */
+  const lifecycleState = useMemo(() => getOfferLifecycleState(offer), [offer]);
+  /**
+   * „Oferta wygląda na duszę" — backend zwrócił 404 / brak w mobile-feed,
+   * a my mamy w paramach tylko goły `id` bez tytułu / ceny. To znaczy:
+   *   • albo została skasowana,
+   *   • albo właściciel ją wycofał i mobile API jej już nie serwuje.
+   * W obu przypadkach traktujemy jako „nieaktualna" — pokazujemy zaślepkę
+   * z reason=EXPIRED (najbliższe semantyczne dopasowanie).
+   */
+  const isHydrationMissing =
+    hydrationStatus === 'missing' && !!idFromParams && !offerFromParams?.title && !offerFromParams?.price;
+  const isOfferLocked = lifecycleState.isClosed || isHydrationMissing;
+
+  /**
+   * ====================================================================
+   *  EstateOS™ Statistics — ROI i status cenowy (Okazja / Rynkowa / Luksusowa)
+   * ====================================================================
+   *
+   * Logika 1:1 jak w `AddOffer/Step4_Finance.tsx` — czyli to, co użytkownik
+   * widzi podczas dodawania oferty, idealnie pokrywa się z tym, co widzi
+   * na karcie OfferDetail. Trzymanie tych liczb w jednym miejscu jest tu
+   * świadomą decyzją: wzór jest świadomie uproszczony („mediana per miasto"),
+   * ma być orientacyjny, a nie wyceną ekspercką (jasno zaznaczone w UI).
+   *
+   * Trzy zmienne wynikowe wykorzystywane w pasku CTA:
+   *   • `marketStatus.label / color / bg`  — etykieta (OKAZJA / W RYNKU /
+   *     LUKSUSOWA) + iOS-owy zielony / żółty / czerwony,
+   *   • `marketDiffPercent`                — różnica vs średnia (pokazywana
+   *     w sub-linii),
+   *   • `estimatedRoi`                     — roczna stopa zwrotu w procentach
+   *     (tylko dla sprzedaży; dla najmu zwraca null).
+   */
+  const cityForStats = String(offer?.city || '').trim();
+  const isRentForStats = String(offer?.transactionType || '').toUpperCase() === 'RENT';
+  const priceNumForStats = parseOfferNumeric(offer?.price);
+  /**
+   * Informacja o prowizji agenta — pokazywana KUPUJĄCEMU w bottom barze
+   * pod ceną. Cena oferty NIE jest modyfikowana, kwota prowizji to
+   * informacja "z tej ceny X% (= Y PLN) stanowi prowizję agenta —
+   * płatna agentowi bezpośrednio po finalizacji transakcji".
+   */
+  const agentCommissionInfo = useMemo(
+    () => describeOfferAgentCommission(offer, offer?.price),
+    [offer],
+  );
+  const txTypeLabel =
+    String(offer?.transactionType || '').toUpperCase() === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+  const propTypeRaw = String(offer?.propertyType || '').toUpperCase();
+  const propTypeLabel =
+    propTypeRaw === 'FLAT' || propTypeRaw === 'APARTMENT'
+      ? 'Mieszkanie'
+      : propTypeRaw === 'HOUSE'
+        ? 'Dom'
+        : propTypeRaw === 'PLOT'
+          ? 'Działka'
+          : propTypeRaw === 'PREMISES'
+            ? 'Lokal użytkowy'
+            : offer?.propertyType
+              ? String(offer.propertyType)
+              : '—';
+  const areaNumForStats = parseOfferNumeric(offer?.area);
+  const offerPricePerSqm =
+    Number.isFinite(priceNumForStats) && priceNumForStats > 0 &&
+    Number.isFinite(areaNumForStats) && areaNumForStats > 0
+      ? Math.round(priceNumForStats / areaNumForStats)
+      : 0;
+  const avgPricePerSqmForCity =
+    cityForStats === 'Warszawa' ? 16500 : (cityForStats === 'Łódź' ? 8500 : 12000);
+  const marketDiffPercent =
+    offerPricePerSqm > 0 && avgPricePerSqmForCity > 0
+      ? Math.round(((offerPricePerSqm - avgPricePerSqmForCity) / avgPricePerSqmForCity) * 100)
+      : null;
+  const marketStatus = (() => {
+    if (marketDiffPercent === null) {
+      return {
+        label: 'BRAK DANYCH',
+        color: '#9ca3af',
+        bg: isDark ? 'rgba(156,163,175,0.15)' : 'rgba(156,163,175,0.12)',
+      };
+    }
+    if (marketDiffPercent <= -5) {
+      return {
+        label: 'OKAZJA',
+        color: '#10b981',
+        bg: isDark ? 'rgba(16,185,129,0.18)' : 'rgba(16,185,129,0.13)',
+      };
+    }
+    if (marketDiffPercent >= 5) {
+      return {
+        label: 'LUKSUSOWA',
+        color: '#ef4444',
+        bg: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.13)',
+      };
+    }
+    return {
+      label: 'RYNKOWA',
+      color: '#f59e0b',
+      bg: isDark ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.13)',
+    };
+  })();
+  const estimatedRoi: number | null = (() => {
+    if (isRentForStats) return null;
+    if (!Number.isFinite(priceNumForStats) || priceNumForStats <= 0) return null;
+    if (!Number.isFinite(areaNumForStats) || areaNumForStats <= 0) return null;
+    let estRentPerSqm = 60;
+    if (cityForStats === 'Warszawa') estRentPerSqm = 85;
+    else if (cityForStats === 'Kraków' || cityForStats === 'Wrocław' || cityForStats === 'Trójmiasto') estRentPerSqm = 65;
+    else if (cityForStats === 'Łódź' || cityForStats === 'Poznań') estRentPerSqm = 55;
+    const monthlyRent = areaNumForStats * estRentPerSqm;
+    const adminMonthly = hasAdminFee ? adminFeeNumber : 0;
+    const netMonthly = Math.max(0, monthlyRent - adminMonthly);
+    const annual = netMonthly * 12;
+    if (annual <= 0) return null;
+    return Number(((annual / priceNumForStats) * 100).toFixed(1));
+  })();
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
   const legalCheckStatus = String(firstDefined(offer?.legalCheckStatus, offer?.verificationStatus, '') || '').toUpperCase();
@@ -856,25 +1094,42 @@ export default function OfferDetail({ route, navigation }: any) {
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
             <ShareIcon color="white" size={20} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.glassButton} onPress={handleFavorite} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
+          <TouchableOpacity style={[styles.glassButton, { marginRight: 12 }]} onPress={handleFavorite} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
             <Animated.View style={animatedHeartStyle}>
               <Heart color={isFavorite ? "#ff3b30" : "white"} fill={isFavorite ? "#ff3b30" : "transparent"} size={20} />
             </Animated.View>
           </TouchableOpacity>
+          {!isOwner ? (
+            <TouchableOpacity
+              style={styles.glassButton}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setIsMoreMenuOpen(true);
+              }}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              accessibilityLabel="Więcej opcji"
+              accessibilityRole="button"
+            >
+              <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+              <MoreHorizontal color="white" size={20} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 160 }}>
+      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: bottomBarHeight + (isOwner ? 64 : 36) }}>
         <View style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}>
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
-            {hasAdminFee ? (
-              <View style={[styles.adminFeeBadge, { backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)', borderColor: isDark ? 'rgba(52,199,89,0.4)' : 'rgba(52,199,89,0.35)' }]}>
-                <Text style={[styles.adminFeeBadgeText, { color: isDark ? '#34d399' : '#1d1d1f' }]}>+ czynsz admin {adminFeeLabel}</Text>
-              </View>
-            ) : null}
+            {/*
+              Wcześniej tu była zielona pigułka „+ czynsz admin {kwota} PLN".
+              Została przeniesiona do dolnego paska CTA — bezpośrednio pod
+              ceną — żeby cała informacja o cenie i jej składnikach była
+              w jednym miejscu. Tutaj zostawiamy tylko widget „liczby
+              wyświetleń / Nowa oferta" jako neutralny meta-badge.
+            */}
             <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
               <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
               <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>{viewsCount > 0 ? `${viewsCount.toLocaleString('pl-PL')} wyświetleń` : 'Nowa oferta'}</Text>
@@ -894,6 +1149,7 @@ export default function OfferDetail({ route, navigation }: any) {
             <Text style={[styles.locationText, isDark && { color: '#9ca3af' }]}>{locationLine}</Text>
           </Pressable>
           
+          <View style={styles.legalVerificationBlock}>
           <View style={[styles.safetyBadgeCard, isLegalSafeVerified ? (isDark ? styles.safetyBadgeCardVerifiedDark : styles.safetyBadgeCardVerified) : (isDark ? styles.safetyBadgeCardPendingDark : styles.safetyBadgeCardPending)]}>
             <View style={[styles.safetyBadgeIconWrap, isLegalSafeVerified ? (isDark ? styles.safetyBadgeIconWrapVerifiedDark : styles.safetyBadgeIconWrapVerified) : (isDark ? styles.safetyBadgeIconWrapPendingDark : null)]}>
               <ShieldCheck color={isLegalSafeVerified ? '#10b981' : (isDark ? '#9ca3af' : '#6b7280')} size={16} />
@@ -904,6 +1160,22 @@ export default function OfferDetail({ route, navigation }: any) {
               </Text>
               <Text style={[styles.safetyBadgeSub, isDark && { color: '#9ca3af' }]}>{legalSafetyText}</Text>
             </View>
+          </View>
+
+          {/*
+            Karta zarządcza dla WŁAŚCICIELA — pokazuje aktualny status
+            zgłoszenia KW + nr lokalu i pozwala je wysłać / poprawić.
+            Zwykli widzowie nadal widzą tylko `safetyBadgeCard` powyżej.
+          */}
+          {isOwner && Number(offer?.id) > 0 ? (
+            <OwnerLegalVerificationCard
+              offerId={Number(offer.id)}
+              token={token}
+              isDark={isDark}
+              initialLandRegistryNumber={offer?.landRegistryNumber || null}
+              initialApartmentNumber={offer?.apartmentNumber || null}
+            />
+          ) : null}
           </View>
 
           <View style={styles.statsGrid}>
@@ -923,6 +1195,23 @@ export default function OfferDetail({ route, navigation }: any) {
               <Calendar color={isDark ? "#e5e7eb" : "#1d1d1f"} size={26} strokeWidth={1.5} />
               <Text style={[styles.statText, { color: isDark ? '#e5e7eb' : '#1d1d1f' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Rok {offer?.yearBuilt || offer?.buildYear || offer?.year || '-'}</Text>
             </View>
+          </View>
+
+          <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>Kluczowe parametry</Text>
+          <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
+            <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.1)' }]} pointerEvents="none" />
+            <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Typ transakcji</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{txTypeLabel}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Typ nieruchomości</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{propTypeLabel}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Powierzchnia</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{displayOffer.stats.size}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Pokoje</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{offer?.rooms != null && offer?.rooms !== '' ? String(offer.rooms) : '—'}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Piętro</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatFloorStat(offer?.floor)}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Rok budowy</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{offer?.yearBuilt || offer?.buildYear || offer?.year || '—'}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Cena</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{displayOffer.price}</Text></View>
+            <View style={[styles.detailRow, { borderBottomColor: isPartnerListing || agentCommissionInfo ? (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent', borderBottomWidth: isPartnerListing || agentCommissionInfo ? StyleSheet.hairlineWidth : 0 }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Cena za m²</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{pricePerSqmLabel || '—'}</Text></View>
+            {isPartnerListing || agentCommissionInfo ? (
+              <View style={[styles.detailRow, { borderBottomWidth: 0 }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>Prowizja agenta</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]} numberOfLines={6}>{agentCommissionInfo ? (agentCommissionInfo.isZero ? 'Bez prowizji (0%). Kupujący nie dopłaca prowizji pośrednika.' : `${agentCommissionInfo.percentLabel} ceny ofertowej (brutto), ok. ${agentCommissionInfo.amountLabel}, płatne agentowi po sfinalizowaniu transakcji.`) : 'Biuro nie ujawniło procentu prowizji w ogłoszeniu.'}</Text></View>
+            ) : null}
           </View>
 
           <View style={[styles.divider, isDark && { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
@@ -1017,12 +1306,19 @@ export default function OfferDetail({ route, navigation }: any) {
       </Animated.ScrollView>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
-      <View style={styles.bottomBarContainer}>
+      <View
+        style={styles.bottomBarContainer}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          // Aktualizujemy tylko gdy zmiana > 2px, żeby nie wpadać w pętlę re-renderów.
+          if (Math.abs(h - bottomBarHeight) > 2) setBottomBarHeight(h);
+        }}
+      >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, isDark && { backgroundColor: 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           
-          {/* TOP ROW: Cena i Użytkownik */}
+          {/* TOP ROW: Cena (z meta-pigułkami) + ROI / status cenowy / sprzedawca */}
           <View style={styles.bottomBarTopRow}>
-            <View style={{ flexShrink: 1, marginRight: 12 }}>
+            <View style={styles.bottomBarPriceColumn}>
               <Text style={styles.bottomBarPriceLabel}>Cena ofertowa</Text>
               <Text
                 style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
@@ -1032,39 +1328,246 @@ export default function OfferDetail({ route, navigation }: any) {
               >
                 {displayOffer.price}
               </Text>
-              {pricePerSqmLabel ? (
-                <Text style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
-                  {pricePerSqmLabel}
-                </Text>
-              ) : null}
+              {/*
+                Wiersz meta pod główną kwotą — krótkie pigułki w stylu Apple:
+                  • PLN/m² (neutralne, główna informacja porównawcza),
+                  • status cenowy (Okazja / Rynkowa / Luksusowa) — zielony /
+                    żółty / czerwony zgodnie z `EstateOS™ Statistics`,
+                  • „+ czynsz admin {kwota}" (przeniesione tu z górnego rzędu).
+              */}
+              <View style={styles.priceMetaRow}>
+                {pricePerSqmLabel ? (
+                  <Text
+                    style={[styles.bottomBarPriceSqm, isDark && { color: '#9ca3af' }]}
+                    numberOfLines={1}
+                  >
+                    {pricePerSqmLabel}
+                  </Text>
+                ) : null}
+                {marketDiffPercent !== null ? (
+                  <View
+                    style={[
+                      styles.marketStatusPill,
+                      { backgroundColor: marketStatus.bg, borderColor: marketStatus.color },
+                    ]}
+                  >
+                    <View style={[styles.marketStatusDot, { backgroundColor: marketStatus.color }]} />
+                    <Text
+                      style={[styles.marketStatusPillText, { color: marketStatus.color }]}
+                      numberOfLines={1}
+                    >
+                      {marketStatus.label}
+                    </Text>
+                  </View>
+                ) : null}
+                {hasAdminFee ? (
+                  <View
+                    style={[
+                      styles.adminFeeMiniPill,
+                      {
+                        backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(52,199,89,0.12)',
+                        borderColor: isDark ? 'rgba(52,199,89,0.42)' : 'rgba(52,199,89,0.38)',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.adminFeeMiniPillText,
+                        { color: isDark ? '#34d399' : '#15803d' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      + czynsz admin {adminFeeLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
 
             {isOwner ? (
-              <View style={[styles.ownerCompactPill, isDark && { backgroundColor: '#1c1c1e' }]}>
-                <Text style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>Twój panel zarządzania</Text>
+              /*
+                Dla właściciela: zamiast pustej „Twój panel zarządzania"
+                wstawiamy KOLUMNĘ analityczną:
+                  1) karta `EstateOS™ ROI` z roczną stopą zwrotu,
+                  2) mała etykieta z % różnicy względem średniej.
+                Stylem przypomina to kartę ROI z `AddOffer/Step4_Finance`.
+              */
+              <View style={styles.ownerStatsColumn}>
+                {estimatedRoi !== null ? (
+                  <View
+                    style={[
+                      styles.roiPillCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
+                        borderColor: '#3b82f6',
+                      },
+                    ]}
+                  >
+                    <Text style={styles.roiPillLabel} numberOfLines={1}>
+                      EstateOS™ ROI
+                    </Text>
+                    <Text style={styles.roiPillValue} numberOfLines={1}>
+                      {estimatedRoi}%
+                    </Text>
+                    <Text style={styles.roiPillSub} numberOfLines={1}>
+                      roczna stopa
+                    </Text>
+                  </View>
+                ) : null}
+                {marketDiffPercent !== null ? (
+                  <Text
+                    style={[styles.marketDiffSubText, { color: marketStatus.color }]}
+                    numberOfLines={1}
+                    allowFontScaling={false}
+                  >
+                    {marketDiffPercent > 0 ? '+' : ''}
+                    {marketDiffPercent}% vs rynek
+                  </Text>
+                ) : null}
               </View>
             ) : (
-              <Pressable 
-                onPress={openOwnerProfileModal} 
-                style={({ pressed }) => [styles.ownerCompactPill, isDark && { backgroundColor: '#1c1c1e' }, pressed && { opacity: 0.7 }]}
+              <Pressable
+                onPress={openOwnerProfileModal}
+                style={({ pressed }) => [
+                  styles.ownerCompactPill,
+                  isDark && { backgroundColor: '#1c1c1e' },
+                  agentCommissionInfo?.companyName && {
+                    borderColor: 'rgba(255,159,10,0.55)',
+                    borderWidth: 1,
+                  },
+                  pressed && { opacity: 0.7 },
+                ]}
               >
-                <View style={styles.ownerAvatarMock}>
+                <View
+                  style={[
+                    styles.ownerAvatarMock,
+                    agentCommissionInfo?.companyName && { backgroundColor: '#FF9F0A' },
+                  ]}
+                >
                   <ShieldCheck size={12} color="#fff" />
                 </View>
                 <View style={styles.ownerPillInfo}>
                   <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
-                    {ownerProfile?.user?.name?.split(' ')[0] || offer?.userName || 'Sprzedawca'}
+                    {agentCommissionInfo?.companyName ||
+                      ownerProfile?.user?.name?.split(' ')[0] ||
+                      offer?.userName ||
+                      'Sprzedawca'}
                   </Text>
-                  <View style={styles.ownerStarsRowMini}>
-                    <Star size={10} color="#f59e0b" fill="#f59e0b" />
-                    <Text style={styles.ownerPillRatingText}>
-                      {ownerProfileLoading ? '-' : (ownerAverageRating || 0).toFixed(1)}
+                  {agentCommissionInfo?.companyName ? (
+                    <Text style={[styles.ownerPillAgentBadge]} numberOfLines={1}>
+                      Agent EstateOS™
                     </Text>
-                  </View>
+                  ) : (
+                    <View style={styles.ownerStarsRowMini}>
+                      <Star size={10} color="#f59e0b" fill="#f59e0b" />
+                      <Text style={styles.ownerPillRatingText}>
+                        {ownerProfileLoading ? '-' : (ownerAverageRating || 0).toFixed(1)}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </Pressable>
             )}
           </View>
+
+          {/*
+            PIGUŁKA PROWIZJI AGENTA — pełna szerokość bottom baru.
+            Zawsze ROW POD `bottomBarTopRow`, więc procent + kwota się nie
+            ucinają, a opis może spokojnie wieleć na 2 linie.
+          */}
+          {agentCommissionInfo ? (
+            <View
+              style={[
+                styles.agentCommissionPill,
+                agentCommissionInfo.isZero
+                  ? {
+                      backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
+                      borderColor: isDark ? 'rgba(16,185,129,0.6)' : 'rgba(16,185,129,0.5)',
+                    }
+                  : {
+                      backgroundColor: isDark ? 'rgba(255,159,10,0.14)' : 'rgba(255,159,10,0.10)',
+                      borderColor: isDark ? 'rgba(255,159,10,0.55)' : 'rgba(255,159,10,0.45)',
+                    },
+              ]}
+            >
+              <View style={styles.agentCommissionTopRow}>
+                <View style={styles.agentCommissionLabelCol}>
+                  <View style={styles.agentCommissionLabelLine}>
+                    <Handshake
+                      size={13}
+                      color={agentCommissionInfo.isZero ? '#10b981' : '#FF9F0A'}
+                      strokeWidth={2.6}
+                    />
+                    <Text
+                      style={[
+                        styles.agentCommissionTopLabel,
+                        { color: agentCommissionInfo.isZero ? '#10b981' : '#FF9F0A' },
+                      ]}
+                      numberOfLines={1}
+                      allowFontScaling={false}
+                    >
+                      {agentCommissionInfo.isZero ? 'BEZ PROWIZJI' : 'PROWIZJA AGENTA'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.agentCommissionHeroCol}>
+                  {agentCommissionInfo.isZero ? (
+                    <Text
+                      style={[styles.agentCommissionHeroAmount, { color: '#10b981' }]}
+                      numberOfLines={1}
+                      allowFontScaling={false}
+                    >
+                      0% · 0 PLN
+                    </Text>
+                  ) : (
+                    <>
+                      <Text
+                        style={[styles.agentCommissionHeroPercent, { color: '#FF9F0A' }]}
+                        numberOfLines={1}
+                        allowFontScaling={false}
+                      >
+                        {agentCommissionInfo.percentLabel}
+                      </Text>
+                      <Text
+                        style={[styles.agentCommissionHeroAmount, { color: '#FF9F0A' }]}
+                        numberOfLines={1}
+                        allowFontScaling={false}
+                      >
+                        ≈ {agentCommissionInfo.amountLabel}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </View>
+              <Text
+                style={[
+                  styles.agentCommissionBody,
+                  agentCommissionInfo.isZero
+                    ? { color: isDark ? '#9BE7C7' : '#047857' }
+                    : { color: isDark ? '#FFD09B' : '#B45309' },
+                ]}
+              >
+                {agentCommissionInfo.isZero ? (
+                  <>
+                    Kupujący nie płaci prowizji na tym ogłoszeniu.{' '}
+                    {agentCommissionInfo.companyName
+                      ? `${agentCommissionInfo.companyName} udostępnia ofertę bez dodatkowych opłat dla nabywcy.`
+                      : 'Agent udostępnia ofertę bez dodatkowych opłat dla nabywcy.'}
+                  </>
+                ) : (
+                  <>
+                    Płacisz dokładnie cenę ofertową — z tej kwoty{' '}
+                    {agentCommissionInfo.amountLabel} ({agentCommissionInfo.percentLabel}) trafia do
+                    {agentCommissionInfo.companyName ? ` ${agentCommissionInfo.companyName}` : ' agenta'}{' '}
+                    po finalizacji transakcji.{' '}
+                    <Text style={{ fontWeight: '800' }}>
+                      Kwota prowizji jest BRUTTO — zawiera już VAT, kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.
+                    </Text>
+                  </>
+                )}
+              </Text>
+            </View>
+          ) : null}
 
           {/* BOTTOM ROW: Akcje */}
           <View style={styles.bottomActionsRow}>
@@ -1265,6 +1768,13 @@ export default function OfferDetail({ route, navigation }: any) {
               </View>
             ) : (
               <>
+                <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                  <UserRegionFlag
+                    phone={activeProfileData?.user?.phone || activeProfileData?.user?.contactPhone}
+                    fallbackIso="PL"
+                    size={40}
+                  />
+                </View>
                 <Text style={styles.profileName}>{activeProfileData?.user?.name || 'Użytkownik'}</Text>
                 <EliteStatusBadges subject={activeProfileData?.user || activeProfileData} isDark compact />
                 <Text style={styles.profileMeta}>ID: {activeProfileData?.user?.id || activeProfileUserId || offer?.userId || '-'}</Text>
@@ -1460,6 +1970,152 @@ export default function OfferDetail({ route, navigation }: any) {
         </BlurView>
       </Modal>
 
+      {/*
+        ====================================================================
+         Zaślepka „Oferta zakończona / nieaktualna"
+        ====================================================================
+        Renderujemy JAKO OSTATNI element w `container`, żeby leżała na samej
+        górze stosu (przykrywa zarówno hero, content, jak i dolny pasek CTA).
+        `pointerEvents: 'auto'` w środku komponentu robi blokadę interakcji
+        bez konieczności rozplątywania pojedynczych przycisków pod spodem.
+
+        Dla właściciela też pokazujemy, ale z innym tonem („Twoja oferta
+        jest zakończona") — może wrócić do panelu i przywrócić publikację.
+      */}
+      {isOfferLocked ? (
+        <ClosedOfferOverlay
+          visible
+          reason={lifecycleState.isClosed ? lifecycleState.reason : 'EXPIRED'}
+          headline={lifecycleState.isClosed ? lifecycleState.headline : 'Oferta nieaktualna'}
+          subline={
+            lifecycleState.isClosed
+              ? lifecycleState.subline
+              : 'Ten link prowadzi do oferty, która nie jest już dostępna w EstateOS™. Mogła zostać wycofana z rynku lub jej okres publikacji się skończył.'
+          }
+          isDark={isDark}
+          isOwner={isOwner}
+          onGoBack={() => navigation?.goBack?.()}
+          onBrowseSimilar={
+            isOwner
+              ? undefined
+              : () => {
+                  // Wracamy na ekran główny Radaru — to tam użytkownik
+                  // dostanie świeże propozycje pasujące do jego kryteriów.
+                  try {
+                    navigation?.navigate?.('MainTabs', { screen: 'Radar' });
+                  } catch {
+                    navigation?.goBack?.();
+                  }
+                }
+          }
+        />
+      ) : null}
+
+      {/* Action sheet z opcjami „⋯" — Apple Guideline 1.2 (Report + Block). */}
+      <Modal
+        visible={isMoreMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMoreMenuOpen(false)}
+      >
+        <Pressable
+          style={styles.moreOverlay}
+          onPress={() => setIsMoreMenuOpen(false)}
+        >
+          <View
+            style={[
+              styles.moreSheet,
+              {
+                backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : 'rgba(255,255,255,0.98)',
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => {
+                setIsMoreMenuOpen(false);
+                setTimeout(() => setIsReportOpen(true), 180);
+              }}
+              style={({ pressed }) => [
+                styles.moreItem,
+                pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+              ]}
+              accessibilityRole="button"
+            >
+              <Flag color="#FF9F0A" size={18} />
+              <Text style={[styles.moreItemText, { color: isDark ? '#fff' : '#111' }]}>
+                Zgłoś ofertę
+              </Text>
+            </Pressable>
+            {offer?.userId && Number(offer.userId) !== Number(user?.id || 0) ? (
+              <Pressable
+                onPress={() => {
+                  setIsMoreMenuOpen(false);
+                  setTimeout(() => setIsBlockOpen(true), 180);
+                }}
+                style={({ pressed }) => [
+                  styles.moreItem,
+                  { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+                  pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+                ]}
+                accessibilityRole="button"
+              >
+                <Ban color="#FF453A" size={18} />
+                <Text style={[styles.moreItemText, { color: isDark ? '#fff' : '#111' }]}>
+                  Zablokuj sprzedającego
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={() => setIsMoreMenuOpen(false)}
+              style={({ pressed }) => [
+                styles.moreCancel,
+                { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
+                pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' },
+              ]}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.moreCancelText, { color: isDark ? '#fff' : '#111' }]}>
+                Anuluj
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <ReportSheet
+        visible={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        targetType="offer"
+        targetId={Number(offer?.id || 0)}
+        targetLabel={displayOffer?.title ? `Oferta: ${displayOffer.title}` : undefined}
+        token={token}
+        isDark={isDark}
+      />
+
+      <BlockUserSheet
+        visible={isBlockOpen}
+        onClose={() => setIsBlockOpen(false)}
+        targetLabel={
+          ownerProfile?.user?.name ||
+          ownerProfile?.user?.fullName ||
+          undefined
+        }
+        affectsConversations
+        isDark={isDark}
+        onConfirm={async () => {
+          const targetId = Number(offer?.userId || 0);
+          if (!targetId || !token || !user?.id) {
+            return { ok: false, error: 'MISSING_CONTEXT' };
+          }
+          const result = await blockUser(targetId, token, user.id);
+          if (result.ok) {
+            setTimeout(() => navigation?.goBack?.(), 220);
+          }
+          return result;
+        }}
+      />
+
     </View>
   );
 }
@@ -1542,12 +2198,12 @@ const styles = StyleSheet.create({
   locationModalHint: { marginTop: 8, fontSize: 12, color: '#9ca3af' },
   safetyBadgeCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 24,
+    paddingVertical: 14,
+    marginBottom: 0,
     gap: 12,
   },
   safetyBadgeCardPending: {
@@ -1583,6 +2239,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(107,114,128,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 2,
   },
   safetyBadgeIconWrapPendingDark: {
     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -1606,6 +2263,11 @@ const styles = StyleSheet.create({
   safetyBadgeTitleVerified: { color: '#047857' },
   safetyBadgeTitleVerifiedDark: { color: '#34d399' },
   safetyBadgeSub: { color: '#6b7280', fontSize: 12, fontWeight: '600', marginTop: 1 },
+  /** Blok „Weryfikacja prawna" + opcjonalna karta KW właściciela — odstępy pod stały bottom bar z ceną. */
+  legalVerificationBlock: {
+    gap: 14,
+    marginBottom: 32,
+  },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14, columnGap: '4%', marginBottom: 32 },
   statBox: {
     alignItems: 'center',
@@ -1650,9 +2312,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.55)',
   },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.04)' },
-  detailLabel: { color: '#86868b', fontSize: 15, fontWeight: '500' },
-  detailValue: { color: '#1d1d1f', fontSize: 15, fontWeight: '600' },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+  },
+  detailLabel: {
+    color: '#86868b',
+    fontSize: 15,
+    fontWeight: '500',
+    flexShrink: 0,
+    marginRight: 10,
+    maxWidth: '46%',
+  },
+  detailValue: {
+    color: '#1d1d1f',
+    fontSize: 15,
+    fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'right',
+  },
   amenitiesWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 32 },
   amenityPill: { backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
@@ -1675,11 +2358,168 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 20,
   },
-  bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  bottomBarTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, gap: 12 },
+  bottomBarPriceColumn: { flex: 1, minWidth: 0 },
   bottomBarPriceLabel: { fontSize: 11, fontWeight: '700', color: '#86868b', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   bottomBarPrice: { fontSize: 22, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5 },
-  bottomBarPriceSqm: { fontSize: 12, fontWeight: '600', color: '#6b7280', letterSpacing: 0.1, marginTop: 2 },
-  
+  bottomBarPriceSqm: { fontSize: 12, fontWeight: '600', color: '#6b7280', letterSpacing: 0.1 },
+
+  /**
+   * Wiersz meta pod ceną — luźne mini-pigułki, owijają się gdyby zabrakło
+   * miejsca (`flexWrap: 'wrap'`), więc na małych ekranach „LUKSUSOWA" oraz
+   * „+ czynsz admin XYZ PLN" mogą wskoczyć w kolejną linię — żaden tekst
+   * się nie ucina.
+   */
+  priceMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    maxWidth: '100%',
+  },
+  marketStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  marketStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
+  },
+  marketStatusPillText: {
+    fontSize: 10.5,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  adminFeeMiniPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  adminFeeMiniPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  /*
+    — Pigułka prowizji agenta — pełna szerokość bottom baru.
+    Renderowana POD `bottomBarTopRow`, dlatego procent + kwota mieszczą się
+    bez ucinania i opis ma luz na 2 linie nawet na iPhone Mini / SE.
+  */
+  agentCommissionPill: {
+    marginTop: -2,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  agentCommissionTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 6,
+  },
+  agentCommissionLabelCol: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 1,
+  },
+  agentCommissionLabelLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  agentCommissionTopLabel: {
+    fontSize: 10.5,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    flexShrink: 1,
+  },
+  agentCommissionHeroCol: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  agentCommissionHeroPercent: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.2,
+    lineHeight: 18,
+  },
+  agentCommissionHeroAmount: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginTop: 1,
+  },
+  agentCommissionBody: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 15,
+  },
+
+  /** Kolumna analityczna dla właściciela — `EstateOS™ ROI` + delta vs średnia */
+  ownerStatsColumn: {
+    alignItems: 'flex-end',
+    flexShrink: 1,
+    maxWidth: 130,
+  },
+  roiPillCard: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1.4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+    minWidth: 110,
+  },
+  roiPillLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    color: '#3b82f6',
+    textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  roiPillValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.4,
+    color: '#3b82f6',
+    lineHeight: 22,
+  },
+  roiPillSub: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#3b82f6',
+    opacity: 0.78,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginTop: 1,
+  },
+  marketDiffSubText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginTop: 4,
+    textAlign: 'right',
+  },
+
   ownerCompactPill: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -1699,6 +2539,7 @@ const styles = StyleSheet.create({
   ownerPillName: { color: '#1d1d1f', fontSize: 12, fontWeight: '700' },
   ownerStarsRowMini: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
   ownerPillRatingText: { color: '#6b7280', fontSize: 10, fontWeight: '700', marginLeft: 4 },
+  ownerPillAgentBadge: { color: '#FF9F0A', fontSize: 10, fontWeight: '800', letterSpacing: 0.3, marginTop: 1 },
   
   bottomActionsRow: { flexDirection: 'row', gap: 12 },
   actionFlexWrap: { flex: 1 },
@@ -1917,5 +2758,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 4,
     lineHeight: 18,
+  },
+  moreOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    padding: 12,
+    paddingBottom: 26,
+  },
+  moreSheet: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  moreItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  moreItemText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  moreCancel: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  moreCancelText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

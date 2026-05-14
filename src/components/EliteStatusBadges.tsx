@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Crown, ShieldCheck } from 'lucide-react-native';
-import { isInvestorProIdentity, isPartnerIdentity } from '../utils/partnerIdentity';
+import { Crown, Flame, ShieldCheck } from 'lucide-react-native';
+import { isAgentRoleIdentity, isInvestorProIdentity, isPartnerIdentity } from '../utils/partnerIdentity';
 
 type Props = {
   subject: any;
@@ -34,10 +34,39 @@ function Badge({
   );
 }
 
+/** Jednolita czerwień, biały napis i ikona — bez animacji (rola `ADMIN`). */
+const ADMIN_BADGE_RED = '#DC2626';
+
+function AdminBadge({ compact }: { compact: boolean }) {
+  return (
+    <View
+      style={[
+        styles.badge,
+        compact ? styles.badgeCompact : null,
+        { backgroundColor: ADMIN_BADGE_RED, borderColor: ADMIN_BADGE_RED },
+      ]}
+    >
+      <Flame size={compact ? 12 : 13} color="#FFFFFF" strokeWidth={2.6} />
+      <Text style={[styles.text, compact ? styles.textCompact : null, styles.adminText, { color: '#FFFFFF' }]}>
+        ADMINISTRATOR
+      </Text>
+    </View>
+  );
+}
+
 export default function EliteStatusBadges({ subject, isDark = false, compact = false }: Props) {
-  const showPartner = isPartnerIdentity(subject);
-  const showPro = isInvestorProIdentity(subject);
-  if (!showPartner && !showPro) return null;
+  const role = String(subject?.role || subject?.user?.role || '').trim().toUpperCase();
+  const isAdmin = role === 'ADMIN';
+
+  /* Administrator dostaje WSZYSTKIE plakietki które przysługują (Partner,
+     Investor Pro) plus DODATKOWO czerwoną „ADMINISTRATOR". Pozostali widzą tylko Partner/Pro. */
+  const showPartner = isAdmin || isPartnerIdentity(subject);
+  const showPro = isAdmin || isInvestorProIdentity(subject);
+  if (!isAdmin && !showPartner && !showPro) return null;
+
+  // Nowa rola AGENT (mobile) → plakietka „Agent EstateOS".
+  // Legacy (Partner/Agency/Broker, planType=AGENCY) → „Partner EstateOS".
+  const partnerLabel = isAgentRoleIdentity(subject) ? 'Agent EstateOS' : 'Partner EstateOS';
 
   const partnerColors = isDark
     ? { bg: 'rgba(255,149,0,0.2)', border: 'rgba(255,159,10,0.7)', text: '#FFB340' }
@@ -48,10 +77,11 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
 
   return (
     <View style={[styles.row, compact ? styles.rowCompact : null]}>
+      {isAdmin ? <AdminBadge compact={compact} /> : null}
       {showPartner ? (
         <Badge
           compact={compact}
-          label="Partner EstateOS"
+          label={partnerLabel}
           colors={partnerColors}
           icon={<ShieldCheck size={compact ? 11 : 12} color={partnerColors.text} />}
         />
@@ -102,5 +132,10 @@ const styles = StyleSheet.create({
   },
   textCompact: {
     fontSize: 10,
+  },
+
+  adminText: {
+    letterSpacing: 0.6,
+    fontWeight: '900',
   },
 });

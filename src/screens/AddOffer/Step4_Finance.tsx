@@ -4,8 +4,23 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
+import { useAuthStore } from '../../store/useAuthStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import {
+  AGENT_COMMISSION_MAX_PERCENT,
+  AGENT_COMMISSION_MIN_PERCENT,
+  AGENT_COMMISSION_STEP_PERCENT,
+  AGENT_COMMISSION_DEFAULT_PERCENT,
+  AGENT_COMMISSION_ZERO_PERCENT,
+  computeAgentCommissionAmount,
+  formatPercentLabel,
+  formatPlnAmount,
+  isAgentCommissionAccount,
+  isZeroCommissionPercent,
+  parseAgentCommissionPercent,
+  roundToQuarter,
+} from '../../lib/agentCommission';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
 
@@ -17,6 +32,8 @@ const formatNumber = (val: any) => {
 
 export default function Step4_Finance({ theme }: { theme: any }) {
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
+  const user = useAuthStore((s) => s.user);
+  const isAgent = isAgentCommissionAccount(user);
   const navigation = useNavigation<any>();
   useFocusEffect(useCallback(() => { setCurrentStep(4); }, []));
 
@@ -66,6 +83,75 @@ export default function Step4_Finance({ theme }: { theme: any }) {
     }
     // Dla sprzedaży utrzymujemy spójność obu pól (legacy rent + canonical adminFee).
     updateDraft({ rent: value, adminFee: value });
+  };
+
+  /* ============================================================
+   *  PROWIZJA AGENTA — sekcja widoczna TYLKO dla user.role === 'AGENT'.
+   *  Cena oferty NIE jest podnoszona — to tylko informacja dla kupującego,
+   *  ile z ceny stanowi prowizję pośrednika (opłacaną agentowi BEZPOŚREDNIO
+   *  po zawarciu transakcji, poza platformą).
+   * ============================================================ */
+  const commissionPercent = parseAgentCommissionPercent(draft.agentCommissionPercent);
+  const hasCommissionSlot = commissionPercent !== null;
+  const isZeroCommission = isZeroCommissionPercent(commissionPercent);
+  const commissionAmount = isZeroCommission ? 0 : computeAgentCommissionAmount(priceNum, commissionPercent);
+  const commissionInRange =
+    commissionPercent !== null &&
+    (commissionPercent === AGENT_COMMISSION_ZERO_PERCENT ||
+      (commissionPercent >= AGENT_COMMISSION_MIN_PERCENT &&
+        commissionPercent <= AGENT_COMMISSION_MAX_PERCENT));
+
+  // Kolor akcentu karty: zielony dla 0% („bez prowizji"), pomarańczowy dla standardowej.
+  const commissionAccent = isZeroCommission ? '#10b981' : '#FF9F0A';
+  const commissionAccentBgLight = isZeroCommission ? 'rgba(16,185,129,0.12)' : 'rgba(255,159,10,0.12)';
+  const commissionAccentBgStrong = isZeroCommission ? 'rgba(16,185,129,0.18)' : 'rgba(255,159,10,0.16)';
+  const commissionAccentBorder = isZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.55)';
+
+  const handleCommissionChange = (text: string) => {
+    // Akceptujemy puste / liczby z `.` lub `,` — bez agresywnej walidacji
+    // w trakcie wpisywania (walidacja jest przy submitcie w Step6_Summary).
+    const cleaned = text.replace(/[^0-9.,]/g, '');
+    updateDraft({ agentCommissionPercent: cleaned });
+  };
+
+  /** Zmiana o ±0.25 z preserwacją "twardych" przejść:
+   *   • 0% + krok dodatni → skacze do AGENT_COMMISSION_MIN_PERCENT (0.5%), nie 0.25%
+   *   • 0.5% + krok ujemny → skacze do 0% (świadomy tryb „Bez prowizji"), nie 0.25% */
+  const adjustCommission = (delta: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const base = commissionPercent ?? AGENT_COMMISSION_DEFAULT_PERCENT;
+    if (delta > 0 && base === 0) {
+      updateDraft({
+        agentCommissionPercent: String(AGENT_COMMISSION_MIN_PERCENT).replace('.', ','),
+      });
+      return;
+    }
+    if (delta < 0 && base <= AGENT_COMMISSION_MIN_PERCENT) {
+      updateDraft({ agentCommissionPercent: '0' });
+      return;
+    }
+    const next = Math.max(
+      AGENT_COMMISSION_MIN_PERCENT,
+      Math.min(AGENT_COMMISSION_MAX_PERCENT, roundToQuarter(base + delta)),
+    );
+    updateDraft({ agentCommissionPercent: String(next).replace('.', ',') });
+  };
+
+  const enableDefaultCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    updateDraft({
+      agentCommissionPercent: String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ','),
+    });
+  };
+
+  const enableZeroCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    updateDraft({ agentCommissionPercent: '0' });
+  };
+
+  const clearCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    updateDraft({ agentCommissionPercent: '' });
   };
 
   return (
@@ -137,6 +223,175 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           </View>
         </View>
 
+        {isAgent ? (
+          <View style={styles.commissionWrap}>
+            <View style={styles.commissionHeader}>
+              <View
+                style={[
+                  styles.commissionHeaderBadge,
+                  { backgroundColor: commissionAccentBgStrong, borderColor: commissionAccentBorder },
+                ]}
+              >
+                <Ionicons
+                  name={isZeroCommission ? 'gift-outline' : 'briefcase-outline'}
+                  size={14}
+                  color={commissionAccent}
+                />
+                <Text style={[styles.commissionHeaderBadgeText, { color: commissionAccent }]}>
+                  EstateOS™ Agent
+                </Text>
+              </View>
+              {hasCommissionSlot ? (
+                <Pressable onPress={clearCommission} hitSlop={10} style={styles.commissionClearBtn}>
+                  <Ionicons name="close-circle" size={18} color={theme.subtitle} />
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={[styles.commissionTitle, { color: theme.text }]}>
+              {isZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+            </Text>
+            <Text style={[styles.commissionSubtitle, { color: theme.subtitle }]}>
+              {isZeroCommission ? (
+                <>Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.</>
+              ) : (
+                <>
+                  Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny
+                  <Text style={{ fontWeight: '800' }}> {hasCommissionSlot ? formatPercentLabel(commissionPercent!) : 'X%'} </Text>
+                  stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.{' '}
+                  <Text style={{ fontWeight: '800' }}>
+                    Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.
+                  </Text>
+                </>
+              )}
+            </Text>
+
+            {!hasCommissionSlot ? (
+              <View style={styles.commissionCtaRow}>
+                <Pressable
+                  onPress={enableDefaultCommission}
+                  style={({ pressed }) => [
+                    styles.commissionAddCta,
+                    {
+                      flex: 1,
+                      backgroundColor: isDark ? 'rgba(255,159,10,0.16)' : 'rgba(255,159,10,0.12)',
+                      borderColor: 'rgba(255,159,10,0.6)',
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="add-circle-outline" size={20} color="#FF9F0A" />
+                  <Text style={[styles.commissionAddCtaText, { color: '#FF9F0A' }]} numberOfLines={1}>
+                    Prowizja {formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT)}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={enableZeroCommission}
+                  style={({ pressed }) => [
+                    styles.commissionAddCta,
+                    {
+                      flex: 1,
+                      backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
+                      borderColor: 'rgba(16,185,129,0.6)',
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="gift-outline" size={20} color="#10b981" />
+                  <Text style={[styles.commissionAddCtaText, { color: '#10b981' }]} numberOfLines={1}>
+                    Bez prowizji
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.commissionCard,
+                  {
+                    backgroundColor: cardBg,
+                    borderColor: commissionInRange ? commissionAccentBorder : Colors.danger,
+                    shadowColor: commissionAccent,
+                    shadowOpacity: isDark ? 0.18 : 0.12,
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 5 },
+                    elevation: 3,
+                  },
+                ]}
+              >
+                <View style={styles.commissionRow}>
+                  <View style={styles.commissionInputCol}>
+                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]}>Prowizja</Text>
+                    <View
+                      style={[
+                        styles.commissionInputBox,
+                        { backgroundColor: commissionAccentBgLight, borderColor: commissionAccentBorder },
+                      ]}
+                    >
+                      <TextInput
+                        style={[styles.commissionInput, { color: theme.text }]}
+                        value={String(draft.agentCommissionPercent || '')}
+                        onChangeText={handleCommissionChange}
+                        placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
+                        placeholderTextColor={theme.subtitle}
+                        keyboardType="decimal-pad"
+                        maxLength={5}
+                      />
+                      <Text style={[styles.commissionInputSuffix, { color: theme.text }]}>%</Text>
+                    </View>
+                    <View style={styles.commissionStepRow}>
+                      <Pressable
+                        onPress={() => adjustCommission(-AGENT_COMMISSION_STEP_PERCENT)}
+                        style={[styles.commissionStepBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
+                      >
+                        <Ionicons name="remove" size={16} color={theme.text} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => adjustCommission(AGENT_COMMISSION_STEP_PERCENT)}
+                        style={[styles.commissionStepBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
+                      >
+                        <Ionicons name="add" size={16} color={theme.text} />
+                      </Pressable>
+                      <Text style={[styles.commissionStepHint, { color: theme.subtitle }]}>
+                        krok {formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.commissionAmountCol}>
+                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]} numberOfLines={1}>
+                      {isZeroCommission ? 'dla kupującego' : 'z ceny ofertowej'}
+                    </Text>
+                    <Text
+                      style={[styles.commissionAmountValue, { color: commissionAccent }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.5}
+                    >
+                      {isZeroCommission
+                        ? 'BEZ PROWIZJI'
+                        : commissionAmount > 0
+                          ? formatPlnAmount(commissionAmount)
+                          : '— PLN'}
+                    </Text>
+                    <Text style={[styles.commissionAmountHint, { color: theme.subtitle }]} numberOfLines={2}>
+                      {isZeroCommission ? 'Kupujący nie płaci prowizji.' : 'To Twoje wynagrodzenie z transakcji.'}
+                    </Text>
+                  </View>
+                </View>
+
+                {!commissionInRange ? (
+                  <View style={styles.commissionWarn}>
+                    <Ionicons name="warning-outline" size={14} color={Colors.danger} />
+                    <Text style={[styles.commissionWarnText, { color: Colors.danger }]}>
+                      Prowizja musi być równa 0% (bez prowizji) lub w zakresie {formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT)}–
+                      {formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)}.
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+        ) : null}
+
         <AddOfferStepFooterHint
           theme={theme}
           icon="wallet-outline"
@@ -160,4 +415,42 @@ const styles = StyleSheet.create({
   statusTitle: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', marginBottom: 4, letterSpacing: 1, textAlign: 'right' },
   badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }, badgeText: { fontSize: 12, fontWeight: '800', marginLeft: 4 },
   roiBox: { height: 70, justifyContent: 'center', alignItems: 'center', borderRadius: 20, borderWidth: 1, marginTop: 28 },
+
+  /* — Prowizja Agenta (Apple-style, pomarańczowy akcent) — */
+  commissionWrap: { marginTop: 32 },
+  commissionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  commissionHeaderBadge: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: 'rgba(255,159,10,0.14)', borderWidth: 1, borderColor: 'rgba(255,159,10,0.4)',
+  },
+  commissionHeaderBadgeText: { fontSize: 11, fontWeight: '800', color: '#FF9F0A', marginLeft: 6, letterSpacing: 0.6, textTransform: 'uppercase' },
+  commissionClearBtn: { padding: 4 },
+  commissionTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginBottom: 4 },
+  commissionSubtitle: { fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  commissionCtaRow: { flexDirection: 'row', gap: 10 },
+  commissionAddCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 16, paddingHorizontal: 10, borderRadius: 22, borderWidth: 1, gap: 6,
+  },
+  commissionAddCtaText: { fontSize: 14, fontWeight: '700' },
+  commissionCard: { padding: 18, borderRadius: 24, borderWidth: 1 },
+  commissionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  commissionInputCol: { flex: 1 },
+  commissionAmountCol: { flex: 1, alignItems: 'flex-end' },
+  commissionLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 },
+  commissionInputBox: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, height: 56, borderRadius: 18,
+    borderWidth: 1,
+  },
+  commissionInput: { flex: 1, fontSize: 28, fontWeight: '800', padding: 0 },
+  commissionInputSuffix: { fontSize: 22, fontWeight: '800', marginLeft: 4 },
+  commissionStepRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 },
+  commissionStepBtn: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  commissionStepHint: { fontSize: 11, fontWeight: '600' },
+  commissionAmountValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.6, marginBottom: 6 },
+  commissionAmountHint: { fontSize: 11, fontWeight: '600', textAlign: 'right', maxWidth: 150 },
+  commissionWarn: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 },
+  commissionWarnText: { fontSize: 12, fontWeight: '600', flex: 1 },
 });

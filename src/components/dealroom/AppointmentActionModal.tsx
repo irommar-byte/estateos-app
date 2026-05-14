@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, ChevronLeft } from 'lucide-react-native';
 import PresentationCountdown from './PresentationCountdown';
+import { API_URL } from '../../config/network';
 
 type AppointmentMode = 'create' | 'respond';
 
@@ -29,8 +30,6 @@ interface AppointmentActionModalProps {
   onDone?: () => void;
   onSavedDate?: (iso: string) => void;
 }
-
-const API_URL = 'https://estateos.pl';
 
 function normalizeToken(rawToken: string | null) {
   if (!rawToken) return null;

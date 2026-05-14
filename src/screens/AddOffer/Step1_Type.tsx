@@ -134,7 +134,7 @@ const SelectionTapTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: bo
             Dotknij kafelka, aby wybrać
           </Text>
           <Text style={[tipStyles.subtitle, { color: isDark ? 'rgba(235,235,245,0.74)' : 'rgba(60,60,67,0.7)' }]}>
-            Zaznacz „Sprzedaż" lub „Wynajem" — kolejne pola pojawią się automatycznie.
+            Zaznacz „Sprzedaż” lub „Wynajem” — kolejne pola pojawią się automatycznie.
           </Text>
         </View>
       </BlurView>

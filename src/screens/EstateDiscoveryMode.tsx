@@ -19,6 +19,7 @@ import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-nati
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
+import { isOfferClosed } from '../utils/offerLifecycle';
 import {
   buildDiscoveryEventPayload,
   parseDiscoveryFeedItems,
@@ -366,8 +367,11 @@ export default function EstateDiscoveryMode({ navigation }: any) {
         const feedJson = await feedRes.json().catch(() => ({}));
         const feedList = parseDiscoveryFeedItems(feedJson);
 
-        let mapped = mapRawOffersToDiscovery(feedList);
-        // 2) Fallback to generic offers if feed unavailable/empty
+        // Wszędzie, gdzie dostajemy listę ofert, filtrujemy zamknięte
+        // (ARCHIVED / SOLD / EXPIRED / itp.) zanim trafią do Discovery.
+        // Żadnego swipe'a po wycofanej nieruchomości — to było jedno
+        // z największych UX-owych nieporozumień w starym przepływie.
+        let mapped = mapRawOffersToDiscovery(feedList.filter((o: any) => !isOfferClosed(o)));
         if (mapped.length === 0) {
           const res = await fetch(`${API_URL}/api/mobile/v1/offers`, {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -380,7 +384,7 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               : Array.isArray(json?.items)
                 ? json.items
                 : [];
-          mapped = mapRawOffersToDiscovery(list);
+          mapped = mapRawOffersToDiscovery(list.filter((o: any) => !isOfferClosed(o)));
         }
 
         if (mounted) setOffers(mapped);

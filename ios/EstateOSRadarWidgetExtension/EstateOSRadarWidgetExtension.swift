@@ -2,7 +2,14 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-@available(iOS 16.1, *)
+/*
+ * `@available(iOS 16.1, *)` zdjęte ze struct — deployment target tego
+ * widget extension to iOS 16.1+ (Live Activities to API wprowadzone w 16.1),
+ * więc atrybut był no-op. Trzymanie go w kombinacji z `@main` na bundle
+ * potrafi mylić Swift type-checker w opcjonalnych konfiguracjach (np. przy
+ * SwiftUI ViewBuilder typu „some Widget"), co manifestowało się błędem
+ * „Generic parameter 'Content' could not be inferred".
+ */
 struct RadarLiveActivityAttributes: ActivityAttributes {
 
     public struct ContentState: Codable, Hashable {
@@ -29,7 +36,6 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     var title: String
 }
 
-@available(iOS 16.1, *)
 struct EstateOSRadarLiveActivity: Widget {
     private let accent = Color(red: 0.10, green: 0.86, blue: 0.53)
     private let textMain = Color.white
@@ -138,10 +144,9 @@ struct EstateOSRadarLiveActivity: Widget {
         return lines
     }
 
-    /// Nagłówek nad tickerem — tylko tryb · miasto.
-    /// Próg dopasowania jest osobno w `RadarActiveStatusBar` (dolny pasek
-    /// z ikoną „scope” i procentami), zgodnie z założeniem UX:
-    /// nagłówek = co i gdzie, pasek statusu = stan radaru i czułość.
+    /// Nagłówek nad tickerem — tylko tryb · miasto. Bezpośrednio za nim
+    /// renderujemy `MatchThresholdBadge` (procent dopasowania z pulsującym
+    /// co 20 s halo), więc tu zostaje sam string „Wynajem · Piaseczno".
     private func headlineMessage(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> String {
         let state = context.state
         let city = state.city.isEmpty ? "Polska" : state.city
@@ -154,6 +159,50 @@ struct EstateOSRadarLiveActivity: Widget {
     private func bodyLines(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> [String] {
         let all = statusMessages(context)
         return Array(all.dropFirst(1))
+    }
+
+    /// Lista parametrów radaru rotujących co 15 s w **dolnej linii**
+    /// nad zieloną skalą postępu. Statyczna „Mieszkanie / Dom / Lokal" idzie
+    /// osobnym pillem po lewej i tu się NIE pojawia.
+    /// Każdy element to jeden „slajd" — staramy się logicznie grupować
+    /// parametry, żeby było ich ~3–6 (nie kilkadziesiąt jednoznakowych pip).
+    private func rotatingParamItems(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> [String] {
+        let state = context.state
+        var items: [String] = []
+
+        // 1. metraż + cena razem — ta sama linia, którą użytkownik widział
+        //    wcześniej („od 31 m² · do 18 150 zł"), żeby nie cierpiał ten
+        //    najczęstszy slajd.
+        var areaPrice: [String] = []
+        if state.minArea > 0 { areaPrice.append("od \(Int(state.minArea.rounded())) m²") }
+        if state.maxPrice > 0 {
+            areaPrice.append("do \(priceLabel(value: state.maxPrice, type: state.transactionType))")
+        }
+        if !areaPrice.isEmpty { items.append(areaPrice.joined(separator: " · ")) }
+
+        // 2. lokalizacja (obszar mapy LUB dzielnice)
+        if state.areaRadiusKm > 0 {
+            items.append("Obszar mapy: \(radiusValueLabel(state.areaRadiusKm))")
+        } else if !state.districts.isEmpty {
+            items.append("Dzielnice: \(districtsLabel(state.districts))")
+        }
+
+        // 3. rok budowy
+        if state.minYear > 0 {
+            items.append("Rok budowy: od \(Int(state.minYear.rounded())) r.")
+        }
+
+        // 4. wymagania (jeden slajd, oddzielone przecinkami)
+        var reqs: [String] = []
+        if state.requireBalcony { reqs.append("balkon") }
+        if state.requireGarden { reqs.append("ogród") }
+        if state.requireElevator { reqs.append("winda") }
+        if state.requireParking { reqs.append("parking") }
+        if state.requireFurnished { reqs.append("umeblowane") }
+        if !reqs.isEmpty { items.append("Wymagania: \(reqs.joined(separator: ", "))") }
+
+        if items.isEmpty { items.append("Skan rynku · sygnały rejestrowane") }
+        return items
     }
 
     @ViewBuilder
@@ -371,6 +420,281 @@ struct EstateOSRadarLiveActivity: Widget {
                     shine = true
                 }
             }
+        }
+    }
+
+    /// Próg dopasowania (np. „⊕ 83%") z **pulsującym halo co 20 s**.
+    ///
+    /// Logika animacji: `TimelineView(.periodic(by: 0.08))` daje 12,5 fps
+    /// (wystarczające dla miękkiej zmiany alfa/koloru ramki), a `sin(π·p)`
+    /// generuje płynne `0 → 1 → 0` w oknie `glowDuration` w obrębie cyklu
+    /// `glowPeriod = 20 s`. Resztę cyklu (≈18 s) badge wygląda jak zwykłe
+    /// szkło — daje to wrażenie, że celownik „chwyta sygnał" co 20 s.
+    /// Na AOD (`isLuminanceReduced`) wyłączamy `TimelineView` i renderujemy
+    /// statyczny wariant — Apple wymaga energooszczędności.
+    private struct MatchThresholdBadge: View {
+        let accent: Color
+        let threshold: Int
+        var compact: Bool = false
+
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        private let glowPeriod: Double = 20
+        private let glowDuration: Double = 1.6
+
+        var body: some View {
+            Group {
+                if isLuminanceReduced {
+                    content(pulse: 0)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                        content(pulse: computePulse(at: timeline.date))
+                    }
+                }
+            }
+        }
+
+        // Wyciągnięte z `TimelineView { ... }` closure, bo SwiftUI 5+ traktuje
+        // ten closure jako `@ViewBuilder`. Stary kod miał wewnątrz
+        // `let pulse: Double` + `if/else` przypisujące do `pulse` — co
+        // result-builder próbował zinterpretować jako `_ConditionalContent`
+        // gałęzi View, czego nie da się dopasować do `Double`. Efektem
+        // ubocznym był błąd kompilatora „Generic parameter 'Content' could
+        // not be inferred". Funkcja czysto obliczeniowa rozwiązuje problem.
+        private func computePulse(at date: Date) -> Double {
+            let t = date.timeIntervalSince1970
+            let phase = t.truncatingRemainder(dividingBy: glowPeriod)
+            guard phase < glowDuration else { return 0 }
+            let p = phase / glowDuration
+            return sin(p * .pi) // 0..1..0
+        }
+
+        private func content(pulse: Double) -> some View {
+            HStack(spacing: 4) {
+                Image(systemName: "scope")
+                    .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                    .foregroundColor(accent)
+                Text("\(threshold)%")
+                    .font(.system(size: compact ? 10 : 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2.5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.08 + 0.05 * pulse))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(accent.opacity(0.4 + 0.55 * pulse), lineWidth: 0.9 + 1.0 * pulse)
+                    )
+                    .shadow(color: accent.opacity(0.85 * pulse), radius: 6 * pulse)
+            )
+            .scaleEffect(1.0 + 0.04 * pulse)
+            .fixedSize()
+        }
+    }
+
+    /// Czerwona pulsująca pigułka „• NOWE N" — widoczna **tylko** gdy radar
+    /// wykrył nowe oferty od ostatniej wizyty użytkownika na ekranie Radar.
+    /// Rytm pulsu ≈ 1 s, sterowany cosinusem, więc jest miękki i nie
+    /// szarpie wzroku.
+    private struct NewOffersPill: View {
+        let count: Int
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        var body: some View {
+            let red = Color(red: 0.96, green: 0.31, blue: 0.31)
+            Group {
+                if isLuminanceReduced {
+                    pill(red: red, fillOpacity: 1.0, glow: 0.5)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                        let t = timeline.date.timeIntervalSince1970
+                        let phase = t.truncatingRemainder(dividingBy: 1.0)
+                        let pulse = 0.55 + 0.45 * (1.0 - cos(2 * .pi * phase)) / 2
+                        pill(red: red, fillOpacity: pulse, glow: pulse * 0.9)
+                    }
+                }
+            }
+        }
+
+        private func pill(red: Color, fillOpacity: Double, glow: Double) -> some View {
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 4, height: 4)
+                Text("NOWE \(count)")
+                    .font(.system(size: 9.5, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(red.opacity(fillOpacity))
+                    .shadow(color: red.opacity(glow), radius: 4)
+            )
+            .fixedSize()
+        }
+    }
+
+    /// **Zintegrowana** linia: statyczny pill „Mieszkanie / Dom / Lokal"
+    /// po lewej + zielona skala progresu po prawej, na której co 15 s
+    /// rotuje kolejny parametr radaru. Wypełnienie zielonego pasa rośnie
+    /// liniowo w trakcie 15-sekundowego cyklu i resetuje się przy zmianie
+    /// slajdu — daje to wrażenie skanera, który „przeczytał" jeden
+    /// parametr i przechodzi do następnego.
+    ///
+    /// Założenia:
+    ///   • brak segmentowanych kreseczek — jednolity, płynny pas,
+    ///   • tekst w środku z `lineLimit(1)` + `minimumScaleFactor(0.55)`
+    ///     żeby NIGDY nie przeszedł do następnej linii ani się nie
+    ///     przeniósł pionowo,
+    ///   • crossfade tekstu (blur + opacity + drobne offsety) w stylu
+    ///     Apple — bardziej dostojny niż „instant swap".
+    private struct RadarUnifiedTicker: View {
+        let accent: Color
+        let staticLabel: String
+        let rotatingItems: [String]
+        var compact: Bool = false
+
+        private let rotationSeconds: Double = 15
+        private let crossfadeSeconds: Double = 1.4
+
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        var body: some View {
+            let items = rotatingItems.isEmpty ? ["Skan rynku · sygnały rejestrowane"] : rotatingItems
+
+            HStack(spacing: 8) {
+                staticPill
+                    .layoutPriority(1)
+                scaleTrack(items: items)
+            }
+        }
+
+        private var staticPill: some View {
+            Text(staticLabel)
+                .font(.system(size: compact ? 11 : 12.5, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.10))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(accent.opacity(0.42), lineWidth: 0.9)
+                        )
+                )
+        }
+
+        @ViewBuilder
+        private func scaleTrack(items: [String]) -> some View {
+            if isLuminanceReduced {
+                staticScale(text: items[0])
+            } else {
+                TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                    let t = timeline.date.timeIntervalSince1970
+                    let cycle = t / rotationSeconds
+                    let currentIdx = Int(floor(cycle)) % items.count
+                    let nextIdx = (currentIdx + 1) % items.count
+                    let phase = cycle.truncatingRemainder(dividingBy: 1)
+
+                    let fadeStart = max(0.0, 1.0 - (crossfadeSeconds / rotationSeconds))
+                    let rawFade = phase > fadeStart ? (phase - fadeStart) / (1 - fadeStart) : 0
+                    let fade = easeInOutCubic(min(1, max(0, rawFade)))
+
+                    animatedScale(
+                        currentText: items[currentIdx],
+                        nextText: items[nextIdx],
+                        fadeProgress: fade,
+                        fillProgress: phase
+                    )
+                }
+            }
+        }
+
+        private func staticScale(text: String) -> some View {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
+                        )
+                    Capsule(style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [accent.opacity(0.32), accent.opacity(0.6)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: geo.size.width * 0.3)
+                    Text(text)
+                        .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.55)
+                        .truncationMode(.tail)
+                        .padding(.horizontal, 12)
+                }
+            }
+            .frame(height: compact ? 22 : 26)
+        }
+
+        private func animatedScale(currentText: String, nextText: String, fadeProgress: Double, fillProgress: Double) -> some View {
+            GeometryReader { geo in
+                let w = geo.size.width
+                ZStack(alignment: .leading) {
+                    // Tło skali
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
+                        )
+
+                    // Zielony pas wypełniający się przez 15 s
+                    Capsule(style: .continuous)
+                        .fill(LinearGradient(
+                            colors: [accent.opacity(0.30), accent.opacity(0.72)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: max(8, w * CGFloat(fillProgress)))
+                        .shadow(color: accent.opacity(0.55), radius: 5)
+
+                    // Crossfade tekstu
+                    ZStack(alignment: .leading) {
+                        Text(currentText)
+                            .opacity(1 - fadeProgress)
+                            .blur(radius: fadeProgress * 1.4)
+                            .offset(y: -fadeProgress * 3)
+                        Text(nextText)
+                            .opacity(fadeProgress)
+                            .blur(radius: (1 - fadeProgress) * 1.4)
+                            .offset(y: (1 - fadeProgress) * 3)
+                    }
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .frame(width: w, alignment: .leading)
+                }
+            }
+            .frame(height: compact ? 22 : 26)
+        }
+
+        private func easeInOutCubic(_ x: Double) -> Double {
+            x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
         }
     }
 
@@ -680,11 +1004,13 @@ struct EstateOSRadarLiveActivity: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RadarLiveActivityAttributes.self) { context in
-            VStack(spacing: 7) {
+            VStack(spacing: 8) {
+                // GÓRNY WIERSZ — wszystko POZA „Mieszkanie / parametry"
+                // mieści się tutaj w jednej linii (żadnego wrapu pionowego).
                 HStack(spacing: 12) {
                     radarGlyph(size: 32, emphasized: true)
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 0) {
                             Text("Estate").foregroundColor(textMain)
                             Text("OS").foregroundColor(accent)
@@ -692,11 +1018,24 @@ struct EstateOSRadarLiveActivity: Widget {
                         }
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .fontWeight(.bold)
+                        .lineLimit(1)
 
-                        Text(headlineMessage(context))
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(textDim)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(headlineMessage(context))
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundColor(textDim)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                                .truncationMode(.tail)
+                            MatchThresholdBadge(
+                                accent: accent,
+                                threshold: context.state.minMatchThreshold
+                            )
+                            if context.state.newMatchesCount > 0 {
+                                NewOffersPill(count: context.state.newMatchesCount)
+                            }
+                        }
+                        .lineLimit(1)
                     }
 
                     Spacer(minLength: 8)
@@ -706,18 +1045,16 @@ struct EstateOSRadarLiveActivity: Widget {
                         Text("nieprzeczytane")
                             .font(.system(size: 10, weight: .medium, design: .rounded))
                             .foregroundColor(Color(red: 0.98, green: 0.79, blue: 0.24).opacity(0.85))
+                            .lineLimit(1)
                     }
                 }
 
-                RadarRotatingTicker(
+                // POŁĄCZONA DOLNA LINIA
+                // [Mieszkanie] [— zielona skala z rotującym co 15 s parametrem —]
+                RadarUnifiedTicker(
                     accent: accent,
-                    lines: bodyLines(context)
-                )
-                .frame(minHeight: 18)
-
-                RadarActiveStatusBar(
-                    accent: accent,
-                    minMatchThreshold: context.state.minMatchThreshold
+                    staticLabel: propertyTypeLabel(context.state.propertyType),
+                    rotatingItems: rotatingParamItems(context)
                 )
             }
             .padding(.horizontal, 18)
@@ -741,17 +1078,32 @@ struct EstateOSRadarLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 0) {
                             Text("Estate").foregroundColor(textMain)
                             Text("OS").foregroundColor(accent)
                             Text("™").foregroundColor(textMain)
                         }
                         .font(.system(size: 17, weight: .bold, design: .rounded))
-                        Text(headlineMessage(context))
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundColor(textDim)
-                            .lineLimit(1)
+                        .lineLimit(1)
+
+                        HStack(spacing: 5) {
+                            Text(headlineMessage(context))
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundColor(textDim)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                                .truncationMode(.tail)
+                            MatchThresholdBadge(
+                                accent: accent,
+                                threshold: context.state.minMatchThreshold,
+                                compact: true
+                            )
+                            if context.state.newMatchesCount > 0 {
+                                NewOffersPill(count: context.state.newMatchesCount)
+                            }
+                        }
+                        .lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -762,20 +1114,12 @@ struct EstateOSRadarLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        RadarRotatingTicker(
-                            accent: accent,
-                            lines: bodyLines(context),
-                            compact: true
-                        )
-                        .frame(minHeight: 14)
-
-                        RadarActiveStatusBar(
-                            accent: accent,
-                            minMatchThreshold: context.state.minMatchThreshold,
-                            compact: true
-                        )
-                    }
+                    RadarUnifiedTicker(
+                        accent: accent,
+                        staticLabel: propertyTypeLabel(context.state.propertyType),
+                        rotatingItems: rotatingParamItems(context),
+                        compact: true
+                    )
                     .padding(.top, 3)
                 }
             } compactLeading: {
@@ -803,12 +1147,36 @@ private extension View {
     }
 }
 
+/*
+ * Bundle widgetu — pojedyncza Live Activity z `EstateOSRadarLiveActivity`.
+ *
+ * Historia błędu „Generic parameter 'Content' could not be inferred":
+ *   • PIERWOTNIE `body` używał `if #available(iOS 16.1, *) { ... }` BEZ
+ *     `else` — `@WidgetBundleBuilder` (jak każdy SwiftUI result-builder)
+ *     wymaga deterministycznego typu zwracanego, więc pusty `else`-fallback
+ *     niwelował dedukcję `Content`.
+ *   • Następnie `@available(iOS 16.1, *)` na `@main struct` w połączeniu
+ *     z `@available(iOS 16.1, *)` na `EstateOSRadarLiveActivity` i
+ *     `RadarLiveActivityAttributes` powodował, że Swift próbował rozwiązać
+ *     symbole jako warunkowo dostępne — i znowu wpadał w niededukowalność
+ *     przy `some Widget`.
+ *
+ * Aktualne rozwiązanie:
+ *   1. Deployment target = iOS 16.1+ (i tak wymóg dla Live Activities),
+ *      więc usunęliśmy WSZYSTKIE atrybuty `@available(iOS 16.1, *)` —
+ *      type-checker nie ma już alternatyw do rozważenia.
+ *   2. `body` zwraca jednoznacznie `EstateOSRadarLiveActivity()` jako
+ *      `some Widget`, bez warunków.
+ *   3. ODDZIELNY incydent z tym samym komunikatem dotyczył
+ *      `MatchThresholdBadge` — closure `TimelineView { timeline in ... }`
+ *      jest w SwiftUI 5+ traktowany jako `@ViewBuilder`, więc kalkulacja
+ *      `let pulse: Double` z gałęziami `if/else` była interpretowana jako
+ *      `_ConditionalContent` View'ów. Logika została wyciągnięta do
+ *      `computePulse(at:)` — patrz tamta metoda.
+ */
 @main
 struct EstateOSRadarWidgetBundle: WidgetBundle {
-
     var body: some Widget {
-        if #available(iOS 16.1, *) {
-            EstateOSRadarLiveActivity()
-        }
+        EstateOSRadarLiveActivity()
     }
 }

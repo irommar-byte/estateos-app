@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import type { Camera } from 'react-native-maps';
 import { useNavigation, CommonActions, useFocusEffect } from '@react-navigation/native';
@@ -13,6 +13,7 @@ import AddOfferStepper from '../../components/AddOfferStepper';
 import { REST_OF_COUNTRY_CITY, formatLocationLabel, stripHouseNumber } from '../../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
+import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
 import {
   fetchCountableUserOffers,
   allowsMultipleCountableListings,
@@ -22,13 +23,22 @@ import {
 } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
+import {
+  computeAgentCommissionAmount,
+  formatPercentLabel,
+  formatPlnAmount,
+  isAgentCommissionAccount,
+  isZeroCommissionPercent,
+  parseAgentCommissionPercent,
+  validateAgentCommissionPercent,
+} from '../../lib/agentCommission';
+import { API_URL } from '../../config/network';
 
 const { width } = Dimensions.get('window');
 const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
 const LIGHT_COLORS = { primary: '#10b981', background: '#F2F2F7', card: '#FFFFFF', text: '#111827', subtitle: '#6B7280', danger: '#ef4444' };
 // Fallback for static StyleSheet colors; runtime theme overrides are applied inline via `colors`.
 const Colors = DARK_COLORS;
-const API_URL = 'https://estateos.pl';
 
 /** Backend zapisuje piętro jako liczbę; „Parter” z pickera → 0. */
 function normalizeFloorForCreate(f: unknown): number {
@@ -187,7 +197,32 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
   const isCompactScreen = width <= 390;
 
-  useFocusEffect(useCallback(() => { setCurrentStep(6); }, []));
+  /**
+   * Po opublikowaniu robimy `resetDraft()` + `popToTop()`. Defensywa: jeśli z
+   * jakiegoś powodu Step6 odzyska focus z PUSTYM draftem (świeży reset po
+   * publikacji), natychmiast wracamy do Step1 — żeby user nie zobaczył
+   * niedopubliokowanej kopii oferty z poprzedniego flow.
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const currentDraft = useOfferStore.getState().draft;
+      const looksLikeFreshDraft =
+        !String(currentDraft?.title || '').trim() &&
+        !String(currentDraft?.price || '').trim() &&
+        !String(currentDraft?.description || '').trim() &&
+        (!Array.isArray(currentDraft?.images) || currentDraft.images.length === 0);
+      if (looksLikeFreshDraft) {
+        // @ts-ignore — popToTop istnieje dla native-stack-navigator
+        if (typeof (navigation as any).popToTop === 'function') {
+          (navigation as any).popToTop();
+        } else {
+          navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }));
+        }
+        return;
+      }
+      setCurrentStep(6);
+    }, [navigation, setCurrentStep]),
+  );
 
   const handlePublish = async (forceBypass = false) => {
     if (loading) return;
@@ -199,6 +234,37 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
     await refreshUser();
     const latestUser = useAuthStore.getState().user;
+
+    /* Twardy guard weryfikacji konta — oferty mogą publikować TYLKO osoby
+       z potwierdzonym numerem telefonu i adresem e-mail. Inaczej ofiarą padają
+       kupujący (brak kontaktu) i baza zaśmieca się "ghost-ofertami".
+       Sprawdzamy ZA `refreshUser`, żeby user, który właśnie potwierdził
+       weryfikację w innym tabie, nie musiał restartować aplikacji. */
+    const phoneVerified = Boolean(latestUser?.isVerifiedPhone);
+    const emailVerified = Boolean(latestUser?.isEmailVerified);
+    if (!phoneVerified || !emailVerified) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      const missing: string[] = [];
+      if (!phoneVerified) missing.push('numer telefonu');
+      if (!emailVerified) missing.push('adres e-mail');
+      Alert.alert(
+        'Weryfikacja wymagana',
+        `Aby opublikować ofertę musisz najpierw potwierdzić: ${missing.join(' oraz ')}.\n\nPrzejdź do Profilu → Edytuj dane i dokończ weryfikację SMS-em oraz kodem z e-maila.`,
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          {
+            text: 'Przejdź do profilu',
+            onPress: () => {
+              const rootNav = navigation.getParent?.();
+              if (rootNav) rootNav.navigate('Profil');
+              else navigation.navigate('Profil' as never);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     if (!forceBypass && !allowsMultipleCountableListings(latestUser)) {
       const existingCount = await fetchCountableUserOffers(API_URL, token, user.id);
       if (!canPublishCountableListing(latestUser, existingCount)) {
@@ -268,6 +334,23 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       return;
     }
 
+    /* Walidacja prowizji agenta — tylko gdy zalogowany user to AGENT i pole
+       jest wypełnione. Puste pole = agent świadomie nie ujawnia prowizji
+       (np. oferta sponsorska / własna nieruchomość) — to dozwolone. */
+    const isAgentSubmitter = isAgentCommissionAccount(user);
+    let agentCommissionPercentForApi: number | null = null;
+    if (isAgentSubmitter) {
+      const rawCommission = String(draft.agentCommissionPercent || '').trim();
+      if (rawCommission) {
+        const validation = validateAgentCommissionPercent(rawCommission);
+        if (!validation.ok) {
+          Alert.alert('Prowizja agenta', validation.message);
+          return;
+        }
+        agentCommissionPercentForApi = validation.percent;
+      }
+    }
+
     setLoading(true);
     setUploadProgressText('Tworzenie oferty w bazie...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -315,7 +398,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       description: draft.description || '', 
       images: '[]', 
       videoUrl: draft.videoUrl || '',
-      floorPlanUrl: ''
+      floorPlanUrl: '',
+      /**
+       * Prowizja agenta (procent, 0.5–10). Backend zapisuje w
+       * `Offer.agentCommissionPercent` i zwraca w GET endpointach.
+       * Dla osób prywatnych zawsze `null`. Cena oferty nie jest
+       * modyfikowana — wartość służy WYŁĄCZNIE do wyświetlenia
+       * adnotacji kupującemu w OfferDetail.
+       */
+      agentCommissionPercent: agentCommissionPercentForApi,
     };
 
     let createdOfferId: number | null = null;
@@ -406,14 +497,58 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           }
       }
 
+      let legalQueueSubmitted = false;
+      if (createdOfferId && token) {
+        const kwSubmit = String(draft.landRegistryNumber || '').trim();
+        const aptSubmit = String(draft.apartmentNumber || '').trim();
+        if (kwSubmit && aptSubmit && isValidLandRegistryNumber(kwSubmit)) {
+          try {
+            await submitOwnerLegalVerification(
+              createdOfferId,
+              { landRegistryNumber: kwSubmit, apartmentNumber: aptSubmit, ownerNote: null },
+              token,
+            );
+            legalQueueSubmitted = true;
+          } catch {
+            /* Endpoint może nie być wdrożony — oferta i tak jest w bazie; właściciel zgłosi KW z karty oferty. */
+          }
+        }
+      }
+
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        "Gratulacje! 🎉",
-        "Oferta została pomyślnie dodana. Po szybkiej weryfikacji będzie widoczna na radarze.",
+        'Gratulacje! 🎉',
+        legalQueueSubmitted
+          ? 'Oferta została pomyślnie dodana, a numer KW wraz z lokalem został wysłany do weryfikacji administratora. Ogłoszenie po moderacji będzie widoczne na radarze.'
+          : 'Oferta została pomyślnie dodana. Po szybkiej weryfikacji będzie widoczna na radarze.',
         [{ text: "Super", onPress: () => {
-            navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Radar' }] }));
-            setTimeout(() => resetDraft(), 500);
+            /* 1) Wyczyść draft NATYCHMIAST — w razie powrotu do taba "Dodaj"
+                  user widzi czysty Step1, nie poprzednią ofertę.
+               2) `popToTop()` — natywna metoda native-stack-navigator, zwija
+                  cały stos AddOffer do pierwszego ekranu (Step1). Działa
+                  pewniej niż `CommonActions.reset` (które po cichu się
+                  wywalało).
+               3) Przepnij ROOT (tab navigator) na zakładkę Radar — `popToTop`
+                  na lokalnym stacku nie zmienia taba, dlatego używamy
+                  `getParent()`. */
+            resetDraft();
+            try {
+              // @ts-ignore — popToTop jest dostępne w native-stack
+              if (typeof (navigation as any).popToTop === 'function') {
+                (navigation as any).popToTop();
+              } else {
+                navigation.dispatch(
+                  CommonActions.reset({ index: 0, routes: [{ name: 'Step1' }] }),
+                );
+              }
+            } catch {}
+            const rootNav = navigation.getParent?.();
+            if (rootNav) {
+              rootNav.navigate('Radar');
+            } else {
+              navigation.navigate('Radar' as never);
+            }
         }}]
       );
 
@@ -508,6 +643,26 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const yearLabel = String(draft.yearBuilt || draft.buildYear || '').trim();
   const depositNum = parseLocaleNumber(draft.deposit);
   const adminFeeValue = parseLocaleNumber(draft.adminFee || draft.rent);
+  const isAgentSummary = isAgentCommissionAccount(user);
+  const summaryCommissionPercent = parseAgentCommissionPercent(draft.agentCommissionPercent);
+  const summaryIsZeroCommission = isZeroCommissionPercent(summaryCommissionPercent);
+  const summaryCommissionAmount = summaryIsZeroCommission
+    ? 0
+    : computeAgentCommissionAmount(priceNum, summaryCommissionPercent);
+  /** Nie wymagamy kwoty > 0 — przy niskiej cenie zaokrąglenie do PLN daje 0 i karta znikała mimo wpisanego %. */
+  const showSummaryCommission =
+    isAgentSummary &&
+    summaryCommissionPercent !== null &&
+    (summaryIsZeroCommission || priceNum > 0);
+  const summaryCommissionAmountLabel =
+    summaryIsZeroCommission
+      ? 'BEZ PROWIZJI'
+      : priceNum > 0 && summaryCommissionAmount < 1
+        ? '< 1 PLN'
+        : formatPlnAmount(summaryCommissionAmount);
+  const summaryAccent = summaryIsZeroCommission ? '#10b981' : '#FF9F0A';
+  const summaryAccentBorder = summaryIsZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.45)';
+  const summaryAccentBadgeBg = summaryIsZeroCommission ? 'rgba(16,185,129,0.18)' : 'rgba(255,159,10,0.14)';
   const activeAmenities = AMENITY_META.filter((a) => draft[a.key]);
   const propertyTypeLabel =
     draft.propertyType === 'FLAT' || draft.propertyType === 'APARTMENT' ? 'Mieszkanie' :
@@ -530,8 +685,18 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const mapExact = draft.isExactLocation !== false;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 190 }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 190 }}
+        keyboardDismissMode="none"
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         <View style={styles.headerTop}>
           <Pressable onPress={handleGoBack} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color={colors.text} />
@@ -577,6 +742,16 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 {draft.transactionType === 'SALE' && adminFeeValue > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Czynsz administracyjny ~ {Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN</Text>
                 ) : null}
+                {showSummaryCommission ? (
+                  <Text style={[styles.financeSecondary, { color: colors.subtitle, marginTop: 6, fontWeight: '600' }]}>
+                    Prowizja:{' '}
+                    <Text style={{ color: colors.text, fontWeight: '700' }}>
+                      {summaryIsZeroCommission
+                        ? 'bez prowizji (0%)'
+                        : `${formatPercentLabel(summaryCommissionPercent!)} · ${summaryCommissionAmountLabel}`}
+                    </Text>
+                  </Text>
+                ) : null}
               </View>
               <View style={[styles.typePill, { backgroundColor: draft.transactionType === 'RENT' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)' }]}>
                 <Text style={[styles.typePillText, { color: draft.transactionType === 'RENT' ? '#60a5fa' : '#34d399' }]}>
@@ -617,6 +792,56 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               draftSalt={`${draft.city || ''}|${draft.district || ''}|${draft.street || ''}|${mapLat.toFixed(5)}:${mapLng.toFixed(5)}`}
             />
           </View>
+
+          {showSummaryCommission ? (
+            <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: summaryAccentBorder, shadowColor: summaryAccent }]}>
+              <View style={styles.commissionSummaryHeader}>
+                <View style={[styles.commissionSummaryBadge, { backgroundColor: summaryAccentBadgeBg, borderColor: summaryAccentBorder }]}>
+                  <Ionicons
+                    name={summaryIsZeroCommission ? 'gift-outline' : 'briefcase-outline'}
+                    size={14}
+                    color={summaryAccent}
+                  />
+                  <Text style={[styles.commissionSummaryBadgeText, { color: summaryAccent }]}>
+                    EstateOS™ Agent
+                  </Text>
+                </View>
+                <Text style={[styles.commissionSummaryPercent, { color: summaryAccent }]}>
+                  {formatPercentLabel(summaryCommissionPercent!)}
+                </Text>
+              </View>
+              <Text style={[styles.commissionSummaryTitle, { color: colors.text }]}>
+                {summaryIsZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+              </Text>
+              <Text style={[styles.commissionSummaryAmount, { color: colors.text }]}>
+                {summaryCommissionAmountLabel}
+              </Text>
+              <Text style={[styles.commissionSummaryDesc, { color: colors.subtitle }]}>
+                {summaryIsZeroCommission ? (
+                  <>
+                    Kupujący <Text style={{ fontWeight: '800', color: summaryAccent }}>nie płaci prowizji</Text> na tej ofercie. Adnotacja „Bez prowizji” pojawi się przy ogłoszeniu — buduje zaufanie i przyciąga uwagę.
+                  </>
+                ) : (
+                  <>
+                    Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny{' '}
+                    <Text style={{ fontWeight: '800', color: summaryAccent }}>{formatPercentLabel(summaryCommissionPercent!)}</Text>{' '}
+                    stanowi Twoją prowizję — opłacaną bezpośrednio agentowi po sfinalizowaniu transakcji.{' '}
+                    <Text style={{ fontWeight: '800', color: colors.text }}>
+                      Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.
+                    </Text>
+                  </>
+                )}
+              </Text>
+              {user?.companyName ? (
+                <View style={[styles.commissionSummaryCompany, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)' }]}>
+                  <Ionicons name="business-outline" size={14} color={colors.subtitle} />
+                  <Text style={[styles.commissionSummaryCompanyText, { color: colors.subtitle }]} numberOfLines={1}>
+                    {user.companyName}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)', shadowColor: isDark ? '#000' : '#9CA3AF' }]}>
             <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>PARAMETRY NIERUCHOMOŚCI</Text>
@@ -675,6 +900,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         </BlurView>
       </View>
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -716,6 +942,24 @@ const styles = StyleSheet.create({
   amenitiesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   amenityPill: { backgroundColor: '#2C2C2E', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   amenityPillText: { fontSize: 13, fontWeight: '700', color: Colors.text },
+
+  /* — karta prowizji agenta w podsumowaniu (Step6) — */
+  commissionSummaryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  commissionSummaryBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: 'rgba(255,159,10,0.14)', borderWidth: 1, borderColor: 'rgba(255,159,10,0.4)',
+  },
+  commissionSummaryBadgeText: { fontSize: 11, fontWeight: '800', color: '#FF9F0A', marginLeft: 6, letterSpacing: 0.6, textTransform: 'uppercase' },
+  commissionSummaryPercent: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
+  commissionSummaryTitle: { fontSize: 13, fontWeight: '700', color: Colors.subtitle, marginTop: 6, textTransform: 'uppercase', letterSpacing: 1 },
+  commissionSummaryAmount: { fontSize: 32, fontWeight: '800', letterSpacing: -0.8, marginTop: 4, marginBottom: 12 },
+  commissionSummaryDesc: { fontSize: 13, lineHeight: 19 },
+  commissionSummaryCompany: {
+    marginTop: 14, paddingTop: 12, borderTopWidth: 1,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  commissionSummaryCompanyText: { fontSize: 12, fontWeight: '600', flex: 1 },
   badgeContainer: {
     width: '48%',
     backgroundColor: '#2C2C2E',

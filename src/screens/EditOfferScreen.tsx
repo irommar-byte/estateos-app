@@ -36,8 +36,24 @@ import {
   normalizeLandRegistryNumber,
 } from '../utils/landRegistry';
 import { formatPublicAddress, resolveIsExactLocation, stripHouseNumber } from '../constants/locationEcosystem';
+import {
+  AGENT_COMMISSION_DEFAULT_PERCENT,
+  AGENT_COMMISSION_MAX_PERCENT,
+  AGENT_COMMISSION_MIN_PERCENT,
+  AGENT_COMMISSION_STEP_PERCENT,
+  AGENT_COMMISSION_ZERO_PERCENT,
+  computeAgentCommissionAmount,
+  extractAgentCommissionPercent,
+  formatPercentLabel,
+  formatPlnAmount,
+  isMobileAgentRole,
+  isZeroCommissionPercent,
+  parseAgentCommissionPercent,
+  roundToQuarter,
+  validateAgentCommissionPercent,
+} from '../lib/agentCommission';
+import { API_URL } from '../config/network';
 
-const API_URL = 'https://estateos.pl';
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
 const HEATING_OPTIONS = ['', 'Miejskie', 'Gazowe', 'Elektryczne', 'Pompa Ciepła', 'Węglowe/Pellet', 'Inne'];
@@ -98,6 +114,7 @@ const enqueueLayoutSpring = () => {
 export default function EditOfferScreen({ route }: any) {
   const { offerId } = route.params;
   const navigation = useNavigation<any>();
+  const mainScrollRef = useRef<ScrollView>(null);
   const { user, token } = useAuthStore() as any;
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
@@ -147,6 +164,13 @@ export default function EditOfferScreen({ route }: any) {
   const [landRegistryNumber, setLandRegistryNumber] = useState('');
   const [price, setPrice] = useState('');
   const [adminFee, setAdminFee] = useState('');
+  /**
+   * Procent prowizji agenta (string z TextInput — akceptuje `.` i `,`).
+   * '' = brak (kupujący widzi ofertę bez pigułki prowizji).
+   * '0' = świadome „BEZ PROWIZJI" (zielona pigułka u kupującego).
+   * Inna wartość = standardowa prowizja w zakresie 0.5%–10%.
+   */
+  const [agentCommissionPercent, setAgentCommissionPercent] = useState<string>('');
   const [condition, setCondition] = useState<'READY' | 'DEVELOPER' | 'TO_RENOVATION'>('READY');
   const [isExactLocation, setIsExactLocation] = useState(true);
   const [amenities, setAmenities] = useState({
@@ -186,6 +210,16 @@ export default function EditOfferScreen({ route }: any) {
           setVerifyTokens(tokens);
           setPrice(offer.price?.toString() || '');
           setAdminFee(offer.adminFee?.toString() || '');
+          // Prowizja agenta — backend zwraca `agentCommissionPercent` (number | null).
+          // 0 → '0' (świadome „BEZ PROWIZJI"), null/undefined → '' (brak).
+          const cp = extractAgentCommissionPercent(offer);
+          if (cp === null) {
+            setAgentCommissionPercent('');
+          } else if (cp === 0) {
+            setAgentCommissionPercent('0');
+          } else {
+            setAgentCommissionPercent(String(cp).replace('.', ','));
+          }
           setArea(offer.area?.toString() || '');
           setRooms(offer.rooms?.toString() || '');
           setFloor(offer.floor?.toString() || '');
@@ -281,6 +315,15 @@ export default function EditOfferScreen({ route }: any) {
     if (!same(description.trim(), originalCleanDescription)) diffs.push('opis');
     if (!same(price, originalData.price)) diffs.push('cena');
     if (!same(adminFee, originalData.adminFee)) diffs.push('czynsz');
+    // Prowizja — porównujemy SPARSOWANE liczby, żeby '2,5' vs '2.5' vs 2.5 dawały
+    // ten sam diff (bez fałszywych „dirty"). null vs null = brak zmian.
+    {
+      const originalCp = extractAgentCommissionPercent(originalData);
+      const currentCp = parseAgentCommissionPercent(agentCommissionPercent);
+      const a = originalCp === null ? 'NULL' : String(roundToQuarter(originalCp));
+      const b = currentCp === null ? 'NULL' : String(roundToQuarter(currentCp));
+      if (a !== b) diffs.push('prowizja');
+    }
     if (!same(area, originalData.area)) diffs.push('powierzchnia');
     if (!same(rooms, originalData.rooms)) diffs.push('pokoje');
     if (!same(floor, originalData.floor)) diffs.push('piętro');
@@ -308,6 +351,7 @@ export default function EditOfferScreen({ route }: any) {
     description,
     price,
     adminFee,
+    agentCommissionPercent,
     area,
     rooms,
     floor,
@@ -429,6 +473,12 @@ export default function EditOfferScreen({ route }: any) {
     setVerifyTokens(tokens);
     setPrice(originalData.price?.toString() || '');
     setAdminFee(originalData.adminFee?.toString() || '');
+    {
+      const cp = extractAgentCommissionPercent(originalData);
+      if (cp === null) setAgentCommissionPercent('');
+      else if (cp === 0) setAgentCommissionPercent('0');
+      else setAgentCommissionPercent(String(cp).replace('.', ','));
+    }
     setArea(originalData.area?.toString() || '');
     setRooms(originalData.rooms?.toString() || '');
     setFloor(originalData.floor?.toString() || '');
@@ -485,6 +535,34 @@ export default function EditOfferScreen({ route }: any) {
       return;
     }
 
+    /*
+     * Walidacja prowizji agenta — przepuszczamy TYLKO jeśli aktualny user to
+     * AGENT. Dla pozostałych ról pole jest defensywnie ignorowane (backend i
+     * tak wymusza tę regułę poprzez `resolveAgentCommissionFromBody`).
+     *
+     * Reguły walidacji (zgodne z helperem):
+     *   • '' (puste) → wyślemy `null` (CLEAR prowizji)
+     *   • '0' → tryb „BEZ PROWIZJI", legalny
+     *   • [0.5, 10] → standardowa prowizja, snap do 0.25 po stronie backendu
+     *   • (0, 0.5) lub > 10 → blokujemy z dedykowanym alertem
+     */
+    const isAgentUser = isMobileAgentRole(user?.role);
+    let resolvedCommission: number | null | undefined = undefined; // undefined = nie wysyłaj pola
+    if (isAgentUser) {
+      const rawCommission = agentCommissionPercent?.toString().trim() ?? '';
+      if (rawCommission === '') {
+        resolvedCommission = null;
+      } else {
+        const validation = validateAgentCommissionPercent(rawCommission);
+        if (!validation.ok) {
+          Alert.alert('Prowizja agenta', validation.message);
+          setSaving(false);
+          return;
+        }
+        resolvedCommission = validation.percent;
+      }
+    }
+
     // Wymuszamy literalny boolean dla `isExactLocation` — niektóre warianty
     // backendu interpretują `undefined`/brak pola jako „brak zmiany" lub
     // default `true`. Wysyłamy też alias `is_exact_location` (snake_case),
@@ -492,7 +570,7 @@ export default function EditOfferScreen({ route }: any) {
     // To jest belt-and-suspenders dla bardzo konkretnego bug-reportu:
     // „klikam wyłączenie i nie zapisuje się dokładna lokalizacja".
     const isExactLocationBool = Boolean(isExactLocation);
-    const updatePayload = {
+    const updatePayload: Record<string, any> = {
       id: offerId,
       userId: user.id,
       title: title.trim(),
@@ -514,6 +592,9 @@ export default function EditOfferScreen({ route }: any) {
       apartmentNumber: apartmentNumber.trim() || undefined,
       landRegistryNumber: landRegistryNumber.trim() || undefined,
     };
+    if (isAgentUser && resolvedCommission !== undefined) {
+      updatePayload.agentCommissionPercent = resolvedCommission;
+    }
 
     try {
       const response = await fetch(`${API_URL}/api/mobile/v1/offers`, {
@@ -582,6 +663,8 @@ export default function EditOfferScreen({ route }: any) {
         description: updatePayload.description,
         price: updatePayload.price,
         adminFee: updatePayload.adminFee,
+        agentCommissionPercent:
+          isAgentUser && resolvedCommission !== undefined ? resolvedCommission : originalData?.agentCommissionPercent ?? null,
         area: updatePayload.area,
         rooms: updatePayload.rooms,
         floor: updatePayload.floor,
@@ -671,6 +754,71 @@ export default function EditOfferScreen({ route }: any) {
     if (images.length < 2) setGalleryHintDismissed(true);
   }, [images.length]);
 
+  /* ===========================================================
+   *  PROWIZJA AGENTA — UI helpery (kopia logiki ze `Step4_Finance`).
+   *  Sekcja jest renderowana TYLKO gdy aktualny user ma rolę `AGENT`.
+   *  Cena oferty nie jest podnoszona — to wyłącznie informacja dla
+   *  kupującego, jaka część ceny stanowi prowizję agenta.
+   * =========================================================== */
+  const isAgentUserUI = isMobileAgentRole(user?.role);
+  const commissionPercentParsed = parseAgentCommissionPercent(agentCommissionPercent);
+  const hasCommissionSlot = commissionPercentParsed !== null;
+  const isZeroCommission = isZeroCommissionPercent(commissionPercentParsed);
+  const commissionAmount = isZeroCommission
+    ? 0
+    : computeAgentCommissionAmount(price, commissionPercentParsed);
+  const commissionInRange =
+    commissionPercentParsed !== null &&
+    (commissionPercentParsed === AGENT_COMMISSION_ZERO_PERCENT ||
+      (commissionPercentParsed >= AGENT_COMMISSION_MIN_PERCENT &&
+        commissionPercentParsed <= AGENT_COMMISSION_MAX_PERCENT));
+
+  const commissionAccent = isZeroCommission ? '#10b981' : '#FF9F0A';
+  const commissionAccentBgLight = isZeroCommission ? 'rgba(16,185,129,0.12)' : 'rgba(255,159,10,0.12)';
+  const commissionAccentBgStrong = isZeroCommission ? 'rgba(16,185,129,0.18)' : 'rgba(255,159,10,0.16)';
+  const commissionAccentBorder = isZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.55)';
+
+  const handleCommissionChange = (text: string) => {
+    // Akceptujemy tylko cyfry, kropkę i przecinek — agresywna walidacja
+    // dzieje się w `handleSave` (`validateAgentCommissionPercent`).
+    const cleaned = text.replace(/[^0-9.,]/g, '');
+    setAgentCommissionPercent(cleaned);
+  };
+
+  /** Zmiana o ±0.25 z preserwacją „twardych" przejść:
+   *   • 0% + krok dodatni → skacze do `AGENT_COMMISSION_MIN_PERCENT` (0.5%)
+   *   • 0.5% + krok ujemny → skacze do 0% (świadomy tryb „Bez prowizji"). */
+  const adjustCommission = (delta: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const base = commissionPercentParsed ?? AGENT_COMMISSION_DEFAULT_PERCENT;
+    if (delta > 0 && base === 0) {
+      setAgentCommissionPercent(String(AGENT_COMMISSION_MIN_PERCENT).replace('.', ','));
+      return;
+    }
+    if (delta < 0 && base <= AGENT_COMMISSION_MIN_PERCENT) {
+      setAgentCommissionPercent('0');
+      return;
+    }
+    const next = Math.max(
+      AGENT_COMMISSION_MIN_PERCENT,
+      Math.min(AGENT_COMMISSION_MAX_PERCENT, roundToQuarter(base + delta)),
+    );
+    setAgentCommissionPercent(String(next).replace('.', ','));
+  };
+
+  const enableDefaultCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setAgentCommissionPercent(String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ','));
+  };
+  const enableZeroCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setAgentCommissionPercent('0');
+  };
+  const clearCommission = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAgentCommissionPercent('');
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { backgroundColor: bgColor, justifyContent: 'center' }]}>
@@ -733,9 +881,12 @@ export default function EditOfferScreen({ route }: any) {
         style={{ flex: 1 }}
       >
         <ScrollView
+          ref={mainScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          automaticallyAdjustKeyboardInsets
         >
           {/* ====== HERO „TWOJE OKNO EDYCJI" ====== */}
           <View style={[styles.heroCard, { backgroundColor: cardBgElevated, borderColor }]}>
@@ -787,7 +938,7 @@ export default function EditOfferScreen({ route }: any) {
             <View style={styles.dirtyPill}>
               <View style={styles.dirtyDot} />
               <Text style={styles.dirtyText}>
-                Niezapisane zmiany ({dirtyCount}) — pamiętaj, by zatwierdzić „Zapisz"
+                Niezapisane zmiany ({dirtyCount}) — pamiętaj, by zatwierdzić „Zapisz”
               </Text>
               <Pressable
                 onPress={() => {
@@ -1193,6 +1344,209 @@ export default function EditOfferScreen({ route }: any) {
           </View>
           <Text style={styles.sectionFooter}>Sama zmiana ceny nie ukrywa oferty z Radaru.</Text>
 
+          {/*
+            ====== PROWIZJA AGENTA ======
+            Sekcja widoczna TYLKO dla użytkowników z rolą AGENT. Pozwala:
+              • dodać świeżą prowizję (CTA „2,5%" lub „Bez prowizji"),
+              • edytować istniejącą (stepper ±0,25 / input z procentem),
+              • przejść w tryb 0% („Bez prowizji" — zielona pigułka u kupującego),
+              • wyczyścić (X) — wtedy oferta przestaje pokazywać pigułkę prowizji.
+            Walidacja zakresu wykonuje się przy zapisie (handleSave).
+          */}
+          {isAgentUserUI ? (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 14 }]}>PROWIZJA AGENTA</Text>
+              <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
+                <View style={styles.commissionHeader}>
+                  <View
+                    style={[
+                      styles.commissionHeaderBadge,
+                      { backgroundColor: commissionAccentBgStrong, borderColor: commissionAccentBorder },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isZeroCommission ? 'gift-outline' : 'briefcase-outline'}
+                      size={14}
+                      color={commissionAccent}
+                    />
+                    <Text style={[styles.commissionHeaderBadgeText, { color: commissionAccent }]}>
+                      EstateOS™ Agent
+                    </Text>
+                  </View>
+                  {hasCommissionSlot ? (
+                    <Pressable onPress={clearCommission} hitSlop={10} style={styles.commissionClearBtn}>
+                      <Ionicons name="close-circle" size={20} color={subColor} />
+                    </Pressable>
+                  ) : null}
+                </View>
+                <Text style={[styles.commissionTitle, { color: txtColor }]}>
+                  {isZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+                </Text>
+                <Text style={[styles.commissionSubtitle, { color: subColor }]}>
+                  {isZeroCommission ? (
+                    <>
+                      Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.
+                    </>
+                  ) : hasCommissionSlot ? (
+                    <>
+                      Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny{' '}
+                      <Text style={{ fontWeight: '800', color: txtColor }}>
+                        {formatPercentLabel(commissionPercentParsed!)}
+                      </Text>{' '}
+                      stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.{' '}
+                      <Text style={{ fontWeight: '800', color: txtColor }}>
+                        Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku.
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      Wybierz prowizję 0,5%–10% lub tryb „Bez prowizji” (0%). Cena oferty się NIE zmieni — kupujący zobaczy tylko adnotację o prowizji.{' '}
+                      <Text style={{ fontWeight: '800', color: txtColor }}>
+                        Wpisana kwota jest BRUTTO — zawiera VAT, bez dodatkowego podatku.
+                      </Text>
+                    </>
+                  )}
+                </Text>
+
+                {!hasCommissionSlot ? (
+                  <View style={styles.commissionCtaRow}>
+                    <Pressable
+                      onPress={enableDefaultCommission}
+                      style={({ pressed }) => [
+                        styles.commissionAddCta,
+                        {
+                          flex: 1,
+                          backgroundColor: isDark ? 'rgba(255,159,10,0.16)' : 'rgba(255,159,10,0.12)',
+                          borderColor: 'rgba(255,159,10,0.6)',
+                          opacity: pressed ? 0.85 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color="#FF9F0A" />
+                      <Text style={[styles.commissionAddCtaText, { color: '#FF9F0A' }]} numberOfLines={1}>
+                        Prowizja {formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT)}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={enableZeroCommission}
+                      style={({ pressed }) => [
+                        styles.commissionAddCta,
+                        {
+                          flex: 1,
+                          backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.12)',
+                          borderColor: 'rgba(16,185,129,0.6)',
+                          opacity: pressed ? 0.85 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="gift-outline" size={20} color="#10b981" />
+                      <Text style={[styles.commissionAddCtaText, { color: '#10b981' }]} numberOfLines={1}>
+                        Bez prowizji
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View
+                    style={[
+                      styles.commissionCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                        borderColor: commissionInRange ? commissionAccentBorder : '#FF3B30',
+                        shadowColor: commissionAccent,
+                        shadowOpacity: isDark ? 0.18 : 0.12,
+                        shadowRadius: 14,
+                        shadowOffset: { width: 0, height: 5 },
+                        elevation: 3,
+                      },
+                    ]}
+                  >
+                    <View style={styles.commissionRow}>
+                      <View style={styles.commissionInputCol}>
+                        <Text style={[styles.commissionLabel, { color: subColor }]}>Prowizja</Text>
+                        <View
+                          style={[
+                            styles.commissionInputBox,
+                            { backgroundColor: commissionAccentBgLight, borderColor: commissionAccentBorder },
+                          ]}
+                        >
+                          <TextInput
+                            style={[styles.commissionInput, { color: txtColor }]}
+                            value={String(agentCommissionPercent || '')}
+                            onChangeText={handleCommissionChange}
+                            placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
+                            placeholderTextColor={subColor}
+                            keyboardType="decimal-pad"
+                            maxLength={5}
+                          />
+                          <Text style={[styles.commissionInputSuffix, { color: txtColor }]}>%</Text>
+                        </View>
+                        <View style={styles.commissionStepRow}>
+                          <Pressable
+                            onPress={() => adjustCommission(-AGENT_COMMISSION_STEP_PERCENT)}
+                            style={[
+                              styles.commissionStepBtn,
+                              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+                            ]}
+                          >
+                            <Ionicons name="remove" size={16} color={txtColor} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => adjustCommission(AGENT_COMMISSION_STEP_PERCENT)}
+                            style={[
+                              styles.commissionStepBtn,
+                              { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
+                            ]}
+                          >
+                            <Ionicons name="add" size={16} color={txtColor} />
+                          </Pressable>
+                          <Text style={[styles.commissionStepHint, { color: subColor }]}>
+                            krok {formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT)}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.commissionAmountCol}>
+                        <Text style={[styles.commissionLabel, { color: subColor }]} numberOfLines={1}>
+                          {isZeroCommission ? 'dla kupującego' : 'z ceny ofertowej'}
+                        </Text>
+                        <Text
+                          style={[styles.commissionAmountValue, { color: commissionAccent }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.5}
+                        >
+                          {isZeroCommission
+                            ? 'BEZ PROWIZJI'
+                            : commissionAmount > 0
+                              ? formatPlnAmount(commissionAmount)
+                              : '— PLN'}
+                        </Text>
+                        <Text style={[styles.commissionAmountHint, { color: subColor }]} numberOfLines={2}>
+                          {isZeroCommission
+                            ? 'Kupujący nie płaci prowizji.'
+                            : 'To Twoje wynagrodzenie z transakcji.'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {!commissionInRange ? (
+                      <View style={styles.commissionWarn}>
+                        <Ionicons name="warning-outline" size={14} color="#FF3B30" />
+                        <Text style={[styles.commissionWarnText, { color: '#FF3B30' }]}>
+                          Prowizja musi być równa 0% (bez prowizji) lub w zakresie{' '}
+                          {formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT)}–
+                          {formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)}.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+              <Text style={styles.sectionFooter}>
+                Cena oferty NIE jest podnoszona. Klient widzi tylko adnotację o prowizji.
+              </Text>
+            </>
+          ) : null}
+
           {/* ====== STAN ====== */}
           <Text style={[styles.sectionTitle, { marginTop: 14 }]}>STAN WYKOŃCZENIA</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
@@ -1467,13 +1821,16 @@ export default function EditOfferScreen({ route }: any) {
                 ]}
                 value={landRegistryNumber}
                 onChangeText={(t) => setLandRegistryNumber(normalizeLandRegistryNumber(t))}
+                onFocus={() => {
+                  setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 320);
+                }}
                 placeholder="WA4N/00012345/6"
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
                 autoCorrect={false}
               />
               {/* Sugestie prefiksu */}
-              {landRegistrySuggestions.length > 0 && landRegistryRaw.indexOf('/') < 0 ? (
+              {landRegistrySuggestions.length > 0 && !isLandRegistryValid ? (
                 <View
                   style={[
                     styles.suggestionsWrap,
@@ -1742,13 +2099,13 @@ function LocationPreview({
           {hasStreet ? (
             isExactLocation ? (
               <Text style={styles.locAddressHint}>
-                Numer „{(streetRaw.match(/\d+[A-Za-z]?(?:[\/\-]\d+[A-Za-z]?)?\s*$/u) || [''])[0].trim() || '—'}"
+                Numer „{(streetRaw.match(/\d+[A-Za-z]?(?:[\/\-]\d+[A-Za-z]?)?\s*$/u) || [''])[0].trim() || '—'}”
                 jest widoczny w ogłoszeniu.
               </Text>
             ) : (
               <Text style={styles.locAddressHint}>
                 Numer budynku <Text style={{ fontWeight: '700', color: '#FF9500' }}>ukryty</Text>. Widoczna tylko
-                nazwa ulicy „{visibleStreet || streetRaw}".
+                nazwa ulicy „{visibleStreet || streetRaw}”.
               </Text>
             )
           ) : (
@@ -1981,6 +2338,165 @@ const styles = StyleSheet.create({
     borderLeftColor: 'rgba(255,255,255,0.05)',
     borderRightColor: 'rgba(127,127,127,0.08)',
     borderBottomColor: 'rgba(0,0,0,0.18)',
+  },
+
+  /* ===== COMMISSION (PROWIZJA AGENTA) — wzór z `AddOffer/Step4_Finance` ===== */
+  commissionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 14,
+    paddingHorizontal: 14,
+  },
+  commissionHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  commissionHeaderBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  commissionClearBtn: {
+    padding: 2,
+  },
+  commissionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginTop: 10,
+    marginHorizontal: 14,
+  },
+  commissionSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+    marginHorizontal: 14,
+  },
+  commissionCtaRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
+  },
+  commissionAddCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  commissionAddCtaText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  commissionCard: {
+    marginTop: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  commissionRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  commissionInputCol: {
+    flex: 1.1,
+    minWidth: 0,
+  },
+  commissionAmountCol: {
+    flex: 1,
+    alignItems: 'flex-end',
+    minWidth: 0,
+  },
+  commissionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  commissionInputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  commissionInput: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    padding: 0,
+  },
+  commissionInputSuffix: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  commissionStepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  commissionStepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commissionStepHint: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginLeft: 4,
+  },
+  commissionAmountValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    marginTop: 2,
+  },
+  commissionAmountHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'right',
+    marginTop: 4,
+    lineHeight: 14,
+  },
+  commissionWarn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,59,48,0.10)',
+  },
+  commissionWarnText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 14,
   },
 
   /* ===== IMAGES ===== */

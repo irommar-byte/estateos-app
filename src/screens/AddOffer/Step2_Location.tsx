@@ -902,7 +902,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
         }
       }
     } catch (e) {
-      console.log("Błąd Reverse Geocoding:", e);
+      if (__DEV__) console.warn('Błąd Reverse Geocoding:', e);
     }
   };
 

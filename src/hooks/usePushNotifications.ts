@@ -117,7 +117,8 @@ export async function syncPushDevicePreferences(params: {
   }
 }
 
-export function usePushNotifications(authToken: string | null) {
+/** Named const export — unika edge-case’ów bundlera z `export function` przy cyklicznych importach. */
+export const usePushNotifications = function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
 
   const normalizedAuthToken =
@@ -162,7 +163,6 @@ export function usePushNotifications(authToken: string | null) {
             allowAlert: true,
             allowBadge: true,
             allowSound: true,
-            allowAnnouncements: true,
           },
         });
         finalStatus = status;
@@ -274,4 +274,4 @@ export function usePushNotifications(authToken: string | null) {
   }, [registerToken]);
 
   return { askForPermission: () => registerToken(true) };
-}
+};

@@ -10,16 +10,26 @@ import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
+import { SITE_ORIGIN } from '../utils/offerShareUrls';
+import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
+import UserRegionFlag from '../components/UserRegionFlag';
+import { getDeviceRegionCountry } from '../utils/phoneRegions';
 import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
 import { openStripeCheckoutForPlan } from '../utils/listingQuota';
-import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../services/iapPakietPlus';
+import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import DeleteAccountSheet from '../components/DeleteAccountSheet';
-import EditProfileDataSheet from '../components/EditProfileDataSheet';
+import EditNameSheet from '../components/profile/EditNameSheet';
+import EditPhoneSheet from '../components/profile/EditPhoneSheet';
+import EditEmailSheet from '../components/profile/EditEmailSheet';
+import BlockedUsersModal from '../components/BlockedUsersModal';
+import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
+import AdminLegalVerificationModal from '../components/AdminLegalVerificationModal';
+import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -84,9 +94,15 @@ const AnimatedStatusDot = ({ status }) => {
 
 const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
   const isDark = theme.glass === 'dark';
-  const [priceAlerts, setPriceAlerts] = useState(true);
-  const [negotiationAlerts, setNegotiationAlerts] = useState(true);
   const [pushPermissionStatus, setPushPermissionStatus] = useState(null);
+
+  // Uwaga: świadomie NIE renderujemy tu „pseudo-przełączników" typu
+  // „Zmiany cen" / „Nowe propozycje". Wcześniej istniały, ale nie były
+  // podpięte ani do AsyncStorage, ani do backendu, ani do filtrowania
+  // pushy — wprowadzały użytkownika w błąd (placebo UI). Dopóki nie ma
+  // realnego kontraktu z serwerem na preferencje powiadomień, modal
+  // pokazuje wyłącznie systemowy status uprawnień, który JEST realnie
+  // sprzężony z iOS/Android przez `expo-notifications`.
 
   const refreshPushPermission = async () => {
     try {
@@ -109,11 +125,6 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
     });
     return () => sub.remove();
   }, [visible]);
-
-  const toggleSetting = (setter, value) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setter(value);
-  };
 
   const handleSystemPushAction = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -171,15 +182,8 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
             </View>
           </View>
           <Text style={styles.sectionFooter}>
-            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady — przełącznik pojawi się w Ustawieniach dopiero po pierwszej próbie zezwolenia.
+            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady — przełącznik pojawi się w Ustawieniach dopiero po pierwszej próbie zezwolenia. Po włączeniu otrzymasz powiadomienie Push na ekran blokady, które natychmiast przeniesie Cię do odpowiedniego widoku w aplikacji.
           </Text>
-
-          <Text style={styles.sectionTitle}>Ulubione oferty</Text>
-          <ListGroup isDark={isDark}>
-            <ListItem icon="pricetag" color="#34C759" title="Zmiany cen" subtitle="Gdy cena obserwowanej oferty spadnie" isDark={isDark} rightElement={<Switch value={priceAlerts} onValueChange={(v) => toggleSetting(setPriceAlerts, v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#34C759' }} />} />
-            <ListItem icon="chatbubbles" color="#007AFF" title="Nowe propozycje" subtitle="Gdy ktoś złoży ofertę cenową (negocjacje)" isDark={isDark} isLast={true} rightElement={<Switch value={negotiationAlerts} onValueChange={(v) => toggleSetting(setNegotiationAlerts, v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#007AFF' }} />} />
-          </ListGroup>
-          <Text style={styles.sectionFooter}>Otrzymasz powiadomienie Push na ekran blokady, które natychmiast przeniesie Cię do oferty.</Text>
         </ScrollView>
       </View>
     </Modal>
@@ -536,7 +540,20 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       onClose();
       setTimeout(() => navigation.navigate("OfferDetail", { offer: selectedOffer }), 200);
     } else if (actionType === 'EDIT') {
-      Alert.alert("Edycja", "Funkcja edycji zostanie udostępniona wkrótce.");
+      /*
+       * Otwieramy ekran edycji oferty (`EditOfferScreen`). Wcześniej był to
+       * placeholder „Funkcja wkrótce", ale od czasu wdrożenia karty prowizji
+       * agenta (Step4_Finance / EditOffer) edycja działa w pełni i ma własną
+       * walidację. Zamykamy szufladę zarządzania PRZED nawigacją z `setTimeout`,
+       * dokładnie jak w `PREVIEW`, żeby gesture „swipe-back" nie zostawił
+       * artefaktu modala na ekranie EditOffer.
+       */
+      if (!selectedOffer?.id) {
+        Alert.alert('Edycja', 'Nie udało się otworzyć tej oferty do edycji.');
+        return;
+      }
+      onClose();
+      setTimeout(() => navigation.navigate('EditOffer', { offerId: selectedOffer.id }), 200);
     } else if (actionType === 'BUMP') {
       if (!selectedOffer?.id || !token || reactivating) return;
       if (Platform.OS === 'ios') {
@@ -789,7 +806,7 @@ const ListGroup = ({ children, isDark }) => (
   <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>{children}</View>
 );
 
-const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark, rightElement, badgeCount }: any) => (
+const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, isLast, isDark, rightElement, badgeCount }: any) => (
   <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.listItem, pressed && onPress && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
     <View style={[styles.listIconBox, { backgroundColor: color }]}>
       <Ionicons name={icon} size={20} color="#FFF" />
@@ -829,7 +846,9 @@ const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark
         >
           {title}
         </Text>
-        {subtitle && (
+        {subtitleNode ? (
+          subtitleNode
+        ) : subtitle ? (
           <Text
             style={styles.listSubtitle}
             numberOfLines={2}
@@ -839,7 +858,7 @@ const ListItem = ({ icon, color, title, subtitle, value, onPress, isLast, isDark
           >
             {subtitle}
           </Text>
-        )}
+        ) : null}
       </View>
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 0 }}>
         {value && (
@@ -1253,9 +1272,11 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
 
 const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => {
   const navigation = useNavigation();
+  const { token } = useAuthStore();
   const [activeTab, setActiveTab] = useState('PENDING');
   const [transactionFilter, setTransactionFilter] = useState('ALL');
   const [txFilterContainerWidth, setTxFilterContainerWidth] = useState(0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const txFilterTranslateX = useRef(new Animated.Value(0)).current;
   const openOfferPreview = (offer) => {
     Haptics.selectionAsync();
@@ -1281,24 +1302,63 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     }).start();
   }, [transactionFilter, txFilterSegmentWidth, txFilterTranslateX]);
 
+  const extractAdminOffersList = (data: any): any[] => {
+    if (Array.isArray(data?.offers)) return data.offers;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.items)) return data.items;
+    if (Array.isArray(data)) return data;
+    return [];
+  };
+
   const fetchOffers = async () => {
+    if (!token) {
+      setFetchError('Brak sesji — zaloguj się ponownie.');
+      setOffers([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setFetchError(null);
     try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers?status=${activeTab}`);
-      const data = await res.json();
-      if (data.success) setOffers(data.offers);
-    } catch (e) {}
-    setLoading(false);
+      const res = await fetch(
+        `${API_URL}/api/mobile/v1/admin/offers?status=${encodeURIComponent(activeTab)}`,
+        {
+          cache: 'no-store',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Cache-Control': 'no-cache',
+          },
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = String(data?.message || data?.error || `Serwer: ${res.status}`).trim();
+        setFetchError(msg || 'Nie udało się pobrać listy ofert.');
+        setOffers([]);
+        return;
+      }
+      setOffers(extractAdminOffersList(data));
+    } catch {
+      setFetchError('Brak połączenia z serwerem.');
+      setOffers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchPendingCount = async () => {
+    if (!token) return;
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers?status=PENDING`, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
       });
       const data = await res.json().catch(() => ({}));
-      const nextCount = Array.isArray(data?.offers) ? data.offers.length : 0;
+      if (!res.ok) return;
+      const nextCount = extractAdminOffersList(data).length;
       onPendingCountChange?.(nextCount);
     } catch {
       // noop
@@ -1309,21 +1369,31 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     if (!visible) return;
     fetchOffers();
     fetchPendingCount();
-  }, [visible, activeTab]);
+  }, [visible, activeTab, token]);
 
   const changeStatus = async (offerId, newStatus) => {
+    if (!token) {
+      Alert.alert('Sesja', 'Zaloguj się ponownie, aby zmieniać statusy ofert.');
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerId, newStatus })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ offerId, newStatus }),
       });
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         fetchOffers();
         fetchPendingCount();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Błąd', String(err?.message || err?.error || 'Nie udało się zmienić statusu.'));
       }
-    } catch (e) { Alert.alert("Błąd", "Nie udało się zmienić statusu"); }
+    } catch {
+      Alert.alert('Błąd', 'Nie udało się zmienić statusu.');
+    }
   };
 
   const renderOffer = ({ item }) => {
@@ -1393,6 +1463,14 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
           <Text style={[styles.modalTitle, { color: theme.text }]}>Weryfikacja Ofert</Text>
           <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
         </View>
+        {fetchError ? (
+          <View style={[styles.adminInlineError, { borderColor: 'rgba(255,59,48,0.35)', backgroundColor: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.08)', marginHorizontal: 16, marginBottom: 8 }]}>
+            <Text style={[styles.adminInlineErrorText, { color: theme.text }]}>{fetchError}</Text>
+            <Pressable onPress={() => void fetchOffers()} style={({ pressed }) => [styles.adminRetryBtn, pressed && { opacity: 0.88 }]}>
+              <Text style={styles.adminRetryBtnText}>Spróbuj ponownie</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.tabsContainer}>
           <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('PENDING'); }} style={[styles.tab, activeTab === 'PENDING' && { backgroundColor: '#FF9F0A' }]}><Text style={[styles.tabText, { color: activeTab === 'PENDING' ? '#fff' : theme.subtitle }]}>Do weryfikacji</Text></Pressable>
           <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ACTIVE'); }} style={[styles.tab, activeTab === 'ACTIVE' && { backgroundColor: '#10b981' }]}><Text style={[styles.tabText, { color: activeTab === 'ACTIVE' ? '#fff' : theme.subtitle }]}>Aktywne</Text></Pressable>
@@ -2168,16 +2246,23 @@ export default function ProfileScreen({
   const [isAdminUsersVisible, setIsAdminUsersVisible] = useState(false);
   const [isAdminRadarVisible, setIsAdminRadarVisible] = useState(false);
   const [isAdminDealroomCheckVisible, setIsAdminDealroomCheckVisible] = useState(false);
+  const [isAdminLegalVerifyVisible, setIsAdminLegalVerifyVisible] = useState(false);
+  const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
   const [adminPendingOffersCount, setAdminPendingOffersCount] = useState(0);
   const [isSmsEnabled, setIsSmsEnabled] = useState(true);
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
   const [ownPublicProfile, setOwnPublicProfile] = useState(null);
   const [ownPublicProfileLoading, setOwnPublicProfileLoading] = useState(false);
-  const isZarzad = user?.role === 'ADMIN';
+  // Case-insensitive — backend mógł zwrócić 'admin' / 'Admin' / 'ADMIN'.
+  const isZarzad = String(user?.role || '').trim().toUpperCase() === 'ADMIN';
 
   const [isDeleteAccountVisible, setIsDeleteAccountVisible] = useState(false);
-  const [isEditProfileVisible, setIsEditProfileVisible] = useState(false);
+  const [isBlockedUsersVisible, setIsBlockedUsersVisible] = useState(false);
+  const blockedUsersCount = useBlockedUsersStore((s) => s.blockedIds.size);
+  const [isEditNameVisible, setIsEditNameVisible] = useState(false);
+  const [isEditPhoneVisible, setIsEditPhoneVisible] = useState(false);
+  const [isEditEmailVisible, setIsEditEmailVisible] = useState(false);
   const proExpiryMsForDelete = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const hasPaidIndicators =
     !!user?.isPro ||
@@ -2187,6 +2272,15 @@ export default function ProfileScreen({
 
   // --- LOGIKA KLAWISZA PASSKEY (Z PAMIĘCIĄ LOCALSTORAGE) ---
   const [isPasskeyActive, setIsPasskeyActive] = useState(false);
+  /**
+   * „Przywróć zakupy" — App Store Review Guideline 3.1.1 wymaga
+   * widocznego przycisku w każdej aplikacji oferującej IAP. Przycisk
+   * woła `IAPManager.restorePurchases()`, który drenuje historię z
+   * App Store / Google Play i zgłasza ponownie do backendu (idempotentnie
+   * po `transactionId`). Stan trzymamy lokalnie, żeby pokazać spinner
+   * w trakcie operacji (Apple lubi wizualne potwierdzenie).
+   */
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -2216,7 +2310,7 @@ export default function ProfileScreen({
           }
         }
       } catch (e) {
-        console.log("Błąd weryfikacji statusu klucza:", e);
+        if (__DEV__) console.warn('Błąd weryfikacji statusu klucza:', e);
       }
     };
     
@@ -2224,14 +2318,25 @@ export default function ProfileScreen({
   }, [user?.id]);
 
   const refreshAdminPendingOffers = async () => {
-    if (!isZarzad) return;
+    if (!isZarzad || !token) return;
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers?status=PENDING`, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
       });
       const data = await res.json().catch(() => ({}));
-      const nextCount = Array.isArray(data?.offers) ? data.offers.length : 0;
+      if (!res.ok) return;
+      const list = Array.isArray(data?.offers)
+        ? data.offers
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+      const nextCount = list.length;
       setAdminPendingOffersCount(nextCount);
       const prev = adminPendingRef.current;
       if (prev != null && nextCount > prev) {
@@ -2253,6 +2358,32 @@ export default function ProfileScreen({
     refreshAdminPendingOffers();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') void refreshAdminPendingOffers();
+    });
+    return () => sub.remove();
+  }, [isZarzad, token]);
+
+  /**
+   * Licznik PENDING zgłoszeń weryfikacji prawnej (KW + nr lokalu).
+   * Trzymamy go analogicznie do `adminPendingOffersCount`, żeby admin
+   * zaraz po wejściu w Profil widział czerwony badge przy nowej pozycji
+   * „Weryfikacja prawna". Refresh przy aktywacji aplikacji + manualny
+   * callback z modala (po accept/reject natychmiast aktualizujemy licznik).
+   */
+  const refreshAdminPendingLegalVerifications = async () => {
+    if (!isZarzad) return;
+    try {
+      const items = await fetchAdminLegalVerificationQueue('PENDING', token);
+      setAdminPendingLegalCount(items.length);
+    } catch {
+      // noop — brak końcówki po stronie back-endu nie powinien wywalić Profilu
+    }
+  };
+
+  useEffect(() => {
+    if (!isZarzad) return;
+    refreshAdminPendingLegalVerifications();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshAdminPendingLegalVerifications();
     });
     return () => sub.remove();
   }, [isZarzad]);
@@ -2289,15 +2420,20 @@ export default function ProfileScreen({
           text: 'Wyłącz', 
           style: 'destructive', 
           onPress: async () => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            // 1. Aktualizacja wizualna
-            setIsPasskeyActive(false);
-            // 2. Usunięcie z lokalnej pamięci
-            await AsyncStorage.removeItem(`@passkey_${user.id}`);
-            // 3. FIZYCZNE USUNIĘCIE KLUCZA Z SERWERA (Z BAZY DANYCH)
-            await PasskeyService.revoke(token, String(user.id));
-            
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            try {
+              await PasskeyService.revoke(token, String(user.id));
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setIsPasskeyActive(false);
+              await AsyncStorage.removeItem(`@passkey_${user.id}`);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err: any) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              Alert.alert(
+                'Nie udało się wyłączyć Passkey',
+                String(err?.message || '').trim() ||
+                  'Serwer nie potwierdził usunięcia klucza. Sprawdź połączenie i spróbuj ponownie.',
+              );
+            }
           }
         }
       ]);
@@ -2306,7 +2442,7 @@ export default function ProfileScreen({
 
   useEffect(() => {
     if (isZarzad) {
-      fetch('https://estateos.pl/api/admin/settings')
+      fetch(`${API_URL}/api/admin/settings`)
         .then(res => res.json())
         .then(data => setIsSmsEnabled(data.smsEnabled))
         .catch(() => {});
@@ -2337,7 +2473,7 @@ export default function ProfileScreen({
     setIsSmsEnabled(value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      await fetch('https://estateos.pl/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable: value }) });
+      await fetch(`${API_URL}/api/admin/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enable: value }) });
     } catch (e) {
       Alert.alert("Błąd", "Nie udało się zsynchronizować ustawień.");
     }
@@ -2355,13 +2491,47 @@ export default function ProfileScreen({
         formData.append('userId', String(user.id));
         formData.append('file', { uri: manipResult.uri, name: `avatar_${user.id}.jpg`, type: 'image/jpeg' });
 
-        const res = await fetch(`https://estateos.pl/api/mobile/v1/user/avatar`, { method: 'POST', body: formData });
+        const res = await fetch(`${API_URL}/api/mobile/v1/user/avatar`, { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success && data.url) {
           if (updateAvatar) updateAvatar(`${API_URL}${data.url}`);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
       } catch (e) { Alert.alert('Błąd', 'Problem z awatarem.'); }
+    }
+  };
+
+  /**
+   * Restore Purchases — pobiera historię z App Store / Google Play i
+   * przepuszcza ją przez backend (idempotentnie). Dla pure-consumable
+   * (jak Pakiet Plus 30d) Apple zwraca pustą listę, ale przycisk musi
+   * istnieć i działać — wymóg Review Guideline 3.1.1.
+   */
+  const handleRestorePurchases = async () => {
+    if (isRestoringPurchases) return;
+    setIsRestoringPurchases(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const result = await restorePakietPlusPurchases();
+      if (result.ok) {
+        if (result.restored > 0) {
+          Alert.alert(
+            'Przywrócono zakupy',
+            `Odnowiono ${result.restored} transakcj${result.restored === 1 ? 'ę' : 'i'}. Sloty zostaną zaktualizowane w ciągu chwili.`,
+          );
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          Alert.alert(
+            'Brak zakupów do przywrócenia',
+            'Nie znaleziono żadnych historycznych zakupów na tym koncie Apple ID / Google. Jeśli ostatnio kupiłeś Pakiet Plus i jeszcze się nie zaksięgował — odczekaj minutę i spróbuj ponownie.',
+          );
+        }
+      } else {
+        Alert.alert('Przywracanie zakupów', result.message || 'Nie udało się połączyć ze sklepem.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } finally {
+      setIsRestoringPurchases(false);
     }
   };
 
@@ -2377,29 +2547,79 @@ export default function ProfileScreen({
     ? ownReviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) / ownReviews.length
     : 0;
 
+  const currentEmailLcProfile = String(user?.email || '').trim().toLowerCase();
+  const pendingEmailLcProfile = String((user as any)?.pendingEmail || '').trim().toLowerCase();
+  const hasPendingEmailChange =
+    pendingEmailLcProfile.length > 0 && pendingEmailLcProfile !== currentEmailLcProfile;
+  const profileNameLocked = Boolean((user as any)?.profileNameLocked);
+
+  const handleHeaderEditName = () => {
+    Haptics.selectionAsync();
+    setIsEditNameVisible(true);
+  };
+
+  const hasPhoneForSms = (() => {
+    const raw = String(user?.phone || '').trim();
+    if (!raw || raw === 'Brak numeru') return false;
+    if (isValidPhoneNumber(raw)) return true;
+    const p = parsePhoneNumberFromString(raw, 'PL');
+    return Boolean(p?.isValid());
+  })();
+
+  const profileScreenBg = isDark ? '#000' : '#F2F2F7';
+
   return (
     <>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.container, { backgroundColor: isDark ? '#000' : '#F2F2F7' }]}>
+      <View style={{ flex: 1, backgroundColor: profileScreenBg }} collapsable={false}>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: profileScreenBg }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.container, { backgroundColor: profileScreenBg }]}
+        >
         
         <View style={[styles.headerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
           <Pressable onPress={handleAvatarPick} style={({ pressed }) => [styles.avatarWrapper, { opacity: pressed ? 0.8 : 1 }]}>
             {(() => {
               const rawAvatar = user?.avatar || user?.image;
-              const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `https://estateos.pl${rawAvatar}` : rawAvatar) : null;
+              const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `${API_URL}${rawAvatar}` : rawAvatar) : null;
               return finalAvatar ? <Image source={{ uri: finalAvatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={36} color="#fff" /></View>;
             })()}
             <View style={styles.editBadge}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>EDIT</Text></View>
+            <View style={styles.avatarRegionFlag} pointerEvents="none">
+              <UserRegionFlag phone={user?.phone} fallbackIso={getDeviceRegionCountry()} size={30} />
+            </View>
           </Pressable>
           <View style={styles.headerInfo}>
-            <Text
-              style={[styles.headerName, { color: theme.text }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-              allowFontScaling={false}
-            >
-              {user?.firstName || user?.email} {user?.lastName || ''}
-            </Text>
+            <View style={styles.headerNameRow}>
+              <Text
+                style={[styles.headerName, { color: theme.text, flex: 1, minWidth: 0 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+                allowFontScaling={false}
+              >
+                {user?.firstName || user?.email} {user?.lastName || ''}
+              </Text>
+              <Pressable
+                onPress={handleHeaderEditName}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={({ pressed }) => [
+                  styles.headerNameEditPaper,
+                  isDark ? styles.headerNameEditPaperDark : null,
+                  pressed && { opacity: 0.88 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={profileNameLocked ? 'Imię i nazwisko zablokowane' : 'Zmień imię i nazwisko'}
+              >
+                <View style={styles.headerNameEditBtn}>
+                  <Ionicons
+                    name="pencil"
+                    size={profileNameLocked ? 17 : 19}
+                    color={profileNameLocked ? (isDark ? '#636366' : '#AEAEB2') : '#0A84FF'}
+                  />
+                </View>
+              </Pressable>
+            </View>
             <EliteStatusBadges subject={user} isDark={isDark} compact />
             <Pressable
               onPress={() => {
@@ -2436,7 +2656,11 @@ export default function ProfileScreen({
               minimumFontScale={0.8}
               allowFontScaling={false}
             >
-              {user?.role === 'ADMIN' ? 'Zarząd EstateOS™' : (user?.role === 'AGENT' ? 'Partner EstateOS™' : 'Osoba Prywatna')}
+              {isZarzad
+                ? 'Zarząd EstateOS™'
+                : String(user?.role || '').trim().toUpperCase() === 'AGENT'
+                  ? 'Agent EstateOS™'
+                  : 'Osoba Prywatna'}
             </Text>
             <Text
               style={styles.headerId}
@@ -2454,9 +2678,11 @@ export default function ProfileScreen({
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 if (!user?.isVerifiedPhone) {
-                  navigation.navigate('SmsVerification');
+                  setIsEditPhoneVisible(true);
+                } else if (!user?.isEmailVerified || hasPendingEmailChange) {
+                  setIsEditEmailVisible(true);
                 } else {
-                  setIsEditProfileVisible(true);
+                  setIsOwnPublicProfileOpen(true);
                 }
               }}
             />
@@ -2467,23 +2693,88 @@ export default function ProfileScreen({
           <Text style={styles.sectionTitle}>Dane kontaktowe</Text>
           <ListGroup isDark={isDark}>
             <ListItem
-              icon="create-outline"
-              color="#8E8E93"
-              title="Edytuj dane"
-              subtitle={
-                (user?.isVerifiedPhone ? 0 : 1) + (user?.isEmailVerified ? 0 : 1) > 0
-                  ? `Brakuje weryfikacji: ${[!user?.isVerifiedPhone && 'telefon', !user?.isEmailVerified && 'e-mail'].filter(Boolean).join(' i ')}`
-                  : 'Imię, nazwisko, e-mail, telefon'
+              icon="call"
+              color="#34C759"
+              title="Telefon"
+              value={user?.phone || 'Brak'}
+              subtitle={user?.isVerifiedPhone ? 'Potwierdzony' : undefined}
+              subtitleNode={
+                user?.isVerifiedPhone ? undefined : hasPhoneForSms ? (
+                  <Text
+                    style={styles.listSubtitle}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Niepotwierdzony</Text>
+                    {' — dotknij, aby zweryfikować'}
+                  </Text>
+                ) : (
+                  <Text
+                    style={styles.listSubtitle}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Brak numeru</Text>
+                    {' — dotknij, aby uzupełnić i zweryfikować'}
+                  </Text>
+                )
               }
-              badgeCount={(user?.isVerifiedPhone ? 0 : 1) + (user?.isEmailVerified ? 0 : 1)}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setIsEditProfileVisible(true);
-              }}
+              onPress={
+                user?.isVerifiedPhone
+                  ? undefined
+                  : () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setIsEditPhoneVisible(true);
+                    }
+              }
               isDark={isDark}
             />
-            <ListItem icon="call" color="#34C759" title="Telefon" value={user?.phone || 'Brak'} isDark={isDark} />
-            <ListItem icon="mail" color="#007AFF" title="Email" value={user?.email} isLast={true} isDark={isDark} />
+            <ListItem
+              icon="mail"
+              color="#007AFF"
+              title="Email"
+              value={user?.email || '—'}
+              subtitle={user?.isEmailVerified && !hasPendingEmailChange ? 'Potwierdzony' : undefined}
+              subtitleNode={
+                user?.isEmailVerified && !hasPendingEmailChange ? undefined : hasPendingEmailChange ? (
+                  <Text
+                    style={styles.listSubtitle}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    <Text style={{ color: '#FF9500', fontWeight: '700' }}>Oczekuje na kod</Text>
+                    {' — dotknij, aby dokończyć weryfikację'}
+                  </Text>
+                ) : (
+                  <Text
+                    style={styles.listSubtitle}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
+                    allowFontScaling={false}
+                  >
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Niepotwierdzony</Text>
+                    {' — dotknij, aby wysłać kod i potwierdzić'}
+                  </Text>
+                )
+              }
+              onPress={
+                user?.isEmailVerified && !hasPendingEmailChange
+                  ? undefined
+                  : () => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setIsEditEmailVisible(true);
+                    }
+              }
+              isLast={true}
+              isDark={isDark}
+            />
           </ListGroup>
         </View>
 
@@ -2494,12 +2785,26 @@ export default function ProfileScreen({
           </ListGroup>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Powiadomienia i Ustawienia</Text>
-          <ListGroup isDark={isDark}>
-            <ListItem icon="notifications" color="#FF2D55" title="Powiadomienia" subtitle="Ulubione, zmiany cen i alerty" onPress={() => setIsNotificationsVisible(true)} isLast={true} isDark={isDark} />
-          </ListGroup>
-        </View>
+        {/*
+          === SEKCJA „Powiadomienia i Ustawienia" — UKRYTA ===
+
+          Tymczasowo wyłączona, bo wewnątrz było tylko jedno pole „Powiadomienia"
+          prowadzące do modala, który NIE jest podpięty do backendu (przełączniki
+          „Zmiany cen" / „Nowe propozycje" były placebo). Status systemowych
+          uprawnień push można w razie potrzeby pokazać w innym miejscu —
+          do czasu, gdy będzie kontrakt na realne preferencje powiadomień.
+
+          Pozostawiamy zarówno `NotificationsSettingsModal`, jak i stan
+          `isNotificationsVisible` — żaden z nich nie jest dziś otwierany,
+          ale komponent jest gotowy do ponownego użycia po dopięciu API.
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Powiadomienia i Ustawienia</Text>
+            <ListGroup isDark={isDark}>
+              <ListItem icon="notifications" color="#FF2D55" title="Powiadomienia" subtitle="Ulubione, zmiany cen i alerty" onPress={() => setIsNotificationsVisible(true)} isLast={true} isDark={isDark} />
+            </ListGroup>
+          </View>
+        */}
 
         {/* --- SEKCJA BEZPIECZEŃSTWA PASSKEY --- */}
         <View style={styles.section}>
@@ -2531,6 +2836,63 @@ export default function ProfileScreen({
           </Text>
         </View>
 
+        {/*
+          ──────────────────────────────────────────────────────────────
+          ZAKUPY I SKLEP — wymóg Apple Review Guideline 3.1.1
+          ──────────────────────────────────────────────────────────────
+          Każda aplikacja oferująca In-App Purchase MUSI mieć widoczny
+          przycisk „Przywróć zakupy". Tu trafia użytkownik który:
+            • zmienił urządzenie i chce odzyskać Pakiet Plus,
+            • odinstalował aplikację i ponownie zainstalował,
+            • został w połowie transakcji bez zaksięgowania (np. brak sieci),
+            • korzysta z Family Sharing.
+          Klik woła `IAPManager.restorePurchases()` — natywne
+          `getAvailablePurchases` + ponowna weryfikacja w backendzie
+          z idempotencją po `transactionId`.
+        */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Zakupy i sklep</Text>
+          <ListGroup isDark={isDark}>
+            <Pressable
+              onPress={handleRestorePurchases}
+              disabled={isRestoringPurchases}
+              style={({ pressed }) => [
+                styles.listItem,
+                { paddingVertical: 12, opacity: isRestoringPurchases ? 0.7 : 1 },
+                pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' },
+              ]}
+            >
+              <View style={[styles.listIconBox, { backgroundColor: '#0A84FF' }]}>
+                {isRestoringPurchases ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh-circle" size={22} color="#FFFFFF" />
+                )}
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
+                  Przywróć zakupy
+                </Text>
+                <Text style={styles.listSubtitle}>
+                  {isRestoringPurchases
+                    ? 'Łączę ze sklepem…'
+                    : Platform.OS === 'ios'
+                      ? 'Odzyskaj zakupy z Apple ID na tym urządzeniu'
+                      : 'Odzyskaj zakupy z konta Google Play'}
+                </Text>
+              </View>
+              {!isRestoringPurchases && (
+                <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
+              )}
+            </Pressable>
+          </ListGroup>
+          <Text style={styles.sectionFooter}>
+            {Platform.OS === 'ios'
+              ? `Pakiet Plus to consumable kupowany jednorazowo (~${PAKIET_PLUS_PRICE_LABEL}/30 dni). Jeśli zakup się nie zaksięgował automatycznie, przywróć go tutaj.`
+              : `Pakiet Plus to zakup jednorazowy (~${PAKIET_PLUS_PRICE_LABEL}/30 dni). Jeśli zakup się nie zaksięgował, użyj tego przycisku.`}
+          </Text>
+        </View>
+
         {isZarzad && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Narzędzia Administratora</Text>
@@ -2551,10 +2913,96 @@ export default function ProfileScreen({
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
               <ListItem icon="stats-chart" color="#FF2D55" title="Analityka Radaru" onPress={() => setIsAdminRadarVisible(true)} isDark={isDark} />
               <ListItem icon="albums" color="#30B0C7" title="Dealroom Check" subtitle="Lista dealroomów i uczestników" onPress={() => setIsAdminDealroomCheckVisible(true)} isDark={isDark} />
+              {/*
+                Weryfikacja prawna: KW + nr lokalu przychodzą od właściciela
+                i czekają tutaj na ręczne ACK administratora. Po zatwierdzeniu
+                na karcie oferty zapala się zielony znaczek „Zweryfikowano
+                prawnie" (`isLegalSafeVerified = true`).
+              */}
+              <ListItem
+                icon="shield-checkmark"
+                color="#34C759"
+                title="Weryfikacja prawna"
+                subtitle={adminPendingLegalCount > 0 ? `${adminPendingLegalCount} zgłoszeń do weryfikacji` : 'Brak oczekujących KW'}
+                onPress={() => setIsAdminLegalVerifyVisible(true)}
+                isDark={isDark}
+                rightElement={adminPendingLegalCount > 0 ? (
+                  <View style={styles.adminPendingBadge}>
+                    <Text style={styles.adminPendingBadgeText}>{adminPendingLegalCount}</Text>
+                  </View>
+                ) : undefined}
+              />
               <ListItem icon="chatbubble-ellipses" color="#34C759" title="Bramka SMSPlanet" subtitle="Globalny przełącznik wysyłki" isLast={true} isDark={isDark} rightElement={<Switch value={isSmsEnabled} onValueChange={toggleSms} trackColor={{ false: '#767577', true: '#34C759' }} />} />
             </ListGroup>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pomoc i regulamin</Text>
+          <ListGroup isDark={isDark}>
+            <ListItem
+              icon="document-text"
+              color="#5856D6"
+              title="Regulamin"
+              subtitle="Warunki korzystania z aplikacji"
+              onPress={() => {
+                Haptics.selectionAsync();
+                navigation.navigate('Terms' as never);
+              }}
+              isDark={isDark}
+            />
+            <ListItem
+              icon="shield-checkmark"
+              color="#34C759"
+              title="Polityka prywatności"
+              subtitle="Jak chronimy Twoje dane (RODO)"
+              onPress={() => {
+                Haptics.selectionAsync();
+                Linking.openURL(`${SITE_ORIGIN}/polityka-prywatnosci`).catch(() => {
+                  Alert.alert(
+                    'Nie udało się otworzyć',
+                    'Sprawdź połączenie z internetem i spróbuj ponownie.'
+                  );
+                });
+              }}
+              isDark={isDark}
+            />
+            <ListItem
+              icon="mail"
+              color="#0A84FF"
+              title="Pomoc i kontakt"
+              subtitle="Napisz do nas: support@estateos.pl"
+              onPress={() => {
+                Haptics.selectionAsync();
+                Linking.openURL(
+                  'mailto:support@estateos.pl?subject=EstateOS%20%E2%80%94%20pomoc'
+                ).catch(() => {
+                  Alert.alert(
+                    'Brak klienta poczty',
+                    'Skopiuj adres support@estateos.pl i napisz z dowolnej skrzynki.'
+                  );
+                });
+              }}
+              isDark={isDark}
+            />
+            <ListItem
+              icon="ban"
+              color="#FF453A"
+              title="Zablokowani użytkownicy"
+              subtitle={
+                blockedUsersCount > 0
+                  ? `${blockedUsersCount} ${blockedUsersCount === 1 ? 'osoba' : 'osób'} na liście`
+                  : 'Lista pusta'
+              }
+              onPress={() => {
+                Haptics.selectionAsync();
+                setIsBlockedUsersVisible(true);
+              }}
+              isLast={true}
+              isDark={isDark}
+            />
+          </ListGroup>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Wygląd i ekran</Text>
@@ -2589,6 +3037,7 @@ export default function ProfileScreen({
           </Text>
         </Pressable>
       </ScrollView>
+      </View>
 
       <MyOffersModal visible={isMyOffersVisible} onClose={() => setIsMyOffersVisible(false)} theme={theme} />
       <NotificationsSettingsModal visible={isNotificationsVisible} onClose={() => setIsNotificationsVisible(false)} theme={theme} />
@@ -2633,12 +3082,36 @@ export default function ProfileScreen({
       />
       <AdminRadarAnalyticsModal visible={isAdminRadarVisible} onClose={() => setIsAdminRadarVisible(false)} theme={theme} />
       <AdminDealroomCheckModal visible={isAdminDealroomCheckVisible} onClose={() => setIsAdminDealroomCheckVisible(false)} theme={theme} />
+      <AdminLegalVerificationModal
+        visible={isAdminLegalVerifyVisible}
+        onClose={() => {
+          setIsAdminLegalVerifyVisible(false);
+          // Po zamknięciu odśwież licznik w pigułce — admin mógł w środku
+          // coś zaakceptować, więc PENDING mogło spaść.
+          void refreshAdminPendingLegalVerifications();
+        }}
+        theme={theme}
+        onQueueChange={setAdminPendingLegalCount}
+      />
 
-      <EditProfileDataSheet
-        visible={isEditProfileVisible}
-        onClose={() => setIsEditProfileVisible(false)}
+      <EditNameSheet
+        visible={isEditNameVisible}
+        onClose={() => setIsEditNameVisible(false)}
         theme={theme}
         isDark={isDark}
+      />
+      <EditPhoneSheet
+        visible={isEditPhoneVisible}
+        onClose={() => setIsEditPhoneVisible(false)}
+        theme={theme}
+        isDark={isDark}
+      />
+      <EditEmailSheet
+        visible={isEditEmailVisible}
+        onClose={() => setIsEditEmailVisible(false)}
+        theme={theme}
+        isDark={isDark}
+        initialVerifyMode={hasPendingEmailChange ? 'change' : 'verify'}
       />
 
       <DeleteAccountSheet
@@ -2659,6 +3132,12 @@ export default function ProfileScreen({
         }}
       />
 
+      <BlockedUsersModal
+        visible={isBlockedUsersVisible}
+        onClose={() => setIsBlockedUsersVisible(false)}
+        isDark={isDark}
+      />
+
       <Modal visible={isOwnPublicProfileOpen} transparent animationType="fade" onRequestClose={() => setIsOwnPublicProfileOpen(false)}>
         <View style={styles.profileOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOwnPublicProfileOpen(false)} />
@@ -2677,6 +3156,13 @@ export default function ProfileScreen({
               </View>
             ) : (
               <>
+                <View style={{ alignItems: 'center', marginBottom: 10 }}>
+                  <UserRegionFlag
+                    phone={ownPublicProfile?.user?.phone || user?.phone}
+                    fallbackIso={getDeviceRegionCountry()}
+                    size={44}
+                  />
+                </View>
                 <Text style={styles.profileName}>{ownPublicProfile?.user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Użytkownik'}</Text>
                 <EliteStatusBadges subject={ownPublicProfile?.user || user} isDark compact />
                 <Text style={styles.profileMeta}>ID: {user?.id || '-'}</Text>
@@ -2733,12 +3219,42 @@ export default function ProfileScreen({
 const styles = StyleSheet.create({
   container: { flexGrow: 1, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 70 : 50, paddingBottom: 60 },
   headerCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  avatarWrapper: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#D1D1D6', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  avatarWrapper: { position: 'relative', width: 64, height: 64, borderRadius: 32, backgroundColor: '#D1D1D6', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  avatarRegionFlag: { position: 'absolute', right: -6, bottom: -2, zIndex: 4 },
   avatarImage: { width: '100%', height: '100%', borderRadius: 32 },
   avatarPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
   editBadge: { position: 'absolute', bottom: -4, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   headerInfo: { flex: 1, justifyContent: 'center' },
-  headerName: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5, marginBottom: 2 },
+  headerName: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5 },
+  headerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+    minWidth: 0,
+    maxWidth: '100%',
+  },
+  headerNameEditPaper: {
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  headerNameEditPaperDark: {
+    backgroundColor: 'rgba(44,44,46,0.96)',
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowOpacity: 0.35,
+  },
+  headerNameEditBtn: {
+    padding: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   profileRatingBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, alignSelf: 'flex-start' },
   profileRatingStarsInline: { flexDirection: 'row', alignItems: 'center', gap: 1 },
   profileRatingMetaInline: { fontSize: 12, color: '#8E8E93', fontWeight: '600' },

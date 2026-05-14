@@ -11,13 +11,13 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { API_URL } from '../config/network';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const { width, height } = Dimensions.get('window');
-const API_URL = 'https://estateos.pl';
 const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
 
 const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', danger: '#FF3B30' }; 
@@ -45,7 +45,7 @@ export default function Radar({ theme, route }: any) {
       );
       await sound.playAsync();
     } catch (e) {
-      console.log("SOUND ERROR", e);
+      if (__DEV__) console.warn('Radar sound error', e);
     }
   };
 
@@ -107,7 +107,11 @@ export default function Radar({ theme, route }: any) {
   const radarIndicatorOpacity = useRef(new Animated.Value(0.3)).current;
 
   React.useEffect(() => {
-    if (!user) { setAllOffers([]); setFavorites([]); setActiveTab('ALL'); setRadarActive(false); }
+    if (!user) {
+      setAllOffers([]);
+      setFavorites([]);
+      setActiveTab('ALL');
+    }
   }, [user]);
 
   useEffect(() => {
@@ -244,7 +248,7 @@ export default function Radar({ theme, route }: any) {
         body: JSON.stringify(body)
       });
     } catch (e) {
-      console.log("Błąd zapisu preferencji radaru", e);
+      if (__DEV__) console.warn('Błąd zapisu preferencji radaru', e);
     }
   };
 

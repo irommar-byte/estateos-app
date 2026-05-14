@@ -3,6 +3,8 @@
  * Ścieżka /o/:id — publiczna wizytówka oferty na www.
  */
 
+import { API_URL } from '../config/network';
+
 export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal'): string | null {
   if (!deeplink) return null;
   const cleaned = deeplink.trim();
@@ -27,7 +29,7 @@ export function extractIdFromDeeplink(deeplink: string, kind: 'offer' | 'deal'):
   }
 
   try {
-    const normalized = cleaned.includes('://') ? cleaned : `https://estateos.pl/${cleaned.replace(/^\//, '')}`;
+    const normalized = cleaned.includes('://') ? cleaned : `${API_URL.replace(/\/$/, '')}/${cleaned.replace(/^\//, '')}`;
     const u = new URL(normalized);
 
     if (kind === 'offer') {

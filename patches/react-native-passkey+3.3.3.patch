@@ -1,0 +1,32 @@
+diff --git a/node_modules/react-native-passkey/ios/PrivacyInfo.xcprivacy b/node_modules/react-native-passkey/ios/PrivacyInfo.xcprivacy
+new file mode 100644
+index 0000000..3354b90
+--- /dev/null
++++ b/node_modules/react-native-passkey/ios/PrivacyInfo.xcprivacy
+@@ -0,0 +1,26 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<!--
++  Privacy Manifest dla `react-native-passkey` (wersja użytkowana w EstateOS).
++  Lib NIE używa Required Reason API (FileTimestamp, UserDefaults,
++  SystemBootTime, DiskSpace), nie zbiera danych użytkownika i nie śledzi
++  go między aplikacjami — komunikuje się wyłącznie z systemowymi API
++  WebAuthn/Passkey (ASAuthorization*), które same w sobie nie podlegają
++  obowiązkowi deklaracji "Required Reasons".
++
++  Patch utrwalony przez `patch-package`, bo upstream (peterferguson/react-native-passkey)
++  nie wgrał własnego manifestu — co od 2024-05-01 daje warning w `xcodebuild archive`
++  i potrafi blokować archiwizację App Store Connect.
++-->
++<plist version="1.0">
++<dict>
++    <key>NSPrivacyAccessedAPITypes</key>
++    <array/>
++    <key>NSPrivacyCollectedDataTypes</key>
++    <array/>
++    <key>NSPrivacyTracking</key>
++    <false/>
++    <key>NSPrivacyTrackingDomains</key>
++    <array/>
++</dict>
++</plist>

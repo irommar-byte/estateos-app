@@ -14,6 +14,7 @@ import Animated, {
 // Zależności z Twojego projektu:
 import RadarCalibrationRitualOverlay from './RadarCalibrationRitualOverlay';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import type { RadarRecentSavedArea } from '../utils/radarRecentAreas';
 
 const { width, height } = Dimensions.get('window');
 
@@ -91,6 +92,9 @@ type Props = {
   onClose: () => void;
   onApply: (filters: RadarFilters) => Promise<void> | void;
   onOpenAreaPicker: (currentFilters: RadarFilters) => void;
+  /** Ostatnie zapisane obszary radaru (max. 3) — tylko `variant="radar"`. */
+  recentRadarAreas?: RadarRecentSavedArea[];
+  onPickRecentRadarArea?: (area: RadarRecentSavedArea) => void;
 };
 
 // ==========================================
@@ -238,7 +242,7 @@ const PremiumScrubber = ({
 export default function RadarCalibrationModal({
   visible, calibrationSessionId, variant = 'radar', initialFilters, matchingOffersCount,
   areaSummary, getAreaSummaryPreview, getMatchingOffersCountPreview,
-  onClose, onApply, onOpenAreaPicker,
+  onClose, onApply, onOpenAreaPicker, recentRadarAreas, onPickRecentRadarArea,
 }: Props) {
   
   const systemTheme = useColorScheme();
@@ -490,6 +494,39 @@ export default function RadarCalibrationModal({
                 <Text style={[styles.resetBtnText, { color: activeColor }]}>Wyczyść</Text>
               </Pressable>
             </View>
+
+            {!isFavoritesVariant && (recentRadarAreas?.length ?? 0) > 0 && onPickRecentRadarArea ? (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+                <Text style={[styles.sectionTitle, { color: COLORS.textMuted, marginBottom: 10 }]}>OSTATNIE ZAPISANE OBSZARY</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 8 }}>
+                  {(recentRadarAreas ?? []).map((item) => (
+                    <Pressable
+                      key={`${item.savedAtIso}-${item.title}`}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        onPickRecentRadarArea(item);
+                      }}
+                      style={({ pressed }) => [
+                        styles.recentAreaChip,
+                        {
+                          backgroundColor: COLORS.glassCardSolid,
+                          borderColor: pressed ? activeColor : COLORS.border,
+                          opacity: pressed ? 0.92 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="time-outline" size={16} color={activeColor} style={{ marginBottom: 6 }} />
+                      <Text style={[styles.recentAreaTitle, { color: COLORS.textMain }]} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                      <Text style={[styles.recentAreaSubtitle, { color: COLORS.textSec }]} numberOfLines={3}>
+                        {item.subtitle}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
 
             <ScrollView
               showsVerticalScrollIndicator={false}
@@ -1010,7 +1047,17 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   resetBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(150,150,150,0.1)' },
   resetBtnText: { fontSize: 14, fontWeight: '700' },
-  
+
+  recentAreaChip: {
+    width: 200,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  recentAreaTitle: { fontSize: 14, fontWeight: '800', letterSpacing: -0.2 },
+  recentAreaSubtitle: { fontSize: 11, fontWeight: '600', marginTop: 4, lineHeight: 15 },
+
   sectionTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 1.2, marginLeft: 16, marginBottom: 8, marginTop: 24, color: '#8E8E93' },
   
   glassCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },

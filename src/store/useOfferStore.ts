@@ -44,6 +44,13 @@ const initialDraft = {
   // Krok 3: Finanse i Wymiary
   price: '',
   adminFee: '',
+  /**
+   * Prowizja agenta (procent, np. "2.5"). Pole widoczne w kreatorze TYLKO gdy
+   * user.role === 'AGENT' — dla osób prywatnych zostaje pusty string (backend
+   * traktuje jako null). Z ceny ofertowej nic nie jest doliczane, kwota
+   * prowizji jest informacyjnie pokazywana kupującemu w OfferDetail.
+   */
+  agentCommissionPercent: '',
   deposit: '',
   area: '',
   plotArea: '',

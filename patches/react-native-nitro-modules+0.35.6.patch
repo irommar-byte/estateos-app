@@ -1,0 +1,27 @@
+diff --git a/node_modules/react-native-nitro-modules/ios/PrivacyInfo.xcprivacy b/node_modules/react-native-nitro-modules/ios/PrivacyInfo.xcprivacy
+new file mode 100644
+index 0000000..9337065
+--- /dev/null
++++ b/node_modules/react-native-nitro-modules/ios/PrivacyInfo.xcprivacy
+@@ -0,0 +1,21 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
++<!--
++  Privacy Manifest dla `react-native-nitro-modules`.
++  Lib NIE używa Required Reason API (sprawdzone grep w ios/core, ios/platform,
++  ios/threading), nie zbiera danych użytkownika i nie śledzi go.
++  Patch utrwalony przez `patch-package` z tych samych powodów co manifest
++  dla `react-native-passkey`.
++-->
++<plist version="1.0">
++<dict>
++    <key>NSPrivacyAccessedAPITypes</key>
++    <array/>
++    <key>NSPrivacyCollectedDataTypes</key>
++    <array/>
++    <key>NSPrivacyTracking</key>
++    <false/>
++    <key>NSPrivacyTrackingDomains</key>
++    <array/>
++</dict>
++</plist>

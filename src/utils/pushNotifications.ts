@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import { API_URL } from '../config/network';
 
 export async function registerForPushNotificationsAsync(userEmail: string) {
   if (!Device.isDevice) return;
@@ -17,13 +18,13 @@ export async function registerForPushNotificationsAsync(userEmail: string) {
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
     const pushTokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     
-    await fetch('https://estateos.pl/api/mobile/v1/user/push-token', {
+    await fetch(`${API_URL}/api/mobile/v1/user/push-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: userEmail, token: pushTokenData.data })
     });
-    console.log('✅ Token Push wysłany do bazy!');
+    if (__DEV__) console.log('[push] token registered with backend');
   } catch (error) {
-    console.error('❌ Błąd tokenu Push:', error);
+    if (__DEV__) console.warn('[push] token register failed:', error);
   }
 }
