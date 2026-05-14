@@ -1,10 +1,10 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, Loader2, MapPin } from "lucide-react";
+import { safeOfferImageUrl } from "@/lib/safeOfferImageUrl";
 
 type CatalogOffer = {
   id: number;
@@ -126,7 +126,9 @@ export default function CatalogPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-x-10 md:gap-y-16">
-            {offers.map((offer, i) => (
+            {offers.map((offer, i) => {
+              const thumb = safeOfferImageUrl(offer.image);
+              return (
               <a href={`/o/${offer.id}`} key={offer.id} className="group block outline-none">
                 <motion.article
                   initial={{ opacity: 0, y: 24 }}
@@ -136,14 +138,14 @@ export default function CatalogPage() {
                   className="cursor-pointer"
                 >
                   <div className="relative mb-6 aspect-[4/3] overflow-hidden rounded-[1.75rem] border border-white/[0.06] bg-[#0a0a0c] shadow-[0_24px_80px_rgba(0,0,0,0.45)] transition-[border-color,box-shadow] duration-500 group-hover:border-white/[0.12] group-hover:shadow-[0_32px_100px_rgba(16,185,129,0.06)]">
-                    {offer.image ? (
-                      <Image
-                        src={offer.image}
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- `/uploads/*` i zewnętrzne URL-e z bazy; next/image potrafi nie zoptymalizować poprawnie
+                      <img
+                        src={thumb}
                         alt=""
-                        fill
-                        sizes="(max-width: 768px) 100vw, 50vw"
-                        className="object-cover opacity-[0.88] transition-all duration-[1.2s] ease-out group-hover:scale-[1.03] group-hover:opacity-100"
-                        unoptimized={offer.image.startsWith("data:") || offer.image.startsWith("blob:")}
+                        className="absolute inset-0 h-full w-full object-cover opacity-[0.88] transition-all duration-[1.2s] ease-out group-hover:scale-[1.03] group-hover:opacity-100"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-white/[0.04] to-transparent">
@@ -188,7 +190,8 @@ export default function CatalogPage() {
                   </div>
                 </motion.article>
               </a>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>

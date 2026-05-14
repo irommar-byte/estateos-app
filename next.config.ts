@@ -1,8 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /** Kanoniczny URL oferty: `/o/:id` → `src/app/o/[id]`. Legacy HTML: `public/offer-landing.html` (bez rewrite). */
   images: {
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    /** `next/image` — jawne hosty prod/dev; uploady w katalogu WWW używają zwykłego `<img>`. */
+    remotePatterns: [
+      { protocol: "https", hostname: "estateos.pl", pathname: "/**" },
+      { protocol: "https", hostname: "www.estateos.pl", pathname: "/**" },
+      { protocol: "http", hostname: "localhost", pathname: "/**" },
+      { protocol: "http", hostname: "127.0.0.1", pathname: "/**" },
+    ],
   },
   /** Stałe 301: jedna kanoniczna domena (Universal Links / App Links bez duplikatu www). */
   async redirects() {
@@ -13,13 +20,6 @@ const nextConfig: NextConfig = {
         destination: "https://estateos.pl/:path*",
         permanent: true,
       },
-    ];
-  },
-  async rewrites() {
-    /** Jednoplikowa wizytówka: URL pozostaje /o/:id (Universal Links / udostępnianie). */
-    return [
-      { source: "/o/:id(\\d+)", destination: "/offer-landing.html" },
-      { source: "/o/:id(\\d+)/", destination: "/offer-landing.html" },
     ];
   },
   async headers() {

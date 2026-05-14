@@ -27,8 +27,8 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none"></div>
 
       <div className="max-w-4xl mx-auto relative z-10">
-        <Link href="#" onClick={(e) => { e.preventDefault(); window.close(); }} className="inline-flex items-center gap-2 text-white/40 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest mb-8">
-          <ChevronLeft size={14}/> Zamknij i wróć
+        <Link href="/oferty" className="inline-flex items-center gap-2 text-white/40 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest mb-8">
+          <ChevronLeft size={14}/> Wróć do katalogu
         </Link>
 
         <div className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 md:p-14 flex flex-col md:flex-row items-center gap-10 shadow-[0_30px_60px_rgba(0,0,0,0.8)] mb-12 relative overflow-hidden">

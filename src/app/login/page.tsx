@@ -6,8 +6,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Fingerprint, Lock, Loader2, AlertCircle, Mail, Key, ArrowLeft, CheckCircle } from "lucide-react";
 
+function resolveAfterLogin(role: string, callbackUrl: string | null): string {
+  const isAdmin = role === "ADMIN";
+  const fallback = isAdmin ? "/centrala" : "/moje-konto";
+  if (!callbackUrl) return fallback;
+  const trimmed = callbackUrl.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return fallback;
+  if (trimmed.startsWith("/login")) return fallback;
+  return trimmed;
+}
+
 export default function LoginPage() {
   const [view, setView] = useState<'login' | 'forgot' | 'reset' | 'verify_otp'>('login');
+  const [loginNextPath, setLoginNextPath] = useState<string | null>(null);
   
   // Stany logowania
   const [email, setEmail] = useState("");
@@ -23,6 +34,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const q = new URLSearchParams(window.location.search);
+    const raw = q.get("callbackUrl");
+    setLoginNextPath(raw && raw.trim() ? raw.trim() : null);
+  }, []);
 
   
   const handlePasskeyLogin = async () => {
@@ -42,7 +60,7 @@ export default function LoginPage() {
 
       const data = await verifyResp.json();
       if (verifyResp.ok && data.success) {
-        window.location.href = data.role === 'ADMIN' ? "/centrala" : "/moje-konto";
+        window.location.href = resolveAfterLogin(String(data.role ?? "USER"), loginNextPath);
       } else {
         setError(data.error || "Weryfikacja biometryczna nieudana.");
       }
@@ -66,7 +84,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        window.location.href = data.role === "ADMIN" ? "/centrala" : "/moje-konto";
+        window.location.href = resolveAfterLogin(String(data.role ?? "USER"), loginNextPath);
       } else if (data.needs_otp) {
         setPendingPhone(data.phone || email);
         setView("verify_otp");
@@ -149,7 +167,7 @@ export default function LoginPage() {
 
         if (dataLogin.success) {
           localStorage.setItem("token", dataLogin.token);
-          window.location.replace("/moje-konto/crm");
+          window.location.replace(resolveAfterLogin(String(dataLogin.role ?? "USER"), loginNextPath));
         } else {
           setError(dataLogin.message || "Błąd logowania");
         }

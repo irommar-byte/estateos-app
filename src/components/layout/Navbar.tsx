@@ -164,6 +164,12 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-1 flex items-center gap-3">
+              <Link
+                href={`/profil/${user.id}`}
+                className="rounded-full border border-white/10 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white/55 transition-colors hover:border-white/30 hover:text-white"
+              >
+                Profil
+              </Link>
               <button
                 type="button"
                 onClick={() => router.push(user.role === "ADMIN" ? "/centrala" : "/moje-konto")}
@@ -260,6 +266,14 @@ export default function Navbar() {
               <div className="space-y-2 px-1">
                 {user ? (
                   <>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick(`/profil/${user.id}`)}
+                      className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-sm font-black uppercase tracking-widest text-white/70 transition-colors hover:bg-white/[0.04] hover:text-white"
+                    >
+                      <User size={18} aria-hidden />
+                      Mój profil publiczny
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleNavClick(user.role === "ADMIN" ? "/centrala" : "/moje-konto")}

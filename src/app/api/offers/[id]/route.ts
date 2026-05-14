@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
- * Publiczny odczyt pojedynczej oferty (m.in. `public/offer-landing.html` → `/api/offers/:id`).
+ * Publiczny odczyt pojedynczej oferty (strona `/o/:id`, legacy `public/offer-landing.html`).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,6 +30,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         city: true,
         district: true,
         images: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            companyName: true,
+            buyerType: true,
+            role: true,
+          },
+        },
       },
     });
 
@@ -37,7 +47,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
 
-    return NextResponse.json(offer, {
+    const { user, ...rest } = offer;
+    const displayName =
+      (user.companyName && user.companyName.trim()) || user.name?.trim() || `Właściciel #${user.id}`;
+    const seller = {
+      id: user.id,
+      displayName,
+      image: user.image,
+      companyName: user.companyName,
+      buyerType: user.buyerType,
+      role: user.role,
+      profileHref: `/profil/${user.id}`,
+      isAgency: user.buyerType === 'agency' || Boolean(user.companyName && user.companyName.trim()),
+    };
+
+    return NextResponse.json({ ...rest, seller }, {
       headers: {
         'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       },
