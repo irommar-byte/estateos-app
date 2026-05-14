@@ -137,10 +137,9 @@ function main() {
   }
 
   if (!skipE2e) {
-    console.log('[deploy:recon] verify:recon (VERIFY_SKIP_DB_PUSH=1, SKIP_BUILD=1)');
+    console.log('[deploy:recon] verify:recon (VERIFY_SKIP_DB_PUSH=1)');
     r = run('npm', ['run', 'verify:recon'], {
       VERIFY_SKIP_DB_PUSH: '1',
-      SKIP_BUILD: '1',
     });
     summary.verifyE2e = r.ok ? 'PASS' : 'FAIL';
     if (!r.ok) {
