@@ -42,6 +42,17 @@ const mobileReconciliationChecks = [
     url: '/api/mobile/v1/admin/legal-verification',
     expectStatus: [401],
   },
+  {
+    name: 'mobile legal-verification alias requires auth',
+    url: '/api/mobile/v1/legal-verification',
+    expectStatus: [401],
+  },
+  {
+    name: 'mobile offer legal-verification alias requires auth',
+    url: '/api/mobile/v1/offers/153/legal-verification',
+    method: 'POST',
+    expectStatus: [401],
+  },
 ];
 
 function isProductionishHost(url) {
