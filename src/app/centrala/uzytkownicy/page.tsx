@@ -24,7 +24,7 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('BUYERS');
+  const [activeTab, setActiveTab] = useState<TabType>('PRIVATE');
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchUsers = async () => {

@@ -121,6 +121,13 @@ function main() {
   summary.headAfterPull = gitRevParse();
   console.log('[deploy:recon] HEAD po pull:', summary.headAfterPull);
 
+  console.log('[deploy:recon] prisma generate');
+  r = run('npx', ['prisma', 'generate']);
+  if (!r.ok) {
+    summary.error = r.out.slice(-4000);
+    throw new Error('prisma:generate');
+  }
+
   console.log('[deploy:recon] verify: npm run check');
   r = run('npm', ['run', 'check']);
   summary.check = r.ok ? 'PASS' : 'FAIL';
