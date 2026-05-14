@@ -1,6 +1,16 @@
-require("dotenv").config({ path: "/home/rommar/estateos/.env" });
+const path = require("path");
+const root = __dirname;
+
+/** Źródło env produkcyjnego: ten plik + `.env` w katalogu aplikacji (PM2 `env` + `env_file`). */
+require("dotenv").config({ path: path.join(root, ".env") });
 
 const pick = (key, fallback) => process.env[key] || fallback;
+
+const normalizeOrigin = (value) => String(value || "").trim().replace(/\/$/, "");
+
+const nextAuthOrigin = normalizeOrigin(process.env.NEXTAUTH_URL);
+const passkeyOrigin =
+  normalizeOrigin(process.env.PASSKEY_ORIGIN) || nextAuthOrigin || "https://estateos.pl";
 
 const sharedEnv = {
   NODE_ENV: "production",
@@ -10,7 +20,7 @@ const sharedEnv = {
   JWT_SECRET: process.env.JWT_SECRET,
   AUTH_SECRET: process.env.AUTH_SECRET,
   PASSKEY_RP_ID: pick("PASSKEY_RP_ID", "estateos.pl"),
-  PASSKEY_ORIGIN: process.env.PASSKEY_ORIGIN,
+  PASSKEY_ORIGIN: passkeyOrigin,
   APPLE_TEAM_ID: process.env.APPLE_TEAM_ID,
   IOS_BUNDLE_ID: process.env.IOS_BUNDLE_ID,
   ANDROID_PACKAGE_NAME: process.env.ANDROID_PACKAGE_NAME,
@@ -22,10 +32,10 @@ module.exports = {
   apps: [
     {
       name: "nieruchomosci",
-      cwd: "/home/rommar/estateos",
+      cwd: root,
       script: "npm",
       args: "run start:prod",
-      env_file: "/home/rommar/estateos/.env",
+      env_file: path.join(root, ".env"),
       env: sharedEnv,
       env_production: sharedEnv,
       instances: 1,
@@ -38,10 +48,10 @@ module.exports = {
     },
     {
       name: "reviews-finalization-fallback",
-      cwd: "/home/rommar/estateos",
+      cwd: root,
       script: "node",
       args: "scripts/reviews-finalization-fallback.cjs",
-      env_file: "/home/rommar/estateos/.env",
+      env_file: path.join(root, ".env"),
       env: sharedEnv,
       env_production: sharedEnv,
       autorestart: false,

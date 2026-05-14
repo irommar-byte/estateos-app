@@ -53,6 +53,24 @@ async function ensureOfferColumn(prisma: PrismaClient, columnName: string): Prom
   }
 }
 
+/** Zgodnie z Prisma: `legalCheckStatus` VARCHAR(16) default NONE — brak kolumny powodował P2022 w prod. */
+async function ensureOfferLegalCheckStatusColumn(prisma: PrismaClient): Promise<void> {
+  if (await hasOfferColumn(prisma, 'legalCheckStatus')) return
+  try {
+    await prisma.$executeRawUnsafe(
+      "ALTER TABLE `Offer` ADD COLUMN IF NOT EXISTS `legalCheckStatus` VARCHAR(16) NOT NULL DEFAULT 'NONE'"
+    )
+  } catch (error) {
+    if (isIgnorableAddColumnError(error)) return
+    if (!isAddColumnSyntaxError(error)) throw error
+  }
+  if (!(await hasOfferColumn(prisma, 'legalCheckStatus'))) {
+    await prisma.$executeRawUnsafe(
+      "ALTER TABLE `Offer` ADD COLUMN `legalCheckStatus` VARCHAR(16) NOT NULL DEFAULT 'NONE'"
+    )
+  }
+}
+
 async function ensureOfferLegalColumns(prisma: PrismaClient): Promise<void> {
   if (offerColumnsEnsured) return
   if (offerColumnsPromise) return offerColumnsPromise
@@ -60,6 +78,7 @@ async function ensureOfferLegalColumns(prisma: PrismaClient): Promise<void> {
   offerColumnsPromise = (async () => {
     await ensureOfferColumn(prisma, 'landRegistryNumber')
     await ensureOfferColumn(prisma, 'apartmentNumber')
+    await ensureOfferLegalCheckStatusColumn(prisma)
     offerColumnsEnsured = true
   })()
 

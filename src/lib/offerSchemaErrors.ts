@@ -3,8 +3,11 @@ export function isOfferLegalColumnMissingError(error: unknown): boolean {
   return (
     /offer\.landregistrynumber/i.test(message) ||
     /offer\.apartmentnumber/i.test(message) ||
-    (/unknown column/i.test(message) && /(landregistrynumber|apartmentnumber)/i.test(message)) ||
-    (/does not exist/i.test(message) && /(landregistrynumber|apartmentnumber)/i.test(message))
+    /offer\.legalcheckstatus/i.test(message) ||
+    (/unknown column/i.test(message) &&
+      /(landregistrynumber|apartmentnumber|legalcheckstatus)/i.test(message)) ||
+    (/does not exist/i.test(message) &&
+      /(landregistrynumber|apartmentnumber|legalcheckstatus)/i.test(message))
   );
 }
 
