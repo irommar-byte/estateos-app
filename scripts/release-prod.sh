@@ -162,12 +162,15 @@ if [[ "${RELEASE_SKIP_GITHUB_SSH_TEST:-0}" == "1" ]]; then
 elif [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
   echo "origin: ${ORIGIN_URL}"
   set +e
-  SSH_OUT="$(ssh -o BatchMode=yes -o ConnectTimeout=12 -T git@github.com 2>&1)"
+  SSH_OUT="$(ssh -o BatchMode=yes -o ConnectTimeout=12 -T git@github.com 2>&1 || true)"
   SSH_EC=$?
   set -e
+  # Unikaj `echo | grep` przy `set -o pipefail` — czasem status rury 1 z `grep -q` potrafi zabić skrypt przed wejściem w `if`.
+  echo "  (diagnostyka) ssh exit code: ${SSH_EC}"
   echo "${SSH_OUT}"
-  if echo "${SSH_OUT}" | grep -qiE \
-    'Permission denied|publickey|Connection refused|Could not resolve|Operation timed out|No route to host|Host key verification failed|kex_exchange_identification|Network is unreachable'; then
+  if grep -qiE \
+    'Permission denied|publickey|Connection refused|Could not resolve|Operation timed out|Connection timed out|timed out|No route to host|Host key verification failed|kex_exchange_identification|Network is unreachable|Could not resolve hostname|Name or service not known|Temporary failure in name resolution' \
+    <<< "${SSH_OUT}"; then
     echo "ERROR: SSH do GitHuba — wykryto typowy komunikat błędu (klucz / sieć / known_hosts)." >&2
     echo "  Pełny output powyżej; exit ssh: ${SSH_EC}" >&2
     exit 3
@@ -175,7 +178,7 @@ elif [[ "${ORIGIN_URL}" =~ ^git@ ]]; then
   # GitHub: przy `ssh -T git@github.com` **sukces** to zwykle exit **1** („authenticated, GitHub does not provide shell”).
   if [[ "${SSH_EC}" == "0" ]] || [[ "${SSH_EC}" == "1" ]]; then
     echo "OK: SSH do GitHuba (exit ${SSH_EC} — oczekiwane dla git@github.com)."
-  elif echo "${SSH_OUT}" | grep -qiE 'successfully authenticated|Welcome to GitHub|does not provide shell|GitHub does not provide'; then
+  elif grep -qiE 'successfully authenticated|Welcome to GitHub|does not provide shell|GitHub does not provide' <<< "${SSH_OUT}"; then
     echo "OK: SSH do GitHuba (sukces po treści komunikatu, exit ${SSH_EC})."
   else
     echo "ERROR: nieoczekiwany wynik SSH do GitHuba (exit ${SSH_EC})." >&2
@@ -211,7 +214,7 @@ else
   if [[ "${PUSH_EC}" != "0" ]]; then
     echo "${PUSH_OUT}" >&2
     echo "ERROR: git push nieudany (exit ${PUSH_EC}). origin=${ORIGIN_URL:-?}" >&2
-    if echo "${PUSH_OUT}" | grep -qiE 'Permission denied \(publickey\)|publickey|Authentication failed'; then
+    if grep -qiE 'Permission denied \(publickey\)|publickey|Authentication failed' <<< "${PUSH_OUT}"; then
       echo "  SSH: brak ważnego klucza dla GitHuba — np. eval \"\$(ssh-agent -s)\"; ssh-add ~/.ssh/<klucz>; sprawdź ssh -T git@github.com." >&2
       echo "  RELEASE_SKIP_GITHUB_SSH_TEST=1 pomija wyłącznie diagnostyczny ssh -T; nie zastępuje uwierzytelnienia przy push." >&2
       echo "  Alternatywa: remote HTTPS + PAT/credential helper, albo RELEASE_SKIP_PUSH=1 gdy push zrobisz z innej maszyny." >&2
