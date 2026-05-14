@@ -119,8 +119,9 @@ export default function OfferDetail({ route, navigation }: any) {
    *   • + pigułka „Prowizja agenta" (pełna szerokość) gdy oferta agentowska,
    *   • + safe-area iOS.
    * Statyczny `paddingBottom: 160` w `ScrollView` powodował, że galeria/ID oferty/
-   * boksy „Termin spotkania" znikały pod barem. Teraz dorzucamy mierzoną wartość
-   * + 24px komfortu, dzięki czemu ostatnia treść zawsze siedzi luźno nad CTA.
+   * boksy „Termin spotkania" znikały pod barem. Mierzona wysokość + **jednolity blok
+   * w kolorze karty** na końcu treści (zamiast przezroczystego paddingu) — inaczej
+   * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
   const [bottomBarHeight, setBottomBarHeight] = useState(220);
   const heartScale = useSharedValue(1);
@@ -1169,7 +1170,12 @@ export default function OfferDetail({ route, navigation }: any) {
         </View>
       </View>
 
-      <Animated.ScrollView onScroll={scrollHandler} scrollEventThrottle={16} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: bottomBarHeight + (isOwner ? 64 : 36) }}>
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 12 }}
+      >
         <View style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}>
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
@@ -1337,6 +1343,19 @@ export default function OfferDetail({ route, navigation }: any) {
               </Text>
             </View>
           )}
+          {/*
+            Przezroczysty paddingBottom ScrollView pokazywał hero zdjęcia = „szczelina” między
+            białą kartą a dolnym paskiem. Ten blok ma ten sam kolor co contentSheet.
+          */}
+          <View
+            pointerEvents="none"
+            style={{
+              height: bottomBarHeight + (isOwner ? 72 : 40),
+              marginTop: 4,
+              marginHorizontal: -24,
+              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+            }}
+          />
         </View>
       </Animated.ScrollView>
 
@@ -1420,18 +1439,64 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
 
             {isOwner ? (
-              /*
-                Dla właściciela: zamiast pustej „Twój panel zarządzania"
-                wstawiamy KOLUMNĘ analityczną:
-                  1) karta `EstateOS™ ROI` z roczną stopą zwrotu,
-                  2) mała etykieta z % różnicy względem średniej.
-                Stylem przypomina to kartę ROI z `AddOffer/Step4_Finance`.
-              */
               <View style={styles.ownerStatsColumn}>
+                <View
+                  style={[
+                    styles.ownerCompactPill,
+                    styles.ownerStatsIdentityPill,
+                    isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
+                    agentCommissionInfo?.companyName && {
+                      borderColor: 'rgba(255,159,10,0.55)',
+                      borderWidth: 1,
+                    },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={
+                      agentCommissionInfo?.companyName
+                        ? ['rgba(255,159,10,0.95)', 'rgba(251,146,60,0.88)']
+                        : ['rgba(16,185,129,0.92)', 'rgba(5,150,105,0.88)']
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.ownerAvatarGrad}
+                  >
+                    <Text style={styles.ownerAvatarInitials} allowFontScaling={false}>
+                      {sellerInitials}
+                    </Text>
+                  </LinearGradient>
+                  <View style={styles.ownerPillInfo}>
+                    <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
+                      {sellerPrimaryLabel}
+                    </Text>
+                    <View style={styles.ownerPillStarsRow}>
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star
+                          key={s}
+                          size={8}
+                          color={
+                            s <= Math.round(ownerAverageRating || 0)
+                              ? '#f59e0b'
+                              : isDark
+                                ? '#4b5563'
+                                : '#d1d5db'
+                          }
+                          fill={s <= Math.round(ownerAverageRating || 0) ? '#f59e0b' : 'transparent'}
+                        />
+                      ))}
+                    </View>
+                    {sellerSubtitleLine ? (
+                      <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                        {sellerSubtitleLine}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
                 {estimatedRoi !== null ? (
                   <View
                     style={[
                       styles.roiPillCard,
+                      styles.roiPillCardBelowIdentity,
                       {
                         backgroundColor: isDark ? 'rgba(59,130,246,0.12)' : 'rgba(59,130,246,0.10)',
                         borderColor: '#3b82f6',
@@ -1448,16 +1513,6 @@ export default function OfferDetail({ route, navigation }: any) {
                       roczna stopa
                     </Text>
                   </View>
-                ) : null}
-                {marketDiffPercent !== null ? (
-                  <Text
-                    style={[styles.marketDiffSubText, { color: marketStatus.color }]}
-                    numberOfLines={1}
-                    allowFontScaling={false}
-                  >
-                    {marketDiffPercent > 0 ? '+' : ''}
-                    {marketDiffPercent}% vs rynek
-                  </Text>
                 ) : null}
               </View>
             ) : (
@@ -2462,14 +2517,20 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 
-  /** Kolumna analityczna dla właściciela — `EstateOS™ ROI` + delta vs średnia */
+  /** Kolumna analityczna dla właściciela — wizytówka jak u kupującego + ROI pod spodem */
   ownerStatsColumn: {
     alignItems: 'flex-end',
     justifyContent: 'flex-start',
     flexShrink: 1,
-    width: 126,
-    minWidth: 112,
+    width: 132,
+    minWidth: 118,
+    maxWidth: 140,
+  },
+  ownerStatsIdentityPill: {
+    flexGrow: 0,
+    alignSelf: 'flex-end',
     maxWidth: 132,
+    paddingRight: 10,
   },
   roiPillCard: {
     paddingHorizontal: 12,
@@ -2509,12 +2570,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginTop: 1,
   },
-  marketDiffSubText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    marginTop: 4,
-    textAlign: 'right',
+  roiPillCardBelowIdentity: {
+    marginTop: 10,
   },
 
   ownerCompactPill: { 

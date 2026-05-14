@@ -99,6 +99,39 @@ const parseJsonSafely = async (response: Response) => {
   }
 };
 
+/** Ten sam sens co `normalizeToken` w auth store — nagłówek zawsze `Bearer <jwt>`. */
+const normalizeAuthToken = (raw: string | null | undefined) => {
+  const t = String(raw ?? '').trim();
+  if (!t) return '';
+  return t.toLowerCase().startsWith('bearer ') ? t.slice(7).trim() : t;
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** 404 „nie ma passkey” przy revoke = idempotentny sukces (już wyłączone). */
+const isPasskeyNotRegisteredRevoke = (response: Response, data: any) => {
+  if (response.status !== 404) return false;
+  const blob = `${data?.error_code || ''} ${data?.error || ''} ${data?.message || ''}`.toLowerCase();
+  return /passkey_not_registered|not_registered|nie\s+ma|nothing\s+to|not\s+found/i.test(blob);
+};
+
+/**
+ * Nie uznawaj za sukces samotnego `200` + `{}` z „no-op” routingu — wtedy legacy status
+ * nadal widzi aktywny klucz, a użytkownik widzi błąd po weryfikacji.
+ */
+const isRevokeResponseSuccess = (response: Response, data: any) => {
+  if (!response.ok) return false;
+  if (response.status === 204) return true;
+  if (isPasskeyNotRegisteredRevoke(response, data)) return true;
+  if (data?.success === true || data?.ok === true) return true;
+  if (data?.success === false || data?.ok === false) return false;
+  if (typeof data?.hasPasskey === 'boolean' && data.hasPasskey === false) return true;
+  if (typeof data?.removed === 'number' && data.removed >= 1) return true;
+  if (typeof data?.deletedCount === 'number' && data.deletedCount >= 1) return true;
+  if (response.status === 200 && Object.keys(data || {}).length === 0) return false;
+  return false;
+};
+
 const postJson = async (url: string, payload?: Record<string, any>, headers?: Record<string, string>) => {
   const response = await fetchWithTimeout(url, {
     method: 'POST',
@@ -161,7 +194,7 @@ const tryRegisterStartEndpoints = async (token: string, userId: string, email: s
   for (const candidate of candidates) {
     try {
       const { response, data } = await postJson(candidate.url, candidate.payload, {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${normalizeAuthToken(token)}`,
       });
       if (response.ok && data?.publicKey) return data.publicKey;
       lastError = new Error(data?.error || `[API] Register start failed (${response.status})`);
@@ -172,7 +205,13 @@ const tryRegisterStartEndpoints = async (token: string, userId: string, email: s
   throw lastError || new Error('[API] Register start failed');
 };
 
-const tryRegisterFinishEndpoints = async (userId: string, credential: Record<string, any>) => {
+const tryRegisterFinishEndpoints = async (
+  token: string,
+  userId: string,
+  credential: Record<string, any>,
+) => {
+  const jwt = normalizeAuthToken(token);
+  const authHeaders = jwt ? ({ Authorization: `Bearer ${jwt}` } as Record<string, string>) : {};
   const candidates = [
     { url: `${API_URL}/register/finish`, payload: { userId, credential } },
     { url: `${API_URL_MOBILE}/register-verify`, payload: { userId, credential } },
@@ -181,7 +220,7 @@ const tryRegisterFinishEndpoints = async (userId: string, credential: Record<str
   let lastError: Error | null = null;
   for (const candidate of candidates) {
     try {
-      const { response, data } = await postJson(candidate.url, candidate.payload);
+      const { response, data } = await postJson(candidate.url, candidate.payload, authHeaders);
       if (response.ok && data?.success !== false) return true;
       lastError = new Error(data?.error || `[API] Register finish failed (${response.status})`);
     } catch (e: any) {
@@ -210,7 +249,7 @@ export const PasskeyService = {
         throw new Error(`PASSKEY_RPID_INVALID:${rpId}`);
       }
       const credential = await Passkey.create(publicKey);
-      await tryRegisterFinishEndpoints(userId, credential as Record<string, any>);
+      await tryRegisterFinishEndpoints(token, userId, credential as Record<string, any>);
 
       return true;
 
@@ -315,32 +354,105 @@ export const PasskeyService = {
     }
   },
 
+  /**
+   * Czy konto ma zarejestrowany passkey po stronie serwera (źródło prawdy dla przełącznika w profilu).
+   * Zwraca `null`, gdy żaden endpoint statusu nie odpowiedział rozpoznawalnym JSON-em.
+   */
+  fetchHasPasskey: async (token: string | null | undefined, userId: string): Promise<boolean | null> => {
+    const jwt = normalizeAuthToken(token);
+    if (!jwt || !userId) return null;
+    const headers = { Authorization: `Bearer ${jwt}` };
+
+    const tryListUrl = async (url: string): Promise<boolean | null> => {
+      try {
+        const response = await fetchWithTimeout(url, { method: 'GET', headers });
+        const data = await parseJsonSafely(response);
+        if (!response.ok) return null;
+        if (Array.isArray(data)) return data.length > 0;
+        if (Array.isArray(data.passkeys)) return data.passkeys.length > 0;
+        if (Array.isArray(data.credentials)) return data.credentials.length > 0;
+        if (Array.isArray(data.data)) return data.data.length > 0;
+        if (Array.isArray(data.items)) return data.items.length > 0;
+      } catch {
+        // next
+      }
+      return null;
+    };
+
+    for (const url of [`${API_URL_MOBILE}`, `${API_URL_MOBILE}/list`]) {
+      const fromList = await tryListUrl(url);
+      if (fromList !== null) return fromList;
+    }
+
+    const candidates = [
+      `${API_URL_MOBILE}/status?userId=${encodeURIComponent(userId)}`,
+      `${API_URL}/status?userId=${encodeURIComponent(userId)}`,
+    ];
+    for (const url of candidates) {
+      try {
+        const response = await fetchWithTimeout(url, { method: 'GET', headers });
+        const data = await parseJsonSafely(response);
+        if (!response.ok) continue;
+        if (typeof data.hasPasskey === 'boolean') return data.hasPasskey;
+        if (typeof data.has_passkey === 'boolean') return data.has_passkey;
+        if (typeof data.registered === 'boolean') return data.registered;
+        if (typeof data.enabled === 'boolean') return data.enabled;
+        const nested = data?.data;
+        if (nested && typeof nested.hasPasskey === 'boolean') return nested.hasPasskey;
+      } catch {
+        // next URL
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Po `revoke` — kilka prób odczytu statusu (krótki lag replikacji / cache).
+   * `gone` = na pewno brak; `still` = serwer nadal widzi klucz; `unknown` = brak czytelnej odpowiedzi.
+   */
+  confirmPasskeyRemoved: async (
+    token: string | null | undefined,
+    userId: string,
+    attempts = 6,
+    delayMs = 350,
+  ): Promise<'gone' | 'still' | 'unknown'> => {
+    let last: boolean | null = null;
+    for (let i = 0; i < attempts; i++) {
+      last = await PasskeyService.fetchHasPasskey(token, userId);
+      if (last === false) return 'gone';
+      if (i < attempts - 1) await sleep(delayMs);
+    }
+    if (last === true) return 'still';
+    return 'unknown';
+  },
+
   revoke: async (token: string, userId: string) => {
-    const t = String(token || '').trim();
+    const jwt = normalizeAuthToken(token);
+    if (!jwt) {
+      throw new Error('Brak aktywnej sesji — zaloguj się ponownie, aby zarządzać Passkey.');
+    }
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${t}`,
-      'x-access-token': t,
-      'auth-token': t,
+      Authorization: `Bearer ${jwt}`,
+      'x-access-token': jwt,
+      'auth-token': jwt,
     };
     const body = JSON.stringify({ userId });
 
     /**
-     * Rejestracja / logowanie korzystają z obu rodzin URL (`/api/passkey/*` i `/api/mobile/v1/passkeys/*`).
-     * Wyłączenie Passkey musi odwołać rekord Authenticator na backendzie — inaczej UI wyłączy się lokalnie,
-     * a po wylogowaniu `login/start` nadal zwróci klucz z bazy. Kanoniczny endpoint mobile:
-     *   POST/DELETE /api/mobile/v1/passkeys/remove
-     * bez body usuwa wszystkie klucze Passkey zalogowanego użytkownika.
+     * Kanoniczny revoke: `POST /api/passkey/revoke` (BACKEND_AGENT 11e) — musi iść **przed**
+     * heurystykami `.../passkeys/remove`, bo te często zwracają pusty 200 i **nie** czyszczą
+     * rekordu widocznego dla `login/start` ani `/api/passkey/status`.
      */
     const candidates: { method: 'POST' | 'DELETE'; url: string; sendBody: boolean }[] = [
-      { method: 'POST', url: `${API_URL_MOBILE}/remove`, sendBody: false },
-      { method: 'DELETE', url: `${API_URL_MOBILE}/remove`, sendBody: false },
-      { method: 'POST', url: `${API_URL_MOBILE}/revoke`, sendBody: true },
-      { method: 'POST', url: `${API_URL_MOBILE}/unregister`, sendBody: true },
-      { method: 'DELETE', url: `${API_URL_MOBILE}`, sendBody: false },
       { method: 'POST', url: `${API_URL}/revoke`, sendBody: true },
       { method: 'POST', url: `${API_URL}/register/revoke`, sendBody: true },
       { method: 'POST', url: `${API_URL}/delete`, sendBody: true },
+      { method: 'POST', url: `${API_URL_MOBILE}/revoke`, sendBody: true },
+      { method: 'POST', url: `${API_URL_MOBILE}/unregister`, sendBody: true },
+      { method: 'POST', url: `${API_URL_MOBILE}/remove`, sendBody: false },
+      { method: 'DELETE', url: `${API_URL_MOBILE}/remove`, sendBody: false },
+      { method: 'DELETE', url: `${API_URL_MOBILE}`, sendBody: false },
     ];
 
     let lastError: any = null;
@@ -353,7 +465,7 @@ export const PasskeyService = {
           ...(sendBody ? { body } : {}),
         });
         const data = await parseJsonSafely(response);
-        if (response.ok && data?.success !== false) {
+        if (isRevokeResponseSuccess(response, data)) {
           return true;
         }
         lastError = new Error(

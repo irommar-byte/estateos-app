@@ -81,7 +81,7 @@ interface AuthState {
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
-  updateAvatar: (base64Image: string) => Promise<void>;
+  updateAvatar: (imageOrUrl: string) => Promise<void>;
   /** Trwałe usunięcie: `DELETE /api/mobile/v1/user/me` z hasłem; nagłówki Bearer + x-access-token / auth-token. */
   deleteAccount: (password: string) => Promise<{ ok: boolean; error?: string }>;
   /** Imię/nazwisko (opcjonalnie, jeśli nie zablokowane), telefon (opcjonalnie, jeśli niezweryfikowany). */
@@ -366,18 +366,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  updateAvatar: async (base64Image: string) => {
+  updateAvatar: async (imageOrUrl: string) => {
     const { user, token } = get();
     if (!user) return;
-    const updatedUser = { ...user, avatar: base64Image };
+    const raw = String(imageOrUrl ?? '').trim();
+    if (!raw) return;
+
+    /** Już zapisany plik na CDN / ścieżka względna — tylko stan lokalny (np. po multipart POST z profilu). */
+    const alreadyPersisted =
+      /^https?:\/\//i.test(raw) ||
+      raw.startsWith('/uploads/') ||
+      /^\/api\//i.test(raw);
+
+    const updatedUser = { ...user, avatar: raw, image: raw };
     set({ user: updatedUser });
     await AsyncStorage.setItem('user_data', JSON.stringify(updatedUser));
-    
+
+    if (alreadyPersisted) return;
+
+    const normalizedToken = normalizeToken(token);
+    if (!normalizedToken) return;
+
     try {
       await fetch(`${API_URL}/api/mobile/v1/user/avatar`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ image: base64Image, userId: user.id })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${normalizedToken}` },
+        body: JSON.stringify({ image: raw, userId: user.id }),
       });
     } catch (e) {
       if (__DEV__) console.warn('Avatar sync error', e);

@@ -2235,7 +2235,7 @@ export default function ProfileScreen({
   const navigation = useNavigation();
   const route = useRoute<any>();
   const authIntent = (tabRouteParams?.authIntent ?? route.params?.authIntent) as 'login' | 'register' | undefined;
-  const { user, logout, updateAvatar, token, deleteAccount } = useAuthStore();
+  const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
   const isDark = theme.glass === 'dark';
@@ -2287,23 +2287,18 @@ export default function ProfileScreen({
 
   useEffect(() => {
     const checkServerPasskeyStatus = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !token) return;
       try {
         // 1. Szybki odczyt z pamięci (żeby uniknąć "mrugania" gałki przy wejściu)
         const saved = await AsyncStorage.getItem(`@passkey_${user.id}`);
         if (saved === 'active') setIsPasskeyActive(true);
 
-        // 2. Twarda weryfikacja na serwerze - JEDYNE ŹRÓDŁO PRAWDY
-        const res = await fetch(`${API_URL}/api/passkey/status?userId=${user.id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const data = await res.json();
-
-        if (res.ok && data.success !== undefined) {
-          setIsPasskeyActive(data.hasPasskey);
-          
-          // Aktualizujemy lokalny cache, żeby był w 100% zsynchronizowany z bazą
-          if (data.hasPasskey) {
+        // 2. Serwer — wcześniej wymagano pola `success`, więc przy samym `hasPasskey` stan się nie aktualizował:
+        //    UI pokazywało „wyłączone”, a logowanie Passkey nadal działało.
+        const serverHas = await PasskeyService.fetchHasPasskey(token, String(user.id));
+        if (serverHas !== null) {
+          setIsPasskeyActive(serverHas);
+          if (serverHas) {
             await AsyncStorage.setItem(`@passkey_${user.id}`, 'active');
           } else {
             await AsyncStorage.removeItem(`@passkey_${user.id}`);
@@ -2313,9 +2308,9 @@ export default function ProfileScreen({
         if (__DEV__) console.warn('Błąd weryfikacji statusu klucza:', e);
       }
     };
-    
+
     checkServerPasskeyStatus();
-  }, [user?.id]);
+  }, [user?.id, token]);
 
   const refreshAdminPendingOffers = async () => {
     if (!isZarzad || !token) return;
@@ -2422,6 +2417,15 @@ export default function ProfileScreen({
           onPress: async () => {
             try {
               await PasskeyService.revoke(token, String(user.id));
+              const outcome = await PasskeyService.confirmPasskeyRemoved(token, String(user.id));
+              if (outcome === 'still') {
+                throw new Error(
+                  'Serwer nadal zgłasza aktywny Passkey. Spróbuj ponownie za chwilę — dopóki usunięcie nie zostanie potwierdzone, logowanie Face ID może działać.',
+                );
+              }
+              if (outcome === 'unknown') {
+                if (__DEV__) console.warn('[Passkey] Nie udało się odczytać statusu po revoke — zakładam sukces operacji.');
+              }
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setIsPasskeyActive(false);
               await AsyncStorage.removeItem(`@passkey_${user.id}`);
@@ -2489,15 +2493,41 @@ export default function ProfileScreen({
         const manipResult = await ImageManipulator.manipulateAsync(result.assets[0].uri, [{ resize: { width: 500, height: 500 } }], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 });
         const formData = new FormData();
         formData.append('userId', String(user.id));
-        formData.append('file', { uri: manipResult.uri, name: `avatar_${user.id}.jpg`, type: 'image/jpeg' });
+        formData.append('file', { uri: manipResult.uri, name: `avatar_${user.id}.jpg`, type: 'image/jpeg' } as any);
 
-        const res = await fetch(`${API_URL}/api/mobile/v1/user/avatar`, { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success && data.url) {
-          if (updateAvatar) updateAvatar(`${API_URL}${data.url}`);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const res = await fetch(`${API_URL}/api/mobile/v1/user/avatar`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          Alert.alert(
+            'Błąd',
+            [data?.message, data?.error].find((x) => typeof x === 'string' && String(x).trim()) ||
+              `Nie udało się wgrać zdjęcia (HTTP ${res.status}).`,
+          );
+          return;
         }
-      } catch (e) { Alert.alert('Błąd', 'Problem z awatarem.'); }
+        const rel =
+          (typeof data.url === 'string' && data.url) ||
+          (typeof data.avatarUrl === 'string' && data.avatarUrl) ||
+          (typeof data.avatar === 'string' && data.avatar) ||
+          (typeof data.path === 'string' && data.path) ||
+          (typeof data?.data?.url === 'string' && data.data.url) ||
+          '';
+        const explicitFail = data?.success === false || data?.ok === false;
+        if (explicitFail || !rel) {
+          Alert.alert('Błąd', 'Serwer nie potwierdził zapisania awatara. Spróbuj ponownie.');
+          return;
+        }
+        const finalUrl = /^https?:\/\//i.test(rel) ? rel : rel.startsWith('/') ? `${API_URL}${rel}` : `${API_URL}/${rel}`;
+        await updateAvatar?.(finalUrl);
+        await refreshUser?.();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (e) {
+        Alert.alert('Błąd', 'Problem z awatarem.');
+      }
     }
   };
 
