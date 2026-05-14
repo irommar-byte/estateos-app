@@ -255,12 +255,22 @@ export default function OfferDetail({ route, navigation }: any) {
           }
         }
 
-        if (!candidate) {
-          const webRes = await fetch(`${API_URL}/api/offers/${id}`);
-          if (webRes.ok) {
-            const webJson = await webRes.json();
-            candidate = webJson?.offer || webJson?.data || (webJson?.id ? webJson : null);
-          }
+        let webCandidate: any = null;
+        const webRes = await fetch(`${API_URL}/api/offers/${id}`);
+        if (webRes.ok) {
+          const webJson = await webRes.json();
+          webCandidate =
+            webJson?.offer ||
+            webJson?.data?.offer ||
+            webJson?.data ||
+            (webJson?.id ? webJson : null);
+        }
+
+        if (webCandidate) {
+          candidate = {
+            ...(candidate || {}),
+            ...webCandidate,
+          };
         }
 
         if (mounted && candidate) {
