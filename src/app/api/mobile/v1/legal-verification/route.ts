@@ -1,12 +1,7 @@
 import {
-  getLegalVerificationRequests,
-  postLegalVerificationRequest,
+  getAdminLegalVerificationQueue,
 } from '@/lib/mobileLegalVerificationHandlers';
 
 export async function GET(req: Request) {
-  return getLegalVerificationRequests(req);
-}
-
-export async function POST(req: Request) {
-  return postLegalVerificationRequest(req);
+  return getAdminLegalVerificationQueue(req);
 }
