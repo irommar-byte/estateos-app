@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,9 @@ const resolveWhere = (searchParams: URLSearchParams) => {
 };
 
 export async function GET(req: Request) {
+  const gate = await requireMobileAdmin(req);
+  if (!gate.ok) return gate.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const { page, limit, skip } = resolvePagination(searchParams);
@@ -99,6 +103,9 @@ export async function GET(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const gate = await requireMobileAdmin(req);
+  if (!gate.ok) return gate.response;
+
   try {
     const { userId } = await req.json();
     if (!userId) {

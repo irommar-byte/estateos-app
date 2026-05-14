@@ -20,8 +20,15 @@ function getPrimaryJwtSecret(): string {
   return first;
 }
 
-export const signMobileToken = (payload: any) => {
-  return jwt.sign(payload, getPrimaryJwtSecret(), { expiresIn: '30d' }); // Token ważny 30 dni
+export const signMobileToken = (payload: Record<string, unknown>) => {
+  const body: Record<string, unknown> = { ...payload };
+  const idNum = Number(body.id ?? body.userId);
+  if (Number.isFinite(idNum) && idNum > 0) {
+    if (body.sub === undefined) body.sub = String(idNum);
+    if (body.userId === undefined) body.userId = idNum;
+    if (body.id === undefined) body.id = idNum;
+  }
+  return jwt.sign(body, getPrimaryJwtSecret(), { expiresIn: '30d' }); // Token ważny 30 dni
 };
 
 export const verifyMobileToken = (token: string) => {

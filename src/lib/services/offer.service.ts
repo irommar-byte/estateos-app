@@ -11,6 +11,7 @@ import {
   buildOfferVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 
 // =======================
 // MAPOWANIA
@@ -80,6 +81,13 @@ export async function createOffer(body: any) {
   });
   const descriptionWithVerification = attachVerificationMetaToDescription(body.description || "", verificationMeta);
 
+  let agentCommissionPercent: number | null | undefined = undefined;
+  if (body.agentCommissionPercent !== undefined && body.agentCommissionPercent !== null) {
+    const v = validateAgentCommissionPercent(body.agentCommissionPercent);
+    if (!v.ok) throw new Error(v.message);
+    agentCommissionPercent = v.value;
+  }
+
   return prisma.offer.create({
     data: {
       title: body.title || "Nowa Oferta",
@@ -126,6 +134,8 @@ export async function createOffer(body: any) {
 
       status: mapStatus(body.status),
 
+      ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
+
       userId: Number(userId)
     }
   });
@@ -156,6 +166,17 @@ export async function updateOffer(body: any) {
 
   if (locationValidation && !locationValidation.valid) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
+  }
+
+  let agentCommissionPercent: number | null | undefined = undefined;
+  if (body.agentCommissionPercent !== undefined) {
+    if (body.agentCommissionPercent === null) {
+      agentCommissionPercent = null;
+    } else {
+      const v = validateAgentCommissionPercent(body.agentCommissionPercent);
+      if (!v.ok) throw new Error(v.message);
+      agentCommissionPercent = v.value;
+    }
   }
 
   const oldPrice = Number(existing.price);
@@ -230,7 +251,9 @@ export async function updateOffer(body: any) {
 
       ...(body.status !== undefined && {
         status: mapStatus(body.status)
-      })
+      }),
+
+      ...(agentCommissionPercent !== undefined && { agentCommissionPercent })
     }
   });
   const newPrice = Number(updatedOffer.price);

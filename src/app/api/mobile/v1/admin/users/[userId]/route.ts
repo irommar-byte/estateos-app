@@ -1,52 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyMobileToken } from '@/lib/jwtMobile';
-import jwt from 'jsonwebtoken';
+import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
-
-function extractToken(req: Request): string | null {
-  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
-  const raw = String(authHeader || '').trim();
-  if (!raw) return null;
-  return raw.startsWith('Bearer ') ? raw.slice('Bearer '.length).trim() : raw;
-}
-
-function parseUserIdFromToken(token: string): number | null {
-  const verified = verifyMobileToken(token) as any;
-  const verifiedId = Number(verified?.id ?? verified?.userId ?? verified?.sub);
-  if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-  const decoded = jwt.decode(token) as any;
-  const decodedId = Number(decoded?.id ?? decoded?.userId ?? decoded?.sub);
-  if (Number.isFinite(decodedId) && decodedId > 0) return decodedId;
-  return null;
-}
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const token = extractToken(req);
-    if (!token) {
-      return NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 });
-    }
-
-    const requesterId = parseUserIdFromToken(token);
-    if (!requesterId) {
-      return NextResponse.json({ success: false, message: 'Niepoprawny token' }, { status: 401 });
-    }
-
-    const requester = await prisma.user.findUnique({
-      where: { id: requesterId },
-      select: { id: true, role: true },
-    });
-    if (!requester) {
-      return NextResponse.json({ success: false, message: 'Niepoprawny token' }, { status: 401 });
-    }
-    if (requester.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, message: 'Brak uprawnień admina' }, { status: 403 });
-    }
+    const gate = await requireMobileAdmin(req);
+    if (!gate.ok) return gate.response;
 
     const { userId } = await context.params;
     const targetUserId = Number(userId);

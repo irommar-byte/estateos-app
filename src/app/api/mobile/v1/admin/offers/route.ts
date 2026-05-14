@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
 
 export async function GET(req: Request) {
+  const gate = await requireMobileAdmin(req);
+  if (!gate.ok) return gate.response;
+
   try {
     const { searchParams } = new URL(req.url);
     const rawStatus = searchParams.get('status') || 'PENDING';
@@ -25,6 +29,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const gate = await requireMobileAdmin(req);
+  if (!gate.ok) return gate.response;
+
   try {
     const { offerId, newStatus } = await req.json();
     

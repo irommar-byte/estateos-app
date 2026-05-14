@@ -37,9 +37,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     // Odbieramy NOWE, potężne pola z aplikacji mobilnej
-    const { email, password, name, phone, role } = body;
+    const { email, password, name, phone, role, companyName } = body;
     const cleanEmail = normalizeEmail(email);
     const normalizedPhone = normalizePhoneForDb(phone);
+    const companyNameTrimmed =
+      typeof companyName === "string" ? companyName.trim() : String(companyName || "").trim();
 
     if (!cleanEmail || !password) {
       return NextResponse.json({ success: false, message: 'Brak danych' }, { status: 400 });
@@ -64,10 +66,21 @@ export async function POST(req: Request) {
 
     const hashed = await bcrypt.hash(password, 10);
 
-    // Inteligentne mapowanie ról z wizytówki mobilnej
+    // Inteligentne mapowanie ról z wizytówki mobilnej (AGENT = kanoniczna rola biura)
     let dbRole: Role = Role.USER;
     if (role === "PARTNER" || role === "AGENT") dbRole = Role.AGENT;
     if (role === "ADMIN") dbRole = Role.ADMIN;
+
+    if (dbRole === Role.AGENT && !companyNameTrimmed) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "AGENT_COMPANY_NAME_REQUIRED",
+          message: "Dla roli AGENT wymagane jest pole companyName (nazwa biura).",
+        },
+        { status: 400 }
+      );
+    }
 
     const user = await prisma.user.create({
       data: {
@@ -75,7 +88,8 @@ export async function POST(req: Request) {
         password: hashed,
         name: name || "Użytkownik",
         phone: normalizedPhone,  // Zapisujemy numer w spójnym formacie
-        role: dbRole
+        role: dbRole,
+        companyName: companyNameTrimmed || null,
       }
     });
 
@@ -84,12 +98,13 @@ export async function POST(req: Request) {
     // Bezpieczne ustawianie ciasteczek
     (await cookies()).set('estateos_session', session, { httpOnly: true, path: '/' });
 
-    return NextResponse.json({ 
-      success: true, 
-      token: session, 
-      role: user.role || 'USER', 
-      name: user.name, 
-      id: user.id 
+    return NextResponse.json({
+      success: true,
+      token: session,
+      role: user.role || 'USER',
+      name: user.name,
+      id: user.id,
+      companyName: user.companyName ?? null,
     });
 
   } catch (e: any) {

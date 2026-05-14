@@ -28,6 +28,10 @@ cd .../estateos
 • Kanoniczny „release” (type-check + build + PM2 reload + pm2 save):
     npm run release:ship
 
+• Weryfikacja **świeżego buildu** reconciliacji (Next na :3010 + pełny smoke, omija zajęty :3000):
+    npm run verify:recon
+  Opcjonalnie: `SKIP_BUILD=1 npm run verify:recon` jeśli `npm run build` było tuż przed tym.
+
 • Pełny deploy z czystym node_modules (np. nowy serwer / zmiana lockfile):
     npm run deploy:prod
 
@@ -42,6 +46,13 @@ curl -sI https://estateos.pl/.well-known/apple-app-site-association | head
 curl -sI https://estateos.pl/.well-known/assetlinks.json | head
 curl -sI http://estateos.pl/o/1 | head -5          # powinno iść 301 na https://
 curl -sI https://www.estateos.pl/o/1 | head -5    # 301 na https://estateos.pl/o/1
+
+Smoke (HTTP):
+    SMOKE_BASE_URL=https://estateos.pl npm run smoke:postdeploy
+  • Pełny zestaw wymaga **najnowszego** buildu (reconciliacja mobile: GET push-token = 200, admin mobile = 401 bez Bearer).
+  • Jeśli prod **jeszcze nie** ma tego deployu, tymczasowo:
+        SMOKE_MOBILE_RECON=0 SMOKE_BASE_URL=https://estateos.pl npm run smoke:postdeploy
+    (pomija tylko 4 checki reconciliacji; reszta dalej weryfikuje AASA, health, katalog ofert itd.)
 
 5) Aplikacja mobilna (estateos-app)
 -----------------------------------
@@ -58,3 +69,10 @@ curl -sI https://www.estateos.pl/o/1 | head -5    # 301 na https://estateos.pl/o
 • Universal Link / App Link (jak zainstalowana aplikacja i zweryfikowana domena):
     https://estateos.pl/o/<idOferty>  — system może otworzyć app zamiast przeglądarki.
 • Kanoniczna domena to zawsze https://estateos.pl (bez www); www → 301.
+
+7) Reconciliacja Mobile ↔ Backend
+----------------------------------
+• Plan wykonawczy (etapy, PR, rollback): docs/reconciliation/MASTER_EXECUTION_PLAN.md
+• Audyt kontraktów: docs/reconciliation/mobile-backend-www-master-audit.md
+• Passkeys (kanon mobile): docs/reconciliation/PASSKEYS_CANONICAL.md
+• Skrypty SQL (np. migracja prowizji): docs/reconciliation/sql/

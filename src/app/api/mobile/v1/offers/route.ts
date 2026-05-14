@@ -172,7 +172,17 @@ export async function POST(req: Request) {
 // =======================
 export async function PUT(req: Request) {
   try {
+    const authUserId = parseUserIdFromBearer(req);
+    if (!authUserId) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
+    }
+
     const body = await req.json();
+    const bodyUserId = Number(body?.userId);
+    if (!Number.isFinite(bodyUserId) || bodyUserId <= 0 || bodyUserId !== authUserId) {
+      return NextResponse.json({ success: false, message: 'Błędny użytkownik w żądaniu.' }, { status: 403 });
+    }
+
     const offer = await updateOffer(body);
     return NextResponse.json({ success: true, offer });
   } catch (e: any) {

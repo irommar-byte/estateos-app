@@ -133,6 +133,8 @@ model Offer {
   price           Float
   pricePerSqm     Float?
   adminFee        Float?
+  /// Prowizja agenta (% od ceny oferty), 0 lub 0,5–10 z krokiem 0,25 — informacyjnie; rozliczenia poza platformą.
+  agentCommissionPercent Float?
   deposit         Float?
   area            Float
   plotArea        Float?
