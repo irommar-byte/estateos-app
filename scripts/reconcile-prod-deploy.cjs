@@ -188,6 +188,9 @@ function rollback(reason) {
   console.error('[deploy:recon] ROLLBACK:', reason);
   summary.rolledBack = true;
   try {
+    if (!summary.rollbackSha) {
+      throw new Error('rollback SHA is missing');
+    }
     resetHard(summary.rollbackSha);
     releaseShipOrThrow('rollback');
     const base = smokeBaseUrl();
