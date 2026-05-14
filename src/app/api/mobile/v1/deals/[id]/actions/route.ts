@@ -124,7 +124,11 @@ export async function POST(req: Request) {
       const amount = Number(body?.amount);
       const financingRaw = String(body?.financing || 'CASH').toUpperCase();
       const financing = financingRaw === 'CREDIT' ? 'CREDIT' : 'CASH';
-      const note = typeof body?.message === 'string' ? body.message.trim().slice(0, 500) : null;
+      const note = typeof body?.message === 'string'
+        ? body.message.trim().slice(0, 500)
+        : typeof body?.note === 'string'
+          ? body.note.trim().slice(0, 500)
+          : null;
 
       if (!amount || Number.isNaN(amount) || amount <= 0) {
         return NextResponse.json({ error: 'Podaj poprawna kwote' }, { status: 400 });
@@ -174,7 +178,11 @@ export async function POST(req: Request) {
       const bidId = Number(body?.bidId);
       const decision = String(body?.decision || '').toUpperCase() as BidDecision;
       const counterAmount = Number(body?.counterAmount);
-      const note = typeof body?.message === 'string' ? body.message.trim().slice(0, 500) : null;
+      const note = typeof body?.message === 'string'
+        ? body.message.trim().slice(0, 500)
+        : typeof body?.note === 'string'
+          ? body.note.trim().slice(0, 500)
+          : null;
 
       if (!bidId || Number.isNaN(bidId)) {
         return NextResponse.json({ error: 'Brak bidId' }, { status: 400 });
@@ -466,11 +474,11 @@ export async function POST(req: Request) {
               senderId: actorId,
               content: buildEventContent({
                 entity: 'APPOINTMENT',
-                action: 'REJECTED',
+                action: 'DECLINED',
                 appointmentId,
                 proposedDate: appointment.proposedDate.toISOString(),
                 note,
-                status: 'REJECTED',
+                status: 'DECLINED',
                 createdAt: new Date().toISOString(),
               }),
             },

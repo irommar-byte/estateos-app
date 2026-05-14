@@ -4,6 +4,27 @@ import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function buildEventContent(payload: Record<string, unknown>) {
+  return `${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function buildDealroomPushData(dealId: number, offerId: number) {
+  return {
+    target: 'dealroom',
+    notificationType: 'dealroom_chat',
+    targetType: 'DEAL',
+    dealId,
+    offerId,
+    title: `Dealroom #${dealId}`,
+    deeplink: `estateos://dealroom/${dealId}`,
+    screen: 'DealroomChat',
+    route: 'DealroomChat',
+    entity: 'dealroom',
+  };
+}
+
 function getUserIdFromToken(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
@@ -43,12 +64,14 @@ export async function POST(
     }
 
     const body = await req.json();
-    const { action, message } = body;
+    const { action, message, note } = body;
 
     const safeMessage =
       typeof message === 'string'
         ? message.trim().slice(0, 500)
-        : null;
+        : typeof note === 'string'
+          ? note.trim().slice(0, 500)
+          : null;
 
     const actionMap: Record<string, 'ACCEPTED' | 'DECLINED' | 'RESCHEDULED'> = {
       ACCEPT: 'ACCEPTED',
@@ -105,19 +128,46 @@ export async function POST(
       let notifBody = '';
 
       if (action === 'ACCEPT') {
-        content = `[SYSTEM_APPOINTMENT_ACCEPTED:${appointmentId}] Termin zaakceptowany ✅${safeMessage ? ` | ${safeMessage}` : ''}`;
+        content = buildEventContent({
+          entity: 'APPOINTMENT',
+          action: 'ACCEPTED',
+          status: 'ACCEPTED',
+          appointmentId,
+          proposedDate: appointment.proposedDate.toISOString(),
+          note: safeMessage,
+          message: safeMessage,
+          createdAt: new Date().toISOString(),
+        });
         notifTitle = '✅ Termin zaakceptowany';
         notifBody = 'Spotkanie zostało potwierdzone.';
       }
 
       if (action === 'DECLINE') {
-        content = `[SYSTEM_APPOINTMENT_DECLINED:${appointmentId}] Termin odrzucony ❌${safeMessage ? ` | ${safeMessage}` : ''}`;
+        content = buildEventContent({
+          entity: 'APPOINTMENT',
+          action: 'DECLINED',
+          status: 'DECLINED',
+          appointmentId,
+          proposedDate: appointment.proposedDate.toISOString(),
+          note: safeMessage,
+          message: safeMessage,
+          createdAt: new Date().toISOString(),
+        });
         notifTitle = '❌ Termin odrzucony';
         notifBody = 'Twoja propozycja została odrzucona.';
       }
 
       if (action === 'RESCHEDULE') {
-        content = `[SYSTEM_APPOINTMENT_RESCHEDULED:${appointmentId}] Prośba o zmianę terminu 🔄${safeMessage ? ` | ${safeMessage}` : ''}`;
+        content = buildEventContent({
+          entity: 'APPOINTMENT',
+          action: 'COUNTERED',
+          status: 'PENDING',
+          appointmentId,
+          proposedDate: appointment.proposedDate.toISOString(),
+          note: safeMessage,
+          message: safeMessage,
+          createdAt: new Date().toISOString(),
+        });
         notifTitle = '🔄 Zmiana terminu';
         notifBody = 'Poproszono o nowy termin spotkania.';
       }
@@ -167,20 +217,21 @@ export async function POST(
       await notificationService.sendPushToUser(senderOfProposal, {
         title: pushTitle,
         body: pushBody,
-        data: {
-          targetType: 'DEAL',
-          targetId: String(dealId),
-          dealId: String(dealId),
-          kind: `appointment_${String(action).toLowerCase()}`
-        }
+        data: buildDealroomPushData(dealId, deal.offerId)
       });
     } catch (pushError) {
       console.warn('[WEB APPOINTMENT PUSH WARN]', pushError);
     }
 
+    const freshDeal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
+    });
+
     return NextResponse.json({
       success: true,
-      message: `Akcja wykonana: ${action}`
+      message: `Akcja wykonana: ${action}`,
+      deal: freshDeal
     });
 
   } catch (error: any) {

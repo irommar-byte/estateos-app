@@ -3,6 +3,12 @@ import { NextResponse } from 'next/server';
 import type { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
+import {
+  attachVerificationMetaToDescription,
+  buildOfferVerificationMeta,
+  extractVerificationMeta,
+} from '@/lib/offerVerification';
+import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -58,7 +64,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     );
     const viewsCount = Number(viewsRows?.[0]?.total || 0);
 
-    return NextResponse.json({ ...offer, _viewerIsPro: isRealPro, views: viewsCount, viewsCount });
+    const { cleanDescription, verification } = extractVerificationMeta(offer.description);
+
+    return NextResponse.json({
+      ...offer,
+      description: cleanDescription,
+      apartmentNumber: verification.apartmentNumber || offer.buildingNumber || "",
+      landRegistryNumber: verification.landRegistryNumber || "",
+      verificationStatus: verification.status,
+      _viewerIsPro: isRealPro,
+      views: viewsCount,
+      viewsCount
+    });
 
   } catch (error) {
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
@@ -79,12 +96,25 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
        return NextResponse.json({ error: "Oferta nie istnieje" }, { status: 404 });
     }
 
+    const existingVerification = extractVerificationMeta(currentOffer.description);
+    const hasVerificationPayload =
+      body.apartmentNumber !== undefined || body.landRegistryNumber !== undefined || body.verificationStatus !== undefined;
+    const nextVerification = hasVerificationPayload
+      ? buildOfferVerificationMeta({
+          apartmentNumber: body.apartmentNumber ?? existingVerification.verification.apartmentNumber,
+          landRegistryNumber: body.landRegistryNumber ?? existingVerification.verification.landRegistryNumber,
+        })
+      : existingVerification.verification;
+    const nextDescription = body.description != null
+      ? attachVerificationMetaToDescription(String(body.description), nextVerification)
+      : attachVerificationMetaToDescription(existingVerification.cleanDescription, nextVerification);
+
     let requireReverification = false;
     
     const sensitiveFields = [
       'title', 'description', 'district', 'area', 'images', 'propertyType',
       'rooms', 'floor', 'yearBuilt', 'plotArea', 'floorPlanUrl', 'street', 'buildingNumber',
-      'lat', 'lng', 'transactionType'
+      'lat', 'lng', 'transactionType', 'heating', 'isFurnished'
     ];
 
     for (const field of sensitiveFields) {
@@ -130,7 +160,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       where: { id: Number(resolvedParams.id) },
       data: {
         title: body.title != null ? String(body.title) : currentOffer.title,
-        description: body.description != null ? String(body.description) : currentOffer.description,
+        description: nextDescription,
         propertyType: body.propertyType ?? currentOffer.propertyType,
         district: body.district != null ? String(body.district) : currentOffer.district,
         price: Number.isFinite(parsedPrice) ? parsedPrice : currentOffer.price,
@@ -151,9 +181,27 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             : body.floorPlan != null
               ? String(body.floorPlan)
               : currentOffer.floorPlanUrl,
+        heating: body.heating !== undefined
+          ? (body.heating ? String(body.heating) : null)
+          : currentOffer.heating,
+        isFurnished: body.isFurnished !== undefined
+          ? !!body.isFurnished
+          : currentOffer.isFurnished,
         status: newStatus,
       }
     });
+
+    const oldPrice = Number(currentOffer.price);
+    const newPrice = Number(updatedOffer.price);
+    if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
+      await dispatchFavoritesPriceChangePush({
+        offerId: Number(updatedOffer.id),
+        oldPrice,
+        newPrice,
+        changedByUserId: Number(currentOffer.userId) || null,
+        source: 'web_offers_put',
+      });
+    }
     
     return NextResponse.json({ success: true, offer: updatedOffer, statusChanged: requireReverification });
   } catch (error) {

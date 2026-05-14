@@ -21,10 +21,10 @@ export async function POST(req: Request) {
 
     await prisma.user.update({
       where: { id: Number(userId) },
-      data: { isVerified: true, otpCode: null, otpExpiry: null }
+      data: { phoneVerifiedAt: new Date(), otpCode: null, otpExpiry: null }
     });
 
-    return NextResponse.json({ success: true, message: 'Konto zweryfikowane!' });
+    return NextResponse.json({ success: true, message: 'Telefon zweryfikowany!' });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
   }

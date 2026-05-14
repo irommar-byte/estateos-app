@@ -11,6 +11,15 @@ function getStripeClient() {
   return new Stripe(secretKey, { apiVersion: '2023-10-16' as any });
 }
 
+function buildSuccessUrl(baseUrl: string, params: Record<string, string>): string {
+  const parsed = new URL(baseUrl);
+  for (const [key, value] of Object.entries(params)) {
+    if (value) parsed.searchParams.set(key, value);
+  }
+  parsed.searchParams.set('session_id', '{CHECKOUT_SESSION_ID}');
+  return parsed.toString();
+}
+
 export async function POST(req: Request) {
   try {
     const stripe = getStripeClient();
@@ -53,6 +62,12 @@ export async function POST(req: Request) {
 
     }
 
+    const successUrl = buildSuccessUrl(finalReturnUrl, {
+      payment_success: 'true',
+      plan_activated: String(plan || 'unknown'),
+      renewalOfferId: plan === 'renewal' && offerId ? String(offerId) : '',
+    });
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card', 'blik'],
       line_items: [{
@@ -66,7 +81,7 @@ export async function POST(req: Request) {
       mode: 'payment',
       metadata: metadata,
       customer_email: customerEmail,
-      success_url: `${finalReturnUrl}?payment_success=true&plan_activated=${plan}`,
+      success_url: successUrl,
       cancel_url: finalCancelUrl,
     });
 

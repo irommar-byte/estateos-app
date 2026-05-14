@@ -2,15 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { signMobileToken } from '@/lib/jwtMobile';
 import jwt from 'jsonwebtoken';
-
-function computeIsProActive(user: { role: string; isPro: boolean; proExpiresAt: Date | null }) {
-  const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
-  return Boolean(
-    user.role === 'ADMIN' ||
-    (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
-  );
-}
+import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 
 function parseUserIdFromAuthToken(token: string): number | null {
   const verified = verifyMobileToken(token) as any;
@@ -29,10 +23,52 @@ function parseUserIdFromAuthToken(token: string): number | null {
   return null;
 }
 
+function extractTokenFromRequest(req: Request): string | null {
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  const xAccessToken = req.headers.get('x-access-token');
+  const authToken = req.headers.get('auth-token');
+
+  const raw = String(authHeader || xAccessToken || authToken || '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('Bearer ')) return raw.slice('Bearer '.length).trim() || null;
+  // Backward compatibility: część buildów mobilnych wysyła sam token bez "Bearer".
+  return raw;
+}
+
+async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
+  const email = String(emailRaw || '').trim();
+  const password = String(passwordRaw || '');
+
+  if (!email || !password) {
+    return NextResponse.json({ success: false, message: 'Brak emaila lub hasła' }, { status: 400 });
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.password) {
+    return NextResponse.json({ success: false, message: 'Nieprawidłowy email lub hasło' }, { status: 401 });
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    return NextResponse.json({ success: false, message: 'Nieprawidłowy email lub hasło' }, { status: 401 });
+  }
+
+  const token = signMobileToken({ id: user.id, email: user.email, role: user.role });
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: MOBILE_USER_SELECT,
+  });
+
+  return NextResponse.json({
+    success: true,
+    user: fullUser ? shapeMobileUser(fullUser) : null,
+    token,
+  });
+}
+
 export async function GET(req: Request) {
   try {
-    const auth = req.headers.get('authorization');
-    const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+    const token = extractTokenFromRequest(req);
     if (!token) {
       return NextResponse.json({ success: false, message: 'Brak tokenu' }, { status: 401 });
     }
@@ -44,33 +80,14 @@ export async function GET(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        image: true,
-        phone: true,
-        planType: true,
-        isPro: true,
-        proExpiresAt: true,
-        isVerified: true,
-      }
+      select: MOBILE_USER_SELECT,
     });
 
     if (!user) {
       return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
     }
 
-    const isProActive = computeIsProActive(user);
-
-    return NextResponse.json({
-      success: true,
-      user: {
-        ...user,
-        isPro: isProActive,
-      }
-    });
+    return NextResponse.json({ success: true, user: shapeMobileUser(user) });
   } catch (error: any) {
     console.error("🔥 BŁĄD API AUTH GET:", error.message);
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -80,9 +97,38 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { action, email, password, firstName, lastName, phone, avatar, userId, role } = body;
+    const {
+      action,
+      email,
+      password,
+      firstName,
+      lastName,
+      phone,
+      avatar,
+      userId,
+      role,
+      login,
+      identifier,
+    } = body;
 
-    if (action === 'register') {
+    // Backward compatibility (legacy app):
+    // - action: "login"
+    // - brak/nieznane action, ale payload ma email+password
+    // - identifier zamiast email
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const credentialEmail = email || identifier || login || body?.user?.email || body?.username;
+    const credentialPassword = password || body?.user?.password || body?.pass;
+    if (
+      normalizedAction === 'login' ||
+      (normalizedAction !== 'register' &&
+        normalizedAction !== 'update' &&
+        !!credentialEmail &&
+        !!credentialPassword)
+    ) {
+      return await performMobileLogin(credentialEmail, credentialPassword);
+    }
+
+    if (normalizedAction === 'register') {
       const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) return NextResponse.json({ success: false, message: 'Email zajęty' }, { status: 400 });
       
@@ -107,7 +153,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, user });
     }
     
-    if (action === 'update') {
+    if (normalizedAction === 'update') {
       // Zapisujemy avatar do istniejącej w bazie kolumny 'image'
       const user = await prisma.user.update({
         where: { id: Number(userId) },

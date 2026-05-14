@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       const customerEmail = session.customer_details?.email;
       const rawPlanType = session.metadata?.plan_type || '';
       const offerIdToRenew = session.metadata?.offer_id_to_renew;
+      const checkoutSessionId = session.id;
 
       if (rawPlanType === 'pakiet_plus' && session.metadata?.offer_payload) {
         try {
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
       if (customerEmail) {
 
         if (rawPlanType === 'renewal') {
-          console.log(`🛒 Pakiet+: ${customerEmail}`);
+          console.log(`[stripe:webhook] renewal_completed email=${customerEmail} session=${checkoutSessionId} offer=${offerIdToRenew || 'missing'}`);
         } else {
           let validPlanType: 'PRO' | 'AGENCY' | 'NONE' = 'PRO';
 
@@ -167,16 +168,28 @@ export async function POST(req: Request) {
 
 
         if (rawPlanType === 'renewal' && offerIdToRenew) {
+          const numericOfferId = Number(offerIdToRenew);
+          if (!Number.isFinite(numericOfferId) || numericOfferId <= 0) {
+            console.error(`[stripe:webhook] invalid renewal offer id: ${offerIdToRenew}`);
+            return NextResponse.json({ error: 'Nieprawidłowe offerId do odnowienia' }, { status: 400 });
+          }
+
           const newExpiresAt = new Date();
           newExpiresAt.setDate(newExpiresAt.getDate() + 30);
 
-          await prisma.offer.updateMany({
-            where: { id: Number(offerIdToRenew) },
+          const updateResult = await prisma.offer.updateMany({
+            where: { id: numericOfferId },
             data: {
               status: 'ACTIVE',
               expiresAt: newExpiresAt
             }
           });
+
+          if (updateResult.count === 0) {
+            console.error(`[stripe:webhook] renewal update missed offerId=${numericOfferId} session=${checkoutSessionId}`);
+            return NextResponse.json({ error: 'Nie udało się aktywować odnowionej oferty' }, { status: 404 });
+          }
+          console.log(`[stripe:webhook] renewal activated offerId=${numericOfferId} session=${checkoutSessionId}`);
         }
       }
     }

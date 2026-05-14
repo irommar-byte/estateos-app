@@ -9,6 +9,7 @@ import {
   MAX_OFFER_FILE_BYTES,
   saveDealAttachmentForDealRoom,
 } from '@/lib/upload/offerMediaUpload';
+import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
 
 const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
 
@@ -61,12 +62,50 @@ export async function GET(
         return NextResponse.json({ success: false, error: 'Nieprawidłowe ID transakcji' }, { status: 400 });
     }
 
+    const userId = await resolveUserId(req);
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+    }
+
+    const deal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, buyerId: true, sellerId: true, finalizedAt: true, updatedAt: true },
+    });
+    if (!deal) {
+      return NextResponse.json({ success: false, error: 'Transakcja nie istnieje' }, { status: 404 });
+    }
+    if (deal.buyerId !== userId && deal.sellerId !== userId) {
+      return NextResponse.json({ success: false, error: 'Brak dostępu do tej transakcji' }, { status: 403 });
+    }
+
+    await prisma.dealMessage.updateMany({
+      where: { dealId, senderId: { not: userId }, isRead: false },
+      data: { isRead: true },
+    });
+
     const messages = await prisma.dealMessage.findMany({
       where: { dealId },
       orderBy: { createdAt: 'asc' },
     });
 
-    return NextResponse.json({ success: true, messages });
+    const reviewGate = await getDealReviewVisibility({
+      dealId,
+      viewerId: userId,
+      sides: { buyerId: deal.buyerId, sellerId: deal.sellerId },
+      finalizedAt: resolveFinalizedAtSafe(deal),
+    });
+
+    return NextResponse.json({
+      success: true,
+      messages,
+      ...(reviewGate || {
+        myReviewSubmitted: false,
+        reviewRevealAt: new Date(0).toISOString(),
+        reviewRevealUnlocked: false,
+        partnerReviewVisible: false,
+        partnerReview: null,
+      }),
+    });
   } catch (error: any) {
     console.error('Błąd pobierania wiadomości:', error.message);
     return NextResponse.json({ success: false, error: 'Błąd serwera' }, { status: 500 });

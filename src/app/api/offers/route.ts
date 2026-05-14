@@ -6,6 +6,8 @@ import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { extractVerificationMeta } from '@/lib/offerVerification';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +44,18 @@ export async function GET() {
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
       const badges = resolveEliteBadges({ user });
-      return { ...rest, badges, views: viewsCount, viewsCount };
+      const { cleanDescription, verification } = extractVerificationMeta(rest.description);
+      return {
+        ...rest,
+        imageUrl: resolveOfferPrimaryImage(rest),
+        description: cleanDescription,
+        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || "",
+        landRegistryNumber: verification.landRegistryNumber || "",
+        verificationStatus: verification.status,
+        badges,
+        views: viewsCount,
+        viewsCount,
+      };
     };
 
     const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
@@ -87,20 +100,25 @@ export async function POST(req: Request) {
     if (!resolvedUserId) {
       const cookieStore = await cookies();
       const nextAuthSession = await getServerSession(authOptions);
-      const sessionCookie = cookieStore.get('estateos_session');
+      const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
 
       let email = nextAuthSession?.user?.email || null;
+      let sessionUserId: number | null = null;
 
       if (!email && sessionCookie?.value) {
         try {
           const sessionData = decryptSession(sessionCookie.value);
           email = sessionData?.email || null;
+          sessionUserId = Number(sessionData?.id) || null;
         } catch {
           email = null;
+          sessionUserId = null;
         }
       }
 
-      if (email) {
+      if (sessionUserId) {
+        resolvedUserId = sessionUserId;
+      } else if (email) {
         const user = await prisma.user.findUnique({
           where: { email: String(email) },
           select: { id: true }

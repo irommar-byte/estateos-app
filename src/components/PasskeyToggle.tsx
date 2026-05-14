@@ -27,6 +27,18 @@ export default function PasskeyToggle({ user }: { user: any }) {
     checkPasskey();
   }, []);
 
+  const refreshPasskeyState = async () => {
+    try {
+      const res = await fetch('/api/passkeys/check', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setHasPasskey(Boolean(data?.hasPasskey));
+      }
+    } catch {
+      // no-op
+    }
+  };
+
   const handleRegisterPasskey = async () => {
     
 
@@ -47,7 +59,7 @@ export default function PasskeyToggle({ user }: { user: any }) {
 
       const verifyResult = await verifyResp.json();
       if (verifyResult.success) {
-        setHasPasskey(true);
+        await refreshPasskeyState();
       }
     } catch (error) {
       console.error("Passkey register error:", error);
@@ -63,7 +75,7 @@ export default function PasskeyToggle({ user }: { user: any }) {
     setIsRegistering(true);
     try {
       const res = await fetch('/api/passkeys/delete', { method: 'DELETE' });
-      if (res.ok) setHasPasskey(false);
+      if (res.ok) await refreshPasskeyState();
     } catch (e) {
       console.error("Passkey delete error");
     } finally {

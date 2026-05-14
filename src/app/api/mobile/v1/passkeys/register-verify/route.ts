@@ -7,7 +7,9 @@ export async function POST(req: Request) {
         const { email, response } = await req.json();
         const user = await prisma.user.findUnique({ where: { email }});
         
-        if (!user || !user.otpCode) return NextResponse.json({ error: "Brak wyzwania" }, { status: 400 });
+        if (!user || !user.otpCode) {
+            return NextResponse.json({ error: "Brak wyzwania" }, { status: 400 });
+        }
 
         let expectedOrigin = 'http://localhost:3000';
         try {
@@ -26,16 +28,18 @@ export async function POST(req: Request) {
         });
 
         if (verification.verified && verification.registrationInfo) {
-            const info = verification.registrationInfo;
-            const cred = info.credential;
+            const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+            const credentialID = credential.id;
+            const credentialPublicKey = credential.publicKey;
+            const counter = credential.counter;
             
             await prisma.authenticator.create({
                 data: {
-                    credentialID: cred.id,
-                    credentialPublicKey: Buffer.from(cred.publicKey).toString('base64url'),
-                    counter: cred.counter,
-                    credentialDeviceType: info.credentialDeviceType,
-                    credentialBackedUp: info.credentialBackedUp,
+                    credentialID,
+                    credentialPublicKey: Buffer.from(credentialPublicKey).toString('base64'),
+                    counter,
+                    credentialDeviceType,
+                    credentialBackedUp,
                     providerAccountId: 'passkey',
                     userId: user.id
                 }
@@ -47,6 +51,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ error: "Weryfikacja nie powiodła się" }, { status: 400 });
     } catch (error: any) {
+        console.error('[MOBILE PASSKEY REGISTER VERIFY ERROR]', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

@@ -66,6 +66,7 @@ export async function POST(
         data: {
           status: 'FINALIZED',
           isActive: false,
+          finalizedAt: new Date(),
           updatedAt: new Date()
         }
       });

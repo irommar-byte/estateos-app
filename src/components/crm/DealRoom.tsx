@@ -6,10 +6,37 @@ import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
+const FINALIZED_STATUSES = new Set(['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD']);
+
+function normalizeEventAction(action?: string): string {
+  const raw = String(action || '').toUpperCase();
+  if (raw === 'ACCEPT') return 'ACCEPTED';
+  if (raw === 'REJECT') return 'REJECTED';
+  if (raw === 'DECLINE') return 'DECLINED';
+  if (raw === 'PROPOSE') return 'PROPOSED';
+  if (raw === 'COUNTER') return 'COUNTERED';
+  return raw;
+}
+
+function normalizeEventStatus(status?: string): string {
+  const raw = String(status || '').toUpperCase();
+  if (raw === 'ACCEPT') return 'ACCEPTED';
+  if (raw === 'REJECT') return 'REJECTED';
+  if (raw === 'DECLINE') return 'DECLINED';
+  return raw;
+}
+
 function parseDealEvent(content?: string) {
   if (!content || !content.startsWith(EVENT_PREFIX)) return null;
   try {
-    return JSON.parse(content.slice(EVENT_PREFIX.length));
+    const parsed = JSON.parse(content.slice(EVENT_PREFIX.length));
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      ...parsed,
+      action: normalizeEventAction(parsed.action),
+      status: normalizeEventStatus(parsed.status),
+      note: parsed.note ?? parsed.message ?? null,
+    };
   } catch {
     return null;
   }
@@ -48,6 +75,13 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
       const data = await res.json();
       if (data.success) setDeal(data.deal);
     } catch (e) { } finally { setLoading(false); }
+  };
+
+  const refetchDealAndMessages = async () => {
+    await Promise.allSettled([
+      fetchDeal(),
+      fetch(`/api/deals/${dealId}/messages?_t=${Date.now()}&${Math.random()}`, { cache: 'no-store' }),
+    ]);
   };
 
   const markAsRead = async () => {
@@ -212,7 +246,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || 'Nie udało się wysłać wiadomości');
       }
-      fetchDeal();
+      refetchDealAndMessages();
     } catch (err) {
       setDeal((prev: any) => ({
         ...prev,
@@ -253,7 +287,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Błąd odpowiedzi na ofertę');
-      fetchDeal();
+      refetchDealAndMessages();
     } catch (err: any) {
       alert(err.message || 'Nie udało się wykonać akcji.');
     } finally {
@@ -283,7 +317,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Błąd odpowiedzi na termin');
-      fetchDeal();
+      refetchDealAndMessages();
     } catch (err: any) {
       alert(err.message || 'Nie udało się wykonać akcji.');
     } finally {
@@ -296,8 +330,14 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
   const isBuyer = deal.buyerId === currentUserId;
-  const actionableBids = (deal.bids || []).filter((b: any) => (b.status === 'PENDING' || b.status === 'COUNTER_OFFER') && b.senderId !== currentUserId);
-  const actionableAppointments = (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId);
+  const isFinalizationReady = deal?.status === 'AGREED' && !!deal?.acceptedBidId;
+  const isFinalized = FINALIZED_STATUSES.has(String(deal?.status || '').toUpperCase()) || isFinalizationReady;
+  const actionableBids = !isFinalized
+    ? (deal.bids || []).filter((b: any) => (b.status === 'PENDING' || b.status === 'COUNTER_OFFER') && b.senderId !== currentUserId)
+    : [];
+  const actionableAppointments = !isFinalized
+    ? (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId)
+    : [];
   const activeBid = bidActionModal ? (deal.bids || []).find((b: any) => b.id === bidActionModal.bidId) : null;
   const activeAppointment = appointmentActionModal ? (deal.appointments || []).find((a: any) => a.id === appointmentActionModal.appointmentId) : null;
 
@@ -320,15 +360,39 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             <EliteStatusBadges subject={otherParty} isDark compact className="mt-2" />
           </div>
         </div>
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-          <ShieldCheck size={12} className="text-emerald-500" />
-          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500">Szyfrowanie E2E</span>
+        <div className="hidden md:flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+            <ShieldCheck size={12} className="text-emerald-500" />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500">Szyfrowanie E2E</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalizationReady ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
+              finalization-ready: {isFinalizationReady ? 'yes' : 'no'}
+            </span>
+            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalized ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
+              finalized: {isFinalized ? 'yes' : 'no'}
+            </span>
+            <span className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border bg-white/5 border-white/15 text-white/50">
+              acceptedBidId: {deal?.acceptedBidId ?? 'null'}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* CZAT (Z inteligentnym scrollem i statusem iMessage) */}
       <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 custom-scrollbar relative z-10 scroll-smooth">
-        {(actionableBids.length > 0 || actionableAppointments.length > 0) && (
+        {isFinalized && (
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+            <p className="text-[10px] uppercase tracking-widest font-black text-emerald-300 mb-1">Transakcja zamknięta</p>
+            <p className="text-sm text-white/80">Negocjacje zostały zakończone. Status: <span className="font-black text-emerald-300">{String(deal?.status || 'FINALIZED')}</span>.</p>
+            <div className="mt-3 rounded-xl border border-white/15 bg-black/30 p-3">
+              <p className="text-[10px] uppercase tracking-widest font-black text-white/60">Ocena współpracy</p>
+              <p className="text-xs text-white/60 mt-1">Wystaw ocenę po obu stronach, aby domknąć historię transakcji w ekosystemie web+app.</p>
+            </div>
+          </div>
+        )}
+
+        {!isFinalized && (actionableBids.length > 0 || actionableAppointments.length > 0) && (
           <div className="space-y-4">
             {actionableBids.map((bid: any) => (
               <div key={`action-bid-${bid.id}`} className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
@@ -480,6 +544,12 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       {/* KONSOLA WPISYWANIA */}
       <div className="p-4 md:p-6 md:pb-8 relative z-20 bg-gradient-to-t from-[#080808] via-[#080808] to-transparent shrink-0">
+        {isFinalized ? (
+          <div className="relative max-w-4xl mx-auto rounded-[2rem] border border-white/10 bg-[#111] px-5 py-4 text-center">
+            <p className="text-[10px] uppercase tracking-[0.24em] font-black text-white/45">Tryb tylko do odczytu</p>
+            <p className="text-sm text-white/75 mt-1">Ten DealRoom jest zamknięty po finalizacji.</p>
+          </div>
+        ) : (
         <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">
           <input
             ref={fileInputRef}
@@ -529,6 +599,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             {isSending ? <Loader2 size={16} className="animate-spin text-white" /> : <Send size={16} className="ml-0.5 text-white drop-shadow-md" />}
           </button>
         </form>
+        )}
       </div>
 
       <AnimatePresence>

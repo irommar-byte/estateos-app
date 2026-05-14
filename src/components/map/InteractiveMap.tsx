@@ -153,8 +153,13 @@ export default function InteractiveMap() {
     fetch("/api/offers?t=" + new Date().getTime(), { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        setAllOffers([...data]);
-        setFilteredOffers([...data]);
+        const list = Array.isArray(data) ? data : [];
+        setAllOffers(list);
+        setFilteredOffers(list);
+      })
+      .catch(() => {
+        setAllOffers([]);
+        setFilteredOffers([]);
       });
   }, []);
 

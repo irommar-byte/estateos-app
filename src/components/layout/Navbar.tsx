@@ -60,8 +60,14 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-black/60 backdrop-blur-2xl border-b border-white/5 font-sans">
-      <div className="max-w-[1400px] mx-auto px-4 md:px-6 h-24 sm:h-20 flex items-start sm:items-center justify-between pt-2 sm:pt-0">
+    <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-black/60 font-sans backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
+      <div
+        className="mx-auto flex h-24 max-w-[1400px] items-start justify-between px-3 pt-2 sm:h-20 sm:items-center sm:pt-0 md:px-6"
+        style={{
+          paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
+          paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+        }}
+      >
         
         {/* LOGO */}
         <div onClick={() => router.push('/')} className="cursor-pointer group flex-shrink-0 relative z-20 hidden sm:block">
@@ -98,6 +104,9 @@ export default function Navbar() {
                
                {user ? (
                  <div className="flex items-center gap-4 ml-1">
+                   <button onClick={() => router.push('/moje-konto')} className="text-[10px] font-black uppercase tracking-widest text-white/70 hover:text-white transition-colors px-2">
+                     Profil
+                   </button>
                    <button onClick={() => router.push(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')} style={{ backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981" }} className="text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full hover:bg-emerald-500 hover:text-black transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">
                      {user.role === 'ADMIN' ? 'Centrala' : 'Zarządzaj'}
                    </button>
@@ -112,7 +121,7 @@ export default function Navbar() {
         </div>
 
         {/* WYZWALACZ MOBILNY */}
-        <div className="flex items-center gap-2 lg:hidden relative z-40 mt-0.5">
+        <div className="relative z-40 mt-0.5 flex items-center gap-2.5 lg:hidden">
           {user && <NotificationCenter />}
           <button onClick={() => setIsOpen(!isOpen)} className="text-white p-2 hover:text-emerald-500 transition-colors bg-black/35 rounded-xl border border-white/10">
              {isOpen ? <X size={24} /> : <Menu size={24} />}
@@ -123,19 +132,20 @@ export default function Navbar() {
       {/* MENU MOBILNE */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div initial={{ opacity: 0, height: 0, y: -20 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: -20 }} className="lg:hidden bg-[#0a0a0a] border-b border-white/10 overflow-hidden shadow-2xl">
-            <div className="p-6 flex flex-col gap-8">
+          <motion.div initial={{ opacity: 0, height: 0, y: -20 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: -20 }} className="lg:hidden overflow-hidden border-b border-white/10 bg-[#0a0a0a] shadow-2xl">
+            <div className="flex flex-col gap-8 p-6">
               <div className="space-y-6 px-2 mt-4">
-                <button onClick={() => handleNavClick('/', true)} className="flex items-center gap-4 text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white transition-all w-full text-left"><Home size={18} className="text-gray-600"/> Odkryj Mapę</button>
-                <button onClick={() => handleNavClick('/oferty')} className="flex items-center gap-4 text-sm font-black uppercase tracking-widest text-gray-400 hover:text-white transition-all w-full text-left"><Building2 size={18} className="text-gray-600"/> Rynek Nieruchomości</button>
-                <button onClick={() => handleNavClick('/cennik')} className="flex items-center gap-4 text-sm font-black uppercase tracking-widest text-[#D4AF37] hover:text-[#FFF0AA] w-full text-left"><Crown size={18}/> EstateOS™ Elite</button>
+                <button onClick={() => handleNavClick('/', true)} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-gray-300 hover:text-white transition-all"><Home size={18} className="text-gray-600"/> Odkryj Mapę</button>
+                <button onClick={() => handleNavClick('/oferty')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-gray-300 hover:text-white transition-all"><Building2 size={18} className="text-gray-600"/> Rynek Nieruchomości</button>
+                <button onClick={() => handleNavClick('/cennik')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#D4AF37] hover:text-[#FFF0AA]"><Crown size={18}/> EstateOS™ Elite</button>
               </div>
               <div className="h-[1px] bg-white/5" />
               <div className="space-y-6 px-2">
                 {user ? (
                   <>
-                    <button onClick={() => handleNavClick(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')} className="flex items-center gap-4 text-sm font-black uppercase tracking-widest text-emerald-500 w-full text-left"><Shield size={18} /> {user.role === 'ADMIN' ? 'Zarządzaj (Centrala)' : 'Zarządzaj Kontem'}</button>
-                    <button onClick={() => { handleLogout(); setIsOpen(false); }} className="flex items-center gap-4 text-sm font-black uppercase tracking-widest text-red-500/70 w-full text-left"><LogOut size={18} /> Wyloguj</button>
+                    <button onClick={() => handleNavClick('/moje-konto')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-white/80 hover:text-white transition-colors"><User size={18} className="text-gray-600" /> Profil</button>
+                    <button onClick={() => handleNavClick(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-emerald-400"><Shield size={18} /> {user.role === 'ADMIN' ? 'Zarządzaj (Centrala)' : 'Zarządzaj Kontem'}</button>
+                    <button onClick={() => { handleLogout(); setIsOpen(false); }} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-red-400/80"><LogOut size={18} /> Wyloguj</button>
                   </>
                 ) : (
                   <button onClick={() => handleNavClick('/login')} style={{ backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)" }} className="flex items-center gap-4 text-xs font-black uppercase tracking-[0.2em] text-emerald-500 w-full text-left p-4 rounded-2xl"><User size={18} /> Zaloguj do Systemu</button>

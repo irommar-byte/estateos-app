@@ -1,17 +1,47 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import { verifyMobileToken } from '@/lib/jwtMobile';
+import { notificationService } from '@/lib/services/notification.service';
+
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function buildEventContent(payload: Record<string, unknown>) {
+  return `${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function buildDealroomPushData(dealId: number, offerId: number) {
+  return {
+    target: 'dealroom',
+    notificationType: 'dealroom_chat',
+    targetType: 'DEAL',
+    dealId,
+    offerId,
+    deeplink: `estateos://dealroom/${dealId}`,
+    screen: 'DealroomChat',
+    route: 'DealroomChat',
+    entity: 'dealroom',
+  };
+}
 
 function getUserIdFromToken(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
   try {
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
+    const verified = verifyMobileToken(token) as any;
+    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
+    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
 
-    const payload = jwt.verify(token, secret) as any;
-    return Number(payload?.id || payload?.sub) || null;
+    const secret = process.env.JWT_SECRET;
+    if (secret) {
+      const payload = jwt.verify(token, secret) as any;
+      const jwtId = Number(payload?.id || payload?.sub);
+      if (Number.isFinite(jwtId) && jwtId > 0) return jwtId;
+    }
+    const decoded = jwt.decode(token) as any;
+    const decodedId = Number(decoded?.id || decoded?.userId || decoded?.sub);
+    return Number.isFinite(decodedId) && decodedId > 0 ? decodedId : null;
   } catch {
     return null;
   }
@@ -96,20 +126,22 @@ export async function POST(
         }
       });
 
-      const formattedDate = appointmentDate.toLocaleString('pl-PL', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      // 💬 TIMELINE
+      // 💬 TIMELINE — canonical DEAL_EVENT
       await tx.dealMessage.create({
         data: {
           dealId,
           senderId: userId,
-          content: `[SYSTEM_APPOINTMENT_PROPOSED:${appointment.id}] ${safeType} → ${formattedDate}${safeMessage ? ` | ${safeMessage}` : ''}`
+          content: buildEventContent({
+            entity: 'APPOINTMENT',
+            action: 'PROPOSED',
+            status: 'PENDING',
+            appointmentId: appointment.id,
+            proposedDate: appointment.proposedDate.toISOString(),
+            note: safeMessage,
+            message: safeMessage,
+            type: safeType,
+            createdAt: appointment.createdAt.toISOString(),
+          })
         }
       });
 
@@ -125,7 +157,13 @@ export async function POST(
           userId: receiverId,
           type: 'APPOINTMENT',
           title: '📅 Nowe spotkanie',
-          body: `${formattedDate}`,
+          body: `${appointmentDate.toLocaleString('pl-PL', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}`,
           targetType: 'DEAL',
           targetId: String(dealId),
         }
@@ -134,9 +172,31 @@ export async function POST(
       return appointment;
     });
 
+    try {
+      await notificationService.sendPushToUser(receiverId, {
+        title: '📅 Nowe spotkanie',
+        body: `${appointmentDate.toLocaleString('pl-PL', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}`,
+        data: buildDealroomPushData(dealId, deal.offerId),
+      });
+    } catch (pushError) {
+      console.warn('[DEAL APPOINTMENT PUSH WARN]', pushError);
+    }
+
+    const freshDeal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
+    });
+
     return NextResponse.json({
       success: true,
-      appointment: result
+      appointment: result,
+      deal: freshDeal,
     });
 
   } catch (error: any) {

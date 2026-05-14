@@ -1,5 +1,7 @@
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { prisma } from '@/lib/prisma';
+import { logEvent } from '@/lib/observability';
+import { incMetric, tokenRef } from '@/lib/pushTelemetry';
 
 const expo = new Expo();
 const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send';
@@ -10,6 +12,13 @@ type DeviceRow = {
   expoPushToken: string;
   platform: string;
   isActive: boolean;
+};
+
+type DispatchMeta = {
+  traceId?: string;
+  offerId?: number;
+  provider?: 'expo';
+  retryCount?: number;
 };
 
 async function sendExpoPushChunk(chunk: ExpoPushMessage[]) {
@@ -57,7 +66,8 @@ async function fetchExpoReceipts(ids: string[]) {
 }
 
 export const notificationService = {
-  async sendPushToUser(userId: number, payload: any) {
+  async sendPushToUser(userId: number, payload: any, meta: DispatchMeta = {}) {
+    const isFavoritesPriceFlow = Boolean(meta.traceId) && Number.isFinite(Number(meta.offerId));
     const devices = (await prisma.device.findMany({
       where: { userId, isActive: true },
       select: {
@@ -87,6 +97,17 @@ export const notificationService = {
           lastSyncedAt: new Date(),
         },
       });
+      if (isFavoritesPriceFlow) {
+        for (const d of invalidDevices) {
+          logEvent('warn', 'device_token_deactivated', 'notification_service', {
+            reason: 'invalid_expo_token_format',
+            userId,
+            tokenRef: tokenRef(d.expoPushToken),
+            traceId: meta.traceId,
+            offerId: meta.offerId,
+          });
+        }
+      }
     }
 
     if (!validDevices.length) {
@@ -107,7 +128,35 @@ export const notificationService = {
     const ticketTokenPairs: Array<{ token: string; ticketId: string }> = [];
 
     for (const chunk of chunks) {
-      const sent = await sendExpoPushChunk(chunk);
+      let sent: Awaited<ReturnType<typeof sendExpoPushChunk>>;
+      try {
+        sent = await sendExpoPushChunk(chunk);
+      } catch (err: any) {
+        const msg = String(err?.message || 'EXPO_SEND_ERROR');
+        const httpStatusMatch = msg.match(/EXPO_PUSH_SEND_FAILED_(\d+)/);
+        const httpStatus = httpStatusMatch ? Number(httpStatusMatch[1]) : null;
+        for (const msgItem of chunk) {
+          const token = String(msgItem?.to || '');
+          if (!token) continue;
+          if (isFavoritesPriceFlow) {
+            logEvent('error', 'favorites_price_push_dispatch_result', 'notification_service', {
+              traceId: meta.traceId,
+              userId,
+              offerId: meta.offerId,
+              provider: meta.provider || 'expo',
+              providerTicketId: null,
+              status: 'error',
+              errorCode: 'EXPO_SEND_FAILED',
+              httpStatus,
+              retryScheduled: false,
+              retryCount: meta.retryCount ?? 0,
+              tokenRef: tokenRef(token),
+            });
+            incMetric('favorites_price_push_failed_total', 1);
+          }
+        }
+        continue;
+      }
       const chunkData = Array.isArray(sent?.data) ? sent.data : [];
       for (let i = 0; i < chunkData.length; i += 1) {
         const item = chunkData[i];
@@ -116,14 +165,55 @@ export const notificationService = {
         if (!token) continue;
         if (item?.status === 'ok' && item?.id) {
           ticketTokenPairs.push({ token, ticketId: item.id });
+          if (isFavoritesPriceFlow) {
+            logEvent('info', 'favorites_price_push_dispatch_result', 'notification_service', {
+              traceId: meta.traceId,
+              userId,
+              offerId: meta.offerId,
+              provider: meta.provider || 'expo',
+              providerTicketId: item.id,
+              status: 'ok',
+              errorCode: null,
+              httpStatus: 200,
+              retryScheduled: false,
+              retryCount: meta.retryCount ?? 0,
+              tokenRef: tokenRef(token),
+            });
+            incMetric('favorites_price_push_sent_total', 1);
+          }
           continue;
         }
         const immediateError = item?.details?.error || item?.status || 'UNKNOWN';
+        if (isFavoritesPriceFlow) {
+          logEvent('warn', 'favorites_price_push_dispatch_result', 'notification_service', {
+            traceId: meta.traceId,
+            userId,
+            offerId: meta.offerId,
+            provider: meta.provider || 'expo',
+            providerTicketId: null,
+            status: 'error',
+            errorCode: immediateError,
+            httpStatus: 200,
+            retryScheduled: false,
+            retryCount: meta.retryCount ?? 0,
+            tokenRef: tokenRef(token),
+          });
+          incMetric('favorites_price_push_failed_total', 1);
+        }
         if (immediateError === 'DeviceNotRegistered') {
           await prisma.device.updateMany({
             where: { userId, expoPushToken: token },
             data: { isActive: false, lastSyncedAt: new Date() },
           });
+          if (isFavoritesPriceFlow) {
+            logEvent('warn', 'device_token_deactivated', 'notification_service', {
+              reason: 'DeviceNotRegistered',
+              userId,
+              tokenRef: tokenRef(token),
+              traceId: meta.traceId,
+              offerId: meta.offerId,
+            });
+          }
         }
       }
     }
@@ -140,11 +230,36 @@ export const notificationService = {
           continue;
         }
         const receiptError = receipt?.details?.error || receipt?.message || 'UNKNOWN_RECEIPT_ERROR';
+        if (isFavoritesPriceFlow) {
+          logEvent('warn', 'favorites_price_push_dispatch_result', 'notification_service', {
+            traceId: meta.traceId,
+            userId,
+            offerId: meta.offerId,
+            provider: meta.provider || 'expo',
+            providerTicketId: pair.ticketId,
+            status: 'error',
+            errorCode: receiptError,
+            httpStatus: 200,
+            retryScheduled: false,
+            retryCount: meta.retryCount ?? 0,
+            tokenRef: tokenRef(pair.token),
+          });
+          incMetric('favorites_price_push_failed_total', 1);
+        }
         if (receiptError === 'DeviceNotRegistered') {
           await prisma.device.updateMany({
             where: { userId, expoPushToken: pair.token },
             data: { isActive: false, lastSyncedAt: new Date() },
           });
+          if (isFavoritesPriceFlow) {
+            logEvent('warn', 'device_token_deactivated', 'notification_service', {
+              reason: 'DeviceNotRegistered',
+              userId,
+              tokenRef: tokenRef(pair.token),
+              traceId: meta.traceId,
+              offerId: meta.offerId,
+            });
+          }
         }
       }
     }

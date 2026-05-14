@@ -6,6 +6,11 @@ import {
   OfferStatus
 } from '@prisma/client';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
+import {
+  attachVerificationMetaToDescription,
+  buildOfferVerificationMeta,
+} from '@/lib/offerVerification';
+import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 
 // =======================
 // MAPOWANIA
@@ -69,10 +74,16 @@ export async function createOffer(body: any) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
   }
 
+  const verificationMeta = buildOfferVerificationMeta({
+    apartmentNumber: body.apartmentNumber,
+    landRegistryNumber: body.landRegistryNumber,
+  });
+  const descriptionWithVerification = attachVerificationMetaToDescription(body.description || "", verificationMeta);
+
   return prisma.offer.create({
     data: {
       title: body.title || "Nowa Oferta",
-      description: body.description || "",
+      description: descriptionWithVerification,
 
       transactionType: mapTransactionType(body.transactionType),
       propertyType: mapPropertyType(body.propertyType),
@@ -92,7 +103,7 @@ export async function createOffer(body: any) {
       city: locationValidation.city,
       district: locationValidation.district,
       street: body.street || body.address || null,
-      buildingNumber: body.buildingNumber || null,
+      buildingNumber: body.buildingNumber || body.apartmentNumber || null,
       isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : true,
 
       lat: Number(lat),
@@ -111,6 +122,7 @@ export async function createOffer(body: any) {
       hasParking: !!body.hasParking,
       hasGarden: !!body.hasGarden,
       isFurnished: !!body.isFurnished,
+      heating: body.heating ? String(body.heating).trim() : null,
 
       status: mapStatus(body.status),
 
@@ -146,7 +158,8 @@ export async function updateOffer(body: any) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
   }
 
-  return prisma.offer.update({
+  const oldPrice = Number(existing.price);
+  const updatedOffer = await prisma.offer.update({
     where: { id: Number(id) },
     data: {
       ...(body.title !== undefined && { title: body.title }),
@@ -211,10 +224,24 @@ export async function updateOffer(body: any) {
       ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
       ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
       ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
+      ...(body.heating !== undefined && {
+        heating: body.heating ? String(body.heating).trim() : null
+      }),
 
       ...(body.status !== undefined && {
         status: mapStatus(body.status)
       })
     }
   });
+  const newPrice = Number(updatedOffer.price);
+  if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
+    await dispatchFavoritesPriceChangePush({
+      offerId: Number(updatedOffer.id),
+      oldPrice,
+      newPrice,
+      changedByUserId: Number(userId) || null,
+      source: 'mobile_offers_put',
+    });
+  }
+  return updatedOffer;
 }

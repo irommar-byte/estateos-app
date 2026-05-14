@@ -40,3 +40,21 @@ npm run pm2:save
 - Zmiany stylow robimy centralnie, aby zachowac spojnosc wygladu WWW i aplikacji:
   - globalne style: `src/app/globals.css`
   - wspolne komponenty: `src/components/`
+
+## Production reliability checklist
+
+1. Validate critical env before deploy (`NEXTAUTH_SECRET`, `JWT_SECRET`, `AUTH_SECRET`, `PASSKEY_RP_ID`, `PASSKEY_ORIGIN`).
+2. Run full verification and deploy command:
+   `npm run type-check && NODE_OPTIONS=--max-old-space-size=2048 npm run build && pm2 restart ecosystem.config.cjs --only nieruchomosci --update-env`
+3. Run smoke checks:
+   `npm run smoke:postdeploy`
+4. Verify runtime health:
+   `curl -sS http://127.0.0.1:3000/api/health`
+5. Verify app-links endpoints:
+   - `curl -sS https://estateos.pl/.well-known/assetlinks.json`
+   - `curl -sS https://estateos.pl/.well-known/apple-app-site-association`
+
+Rollback-safe steps:
+- Keep previous PM2 process logs for incident triage.
+- If deployment fails verification, restart previous known-good release and rerun smoke checks.
+- Do not rotate secrets during active incident unless compromise is confirmed.

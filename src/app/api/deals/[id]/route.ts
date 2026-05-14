@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { jwtVerify } from 'jose';
 import { decryptSession } from '@/lib/sessionUtils';
+import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
 
 export async function GET(
   req: Request,
@@ -75,7 +76,34 @@ export async function GET(
     if (!deal) return NextResponse.json({ success: false, error: 'Nie znaleziono' }, { status: 404 });
     if (deal.buyerId !== userId && deal.sellerId !== userId) return NextResponse.json({ success: false, error: 'Odmowa dostępu' }, { status: 403 });
 
-    return NextResponse.json({ success: true, deal });
+    const statusRaw = String(deal.status || '').toUpperCase();
+    const finalizationReady = statusRaw === 'AGREED' && !!deal.acceptedBidId;
+    // AGREED = cena uzgodniona, finalizacja (SOLD / anulowanie konkurencji) dopiero po POST …/finalize.
+    const finalized = ['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD'].includes(statusRaw);
+    const finalizedAtSafe = resolveFinalizedAtSafe(deal);
+    const reviewGate = await getDealReviewVisibility({
+      dealId,
+      viewerId: userId,
+      sides: { buyerId: deal.buyerId, sellerId: deal.sellerId },
+      finalizedAt: finalizedAtSafe,
+    });
+
+    return NextResponse.json({
+      success: true,
+      deal: {
+        ...deal,
+        finalizationReady,
+        finalized,
+        finalizedAt: deal.finalizedAt ?? finalizedAtSafe,
+        ...(reviewGate || {
+          myReviewSubmitted: false,
+          reviewRevealAt: new Date(0).toISOString(),
+          reviewRevealUnlocked: false,
+          partnerReviewVisible: false,
+          partnerReview: null,
+        }),
+      },
+    });
   } catch (e: unknown) {
     const errorMessage = e instanceof Error ? e.message : 'Unknown error';
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });

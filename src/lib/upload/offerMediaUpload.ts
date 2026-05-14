@@ -85,14 +85,29 @@ export async function processOfferImageWebp(
   try {
     const sharp = (await import('sharp')).default;
     let image = sharp(buffer).rotate();
+    const metadata = await image.metadata();
+
+    // Ujednolicenie rozdzielczości zdjęć z telefonów:
+    // ograniczamy dłuższy bok, żeby nie marnować limitu 20 MB na kilka gigantycznych kadrów.
+    const width = Number(metadata.width || 0);
+    const height = Number(metadata.height || 0);
+    const maxEdge = 2200;
+    if (width > 0 && height > 0 && (width > maxEdge || height > maxEdge)) {
+      image = image.resize({
+        width: width >= height ? maxEdge : undefined,
+        height: height > width ? maxEdge : undefined,
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+    }
 
     const svgWatermark = `
-      <svg width="450" height="350" xmlns="http://www.w3.org/2000/svg">
+      <svg width="520" height="380" xmlns="http://www.w3.org/2000/svg">
         <text x="50%" y="50%" text-anchor="middle" alignment-baseline="middle"
-              font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="52"
-              fill="rgba(255, 255, 255, 0.35)"
-              stroke="rgba(0, 0, 0, 0.15)" stroke-width="2"
-              transform="rotate(-25 225 175)">
+              font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="48"
+              fill="rgba(255, 255, 255, 0.20)"
+              stroke="rgba(0, 0, 0, 0.08)" stroke-width="1"
+              transform="rotate(-25 260 190)">
           EstateOS™
         </text>
       </svg>
@@ -108,7 +123,12 @@ export async function processOfferImageWebp(
       },
     ]);
 
-    const finalBuffer = await image.webp({ quality: 92 }).toBuffer();
+    const finalBuffer = await image
+      .webp({
+        quality: 82,
+        effort: 6,
+      })
+      .toBuffer();
     return { buffer: finalBuffer, ext: '.webp' };
   } catch (e) {
     console.error('❌ offerMediaUpload sharp error:', e);

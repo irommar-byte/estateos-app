@@ -3,6 +3,9 @@ export const runtime = "nodejs";
 import { NextResponse } from 'next/server';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { activeChallenges, rpName, rpID } from '../../store';
+import jwt from 'jsonwebtoken';
+import { verifyMobileToken } from '@/lib/jwtMobile';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +19,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Brak tokena" }, { status: 401 });
     }
 
-    const decoded: any = JSON.parse(Buffer.from(token.split(".")[1], "base64").toString());
+    let decoded: any = verifyMobileToken(token);
+    if (!decoded) {
+      const secret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET;
+      if (secret) {
+        try {
+          decoded = jwt.verify(token, secret);
+        } catch {
+          decoded = jwt.decode(token);
+        }
+      } else {
+        decoded = jwt.decode(token);
+      }
+    }
     const { userId, email } = await req.json();
 
     if (!userId || !email) {
@@ -28,6 +43,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized userId mismatch" }, { status: 403 });
     }
 
+    const authenticators = await prisma.authenticator.findMany({
+      where: { userId: Number(userId) },
+      select: { credentialID: true },
+    });
+
     const options = await generateRegistrationOptions({
       rpName,
       rpID,
@@ -35,6 +55,10 @@ export async function POST(req: Request) {
       userName: email,
       timeout: 60000,
       attestationType: 'none',
+      excludeCredentials: authenticators.map((a) => ({
+        id: a.credentialID,
+        type: 'public-key' as const,
+      })),
       authenticatorSelection: {
         authenticatorAttachment: 'platform',
         userVerification: 'required',

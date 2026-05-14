@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X, Fingerprint, Lock, ShieldCheck } from "lucide-react";
-import { startRegistration } from "@simplewebauthn/browser";
+import { CalendarDays, Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X } from "lucide-react";
 
 // --- DANE ---
 const allNews = [
@@ -116,8 +115,8 @@ export const AppleClock = ({ isBooting = false }: { isBooting?: boolean }) => {
           </div>
         </div>
         <div ref={sr} className="absolute inset-0 flex justify-center items-center z-20">
-          <div className="relative w-[1px] md:w-[1.5px] h-[55px] md:h-[80px] origin-bottom -translate-y-1/2 bg-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-             <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-600 border border-black/80 shadow-lg"></div>
+          <div className="relative w-[1px] md:w-[1.5px] h-[55px] md:h-[80px] origin-bottom -translate-y-1/2 bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]">
+             <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-600 border border-black/80 shadow-[0_0_10px_rgba(239,68,68,0.45)]"></div>
           </div>
         </div>
 
@@ -138,74 +137,6 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
   const [notes, setNotes] = useState<any[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
-
-  // --- LOGIKA BIOMETRII I PAYWALLA ---
-  const [showProModal, setShowProModal] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [hasPasskey, setHasPasskey] = useState(false);
-  const [isCheckingPasskey, setIsCheckingPasskey] = useState(true);
-
-  useEffect(() => {
-    const checkPasskey = async () => {
-      try {
-        const res = await fetch('/api/passkeys/check');
-        if (res.ok) {
-          const data = await res.json();
-          setHasPasskey(data.hasPasskey);
-        }
-      } catch (e) {
-        console.error("Błąd sprawdzania kluczy");
-      } finally {
-        setIsCheckingPasskey(false);
-      }
-    };
-    checkPasskey();
-  }, []);
-
-  const handleRegisterPasskey = async () => {
-    const isPro = currentUser?.isPro || currentUser?.planType === 'INVESTOR' || currentUser?.planType === 'AGENCY' || currentUser?.planType === 'pakiet_plus';
-    if (!isPro) {
-      setShowProModal(true);
-      return;
-    }
-    
-    setIsRegistering(true);
-    try {
-      const resp = await fetch('/api/passkeys/register-options');
-      const options = await resp.json();
-      if (options.error) throw new Error(options.error);
-      
-      const attResp = await startRegistration(options);
-      
-      const verifyResp = await fetch('/api/passkeys/register-verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(attResp),
-      });
-      
-      const verifyResult = await verifyResp.json();
-      if (verifyResult.success) {
-      setHasPasskey(true);
-    }
-    } catch (error) {
-      console.error("Błąd autoryzacji:", error);
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
-  const handleDeletePasskey = async () => {
-    setIsRegistering(true);
-    try {
-      const res = await fetch('/api/passkeys/delete', { method: 'DELETE' });
-      if (res.ok) setHasPasskey(false);
-    } catch (e) {
-      console.error("Błąd usuwania klucza");
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
 
   const displayDate = new Date();
   displayDate.setMonth(displayDate.getMonth() + monthOffset);
@@ -310,66 +241,6 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                  <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30 relative z-10">Średnia Rynkowa</span>
               </div>
            </div>
-
-           {/* --- MODUŁ BIOMETRYCZNY (Luksusowy Paywall) --- */}
-           
-      <div 
-        className={`mt-1 w-full rounded-[22px] p-4 transition-all duration-700 ease-out flex items-center justify-between overflow-hidden relative backdrop-blur-2xl ${
-          hasPasskey 
-            ? "bg-[#111112]/90 border border-emerald-500/20 shadow-[inset_0_2px_20px_rgba(0,0,0,1)]" 
-            : "bg-[#1c1c1e]/80 border border-white/10 shadow-lg"
-        }`}
-      >
-        {/* Tło oddychające gdy włączone */}
-        {hasPasskey && (
-          <div className="absolute inset-0 bg-emerald-500/5 animate-[pulse_4s_ease-in-out_infinite] pointer-events-none"></div>
-        )}
-
-        <div className="flex items-center gap-4 z-10">
-          <div className={`relative flex items-center justify-center w-[46px] h-[46px] rounded-full transition-all duration-700 ${
-            hasPasskey 
-              ? "bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.4)] animate-[pulse_3s_ease-in-out_infinite]" 
-              : "bg-white/5"
-          }`}>
-            {/* Animacja pulsującego ringu (życie) */}
-            {hasPasskey && (
-               <div className="absolute inset-0 rounded-full border-2 border-emerald-400/30 animate-[ping_2.5s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
-            )}
-            
-            <svg className={`w-[22px] h-[22px] transition-all duration-700 ${hasPasskey ? 'text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.9)] scale-110' : 'text-neutral-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
-            </svg>
-          </div>
-          
-          <div className="text-left z-10">
-            <h3 className={`text-[16px] font-semibold tracking-wide transition-colors duration-500 ${hasPasskey ? 'text-white' : 'text-neutral-200'}`}>
-              Face ID / Touch ID
-            </h3>
-            <p className={`text-[13px] mt-0.5 tracking-wide transition-colors duration-500 ${hasPasskey ? 'text-emerald-400/90 font-medium' : 'text-neutral-500'}`}>
-              {hasPasskey ? "Aktywne dla tego urządzenia" : "Skonfiguruj logowanie"}
-            </p>
-          </div>
-        </div>
-
-        {/* Natywny przełącznik (Toggle) Apple */}
-        <button
-          onClick={hasPasskey ? handleDeletePasskey : handleRegisterPasskey}
-          disabled={isRegistering || isCheckingPasskey}
-          className={`relative inline-flex h-[31px] w-[51px] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-300 ease-in-out focus:outline-none z-10 ${
-            hasPasskey ? 'bg-[#34C759] shadow-[0_0_12px_rgba(52,199,89,0.5)]' : 'bg-[#39393D]'
-          } ${(isRegistering || isCheckingPasskey) ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <span
-            className={`pointer-events-none relative inline-block h-[27px] w-[27px] transform rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.15),0_3px_1px_rgba(0,0,0,0.06)] ring-0 transition-transform duration-300 ease-in-out ${
-              hasPasskey ? 'translate-x-[20px]' : 'translate-x-0'
-            }`}
-          >
-            {(isRegistering || isCheckingPasskey) && (
-              <svg className="animate-spin absolute inset-0 m-auto h-3 w-3 text-neutral-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            )}
-          </span>
-        </button>
-      </div>
 
         </div>
 
@@ -477,25 +348,6 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                 />
                 <button onClick={handleSaveNote} className="w-full mt-6 py-4 rounded-xl bg-gradient-to-b from-[#222] to-[#111] hover:from-[#333] hover:to-[#222] border border-[#333] text-[10px] font-black uppercase tracking-widest text-white shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all flex items-center justify-center gap-2">
                    Zapisz w chmurze
-                </button>
-             </motion.div>
-          </motion.div>
-        )}
-      {showProModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
-             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-emerald-500/30 p-8 md:p-10 rounded-[2rem] w-full max-w-lg shadow-[0_0_100px_rgba(16,185,129,0.1),inset_0_2px_20px_rgba(255,255,255,0.02)] text-center relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600"></div>
-                <button onClick={() => setShowProModal(false)} className="absolute top-6 right-6 p-2 bg-black hover:bg-white/10 rounded-full text-white/50 transition-colors border border-white/5"><X size={16}/></button>
-
-                <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-                   <Fingerprint size={32} className="text-emerald-400"/>
-                </div>
-                
-                <h3 className="text-2xl font-black text-white uppercase tracking-widest mb-2">Logowanie Biometryczne</h3>
-                <p className="text-sm text-white/50 leading-relaxed mb-8">Ta funkcja jest zarezerwowana dla pakietów <span className="text-emerald-500 font-bold">PRO</span>. Odblokuj pełen potencjał EstateOS i loguj się za pomocą skanu twarzy lub odcisku palca, bez wpisywania haseł i kodów SMS.</p>
-                
-                <button onClick={() => window.location.href='/moje-konto/crm'} className="w-full py-5 rounded-full font-black text-sm hover:scale-[1.02] shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all cursor-pointer flex justify-center items-center uppercase tracking-widest bg-emerald-500 text-black">
-                   Rozbuduj pakiet do PRO
                 </button>
              </motion.div>
           </motion.div>

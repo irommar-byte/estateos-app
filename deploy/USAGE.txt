@@ -24,9 +24,17 @@ jest generowana przez Next (Route Handlers) z powyższych zmiennych — nie edyt
 3) Deploy backendu
 ------------------
 cd .../estateos
-npm ci
-npm run build
-pm2 reload ...   # lub deploy:prod — ten sam cwd co ecosystem.config.cjs
+
+• Kanoniczny „release” (type-check + build + PM2 reload + pm2 save):
+    npm run release:ship
+
+• Pełny deploy z czystym node_modules (np. nowy serwer / zmiana lockfile):
+    npm run deploy:prod
+
+• Szybki deploy bez npm ci (ten sam lockfile, już zainstalowane zależności):
+    npm run deploy:server-only
+
+Wszystkie powyższe zakładają cwd = katalog aplikacji (jak w ecosystem.config.cjs).
 
 4) Weryfikacja po wdrożeniu
 ---------------------------

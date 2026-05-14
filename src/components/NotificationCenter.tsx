@@ -111,9 +111,10 @@ export default function NotificationCenter() {
   return (
     <div className="relative" ref={panelRef}>
       {/* IKONA DZWONKA */}
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="relative p-2 text-white/70 hover:text-white transition-colors flex items-center justify-center"
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        aria-label="Powiadomienia"
+        className="relative rounded-xl border border-white/10 bg-black/35 p-2.5 text-white/75 transition-colors hover:text-white"
       >
         <Bell size={22} className={unreadCount > 0 ? 'animate-[wiggle_3s_ease-in-out_infinite]' : ''} />
         {unreadCount > 0 && (
@@ -124,12 +125,12 @@ export default function NotificationCenter() {
       {/* ROZWIJANY PANEL POWIADOMIEŃ */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10, scale: 0.95 }} 
-            animate={{ opacity: 1, y: 0, scale: 1 }} 
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="absolute top-12 right-[-60px] md:right-0 w-[340px] md:w-[400px] bg-[#0a0a0a]/95 backdrop-blur-2xl border border-white/10 rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.8)] overflow-hidden z-[9999]"
+            className="fixed left-1/2 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[9999] w-[min(420px,calc(100vw-1rem))] -translate-x-1/2 overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a]/95 shadow-[0_30px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl sm:absolute sm:left-auto sm:top-12 sm:w-[400px] sm:translate-x-0 sm:right-0"
           >
             <div className="p-5 border-b border-white/5 flex justify-between items-center bg-[#050505]">
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white flex items-center gap-2">

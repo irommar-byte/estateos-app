@@ -3,8 +3,14 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import nodemailer from 'nodemailer';
+import { notificationService } from '@/lib/services/notification.service';
 
 export const dynamic = 'force-dynamic';
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function buildEventContent(payload: Record<string, unknown>) {
+  return `${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
 
 export async function POST(req: Request) {
   try {
@@ -44,7 +50,7 @@ export async function POST(req: Request) {
     const deal = await prisma.deal.upsert({
       where: { offerId_buyerId: { offerId: parsedOfferId, buyerId } },
       create: { offerId: parsedOfferId, buyerId, sellerId: resolvedSellerId, status: 'NEGOTIATION' },
-      update: {},
+      update: { status: 'NEGOTIATION', isActive: true, updatedAt: new Date() },
     });
 
     const existingPending = await prisma.appointment.findFirst({
@@ -63,13 +69,22 @@ export async function POST(req: Request) {
       }
     });
     
-    // --- INIEKCJA: Wiadomość Systemowa do Deal Roomu ---
+    // Canonical DEAL_EVENT (parity app/web)
     try {
         await prisma.dealMessage.create({
             data: {
                 dealId: deal.id,
                 senderId: buyerId,
-                content: `📅 Zaproponowano termin spotkania: ${parsedDate.toLocaleDateString('pl-PL')} o ${parsedDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}`
+                content: buildEventContent({
+                  entity: 'APPOINTMENT',
+                  action: 'PROPOSED',
+                  status: 'PENDING',
+                  appointmentId: appointment.id,
+                  proposedDate: parsedDate.toISOString(),
+                  note: message ? String(message).trim().slice(0, 500) : null,
+                  message: message ? String(message).trim().slice(0, 500) : null,
+                  createdAt: appointment.createdAt.toISOString(),
+                }),
             }
         });
     } catch(e) { console.log('DealMessage err', e); }
@@ -85,6 +100,26 @@ export async function POST(req: Request) {
         targetId: String(deal.id),
       }
     });
+
+    try {
+      await notificationService.sendPushToUser(resolvedSellerId, {
+        title: 'Nowa propozycja terminu',
+        body: `${parsedDate.toLocaleDateString('pl-PL')} ${parsedDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}`,
+        data: {
+          target: 'dealroom',
+          notificationType: 'dealroom_chat',
+          targetType: 'DEAL',
+          dealId: deal.id,
+          offerId: parsedOfferId,
+          deeplink: `estateos://dealroom/${deal.id}`,
+          screen: 'DealroomChat',
+          route: 'DealroomChat',
+          entity: 'dealroom',
+        },
+      });
+    } catch (pushError) {
+      console.warn('[APPOINTMENT PROPOSE PUSH WARN]', pushError);
+    }
 
     // WYSYŁKA E-MAIL (Zgodna z istniejącym szablonem EstateOS)
     

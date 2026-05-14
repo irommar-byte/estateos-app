@@ -55,6 +55,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const [negotiatorsCount, setNegotiatorsCount] = useState(0);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
+  const verificationStatus = String(offer.verificationStatus || "UNVERIFIED");
+  const verificationUi =
+    verificationStatus === "VERIFIED"
+      ? { label: "Zweryfikowana", hint: "Znaczek jakości EstateOS", cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
+      : verificationStatus === "PENDING_REVIEW"
+        ? { label: "Weryfikacja w toku", hint: "Sprawdzamy dokumenty i stan prawny", cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
+        : { label: "Niezweryfikowana", hint: "Brak pełnej weryfikacji dokumentów", cls: "text-zinc-300 bg-white/5 border-white/15" };
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -147,7 +154,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     { label: "Typ obiektu", value: offer.propertyType },
     { label: "Rok budowy", value: offer.buildYear },
     { label: "Ogrzewanie", value: offer.heating },
-    { label: "Umeblowane", value: offer.furnished },
+    { label: "Umeblowane", value: offer.isFurnished === true ? "Tak" : offer.isFurnished === false ? "Nie" : null },
     { label: "Czynsz", value: offer.rent ? `${String(offer.rent).replace(/\D/g, '')} PLN` : null },
     { label: "Dostępność", value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString('pl-PL') : null }
   ].filter(p => p.value);
@@ -223,6 +230,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Na Rynku Od</span>
                       <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString('pl-PL') : 'Brak danych'}</span>
                   </div>
+                </div>
+
+                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
+
+                {/* 3. Status jakości dokumentów */}
+                <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
+                  <div className="flex items-center gap-1.5">
+                    <Shield size={12} />
+                    <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
+                  </div>
+                  <p className="mt-1 text-[8px] font-bold uppercase tracking-[0.12em] opacity-80">{verificationUi.hint}</p>
                 </div>
 
               </div>

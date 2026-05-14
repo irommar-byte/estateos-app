@@ -10,14 +10,30 @@ const ProStatusBar = ({ user }: any) => {
   const total = 30;
   const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000*60*60*24)));
   const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
+  const ratio = Math.min(1, Math.max(0, daysLeft / total));
+  const hue = Math.round(120 * ratio);
+  const tone = `hsl(${hue} 95% 52%)`;
+  const toneSoft = `hsl(${hue} 90% 42%)`;
 
   return (
-    <div className="mb-6 sm:mb-10 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-white/5 backdrop-blur-xl border border-white/10">
-      <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] text-emerald-400 font-black mb-2">PRO STATUS</p>
-      <p className="text-sm sm:text-base text-white font-bold">Ważny do: {expiry.toLocaleDateString()}</p>
-      <p className="text-xs sm:text-sm text-white/60 mb-3 sm:mb-4">Pozostało {daysLeft} dni</p>
-      <div className="w-full h-2.5 sm:h-3 bg-black/40 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-emerald-400 via-yellow-400 to-red-500 transition-all duration-700" style={{ width: `${progress}%` }} />
+    <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: tone }}>PRO STATUS</p>
+          <p className="text-sm sm:text-base text-white font-bold">Ważny do: {expiry.toLocaleDateString()}</p>
+          <p className="text-xs sm:text-sm text-white/60">Pozostało {daysLeft} dni</p>
+        </div>
+      </div>
+      <div className="relative w-full h-3 sm:h-3.5 rounded-full overflow-hidden border border-white/10 bg-black/40">
+        <div className="absolute inset-0 opacity-25" style={{ background: `linear-gradient(90deg, ${toneSoft}, ${tone})` }} />
+        <div
+          className="relative h-full rounded-full transition-all duration-700"
+          style={{
+            width: `${progress}%`,
+            background: `linear-gradient(90deg, ${toneSoft}, ${tone})`,
+            boxShadow: `0 0 24px color-mix(in srgb, ${tone} 70%, transparent)`
+          }}
+        />
       </div>
     </div>
   );
@@ -33,6 +49,8 @@ import ReviewsModal from "@/components/ReviewsModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, Heart } from 'lucide-react';
 import AppointmentManager from "@/components/AppointmentManager";
+import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -233,11 +251,16 @@ export default function CRMDashboard() {
   ];
   const [loading, setLoading] = useState(true);
 
-  const districtsList = ["Bemowo","Białołęka","Bielany","Mokotów","Ochota","Praga-Południe","Praga-Północ","Rembertów","Śródmieście","Targówek","Ursus","Ursynów","Wawer","Wesoła","Wilanów","Włochy","Wola","Żoliborz"];
+  const [radarCatalog, setRadarCatalog] = useState<{ strictCities: string[]; strictCityDistricts: Record<string, string[]> }>({
+    strictCities: [],
+    strictCityDistricts: {},
+  });
+  const [radarCity, setRadarCity] = useState("Warszawa");
   const [isEditRadarOpen, setIsEditRadarOpen] = useState(false);
   const [radarFormData, setRadarFormData] = useState({ searchDistricts: [] as string[], searchRooms: '', searchAreaFrom: '', searchMaxPrice: '', searchTransactionType: 'all' });
   const [isSavingRadar, setIsSavingRadar] = useState(false);
   const [isRadarUpdating, setIsRadarUpdating] = useState(false);
+  const [marketOffers, setMarketOffers] = useState<any[]>([]);
 
   const toggleDistrict = (district: string) => {
     setRadarFormData(prev => ({
@@ -261,15 +284,45 @@ export default function CRMDashboard() {
     };
 
     try {
-        const res = await fetch('/api/szukaj/aktualizuj', { credentials: 'include', 
+        const legacyPayload = {
+          ...formattedData,
+          city: radarCity,
+          districts: radarFormData.searchDistricts,
+        };
+
+        const [legacyRes, mobileRes] = await Promise.all([
+          fetch('/api/szukaj/aktualizuj', {
+            credentials: 'include',
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formattedData)
-        });
-        if (res.ok) {
-            setIsEditRadarOpen(false);
-            setIsRadarUpdating(true);
-            setTimeout(() => window.location.reload(), 3000);
+            body: JSON.stringify(legacyPayload)
+          }),
+          currentUser?.id
+            ? fetch('/api/radar/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: currentUser.id,
+                  transactionType: radarFormData.searchTransactionType,
+                  city: radarCity,
+                  selectedDistricts: radarFormData.searchDistricts,
+                  maxPrice: radarFormData.searchMaxPrice || null,
+                  minArea: radarFormData.searchAreaFrom || null,
+                  minMatchThreshold: 70,
+                }),
+              })
+            : Promise.resolve(new Response(null, { status: 200 })),
+        ]);
+
+        if (legacyRes.ok && mobileRes.ok) {
+          setIsEditRadarOpen(false);
+          setIsRadarUpdating(true);
+          setTimeout(async () => {
+            setIsRadarUpdating(false);
+            if (currentUser?.id) {
+              await Promise.all([fetchData(currentUser.id), fetchRadarData(), fetchMarketOffers()]);
+            }
+          }, 2200);
         }
     } catch(err) {
         console.error(err);
@@ -279,8 +332,19 @@ export default function CRMDashboard() {
 
   const openRadarEditor = (e: React.MouseEvent) => {
     e.preventDefault(); 
+    const userDistricts = (currentUser?.searchDistricts || '').split(',').map((d: string) => d.trim()).filter(Boolean);
+    const guessedCity = (() => {
+      if (!userDistricts.length) return "Warszawa";
+      const strict = radarCatalog.strictCities || [];
+      for (const city of strict) {
+        const allowed = getDistrictsForCity(city);
+        if (userDistricts.some((d: string) => allowed.includes(d))) return city;
+      }
+      return "Warszawa";
+    })();
+    setRadarCity(canonicalizeCity(guessedCity) || "Warszawa");
     setRadarFormData({ 
-       searchDistricts: (currentUser?.searchDistricts || '').split(',').map((d: string) => d.trim()).filter(Boolean),
+       searchDistricts: userDistricts,
        searchRooms: currentUser?.searchRooms || '', 
        searchAreaFrom: currentUser?.searchAreaFrom || '', 
        searchMaxPrice: currentUser?.searchMaxPrice || '',
@@ -341,7 +405,7 @@ export default function CRMDashboard() {
 
   const [crmData, setCrmData] = useState<any>({ offers: [], contacts: [], appointments: [], bids: [], leadTransfers: [] });
   
-  const [likedOfferIds, setLikedOfferIds] = useState<string[]>(['offer-001', 'offer-007']);
+  const [likedOfferIds, setLikedOfferIds] = useState<string[]>([]);
 
   useEffect(() => {
      if (typeof window !== 'undefined' && crmData?.appointments) {
@@ -358,6 +422,25 @@ export default function CRMDashboard() {
         }
      }
   }, [crmData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('crm_liked_offers');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setLikedOfferIds(parsed.map((id) => String(id)));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('crm_liked_offers', JSON.stringify(likedOfferIds));
+  }, [likedOfferIds]);
   
   const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
@@ -375,6 +458,7 @@ export default function CRMDashboard() {
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
   const [wowType, setWowType] = useState<string | null>(null);
   const [wowPlusType, setWowPlusType] = useState<boolean>(false);
+  const crmPollingRef = useRef<number | null>(null);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [offerToArchive, setOfferToArchive] = useState<any>(null);
@@ -456,7 +540,7 @@ export default function CRMDashboard() {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-          returnUrl: window.location.origin + '/moje-konto/crm',
+          returnUrl: `${window.location.origin}/moje-konto/crm?tab=my_offers&renewalOfferId=${id}`,
           plan: 'renewal',
           offerId: id
         })
@@ -502,6 +586,52 @@ export default function CRMDashboard() {
     try { const res = await fetch('/api/crm/radar'); const data = await res.json(); if (!data.error) setRadarResults(data); } catch(e) {} finally { setRadarLoading(false); }
   };
 
+  const fetchRadarCatalog = async () => {
+    try {
+      const res = await fetch('/api/location/districts', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRadarCatalog({
+        strictCities: Array.isArray(data?.strictCities) ? data.strictCities : [],
+        strictCityDistricts: data?.strictCityDistricts || {},
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchMarketOffers = async () => {
+    try {
+      const res = await fetch('/api/offers', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setMarketOffers(data.filter((o: any) => String(o?.status || '').toUpperCase() === 'ACTIVE'));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const syncRenewalAfterPayment = async (params: URLSearchParams) => {
+    const offerId = params.get('renewalOfferId');
+    const sessionId = params.get('session_id');
+    if (!offerId) return;
+    try {
+      await fetch('/api/stripe/force-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: 'renewal',
+          offerId,
+          sessionId,
+        }),
+      });
+    } catch {
+      // ignore; polling + webhook can still catch up
+    }
+  };
+
   const initCrm = async () => {
     try {
       const authRes = await fetch('/api/auth/check');
@@ -518,8 +648,7 @@ export default function CRMDashboard() {
       initModeFromUser(uData);
 
       // Mamy usera! Odpalamy dane ofert i radaru z jego ID
-      await fetchData(uData.id);
-      await fetchRadarData();
+      await Promise.all([fetchData(uData.id), fetchRadarData(), fetchRadarCatalog(), fetchMarketOffers()]);
 
       if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
         setIsBooting(true);
@@ -530,10 +659,6 @@ export default function CRMDashboard() {
         setTimeout(() => setIsBooting(false), 3000);
       }
       
-      // Uruchomienie pętli odświeżania co 10 sekund z ID uData
-      const interval = setInterval(() => fetchData(uData.id), 10000);
-      return () => clearInterval(interval);
-
     } catch(err) {
        console.error(err);
     } finally {
@@ -546,7 +671,7 @@ export default function CRMDashboard() {
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (sParams && sParams.get('tab')) {
         const t = sParams.get('tab');
-        if (['radar', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
+        if (['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
             setActiveTab(t as any);
         }
     }
@@ -558,7 +683,7 @@ export default function CRMDashboard() {
       }
     }
     // Odpalamy liniowe ładowanie danych!
-    const cleanup = initCrm();
+    initCrm();
     
     // Sprawdzamy czy był sukces płatności
     const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -571,9 +696,10 @@ export default function CRMDashboard() {
        
        setIsBooting(false);
        
-       if (plan !== 'renewal') {
-           fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(() => initCrm());
-       }
+       const syncPromise = plan === 'renewal'
+         ? syncRenewalAfterPayment(searchParams)
+         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(() => undefined);
+       syncPromise.finally(() => { initCrm(); });
        
        const animDuration = plan === 'pakiet_plus' ? 9500 : 5500;
        setTimeout(() => {
@@ -582,6 +708,22 @@ export default function CRMDashboard() {
        }, animDuration);
     }
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (crmPollingRef.current) {
+      window.clearInterval(crmPollingRef.current);
+    }
+    crmPollingRef.current = window.setInterval(() => {
+      fetchData(currentUser.id);
+    }, 10000);
+    return () => {
+      if (crmPollingRef.current) {
+        window.clearInterval(crmPollingRef.current);
+        crmPollingRef.current = null;
+      }
+    };
+  }, [currentUser?.id]);
 
 
   if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
@@ -646,6 +788,21 @@ export default function CRMDashboard() {
     );
   };
 
+  const goToAddOffer = () => {
+    if (typeof window === "undefined") return;
+    window.location.href = "/dodaj-oferte";
+  };
+
+  const handleTabSwitch = (tab: 'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje') => {
+    if (tab === activeTab) return;
+    const currentY = typeof window !== 'undefined' ? window.scrollY : 0;
+    setActiveTab(tab);
+    setSelectedDealId(null);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: currentY, left: 0, behavior: 'auto' });
+    });
+  };
+
   const openUserProfileModal = async (user: any) => {
     if (!user?.id) return;
     setProfileModalUser(user);
@@ -662,15 +819,17 @@ export default function CRMDashboard() {
     }
   };
 
-  const isPrivateUser = !isPartnerPlan;
-  const isListingsTab = activeTab === 'my_offers' || (activeTab === 'offers' && mode !== 'BUYER');
-  const isFavoritesTab = activeTab === 'offers' && !isListingsTab;
+  const isListingsTab = activeTab === 'my_offers';
+  const isFavoritesTab = activeTab === 'offers';
+  const showAddOfferTile = isListingsTab && offerSectionFilter !== 'COMPLETED';
+  const availableRadarDistricts =
+    radarCatalog.strictCityDistricts?.[radarCity] ||
+    getDistrictsForCity(radarCity) ||
+    [];
 
   const baseOffersForView = isListingsTab
     ? (crmData.offers || [])
-    : mode === 'BUYER'
-    ? (crmData.offers || []).filter((o: any) => likedOfferIds.includes(String(o.id)))
-    : (crmData.offers || []);
+    : (marketOffers || []).filter((o: any) => likedOfferIds.includes(String(o.id)));
 
   const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
     const now = new Date();
@@ -683,6 +842,12 @@ export default function CRMDashboard() {
     if (isCompleted) return 'COMPLETED';
     return 'ACTIVE';
   };
+
+  const isSameCalendarDay = (left: Date, right: Date) => (
+    left.getDate() === right.getDate() &&
+    left.getMonth() === right.getMonth() &&
+    left.getFullYear() === right.getFullYear()
+  );
 
   const sortOffersBySection = (offers: any[]) => {
     const withTs = (offer: any) => {
@@ -710,21 +875,18 @@ export default function CRMDashboard() {
     COMPLETED: sortOffersBySection(baseOffersForView.filter((offer: any) => classifyOfferSection(offer) === 'COMPLETED')),
   };
 
-  const offersVisibleInSection = offersBySection[offerSectionFilter];
-  const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = isPrivateUser
-    ? ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje']
-    : ['radar', 'offers', 'planowanie', 'transakcje'];
+  const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
+  const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white px-3 sm:px-6 pt-24 sm:pt-32 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
-        <ProStatusBar user={currentUser} />
-
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
         {wowPlusType && <WowPlusOverlay />}
         {wowType && <WowOverlay type={wowType as "investor" | "agency" | "plus"} />}
       </AnimatePresence>
 
       <div className="max-w-7xl mx-auto">
+        <ProStatusBar user={currentUser} />
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
@@ -795,7 +957,8 @@ export default function CRMDashboard() {
             {profileTabs.map((tab) => (
               <button
                 key={tab}
-                onClick={() => { setActiveTab(tab as any); setSelectedDealId(null); }}
+                type="button"
+                onClick={() => handleTabSwitch(tab)}
                 className={`relative px-4 sm:px-5 md:px-10 py-3 sm:py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.2em] transition-colors z-10 whitespace-nowrap ${activeTab === tab ? 'text-black' : 'text-white/40 hover:text-white/80'}`}
               >
                 {activeTab === tab && (
@@ -808,11 +971,11 @@ export default function CRMDashboard() {
                 )}
                 <span className="relative z-20">
                     {tab === 'radar'
-                        ? (isPartnerMode ? 'Radar Pro' : mode === 'BUYER' ? 'Radar Inwestycji' : 'System Radar')
+                        ? 'Radar Inwestycji'
                         : tab === 'my_offers'
                         ? 'Moje Ogłoszenia'
                         : tab === 'offers'
-                        ? (isPrivateUser ? 'Ulubione' : mode === 'BUYER' ? 'Ulubione' : 'Moje Ogłoszenia')
+                        ? 'Ulubione'
                         : tab === 'planowanie' ? 'Planowanie' : 'Transakcje'}
                  </span>
               </button>
@@ -822,10 +985,9 @@ export default function CRMDashboard() {
         </div>
 
         <motion.div
-          key={activeTab + mode}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          initial={false}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
           className={`bg-[#111] border rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-8 md:p-12 mb-8 flex flex-col md:flex-row items-center gap-5 sm:gap-8 relative overflow-hidden transition-colors duration-700
             ${activeTab === 'radar' ? 'border-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.05)]' :
               (activeTab === 'offers' || activeTab === 'my_offers') ? 'border-blue-500/20 shadow-[0_0_50px_rgba(59,130,246,0.05)]' :
@@ -935,36 +1097,18 @@ export default function CRMDashboard() {
 
           <div className="relative z-10 text-center md:text-left">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
-               {activeTab === 'radar' &&
-                 (isPartnerMode ? (
-                   <>
-                     Radar <span className="text-amber-400">Pro</span>
-                   </>
-                 ) : mode === 'BUYER' ? (
-                   <>
-                     Radar <span className="text-emerald-500">Okazji</span>
-                   </>
-                 ) : (
-                   <>
-                     Radar <span className="text-emerald-500">Kupców</span>
-                   </>
-                 ))}
+               {activeTab === 'radar' && <>Radar <span className="text-emerald-500">Inwestycyjny</span></>}
               {activeTab === 'my_offers' && <>Moje <span className="text-blue-500">Ogłoszenia</span></>}
               {activeTab === 'offers' && <>Moje <span className="text-blue-500">Ulubione</span></>}
                {activeTab === 'planowanie' && <>Centrum <span className="text-purple-500">Planowania</span></>}
                 {activeTab === 'transakcje' && <>Szyfrowane <span className="text-amber-500">Deal Roomy</span></>}
             </h2>
             <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
-               {activeTab === 'radar' &&
-                 (isPartnerMode
-                   ? 'Dwa radar: kupujący (preferencje na radarze) i dopasowane oferty oraz Twoja prowadzona sprzedaż. Sygnały z obu strumieni pomagają zestawiać pary klient–nieruchomość i zbierać leady dla Twojego zaplecza.'
-                   : mode === 'BUYER'
-                   ? 'Radar śledzi pojawianie się ofert — z PRO widzisz dopasowania jak po 24‑godzinnej premierze na szerokim rynku, Basic zgodnie z ustawieniami czasu premiery.'
-                   : 'Algorytm dobiera zweryfikowanych kupców pod Twoje ogłoszenia. Wyślij im powiadomienie PUSH w oknie premiery, zanim oferta przejdzie na pełny, szeroki rynek (24 h od publikacji).')}
-               {activeTab === 'my_offers' && 'Edytuj ogłoszenia, sprawdzaj statystyki wyświetleń, zarządzaj zdjęciami i aktualizuj ceny swoich nieruchomości. Zyskaj pełną kontrolę nad procesem sprzedaży.'}
-               {activeTab === 'offers' && 'Śledź wybrane oferty, zarządzaj swoimi propozycjami cenowymi i otrzymuj alerty o zmianach cen interesujących Cię inwestycji.'}
-               {activeTab === 'planowanie' && 'Umawiaj prezentacje nieruchomości, zarządzaj spotkaniami negocjacyjnymi i koordynuj kalendarz z agentami oraz klientami. Twój czas jest kluczowy.'}
-               {activeTab === 'transakcje' && 'Szyfrowane Deal Roomy. Kontroluj oferty cenowe, wymieniaj bezpiecznie dokumenty i finalizuj transakcje w jednym miejscu.'}
+               {activeTab === 'radar' && 'Ustaw kryteria dokładnie jak w aplikacji mobilnej: lokalizacja, metraż, budżet i tryb transakcji. Po zapisaniu radar natychmiast przelicza dopasowania.'}
+               {activeTab === 'my_offers' && 'Zarządzaj własnymi ogłoszeniami w jednym miejscu: statusy, odświeżenia, negocjacje i statystyki wyświetleń.'}
+               {activeTab === 'offers' && 'Twoja lista obserwowanych ofert z rynku. Szybko wrócisz do kluczowych nieruchomości i sprawdzisz ich aktualny status.'}
+               {activeTab === 'planowanie' && 'Kalendarz działa jako centrum ustaleń: prezentacje, negocjacje i priorytety dnia, zsynchronizowane z Twoimi transakcjami.'}
+               {activeTab === 'transakcje' && 'Szyfrowane Deal Roomy do finalizacji spraw: wiadomości, oferty cenowe, dokumenty i kontakt ze stroną transakcji.'}
             </p>
           </div>
         </motion.div>
@@ -1078,9 +1222,26 @@ export default function CRMDashboard() {
                             </div>
 
                             <div>
+                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Miasto bazowe</label>
+                                <select
+                                  className="w-full bg-[#111] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none focus:border-emerald-500 transition-colors"
+                                  value={radarCity}
+                                  onChange={(e) => {
+                                    const nextCity = canonicalizeCity(e.target.value) || "Warszawa";
+                                    setRadarCity(nextCity);
+                                    setRadarFormData((prev) => ({ ...prev, searchDistricts: [] }));
+                                  }}
+                                >
+                                  {(radarCatalog.strictCities.length ? radarCatalog.strictCities : ["Warszawa"]).map((city) => (
+                                    <option key={city} value={city}>{city}</option>
+                                  ))}
+                                </select>
+                            </div>
+
+                            <div>
                                 <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Preferowane Dzielnice / Miasta</label>
                                 <div className="max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-500/30 scrollbar-track-white/5 p-2 bg-[#111] border border-white/10 rounded-2xl grid grid-cols-2 gap-2">
-                                    {districtsList.map(d => (
+                                    {availableRadarDistricts.map((d) => (
                                         <div key={d} onClick={() => toggleDistrict(d)} className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-white/5 cursor-pointer transition-all hover:bg-black/80 hover:border-emerald-500/30 ${radarFormData.searchDistricts.includes(d) ? 'bg-emerald-500/10 border-emerald-500/50' : ''}`}>
                                             <div className={`w-4 h-4 rounded border border-white/20 transition-all flex items-center justify-center ${radarFormData.searchDistricts.includes(d) ? 'bg-emerald-500 border-emerald-500' : ''}`}>
                                                 {radarFormData.searchDistricts.includes(d) && <Check size={12} className="text-black" strokeWidth={3} />}
@@ -1165,7 +1326,7 @@ export default function CRMDashboard() {
                         </div>
                         <div className="flex gap-4 mb-4 relative z-10">
                            <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-emerald-500/30">
-                              <img src={offer.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" />
+                              <img src={offer.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" alt={offer.title || 'Oferta radaru'} />
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
                               <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${offer.transactionType === 'rent' ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{offer.transactionType === 'rent' ? 'Wynajem' : 'Sprzedaż'}</span>
@@ -1302,30 +1463,37 @@ export default function CRMDashboard() {
                   <motion.button
                     animate={{ scale: [1, 1.05, 1], boxShadow: ['0px 0px 0px rgba(59,130,246,0)', '0px 0px 30px rgba(59,130,246,0.3)', '0px 0px 0px rgba(59,130,246,0)'] }}
                     transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                    onClick={() => window.location.href = '/dodaj-oferte'} className="relative z-10 flex items-center gap-3 px-8 py-4 bg-blue-600/20 border border-blue-500/50 hover:bg-blue-600 hover:border-blue-500 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 shadow-[0_0_20px_rgba(37,99,235,0.4)] cursor-pointer group hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]">
+                    onClick={goToAddOffer} className="relative z-10 flex items-center gap-3 px-8 py-4 bg-blue-600/20 border border-blue-500/50 hover:bg-blue-600 hover:border-blue-500 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 shadow-[0_0_20px_rgba(37,99,235,0.4)] cursor-pointer group hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]">
                     <span className="text-xl leading-none text-blue-400 group-hover:text-white">+</span> DODAJ SWOJĄ NIERUCHOMOŚĆ
                   </motion.button>
                 )}
                 {isFavoritesTab && (
-                  <button className="relative z-10 px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300">
+                  <button
+                    type="button"
+                    onClick={() => { window.location.href = '/szukaj'; }}
+                    className="relative z-10 px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 cursor-pointer"
+                  >
                     Odkryj Rynek
                   </button>
                 )}
               </div>
             ) : (
-              [...(isListingsTab ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
+              [...(showAddOfferTile ? [{ id: 'ADD_NEW_BTN', isDummy: true }] : []), ...offersVisibleInSection].map((offer: any) => {
                 if (offer.isDummy) return (
-                  <motion.div 
+                  <motion.button
+                    type="button"
                     key="add-new-btn"
                     whileHover={{ scale: 0.98 }}
-                    className="bg-[#0a0a0a] border border-dashed border-white/20 hover:border-blue-500/50 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl"
+                    whileTap={{ scale: 0.97 }}
+                    onClick={goToAddOffer}
+                    className="bg-[#0a0a0a] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
                   >
-                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/5 transition-colors duration-500" />
-                    <div className="w-16 h-16 rounded-full border border-white/10 group-hover:border-blue-500/50 flex items-center justify-center mb-4 transition-colors">
-                      <span className="text-3xl text-white/40 group-hover:text-blue-500 transition-colors">+</span>
+                    <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors duration-500" />
+                    <div className="w-16 h-16 rounded-full border border-blue-400/40 group-hover:border-blue-300 flex items-center justify-center mb-4 transition-colors shadow-[0_0_18px_rgba(59,130,246,0.25)]">
+                      <Plus size={28} className="text-blue-300 group-hover:text-blue-200 transition-colors" />
                     </div>
-                    <p className="text-white/60 font-bold uppercase tracking-widest text-xs group-hover:text-white transition-colors">Dodaj Kolejną</p>
-                  </motion.div>
+                    <p className="text-white/75 font-bold uppercase tracking-widest text-xs group-hover:text-white transition-colors">Dodaj Kolejną</p>
+                  </motion.button>
                 );
                 
                 const now = new Date();
@@ -1338,6 +1506,7 @@ export default function CRMDashboard() {
                 const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 const isNew = (now.getTime() - createdAt.getTime()) < (1000 * 60 * 60 * 24);
                 const offerBids = (crmData?.bids || []).filter((b: any) => b.offerId === offer.id && b.status === 'PENDING');
+                const offerPrimaryImage = resolveOfferPrimaryImage(offer);
 
                 return (
                   <div key={offer.id} className={`bg-[#0a0a0a] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-white/10 hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
@@ -1363,7 +1532,21 @@ export default function CRMDashboard() {
                     
                     <div className="flex gap-4 mb-6 relative z-10">
                       <div className={`w-16 h-16 rounded-2xl overflow-hidden shrink-0 border ${isArchived ? 'border-red-500/30 grayscale' : 'border-white/10'}`}>
-                         <img src={offer.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" />
+                         {offerPrimaryImage ? (
+                           <img
+                             src={offerPrimaryImage}
+                             alt={offer.title || 'Miniatura oferty'}
+                             className="w-full h-full object-cover"
+                             onError={(e) => {
+                               e.currentTarget.style.display = 'none';
+                               const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                               if (fallback) fallback.style.display = 'flex';
+                             }}
+                           />
+                         ) : null}
+                         <div className={`w-full h-full ${offerPrimaryImage ? 'hidden' : 'flex'} items-center justify-center bg-gradient-to-br from-[#141414] to-[#0b0b0b]`}>
+                           <Building2 size={18} className={isArchived ? 'text-white/35' : 'text-emerald-300/80'} />
+                         </div>
                       </div>
                       
                       <div className="flex-1 min-w-0 flex flex-col justify-center">
@@ -1389,33 +1572,18 @@ export default function CRMDashboard() {
                           <span className={`self-start px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border mb-2 ${offer.transactionType === 'rent' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>{offer.transactionType === 'rent' ? 'Wynajem' : 'Sprzedaż'}</span>
                           <div className="flex flex-col mt-0.5">
                             {offer.transactionType === 'rent' ? (
-                                <>
-                                    <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-white/30">/ miesiąc</span></p>
-                                    {!isArchived && (
-                                        <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-white/40 uppercase tracking-widest">
-                                            {offer.deposit && <span>Kaucja: <span className="text-white/70">{offer.deposit} PLN</span></span>}
-                                            {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
-                                            {offer.petsAllowed && <span className="text-emerald-500/80">Zwierzęta akceptowane</span>}
-                                        </div>
-                                    )}
-                                </>
+                              <>
+                                <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-white/30">/ miesiąc</span></p>
+                                {!isArchived && (
+                                  <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-white/40 uppercase tracking-widest">
+                                    {offer.deposit && <span>Kaucja: <span className="text-white/70">{offer.deposit} PLN</span></span>}
+                                    {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
+                                    {offer.petsAllowed && <span className="text-emerald-500/80">Zwierzęta akceptowane</span>}
+                                  </div>
+                                )}
+                              </>
                             ) : (
-                                
-                          <div className="flex flex-col mt-0.5">
-                            {offer.transactionType === 'rent' ? (
-                                <>
-                                    <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-white/30">/ miesiąc</span></p>
-                                    {!isArchived && (
-                                        <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-white/40 uppercase tracking-widest">
-                                            {offer.deposit && <span>Kaucja: <span className="text-white/70">{offer.deposit} PLN</span></span>}
-                                            {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-emerald-500'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
-                            )}
-                          </div>
+                              <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-emerald-500'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
                             )}
                           </div>
                       </div>
@@ -1480,15 +1648,15 @@ export default function CRMDashboard() {
                       
                       <div className="grid grid-cols-2 gap-2 mt-2 relative z-20">
                         <div className="relative group/edit">
-                          <Link href={`/edytuj-oferte/${offer.id}`} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/50 flex items-center justify-center gap-2 hover:bg-white/5 hover:text-white transition-all">
-                             <Edit2 size={14} /> Edytuj
+                          <Link href={`/edytuj-oferte/${offer.id}`} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-white/15 text-[10px] font-black uppercase tracking-widest text-white/80 flex items-center justify-center gap-2 hover:bg-white/10 hover:text-white transition-all">
+                             <Edit2 size={14} className="text-emerald-300" /> Edytuj
                           </Link>
                           <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/90 border border-yellow-500/30 text-[9px] text-yellow-500 px-3 py-1.5 rounded-lg opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-[0_0_15px_rgba(234,179,8,0.2)] z-50">
                              Edycja cofa do weryfikacji.
                           </div>
                         </div>
-                        <button onClick={() => setOfferToArchive(offer)} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-red-500/20 text-[10px] font-black uppercase tracking-widest text-red-500/60 flex items-center justify-center gap-2 hover:bg-red-500/10 hover:text-red-500 transition-all cursor-pointer">
-                           <ArchiveX size={14} /> Wstrzymaj
+                        <button onClick={() => setOfferToArchive(offer)} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-300 flex items-center justify-center gap-2 hover:bg-red-500/12 hover:text-red-200 transition-all cursor-pointer">
+                           <ArchiveX size={14} className="text-red-300" /> Wstrzymaj
                         </button>
                       </div>
 
@@ -1527,7 +1695,7 @@ export default function CRMDashboard() {
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex gap-4 items-center min-w-0">
                           <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-white/5 group-hover:border-amber-500/50 transition-colors">
-                            <img src={((Array.isArray(deal.offer?.images) ? deal.offer.images[0] : typeof deal.offer?.images === 'string' && deal.offer.images.startsWith('[') ? JSON.parse(deal.offer.images)[0] : deal.offer?.images) || deal.offer?.imageUrl || '/placeholder.jpg')} className="w-full h-full object-cover" alt="Oferta" />
+                            <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || 'Oferta'} />
                           </div>
                           <div className="flex flex-col justify-center min-w-0">
                             <p className="text-white font-bold text-sm truncate">{deal.offer?.title || 'Nieruchomość'}</p>
@@ -1629,7 +1797,7 @@ export default function CRMDashboard() {
                   
                   const dayAppointments = (crmData.appointments || []).filter((app: any) => {
                       const appDate = new Date(app.proposedDate);
-                      return appDate.getDate() === d.getDate() && appDate.getMonth() === d.getMonth();
+                      return isSameCalendarDay(appDate, d);
                   });
                   
                   const hasNegotiation = dayAppointments.some((a:any) => ['PROPOSED', 'COUNTER'].includes(a.status));
@@ -1683,7 +1851,7 @@ export default function CRMDashboard() {
                       {(() => {
                          const dayApps = (crmData.appointments || []).filter((a: any) => {
                             const appDate = new Date(a.proposedDate);
-                            return appDate.getDate() === selectedDate.getDate() && appDate.getMonth() === selectedDate.getMonth();
+                            return isSameCalendarDay(appDate, selectedDate);
                          });
                          
                          if (dayApps.length === 0) return <div className="text-center py-10 text-white/30 font-bold uppercase tracking-widest text-xs">Brak zaplanowanych spotkań i negocjacji na ten dzień.</div>;
@@ -1709,7 +1877,7 @@ export default function CRMDashboard() {
                 return (
                     <>
                         <span className="text-[10px] text-white font-bold uppercase tracking-widest">{client.name || client.email.split('@')[0]}</span>
-                        <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewingProfile(client); }} className="text-[8px] text-yellow-500 font-black uppercase tracking-widest mt-1.5 cursor-pointer hover:text-yellow-400 transition-colors inline-flex items-center gap-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 px-2.5 py-1 rounded-full border border-yellow-500/20 w-fit shadow-[0_0_10px_rgba(234,179,8,0.1)]"><span className="text-[10px]">★</span> Zobacz Profil</span>
+                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewingProfile(client); }} className="text-[8px] text-yellow-500 font-black uppercase tracking-widest mt-1.5 cursor-pointer hover:text-yellow-400 transition-colors inline-flex items-center gap-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 px-2.5 py-1 rounded-full border border-yellow-500/20 w-fit shadow-[0_0_10px_rgba(234,179,8,0.1)]"><span className="text-[10px]">★</span> Zobacz Profil</button>
                     </>
                 );
             }

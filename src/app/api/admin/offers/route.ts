@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
+import { extractVerificationMeta, setVerificationStatusInDescription, type OfferVerificationStatus } from '@/lib/offerVerification';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -31,6 +32,14 @@ function normalizeStatus(rawStatus: unknown): 'PENDING' | 'ACTIVE' | 'ARCHIVED' 
   return 'PENDING';
 }
 
+function normalizeVerificationStatus(rawStatus: unknown): OfferVerificationStatus | null {
+  const s = String(rawStatus || '').trim().toUpperCase();
+  if (s === 'VERIFIED') return 'VERIFIED';
+  if (s === 'PENDING_REVIEW') return 'PENDING_REVIEW';
+  if (s === 'UNVERIFIED') return 'UNVERIFIED';
+  return null;
+}
+
 export async function GET() {
   try {
     const admin = await requireAdmin();
@@ -39,7 +48,14 @@ export async function GET() {
     }
 
     const offers = await prisma.offer.findMany({ include: { user: true }, orderBy: { createdAt: 'desc' } });
-    return NextResponse.json({ success: true, offers });
+    const enriched = offers.map((offer) => {
+      const { verification } = extractVerificationMeta(offer.description);
+      return {
+        ...offer,
+        verificationStatus: verification.status,
+      };
+    });
+    return NextResponse.json({ success: true, offers: enriched });
   } catch (error) { return NextResponse.json({ success: false, error: String(error) }, { status: 500 }); }
 }
 
@@ -50,13 +66,24 @@ export async function PUT(req: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id, status } = await req.json();
+    const { id, status, verificationStatus } = await req.json();
     const normalizedStatus = normalizeStatus(status);
+    const normalizedVerificationStatus = normalizeVerificationStatus(verificationStatus);
 
     // === SILNIK ALERTÓW - tylko przy zmianie na ACTIVE ===
     const existing = await prisma.offer.findUnique({ where: { id: Number(id) } });
 
-    const updated = await prisma.offer.update({ where: { id: Number(id) }, data: { status: normalizedStatus } });
+    const nextDescription = normalizedVerificationStatus
+      ? setVerificationStatusInDescription(existing?.description || '', normalizedVerificationStatus)
+      : undefined;
+
+    const updated = await prisma.offer.update({
+      where: { id: Number(id) },
+      data: {
+        status: normalizedStatus,
+        ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+      },
+    });
 
     console.log("STATUS CHECK:", { before: existing?.status, after: normalizedStatus });
 

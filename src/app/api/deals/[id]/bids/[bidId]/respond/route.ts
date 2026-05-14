@@ -4,6 +4,27 @@ import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 
+const EVENT_PREFIX = '[[DEAL_EVENT]]';
+
+function buildEventContent(payload: Record<string, unknown>) {
+  return `${EVENT_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function buildDealroomPushData(dealId: number, offerId: number) {
+  return {
+    target: 'dealroom',
+    notificationType: 'dealroom_chat',
+    targetType: 'DEAL',
+    dealId,
+    offerId,
+    title: `Dealroom #${dealId}`,
+    deeplink: `estateos://dealroom/${dealId}`,
+    screen: 'DealroomChat',
+    route: 'DealroomChat',
+    entity: 'dealroom',
+  };
+}
+
 // ================================
 // AUTH HELPER
 // ================================
@@ -48,7 +69,13 @@ export async function POST(
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
-    const { action, counterAmount, message } = await req.json(); // 'ACCEPT' | 'REJECT' | 'COUNTER'
+    const { action, counterAmount, message, note } = await req.json(); // 'ACCEPT' | 'REJECT' | 'COUNTER'
+    const safeNote =
+      typeof message === 'string'
+        ? message.trim().slice(0, 500)
+        : typeof note === 'string'
+          ? note.trim().slice(0, 500)
+          : null;
 
     if (action !== 'ACCEPT' && action !== 'REJECT' && action !== 'COUNTER') {
       return NextResponse.json({ error: 'Nieznana akcja' }, { status: 400 });
@@ -130,18 +157,24 @@ export async function POST(
           }
         });
 
-        // C. Update OFFER
-        await tx.offer.update({
-          where: { id: deal.offerId },
-          data: { status: 'IN_DEAL' }
-        });
+        // C. Oferta SOLD + anulowanie konkurencyjnych deali — dopiero w POST …/finalize (drugi krok właściciela),
+        // żeby akceptacja ceny przez kupującego nie zamykała rynku przed finalną decyzją właściciela.
 
-        // D. SYSTEM MESSAGE
+        // D. SYSTEM MESSAGE (canonical DEAL_EVENT)
         await tx.dealMessage.create({
           data: {
             dealId,
             senderId: userId,
-            content: `[SYSTEM_BID_ACCEPTED:${bidId}] Oferta ${bid.amount} PLN została zaakceptowana 🎉`
+            content: buildEventContent({
+              entity: 'BID',
+              action: 'ACCEPTED',
+              status: 'ACCEPTED',
+              bidId,
+              amount: bid.amount,
+              note: safeNote,
+              message: safeNote,
+              createdAt: new Date().toISOString(),
+            })
           }
         });
 
@@ -173,7 +206,16 @@ export async function POST(
           data: {
             dealId,
             senderId: userId,
-            content: `[SYSTEM_BID_REJECTED:${bidId}] Oferta ${bid.amount} PLN została odrzucona`
+            content: buildEventContent({
+              entity: 'BID',
+              action: 'REJECTED',
+              status: 'REJECTED',
+              bidId,
+              amount: bid.amount,
+              note: safeNote,
+              message: safeNote,
+              createdAt: new Date().toISOString(),
+            })
           }
         });
 
@@ -212,12 +254,16 @@ export async function POST(
           data: {
             dealId,
             senderId: userId,
-            content: `[[DEAL_EVENT]]${JSON.stringify({
+            content: buildEventContent({
               entity: 'BID',
               action: 'COUNTERED',
+              status: 'PENDING',
+              bidId,
               amount: numericCounter,
-              note: typeof message === 'string' ? message.trim().slice(0, 200) : null,
-            })}`
+              note: safeNote,
+              message: safeNote,
+              createdAt: new Date().toISOString(),
+            })
           }
         });
 
@@ -247,20 +293,21 @@ export async function POST(
           : action === 'REJECT'
             ? `Twoja oferta ${bid.amount} PLN została odrzucona.`
             : `Nowa kwota: ${Number(counterAmount || 0).toLocaleString('pl-PL')} PLN`,
-        data: {
-          targetType: 'DEAL',
-          targetId: String(dealId),
-          dealId: String(dealId),
-          kind: action === 'ACCEPT' ? 'bid_accepted' : action === 'REJECT' ? 'bid_rejected' : 'bid_countered'
-        }
+        data: buildDealroomPushData(dealId, deal.offerId)
       });
     } catch (pushError) {
       console.warn('[WEB BID PUSH WARN]', pushError);
     }
 
+    const freshDeal = await prisma.deal.findUnique({
+      where: { id: dealId },
+      select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
+    });
+
     return NextResponse.json({
       success: true,
-      message: action === 'ACCEPT' ? 'Oferta zaakceptowana' : action === 'REJECT' ? 'Oferta odrzucona' : 'Kontroferta wysłana'
+      message: action === 'ACCEPT' ? 'Oferta zaakceptowana' : action === 'REJECT' ? 'Oferta odrzucona' : 'Kontroferta wysłana',
+      deal: freshDeal
     });
 
   } catch (error: any) {

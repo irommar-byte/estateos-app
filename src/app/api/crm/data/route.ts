@@ -2,6 +2,7 @@ import { decryptSession } from "@/lib/sessionUtils";
 import { cookies } from "next/headers";
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
 export async function GET(req: Request) {
   try {
@@ -34,12 +35,15 @@ export async function GET(req: Request) {
     // ==========================================
     // OFERTY
     // ==========================================
-    const myOffers = await prisma.offer.findMany({
+    const myOffersRaw = await prisma.offer.findMany({
       where: { userId: finalUserId },
       orderBy: { createdAt: 'desc' }
     });
 
-    const myOfferIds = myOffers.map(o => o.id);
+    const myOffers = myOffersRaw.map((offer) => ({
+      ...offer,
+      imageUrl: resolveOfferPrimaryImage(offer),
+    }));
 
     // ==========================================
     // DEALS (🔥 KLUCZOWY FIX)

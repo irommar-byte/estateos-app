@@ -6,7 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Home, 
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
-  LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check,
+  LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check, Shield,
   Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft
 } from "lucide-react";
 
@@ -18,6 +18,7 @@ import {
   canonicalizeCity,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  normalizeText,
 } from "@/lib/location/locationCatalog";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
@@ -104,7 +105,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
-    condition: '', locationType: 'exact', address: '', city: 'Warszawa', lng: null, lat: null, district: '', apartmentNumber: '', 
+    condition: '', locationType: 'exact', address: '', city: 'Warszawa', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
     price: '', area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
     advertiserType: 'private', agencyName: '',
@@ -137,6 +138,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const orbitFrameRef = useRef<number | null>(null);
   const orbitTimeoutRef = useRef<number | null>(null);
+  const lastGeocodedAddressRef = useRef<string>("");
   const editorRef = useRef<HTMLDivElement>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
@@ -146,6 +148,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isStrictCity = strictCities.includes(data.city);
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
+
+  const pickDistrictFromText = (city: string, text: string, allowedDistricts?: string[]) => {
+    if (!city || !text) return "";
+    const candidates = (allowedDistricts && allowedDistricts.length > 0)
+      ? allowedDistricts
+      : (locationCatalog.strictCityDistricts[city] || []);
+    if (!candidates.length) return "";
+    const source = normalizeText(text);
+    if (!source) return "";
+    for (const district of candidates) {
+      const nd = normalizeText(district);
+      if (!nd) continue;
+      if (source.includes(nd)) {
+        return district;
+      }
+    }
+    return "";
+  };
 
   const handleAddressSearch = async (value: string) => {
     updateData({ address: value });
@@ -168,25 +188,59 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
   };
 
+  const geocodeAddressFromInput = async (force = false, rawQuery?: string) => {
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    const query = String(rawQuery ?? data.address ?? "").trim();
+    if (!token || query.length < 5) return;
+    if (!force && query === lastGeocodedAddressRef.current) return;
+
+    try {
+      const res = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=false&limit=1&language=pl&country=pl`,
+      );
+      if (!res.ok) return;
+      const geo = await res.json();
+      const feature = Array.isArray(geo?.features) ? geo.features[0] : null;
+      if (!feature) {
+        setAddressError("Nie udało się ustawić pinezki. Wybierz adres z listy podpowiedzi.");
+        return;
+      }
+      lastGeocodedAddressRef.current = query;
+      setAddressError("");
+      selectAddress(feature);
+    } catch {
+      // no-op
+    }
+  };
+
   const resolveLocationFromCoordinates = useCallback(async (lat: number, lng: number, fallbackAddress?: string) => {
     try {
       const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
       if (!response.ok) return;
       const reverse = await response.json();
 
-      setData((prev: any) => ({
+      setData((prev: any) => {
+        const reverseCity = reverse.city || prev.city;
+        const districtFallback =
+          reverse.district ||
+          pickDistrictFromText(reverseCity, reverse.addressLabel || fallbackAddress || prev.address, reverse.districtOptions);
+        const shouldKeepPrevDistrict = !reverse.strictCity;
+        const nextDistrict = districtFallback || (shouldKeepPrevDistrict ? (prev.district || "") : "");
+
+        return ({
         ...prev,
         lat,
         lng,
-        city: reverse.city || prev.city,
-        district: reverse.district || prev.district || "",
+        city: reverseCity,
+        district: nextDistrict,
         address: reverse.addressLabel || fallbackAddress || prev.address,
         street: reverse.street ?? prev.street ?? null,
-      }));
+      });
+      });
     } catch {
       // no-op, manual selection still available
     }
-  }, []);
+  }, [locationCatalog.strictCityDistricts]);
 
   const selectAddress = (feature: any) => {
     const coords = feature?.center;
@@ -195,14 +249,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     const cityFromFeature = inferCityFromMapboxFeature(feature);
     const cityCanon = canonicalizeCity(cityFromFeature) || canonicalizeCity(data.city) || data.city;
-    const districtGuess = cityCanon ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
+    const districtGuessByContext = cityCanon ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
+    const districtGuessByLabel = cityCanon
+      ? pickDistrictFromText(cityCanon, feature?.place_name_pl || feature?.place_name || "")
+      : "";
+    const districtGuess = districtGuessByContext || districtGuessByLabel;
+    const nextDistrictValue =
+      districtGuess ||
+      (locationCatalog.strictCities?.includes(cityCanon) ? "" : data.district);
 
     updateData({
       address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
       lng: nextLng,
       lat: nextLat,
       ...(cityCanon ? { city: cityCanon } : {}),
-      ...(districtGuess ? { district: districtGuess } : {}),
+      ...(cityCanon ? { district: nextDistrictValue } : {}),
     });
     setAddressSuggestions([]);
 
@@ -463,14 +524,14 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (orbitTimeoutRef.current) window.clearTimeout(orbitTimeoutRef.current);
 
     const start = performance.now();
-    const durationMs = 6500;
+    const durationMs = 5200;
     const initialBearing = map.getBearing();
 
     const tick = (now: number) => {
       const elapsed = now - start;
       const t = Math.min(1, elapsed / durationMs);
       const eased = 1 - Math.pow(1 - t, 3);
-      const bearing = initialBearing + eased * 115;
+      const bearing = initialBearing + eased * 360;
 
       map.easeTo({
         center: target,
@@ -668,8 +729,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
   const districtRequirementMet = isStrictCity ? !!data.district : true;
-  const isLocationDone = !!data.lat && !!data.lng && !!data.city && districtRequirementMet && !addressError && hasBuildingNumber && 
-                         (data.propertyType !== 'FLAT' || (data.propertyType === 'FLAT' && !!data.apartmentNumber));
+  const isLocationDone = !!data.lat && !!data.lng && !!data.city && districtRequirementMet && !addressError && hasBuildingNumber;
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
   const cleanArea = String(data.area || '').replace(/[^0-9.]/g, "");
@@ -852,7 +912,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                   <div className="relative z-50">
                     <label className={labelPremium}>Wyszukaj Adres *</label>
-                    <input type="text" placeholder="Np. Złota 44..." className={inputPremium} onChange={(e) => handleAddressSearch(e.target.value)} value={data.address || ''} />
+                    <input
+                      type="text"
+                      placeholder="Np. Złota 44..."
+                      className={inputPremium}
+                      onChange={(e) => handleAddressSearch(e.target.value)}
+                      onBlur={(e) => {
+                        void geocodeAddressFromInput(false, e.currentTarget.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void geocodeAddressFromInput(true, (e.target as HTMLInputElement).value);
+                        }
+                      }}
+                      value={data.address || ''}
+                    />
                     {data.address && !hasBuildingNumber && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> Wymagany numer budynku przed przecinkiem.</motion.div>
                     )}
@@ -894,16 +969,41 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <AnimatePresence>
-                      {data.propertyType === 'FLAT' && (
-                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
-                          <label className={labelPremium}>Nr Lokalu *</label>
-                          <input type="text" placeholder="Np. 12" className={`${inputPremium} text-sm`} value={data.apartmentNumber || ''} onChange={(e) => updateData({ apartmentNumber: e.target.value })} />
-                          <p className="text-[11px] text-zinc-400 mt-2.5 flex items-start gap-2 leading-snug"><EyeOff size={14} className="shrink-0 mt-0.5 text-zinc-500"/> Pole chronione – widoczne tylko po umówieniu prezentacji.</p>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                  <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 md:p-5">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Shield size={15} className="text-emerald-400" />
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-300">
+                        Weryfikacja dokumentów (opcjonalnie)
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelPremium}>Nr Lokalu (opcjonalnie)</label>
+                        <input
+                          type="text"
+                          placeholder={data.propertyType === 'FLAT' ? "Np. 12" : "Dla mieszkań"}
+                          disabled={data.propertyType !== 'FLAT'}
+                          className={`${inputPremium} text-sm ${data.propertyType !== 'FLAT' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          value={data.apartmentNumber || ''}
+                          onChange={(e) => updateData({ apartmentNumber: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className={labelPremium}>Numer księgi wieczystej (opcjonalnie)</label>
+                        <input
+                          type="text"
+                          placeholder="Np. WA1M/00000000/0"
+                          className={`${inputPremium} text-sm uppercase`}
+                          value={data.landRegistryNumber || ''}
+                          onChange={(e) => updateData({ landRegistryNumber: e.target.value.toUpperCase() })}
+                        />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[11px] text-zinc-300/90 leading-snug flex items-start gap-2">
+                      <EyeOff size={14} className="shrink-0 mt-0.5 text-zinc-400" />
+                      Chronimy te dane i nie udostępniamy ich publicznie. Jeśli podasz oba pola, oferta otrzyma status
+                      „weryfikacja w toku”, a po potwierdzeniu zgodności dokumentów i braku obciążeń pokażemy znaczek jakości.
+                    </p>
                   </div>
                 </div>
 

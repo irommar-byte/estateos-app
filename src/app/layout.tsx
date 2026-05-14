@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
+import SkipToContent from "@/components/layout/SkipToContent";
 import Tracker from "@/components/Tracker";
 import { UserModeProvider } from "@/contexts/UserModeContext";
 
@@ -24,9 +25,12 @@ export default function RootLayout({
     <html suppressHydrationWarning lang="pl">
       <body suppressHydrationWarning className={inter.className}>
         <UserModeProvider>
+          <SkipToContent />
           <Tracker />
           <Navbar />
-          {children}
+          <div id="main-content" tabIndex={-1} className="outline-none">
+            {children}
+          </div>
         </UserModeProvider>
         <UpgradeModal />
         <ModeTransition />

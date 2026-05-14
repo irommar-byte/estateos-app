@@ -9,6 +9,7 @@ import {
   MAX_OFFER_FILE_BYTES,
   saveDealAttachmentForDealRoom,
 } from '@/lib/upload/offerMediaUpload';
+import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
 
     const deal = await prisma.deal.findUnique({
       where: { id: dealIdInt },
-      select: { id: true, buyerId: true, sellerId: true }
+      select: { id: true, buyerId: true, sellerId: true, finalizedAt: true, updatedAt: true }
     });
     if (!deal) return NextResponse.json({ error: 'Deal not found' }, { status: 404 });
     if (deal.buyerId !== userId && deal.sellerId !== userId) {
@@ -79,7 +80,24 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ messages, isTyping: isPartnerTyping });
+    const reviewGate = await getDealReviewVisibility({
+      dealId: dealIdInt,
+      viewerId: userId,
+      sides: { buyerId: deal.buyerId, sellerId: deal.sellerId },
+      finalizedAt: resolveFinalizedAtSafe(deal),
+    });
+
+    return NextResponse.json({
+      messages,
+      isTyping: isPartnerTyping,
+      ...(reviewGate || {
+        myReviewSubmitted: false,
+        reviewRevealAt: new Date(0).toISOString(),
+        reviewRevealUnlocked: false,
+        partnerReviewVisible: false,
+        partnerReview: null,
+      }),
+    });
   } catch (error: any) {
     console.error('[CHAT GET ERROR]', error);
     return NextResponse.json({ messages: [], error: error.message }, { status: 500 });

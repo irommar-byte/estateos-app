@@ -1,16 +1,16 @@
-/**
- * Universal Links (iOS) i App Links (Android) — treść z ENV, bez ręcznej edycji plików na dysku.
- */
+import { logEvent } from '@/lib/observability';
 
+const DEFAULT_APPLE_TEAM_ID = 'NW3YW69KL9';
 const DEFAULT_IOS_BUNDLE = 'pl.estateos.app';
-const DEFAULT_ANDROID_PKG = 'pl.estateos.app';
+
+export function getCanonicalAppleAppId(): string {
+  const teamId = process.env.APPLE_TEAM_ID?.trim() || DEFAULT_APPLE_TEAM_ID;
+  const bundleId = process.env.IOS_BUNDLE_ID?.trim() || DEFAULT_IOS_BUNDLE;
+  return `${teamId}.${bundleId}`;
+}
 
 export function buildAppleAppSiteAssociation(): Record<string, unknown> {
-  const teamId = process.env.APPLE_TEAM_ID?.trim();
-  const bundleId = process.env.IOS_BUNDLE_ID?.trim() || DEFAULT_IOS_BUNDLE;
-  const appId = teamId
-    ? `${teamId}.${bundleId}`
-    : `REPLACE_APPLE_TEAM_ID.${bundleId}`;
+  const appId = getCanonicalAppleAppId();
 
   return {
     applinks: {
@@ -29,8 +29,7 @@ export function buildAppleAppSiteAssociation(): Record<string, unknown> {
 }
 
 export function buildAssetLinks(): unknown[] {
-  const pkg =
-    process.env.ANDROID_PACKAGE_NAME?.trim() || DEFAULT_ANDROID_PKG;
+  const pkg = process.env.ANDROID_PACKAGE_NAME?.trim();
   const raw =
     process.env.ANDROID_SHA256_CERT_FINGERPRINT?.trim() ||
     process.env.ANDROID_SHA256_RELEASE_SIGNING_CERT?.trim();
@@ -40,7 +39,15 @@ export function buildAssetLinks(): unknown[] {
         .split(/[\s,]+/)
         .map((s) => s.trim())
         .filter(Boolean)
-    : ['REPLACE_SHA256_RELEASE_SIGNING_CERT'];
+    : [];
+
+  if (!pkg || fingerprints.length === 0) {
+    logEvent('warn', 'assetlinks_missing_env', 'wellKnown.buildAssetLinks', {
+      hasPackageName: Boolean(pkg),
+      fingerprintsCount: fingerprints.length,
+    });
+    return [];
+  }
 
   return [
     {

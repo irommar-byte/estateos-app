@@ -30,14 +30,20 @@ export default function OfertyAdmin() {
 
   useEffect(() => { fetchOffers(); }, []);
 
-  const handleUpdateStatus = async (id: string, status: string) => {
+  const handleUpdateStatus = async (id: string, status: string, verificationStatus?: string) => {
     await fetch(`/api/admin/offers`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status })
+      body: JSON.stringify({ id, status, verificationStatus })
     });
     fetchOffers();
-    if (selectedOffer?.id === id) setSelectedOffer({ ...selectedOffer, status });
+    if (selectedOffer?.id === id) {
+      setSelectedOffer({
+        ...selectedOffer,
+        status,
+        ...(verificationStatus ? { verificationStatus } : {}),
+      });
+    }
   };
   
   // 🔥 Nowa funkcja "God Mode": Natychmiastowe Wymuszenie Archiwizacji
@@ -72,6 +78,16 @@ export default function OfertyAdmin() {
   const formatPrice = (price: any) => {
     const p = String(price).replace(/\D/g, "");
     return p ? new Intl.NumberFormat('pl-PL').format(parseInt(p)) + " PLN" : "Do negocjacji";
+  };
+
+  const verificationBadge = (status: string) => {
+    if (status === "VERIFIED") {
+      return { label: "Zweryfikowana", cls: "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" };
+    }
+    if (status === "PENDING_REVIEW") {
+      return { label: "Weryfikacja w toku", cls: "border-amber-500/30 text-amber-400 bg-amber-500/10" };
+    }
+    return { label: "Niezweryfikowana", cls: "border-white/15 text-white/60 bg-white/5" };
   };
 
   const filteredOffers = offers.filter(offer => {
@@ -130,6 +146,7 @@ export default function OfertyAdmin() {
           ) : filteredOffers.map(offer => {
             const isArchived = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
             const isActive = offer.status === 'ACTIVE' && !isArchived;
+            const verifyUi = verificationBadge(String(offer.verificationStatus || "UNVERIFIED"));
             
             return (
             <motion.div 
@@ -142,6 +159,9 @@ export default function OfertyAdmin() {
                 <div className="max-w-[150px] sm:max-w-[250px] md:max-w-[300px]">
                   <h3 className="text-lg md:text-xl font-black truncate">{offer.title || 'Oferta ' + offer.id.slice(0,4)}</h3>
                   <p className="text-xs md:text-sm font-bold text-white/30 truncate">{offer.district} • {formatPrice(offer.price)}</p>
+                  <p className={`mt-1 inline-flex items-center rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] border ${verifyUi.cls}`}>
+                    {verifyUi.label}
+                  </p>
                 </div>
               </div>
               <div className={`shrink-0 px-3 md:px-4 py-2 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-widest border ${isArchived ? 'border-purple-500/30 text-purple-500' : isActive ? 'border-emerald-500/30 text-emerald-500' : 'border-yellow-500/30 text-yellow-500'}`}>
@@ -170,6 +190,42 @@ export default function OfertyAdmin() {
                   <button onClick={() => router.push(`/edytuj-oferte/${selectedOffer.id}?from=admin`)} className="p-5 border border-white/20 text-white hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-2xl transition-all flex items-center justify-center group shadow-lg shrink-0">
                     <Edit3 size={20} className="group-hover:rotate-12 transition-transform"/>
                   </button>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+                  <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-white/40">Status jakości dokumentów</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleUpdateStatus(selectedOffer.id, selectedOffer.status, 'UNVERIFIED')}
+                      className={`py-3 rounded-xl border text-[9px] font-black uppercase tracking-[0.14em] transition-all ${
+                        String(selectedOffer.verificationStatus || 'UNVERIFIED') === 'UNVERIFIED'
+                          ? 'border-white/20 text-white bg-white/10'
+                          : 'border-white/10 text-white/60 hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      Niezweryfik.
+                    </button>
+                    <button
+                      onClick={() => handleUpdateStatus(selectedOffer.id, selectedOffer.status, 'PENDING_REVIEW')}
+                      className={`py-3 rounded-xl border text-[9px] font-black uppercase tracking-[0.14em] transition-all ${
+                        String(selectedOffer.verificationStatus || 'UNVERIFIED') === 'PENDING_REVIEW'
+                          ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
+                          : 'border-white/10 text-white/60 hover:text-amber-300 hover:border-amber-500/30'
+                      }`}
+                    >
+                      W toku
+                    </button>
+                    <button
+                      onClick={() => handleUpdateStatus(selectedOffer.id, selectedOffer.status, 'VERIFIED')}
+                      className={`py-3 rounded-xl border text-[9px] font-black uppercase tracking-[0.14em] transition-all ${
+                        String(selectedOffer.verificationStatus || 'UNVERIFIED') === 'VERIFIED'
+                          ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
+                          : 'border-white/10 text-white/60 hover:text-emerald-300 hover:border-emerald-500/30'
+                      }`}
+                    >
+                      Zweryfik.
+                    </button>
+                  </div>
                 </div>
                 
                 {/* 🔥 Przycisk Ręcznej Archiwizacji */}
