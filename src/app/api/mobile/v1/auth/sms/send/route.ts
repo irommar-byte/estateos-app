@@ -1,12 +1,24 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { sendSMS } from '@/lib/sms';
-
-const prisma = new PrismaClient();
+import { mobileBearerUserId, readJson } from '@/lib/mobileApiAuth';
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await req.json();
+    const tokenUserId = mobileBearerUserId(req);
+    const body = await readJson(req);
+    const requestedUserId = Number(body?.userId);
+    const userId = tokenUserId || requestedUserId;
+
+    if (!tokenUserId && !Number.isFinite(requestedUserId)) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji lub userId' }, { status: 401 });
+    }
+    if (tokenUserId && Number.isFinite(requestedUserId) && requestedUserId > 0 && requestedUserId !== tokenUserId) {
+      return NextResponse.json({ success: false, message: 'Błędny użytkownik w żądaniu' }, { status: 403 });
+    }
+    if (!Number.isFinite(userId) || userId <= 0) {
+      return NextResponse.json({ success: false, message: 'Nieprawidłowy userId' }, { status: 400 });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: Number(userId) }
@@ -32,6 +44,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Błąd serwera' }, { status: 500 });
   }
 }

@@ -9,6 +9,10 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { extractVerificationMeta } from '@/lib/offerVerification';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
+import {
+  applyLegalStatusOverride,
+  legalStatusOverridesForOffers,
+} from '@/lib/offerLegalStatusOverlay';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,11 +125,12 @@ export async function GET() {
     const viewsMap = new Map<number, number>(
       viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
     );
+    const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
     return NextResponse.json(
       offers.map((offer: any) => {
         const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-        return toPublicOffer(offer, viewsCount);
+        return toPublicOffer(applyLegalStatusOverride(offer, legalOverrides), viewsCount);
       })
     );
 

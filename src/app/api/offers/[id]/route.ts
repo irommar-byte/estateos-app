@@ -11,6 +11,10 @@ import {
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
+import {
+  applyLegalStatusOverride,
+  legalStatusOverridesForOffers,
+} from '@/lib/offerLegalStatusOverlay';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -66,24 +70,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     );
     const viewsCount = Number(viewsRows?.[0]?.total || 0);
 
-    const { cleanDescription, verification } = extractVerificationMeta(offer.description);
-    const dbLegal = String((offer as any).legalCheckStatus || '').toUpperCase();
-    const legalStatus =
-      dbLegal ||
-      (verification.status === 'VERIFIED'
-        ? 'VERIFIED'
-        : verification.status === 'PENDING_REVIEW'
-          ? 'PENDING'
-          : 'NONE');
+    const legalOverrides = await legalStatusOverridesForOffers(prisma, [Number(resolvedParams.id)]);
+    const legalOffer = applyLegalStatusOverride(offer as any, legalOverrides);
+    const { cleanDescription, verification } = extractVerificationMeta(legalOffer.description);
+    const legal = computePublicLegalFields({
+      description: legalOffer.description,
+      legalCheckStatus: legalOffer.legalCheckStatus,
+      isLegalSafeVerified: legalOffer.isLegalSafeVerified,
+    });
 
     return NextResponse.json({
-      ...offer,
+      ...legalOffer,
       description: cleanDescription,
-      apartmentNumber: (offer as any).apartmentNumber || verification.apartmentNumber || offer.buildingNumber || '',
-      landRegistryNumber: (offer as any).landRegistryNumber || verification.landRegistryNumber || '',
-      verificationStatus: legalStatus,
-      legalCheckStatus: legalStatus,
-      isLegalSafeVerified: Boolean((offer as any).isLegalSafeVerified),
+      apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
+      landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',
+      ...legal,
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,

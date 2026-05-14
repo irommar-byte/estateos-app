@@ -7,6 +7,10 @@ import { createOffer, updateOffer } from '@/lib/services/offer.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
+import {
+  applyLegalStatusOverride,
+  legalStatusOverridesForOffers,
+} from '@/lib/offerLegalStatusOverlay';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -99,10 +103,12 @@ export async function GET(req: Request) {
     const viewsMap = new Map<number, number>(
       viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
     );
+    const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
     const normalizedOffers = offers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-      return enrichOfferWithLegalAliases({ ...offer, views: viewsCount, viewsCount });
+      const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
+      return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });
     });
 
     return NextResponse.json({ success: true, offers: normalizedOffers }, {
