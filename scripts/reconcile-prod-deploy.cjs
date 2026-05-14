@@ -140,7 +140,6 @@ function main() {
     console.log('[deploy:recon] verify:recon (VERIFY_SKIP_DB_PUSH=1)');
     r = run('npm', ['run', 'verify:recon'], {
       VERIFY_SKIP_DB_PUSH: '1',
-      VERIFY_PORT: '3110',
     });
     summary.verifyE2e = r.ok ? 'PASS' : 'FAIL';
     if (!r.ok) {
@@ -161,7 +160,7 @@ function main() {
     throw new Error('sql:agentCommission');
   }
 
-  console.log('[deploy:recon] SQL prisma db execute (legal verification table)');
+  console.log('[deploy:recon] SQL prisma db execute (legal verification request table)');
   r = run('npx', ['prisma', 'db', 'execute', '--file', sqlLegalVerificationFile]);
   if (r.ok) summary.sqlLegalVerification = 'APPLIED';
   else if (sqlDuplicateColumn(r.out)) summary.sqlLegalVerification = 'SKIP_DUPLICATE';
