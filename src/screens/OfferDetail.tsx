@@ -38,6 +38,8 @@ import BlockUserSheet from '../components/BlockUserSheet';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { API_URL } from '../config/network';
+import { findWebOfferById } from '../utils/webOffersFallback';
+import { isOfferLegalVerificationPending, isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -265,6 +267,9 @@ export default function OfferDetail({ route, navigation }: any) {
             webJson?.data ||
             (webJson?.id ? webJson : null);
         }
+        if (!webCandidate) {
+          webCandidate = await findWebOfferById(id);
+        }
 
         if (webCandidate) {
           candidate = {
@@ -373,7 +378,8 @@ export default function OfferDetail({ route, navigation }: any) {
       headers,
     })
       .then((res) => {
-        if (__DEV__) {
+        // 404 oznacza brak endpointu trackingu na danym backendzie — to nie błąd UX.
+        if (__DEV__ && res.status !== 404) {
           console.log('[offer-view-track]', offerIdNum, 'status:', res.status);
         }
       })
@@ -421,8 +427,13 @@ export default function OfferDetail({ route, navigation }: any) {
   const [activeProfileUserId, setActiveProfileUserId] = useState<number | null>(null);
   const [reviewerNameCache, setReviewerNameCache] = useState<Record<number, string>>({});
   const [profileHistory, setProfileHistory] = useState<number[]>([]);
+  const [ownerLegalVerifiedOverride, setOwnerLegalVerifiedOverride] = useState<boolean | null>(null);
   const bidBtnScale = useSharedValue(1);
   const apptBtnScale = useSharedValue(1);
+
+  useEffect(() => {
+    setOwnerLegalVerifiedOverride(null);
+  }, [offer?.id]);
 
   useEffect(() => {
     const checkFavorite = async () => {
@@ -688,14 +699,19 @@ export default function OfferDetail({ route, navigation }: any) {
   })();
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
-  const legalCheckStatus = String(firstDefined(offer?.legalCheckStatus, offer?.verificationStatus, '') || '').toUpperCase();
-  const isLegalSafeVerified =
-    isTrue(firstDefined(offer?.isLegalSafeVerified, offer?.isLandRegistryVerified, offer?.landRegistryVerified, offer?.isVerifiedLegal)) ||
-    legalCheckStatus === 'VERIFIED' ||
-    legalCheckStatus === 'SAFE';
+  const isLegalSafeVerified = isOfferLegallyVerified(offer, ownerLegalVerifiedOverride === true);
+  const isLegalVerificationPending = isOfferLegalVerificationPending(offer);
   const legalSafetyText = isLegalSafeVerified
-    ? 'Bezpieczna nieruchomość · księga i status zadłużenia potwierdzone'
-    : 'Niezweryfikowany status księgi wieczystej i zadłużenia';
+    ? 'Status prawny potwierdzony przez EstateOS — zakup z mniejszym ryzykiem'
+    : isLegalVerificationPending
+      ? 'Weryfikujemy księgę wieczystą i zadłużenie tej nieruchomości'
+      : 'Niezweryfikowany status księgi wieczystej i zadłużenia';
+  const handleOwnerLegalStatusChanged = useCallback((next: any) => {
+    const status = String(next?.status || '').toUpperCase();
+    const verified =
+      next?.isLegalSafeVerified === true || status === 'VERIFIED' || status === 'SAFE';
+    setOwnerLegalVerifiedOverride(verified ? true : null);
+  }, []);
 
   const formatCondition = (cond: string) => { const map: any = { NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry', TO_RENOVATION: 'Do remontu', DEVELOPER: 'Stan deweloperski', READY: 'Gotowe do zamieszkania' }; return map[cond] || cond || 'Brak danych'; };
   const formatDate = (dateString: string) => { if (!dateString) return 'Brak danych'; const d = new Date(dateString); return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }); };
@@ -1166,7 +1182,11 @@ export default function OfferDetail({ route, navigation }: any) {
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={[styles.safetyBadgeTitle, isLegalSafeVerified ? (isDark ? styles.safetyBadgeTitleVerifiedDark : styles.safetyBadgeTitleVerified) : (isDark ? styles.safetyBadgeTitlePendingDark : null)]}>
-                {isLegalSafeVerified ? 'Zweryfikowano prawnie' : 'Weryfikacja prawna w toku'}
+                {isLegalSafeVerified
+                  ? 'Nieruchomość zweryfikowana prawnie'
+                  : isLegalVerificationPending
+                    ? 'Weryfikacja prawna w toku'
+                    : 'Weryfikacja prawna niedostępna'}
               </Text>
               <Text style={[styles.safetyBadgeSub, isDark && { color: '#9ca3af' }]}>{legalSafetyText}</Text>
             </View>
@@ -1177,13 +1197,14 @@ export default function OfferDetail({ route, navigation }: any) {
             zgłoszenia KW + nr lokalu i pozwala je wysłać / poprawić.
             Zwykli widzowie nadal widzą tylko `safetyBadgeCard` powyżej.
           */}
-          {isOwner && Number(offer?.id) > 0 ? (
+          {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 ? (
             <OwnerLegalVerificationCard
               offerId={Number(offer.id)}
               token={token}
               isDark={isDark}
               initialLandRegistryNumber={offer?.landRegistryNumber || null}
               initialApartmentNumber={offer?.apartmentNumber || null}
+              onStatusChanged={handleOwnerLegalStatusChanged}
             />
           ) : null}
           </View>

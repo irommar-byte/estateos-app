@@ -48,6 +48,8 @@ import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
+import { findWebOfferById } from '../utils/webOffersFallback';
+import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 
 // --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
 const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, isDark: boolean, diameter: number }) => {
@@ -778,6 +780,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [offers, setOffers] = useState<MapOffer[]>([]);
+  const [ownerLegalByOfferId, setOwnerLegalByOfferId] = useState<Record<number, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1525,24 +1528,49 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     async (showSpinner: boolean): Promise<boolean> => {
       if (showSpinner) setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
-        const data = await res.json();
-        if (res.ok && data?.success && Array.isArray(data?.offers)) {
-          // KLUCZOWE: filtrujemy oferty zamknięte (ARCHIVED / SOLD / EXPIRED / itp.)
-          // ZANIM zmapujemy je na `MapOffer`. Backend POWINIEN to robić sam,
-          // ale defensywnie nie pokazujemy ich na Radarze, bo można by
-          // klikać w starą ofertę i wchodzić na zaślepkę.
-          const activeOnly = data.offers.filter((o: any) => !isOfferClosed(o));
+        const applyRawOfferList = (rawList: any[]) => {
+          const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
           const mapped = activeOnly
             .map((o: any) => mapRawOffer(o))
             .filter((m: MapOffer | null): m is MapOffer => m !== null);
           setOffers(mapped);
+        };
+
+        const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.offers)
+          ? data.offers
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.items)
+              ? data.items
+              : Array.isArray(data)
+                ? data
+                : null;
+        if (res.ok && Array.isArray(list)) {
+          // KLUCZOWE: filtrujemy oferty zamknięte (ARCHIVED / SOLD / EXPIRED / itp.)
+          // ZANIM zmapujemy je na `MapOffer`. Backend POWINIEN to robić sam,
+          // ale defensywnie nie pokazujemy ich na Radarze, bo można by
+          // klikać w starą ofertę i wchodzić na zaślepkę.
+          applyRawOfferList(list);
           return true;
         }
-        setOffers([]);
+        // Gdy `/api/mobile/v1/offers` pada (np. drift schematu Prisma vs DB),
+        // publiczne `GET /api/offers` często nadal zwraca tablicę — inaczej Radar
+        // zostaje na zawsze pusty mimo działającej witryny.
+        const webRes = await fetch(`${API_URL}/api/offers`);
+        if (webRes.ok) {
+          const webData = await webRes.json().catch(() => null);
+          if (Array.isArray(webData)) {
+            applyRawOfferList(webData);
+            return true;
+          }
+        }
+        // Nie czyścimy listy na chwilowym błędzie/back-end drift — lepiej
+        // zostawić ostatni stabilny zestaw niż pokazać „zero ofert".
         return false;
       } catch {
-        setOffers([]);
+        // Sieć chwilowo niedostępna — utrzymujemy poprzedni stan UI.
         return false;
       } finally {
         if (showSpinner) setLoading(false);
@@ -1775,6 +1803,51 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   const activeOffers = filteredOffers;
+
+  useEffect(() => {
+    const viewerId = Number(user?.id || 0);
+    if (!viewerId || !token) return;
+    const ownOfferIds = Array.from(
+      new Set(
+        activeOffers
+          .filter((o) => Number(o?.raw?.userId || o?.raw?.ownerId || 0) === viewerId)
+          .map((o) => Number(o.id))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ).slice(0, 20);
+    if (ownOfferIds.length === 0) return;
+
+    let cancelled = false;
+    const run = async () => {
+      const resolved = await Promise.all(
+        ownOfferIds.map(async (id) => {
+          try {
+            const res = await fetch(`${API_URL}/api/mobile/v1/offers/${id}/legal-verification`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) return [id, false] as const;
+            const data = await res.json().catch(() => ({}));
+            const legalView = data?.data || data;
+            const verified = isOfferLegallyVerified(legalView);
+            return [id, verified] as const;
+          } catch {
+            return [id, false] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const patch: Record<number, boolean> = {};
+      resolved.forEach(([id, verified]) => {
+        patch[id] = verified;
+      });
+      setOwnerLegalByOfferId((prev) => ({ ...prev, ...patch }));
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOffers, user?.id, token]);
 
   /**
    * Powód, dla którego użytkownik widzi aktualnie te konkretne oferty
@@ -2481,6 +2554,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         /* noop */
       }
     }
+    if (!candidate) {
+      candidate = await findWebOfferById(id);
+    }
     return candidate;
   }, [token]);
 
@@ -3005,7 +3081,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setActiveIndex(index);
   };
 
-  const renderOfferCard = ({ item, index }: any) => (
+  const renderOfferCard = ({ item, index }: any) => {
+    const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(item?.id || 0)] === true;
+    const isLegallyVerified = isOfferLegallyVerified(item?.raw, ownVerifiedFromEndpoint);
+
+    return (
     <Pressable
       onPress={() => {
         Haptics.selectionAsync();
@@ -3082,6 +3162,22 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </View>
         </View>
 
+        {isLegallyVerified ? (
+          <View
+            style={[
+              styles.legalSealPill,
+              {
+                backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.10)',
+                borderColor: isDark ? 'rgba(16,185,129,0.55)' : 'rgba(16,185,129,0.4)',
+              },
+            ]}
+          >
+            <Ionicons name="shield-checkmark" size={13} color="#10B981" />
+            <Text style={[styles.legalSealTitle, { color: isDark ? '#86EFAC' : '#047857' }]}>Zweryfikowana prawnie</Text>
+            <Text style={[styles.legalSealSub, { color: isDark ? '#D1FAE5' : '#065F46' }]}>Mniejsze ryzyko zakupu</Text>
+          </View>
+        ) : null}
+
         <View style={styles.cardFooterRow}>
           <View style={styles.cardFooterTopRow}>
             <Text style={styles.offerIdText}>ID: {item.id}</Text>
@@ -3103,7 +3199,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       </View>
     </Pressable>
-  );
+    );
+  };
 
   const searchPanelText = useMemo(() => {
     if (showOnlyFavorites) {
@@ -5067,6 +5164,26 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  legalSealPill: {
+    marginTop: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legalSealTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.1,
+  },
+  legalSealSub: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 'auto',
   },
   cardFooterRow: {
     marginTop: 8,

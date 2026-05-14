@@ -383,8 +383,18 @@ export default function EstateDiscoveryMode({ navigation }: any) {
               ? json.offers
               : Array.isArray(json?.items)
                 ? json.items
-                : [];
-          mapped = mapRawOffersToDiscovery(list.filter((o: any) => !isOfferClosed(o)));
+                : null;
+          if (res.ok && Array.isArray(list)) {
+            mapped = mapRawOffersToDiscovery(list.filter((o: any) => !isOfferClosed(o)));
+          } else {
+            const webRes = await fetch(`${API_URL}/api/offers`);
+            if (webRes.ok) {
+              const webJson = await webRes.json().catch(() => null);
+              if (Array.isArray(webJson)) {
+                mapped = mapRawOffersToDiscovery(webJson.filter((o: any) => !isOfferClosed(o)));
+              }
+            }
+          }
         }
 
         if (mounted) setOffers(mapped);

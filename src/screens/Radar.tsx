@@ -138,8 +138,25 @@ export default function Radar({ theme, route }: any) {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
-      const data = await res.json();
-      if (data.success && data.offers) setAllOffers(data.offers);
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data?.offers)
+        ? data.offers
+        : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data)
+              ? data
+              : null;
+      if (res.ok && Array.isArray(list)) {
+        setAllOffers(list);
+      } else {
+        const webRes = await fetch(`${API_URL}/api/offers`);
+        if (webRes.ok) {
+          const webData = await webRes.json().catch(() => null);
+          if (Array.isArray(webData)) setAllOffers(webData);
+        }
+      }
     } catch (e) {}
     setLoading(false);
   };

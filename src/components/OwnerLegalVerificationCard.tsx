@@ -95,6 +95,7 @@ export default function OwnerLegalVerificationCard({
     try {
       const next = await fetchOwnerLegalVerification(offerId, token);
       setView(next);
+      onStatusChanged?.(next);
     } catch (err) {
       // Jeśli endpoint jeszcze nie istnieje na backendzie / błąd sieci —
       // POKAZUJEMY stan „brak danych" zamiast crashować widok oferty.
@@ -112,7 +113,7 @@ export default function OwnerLegalVerificationCard({
     } finally {
       setLoading(false);
     }
-  }, [offerId, token, initialLandRegistryNumber, initialApartmentNumber]);
+  }, [offerId, token, initialLandRegistryNumber, initialApartmentNumber, onStatusChanged]);
 
   useEffect(() => {
     refresh();

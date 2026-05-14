@@ -69,7 +69,7 @@ function PasswordEyeToggle({
 }
 
 // --- ANIMOWANY CHECKBOX Z EFEKTEM GLOW ---
-const PremiumCheckbox = ({ checked, onPress, onReadTerms, theme }: any) => {
+const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme }: any) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   
   useEffect(() => {
@@ -89,9 +89,11 @@ const PremiumCheckbox = ({ checked, onPress, onReadTerms, theme }: any) => {
       </Pressable>
       <View style={styles.checkboxTextContainer}>
         <Text style={[styles.checkboxText, { color: theme.subtitle }]}>
-          Oświadczam, że zapoznałem się z{' '}
+          Oświadczam, że zapoznałem(-am) się z{' '}
           <Text onPress={onReadTerms} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>Regulaminem</Text>
-          {' '}i akceptuję jego warunki.
+          {' '}oraz{' '}
+          <Text onPress={onReadPrivacy} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>Polityką prywatności</Text>
+          {' '}i akceptuję warunki Regulaminu.
         </Text>
       </View>
     </View>
@@ -632,6 +634,7 @@ export default function AuthScreen({
               checked={termsAccepted} 
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTermsAccepted(!termsAccepted); }}
               onReadTerms={() => { Haptics.selectionAsync(); navigation.navigate('Terms'); }}
+              onReadPrivacy={() => { Haptics.selectionAsync(); navigation.navigate('Terms', { initialScrollTo: 'privacy' }); }}
               theme={theme}
             />
           )}

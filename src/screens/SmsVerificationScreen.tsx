@@ -18,6 +18,7 @@ export default function SmsVerificationScreen({ route }: any) {
   
   const store = useAuthStore() as any;
   const user = store.user;
+  const token = store.token;
   
   const bgColor = isDark ? '#000000' : '#f5f5f7';
   const textColor = isDark ? '#ffffff' : '#1d1d1f';
@@ -106,7 +107,10 @@ export default function SmsVerificationScreen({ route }: any) {
     try {
       await fetch(`${API_URL}/api/mobile/v1/auth/sms/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ userId: user.id })
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -152,7 +156,10 @@ export default function SmsVerificationScreen({ route }: any) {
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/auth/sms/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ userId: user.id, code: finalCode })
       });
       

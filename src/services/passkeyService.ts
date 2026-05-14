@@ -62,6 +62,35 @@ const isServerError = (error: any) => {
   return /\b5\d{2}\b|\[api\].*(failed|error)/i.test(msg);
 };
 
+// Częsty iOS-owy fallback z natywnego Passkey API (bez szczegółów).
+const isGenericUnknownPasskeyError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase().trim();
+  return (
+    msg === 'an unknown error occurred' ||
+    msg === 'unknown error' ||
+    msg.includes('unknown error occurred')
+  );
+};
+
+const isPasskeyConfigMissingError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return /icloud|keychain|credential provider|security domain|not available for this account/i.test(msg);
+};
+
+const stringifyErrorMeta = (error: any) => {
+  try {
+    const meta = {
+      name: error?.name,
+      code: error?.code,
+      domain: error?.domain,
+      message: error?.message,
+    };
+    return JSON.stringify(meta);
+  } catch {
+    return String(error?.message || error);
+  }
+};
+
 const parseJsonSafely = async (response: Response) => {
   try {
     return await response.json();
@@ -172,6 +201,14 @@ export const PasskeyService = {
       }
 
       const publicKey = await tryRegisterStartEndpoints(token, userId, email);
+      const rpId = String(publicKey?.rp?.id || '').trim().toLowerCase();
+      if (!rpId) {
+        throw new Error('PASSKEY_RPID_MISSING');
+      }
+      // EstateOS produkcyjnie działa na estateos.pl (i subdomenach).
+      if (!(rpId === 'estateos.pl' || rpId.endsWith('.estateos.pl'))) {
+        throw new Error(`PASSKEY_RPID_INVALID:${rpId}`);
+      }
       const credential = await Passkey.create(publicKey);
       await tryRegisterFinishEndpoints(userId, credential as Record<string, any>);
 
@@ -180,16 +217,32 @@ export const PasskeyService = {
     } catch (e: any) {
       if (isUserCancel(e)) return false;
       // console.warn (nie console.error) — by nie pokazywać czerwonego dev-bannera dla znanych przypadków.
-      console.warn("[Passkey] Register failed:", e?.message);
+      console.warn("[Passkey] Register failed:", e?.message, stringifyErrorMeta(e));
       if (isBiometryNotEnrolledError(e)) {
         Alert.alert(
           "Face ID/Touch ID wyłączone",
           "Aby dodać klucz Passkey, włącz biometrię w Ustawieniach iOS (Face ID / Touch ID) i ustaw kod dostępu, a następnie spróbuj ponownie.",
         );
+      } else if (String(e?.message || '').startsWith('PASSKEY_RPID_MISSING')) {
+        Alert.alert(
+          "Błąd konfiguracji Passkey",
+          "Serwer nie zwrócił rp.id dla Passkey. To wymaga poprawki po stronie backendu (register-options).",
+        );
+      } else if (String(e?.message || '').startsWith('PASSKEY_RPID_INVALID:')) {
+        const current = String(e?.message || '').split(':')[1] || 'nieznane';
+        Alert.alert(
+          "Błąd konfiguracji domeny",
+          `rp.id z serwera to „${current}”, a aplikacja EstateOS działa dla domeny estateos.pl. Wymagana korekta backendu Passkey.`,
+        );
       } else if (isRpIdMismatchError(e)) {
         Alert.alert(
           "Błąd konfiguracji",
           "Wykryto niezgodność domeny Passkey. To problem konfiguracji aplikacji — zaloguj się hasłem i zgłoś nam to przez Ustawienia → Pomoc.",
+        );
+      } else if (isPasskeyConfigMissingError(e) || isGenericUnknownPasskeyError(e)) {
+        Alert.alert(
+          "Passkey chwilowo niedostępny",
+          "iOS zwrócił ogólny błąd Passkey. Sprawdź: (1) włączony kod urządzenia, (2) Face ID/Touch ID, (3) iCloud Keychain w Ustawieniach Apple ID. Jeśli nadal nie działa, to backend Passkey wymaga weryfikacji rp.id i register-options.",
         );
       } else if (isNetworkError(e)) {
         Alert.alert(
@@ -274,10 +327,14 @@ export const PasskeyService = {
 
     /**
      * Rejestracja / logowanie korzystają z obu rodzin URL (`/api/passkey/*` i `/api/mobile/v1/passkeys/*`).
-     * Wyłączenie Passkey musi odwołać ten sam zapis co backend — inaczej UI wyłączy się lokalnie,
-     * a po wylogowaniu `login/start` nadal zwróci klucz z bazy.
+     * Wyłączenie Passkey musi odwołać rekord Authenticator na backendzie — inaczej UI wyłączy się lokalnie,
+     * a po wylogowaniu `login/start` nadal zwróci klucz z bazy. Kanoniczny endpoint mobile:
+     *   POST/DELETE /api/mobile/v1/passkeys/remove
+     * bez body usuwa wszystkie klucze Passkey zalogowanego użytkownika.
      */
     const candidates: { method: 'POST' | 'DELETE'; url: string; sendBody: boolean }[] = [
+      { method: 'POST', url: `${API_URL_MOBILE}/remove`, sendBody: false },
+      { method: 'DELETE', url: `${API_URL_MOBILE}/remove`, sendBody: false },
       { method: 'POST', url: `${API_URL_MOBILE}/revoke`, sendBody: true },
       { method: 'POST', url: `${API_URL_MOBILE}/unregister`, sendBody: true },
       { method: 'DELETE', url: `${API_URL_MOBILE}`, sendBody: false },

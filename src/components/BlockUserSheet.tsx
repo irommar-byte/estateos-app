@@ -13,6 +13,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Ban, AlertTriangle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ESTATEOS_CONTACT_EMAIL } from '../constants/appContact';
 
 /**
  * Arkusz „Zablokuj użytkownika".
@@ -78,7 +79,7 @@ export default function BlockUserSheet({
       if (result.error === 'CANNOT_BLOCK_ADMIN') {
         Alert.alert(
           'Nie można zablokować',
-          'Tego konta nie można zablokować — to administrator EstateOS™ odpowiedzialny za moderację. Jeśli masz problem, napisz na support@estateos.pl.'
+          `Tego konta nie można zablokować — to administrator EstateOS™ odpowiedzialny za moderację. Jeśli masz problem, napisz na ${ESTATEOS_CONTACT_EMAIL}.`
         );
       } else if (result.error === 'CANNOT_BLOCK_SELF') {
         Alert.alert(
@@ -93,7 +94,7 @@ export default function BlockUserSheet({
       } else {
         Alert.alert(
           'Nie udało się zablokować',
-          'Spróbuj ponownie za chwilę. Jeśli problem się powtarza, napisz na support@estateos.pl.'
+          `Spróbuj ponownie za chwilę. Jeśli problem się powtarza, napisz na ${ESTATEOS_CONTACT_EMAIL}.`
         );
       }
     } finally {

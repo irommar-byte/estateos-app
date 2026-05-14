@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,14 @@ import {
   Platform,
   Linking,
   useColorScheme,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useThemeStore } from '../store/useThemeStore';
 import * as Haptics from 'expo-haptics';
 import { SITE_ORIGIN } from '../utils/offerShareUrls';
+import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 
 /* Treść prawna / regulamin — liczne cudzysłowy w cytatach; escapowanie HTML psuje czytelność. */
 /* eslint-disable react/no-unescaped-entities */
@@ -37,6 +39,13 @@ import { SITE_ORIGIN } from '../utils/offerShareUrls';
 
 export default function TermsScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const routeParams = route.params as { initialScrollTo?: 'privacy' } | undefined;
+  const scrollRef = useRef<ScrollView>(null);
+  const privacyBlockY = useRef(0);
+  const didAutoScrollPrivacy = useRef(false);
+
+  const focusPrivacy = routeParams?.initialScrollTo === 'privacy';
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
@@ -50,11 +59,26 @@ export default function TermsScreen() {
     Linking.openURL(url).catch(() => undefined);
   };
 
+  const scrollToPrivacyBlock = (y: number) => {
+    if (!focusPrivacy || didAutoScrollPrivacy.current) return;
+    didAutoScrollPrivacy.current = true;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true });
+    });
+  };
+
+  const onPrivacyHeadingLayout = (e: LayoutChangeEvent) => {
+    privacyBlockY.current = e.nativeEvent.layout.y;
+    scrollToPrivacyBlock(e.nativeEvent.layout.y);
+  };
+
+  const headerTitle = focusPrivacy ? 'Polityka prywatności' : 'Regulamin EstateOS™';
+
   return (
     <View style={[styles.container, { backgroundColor: bgColor }]}>
       <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={styles.header}>
         <View style={styles.notch} />
-        <Text style={[styles.headerTitle, { color: textColor }]}>Regulamin EstateOS™</Text>
+        <Text style={[styles.headerTitle, { color: textColor }]}>{headerTitle}</Text>
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -62,13 +86,17 @@ export default function TermsScreen() {
           }}
           style={styles.closeBtn}
           accessibilityRole="button"
-          accessibilityLabel="Zamknij regulamin"
+          accessibilityLabel={focusPrivacy ? 'Zamknij politykę prywatności' : 'Zamknij regulamin'}
         >
           <Text style={[styles.closeText, { color: linkColor }]}>Gotowe</Text>
         </Pressable>
       </BlurView>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.title, { color: textColor }]}>Warunki, prywatność i zasady społecznościowe</Text>
         <Text style={[styles.date, { color: subColor }]}>Ostatnia aktualizacja: maj 2026</Text>
 
@@ -171,17 +199,19 @@ export default function TermsScreen() {
         </Text>
 
         {/* ──────────────────────────────────────────────────────────────── */}
-        <Text style={[styles.h1, { color: textColor, marginTop: 32 }]}>III. Polityka prywatności</Text>
+        <View onLayout={onPrivacyHeadingLayout}>
+          <Text style={[styles.h1, { color: textColor, marginTop: 32 }]}>III. Polityka prywatności</Text>
+        </View>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>1. Kto przetwarza dane</Text>
         <Text style={[styles.paragraph, { color: textColor }]}>
           Administratorem Twoich danych osobowych jest EstateOS™ (właściciel marki) z siedzibą
-          w Polsce. Kontakt w sprawach prywatności:{' '}
+          w Polsce. Kontakt w sprawach prywatności i danych osobowych:{' '}
           <Text
-            onPress={() => openWWW('mailto:privacy@estateos.pl')}
+            onPress={() => openWWW(mailtoEstateosSubject('EstateOS — prywatność / RODO'))}
             style={{ color: linkColor, fontWeight: '600' }}
           >
-            privacy@estateos.pl
+            {ESTATEOS_CONTACT_EMAIL}
           </Text>
           .
         </Text>
@@ -229,10 +259,10 @@ export default function TermsScreen() {
           wniesienia skargi do Prezesa Urzędu Ochrony Danych Osobowych (UODO). Wnioski w tych
           sprawach wysyłaj na{' '}
           <Text
-            onPress={() => openWWW('mailto:privacy@estateos.pl')}
+            onPress={() => openWWW(mailtoEstateosSubject('EstateOS — wniosek RODO'))}
             style={{ color: linkColor, fontWeight: '600' }}
           >
-            privacy@estateos.pl
+            {ESTATEOS_CONTACT_EMAIL}
           </Text>
           .
         </Text>
@@ -262,7 +292,14 @@ export default function TermsScreen() {
         {/* ──────────────────────────────────────────────────────────────── */}
         <Text style={[styles.h1, { color: textColor, marginTop: 32 }]}>IV. Kontakt i pełna treść</Text>
         <Text style={[styles.paragraph, { color: textColor }]}>
-          Pełne, prawnie wiążące wersje dokumentów dostępne są pod adresami:
+          Pomoc techniczna i sprawy ogólne:{' '}
+          <Text
+            onPress={() => openWWW(mailtoEstateosSubject('EstateOS — pomoc'))}
+            style={{ color: linkColor, fontWeight: '600' }}
+          >
+            {ESTATEOS_CONTACT_EMAIL}
+          </Text>
+          . Pełne, prawnie wiążące wersje dokumentów WWW (gdy są opublikowane na serwerze):
         </Text>
         <Pressable
           onPress={() => openWWW(`${SITE_ORIGIN}/regulamin`)}
@@ -281,13 +318,6 @@ export default function TermsScreen() {
           <Text style={[styles.linkText, { color: linkColor }]}>
             {`${SITE_ORIGIN}/polityka-prywatnosci`}
           </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => openWWW('mailto:support@estateos.pl')}
-          style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.6 }]}
-          accessibilityRole="link"
-        >
-          <Text style={[styles.linkText, { color: linkColor }]}>support@estateos.pl</Text>
         </Pressable>
 
         <Text style={[styles.footer, { color: subColor }]}>

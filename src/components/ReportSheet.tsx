@@ -18,6 +18,7 @@ import { AlertTriangle, Check } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_URL } from '../config/network';
+import { ESTATEOS_CONTACT_EMAIL } from '../constants/appContact';
 
 /**
  * Uniwersalny arkusz „Zgłoś" — używany do obraźliwych OFERT i USERÓW.
@@ -32,7 +33,7 @@ import { API_URL } from '../config/network';
  * Co robi
  * ───────
  * 1) Pokazuje 7 KANONICZNYCH kategorii backendu (SPAM, HARASSMENT,
- *    INAPPROPRIATE_CONTENT, FRAUD_SCAM, IMPERSONATION, HATE_SPEECH, OTHER).
+ *    INAPPROPRIATE_CONTENT, SCAM, IMPERSONATION, HATE_SPEECH, OTHER).
  *    Te ID są single source of truth — backend waliduje `category` przeciwko
  *    tej liście. Endpoint `GET /api/mobile/v1/reports/categories` istnieje
  *    jako pomoc dla agentów AI / panelu admina, ale klient mobilny używa
@@ -77,7 +78,7 @@ type ReportCategory =
   | 'SPAM'
   | 'HARASSMENT'
   | 'INAPPROPRIATE_CONTENT'
-  | 'FRAUD_SCAM'
+  | 'SCAM'
   | 'IMPERSONATION'
   | 'HATE_SPEECH'
   | 'OTHER';
@@ -89,7 +90,7 @@ const REASONS: { id: ReportCategory; label: string; subtitle: string }[] = [
     subtitle: 'Treść reklamowa, fałszywe ogłoszenie, generyczny content.',
   },
   {
-    id: 'FRAUD_SCAM',
+    id: 'SCAM',
     label: 'Oszustwo lub przekręt',
     subtitle: 'Wyłudzenie, fałszywa cena, prośby o przedpłatę poza aplikacją.',
   },
@@ -243,7 +244,7 @@ export default function ReportSheet({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Nie udało się wysłać zgłoszenia',
-        'Spróbuj ponownie za chwilę. Jeśli problem się powtarza, napisz na support@estateos.pl.'
+        `Spróbuj ponownie za chwilę. Jeśli problem się powtarza, napisz na ${ESTATEOS_CONTACT_EMAIL}.`
       );
     } catch (err) {
       // Brak sieci → traktujemy jak sukces (zgłoszenie idempotentne; user

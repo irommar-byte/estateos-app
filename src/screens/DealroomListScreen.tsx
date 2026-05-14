@@ -27,6 +27,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import { useUnreadBadgeStore } from '../store/useUnreadBadgeStore';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { API_URL } from '../config/network';
+import { findWebOfferById, fetchWebOffersArray } from '../utils/webOffersFallback';
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
@@ -1566,8 +1567,11 @@ export default function DealroomListScreen() {
             const offersRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
               headers: { Authorization: `Bearer ${token}` },
             });
-            const offersJson = await offersRes.json();
-            const offersList = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
+            const offersJson = await offersRes.json().catch(() => ({}));
+            let offersList = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
+            if (!offersRes.ok) {
+              offersList = await fetchWebOffersArray();
+            }
             for (const o of offersList) {
               const id = Number(o?.id || 0);
               if (!missingOfferIds.has(id)) continue;
@@ -1591,12 +1595,22 @@ export default function DealroomListScreen() {
           });
           if (stillMissing.length > 0) {
             try {
+              const webList = await fetchWebOffersArray();
+              for (const id of stillMissing) {
+                if (patch[id]) continue;
+                const offer = webList.find((o: any) => Number(o?.id || 0) === id);
+                if (!offer) continue;
+                const raw = pickFirstImageFromOfferLike(offer);
+                const url = raw ? normalizeMediaUrl(raw) : null;
+                if (url) patch[id] = url;
+              }
+              const stillAfterWeb = stillMissing.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
               const results = await Promise.allSettled(
-                stillMissing.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => r.ok ? r.json() : null)),
+                stillAfterWeb.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => r.ok ? r.json() : null)),
               );
               results.forEach((res, idx) => {
                 if (res.status !== 'fulfilled' || !res.value) return;
-                const id = stillMissing[idx];
+                const id = stillAfterWeb[idx];
                 const offer = res.value?.offer || res.value?.data || (res.value?.id ? res.value : null);
                 if (!offer) return;
                 const raw = pickFirstImageFromOfferLike(offer);
@@ -1859,11 +1873,19 @@ export default function DealroomListScreen() {
     setOpeningOfferId(offerId);
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
-      const data = await res.json();
-      const fullOffer = (Array.isArray(data?.offers) ? data.offers : []).find((o: any) => Number(o?.id || 0) === offerId);
+      const data = await res.json().catch(() => ({}));
+      let fullOffer = (Array.isArray(data?.offers) ? data.offers : []).find((o: any) => Number(o?.id || 0) === offerId) || null;
+      if (!fullOffer) {
+        fullOffer = await findWebOfferById(offerId);
+      }
       navigation.navigate('OfferDetail', fullOffer ? { offer: fullOffer } : { id: offerId });
     } catch {
-      navigation.navigate('OfferDetail', { id: offerId });
+      try {
+        const web = await findWebOfferById(offerId);
+        navigation.navigate('OfferDetail', web ? { offer: web } : { id: offerId });
+      } catch {
+        navigation.navigate('OfferDetail', { id: offerId });
+      }
     } finally { setOpeningOfferId(null); }
   };
 

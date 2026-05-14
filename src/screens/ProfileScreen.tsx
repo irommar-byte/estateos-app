@@ -10,7 +10,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
-import { SITE_ORIGIN } from '../utils/offerShareUrls';
+import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { getDeviceRegionCountry } from '../utils/phoneRegions';
@@ -2411,7 +2411,7 @@ export default function ProfileScreen({
         Alert.alert('Przerwano', error.message || 'Konfiguracja FaceID/TouchID nie powiodła się.');
       }
     } else {
-      Alert.alert('Usuń klucz', 'Czy na pewno chcesz wyłączyć logowanie biometryczne dla tego urządzenia? Pamiętaj, że usunie to powiązanie tylko w aplikacji.', [
+      Alert.alert('Usuń klucz', 'Czy na pewno chcesz wyłączyć logowanie biometryczne? Usuniemy powiązanie Passkey z serwera dla Twojego konta.', [
         { text: 'Anuluj', style: 'cancel', onPress: () => {
             setIsPasskeyActive(false);
             setTimeout(() => setIsPasskeyActive(true), 50);
@@ -2955,15 +2955,10 @@ export default function ProfileScreen({
               icon="shield-checkmark"
               color="#34C759"
               title="Polityka prywatności"
-              subtitle="Jak chronimy Twoje dane (RODO)"
+              subtitle="Pełna treść w aplikacji (RODO). Link do wersji WWW także w Regulaminie."
               onPress={() => {
                 Haptics.selectionAsync();
-                Linking.openURL(`${SITE_ORIGIN}/polityka-prywatnosci`).catch(() => {
-                  Alert.alert(
-                    'Nie udało się otworzyć',
-                    'Sprawdź połączenie z internetem i spróbuj ponownie.'
-                  );
-                });
+                navigation.navigate('Terms' as never, { initialScrollTo: 'privacy' } as never);
               }}
               isDark={isDark}
             />
@@ -2971,15 +2966,13 @@ export default function ProfileScreen({
               icon="mail"
               color="#0A84FF"
               title="Pomoc i kontakt"
-              subtitle="Napisz do nas: support@estateos.pl"
+              subtitle={`Napisz do nas: ${ESTATEOS_CONTACT_EMAIL}`}
               onPress={() => {
                 Haptics.selectionAsync();
-                Linking.openURL(
-                  'mailto:support@estateos.pl?subject=EstateOS%20%E2%80%94%20pomoc'
-                ).catch(() => {
+                Linking.openURL(mailtoEstateosSubject('EstateOS — pomoc')).catch(() => {
                   Alert.alert(
                     'Brak klienta poczty',
-                    'Skopiuj adres support@estateos.pl i napisz z dowolnej skrzynki.'
+                    `Skopiuj adres ${ESTATEOS_CONTACT_EMAIL} i napisz z dowolnej skrzynki.`
                   );
                 });
               }}
