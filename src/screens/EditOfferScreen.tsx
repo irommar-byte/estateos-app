@@ -53,6 +53,12 @@ import {
   validateAgentCommissionPercent,
 } from '../lib/agentCommission';
 import { API_URL } from '../config/network';
+import {
+  extractMobileOfferJson,
+  persistMobileOfferUpdate,
+  readMobileOfferResponseBody,
+  isExplicitMobileOfferSaveFailure,
+} from '../utils/mobileOfferUpdate';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
@@ -196,13 +202,25 @@ export default function EditOfferScreen({ route }: any) {
   // -------- POBRANIE OFERTY --------
   const fetchOffer = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user?.id || ''}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      const data = await res.json();
-      if (data.success) {
-        const offer = data.offers.find((o: any) => Number(o.id) === Number(offerId));
-        if (offer) {
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      let offer: any = null;
+
+      const detailRes = await fetch(`${API_URL}/api/mobile/v1/offers/${offerId}`, { headers });
+      if (detailRes.ok) {
+        const detailJson = await detailRes.json().catch(() => ({}));
+        offer = extractMobileOfferJson(detailJson);
+      }
+
+      if (!offer) {
+        const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user?.id || ''}`, {
+          headers,
+        });
+        const data = await res.json().catch(() => ({}));
+        const offers = Array.isArray(data?.offers) ? data.offers : [];
+        offer = offers.find((o: any) => Number(o?.id) === Number(offerId)) || null;
+      }
+
+      if (offer) {
           setOriginalData(offer);
           setTitle(offer.title || '');
           const { clean: cleanDesc, tokens } = extractVerifyTokens(offer.description || '');
@@ -239,7 +257,12 @@ export default function EditOfferScreen({ route }: any) {
 
           let parsedImages: string[] = [];
           if (offer.images) {
-            parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
+            try {
+              parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
+            } catch {
+              parsedImages = [];
+            }
+            if (!Array.isArray(parsedImages)) parsedImages = [];
             const mapped = parsedImages.map((img: string) => ({
               uri: toAbsoluteImageUrl(img),
               isRemote: true,
@@ -257,7 +280,8 @@ export default function EditOfferScreen({ route }: any) {
             hasGarden: isTrue(offer.hasGarden),
             isFurnished: isTrue(offer.isFurnished),
           });
-        }
+      } else {
+        Alert.alert('Błąd', 'Nie znaleziono oferty do edycji lub brak uprawnień.');
       }
     } catch (error) {
       Alert.alert('Błąd', 'Nie udało się pobrać oferty do edycji.');
@@ -511,6 +535,17 @@ export default function EditOfferScreen({ route }: any) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSaving(true);
 
+    if (!token?.trim()) {
+      Alert.alert('Sesja', 'Zaloguj się ponownie, aby zapisać zmiany.');
+      setSaving(false);
+      return;
+    }
+    if (!user?.id) {
+      Alert.alert('Sesja', 'Brak identyfikatora użytkownika — nie można zapisać oferty.');
+      setSaving(false);
+      return;
+    }
+
     const remoteImages = images
       .filter((img) => img.isRemote && img.serverPath)
       .map((img) => img.serverPath as string);
@@ -597,19 +632,19 @@ export default function EditOfferScreen({ route }: any) {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/mobile/v1/offers`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(updatePayload),
+      const response = await persistMobileOfferUpdate({
+        offerId: Number(offerId),
+        token: token.trim(),
+        payload: updatePayload,
       });
-
-      if (!response.ok) throw new Error('Odrzucone przez serwer.');
-      const saveData = await response.json().catch(() => ({}));
-      if (!saveData?.success) {
-        throw new Error(saveData?.message || 'Serwer odrzucił zapis.');
+      const saveData = await readMobileOfferResponseBody(response);
+      if (isExplicitMobileOfferSaveFailure(saveData, response.ok)) {
+        throw new Error(
+          saveData?.message ||
+            saveData?.error ||
+            (typeof saveData?._raw === 'string' ? String(saveData._raw).slice(0, 240) : null) ||
+            `Serwer odrzucił zapis (HTTP ${response.status}).`
+        );
       }
       if (__DEV__) {
         // Pomocne przy diagnostyce „nie zapisuje się przybliżonej lokalizacji":

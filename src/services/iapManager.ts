@@ -417,15 +417,20 @@ class IAPManagerImpl {
       const jws = (p as any).purchaseToken ?? (p as any).jwsRepresentation ?? null;
       const tx = (p as any).transactionId ?? (p as any).id ?? null;
       if (!jws || !tx) return null;
+      const transactionId = String(tx);
+      const receipt = String(jws);
       return {
         platform: 'ios',
         productId,
-        transactionId: String(tx),
+        transactionId,
         originalTransactionId:
           (p as any).originalTransactionIdentifierIOS ??
           (p as any).originalTransactionId ??
           undefined,
-        jwsRepresentation: String(jws),
+        jwsRepresentation: receipt,
+        receipt,
+        receiptData: receipt,
+        pendingPurchaseId: `ios:${transactionId}`,
       };
     }
 

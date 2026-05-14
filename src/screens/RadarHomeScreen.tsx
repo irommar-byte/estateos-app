@@ -3120,6 +3120,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         <View style={[styles.transactionBadge, styles.transactionBadgeOnImage, { backgroundColor: getTransactionBadge(item.raw?.transactionType).color }]}>
           <Text style={styles.transactionBadgeText}>{getTransactionBadge(item.raw?.transactionType).label}</Text>
         </View>
+        {isLegallyVerified ? (
+          <View style={[styles.legalSealFloating, isDark && styles.legalSealFloatingDark]} accessibilityLabel="Nieruchomość zweryfikowana prawnie">
+            <Ionicons name="shield-checkmark" size={15} color={isDark ? '#34d399' : '#059669'} />
+          </View>
+        ) : null}
       </View>
       <View style={styles.cardInfo}>
         <View style={styles.cardTopRow}>
@@ -3161,22 +3166,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <Text style={[styles.badgeText, { color: showOnlyFavorites ? favoritesScopeAccent : isDark ? '#E5E5EA' : '#1C1C1E' }]}>{item.rooms}</Text>
           </View>
         </View>
-
-        {isLegallyVerified ? (
-          <View
-            style={[
-              styles.legalSealPill,
-              {
-                backgroundColor: isDark ? 'rgba(16,185,129,0.16)' : 'rgba(16,185,129,0.10)',
-                borderColor: isDark ? 'rgba(16,185,129,0.55)' : 'rgba(16,185,129,0.4)',
-              },
-            ]}
-          >
-            <Ionicons name="shield-checkmark" size={13} color="#10B981" />
-            <Text style={[styles.legalSealTitle, { color: isDark ? '#86EFAC' : '#047857' }]}>Zweryfikowana prawnie</Text>
-            <Text style={[styles.legalSealSub, { color: isDark ? '#D1FAE5' : '#065F46' }]}>Mniejsze ryzyko zakupu</Text>
-          </View>
-        ) : null}
 
         <View style={styles.cardFooterRow}>
           <View style={styles.cardFooterTopRow}>
@@ -5100,6 +5089,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     justifyContent: 'flex-end',
+    position: 'relative',
   },
   cardImage: {
     width: 90,
@@ -5165,25 +5155,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  legalSealPill: {
-    marginTop: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    flexDirection: 'row',
+  legalSealFloating: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.94)',
     alignItems: 'center',
-    gap: 5,
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(16,185,129,0.5)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  legalSealTitle: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.1,
-  },
-  legalSealSub: {
-    fontSize: 10,
-    fontWeight: '700',
-    marginLeft: 'auto',
+  legalSealFloatingDark: {
+    backgroundColor: 'rgba(28,28,30,0.92)',
+    borderColor: 'rgba(52,211,153,0.55)',
   },
   cardFooterRow: {
     marginTop: 8,

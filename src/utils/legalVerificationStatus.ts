@@ -39,16 +39,7 @@ const REJECTED_LEGAL_STATUSES = new Set([
   'LEGAL_CHECK_REJECTED',
 ]);
 
-/**
- * Kanoniczny resolver zielonego znaczka prawnego.
- *
- * Uwaga produkcyjna: publiczne `GET /api/offers` dziś zwraca ogólny
- * `verificationStatus: "PENDING_REVIEW"` nawet dla aktywnych ofert z KW.
- * Nie traktujemy tego pola jako statusu prawnego, bo pochodzi z moderacji
- * oferty. Starszy publiczny endpoint po akceptacji prawnej nie zawsze wysyła
- * `isLegalSafeVerified`, ale zostawia `landRegistryNumber` na aktywnej ofercie,
- * dlatego aktywna oferta z KW jest zgodnościowym fallbackiem dla zielonej tarczy.
- */
+/** Kanoniczny resolver zielonego znaczka prawnego. */
 export function isOfferLegallyVerified(offer: any, ownerEndpointVerified = false): boolean {
   if (ownerEndpointVerified) return true;
 
@@ -57,10 +48,6 @@ export function isOfferLegallyVerified(offer: any, ownerEndpointVerified = false
       firstDefined(
         offer?.isLegalSafeVerified,
         offer?.legalVerification?.isLegalSafeVerified,
-        offer?.isLandRegistryVerified,
-        offer?.landRegistryVerified,
-        offer?.isVerifiedLegal,
-        offer?.legalSafeVerified,
       ),
     )
   ) {
@@ -73,24 +60,9 @@ export function isOfferLegallyVerified(offer: any, ownerEndpointVerified = false
       offer?.legal_check_status,
       offer?.legalVerificationStatus,
       offer?.legalVerification?.status,
-      offer?.legal?.status,
-      offer?.legalStatus,
     ),
   );
-  if (VERIFIED_STATUSES.has(legalStatus)) return true;
-
-  const genericStatus = upper(offer?.verificationStatus);
-  if (VERIFIED_STATUSES.has(genericStatus)) return true;
-
-  const hasRegistryNumber = String(
-    firstDefined(
-      offer?.landRegistryNumber,
-      offer?.land_registry_number,
-      offer?.legalVerification?.landRegistryNumber,
-    ) ?? '',
-  ).trim().length > 0;
-  const listingStatus = upper(offer?.status);
-  return hasRegistryNumber && ['ACTIVE', 'PUBLISHED', 'APPROVED'].includes(listingStatus);
+  return VERIFIED_STATUSES.has(legalStatus);
 }
 
 export function isOfferLegalVerificationPending(offer: any): boolean {
@@ -100,8 +72,6 @@ export function isOfferLegalVerificationPending(offer: any): boolean {
       offer?.legal_check_status,
       offer?.legalVerificationStatus,
       offer?.legalVerification?.status,
-      offer?.legal?.status,
-      offer?.legalStatus,
     ),
   );
 

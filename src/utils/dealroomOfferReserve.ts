@@ -1,4 +1,9 @@
 import { API_URL } from '../config/network';
+import {
+  persistMobileOfferUpdate,
+  readMobileOfferResponseBody,
+  isExplicitMobileOfferSaveFailure,
+} from './mobileOfferUpdate';
 
 async function setOfferStatus(params: {
   offerId: number;
@@ -26,17 +31,17 @@ async function setOfferStatus(params: {
       status,
     };
 
-    const putRes = await fetch(`${API_URL}/api/mobile/v1/offers`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${safeToken}`,
-      },
-      body: JSON.stringify(updatePayload),
+    const putRes = await persistMobileOfferUpdate({
+      offerId,
+      token: safeToken,
+      payload: updatePayload,
     });
-    const putData = await putRes.json().catch(() => ({}));
-    if (!putRes.ok || putData?.success === false) {
-      return { ok: false, error: putData?.message || putData?.error || 'Serwer odrzucił zmianę statusu' };
+    const putData = await readMobileOfferResponseBody(putRes);
+    if (isExplicitMobileOfferSaveFailure(putData, putRes.ok)) {
+      return {
+        ok: false,
+        error: putData?.message || putData?.error || `Serwer odrzucił zmianę statusu (HTTP ${putRes.status}).`,
+      };
     }
     return { ok: true };
   } catch (e: any) {

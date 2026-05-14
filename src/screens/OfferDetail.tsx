@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, Linking, ActivityIndicator, useColorScheme } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
@@ -39,7 +40,7 @@ import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
-import { isOfferLegalVerificationPending, isOfferLegallyVerified } from '../utils/legalVerificationStatus';
+import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -108,6 +109,7 @@ export default function OfferDetail({ route, navigation }: any) {
   // tu theme w paramach, więc bez tego ekran wisi na sztywno w "light".
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const theme = { glass: isDark ? 'dark' : 'light' };
   const [isFavorite, setIsFavorite] = useState(false);
@@ -700,12 +702,6 @@ export default function OfferDetail({ route, navigation }: any) {
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
   const isLegalSafeVerified = isOfferLegallyVerified(offer, ownerLegalVerifiedOverride === true);
-  const isLegalVerificationPending = isOfferLegalVerificationPending(offer);
-  const legalSafetyText = isLegalSafeVerified
-    ? 'Status prawny potwierdzony przez EstateOS — zakup z mniejszym ryzykiem'
-    : isLegalVerificationPending
-      ? 'Weryfikujemy księgę wieczystą i zadłużenie tej nieruchomości'
-      : 'Niezweryfikowany status księgi wieczystej i zadłużenia';
   const handleOwnerLegalStatusChanged = useCallback((next: any) => {
     const status = String(next?.status || '').toUpperCase();
     const verified =
@@ -957,6 +953,35 @@ export default function OfferDetail({ route, navigation }: any) {
   const ownerAverageRating = ownerReviews.length > 0
     ? ownerReviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) / ownerReviews.length
     : 0;
+  const ownerSummarySecondary = agentCommissionInfo?.companyName
+    ? ownerProfileLoading
+      ? 'Profil agenta · ładowanie…'
+      : ownerReviews.length > 0
+        ? `Ocena ${ownerAverageRating.toFixed(1)} · ${ownerReviews.length} opinii`
+        : 'Profil agenta · wizytówka'
+    : ownerProfileLoading
+      ? 'Profil sprzedawcy · ładowanie…'
+      : `Ocena ${(ownerAverageRating || 0).toFixed(1)}`;
+
+  const sellerPersonName =
+    String(ownerProfile?.user?.name || ownerProfile?.user?.fullName || offer?.userName || '').trim() || null;
+  const sellerPrimaryLabel =
+    agentCommissionInfo?.companyName ||
+    sellerPersonName ||
+    offer?.userName ||
+    'Sprzedawca';
+  const sellerSubtitleLine =
+    agentCommissionInfo?.companyName && sellerPersonName && sellerPersonName !== sellerPrimaryLabel
+      ? sellerPersonName
+      : null;
+
+  const sellerInitials = useMemo(() => {
+    const parts = (sellerPrimaryLabel || '?').trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase().slice(0, 2) || '?';
+    }
+    return (parts[0]?.slice(0, 2).toUpperCase() || '?').slice(0, 2);
+  }, [sellerPrimaryLabel]);
 
   const fetchPublicProfile = async (userId: number) => {
     const res = await fetch(`${API_URL}/api/users/${userId}/public`);
@@ -1109,7 +1134,7 @@ export default function OfferDetail({ route, navigation }: any) {
         </Pressable>
       </Animated.View>
 
-      <View style={styles.topBar}>
+      <View style={[styles.topBar, { top: Math.max(12, insets.top + 6) }]}>
         <TouchableOpacity style={styles.glassButton} onPress={() => navigation?.goBack()} hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}>
           <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
           <ChevronLeft color="white" size={24} />
@@ -1174,40 +1199,19 @@ export default function OfferDetail({ route, navigation }: any) {
             <MapPin color={isDark ? "#9ca3af" : "#86868b"} size={16} />
             <Text style={[styles.locationText, isDark && { color: '#9ca3af' }]}>{locationLine}</Text>
           </Pressable>
-          
-          <View style={styles.legalVerificationBlock}>
-          <View style={[styles.safetyBadgeCard, isLegalSafeVerified ? (isDark ? styles.safetyBadgeCardVerifiedDark : styles.safetyBadgeCardVerified) : (isDark ? styles.safetyBadgeCardPendingDark : styles.safetyBadgeCardPending)]}>
-            <View style={[styles.safetyBadgeIconWrap, isLegalSafeVerified ? (isDark ? styles.safetyBadgeIconWrapVerifiedDark : styles.safetyBadgeIconWrapVerified) : (isDark ? styles.safetyBadgeIconWrapPendingDark : null)]}>
-              <ShieldCheck color={isLegalSafeVerified ? '#10b981' : (isDark ? '#9ca3af' : '#6b7280')} size={16} />
-            </View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.safetyBadgeTitle, isLegalSafeVerified ? (isDark ? styles.safetyBadgeTitleVerifiedDark : styles.safetyBadgeTitleVerified) : (isDark ? styles.safetyBadgeTitlePendingDark : null)]}>
-                {isLegalSafeVerified
-                  ? 'Nieruchomość zweryfikowana prawnie'
-                  : isLegalVerificationPending
-                    ? 'Weryfikacja prawna w toku'
-                    : 'Weryfikacja prawna niedostępna'}
-              </Text>
-              <Text style={[styles.safetyBadgeSub, isDark && { color: '#9ca3af' }]}>{legalSafetyText}</Text>
-            </View>
-          </View>
 
-          {/*
-            Karta zarządcza dla WŁAŚCICIELA — pokazuje aktualny status
-            zgłoszenia KW + nr lokalu i pozwala je wysłać / poprawić.
-            Zwykli widzowie nadal widzą tylko `safetyBadgeCard` powyżej.
-          */}
           {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 ? (
-            <OwnerLegalVerificationCard
-              offerId={Number(offer.id)}
-              token={token}
-              isDark={isDark}
-              initialLandRegistryNumber={offer?.landRegistryNumber || null}
-              initialApartmentNumber={offer?.apartmentNumber || null}
-              onStatusChanged={handleOwnerLegalStatusChanged}
-            />
+            <View style={styles.legalVerificationBlock}>
+              <OwnerLegalVerificationCard
+                offerId={Number(offer.id)}
+                token={token}
+                isDark={isDark}
+                initialLandRegistryNumber={offer?.landRegistryNumber || null}
+                initialApartmentNumber={offer?.apartmentNumber || null}
+                onStatusChanged={handleOwnerLegalStatusChanged}
+              />
+            </View>
           ) : null}
-          </View>
 
           <View style={styles.statsGrid}>
             <View style={[styles.statBox, { backgroundColor: isDark ? '#1c1c1e' : '#f6f7f9', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
@@ -1461,7 +1465,7 @@ export default function OfferDetail({ route, navigation }: any) {
                 onPress={openOwnerProfileModal}
                 style={({ pressed }) => [
                   styles.ownerCompactPill,
-                  isDark && { backgroundColor: '#1c1c1e' },
+                  isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
                   agentCommissionInfo?.companyName && {
                     borderColor: 'rgba(255,159,10,0.55)',
                     borderWidth: 1,
@@ -1469,44 +1473,69 @@ export default function OfferDetail({ route, navigation }: any) {
                   pressed && { opacity: 0.7 },
                 ]}
               >
-                <View
-                  style={[
-                    styles.ownerAvatarMock,
-                    agentCommissionInfo?.companyName && { backgroundColor: '#FF9F0A' },
-                  ]}
+                <LinearGradient
+                  colors={
+                    agentCommissionInfo?.companyName
+                      ? ['rgba(255,159,10,0.95)', 'rgba(251,146,60,0.88)']
+                      : ['rgba(16,185,129,0.92)', 'rgba(5,150,105,0.88)']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.ownerAvatarGrad}
                 >
-                  <ShieldCheck size={12} color="#fff" />
-                </View>
+                  <Text style={styles.ownerAvatarInitials} allowFontScaling={false}>
+                    {sellerInitials}
+                  </Text>
+                </LinearGradient>
                 <View style={styles.ownerPillInfo}>
                   <Text numberOfLines={1} style={[styles.ownerPillName, isDark && { color: '#ffffff' }]}>
-                    {agentCommissionInfo?.companyName ||
-                      ownerProfile?.user?.name?.split(' ')[0] ||
-                      offer?.userName ||
-                      'Sprzedawca'}
+                    {sellerPrimaryLabel}
                   </Text>
-                  {agentCommissionInfo?.companyName ? (
-                    <Text style={[styles.ownerPillAgentBadge]} numberOfLines={1}>
-                      Agent EstateOS™
+                  <View style={styles.ownerPillStarsRow}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star
+                        key={s}
+                        size={8}
+                        color={
+                          s <= Math.round(ownerAverageRating || 0)
+                            ? '#f59e0b'
+                            : isDark
+                              ? '#4b5563'
+                              : '#d1d5db'
+                        }
+                        fill={s <= Math.round(ownerAverageRating || 0) ? '#f59e0b' : 'transparent'}
+                      />
+                    ))}
+                  </View>
+                  <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
+                    {ownerSummarySecondary}
+                  </Text>
+                  {agentCommissionInfo ? (
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.ownerPillCommission,
+                        agentCommissionInfo.isZero
+                          ? { color: isDark ? '#6ee7b7' : '#059669' }
+                          : { color: isDark ? '#FBBF24' : '#C2410C' },
+                      ]}
+                    >
+                      {agentCommissionInfo.isZero
+                        ? 'Prowizja 0% brutto'
+                        : `Prowizja ${agentCommissionInfo.percentLabel} · ${agentCommissionInfo.amountLabel}`}
                     </Text>
-                  ) : (
-                    <View style={styles.ownerStarsRowMini}>
-                      <Star size={10} color="#f59e0b" fill="#f59e0b" />
-                      <Text style={styles.ownerPillRatingText}>
-                        {ownerProfileLoading ? '-' : (ownerAverageRating || 0).toFixed(1)}
-                      </Text>
-                    </View>
-                  )}
+                  ) : null}
                 </View>
+                <ChevronRight size={14} color={isDark ? '#9ca3af' : '#9ca3af'} style={styles.ownerPillChevron} />
               </Pressable>
             )}
           </View>
 
           {/*
-            PIGUŁKA PROWIZJI AGENTA — pełna szerokość bottom baru.
-            Zawsze ROW POD `bottomBarTopRow`, więc procent + kwota się nie
-            ucinają, a opis może spokojnie wieleć na 2 linie.
+            PIGUŁKA PROWIZJI — pełna szerokość tylko dla właściciela (lub gdy brak
+            wizytówki sprzedawcy). Kupujący widzi skrót w małej pigułce obok ceny.
           */}
-          {agentCommissionInfo ? (
+          {agentCommissionInfo && (isOwner || !offer?.userId) ? (
             <View
               style={[
                 styles.agentCommissionPill,
@@ -1804,6 +1833,7 @@ export default function OfferDetail({ route, navigation }: any) {
                     phone={activeProfileData?.user?.phone || activeProfileData?.user?.contactPhone}
                     fallbackIso="PL"
                     size={40}
+                    isDark={isDark}
                   />
                 </View>
                 <Text style={styles.profileName}>{activeProfileData?.user?.name || 'Użytkownik'}</Text>
@@ -2196,7 +2226,7 @@ const styles = StyleSheet.create({
   },
   viewsBadgeText: { color: '#374151', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
   title: { fontSize: 26, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 8 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 32 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500', flexShrink: 1 },
   locationModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.36)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22 },
   locationModalCard: {
@@ -2227,77 +2257,10 @@ const styles = StyleSheet.create({
   locationMiniMapWrap: { borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)' },
   locationMiniMap: { width: '100%', height: 190 },
   locationModalHint: { marginTop: 8, fontSize: 12, color: '#9ca3af' },
-  safetyBadgeCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 0,
-    gap: 12,
-  },
-  safetyBadgeCardPending: {
-    backgroundColor: '#f4f4f5',
-    borderColor: 'rgba(107,114,128,0.24)',
-    borderTopColor: 'rgba(255,255,255,0.7)',
-  },
-  safetyBadgeCardPendingDark: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  safetyBadgeCardVerified: {
-    backgroundColor: 'rgba(16,185,129,0.08)',
-    borderColor: 'rgba(16,185,129,0.25)',
-    borderTopColor: 'rgba(255,255,255,0.8)',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-  },
-  safetyBadgeCardVerifiedDark: {
-    backgroundColor: 'rgba(16,185,129,0.12)',
-    borderColor: 'rgba(16,185,129,0.3)',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-  },
-  safetyBadgeIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(107,114,128,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  safetyBadgeIconWrapPendingDark: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  safetyBadgeIconWrapVerified: {
-    backgroundColor: 'rgba(16,185,129,0.15)',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-  },
-  safetyBadgeIconWrapVerifiedDark: {
-    backgroundColor: 'rgba(16,185,129,0.2)',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 10,
-  },
-  safetyBadgeTitle: { color: '#4b5563', fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
-  safetyBadgeTitlePendingDark: { color: '#d1d5db' },
-  safetyBadgeTitleVerified: { color: '#047857' },
-  safetyBadgeTitleVerifiedDark: { color: '#34d399' },
-  safetyBadgeSub: { color: '#6b7280', fontSize: 12, fontWeight: '600', marginTop: 1 },
-  /** Blok „Weryfikacja prawna" + opcjonalna karta KW właściciela — odstępy pod stały bottom bar z ceną. */
+  /** Karta KW / zgłoszenie — tylko gdy właściciel i brak pieczęci prawnej. */
   legalVerificationBlock: {
     gap: 14,
-    marginBottom: 32,
+    marginBottom: 28,
   },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14, columnGap: '4%', marginBottom: 32 },
   statBox: {
@@ -2502,8 +2465,11 @@ const styles = StyleSheet.create({
   /** Kolumna analityczna dla właściciela — `EstateOS™ ROI` + delta vs średnia */
   ownerStatsColumn: {
     alignItems: 'flex-end',
+    justifyContent: 'flex-start',
     flexShrink: 1,
-    maxWidth: 130,
+    width: 126,
+    minWidth: 112,
+    maxWidth: 132,
   },
   roiPillCard: {
     paddingHorizontal: 12,
@@ -2554,23 +2520,48 @@ const styles = StyleSheet.create({
   ownerCompactPill: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#ffffff', 
-    borderRadius: 24, 
-    padding: 6, 
-    paddingRight: 14,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    borderRadius: 22, 
+    paddingVertical: 7,
+    paddingLeft: 7,
+    paddingRight: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
-    maxWidth: '50%' // Zabezpieczenie dla małych ekranów
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 116,
+    maxWidth: '56%',
   },
-  ownerAvatarMock: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#10b981', alignItems: 'center', justifyContent: 'center' },
-  ownerPillInfo: { marginLeft: 8, justifyContent: 'center' },
-  ownerPillName: { color: '#1d1d1f', fontSize: 12, fontWeight: '700' },
-  ownerStarsRowMini: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
-  ownerPillRatingText: { color: '#6b7280', fontSize: 10, fontWeight: '700', marginLeft: 4 },
-  ownerPillAgentBadge: { color: '#FF9F0A', fontSize: 10, fontWeight: '800', letterSpacing: 0.3, marginTop: 1 },
+  ownerAvatarGrad: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  ownerAvatarInitials: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  ownerPillInfo: { marginLeft: 8, justifyContent: 'center', flex: 1, minWidth: 0 },
+  ownerPillName: { color: '#1d1d1f', fontSize: 12, fontWeight: '800', letterSpacing: -0.1 },
+  ownerPillStarsRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 2 },
+  ownerPillSecondary: { color: '#6b7280', fontSize: 9.5, fontWeight: '700', marginTop: 2, letterSpacing: 0.08 },
+  ownerPillCommission: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.15,
+    marginTop: 3,
+  },
+  ownerPillChevron: { marginLeft: 2, flexShrink: 0 },
   
   bottomActionsRow: { flexDirection: 'row', gap: 12 },
   actionFlexWrap: { flex: 1 },

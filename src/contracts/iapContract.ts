@@ -78,6 +78,11 @@ export type IapVerifyRequest =
       /** JWS Representation (StoreKit 2) — JWT podpisany przez Apple.
        *  TO JEST KLUCZOWE DO WERYFIKACJI po stronie backendu! */
       jwsRepresentation: string;
+      /** Aliasy dla backendu mobile: ten sam StoreKit JWS pod nazwą receipt/receiptData. */
+      receipt?: string;
+      receiptData?: string;
+      /** Opcjonalne ID pending, jeśli frontend ponawia wcześniej zapisany zakup. */
+      pendingPurchaseId?: string;
       /** Identyfikator urządzenia dla anti-fraud (opcjonalne). */
       deviceId?: string;
     }
