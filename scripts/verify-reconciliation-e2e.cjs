@@ -9,6 +9,7 @@
  * Zmienne:
  *   VERIFY_PORT — port (domyślnie 3010)
  *   SKIP_BUILD=1 — pomiń `npm run build` (szybciej, jeśli dopiero zbudowano)
+ *   VERIFY_SKIP_DB_PUSH=1 — pomiń `prisma db push` (np. gdy DB jest tylko read-only)
  */
 
 const { spawn, execFileSync } = require('child_process');
@@ -49,6 +50,19 @@ async function main() {
     execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit', env: process.env });
   } else {
     console.log('[verify:recon] SKIP_BUILD=1 — pomijam build');
+  }
+
+  if (!['1', 'true', 'yes'].includes(String(process.env.VERIFY_SKIP_DB_PUSH || '').toLowerCase())) {
+    console.log('[verify:recon] prisma db push (schema → DB, np. agentCommissionPercent) …');
+    try {
+      execFileSync('npx', ['prisma', 'db', 'push'], { cwd: root, stdio: 'inherit', env: process.env });
+    } catch {
+      console.warn(
+        '[verify:recon] prisma db push FAILED — uruchom ręcznie SQL: docs/reconciliation/sql/add_agent_commission_percent.sql'
+      );
+    }
+  } else {
+    console.log('[verify:recon] VERIFY_SKIP_DB_PUSH=1 — pomijam db push');
   }
 
   console.log(`[verify:recon] starting Next on port ${port} …`);
