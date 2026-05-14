@@ -53,3 +53,4 @@ scripts/.agent-deploy-report.txt
 scripts/.release-report.txt
 
 tsconfig.tsbuildinfo
+backup/

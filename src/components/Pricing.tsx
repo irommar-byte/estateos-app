@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Zap, Radar, Crown, Building2, User, ArrowRight, Clock, ShieldCheck, X, Key, Home } from 'lucide-react';
+import { Check, Zap, Radar, Crown, Building2, User, ArrowRight, Clock, ShieldCheck, X, Key, Home, Loader2 } from 'lucide-react';
 
 export default function Pricing() {
   const [isAgency, setIsAgency] = useState(false);
@@ -40,10 +40,10 @@ export default function Pricing() {
   };
 
   return (
-    <section className="relative py-24 bg-black overflow-hidden font-sans min-h-screen flex items-center">
+    <section className="relative flex min-h-screen items-center overflow-hidden bg-black py-16 pb-[max(4rem,env(safe-area-inset-bottom,0px))] pt-12 font-sans sm:py-20 md:py-24">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#D4AF37]/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto px-6 relative z-10 w-full">
+      <div className="eos-page-x relative z-10 w-full">
         
         <div className="text-center mb-16">
           <h2 className="text-sm font-black text-[#D4AF37] tracking-[0.2em] uppercase mb-4">Wybierz swój poziom</h2>
@@ -132,12 +132,21 @@ export default function Pricing() {
               <button 
                 onClick={() => handleCheckout('investor')}
                 disabled={loadingPlan === 'investor'}
+                aria-busy={loadingPlan === 'investor'}
                 className="group relative py-5 rounded-[1.25rem] overflow-visible transition-all duration-500 w-full flex items-center justify-center gap-3 border border-[#FFF0AA]/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10 hover:z-50 disabled:opacity-70 disabled:hover:scale-100"
               >
                 <div className="absolute inset-0 w-full h-full rounded-[1.25rem] overflow-hidden pointer-events-none" style={{ background: "linear-gradient(135deg, #FFE066 0%, #FDB931 50%, #CC8400 100%)" }}>
                   <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-30deg] pointer-events-none group-hover:animate-[luxurySweep_1.5s_ease-in-out_infinite]" style={{ left: '-100%' }} />
                 </div>
-                <Crown className={`text-black relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] ${loadingPlan === 'investor' ? 'animate-bounce' : 'group-hover:-translate-y-1 group-hover:rotate-[20deg] group-hover:scale-125'}`} size={22} />
+                {loadingPlan === 'investor' ? (
+                  <Loader2 className="relative z-10 h-6 w-6 shrink-0 animate-spin text-black" aria-hidden />
+                ) : (
+                  <Crown
+                    className="relative z-10 shrink-0 text-black transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] group-hover:-translate-y-1 group-hover:rotate-[20deg] group-hover:scale-125"
+                    size={22}
+                    aria-hidden
+                  />
+                )}
                 <span className="text-[14px] font-black uppercase tracking-[0.25em] text-black whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
                   {loadingPlan === 'investor' ? 'Przetwarzam...' : 'Wybieram PRO'}
                 </span>
@@ -172,12 +181,21 @@ export default function Pricing() {
                   <button 
                     onClick={() => handleCheckout('agency')}
                     disabled={loadingPlan === 'agency'}
+                    aria-busy={loadingPlan === 'agency'}
                     className="group relative py-5 rounded-[1.25rem] overflow-visible transition-all duration-500 w-full flex items-center justify-center gap-3 border border-[#A7F3D0]/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10 hover:z-50 disabled:opacity-70 disabled:hover:scale-100"
                   >
                     <div className="absolute inset-0 w-full h-full rounded-[1.25rem] overflow-hidden pointer-events-none" style={{ background: "linear-gradient(135deg, #A7F3D0 0%, #10B981 50%, #059669 100%)" }}>
                       <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-30deg] pointer-events-none group-hover:animate-[luxurySweep_1.5s_ease-in-out_infinite]" style={{ left: '-100%' }} />
                     </div>
-                    <Crown className={`text-black relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] ${loadingPlan === 'agency' ? 'animate-bounce' : 'group-hover:-translate-y-1 group-hover:rotate-[20deg] group-hover:scale-125'}`} size={22} />
+                    {loadingPlan === 'agency' ? (
+                      <Loader2 className="relative z-10 h-6 w-6 shrink-0 animate-spin text-black" aria-hidden />
+                    ) : (
+                      <Crown
+                        className="relative z-10 shrink-0 text-black transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] group-hover:-translate-y-1 group-hover:rotate-[20deg] group-hover:scale-125"
+                        size={22}
+                        aria-hidden
+                      />
+                    )}
                     <span className="text-[14px] font-black uppercase tracking-[0.25em] text-black whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
                       {loadingPlan === 'agency' ? 'Przetwarzam...' : 'Rozpocznij Dominację'}
                     </span>
@@ -208,49 +226,76 @@ export default function Pricing() {
       {/* MODAL WYBORU ŚCIEŻKI DLA KONTA BASIC */}
       <AnimatePresence>
         {isBasicModalOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            exit={{ opacity: 0 }} 
-            className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 sm:p-6" 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="presentation"
+            className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/90 p-4 pb-[max(2.5rem,env(safe-area-inset-bottom,0px))] pt-[max(2.5rem,env(safe-area-inset-top,0px))] backdrop-blur-xl sm:p-6 sm:pt-20 sm:pb-20"
             onClick={() => setIsBasicModalOpen(false)}
           >
-            <motion.div 
-              initial={{ scale: 0.95, y: 20 }} 
-              animate={{ scale: 1, y: 0 }} 
-              exit={{ scale: 0.95, y: 20 }} 
-              onClick={e => e.stopPropagation()} 
-              className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] w-full max-w-2xl p-8 md:p-12 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="basic-path-title"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-2xl overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] p-8 shadow-[0_0_50px_rgba(0,0,0,0.8)] md:p-12"
             >
-              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none z-0"></div>
-              
-              <button onClick={() => setIsBasicModalOpen(false)} className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 rounded-full transition-colors text-white/50 z-20"><X size={20}/></button>
-              
-              <div className="relative z-10 text-center mb-10">
-                <h3 className="text-4xl md:text-5xl font-black text-white tracking-tighter mb-4">Jaki jest Twój <span className="text-emerald-500">Cel</span>?</h3>
-                <p className="text-white/50 text-sm md:text-base">Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.</p>
+              <div className="pointer-events-none absolute right-0 top-0 z-0 h-64 w-64 rounded-full bg-emerald-500/10 blur-[80px]" />
+
+              <button
+                type="button"
+                onClick={() => setIsBasicModalOpen(false)}
+                className="absolute right-6 top-6 z-20 rounded-full bg-white/5 p-3 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Zamknij okno"
+              >
+                <X size={20} aria-hidden />
+              </button>
+
+              <div className="relative z-10 mb-10 text-center">
+                <h3 id="basic-path-title" className="mb-4 text-4xl font-black tracking-tighter text-white md:text-5xl">
+                  Jaki jest Twój <span className="text-emerald-500">Cel</span>?
+                </h3>
+                <p className="text-sm text-white/50 md:text-base">
+                  Wybierz odpowiednią ścieżkę, abyśmy mogli dopasować narzędzia do Twoich potrzeb.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+              <div className="relative z-10 grid grid-cols-1 gap-6 md:grid-cols-2">
                 {/* Opcja Kupna */}
-                <button onClick={() => window.location.href = '/szukaj'} className="flex flex-col items-center text-center gap-4 p-8 bg-[#111] border border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:shadow-[0_0_30px_rgba(16,185,129,0.15)] rounded-[2rem] transition-all group">
-                  <div className="w-20 h-20 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Key size={36} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = "/szukaj";
+                  }}
+                  className="group flex flex-col items-center gap-4 rounded-[2rem] border border-white/10 bg-[#111] p-8 text-center transition-all hover:border-emerald-500/50 hover:bg-emerald-500/5 hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]"
+                >
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 transition-transform group-hover:scale-110">
+                    <Key size={36} aria-hidden />
                   </div>
                   <div>
-                    <div className="font-black text-2xl text-white mb-2 group-hover:text-emerald-500 transition-colors">Chcę Kupić</div>
-                    <div className="text-xs text-white/40 leading-relaxed">Przeglądaj ekskluzywne oferty i korzystaj z Radaru.</div>
+                    <div className="mb-2 text-2xl font-black text-white transition-colors group-hover:text-emerald-500">Chcę Kupić</div>
+                    <div className="text-xs leading-relaxed text-white/40">Przeglądaj ekskluzywne oferty i korzystaj z Radaru.</div>
                   </div>
                 </button>
-                
+
                 {/* Opcja Sprzedaży */}
-                <button onClick={() => window.location.href = '/dodaj-oferte'} className="flex flex-col items-center text-center gap-4 p-8 bg-[#111] border border-white/10 hover:border-orange-500/50 hover:bg-orange-500/5 hover:shadow-[0_0_30px_rgba(249,115,22,0.15)] rounded-[2rem] transition-all group">
-                  <div className="w-20 h-20 rounded-full bg-orange-500/10 text-orange-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Home size={36} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = "/dodaj-oferte";
+                  }}
+                  className="group flex flex-col items-center gap-4 rounded-[2rem] border border-white/10 bg-[#111] p-8 text-center transition-all hover:border-orange-500/50 hover:bg-orange-500/5 hover:shadow-[0_0_30px_rgba(249,115,22,0.15)]"
+                >
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-500/10 text-orange-500 transition-transform group-hover:scale-110">
+                    <Home size={36} aria-hidden />
                   </div>
                   <div>
-                    <div className="font-black text-2xl text-white mb-2 group-hover:text-orange-500 transition-colors">Chcę Sprzedać</div>
-                    <div className="text-xs text-white/40 leading-relaxed">Dodaj swoją nieruchomość do bazy i znajdź kupca.</div>
+                    <div className="mb-2 text-2xl font-black text-white transition-colors group-hover:text-orange-500">Chcę Sprzedać</div>
+                    <div className="text-xs leading-relaxed text-white/40">Dodaj swoją nieruchomość do bazy i znajdź kupca.</div>
                   </div>
                 </button>
               </div>

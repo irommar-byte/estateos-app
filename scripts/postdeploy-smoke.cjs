@@ -5,6 +5,8 @@ const baseUrl = process.env.SMOKE_BASE_URL || 'http://127.0.0.1:3000';
 const checks = [
   { name: 'health', url: '/api/health', expectStatus: [200] },
   { name: 'auth session', url: '/api/auth/session', expectStatus: [200] },
+  { name: 'passkeys auth-options (public)', url: '/api/passkeys/auth-options', expectStatus: [200], parseJson: true },
+  { name: 'public offer api (sample id)', url: '/api/offers/1', expectStatus: [200, 404] },
   { name: 'aasa root', url: '/apple-app-site-association', expectStatus: [200], parseJson: true },
   {
     name: 'aasa well-known',

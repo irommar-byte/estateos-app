@@ -1,5 +1,16 @@
-html, body {
-  padding-top: 80px !important;
+html {
+  color-scheme: dark;
+  scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 6rem);
+}
+
+html,
+body {
+  /* Wysokość rzędu nawigacji (h-24) + safe area iPhone */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 6rem) !important;
+}
+
+body.eos-body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @import "tailwindcss";
@@ -360,3 +371,48 @@ button[class*="bg-[#111]"]:hover {
   100% { top: 100%; }
 }
 
+/* =============================================================================
+   EstateOS™ — spójność UI/UX (safe area, a11y, motion, hierarchia)
+   ============================================================================= */
+
+/* Maksymalna szerokość treści marketingowej — jeden rytm z nav / home */
+@layer components {
+  .eos-page-x {
+    @apply mx-auto max-w-[1400px] px-4 md:px-6;
+  }
+}
+
+/* Widoczny focus klawiatury — nie zastępuje stylów „chipów” z klasami eos-chip-* */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(52, 211, 153, 0.85);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .shimmer-logo::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  body {
+    background-color: #000;
+  }
+
+  a:focus-visible,
+  button:focus-visible {
+    outline-width: 3px;
+    outline-color: #fff;
+  }
+}

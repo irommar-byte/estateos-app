@@ -288,7 +288,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="bg-black text-white min-h-screen p-6 pt-40 pb-24 flex flex-col items-center">
+    <main id="main-content" className="flex min-h-screen flex-col items-center bg-black p-6 pb-24 pt-12 text-white md:pt-16">
       <div className="w-full max-w-lg">
         <Link href="/" className="text-white/40 hover:text-white mb-10 inline-block text-sm uppercase tracking-widest font-semibold transition-colors">
           ← Wróć do mapy

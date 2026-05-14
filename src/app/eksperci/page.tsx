@@ -33,14 +33,37 @@ export default function ExpertsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white pt-32 pb-40 relative overflow-hidden">
+    <main className="relative min-h-screen overflow-hidden bg-[#050505] pb-40 pt-10 text-white md:pt-14">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[1000px] h-[500px] bg-white/5 rounded-full blur-[150px] pointer-events-none"></div>
       
       <AnimatePresence>
         {selectedExpert && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-md flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 w-full max-w-lg shadow-[0_0_50px_rgba(255,255,255,0.1)] relative">
-              <button onClick={() => { setSelectedExpert(null); setSuccess(false); }} className="absolute top-6 right-6 text-white/40 hover:text-white"><X size={20}/></button>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="presentation"
+            className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/90 p-4 pb-[max(2rem,env(safe-area-inset-bottom,0px))] pt-[max(2rem,env(safe-area-inset-top,0px))] backdrop-blur-md sm:pb-20 sm:pt-20"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Przekazanie oferty ekspertowi"
+              className="relative w-full max-w-lg rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] p-8 shadow-[0_0_50px_rgba(255,255,255,0.1)]"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedExpert(null);
+                  setSuccess(false);
+                }}
+                className="absolute right-6 top-6 rounded-lg p-2 text-white/40 transition-colors hover:bg-white/5 hover:text-white"
+                aria-label="Zamknij"
+              >
+                <X size={20} aria-hidden />
+              </button>
               
               {success ? (
                 <div className="py-10 text-center flex flex-col items-center">
@@ -102,7 +125,7 @@ export default function ExpertsPage() {
         )}
       </AnimatePresence>
 
-      <div className="max-w-6xl mx-auto px-6 relative z-10">
+      <div className="eos-page-x">
         <Link href="/moje-konto" className="text-white/40 hover:text-white mb-8 inline-block text-[10px] uppercase tracking-widest font-bold transition-colors">← Wróć do panelu</Link>
         <div className="text-center max-w-3xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-white text-black rounded-full text-[10px] font-black uppercase tracking-widest mb-6 shadow-[0_0_30px_rgba(255,255,255,0.3)]">
@@ -112,8 +135,21 @@ export default function ExpertsPage() {
           <p className="text-lg text-white/50 leading-relaxed">Wybierz licencjonowanego partnera EstateOS. Twój osobisty ekspert przygotuje ofertę, obsłuży Radar, przeprowadzi prezentacje i wynegocjuje najwyższą cenę.</p>
         </div>
 
-        {loading ? ( <div className="flex justify-center py-20"><Loader2 className="animate-spin text-white/40" size={40} /></div> ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-4 py-24" role="status" aria-live="polite">
+            <Loader2 className="h-10 w-10 animate-spin text-emerald-500/70" aria-hidden />
+            <span className="text-sm font-medium text-white/45">Ładowanie ekspertów…</span>
+          </div>
+        ) : experts.length === 0 ? (
+          <div
+            role="status"
+            className="mx-auto max-w-lg rounded-[2rem] border border-dashed border-white/10 bg-white/[0.03] px-8 py-14 text-center"
+          >
+            <p className="text-base font-semibold text-white/80">Brak partnerów w widoku</p>
+            <p className="mt-2 text-sm leading-relaxed text-white/45">Spróbuj ponownie później lub skontaktuj się z pomocą EstateOS™.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {experts.map((exp, idx) => (
               <motion.div key={exp.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 hover:border-white/30 transition-all group shadow-2xl relative overflow-hidden flex flex-col h-full">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-bl-[100%] pointer-events-none transition-colors group-hover:bg-white/10"></div>
