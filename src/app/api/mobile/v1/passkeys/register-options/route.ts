@@ -1,6 +1,7 @@
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getPasskeyRpId } from '@/lib/env.server';
 
 export async function POST(req: Request) {
     try {
@@ -14,7 +15,7 @@ export async function POST(req: Request) {
 
         const options = await generateRegistrationOptions({
             rpName: 'EstateOS',
-            rpID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
+            rpID: getPasskeyRpId(),
             userID: new Uint8Array(Buffer.from(user.id.toString())),
             userName: user.email,
             attestationType: 'none',

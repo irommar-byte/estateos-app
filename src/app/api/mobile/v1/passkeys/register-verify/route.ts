@@ -1,6 +1,30 @@
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getPasskeyOrigin, getPasskeyRpId } from '@/lib/env.server';
+
+function decodeClientDataJsonBase64(value: string): any | null {
+    if (!value) return null;
+    try {
+        const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+        return JSON.parse(Buffer.from(padded, 'base64').toString('utf-8'));
+    } catch {
+        return null;
+    }
+}
+
+function extractOriginFromResponse(response: any): string | null {
+    const candidate =
+        response?.clientDataJSON ??
+        response?.response?.clientDataJSON ??
+        response?.rawResponse?.clientDataJSON ??
+        null;
+    if (!candidate || typeof candidate !== 'string') return null;
+    const clientData = decodeClientDataJsonBase64(candidate);
+    const origin = String(clientData?.origin || '').trim();
+    return origin || null;
+}
 
 export async function POST(req: Request) {
     try {
@@ -11,19 +35,25 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Brak wyzwania" }, { status: 400 });
         }
 
-        let expectedOrigin = 'http://localhost:3000';
-        try {
-            if (response.clientDataJSON) {
-                const clientData = JSON.parse(Buffer.from(response.clientDataJSON, 'base64').toString('utf-8'));
-                if (clientData.origin) expectedOrigin = clientData.origin;
-            }
-        } catch (e) {}
+        const configuredOrigin = String(getPasskeyOrigin() || '').replace(/\/$/, '');
+        const parsedOrigin = extractOriginFromResponse(response);
+        const originCandidates = new Set<string>();
+        if (configuredOrigin) originCandidates.add(configuredOrigin);
+        if (parsedOrigin) originCandidates.add(parsedOrigin);
+        if (process.env.NODE_ENV === 'production') {
+            originCandidates.add('https://estateos.pl');
+            originCandidates.add('https://www.estateos.pl');
+        } else {
+            originCandidates.add('http://localhost:3000');
+        }
+        const expectedOrigin =
+            originCandidates.size > 1 ? Array.from(originCandidates) : Array.from(originCandidates)[0];
 
         const verification = await verifyRegistrationResponse({
             response,
             expectedChallenge: user.otpCode,
             expectedOrigin,
-            expectedRPID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
+            expectedRPID: getPasskeyRpId(),
             requireUserVerification: false
         });
 
