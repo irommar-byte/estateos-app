@@ -19,11 +19,11 @@ export default function PremiumModeToggle({ currentUser }: { currentUser?: any }
       
       
       {/* KONTENER PRZYCISKÓW - APPLE GLASSMORPHISM */}
-      <div className="relative inline-flex items-center p-1.5 sm:p-2 bg-black/60 backdrop-blur-2xl border border-white/5 rounded-full shadow-[inset_0_2px_12px_rgba(0,0,0,1),_0_20px_40px_rgba(0,0,0,0.8)] pointer-events-auto">
+      <div className="relative inline-flex items-center rounded-full border border-white/15 bg-zinc-900 p-1.5 shadow-[inset_0_2px_12px_rgba(0,0,0,1),_0_20px_40px_rgba(0,0,0,0.8)] supports-[backdrop-filter]:border-white/5 supports-[backdrop-filter]:bg-black/60 sm:p-2 sm:backdrop-blur-2xl [@media(prefers-reduced-transparency:reduce)]:border-white/15 [@media(prefers-reduced-transparency:reduce)]:bg-zinc-900 [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none pointer-events-auto">
         {!isPartnerPlan ? (
           <button
             type="button"
-            className="relative flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-emerald-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] bg-gradient-to-b from-white/10 to-transparent overflow-hidden cursor-default"
+            className="relative flex items-center gap-2 sm:gap-3 px-4 sm:px-6 py-2.5 sm:py-3 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-white shadow-[inset_0_1px_1px_rgba(255,255,255,0.15)] bg-gradient-to-b from-white/15 to-white/5 overflow-hidden cursor-default"
             aria-current="true"
           >
             <div className="absolute inset-0 z-0">

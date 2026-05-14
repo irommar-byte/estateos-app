@@ -249,6 +249,32 @@ export async function updateOffer(body: any) {
         heating: body.heating ? String(body.heating).trim() : null
       }),
 
+      ...(body.adminFee !== undefined && {
+        adminFee: body.adminFee === null || body.adminFee === '' ? null : Number(body.adminFee),
+      }),
+      ...(body.deposit !== undefined && {
+        deposit: body.deposit === null || body.deposit === '' ? null : Number(body.deposit),
+      }),
+      ...(body.plotArea !== undefined && {
+        plotArea: body.plotArea === null || body.plotArea === '' ? null : Number(body.plotArea),
+      }),
+
+      ...(body.isExactLocation !== undefined && {
+        isExactLocation: !!body.isExactLocation,
+      }),
+      ...(body.lat !== undefined && {
+        lat: body.lat === null || body.lat === '' ? null : Number(body.lat),
+      }),
+      ...(body.lng !== undefined && {
+        lng: body.lng === null || body.lng === '' ? null : Number(body.lng),
+      }),
+      ...(body.street !== undefined && {
+        street: body.street ? String(body.street).trim() : null,
+      }),
+      ...(body.buildingNumber !== undefined && {
+        buildingNumber: body.buildingNumber ? String(body.buildingNumber).trim() : null,
+      }),
+
       ...(body.status !== undefined && {
         status: mapStatus(body.status)
       }),

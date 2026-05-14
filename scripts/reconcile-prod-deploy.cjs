@@ -27,12 +27,20 @@ const skipE2e = ['1', 'true', 'yes'].includes(
   String(process.env.DEPLOY_SKIP_VERIFY_E2E || '').trim().toLowerCase()
 );
 
-const sqlFile = path.join(root, 'docs/reconciliation/sql/add_agent_commission_percent.sql');
+const sqlAgentCommissionFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_agent_commission_percent.sql'
+);
+const sqlLegalVerificationFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_legal_verification_request.sql'
+);
 
 const summary = {
   rollbackSha: null,
   headAfterPull: null,
-  sql: null,
+  sqlAgentCommission: null,
+  sqlLegalVerification: null,
   check: null,
   verifyE2e: null,
   releaseShip: null,
@@ -136,14 +144,24 @@ function main() {
     summary.verifyE2e = 'SKIP';
   }
 
-  console.log('[deploy:recon] SQL prisma db execute');
-  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlFile]);
-  if (r.ok) summary.sql = 'APPLIED';
-  else if (sqlDuplicateColumn(r.out)) summary.sql = 'SKIP_DUPLICATE';
+  console.log('[deploy:recon] SQL prisma db execute (agent commission)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlAgentCommissionFile]);
+  if (r.ok) summary.sqlAgentCommission = 'APPLIED';
+  else if (sqlDuplicateColumn(r.out)) summary.sqlAgentCommission = 'SKIP_DUPLICATE';
   else {
-    summary.sql = 'FAIL';
+    summary.sqlAgentCommission = 'FAIL';
     summary.error = r.out.slice(-4000);
-    throw new Error('sql');
+    throw new Error('sql:agentCommission');
+  }
+
+  console.log('[deploy:recon] SQL prisma db execute (legal verification table)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlLegalVerificationFile]);
+  if (r.ok) summary.sqlLegalVerification = 'APPLIED';
+  else if (sqlDuplicateColumn(r.out)) summary.sqlLegalVerification = 'SKIP_DUPLICATE';
+  else {
+    summary.sqlLegalVerification = 'FAIL';
+    summary.error = r.out.slice(-4000);
+    throw new Error('sql:legalVerification');
   }
 
   console.log('[deploy:recon] release:ship');
@@ -200,7 +218,8 @@ function printReport(ok) {
   console.log('prod URL (smoke):', base);
   console.log('SHA przed pull:', summary.rollbackSha);
   console.log('SHA po pull:', summary.headAfterPull);
-  console.log('SQL:', summary.sql);
+  console.log('SQL agentCommission:', summary.sqlAgentCommission);
+  console.log('SQL legalVerification:', summary.sqlLegalVerification);
   console.log('check:', summary.check);
   console.log('verify:recon:', summary.verifyE2e);
   console.log('release:ship:', summary.releaseShip);

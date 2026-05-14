@@ -3,7 +3,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Building2, SlidersHorizontal, MapPin, Maximize, Lock, Eye, CalendarDays, Handshake, MessageSquare, Home } from "lucide-react";
+import {
+  Building2,
+  SlidersHorizontal,
+  MapPin,
+  Maximize,
+  Lock,
+  Eye,
+  CalendarDays,
+  Handshake,
+  MessageSquare,
+  Home,
+  ChevronDown,
+  MapPinned,
+} from "lucide-react";
 import OffMarketModal from "@/components/OffMarketModal";
 import { AnimatePresence, motion } from "framer-motion";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
@@ -380,6 +393,13 @@ export default function InteractiveMap() {
 
   const showPlotAreaField = filterPropertyType === "HOUSE" || filterPropertyType === "PLOT";
 
+  const districtSummary =
+    selectedDistricts.length === 0
+      ? "Całe miasto"
+      : selectedDistricts.length === 1
+        ? selectedDistricts[0]!
+        : `${selectedDistricts.length} wybrane`;
+
   return (
     <div className="w-full bg-[#050505] py-7 sm:py-10 lg:py-12 relative">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 relative z-30 flex flex-col items-center">
@@ -397,151 +417,180 @@ export default function InteractiveMap() {
         </div>
 
 
-        {/* Wyszukiwarka — logika i katalog jak `/szukaj` + formularz ogłoszenia (enum Prisma) */}
-        <div className="z-50 w-full max-w-7xl px-4 sm:px-6 py-6 sm:py-7 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="bg-[#0a0a0a]/90 border border-white/10 rounded-[2rem] p-6">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                  <Home size={14} />
-                  Miasto
-                </label>
-                <select
-                  className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none"
-                  value={filterCity}
-                  onChange={(e) => {
-                    setFilterCity(e.target.value);
-                    setSelectedDistricts([]);
-                    setFilterPlotArea("");
-                  }}
-                >
-                  {citySelectOptions.map((c) => (
-                    <option key={c} className="bg-[#050505] text-white" value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+        {/* Filtry mapy — kompaktowa lista (iOS-like), dzielnice w poziomym scrollu */}
+        <div className="z-50 w-full max-w-xl sm:max-w-2xl lg:max-w-3xl rounded-2xl border border-white/10 bg-zinc-950/95 shadow-[0_16px_48px_rgba(0,0,0,0.45)] supports-[backdrop-filter]:bg-zinc-950/80 supports-[backdrop-filter]:backdrop-blur-xl">
+          <div className="divide-y divide-white/[0.06] px-1 sm:px-2">
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 active:bg-white/[0.04]">
+              <Home className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Miasto</span>
+                <div className="relative mt-0.5">
+                  <select
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    value={filterCity}
+                    onChange={(e) => {
+                      setFilterCity(e.target.value);
+                      setSelectedDistricts([]);
+                      setFilterPlotArea("");
+                    }}
+                  >
+                    {citySelectOptions.map((c) => (
+                      <option key={c} className="bg-zinc-900 text-white" value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-4 -translate-y-1/2 text-white/35" aria-hidden />
+                </div>
               </div>
+            </label>
 
-              <div className="bg-[#0a0a0a]/90 border border-white/10 rounded-[2rem] p-6">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                  <Building2 size={14} />
-                  Typ nieruchomości
-                </label>
-                <select
-                  className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none"
-                  value={filterPropertyType}
-                  onChange={(e) => {
-                    const v = e.target.value as typeof filterPropertyType;
-                    setFilterPropertyType(v);
-                    if (v !== "HOUSE" && v !== "PLOT") setFilterPlotArea("");
-                  }}
-                >
-                  <option className="bg-[#050505] text-white" value="ALL">
-                    Wszystkie typy
-                  </option>
-                  {MAP_PROPERTY_TYPES.map((t) => (
-                    <option key={t.id} className="bg-[#050505] text-white" value={t.id}>
-                      {t.label}
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 active:bg-white/[0.04]">
+              <Building2 className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Typ</span>
+                <div className="relative mt-0.5">
+                  <select
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    value={filterPropertyType}
+                    onChange={(e) => {
+                      const v = e.target.value as typeof filterPropertyType;
+                      setFilterPropertyType(v);
+                      if (v !== "HOUSE" && v !== "PLOT") setFilterPlotArea("");
+                    }}
+                  >
+                    <option className="bg-zinc-900 text-white" value="ALL">
+                      Wszystkie typy
                     </option>
-                  ))}
-                </select>
+                    {MAP_PROPERTY_TYPES.map((t) => (
+                      <option key={t.id} className="bg-zinc-900 text-white" value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-4 -translate-y-1/2 text-white/35" aria-hidden />
+                </div>
               </div>
+            </label>
 
-              <div className="md:col-span-2 bg-[#0a0a0a]/90 border border-white/10 rounded-[2rem] p-6">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-2 block">
-                  Dzielnice · {filterCity}
-                </label>
-                <p className="text-[9px] text-white/35 font-medium mb-4 leading-relaxed">
-                  Brak zaznaczenia = całe miasto. Zaznaczanie działa tak jak w formularzu „Kupujesz? Znajdziemy to.”
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {districtChoices.length === 0 ? (
-                    <span className="text-xs text-white/40 font-medium">Ładuję listę dzielnic…</span>
-                  ) : (
-                    districtChoices.map((d) => {
-                      const on = selectedDistricts.includes(d);
-                      return (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => toggleDistrict(d)}
-                          className={`px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
-                            on ? "eos-chip-on" : "eos-chip-off"
-                          }`}
-                        >
-                          {d}
-                        </button>
-                      );
-                    })
+            <label className="flex cursor-pointer items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 active:bg-white/[0.04]">
+              <SlidersHorizontal className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                  Cena{transactionMode === "rent" ? " / mc" : ""}
+                </span>
+                <div className="relative mt-0.5">
+                  <select
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    value={filterPriceBucket}
+                    onChange={(e) => setFilterPriceBucket(e.target.value)}
+                  >
+                    {priceBucketOptions.map((o) => (
+                      <option key={o.key} className="bg-zinc-900 text-white" value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-0 top-1/2 size-4 -translate-y-1/2 text-white/35" aria-hidden />
+                </div>
+              </div>
+            </label>
+
+            {showPlotAreaField && (
+              <motion.div
+                initial={{ opacity: 0.85, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.18 }}
+                className="flex items-start gap-3 px-3 py-3.5 sm:px-4 sm:py-4"
+              >
+                <Maximize className="mt-0.5 size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Min. pow. działki (m²)</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="np. 500"
+                    className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[16px] font-semibold text-white outline-none ring-emerald-500/40 placeholder:text-white/30 focus:border-emerald-500/50 focus:ring-2"
+                    value={filterPlotArea}
+                    onChange={(e) => setFilterPlotArea(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+              </motion.div>
+            )}
+
+            <div className="px-3 py-3 sm:px-4 sm:py-3.5">
+              <div className="flex items-start gap-3">
+                <MapPinned className="mt-0.5 size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Dzielnice</span>
+                    <span className="text-[12px] font-medium text-white/70">{districtSummary}</span>
+                  </div>
+                  <p className="mt-1 text-[12px] leading-relaxed text-white/40">
+                    Przesuń palcem — wybór jak w wyszukiwarce. Pusto = całe {filterCity}.
+                  </p>
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {districtChoices.length === 0 ? (
+                      <span className="text-[13px] text-white/45">Ładuję listę…</span>
+                    ) : (
+                      districtChoices.map((d) => {
+                        const on = selectedDistricts.includes(d);
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => toggleDistrict(d)}
+                            className={`shrink-0 snap-start rounded-full border px-3.5 py-2 text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${
+                              on
+                                ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100"
+                                : "border-white/12 bg-white/[0.04] text-white/85 hover:border-white/25 hover:bg-white/[0.07]"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  {selectedDistricts.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDistricts([])}
+                      className="mt-2 text-[12px] font-medium text-emerald-400/90 hover:text-emerald-300"
+                    >
+                      Wyczyść dzielnice
+                    </button>
                   )}
                 </div>
               </div>
-
-              <div className="bg-[#0a0a0a]/90 border border-white/10 rounded-[2rem] p-6">
-                <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                  <SlidersHorizontal size={14} />
-                  Zakres ceny{transactionMode === "rent" ? " (miesięcznie)" : ""}
-                </label>
-                <select
-                  className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none"
-                  value={filterPriceBucket}
-                  onChange={(e) => setFilterPriceBucket(e.target.value)}
-                >
-                  {priceBucketOptions.map((o) => (
-                    <option key={o.key} className="bg-[#050505] text-white" value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {showPlotAreaField && (
-                <motion.div
-                  initial={{ opacity: 0.8, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="bg-[#0a0a0a]/90 border border-white/10 rounded-[2rem] p-6 flex items-start gap-4"
-                >
-                  <Maximize className="text-emerald-500 shrink-0 mt-1" size={20} />
-                  <div className="w-full">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Minimalna pow. działki (m²)</p>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="np. 500"
-                      className="w-full bg-[#050505] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none placeholder:text-white/25"
-                      value={filterPlotArea}
-                      onChange={(e) => setFilterPlotArea(e.target.value.replace(/\D/g, ""))}
-                    />
-                  </div>
-                </motion.div>
-              )}
             </div>
+          </div>
 
-            <div className="flex justify-center lg:justify-end">
-              <button
-                type="button"
-                onClick={handleFocusMap}
-                className="group w-full lg:w-auto relative flex justify-center lg:justify-start items-center gap-3 bg-white/5 backdrop-blur-md border border-white/10 active:scale-95 px-6 py-4 rounded-full transition-all duration-500 overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.5)] cursor-pointer pointer-events-auto hover:bg-emerald-500/20 hover:border-emerald-500/80 hover:shadow-[0_0_40px_rgba(16,185,129,0.5)]"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
-                <MapPin size={18} className="text-emerald-500 group-hover:text-white transition-colors z-10 duration-300" />
-                <div className="flex flex-col items-start z-10 pointer-events-none">
-                  <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/60 group-hover:text-white transition-colors leading-none mb-1 duration-300">
+          <div className="border-t border-white/[0.06] p-3 sm:p-4">
+            <button
+              type="button"
+              onClick={handleFocusMap}
+              className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl border border-white/12 bg-white/[0.06] px-4 py-3.5 shadow-inner transition-[transform,background-color,border-color] active:scale-[0.99] hover:border-emerald-500/45 hover:bg-emerald-500/[0.12] sm:justify-between sm:px-5"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+              <div className="flex items-center gap-3">
+                <MapPin size={20} className="relative text-emerald-400 transition-colors group-hover:text-emerald-200" />
+                <div className="relative text-left">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50 group-hover:text-white/70">
                     Pokaż na mapie
                   </span>
-                  <span className="text-sm font-extrabold text-white transition-colors leading-none drop-shadow-md duration-300 group-hover:text-emerald-400">
+                  <span className="text-[15px] font-bold text-white">
                     {filteredOffers.length}{" "}
                     {filteredOffers.length === 1
-                      ? "Oferta"
+                      ? "oferta"
                       : filteredOffers.length > 1 && filteredOffers.length < 5
-                        ? "Oferty"
-                        : "Ofert"}
+                        ? "oferty"
+                        : "ofert"}
                   </span>
                 </div>
-              </button>
-            </div>
+              </div>
+              <ChevronDown className="relative hidden size-5 rotate-[-90deg] text-white/35 sm:block" aria-hidden />
+            </button>
           </div>
         </div>
 

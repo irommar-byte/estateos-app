@@ -1,13 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Users, Search, ShieldCheck, Trash2, X, ExternalLink, Mail, 
-  ChevronRight, Loader2, TrendingUp, Building2, Crown, Activity
+import {
+  Users,
+  Search,
+  ShieldCheck,
+  Trash2,
+  X,
+  ExternalLink,
+  Mail,
+  ChevronRight,
+  Loader2,
+  Building2,
+  Crown,
+  Activity,
 } from "lucide-react";
 import Link from "next/link";
 
-type TabType = 'BUYERS' | 'SELLERS' | 'AGENCIES';
+type TabType = "PRIVATE" | "AGENCIES" | "PARTNER";
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
@@ -33,10 +43,10 @@ export default function AdminUsers() {
                           (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase()));
     if (!matchesSearch) return false;
 
-    if (activeTab === 'AGENCIES') return u.isPro === true;
-    if (activeTab === 'SELLERS') return !u.isPro && u.offers && u.offers.length > 0;
-    if (activeTab === 'BUYERS') return !u.isPro && (!u.offers || u.offers.length === 0);
-    
+    if (activeTab === "PARTNER") return u.isPro === true;
+    if (activeTab === "AGENCIES") return String(u.planType || "") === "AGENCY" && !u.isPro;
+    if (activeTab === "PRIVATE") return !u.isPro && String(u.planType || "") !== "AGENCY";
+
     return true;
   });
 
@@ -90,10 +100,10 @@ export default function AdminUsers() {
     }
   };
 
-  const tabs = [
-    { id: 'BUYERS', label: 'Kupujący', icon: Users },
-    { id: 'SELLERS', label: 'Sprzedający', icon: TrendingUp },
-    { id: 'AGENCIES', label: 'Agencje (PRO)', icon: Building2 }
+  const tabs: { id: TabType; label: string; icon: typeof Users }[] = [
+    { id: "PRIVATE", label: "Prywatne", icon: Users },
+    { id: "AGENCIES", label: "Agencje", icon: Building2 },
+    { id: "PARTNER", label: "Partner", icon: Crown },
   ];
 
   return (
@@ -145,7 +155,13 @@ export default function AdminUsers() {
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="active-tab-pill"
-                  className={`absolute inset-0 rounded-full -z-10 ${tab.id === 'BUYERS' ? 'bg-white shadow-[0_0_15px_rgba(255,255,255,0.3)]' : tab.id === 'SELLERS' ? 'bg-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.4)]'}`}
+                  className={`absolute inset-0 rounded-full -z-10 ${
+                    tab.id === "PRIVATE"
+                      ? "bg-white shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                      : tab.id === "AGENCIES"
+                        ? "bg-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+                        : "bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.4)]"
+                  }`}
                   transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 />
               )}
@@ -171,7 +187,15 @@ export default function AdminUsers() {
                 className={`group p-6 rounded-[2rem] border transition-all duration-300 flex items-center justify-between cursor-pointer ${selectedUser?.id === u.id ? 'bg-white/10 border-white/20' : 'bg-[#0a0a0a] border-white/5 hover:border-white/10'}`}
               >
                 <div className="flex items-center gap-6">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${u.isPro ? 'bg-orange-500/20 text-orange-500' : activeTab === 'SELLERS' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-white/5 text-white/40'}`}>
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${
+                      u.isPro
+                        ? "bg-orange-500/20 text-orange-500"
+                        : String(u.planType || "") === "AGENCY"
+                          ? "bg-emerald-500/20 text-emerald-500"
+                          : "bg-white/5 text-white/40"
+                    }`}
+                  >
                     {u.name ? u.name[0] : u.email[0].toUpperCase()}
                   </div>
                   <div>

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, LogOut, Menu, X, Home, Building2, PlusCircle, Shield, LogIn, Search, Crown, ChevronUp } from "lucide-react";
+import { User, LogOut, Menu, X, Home, Building2, Shield, LogIn, Crown } from "lucide-react";
 import NotificationCenter from "@/components/NotificationCenter";
 import ReviewPrompt from "@/components/ReviewPrompt";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
@@ -11,16 +11,13 @@ import { useUserMode } from "@/contexts/UserModeContext";
 export default function Navbar() {
   const [user, setUser] = useState<any>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const { initModeFromUser } = useUserMode();
 
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    setIsOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     fetch('/api/user/profile')
@@ -60,9 +57,9 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-black/60 font-sans backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
+    <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/95 font-sans backdrop-blur-xl supports-[backdrop-filter]:bg-black/70 supports-[backdrop-filter]:backdrop-blur-2xl [@media(prefers-reduced-transparency:reduce)]:bg-zinc-950 [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none [padding-top:env(safe-area-inset-top)]">
       <div
-        className="mx-auto flex h-24 max-w-[1400px] items-start justify-between px-3 pt-2 sm:h-20 sm:items-center sm:pt-0 md:px-6"
+        className="relative z-[100] mx-auto flex h-24 max-w-[1400px] items-start justify-between px-3 pt-2 sm:h-20 sm:items-center sm:pt-0 md:px-6"
         style={{
           paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
           paddingRight: "max(0.75rem, env(safe-area-inset-right))",
@@ -92,7 +89,10 @@ export default function Navbar() {
 
         {/* CENTRALNY PRZEŁĄCZNIK – TYLKO DLA ZALOGOWANYCH */}
         {user && (
-          <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center z-[12] top-9 sm:top-1 md:top-2">
+          <div
+            className={`absolute left-1/2 top-9 z-[12] flex max-lg:w-full max-lg:justify-center -translate-x-1/2 flex-col items-center sm:top-1 md:top-2 ${isOpen ? 'max-lg:pointer-events-none max-lg:opacity-0' : ''}`}
+            aria-hidden={isOpen ? true : undefined}
+          >
             <PremiumModeToggle currentUser={user} />
           </div>
         )}
@@ -132,27 +132,99 @@ export default function Navbar() {
       {/* MENU MOBILNE */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div initial={{ opacity: 0, height: 0, y: -20 }} animate={{ opacity: 1, height: 'auto', y: 0 }} exit={{ opacity: 0, height: 0, y: -20 }} className="lg:hidden overflow-hidden border-b border-white/10 bg-[#0a0a0a] shadow-2xl">
-            <div className="flex flex-col gap-8 p-6">
-              <div className="space-y-6 px-2 mt-4">
-                <button onClick={() => handleNavClick('/', true)} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-gray-300 hover:text-white transition-all"><Home size={18} className="text-gray-600"/> Odkryj Mapę</button>
-                <button onClick={() => handleNavClick('/oferty')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-gray-300 hover:text-white transition-all"><Building2 size={18} className="text-gray-600"/> Rynek Nieruchomości</button>
-                <button onClick={() => handleNavClick('/cennik')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-[#D4AF37] hover:text-[#FFF0AA]"><Crown size={18}/> EstateOS™ Elite</button>
+          <>
+            <motion.button
+              key="mobile-nav-backdrop"
+              type="button"
+              aria-label="Zamknij menu"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+6rem)] z-30 bg-black/55 backdrop-blur-[2px] supports-[backdrop-filter]:backdrop-blur-sm lg:hidden [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none sm:top-[calc(env(safe-area-inset-top)+5.25rem)]"
+              onClick={() => setIsOpen(false)}
+            />
+            <motion.div
+              key="mobile-nav-panel"
+              initial={{ opacity: 0, height: 0, y: -12 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -12 }}
+              className="relative z-40 lg:hidden overflow-hidden border-b border-white/10 bg-zinc-950 shadow-2xl"
+            >
+              <div className="flex flex-col gap-8 p-6 pb-10">
+                <div className="mt-2 space-y-5 px-1">
+                  <button
+                    type="button"
+                    onClick={() => handleNavClick('/', true)}
+                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5 active:bg-white/10"
+                  >
+                    <Home size={20} className="shrink-0 text-emerald-400" aria-hidden />
+                    Odkryj Mapę
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNavClick('/oferty')}
+                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5 active:bg-white/10"
+                  >
+                    <Building2 size={20} className="shrink-0 text-emerald-400" aria-hidden />
+                    Rynek Nieruchomości
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleNavClick('/cennik')}
+                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-amber-200 transition-colors hover:bg-amber-500/10 active:bg-amber-500/15"
+                  >
+                    <Crown size={20} className="shrink-0 text-amber-300" aria-hidden />
+                    EstateOS™ Elite
+                  </button>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="space-y-3 px-1">
+                  {user ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleNavClick('/moje-konto')}
+                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5"
+                      >
+                        <User size={20} className="shrink-0 text-zinc-300" aria-hidden />
+                        Profil
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNavClick(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')}
+                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-emerald-300 transition-colors hover:bg-emerald-500/10"
+                      >
+                        <Shield size={20} className="shrink-0 text-emerald-400" aria-hidden />
+                        {user.role === 'ADMIN' ? 'Zarządzaj (Centrala)' : 'Zarządzaj Kontem'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleLogout();
+                          setIsOpen(false);
+                        }}
+                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-red-300 transition-colors hover:bg-red-500/10"
+                      >
+                        <LogOut size={20} className="shrink-0 text-red-400" aria-hidden />
+                        Wyloguj
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('/login')}
+                      style={{ backgroundColor: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}
+                      className="flex w-full items-center gap-4 rounded-2xl p-4 text-left text-xs font-black uppercase tracking-[0.2em] text-emerald-400"
+                    >
+                      <User size={20} className="shrink-0" aria-hidden />
+                      Zaloguj do Systemu
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="h-[1px] bg-white/5" />
-              <div className="space-y-6 px-2">
-                {user ? (
-                  <>
-                    <button onClick={() => handleNavClick('/moje-konto')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-white/80 hover:text-white transition-colors"><User size={18} className="text-gray-600" /> Profil</button>
-                    <button onClick={() => handleNavClick(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-emerald-400"><Shield size={18} /> {user.role === 'ADMIN' ? 'Zarządzaj (Centrala)' : 'Zarządzaj Kontem'}</button>
-                    <button onClick={() => { handleLogout(); setIsOpen(false); }} className="w-full text-left flex items-center gap-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-red-400/80"><LogOut size={18} /> Wyloguj</button>
-                  </>
-                ) : (
-                  <button onClick={() => handleNavClick('/login')} style={{ backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)" }} className="flex items-center gap-4 text-xs font-black uppercase tracking-[0.2em] text-emerald-500 w-full text-left p-4 rounded-2xl"><User size={18} /> Zaloguj do Systemu</button>
-                )}
-              </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
       <ReviewPrompt />

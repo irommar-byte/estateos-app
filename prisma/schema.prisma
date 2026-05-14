@@ -65,6 +65,25 @@ model User {
   calendarNotes      CalendarNote[]
   discoveryEvents    DiscoveryEvent[]
   discoveryProfile   DiscoveryProfile?
+  legalVerificationRequests LegalVerificationRequest[]
+}
+
+model LegalVerificationRequest {
+  id                 Int      @id @default(autoincrement())
+  offerId            Int
+  requesterId        Int
+  status             String   @default("PENDING") @db.VarChar(24)
+  landRegistryNumber String   @db.VarChar(128)
+  apartmentNumber    String?  @db.VarChar(64)
+  note               String?  @db.Text
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  offer     Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  requester User  @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([offerId])
 }
 
 model Alert {
@@ -167,6 +186,7 @@ model Offer {
   userId          Int
   deals           Deal[]
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legalVerificationRequests LegalVerificationRequest[]
 
   @@index([userId], map: "Offer_userId_fkey")
 }

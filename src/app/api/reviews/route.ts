@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     }
     const senderIdNumber = Number(senderId);
     if (Number.isFinite(senderIdNumber) && senderIdNumber > 0 && senderIdNumber !== Number(reviewerId)) {
-      return NextResponse.json({ error: 'Brak uprawnień' }, { status: 403 });
+      console.warn('[REVIEWS] Ignoruję body.senderId !== auth: klient wysłał', senderIdNumber, 'JWT/cookies:', reviewerId);
     }
 
     const reviewRecord = await submitDealReview({
@@ -39,7 +39,8 @@ export async function POST(req: Request) {
     if (message === 'REVIEW_ALREADY_EXISTS') return NextResponse.json({ error: 'Opinia już istnieje' }, { status: 409 });
     if (message === 'INVALID_REVIEW_PAYLOAD') return NextResponse.json({ error: 'Nieprawidłowe dane opinii' }, { status: 400 });
     if (message === 'DEAL_NOT_FOUND') return NextResponse.json({ error: 'Transakcja nie istnieje' }, { status: 404 });
-    if (message === 'DEAL_PARTICIPANT_REQUIRED' || message === 'SELF_REVIEW_FORBIDDEN') return NextResponse.json({ error: 'Brak uprawnień' }, { status: 403 });
+    if (message === 'DEAL_PARTICIPANT_REQUIRED') return NextResponse.json({ error: 'Nie jesteś stroną tej transakcji' }, { status: 403 });
+    if (message === 'SELF_REVIEW_FORBIDDEN') return NextResponse.json({ error: 'Nie możesz ocenić samego siebie' }, { status: 403 });
     return NextResponse.json({ error: 'Błąd' }, { status: 500 });
   }
 }
