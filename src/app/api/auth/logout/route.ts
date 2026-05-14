@@ -1,20 +1,26 @@
 import { NextResponse } from 'next/server';
 
 export async function POST() {
-  // 1. Tworzymy obiekt odpowiedzi jako pierwszy
-  const response = NextResponse.json({ success: true, message: "Bezpieczne wylogowanie" });
+  const response = NextResponse.json({ success: true, loggedOut: true, message: 'Wylogowano' });
 
-  // 2. Lista wszystkich Twoich tajnych certyfikatów i tokenów
-  const cookiesToKill = ['estateos_session', 'luxestate_user', 'deal_token', 'token', 'next-auth.session-token'];
+  const cookiesToKill = [
+    'estateos_session',
+    'luxestate_user',
+    'deal_token',
+    'token',
+    'next-auth.session-token',
+    '__Secure-next-auth.session-token',
+    'next-auth.csrf-token',
+    '__Host-next-auth.csrf-token',
+  ];
 
-  // 3. Twarde nadpisanie bezpośrednio w nagłówku odpowiedzi HTTP
-  cookiesToKill.forEach(name => {
+  cookiesToKill.forEach((name) => {
     response.cookies.set(name, '', {
-      httpOnly: true,
+      httpOnly: !name.includes('deal_token') && !name.includes('csrf'),
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 0 // 0 = natychmiastowa śmierć ciastka w przeglądarce
+      maxAge: 0,
     });
   });
 

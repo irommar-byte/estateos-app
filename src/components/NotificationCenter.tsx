@@ -76,10 +76,6 @@ export default function NotificationCenter() {
     }
     setIsOpen(false);
     if (notif.link) {
-      if (notif.link.includes('/moje-konto/crm?tab=transakcje&dealId=')) {
-        window.location.href = notif.link;
-        return;
-      }
       router.push(notif.link);
       return;
     }
@@ -114,7 +110,7 @@ export default function NotificationCenter() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Powiadomienia"
-        className="relative rounded-xl border border-white/10 bg-black/35 p-2.5 text-white/75 transition-colors hover:text-white"
+        className="relative rounded-xl border border-white/10 bg-black/35 p-2.5 text-white/75 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
       >
         <Bell size={22} className={unreadCount > 0 ? 'animate-[wiggle_3s_ease-in-out_infinite]' : ''} />
         {unreadCount > 0 && (
@@ -136,7 +132,7 @@ export default function NotificationCenter() {
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white flex items-center gap-2">
                 Powiadomienia {unreadCount > 0 && <span className="bg-red-500/20 text-red-500 px-2 py-0.5 rounded-full text-[9px]">{unreadCount} Nowe</span>}
               </h3>
-              <button onClick={() => setIsOpen(false)} className="text-white/30 hover:text-white transition-colors"><X size={16} /></button>
+              <button onClick={() => setIsOpen(false)} className="text-white/30 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 rounded-md"><X size={16} /></button>
             </div>
 
             <div className="max-h-[400px] overflow-y-auto custom-scrollbar bg-[#0a0a0a]">
@@ -147,10 +143,11 @@ export default function NotificationCenter() {
                   {groupedNotifications.map((notif) => {
                     const style = getIconAndColor(notif.title, notif.type);
                     return (
-                      <div 
+                      <button
+                        type="button"
                         key={notif.id} 
                         onClick={() => handleNotificationClick(notif)}
-                        className={`p-5 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors relative group ${!notif.isRead ? 'bg-[#111]' : ''}`}
+                        className={`w-full text-left p-5 border-b border-white/5 cursor-pointer hover:bg-white/5 transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 ${!notif.isRead ? 'bg-[#111]' : ''}`}
                       >
                         {!notif.isRead && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_10px_#10b981]"></div>}
                         <div className="flex gap-4">
@@ -180,14 +177,14 @@ export default function NotificationCenter() {
                             </div>
                           )}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
               )}
             </div>
             <div className="p-3 bg-[#050505] border-t border-white/5 text-center">
-               <button onClick={handleMarkAllAsRead} className="text-[9px] font-black uppercase tracking-widest text-white/30 hover:text-white transition-colors">Oznacz wszystkie jako przeczytane</button>
+               <button onClick={handleMarkAllAsRead} className="text-[9px] font-black uppercase tracking-widest text-white/30 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 rounded-md px-2 py-1">Oznacz wszystkie jako przeczytane</button>
             </div>
           </motion.div>
         )}

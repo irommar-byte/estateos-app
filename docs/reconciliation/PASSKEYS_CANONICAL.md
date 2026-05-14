@@ -14,7 +14,7 @@ Aplikacja używa prefiksu:
 | POST | `/api/passkey/register/finish` | Body: `userId`, `credential` |
 | POST | `/api/passkey/login/start` | Opcjonalnie body z `email` |
 | POST | `/api/passkey/login/finish` | Body: assertion + `sessionId` |
-| POST | `/api/passkey/revoke` (+ fallbacki w kliencie) | Bearer |
+| POST | `/api/passkey/revoke` (+ fallbacki w kliencie) | Bearer; pusty body = usuń **wszystkie** klucze użytkownika. Pojedynczy klucz tylko gdy body ma `credentialId` / `rawId` / `id` (nie z JWT). |
 
 ## Duplikaty po stronie backendu (nie zmieniać zachowania bez staging E2E)
 

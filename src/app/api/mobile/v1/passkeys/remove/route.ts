@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 function parseUserIdFromBearer(req: Request): number | null {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization');
@@ -30,25 +31,54 @@ async function removePasskeys(req: Request) {
         : '';
 
   if (credentialId) {
-    const deleted = await prisma.authenticator.deleteMany({
+    let deleted = await prisma.authenticator.deleteMany({
       where: {
         userId,
-        providerAccountId: 'passkey',
         credentialID: credentialId,
       },
     });
+    if (deleted.count === 0) {
+      try {
+        const normalized = normalizeCredentialIdToBase64URL(credentialId);
+        if (normalized !== credentialId) {
+          deleted = await prisma.authenticator.deleteMany({
+            where: {
+              userId,
+              credentialID: normalized,
+            },
+          });
+        }
+      } catch {
+        // ignore: malformed credential id
+      }
+    }
+    if (deleted.count === 0) {
+      return NextResponse.json(
+        { success: false, message: 'Nie znaleziono klucza dla tego urządzenia' },
+        { status: 404 }
+      );
+    }
     return NextResponse.json(
-      { success: true, deletedCount: deleted.count },
+      { success: true, deletedCount: deleted.count, hasPasskey: false },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   }
 
+  /** Wszystkie wpisy WebAuthn użytkownika (WWW używa `passkey`, legacy `/api/passkey/register/finish` — `passkey_*`). */
   const deleted = await prisma.authenticator.deleteMany({
-    where: { userId, providerAccountId: 'passkey' },
+    where: { userId },
   });
 
   return NextResponse.json(
-    { success: true, deletedCount: deleted.count },
+    {
+      success: true,
+      deletedCount: deleted.count,
+      hasPasskey: false,
+      message:
+        deleted.count > 0
+          ? 'Wszystkie klucze Passkey zostały usunięte.'
+          : 'Brak aktywnych kluczy Passkey do usunięcia.',
+    },
     { headers: { 'Cache-Control': 'no-store' } }
   );
 }
@@ -57,17 +87,17 @@ async function removePasskeys(req: Request) {
 export async function POST(req: Request) {
   try {
     return await removePasskeys(req);
-  } catch (e: any) {
-    console.error('[MOBILE PASSKEY REMOVE]', e);
-    return NextResponse.json({ success: false, message: e?.message || 'Błąd serwera' }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
 export async function DELETE(req: Request) {
   try {
     return await removePasskeys(req);
-  } catch (e: any) {
-    console.error('[MOBILE PASSKEY REMOVE]', e);
-    return NextResponse.json({ success: false, message: e?.message || 'Błąd serwera' }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

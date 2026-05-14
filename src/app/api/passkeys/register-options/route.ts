@@ -3,11 +3,15 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
+import { getPasskeyRpId } from '@/lib/env.server';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function GET() {
     try {
         const cookieStore = await cookies();
-        const sessionCookie = cookieStore.get('estateos_session')?.value;
+        const sessionCookie =
+          cookieStore.get('estateos_session')?.value ||
+          cookieStore.get('luxestate_user')?.value;
         if (!sessionCookie) return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
         
         const session = decryptSession(sessionCookie);
@@ -18,17 +22,19 @@ export async function GET() {
 
         const authenticators = await prisma.authenticator.findMany({ where: { userId: user.id } });
 
+        const excludeCredentials = authenticators.map((auth) => ({
+            id: normalizeCredentialIdToBase64URL(auth.credentialID),
+            type: 'public-key' as const,
+        }));
+
         // Parametry dla Face ID / Touch ID
         const options = await generateRegistrationOptions({
             rpName: 'EstateOS',
-            rpID: process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost',
+            rpID: getPasskeyRpId(),
             userID: new Uint8Array(Buffer.from(user.id.toString())),
             userName: user.email,
             attestationType: 'none',
-            excludeCredentials: authenticators.map(auth => ({
-                id: auth.credentialID,
-                type: 'public-key',
-            })),
+            excludeCredentials,
             authenticatorSelection: {
                 residentKey: 'required',
                 userVerification: 'preferred',

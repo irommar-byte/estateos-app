@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { activeChallenges, origin, rpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
+import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -58,13 +59,7 @@ export async function POST(req: Request) {
       return rateLimitResponse(userBucket.retryAfterSeconds);
     }
 
-    let publicKeyBytes: Uint8Array<ArrayBuffer>;
-    try {
-      const bufUrl = Buffer.from(authRecord.credentialPublicKey, 'base64url');
-      publicKeyBytes = new Uint8Array(bufUrl.byteLength ? bufUrl : Buffer.from(authRecord.credentialPublicKey, 'base64')) as Uint8Array<ArrayBuffer>;
-    } catch {
-      publicKeyBytes = new Uint8Array(Buffer.from(authRecord.credentialPublicKey, 'base64')) as Uint8Array<ArrayBuffer>;
-    }
+    const publicKeyBytes = credentialPublicKeyToUint8Array(authRecord.credentialPublicKey);
 
     const verification = await verifyAuthenticationResponse({
       response: assertion,

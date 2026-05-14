@@ -3,19 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from '@/lib/prisma';
 import { getWebFormData } from '@/lib/requestFormData';
-import { verifyMobileToken } from '@/lib/jwtMobile';
-
-function parseBearerUserId(req: Request): number | null {
-  const auth = req.headers.get('authorization') || req.headers.get('Authorization');
-  const raw = String(auth || '').trim();
-  if (!raw.startsWith('Bearer ')) return null;
-  const token = raw.slice('Bearer '.length).trim();
-  if (!token) return null;
-  const payload = verifyMobileToken(token) as Record<string, unknown> | null;
-  if (!payload) return null;
-  const id = Number(payload.id ?? payload.userId ?? payload.sub);
-  return Number.isFinite(id) && id > 0 ? id : null;
-}
+import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
 
 function decodeBase64ImagePayload(raw: string): Buffer {
   let b64 = String(raw || '').trim();
@@ -32,20 +20,20 @@ export async function POST(req: Request) {
   const contentType = (req.headers.get('content-type') || '').toLowerCase();
 
   try {
-    if (contentType.includes('application/json')) {
-      const authUserId = parseBearerUserId(req);
-      if (!authUserId) {
-        return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
-      }
+    const authenticatedUserId = await resolveUploaderUserId(req);
+    if (!authenticatedUserId) {
+      return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
+    }
 
+    if (contentType.includes('application/json')) {
       const body = await req.json();
       const userId = Number(body?.userId);
       const image = String(body?.image || '');
-      if (!Number.isFinite(userId) || userId <= 0 || userId !== authUserId) {
-        return NextResponse.json({ error: 'Błędny użytkownik' }, { status: 403 });
+      if (!Number.isFinite(userId) || userId <= 0 || userId !== authenticatedUserId) {
+        return NextResponse.json({ success: false, error: 'Brak uprawnień do edycji avatara' }, { status: 403 });
       }
       if (!image) {
-        return NextResponse.json({ error: 'Brak obrazu' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Brak obrazu' }, { status: 400 });
       }
 
       const buffer = decodeBase64ImagePayload(image);
@@ -69,10 +57,14 @@ export async function POST(req: Request) {
 
     const formData = await getWebFormData(req);
     const file = formData.get('file') as File;
-    const userId = formData.get('userId') as string;
+    const userIdRaw = String(formData.get('userId') || '');
+    const userId = Number(userIdRaw);
 
-    if (!file || !userId) {
-      return NextResponse.json({ error: 'Brak pliku lub ID usera' }, { status: 400 });
+    if (!file || !Number.isFinite(userId) || userId <= 0) {
+      return NextResponse.json({ success: false, error: 'Brak pliku lub poprawnego ID użytkownika' }, { status: 400 });
+    }
+    if (userId !== authenticatedUserId) {
+      return NextResponse.json({ success: false, error: 'Brak uprawnień do edycji avatara' }, { status: 403 });
     }
 
     const bytes = await file.arrayBuffer();
@@ -81,7 +73,7 @@ export async function POST(req: Request) {
     const uploadDir = `/home/rommar/uploads/avatars`;
     fs.mkdirSync(uploadDir, { recursive: true });
 
-    const fileName = `${userId}-${Date.now()}.jpg`;
+    const fileName = `${authenticatedUserId}-${Date.now()}.jpg`;
     const filePath = path.join(uploadDir, fileName);
 
     fs.writeFileSync(filePath, buffer);
@@ -89,14 +81,13 @@ export async function POST(req: Request) {
     const publicUrl = `/uploads/avatars/${fileName}`;
 
     await prisma.user.update({
-      where: { id: Number(userId) },
+      where: { id: authenticatedUserId },
       data: { image: publicUrl },
     });
 
     return NextResponse.json({ success: true, url: publicUrl });
   } catch (e: unknown) {
-    console.error(e);
     const msg = e instanceof Error ? e.message : 'Upload awatara nie powiódł się';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

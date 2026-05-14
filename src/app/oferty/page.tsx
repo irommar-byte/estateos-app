@@ -61,7 +61,7 @@ function formatAreaLabel(offer: CatalogOffer): string {
 
 function formatLocationLabel(offer: CatalogOffer): string {
   const parts = [offer.district, offer.city].map((p) => String(p || "").trim()).filter(Boolean);
-  return parts.length ? parts.join(" · ") : "Warszawa i okolice";
+  return parts.length ? parts.join(" · ") : "Polska";
 }
 
 export default function CatalogPage() {

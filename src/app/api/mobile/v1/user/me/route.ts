@@ -165,15 +165,21 @@ export async function GET(req: Request) {
   const auth = await authorize(req);
   if (!auth.ok) return auth.response;
 
-  const user = await prisma.user.findUnique({
-    where: { id: auth.userId },
-    select: PROFILE_SELECT,
-  });
+  const [user, passkeyCount] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: PROFILE_SELECT,
+    }),
+    prisma.authenticator.count({ where: { userId: auth.userId } }),
+  ]);
   if (!user) {
     return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true, user: shapeProfileResponse(user) });
+  return NextResponse.json({
+    success: true,
+    user: { ...shapeProfileResponse(user), hasPasskey: passkeyCount > 0 },
+  });
 }
 
 function sanitizeString(value: unknown, max = 120): string | null | undefined {
@@ -222,6 +228,21 @@ export async function PATCH(req: Request) {
 
     const data: Prisma.UserUpdateInput = {};
 
+    const requestedEmail = sanitizeString(body.email, 320);
+    if (
+      requestedEmail !== undefined &&
+      requestedEmail !== null &&
+      requestedEmail.toLowerCase() !== String(current.email || '').toLowerCase()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Zmiana email wymaga weryfikacji kodem. Użyj endpointu zmiany email.',
+        },
+        { status: 409 }
+      );
+    }
+
     let nextName = sanitizeString(body.name, 120);
 
     if (nextName === undefined) {
@@ -257,7 +278,11 @@ export async function PATCH(req: Request) {
     if (companyName !== undefined) data.companyName = companyName;
 
     if (Object.keys(data).length === 0) {
-      return NextResponse.json({ success: true, user: shapeProfileResponse(current) });
+      const passkeyCount = await prisma.authenticator.count({ where: { userId: auth.userId } });
+      return NextResponse.json({
+        success: true,
+        user: { ...shapeProfileResponse(current), hasPasskey: passkeyCount > 0 },
+      });
     }
 
     try {
@@ -266,13 +291,17 @@ export async function PATCH(req: Request) {
         data,
         select: PROFILE_SELECT,
       });
+      const passkeyCount = await prisma.authenticator.count({ where: { userId: auth.userId } });
 
       logEvent('info', 'profile_updated_mobile', 'mobile_profile_edit', {
         userId: auth.userId,
         fields: Object.keys(data),
       });
 
-      return NextResponse.json({ success: true, user: shapeProfileResponse(updated) });
+      return NextResponse.json({
+        success: true,
+        user: { ...shapeProfileResponse(updated), hasPasskey: passkeyCount > 0 },
+      });
     } catch (e: unknown) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         const target = Array.isArray(e.meta?.target) ? (e.meta?.target as string[]).join(',') : String(e.meta?.target || '');

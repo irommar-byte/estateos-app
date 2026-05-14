@@ -11,9 +11,9 @@ import { UserModeProvider } from "@/contexts/UserModeContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "EstateOS | Ekskluzywne Nieruchomości w Warszawie",
-  description: "Odkryj luksusowe apartamenty, wille i penthouse'y. Innowacyjna mapa 3D i oferty bezpośrednio od właścicieli.",
-  keywords: ["nieruchomości warszawa", "luksusowe apartamenty", "estateos", "mapa nieruchomości"],
+  title: "EstateOS | Nieruchomości premium w całej Polsce",
+  description: "Odkryj apartamenty, domy i lokale premium. Innowacyjna mapa 3D i oferty bezpośrednio od właścicieli.",
+  keywords: ["nieruchomości premium", "apartamenty", "estateos", "mapa nieruchomości"],
 };
 
 export default function RootLayout({

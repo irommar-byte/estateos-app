@@ -26,7 +26,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN." }, { status: 500 });
   }
 
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&country=pl&limit=1`;
+  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&types=address,place,locality,neighborhood`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -44,6 +44,7 @@ export async function GET(req: Request) {
       getContextText(context, "locality");
     const streetRaw = String(feature?.text || "").trim();
     const numberRaw = String(feature?.address || "").trim();
+    const primaryAddressLabel = String(feature?.place_name || "").split(',')[0]?.trim();
 
     const city = canonicalizeCity(cityRaw);
     const inferredDistrict = inferStrictDistrictFromMapboxFeature(city, feature);
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
     const district = canonicalizeDistrict(city, districtMerged);
     const strictCity = isStrictCity(city);
     const validation = validateCityDistrict(city, district);
-    const street = numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw;
+    const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || '';
 
     return NextResponse.json({
       city,

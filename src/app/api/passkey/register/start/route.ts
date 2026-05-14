@@ -6,6 +6,7 @@ import { activeChallenges, rpName, rpID } from '../../store';
 import jwt from 'jsonwebtoken';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { prisma } from '@/lib/prisma';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function POST(req: Request) {
   try {
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
       timeout: 60000,
       attestationType: 'none',
       excludeCredentials: authenticators.map((a) => ({
-        id: a.credentialID,
+        id: normalizeCredentialIdToBase64URL(a.credentialID),
         type: 'public-key' as const,
       })),
       authenticatorSelection: {

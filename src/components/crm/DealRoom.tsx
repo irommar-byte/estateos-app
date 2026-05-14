@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, ShieldCheck, Lock, Check, CheckCheck, Loader2, Building2, Paperclip, X } from 'lucide-react';
+import { Send, ShieldCheck, Lock, Check, CheckCheck, Loader2, Building2, Paperclip, X, ChevronDown } from 'lucide-react';
 import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
@@ -49,6 +49,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isActionPanelOpen, setIsActionPanelOpen] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [bidActionModal, setBidActionModal] = useState<{ bidId: number; action: 'ACCEPT' | 'REJECT' | 'COUNTER' } | null>(null);
   const [appointmentActionModal, setAppointmentActionModal] = useState<{ appointmentId: number; action: 'ACCEPT' | 'DECLINE' | 'RESCHEDULE' } | null>(null);
@@ -365,17 +366,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             <ShieldCheck size={12} className="text-emerald-500" />
             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500">Szyfrowanie E2E</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalizationReady ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
-              finalization-ready: {isFinalizationReady ? 'yes' : 'no'}
-            </span>
-            <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalized ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
-              finalized: {isFinalized ? 'yes' : 'no'}
-            </span>
-            <span className="px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border bg-white/5 border-white/15 text-white/50">
-              acceptedBidId: {deal?.acceptedBidId ?? 'null'}
-            </span>
-          </div>
+          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalized ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : isFinalizationReady ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
+            {isFinalized ? 'Transakcja zamknięta' : isFinalizationReady ? 'Gotowe do finalizacji' : 'Negocjacje aktywne'}
+          </span>
         </div>
       </div>
 
@@ -393,27 +386,51 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
         )}
 
         {!isFinalized && (actionableBids.length > 0 || actionableAppointments.length > 0) && (
-          <div className="space-y-4">
-            {actionableBids.map((bid: any) => (
-              <div key={`action-bid-${bid.id}`} className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
-                <p className="text-[10px] uppercase tracking-widest font-black text-amber-300 mb-2">Oferta ceny od {bid.sender?.name || 'użytkownika'}: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
-                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'COUNTER' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
-                  <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'REJECT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
-                </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <button
+              type="button"
+              onClick={() => setIsActionPanelOpen((prev) => !prev)}
+              className="w-full flex items-center justify-between gap-4 rounded-xl px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            >
+              <div className="text-left">
+                <p className="text-[10px] uppercase tracking-widest font-black text-white/50">Centrum negocjacji</p>
+                <p className="text-sm text-white/85">
+                  Oczekujące decyzje: {actionableBids.length + actionableAppointments.length}
+                </p>
               </div>
-            ))}
-            {actionableAppointments.map((app: any) => (
-              <div key={`action-app-${app.id}`} className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4">
-                <p className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-2">Propozycja terminu od {app.proposedBy?.name || 'użytkownika'}: {new Date(app.proposedDate).toLocaleString('pl-PL')}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest">Akceptuj</button>
-                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'RESCHEDULE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest">Kontroferta</button>
-                  <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'DECLINE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest">Odrzuć</button>
-                </div>
+              <ChevronDown
+                size={16}
+                className={`text-white/60 transition-transform ${isActionPanelOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {isActionPanelOpen && (
+              <div className="mt-4 space-y-3">
+                {actionableBids.map((bid: any) => (
+                  <div key={`action-bid-${bid.id}`} className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3">
+                    <p className="text-[10px] uppercase tracking-widest font-black text-amber-300 mb-2">
+                      Cena od {bid.sender?.name || 'użytkownika'}: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">Akceptuj</button>
+                      <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'COUNTER' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest hover:bg-blue-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">Kontroferta</button>
+                      <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'REJECT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">Odrzuć</button>
+                    </div>
+                  </div>
+                ))}
+                {actionableAppointments.map((app: any) => (
+                  <div key={`action-app-${app.id}`} className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3">
+                    <p className="text-[10px] uppercase tracking-widest font-black text-blue-300 mb-2">
+                      Termin od {app.proposedBy?.name || 'użytkownika'}: {new Date(app.proposedDate).toLocaleString('pl-PL')}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300">Akceptuj</button>
+                      <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'RESCHEDULE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest hover:bg-blue-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">Kontroferta</button>
+                      <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'DECLINE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">Odrzuć</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         )}
 
@@ -594,7 +611,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <button
             type="submit"
             disabled={(!inputText.trim() && !pendingFile) || isSending}
-            className="w-10 h-10 shrink-0 bg-gradient-to-b from-emerald-400 to-emerald-600 rounded-[1.2rem] flex items-center justify-center text-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:grayscale transition-all duration-300 shadow-[0_5px_15px_rgba(16,185,129,0.4)] cursor-pointer"
+            className="w-10 h-10 shrink-0 bg-gradient-to-b from-emerald-400 to-emerald-600 rounded-[1.2rem] flex items-center justify-center text-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:grayscale transition-all duration-300 shadow-[0_5px_15px_rgba(16,185,129,0.4)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
           >
             {isSending ? <Loader2 size={16} className="animate-spin text-white" /> : <Send size={16} className="ml-0.5 text-white drop-shadow-md" />}
           </button>

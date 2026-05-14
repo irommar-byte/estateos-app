@@ -3,21 +3,13 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
-import jwt from 'jsonwebtoken';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 
 function parseUserIdFromAuthToken(token: string): number | null {
-  const verified = verifyMobileToken(token) as any;
+  const verified = verifyMobileToken(token) as Record<string, unknown> | null;
   const verifiedUserId = Number(verified?.id || verified?.userId || verified?.sub);
   if (verifiedUserId && !Number.isNaN(verifiedUserId)) {
     return verifiedUserId;
-  }
-
-  // Fallback dla tokenów logowania passkey (mogą być podpisane innym sekretem).
-  const decoded = jwt.decode(token) as any;
-  const decodedUserId = Number(decoded?.id || decoded?.userId || decoded?.sub);
-  if (decodedUserId && !Number.isNaN(decodedUserId)) {
-    return decodedUserId;
   }
 
   return null;
@@ -36,7 +28,7 @@ function extractTokenFromRequest(req: Request): string | null {
 }
 
 async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
-  const email = String(emailRaw || '').trim();
+  const email = String(emailRaw || '').trim().toLowerCase();
   const password = String(passwordRaw || '');
 
   if (!email || !password) {
@@ -88,9 +80,9 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({ success: true, user: shapeMobileUser(user) });
-  } catch (error: any) {
-    console.error("🔥 BŁĄD API AUTH GET:", error.message);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
@@ -129,7 +121,15 @@ export async function POST(req: Request) {
     }
 
     if (normalizedAction === 'register') {
-      const existing = await prisma.user.findUnique({ where: { email } });
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!normalizedEmail) {
+        return NextResponse.json({ success: false, message: 'Brak adresu email' }, { status: 400 });
+      }
+      if (!password || String(password).length < 6) {
+        return NextResponse.json({ success: false, message: 'Hasło musi mieć min. 6 znaków' }, { status: 400 });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
       if (existing) return NextResponse.json({ success: false, message: 'Email zajęty' }, { status: 400 });
       
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -141,30 +141,47 @@ export async function POST(req: Request) {
       // Samo `role: AGENT` nie włącza trybu Partner w UI (tam wymagane jest `planType: AGENCY`).
       const user = await prisma.user.create({
         data: {
-          email,
+          email: normalizedEmail,
           password: hashedPassword,
-          name: fullName || email,
+          name: fullName || normalizedEmail,
           phone: phone || null,
           role: 'USER',
           planType: isPartner ? 'AGENCY' : 'NONE',
         },
+        select: MOBILE_USER_SELECT,
       });
 
-      return NextResponse.json({ success: true, user });
+      return NextResponse.json({ success: true, user: shapeMobileUser(user) });
     }
     
     if (normalizedAction === 'update') {
-      // Zapisujemy avatar do istniejącej w bazie kolumny 'image'
-      const user = await prisma.user.update({
-        where: { id: Number(userId) },
-        data: { image: avatar }
+      const token = extractTokenFromRequest(req);
+      if (!token) {
+        return NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 });
+      }
+      const authUserId = parseUserIdFromAuthToken(token);
+      const targetUserId = Number(userId);
+      if (!authUserId) {
+        return NextResponse.json({ success: false, message: 'Nieprawidłowy token' }, { status: 401 });
+      }
+      if (!Number.isFinite(targetUserId) || targetUserId <= 0 || targetUserId !== authUserId) {
+        return NextResponse.json({ success: false, message: 'Brak uprawnień do edycji tego profilu' }, { status: 403 });
+      }
+      const safeAvatar = String(avatar || '').trim();
+      if (!safeAvatar) {
+        return NextResponse.json({ success: false, message: 'Brak obrazu avatara' }, { status: 400 });
+      }
+      const updatedUser = await prisma.user.update({
+        where: { id: targetUserId },
+        data: { image: safeAvatar },
+        select: MOBILE_USER_SELECT,
       });
-      return NextResponse.json({ success: true, user });
+      return NextResponse.json({ success: true, user: shapeMobileUser(updatedUser) });
     }
 
     return NextResponse.json({ success: false, message: 'Błędna akcja' }, { status: 400 });
-  } catch (error: any) {
-    console.error("🔥 BŁĄD API AUTH:", error.message);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

@@ -19,7 +19,7 @@ export default function SzukajNieruchomosci() {
   
   const [formData, setFormData] = useState({
     name: "", email: "", password: "", phone: "", type: "Mieszkanie",
-    city: "Warszawa", districts: [] as string[], maxPrice: "", areaFrom: "", areaTo: "", plotArea: "", buyerType: "private", amenities: [] as string[], rooms: "",
+    city: "", districts: [] as string[], maxPrice: "", areaFrom: "", areaTo: "", plotArea: "", buyerType: "private", amenities: [] as string[], rooms: "",
   });
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalogResponse>({ strictCities: [], strictCityDistricts: {} });
   
@@ -69,13 +69,16 @@ export default function SzukajNieruchomosci() {
         if (!response.ok) return;
         const catalog = await response.json();
         setLocationCatalog(catalog);
+        if (!formData.city && Array.isArray(catalog?.strictCities) && catalog.strictCities.length > 0) {
+          setFormData((prev) => ({ ...prev, city: catalog.strictCities[0] }));
+        }
       } catch {
         // keep defaults
       }
     };
 
     void loadDistrictCatalog();
-  }, []);
+  }, [formData.city]);
 
   // LIVE E-MAIL CHECK
   useEffect(() => {

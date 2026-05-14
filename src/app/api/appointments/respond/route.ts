@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { notificationService } from '@/lib/services/notification.service';
+import {
+  buildAppointmentUpdateEmailHtml,
+  sendTransactionalEmail,
+} from '@/lib/email/transactional';
 
 export const dynamic = 'force-dynamic';
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
@@ -151,6 +155,56 @@ async function handlePingPong(req: Request) {
       } catch (pushError) {
         console.warn('[APPOINTMENT RESPOND PUSH WARN]', pushError);
       }
+    }
+
+    const dealWithUsers = await prisma.deal.findUnique({
+      where: { id: appointment.dealId },
+      select: {
+        id: true,
+        buyer: { select: { email: true, name: true } },
+        seller: { select: { email: true, name: true } },
+        offer: { select: { title: true } },
+      },
+    });
+
+    if (dealWithUsers) {
+      const statusLabel =
+        nextStatus === 'ACCEPTED'
+          ? 'Potwierdzony'
+          : nextStatus === 'DECLINED'
+            ? 'Odrzucony'
+            : 'Prośba o zmianę terminu';
+      const note = safeNote || '';
+      const emails = [
+        {
+          to: dealWithUsers.buyer?.email || '',
+          recipientName: dealWithUsers.buyer?.name || '',
+          otherParty: dealWithUsers.seller?.name || '',
+        },
+        {
+          to: dealWithUsers.seller?.email || '',
+          recipientName: dealWithUsers.seller?.name || '',
+          otherParty: dealWithUsers.buyer?.name || '',
+        },
+      ].filter((entry) => entry.to);
+
+      await Promise.all(
+        emails.map((entry) =>
+          sendTransactionalEmail({
+            to: entry.to,
+            subject: `Aktualizacja terminu prezentacji: ${statusLabel}`,
+            html: buildAppointmentUpdateEmailHtml({
+              recipientName: entry.recipientName,
+              otherPartyName: entry.otherParty,
+              offerTitle: dealWithUsers.offer?.title,
+              proposedDate: finalDate,
+              statusLabel,
+              note,
+              dealId: appointment.dealId,
+            }),
+          })
+        )
+      );
     }
 
     const freshDeal = await prisma.deal.findUnique({

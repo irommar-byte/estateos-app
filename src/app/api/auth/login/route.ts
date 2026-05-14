@@ -40,7 +40,14 @@ export async function POST(req: Request) {
       await prisma.user.update({ where: { id: user.id }, data: { password: newHash } });
     }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || '');
+    const jwtSecret = String(process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || '').trim();
+    if (!jwtSecret) {
+      return NextResponse.json(
+        { success: false, message: 'Brak konfiguracji klucza sesji/JWT na serwerze' },
+        { status: 500 }
+      );
+    }
+    const secret = new TextEncoder().encode(jwtSecret);
     const token = await new SignJWT({ id: user.id, email: user.email, role: user.role || 'USER' })
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime('7d')
@@ -71,7 +78,15 @@ export async function POST(req: Request) {
 
     response.cookies.set({ name: 'estateos_session', value: estateosSession, ...cookieOptions });
     response.cookies.set({ name: 'luxestate_user', value: estateosSession, ...cookieOptions });
-    response.cookies.set({ name: 'deal_token', value: token, httpOnly: false, path: '/' });
+    response.cookies.set({
+      name: 'deal_token',
+      value: token,
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30,
+    });
 
     return response;
   } catch (error) {

@@ -4,6 +4,8 @@ import { NextResponse } from 'next/server';
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
 import { activeChallenges, rpID, origin } from '../../store';
 import { prisma } from '@/lib/prisma';
+import { encodeCredentialPublicKeyForDb, normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
+import { isoBase64URL } from '@simplewebauthn/server/helpers';
 
 export async function POST(req: Request) {
   try {
@@ -34,23 +36,30 @@ export async function POST(req: Request) {
          throw new Error("Brak danych klucza w weryfikacji!");
       }
 
-      const credIDBase64 = typeof rawCredID === 'string' 
-        ? rawCredID 
-        : Buffer.from(rawCredID).toString('base64url');
+      const credIDBase64 =
+        typeof rawCredID === 'string'
+          ? normalizeCredentialIdToBase64URL(rawCredID)
+          : isoBase64URL.fromBuffer(Buffer.from(rawCredID as ArrayBuffer), 'base64url');
 
       await prisma.authenticator.upsert({
         where: { credentialID: credIDBase64 },
-        update: { counter: counter },
+        update: {
+          counter,
+          userId: Number(userId),
+          providerAccountId: 'passkey',
+          credentialPublicKey: encodeCredentialPublicKeyForDb(Buffer.from(rawPubKey)),
+          credentialDeviceType: deviceType,
+          credentialBackedUp: backedUp,
+        },
         create: {
           credentialID: credIDBase64,
           userId: Number(userId),
-          providerAccountId: 'passkey_' + credIDBase64.substring(0, 16),
-          // 🔥 USUNIĘTO POLA 'provider' ORAZ 'type', KTÓRYCH PRISMA TUTAJ NIE ZNA!
-          credentialPublicKey: Buffer.from(rawPubKey).toString('base64'),
+          providerAccountId: 'passkey',
+          credentialPublicKey: encodeCredentialPublicKeyForDb(Buffer.from(rawPubKey)),
           counter: counter,
           credentialDeviceType: deviceType,
           credentialBackedUp: backedUp,
-        }
+        },
       });
 
       activeChallenges.delete(String(userId));

@@ -4,11 +4,16 @@ import { useEffect, useState } from 'react';
 import { startRegistration } from "@simplewebauthn/browser";
 import { Loader2, Fingerprint } from 'lucide-react';
 
-export default function PasskeyToggle({ user }: { user: any }) {
+type PasskeyToggleProps = {
+  onProfileRefresh?: () => Promise<void> | void;
+};
+
+export default function PasskeyToggle({ onProfileRefresh }: PasskeyToggleProps) {
   const [hasPasskey, setHasPasskey] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isCheckingPasskey, setIsCheckingPasskey] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const checkPasskey = async () => {
@@ -18,7 +23,7 @@ export default function PasskeyToggle({ user }: { user: any }) {
           const data = await res.json();
           setHasPasskey(data.hasPasskey);
         }
-      } catch (e) {
+      } catch {
         console.error("Passkey check error");
       } finally {
         setIsCheckingPasskey(false);
@@ -40,14 +45,16 @@ export default function PasskeyToggle({ user }: { user: any }) {
   };
 
   const handleRegisterPasskey = async () => {
-    
-
     setIsRegistering(true);
     setIsScanning(true);
+    setErrorMessage('');
 
     try {
       const resp = await fetch('/api/passkeys/register-options');
-      const options = await resp.json();
+      const options = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(options?.error || 'Nie udało się przygotować rejestracji Passkey.');
+      }
 
       const attResp = await startRegistration(options);
 
@@ -57,29 +64,37 @@ export default function PasskeyToggle({ user }: { user: any }) {
         body: JSON.stringify(attResp),
       });
 
-      const verifyResult = await verifyResp.json();
-      if (verifyResult.success) {
-        await refreshPasskeyState();
+      const verifyData = await verifyResp.json().catch(() => ({}));
+      if (!verifyResp.ok || !verifyData?.success) {
+        throw new Error(verifyData?.error || 'Weryfikacja Passkey nie powiodła się.');
       }
     } catch (error) {
-      console.error("Passkey register error:", error);
+      setErrorMessage(error instanceof Error ? error.message : 'Błąd rejestracji Passkey.');
     } finally {
       setTimeout(() => {
         setIsScanning(false);
         setIsRegistering(false);
       }, 1200);
+      void refreshPasskeyState();
+      void onProfileRefresh?.();
     }
   };
 
   const handleDeletePasskey = async () => {
     setIsRegistering(true);
+    setErrorMessage('');
     try {
       const res = await fetch('/api/passkeys/delete', { method: 'DELETE' });
-      if (res.ok) await refreshPasskeyState();
-    } catch (e) {
-      console.error("Passkey delete error");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Nie udało się usunąć Passkey.');
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Błąd usuwania Passkey.');
     } finally {
       setIsRegistering(false);
+      void refreshPasskeyState();
+      void onProfileRefresh?.();
     }
   };
 
@@ -193,6 +208,9 @@ export default function PasskeyToggle({ user }: { user: any }) {
 
         </div>
       </div>
+      {errorMessage ? (
+        <p className="mt-3 text-[11px] text-red-300 font-semibold tracking-wide">{errorMessage}</p>
+      ) : null}
     </div>
   );
 }

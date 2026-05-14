@@ -6,6 +6,7 @@ import { mobilePasskeyChallenges } from '../_challengeStore';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { getPasskeyOrigin, getPasskeyRpId } from '@/lib/env.server';
+import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -53,20 +54,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak wyzwania' }, { status: 400 });
     }
 
+    const configuredOrigin = String(getPasskeyOrigin() || '').replace(/\/$/, '');
+    const expectedOrigins =
+      process.env.NODE_ENV === 'production'
+        ? Array.from(new Set([configuredOrigin, 'https://estateos.pl', 'https://www.estateos.pl'].filter(Boolean)))
+        : [configuredOrigin || 'http://localhost:3000'];
+
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: getPasskeyOrigin(),
+      expectedOrigin: expectedOrigins.length > 1 ? expectedOrigins : expectedOrigins[0] || getPasskeyOrigin(),
       expectedRPID: getPasskeyRpId(),
       credential: {
         id: auth.credentialID,
-        publicKey: (() => {
-          try {
-            const asUrl = new Uint8Array(Buffer.from(auth.credentialPublicKey, 'base64url'));
-            if (asUrl.byteLength) return asUrl;
-          } catch {}
-          return new Uint8Array(Buffer.from(auth.credentialPublicKey, 'base64'));
-        })(),
+        publicKey: credentialPublicKeyToUint8Array(auth.credentialPublicKey),
         counter: auth.counter,
       },
     });

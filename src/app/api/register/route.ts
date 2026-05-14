@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import { encryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { Role } from '@prisma/client';
+import { buildWelcomeEmailHtml, sendTransactionalEmail } from '@/lib/email/transactional';
 
 const normalizePhoneDigits = (value: unknown) => String(value || '').replace(/\D/g, '');
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
@@ -91,6 +92,12 @@ export async function POST(req: Request) {
         role: dbRole,
         companyName: companyNameTrimmed || null,
       }
+    });
+
+    void sendTransactionalEmail({
+      to: user.email,
+      subject: 'Witamy w EstateOS',
+      html: buildWelcomeEmailHtml({ userName: user.name }),
     });
 
     const session = encryptSession({ id: user.id, email: user.email, role: user.role || 'USER' });

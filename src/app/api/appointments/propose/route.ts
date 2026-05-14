@@ -1,9 +1,12 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
-import nodemailer from 'nodemailer';
 import { notificationService } from '@/lib/services/notification.service';
+import {
+  buildAppointmentUpdateEmailHtml,
+  sendTransactionalEmail,
+} from '@/lib/email/transactional';
 
 export const dynamic = 'force-dynamic';
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
@@ -121,42 +124,48 @@ export async function POST(req: Request) {
       console.warn('[APPOINTMENT PROPOSE PUSH WARN]', pushError);
     }
 
-    // WYSYŁKA E-MAIL (Zgodna z istniejącym szablonem EstateOS)
-    
-    // Wymuszona konfiguracja Resend z pliku .env
-    const safeHost = process.env.EMAIL_HOST || 'smtp.resend.com';
-    const smtpPort = Number(process.env.EMAIL_PORT) || 465;
-    const safeUser = process.env.EMAIL_USER || 'resend';
-    const safePass = process.env.EMAIL_PASSWORD || process.env.RESEND_API_KEY || '';
+    const [buyer, seller, offerMeta] = await Promise.all([
+      prisma.user.findUnique({ where: { id: buyerId }, select: { email: true, name: true } }),
+      prisma.user.findUnique({ where: { id: resolvedSellerId }, select: { email: true, name: true } }),
+      prisma.offer.findUnique({ where: { id: parsedOfferId }, select: { title: true } }),
+    ]);
 
-    const transporter = nodemailer.createTransport({
-      host: safeHost,
-      port: smtpPort,
-      secure: true, // Zawsze true dla portu 465
-      auth: { user: safeUser, pass: safePass },
-      tls: { rejectUnauthorized: false }
-    });
-
-    const seller = await prisma.user.findUnique({ where: { id: resolvedSellerId }, select: { email: true } });
-    if (seller && seller.email) {
-      try {
-        await transporter.sendMail({
-          from: '"EstateOS" <powiadomienia@estateos.pl>',
-          to: seller.email,
-          subject: "📅 Propozycja Prezentacji Nieruchomości",
-          html: `<div style="font-family: sans-serif; max-w: 600px; margin: 0 auto; background-color: #050505; color: #ffffff; padding: 40px; border-radius: 20px; border: 1px solid #111;">
-            <h2 style="color: #10b981; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; font-size: 18px;">Nowe Zapytanie o Prezentację</h2>
-            <p style="color: #ccc; line-height: 1.6;">Potencjalny kupiec chce obejrzeć Twoją nieruchomość.</p>
-            <div style="background-color: #111; padding: 20px; border-radius: 10px; margin: 20px 0; border: 1px solid #222;">
-              <p style="margin: 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 2px;">Proponowany termin</p>
-              <p style="margin: 5px 0 0 0; font-size: 16px; font-weight: bold; color: #fff;">${parsedDate.toLocaleDateString('pl-PL')} o ${parsedDate.toLocaleTimeString('pl-PL', {hour: '2-digit', minute:'2-digit'})}</p>
-              ${message ? `<p style="margin: 15px 0 0 0; color: #666; font-size: 10px; text-transform: uppercase; letter-spacing: 2px;">Wiadomość od klienta</p><p style="margin: 5px 0 0 0; font-style: italic; color: #ddd;">"${message}"</p>` : ''}
-            </div>
-            <a href="https://estateos.pl/moje-konto/crm" style="display: inline-block; background-color: #10b981; color: #000; padding: 15px 30px; border-radius: 30px; text-decoration: none; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; font-size: 10px; margin-top: 20px;">Zarządzaj w CRM</a>
-          </div>`
-        });
-      } catch(err) { console.error("Błąd maila (Appointments):", err); }
-    }
+    const statusLabel = 'Nowa propozycja terminu';
+    const note = message ? String(message).trim().slice(0, 500) : '';
+    await Promise.all(
+      [
+        buyer?.email
+          ? sendTransactionalEmail({
+              to: buyer.email,
+              subject: `Wysłano ${statusLabel.toLowerCase()}`,
+              html: buildAppointmentUpdateEmailHtml({
+                recipientName: buyer.name,
+                otherPartyName: seller?.name,
+                offerTitle: offerMeta?.title,
+                proposedDate: parsedDate,
+                statusLabel,
+                note,
+                dealId: deal.id,
+              }),
+            })
+          : Promise.resolve(false),
+        seller?.email
+          ? sendTransactionalEmail({
+              to: seller.email,
+              subject: `Aktualizacja prezentacji: ${statusLabel}`,
+              html: buildAppointmentUpdateEmailHtml({
+                recipientName: seller.name,
+                otherPartyName: buyer?.name,
+                offerTitle: offerMeta?.title,
+                proposedDate: parsedDate,
+                statusLabel,
+                note,
+                dealId: deal.id,
+              }),
+            })
+          : Promise.resolve(false),
+      ]
+    );
 
     return NextResponse.json({ success: true, appointment });
   } catch (error) {

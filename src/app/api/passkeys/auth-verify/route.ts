@@ -86,13 +86,15 @@ export async function POST(req: Request) {
     cookieStore.delete('passkey_auth_challenge');
 
     const sessionPayload = encryptSession({ id: user.id, email: user.email, role: user.role });
-    cookieStore.set('estateos_session', sessionPayload, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 30,
       path: '/',
-    });
+    } as const;
+    cookieStore.set('estateos_session', sessionPayload, cookieOptions);
+    cookieStore.set('luxestate_user', sessionPayload, cookieOptions);
 
     return NextResponse.json({ success: true, role: user.role });
   } catch (error) {

@@ -58,7 +58,7 @@ function buildText(data: any): string {
   return `
 ${rand(hooks)}
 
-${data.propertyType || "Nieruchomość"} w ${data.district || "Warszawie"}.
+${data.propertyType || "Nieruchomość"} w ${data.district || data.city || "wybranej lokalizacji"}.
 
 Powierzchnia: ${area}  
 Cena: ${price}  

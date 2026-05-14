@@ -9,15 +9,60 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
 } from '@/lib/offerLegalStatusOverlay';
+import {
+  getOfferSchemaCompatibilityMessage,
+  isOfferSchemaCompatibilityError,
+} from '@/lib/offerSchemaErrors';
+
+async function resolveCurrentUser() {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
+  if (!sessionCookie?.value) return null;
+
+  try {
+    const sessionData = decryptSession(sessionCookie.value);
+    const sessionUserId = Number(sessionData?.id);
+    if (Number.isFinite(sessionUserId) && sessionUserId > 0) {
+      const user = await prisma.user.findUnique({
+        where: { id: sessionUserId },
+        select: { id: true, role: true, email: true },
+      });
+      if (user) return user;
+    }
+    const sessionEmail = String(sessionData?.email || '').trim().toLowerCase();
+    if (sessionEmail) {
+      const user = await prisma.user.findUnique({
+        where: { email: sessionEmail },
+        select: { id: true, role: true, email: true },
+      });
+      if (user) return user;
+    }
+  } catch {
+    // fallback below
+  }
+
+  const raw = String(sessionCookie.value || '').trim();
+  if (raw.includes('@')) {
+    const user = await prisma.user.findUnique({
+      where: { email: raw.toLowerCase() },
+      select: { id: true, role: true, email: true },
+    });
+    if (user) return user;
+  }
+
+  return null;
+}
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await ensureOfferLegalColumns();
     const resolvedParams = await params;
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
@@ -97,16 +142,51 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    await ensureOfferLegalColumns();
     const resolvedParams = await params;
     const body = await req.json();
     
     // Pobieramy aktualny stan oferty z bazy przed dokonaniem zmian
     const currentOffer = await prisma.offer.findUnique({
-       where: { id: Number(resolvedParams.id) }
+       where: { id: Number(resolvedParams.id) },
+       select: {
+        id: true,
+        userId: true,
+        title: true,
+        description: true,
+        propertyType: true,
+        district: true,
+        price: true,
+        area: true,
+        images: true,
+        rooms: true,
+        floor: true,
+        yearBuilt: true,
+        plotArea: true,
+        floorPlanUrl: true,
+        heating: true,
+        isFurnished: true,
+        transactionType: true,
+        street: true,
+        buildingNumber: true,
+        lat: true,
+        lng: true,
+        isExactLocation: true,
+        status: true,
+       },
     });
 
     if (!currentOffer) {
        return NextResponse.json({ error: "Oferta nie istnieje" }, { status: 404 });
+    }
+
+    const actor = await resolveCurrentUser();
+    if (!actor) {
+      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+    }
+    const isAdmin = String(actor.role || '').toUpperCase() === 'ADMIN';
+    if (!isAdmin && Number(currentOffer.userId) !== Number(actor.id)) {
+      return NextResponse.json({ error: 'Brak uprawnień do edycji tej oferty' }, { status: 403 });
     }
 
     const existingVerification = extractVerificationMeta(currentOffer.description);
@@ -218,6 +298,65 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     
     return NextResponse.json({ success: true, offer: updatedOffer, statusChanged: requireReverification });
   } catch (error) {
+    if (isOfferSchemaCompatibilityError(error)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ error: "Błąd serwera przy zapisie" }, { status: 500 });
+  }
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await ensureOfferLegalColumns();
+    const resolvedParams = await params;
+    const offerId = Number(resolvedParams.id);
+    if (!Number.isFinite(offerId) || offerId <= 0) {
+      return NextResponse.json({ error: 'Nieprawidłowe ID oferty' }, { status: 400 });
+    }
+
+    const actor = await resolveCurrentUser();
+    if (!actor) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+
+    const offer = await prisma.offer.findUnique({
+      where: { id: offerId },
+      select: { id: true, userId: true, status: true },
+    });
+    if (!offer) return NextResponse.json({ error: 'Oferta nie istnieje' }, { status: 404 });
+
+    const isAdmin = String(actor.role || '').toUpperCase() === 'ADMIN';
+    if (!isAdmin && Number(offer.userId) !== Number(actor.id)) {
+      return NextResponse.json({ error: 'Brak uprawnień do usunięcia tej oferty' }, { status: 403 });
+    }
+
+    const relatedDeals = await prisma.deal.count({ where: { offerId } });
+    if (relatedDeals > 0) {
+      await prisma.offer.update({
+        where: { id: offerId },
+        data: {
+          status: 'ARCHIVED',
+          expiresAt: new Date(Date.now() - 1000),
+        },
+      });
+      return NextResponse.json({ success: true, archived: true, reason: 'HAS_DEAL_HISTORY' });
+    }
+
+    try {
+      await prisma.offer.delete({ where: { id: offerId } });
+      return NextResponse.json({ success: true, deleted: true });
+    } catch {
+      await prisma.offer.update({
+        where: { id: offerId },
+        data: {
+          status: 'ARCHIVED',
+          expiresAt: new Date(Date.now() - 1000),
+        },
+      });
+      return NextResponse.json({ success: true, archived: true, reason: 'DELETE_FALLBACK_ARCHIVE' });
+    }
+  } catch {
+    return NextResponse.json({ error: 'Błąd serwera przy usuwaniu' }, { status: 500 });
   }
 }

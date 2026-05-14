@@ -18,6 +18,10 @@ export function validateCriticalEnv(): { ok: boolean; missing: string[] } {
     missing.push('PASSKEY_RP_ID');
   }
 
+  if (process.env.NODE_ENV === 'production' && !isSet('PASSKEY_ORIGIN') && !isSet('NEXTAUTH_URL')) {
+    missing.push('PASSKEY_ORIGIN|NEXTAUTH_URL');
+  }
+
   return { ok: missing.length === 0, missing };
 }
 
@@ -33,10 +37,28 @@ export function assertCriticalEnv(): void {
   }
 }
 
+function stripUrlToHost(input: string): string {
+  return input
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    ?.split(':')[0]
+    ?.trim() || '';
+}
+
 export function getPasskeyRpId(): string {
-  return process.env.PASSKEY_RP_ID?.trim() || (process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost');
+  assertCriticalEnv();
+  const fallback = process.env.NODE_ENV === 'production' ? 'estateos.pl' : 'localhost';
+  const raw = process.env.PASSKEY_RP_ID?.trim();
+  if (!raw) return fallback;
+  const host = stripUrlToHost(raw.includes('://') ? raw : `https://${raw}`);
+  return host || fallback;
 }
 
 export function getPasskeyOrigin(): string {
-  return process.env.PASSKEY_ORIGIN?.trim() || process.env.NEXTAUTH_URL?.trim() || (process.env.NODE_ENV === 'production' ? 'https://estateos.pl' : 'http://localhost:3000');
+  assertCriticalEnv();
+  const raw =
+    process.env.PASSKEY_ORIGIN?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    (process.env.NODE_ENV === 'production' ? 'https://estateos.pl' : 'http://localhost:3000');
+  return raw.replace(/\/$/, '');
 }

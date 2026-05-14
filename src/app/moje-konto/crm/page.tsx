@@ -533,6 +533,25 @@ export default function CRMDashboard() {
     }
   };
 
+  const handleDeleteOfferSubmit = async () => {
+    if (!offerToArchive) return;
+    try {
+      const res = await fetch(`/api/offers/${offerToArchive.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setOfferToArchive(null);
+        if (currentUser?.id) fetchData(currentUser.id);
+        if (data?.archived) {
+          alert('Oferta ma historię negocjacji, więc została bezpiecznie zarchiwizowana.');
+        }
+      } else {
+        alert(data?.error || 'Błąd podczas usuwania oferty.');
+      }
+    } catch {
+      alert('Błąd połączenia z serwerem.');
+    }
+  };
+
   const handleRefreshOffer = async (id: string) => {
     setRefreshingId(id);
     try {
@@ -632,6 +651,17 @@ export default function CRMDashboard() {
     }
   };
 
+  const refreshCurrentUserFromBackend = async () => {
+    const profileRes = await fetch('/api/user/profile', { cache: 'no-store' });
+    const profileData = await profileRes.json().catch(() => ({}));
+    if (!profileRes.ok || !profileData?.id) {
+      throw new Error(profileData?.error || 'Nie udało się odświeżyć profilu.');
+    }
+    setCurrentUser(profileData);
+    initModeFromUser(profileData);
+    return profileData;
+  };
+
   const initCrm = async () => {
     try {
       const authRes = await fetch('/api/auth/check');
@@ -642,10 +672,7 @@ export default function CRMDashboard() {
         return;
       }
       
-      const profileRes = await fetch('/api/user/profile');
-      const uData = await profileRes.json();
-      setCurrentUser(uData);
-      initModeFromUser(uData);
+      const uData = await refreshCurrentUserFromBackend();
 
       // Mamy usera! Odpalamy dane ofert i radaru z jego ID
       await Promise.all([fetchData(uData.id), fetchRadarData(), fetchRadarCatalog(), fetchMarketOffers()]);
@@ -925,7 +952,7 @@ export default function CRMDashboard() {
                 </button>
                 <EliteStatusBadges subject={currentUser} isDark compact className="mt-2" />
                 <div className="mt-3 w-full max-w-[420px]">
-                  <PasskeyToggle user={currentUser} />
+                  <PasskeyToggle onProfileRefresh={refreshCurrentUserFromBackend} />
                 </div>
               </>
             )}
@@ -2242,6 +2269,9 @@ export default function CRMDashboard() {
                     <ArchiveX size={14} /> Zdejmij z rynku
                  </button>
               </div>
+              <button onClick={handleDeleteOfferSubmit} className="mt-3 w-full py-3 rounded-[1.2rem] border border-red-500/35 text-[10px] font-black uppercase tracking-widest text-red-300 hover:bg-red-500/10 transition-all cursor-pointer">
+                Usuń ofertę trwale
+              </button>
             </motion.div>
           </motion.div>
         )}

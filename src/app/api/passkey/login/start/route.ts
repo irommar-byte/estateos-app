@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { activeChallenges, rpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -37,7 +38,10 @@ export async function POST(req: Request) {
           select: { credentialID: true },
         });
         if (authenticators.length > 0) {
-          allowCredentials = authenticators.map((a) => ({ id: a.credentialID as string, type: 'public-key' as const }));
+          allowCredentials = authenticators.map((a) => ({
+            id: normalizeCredentialIdToBase64URL(a.credentialID as string),
+            type: 'public-key' as const,
+          }));
         }
       }
     }

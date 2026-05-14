@@ -137,7 +137,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   };
 
   const locationParams = [
-    { label: "Miejscowość", value: offer.city || 'Warszawa' },
+    { label: "Miejscowość", value: offer.city || 'Nie podano' },
     { label: "Dzielnica", value: isLocked ? 'Ukryta — przed premierą na szerokim rynku' : offer.district },
     { label: "Adres (Ulica)", value: isLocked ? 'Ukryty — przed premierą na szerokim rynku' : offer.address }
   ].filter(p => p.value);

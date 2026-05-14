@@ -11,6 +11,10 @@ import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
 } from '@/lib/offerLegalStatusOverlay';
+import {
+  getOfferSchemaCompatibilityMessage,
+  isOfferSchemaCompatibilityError,
+} from '@/lib/offerSchemaErrors';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -115,9 +119,20 @@ export async function GET(req: Request) {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (isOfferSchemaCompatibilityError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: getOfferSchemaCompatibilityMessage(),
+          code: 'OFFER_SCHEMA_COMPATIBILITY',
+        },
+        { status: 503 }
+      );
+    }
+    const message = error instanceof Error ? error.message : 'Błąd serwera';
     console.error("🔥 MOBILE API ERROR:", error);
-    return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
@@ -165,8 +180,19 @@ export async function POST(req: Request) {
 
 
     return NextResponse.json({ success: true, offer });
-  } catch (e: any) {
-    return NextResponse.json({ success: false, message: e.message });
+  } catch (e: unknown) {
+    if (isOfferSchemaCompatibilityError(e)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: getOfferSchemaCompatibilityMessage(),
+          code: 'OFFER_SCHEMA_COMPATIBILITY',
+        },
+        { status: 503 }
+      );
+    }
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
@@ -188,7 +214,18 @@ export async function PUT(req: Request) {
 
     const offer = await updateOffer(body);
     return NextResponse.json({ success: true, offer });
-  } catch (e: any) {
-    return NextResponse.json({ success: false, message: e.message });
+  } catch (e: unknown) {
+    if (isOfferSchemaCompatibilityError(e)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: getOfferSchemaCompatibilityMessage(),
+          code: 'OFFER_SCHEMA_COMPATIBILITY',
+        },
+        { status: 503 }
+      );
+    }
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

@@ -13,6 +13,10 @@ import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
 } from '@/lib/offerLegalStatusOverlay';
+import {
+  getOfferSchemaCompatibilityMessage,
+  isOfferSchemaCompatibilityError,
+} from '@/lib/offerSchemaErrors';
 
 export const dynamic = 'force-dynamic';
 
@@ -135,6 +139,12 @@ export async function GET() {
     );
 
   } catch (error) {
+    if (isOfferSchemaCompatibilityError(error)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
+        { status: 503 }
+      );
+    }
     console.error('OFFERS ERROR:', error);
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }
@@ -186,8 +196,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, offer });
 
-  } catch (e: any) {
+  } catch (e: unknown) {
+    if (isOfferSchemaCompatibilityError(e)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'OFFER_SCHEMA_COMPATIBILITY' },
+        { status: 503 }
+      );
+    }
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
     console.error('POST ERROR:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

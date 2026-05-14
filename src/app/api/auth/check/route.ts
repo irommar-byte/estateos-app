@@ -1,49 +1,38 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const session = cookieStore.get('estateos_session');
+    const session =
+      cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value || '';
     
-    if (!session) return NextResponse.json({ loggedIn: false });
+    if (!session) return NextResponse.json({ success: true, loggedIn: false, user: null });
 
-    // Logika wstecznej kompatybilności (gdyby ktoś miał stare ciasteczko z samym mailem)
-    let emailToSearch = session.value;
-    let parsedSession: any = null;
-    try {
-       parsedSession = decryptSession(session.value);
-       if (parsedSession && parsedSession.email) {
-           emailToSearch = parsedSession.email;
-       }
-    } catch(e) {} // Ignoruj błąd jeśli to stary format
+    const parsedSession = decryptSession(session) as { id?: number | string; email?: string } | null;
+    const userIdFromToken = Number(parsedSession?.id);
+    const emailFromToken = String(parsedSession?.email || '').trim().toLowerCase();
 
-    const user = await prisma.user.findUnique({ where: { email: emailToSearch } });
-    if (!user) return NextResponse.json({ loggedIn: false });
-    const proExpiresAt = user.proExpiresAt ? new Date(user.proExpiresAt) : null;
-    const isProActive = Boolean(
-      user.role === 'ADMIN' ||
-      (user.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
-    );
+    const user = Number.isFinite(userIdFromToken) && userIdFromToken > 0
+      ? await prisma.user.findUnique({ where: { id: userIdFromToken }, select: MOBILE_USER_SELECT })
+      : emailFromToken
+        ? await prisma.user.findUnique({ where: { email: emailFromToken }, select: MOBILE_USER_SELECT })
+        : null;
 
-    return NextResponse.json({ 
+    if (!user) return NextResponse.json({ success: true, loggedIn: false, user: null });
+    const shaped = shapeMobileUser(user);
+    return NextResponse.json({
+      success: true,
       loggedIn: true, 
-      user: { 
-        id: user.id, // KRYTYCZNE: Przekazujemy twarde ID użytkownika
-        email: user.email, 
-        name: user.name, 
-        phone: user.phone, 
-        image: user.image,
+      user: {
+        ...shaped,
         advertiserType: user.planType === 'AGENCY' ? 'agency' : 'private',
-        role: user.role,
-        isPro: isProActive,
-        planType: user.planType,
-        proExpiresAt: user.proExpiresAt
-      } 
+      },
     });
-  } catch (error) {
-    return NextResponse.json({ loggedIn: false });
+  } catch {
+    return NextResponse.json({ success: false, loggedIn: false, user: null, message: 'Błąd sprawdzenia sesji' }, { status: 500 });
   }
 }

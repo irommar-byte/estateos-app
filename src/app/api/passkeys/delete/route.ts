@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function DELETE(req: Request) {
     try {
@@ -11,9 +12,9 @@ export async function DELETE(req: Request) {
           cookieStore.get('luxestate_user')?.value;
         if (!sessionCookie) return NextResponse.json({ error: "Brak sesji" }, { status: 401 });
 
-        const session = decryptSession(sessionCookie);
-        const sessionUserId = Number((session as any)?.id);
-        const sessionEmail = String((session as any)?.email || '').trim();
+        const session = decryptSession(sessionCookie) as { id?: number | string; email?: string } | null;
+        const sessionUserId = Number(session?.id);
+        const sessionEmail = String(session?.email || '').trim();
 
         let userId: number | null = Number.isFinite(sessionUserId) && sessionUserId > 0 ? sessionUserId : null;
         if (!userId && sessionEmail) {
@@ -29,24 +30,49 @@ export async function DELETE(req: Request) {
         ).trim();
         const credentialId = credentialIdFromQuery || credentialIdFromHeader;
 
-        if (!credentialId) {
-          return NextResponse.json({
-            success: false,
-            error: "Podaj credentialId konkretnego klucza. Masowe usuwanie wszystkich kluczy jest zablokowane.",
-          }, { status: 400 });
+        if (credentialId) {
+          let deleted = await prisma.authenticator.deleteMany({
+            where: { userId, credentialID: credentialId },
+          });
+          if (deleted.count === 0) {
+            try {
+              const normalized = normalizeCredentialIdToBase64URL(credentialId);
+              if (normalized !== credentialId) {
+                deleted = await prisma.authenticator.deleteMany({
+                  where: { userId, credentialID: normalized },
+                });
+              }
+            } catch {
+              // no-op: malformed credential id
+            }
+          }
+          if (deleted.count === 0) {
+            return NextResponse.json(
+              { success: false, error: 'Nie znaleziono klucza dla tego urządzenia' },
+              { status: 404 }
+            );
+          }
+          return NextResponse.json({ success: true, deletedCount: deleted.count, hasPasskey: false });
         }
 
         const deleted = await prisma.authenticator.deleteMany({
-          where: { userId, credentialID: credentialId }
+          where: { userId },
         });
-        if (deleted.count === 0) {
-          return NextResponse.json({ success: false, error: "Nie znaleziono klucza dla tego urządzenia" }, { status: 404 });
-        }
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({
+          success: true,
+          deletedCount: deleted.count,
+          hasPasskey: false,
+          message:
+            deleted.count > 0
+              ? 'Wszystkie klucze Passkey zostały usunięte.'
+              : 'Brak aktywnych kluczy Passkey do usunięcia.',
+        });
 
     } catch (error) {
-        console.error("Błąd usuwania Passkey:", error);
-        return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+        return NextResponse.json(
+          { success: false, error: error instanceof Error ? error.message : 'Błąd serwera' },
+          { status: 500 }
+        );
     }
 }

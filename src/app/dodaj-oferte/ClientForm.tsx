@@ -105,7 +105,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
-    condition: '', locationType: 'exact', address: '', city: 'Warszawa', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
+    condition: '', locationType: 'exact', address: '', city: '', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
     price: '', area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
     advertiserType: 'private', agencyName: '',
@@ -179,7 +179,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&autocomplete=true&limit=6&language=pl&country=pl`,
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&autocomplete=true&limit=6&language=pl`,
       );
       const geo = await res.json();
       setAddressSuggestions(Array.isArray(geo?.features) ? geo.features : []);
@@ -196,7 +196,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=false&limit=1&language=pl&country=pl`,
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=false&limit=1&language=pl`,
       );
       if (!res.ok) return;
       const geo = await res.json();
@@ -320,7 +320,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const handleGenerateAI = async () => {
     setIsGeneratingAI(true);
     try {
-      const hint = `${data.propertyType || 'Nieruchomość'} w ${data.district || 'Warszawie'} o metrażu ${data.area || '?'} m2.`;
+      const hint = `${data.propertyType || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
       const generated = `Przedstawiamy wyjątkową ofertę: ${hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.`;
       updateData({ description: generated });
       if (editorRef.current) editorRef.current.innerHTML = generated;
@@ -440,8 +440,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const map = new mapboxgl.Map({
         container: el,
         style: "mapbox://styles/mapbox/dark-v11",
-        center: [21.0122, 52.2297],
-        zoom: 12.5,
+        center: [
+          Number(data.lng) || 19.1451,
+          Number(data.lat) || 51.9194,
+        ],
+        zoom: data.lat && data.lng ? 12.5 : 6.2,
         pitch: 55,
         bearing: -20,
         antialias: true,
@@ -914,7 +917,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <label className={labelPremium}>Wyszukaj Adres *</label>
                     <input
                       type="text"
-                      placeholder="Np. Złota 44..."
+                      placeholder="Np. Główna 12..."
                       className={inputPremium}
                       onChange={(e) => handleAddressSearch(e.target.value)}
                       onBlur={(e) => {
@@ -1346,7 +1349,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               <button 
                 onClick={handleSubmit} 
                 disabled={isSubmitting || !canPublish} 
-                className={`w-full py-6 md:py-8 rounded-[2rem] flex items-center justify-center gap-4 transition-all duration-500 overflow-hidden relative group font-sans ${
+                className={`w-full py-6 md:py-8 rounded-[2rem] flex items-center justify-center gap-4 transition-all duration-500 overflow-hidden relative group font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                   (!canPublish || isSubmitting)
                     ? 'bg-white/5 border border-white/10 text-zinc-500 cursor-not-allowed backdrop-blur-md'
                     : 'bg-white/10 border border-white/20 text-[#f5f5f7] cursor-pointer backdrop-blur-xl hover:bg-[#10b981] hover:border-[#10b981] hover:text-black shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:shadow-[0_0_40px_rgba(16,185,129,0.5)] hover:scale-[1.02] active:scale-95'

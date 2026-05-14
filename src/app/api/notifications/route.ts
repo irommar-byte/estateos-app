@@ -148,12 +148,14 @@ export async function GET(req: Request) {
       if (n.type === 'DEAL_UPDATE' && dealId) {
         title = `Nowa wiadomość od ${otherParty}`;
         message = `Transakcja: ${shortOfferTitle}. ${baseBody || 'Masz nową aktywność na czacie.'}`;
-        groupKey = `deal-message:${dealId}:${otherParty}`;
+        groupKey = `deal-activity:${dealId}`;
       } else if (n.type === 'BID_RECEIVED' && dealId) {
         title = `${n.title}`;
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
+        groupKey = `deal-activity:${dealId}`;
       } else if (n.type === 'APPOINTMENT' && dealId) {
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
+        groupKey = `deal-activity:${dealId}`;
       } else if (offerId) {
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
       }

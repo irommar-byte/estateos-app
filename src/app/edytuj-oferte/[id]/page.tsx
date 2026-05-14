@@ -63,6 +63,21 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         const isAdmin = auth.user?.role === 'ADMIN';
         if (!isOwner && !isAdmin) { setAuthError("Brak uprawnień do edycji."); setIsLoading(false); return; }
 
+        const parsedImages = (() => {
+          const raw = offer.images;
+          if (!raw) return [] as string[];
+          if (Array.isArray(raw)) return raw.filter(Boolean);
+          const txt = String(raw).trim();
+          if (!txt) return [];
+          try {
+            const decoded = JSON.parse(txt);
+            if (Array.isArray(decoded)) return decoded.filter(Boolean);
+          } catch {
+            // fallback csv
+          }
+          return txt.split(',').map((v: string) => String(v || '').trim()).filter(Boolean);
+        })();
+
         setData({
           ...offer,
           price: String(offer.price || ''),
@@ -73,11 +88,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           plotArea: String(offer.plotArea || ''),
           amenities: offer.amenities || "",
           district: offer.district || "",
-          address: offer.address || "",
+          address: offer.street || offer.address || "",
           apartmentNumber: offer.apartmentNumber || "",
           propertyType: offer.propertyType || "Mieszkanie"
         });
-        if (offer.images) setImagesList(offer.images.split(',').filter(Boolean));
+        if (parsedImages.length) setImagesList(parsedImages);
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
     };
@@ -135,7 +150,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const handleSave = async () => {
     setIsSubmitting(true);
     // Przed wysłaniem usuwamy spacje z ceny
-    const payload = { ...data, price: data.price.replace(/\s/g, ''), images: imagesList.join(",") };
+    const payload = { ...data, price: String(data.price || '').replace(/\s/g, ''), images: JSON.stringify(imagesList), buildYear: data.year };
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       setIsSuccess(true); 
@@ -281,7 +296,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                   <SortablePhoto key={url} url={url} onRemove={handleRemoveImage} isMain={idx === 0} />
                 ))}
                 
-                {imagesList.length < 15 && (
+                {imagesList.length < OFFER_MAX_IMAGES && (
                   <label className="w-28 h-28 md:w-36 md:h-36 rounded-2xl border-2 border-dashed border-[#222] hover:border-emerald-500/60 bg-[#0a0a0a]/50 hover:bg-[#111] flex flex-col items-center justify-center cursor-pointer transition-all duration-500 group shadow-inner">
                     {isUploading ? <Loader2 className="animate-spin text-emerald-500" size={28} /> : <><ImageIcon className="text-zinc-600 group-hover:text-emerald-400 transition-colors duration-500 mb-3" size={32} /><span className="text-[10px] uppercase font-black text-zinc-600 group-hover:text-emerald-400 tracking-widest">Dodaj</span></>}
                     <input type="file" multiple accept="image/*" onChange={handleUpload} className="hidden" />
@@ -310,7 +325,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       <AnimatePresence>
         <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-[100]">
           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full"></div>
-          <button onClick={handleSave} disabled={isSubmitting || isSuccess} className={`relative w-full py-5 md:py-6 rounded-[2rem] font-black text-xs md:text-sm uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 border-2 overflow-hidden group shadow-[0_20px_50px_rgba(0,0,0,0.8)] ${isSuccess ? 'bg-emerald-500 border-emerald-400 text-black scale-105' : 'bg-[#0a0a0a]/90 backdrop-blur-xl border-emerald-500/50 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:border-emerald-400 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(16,185,129,0.5)] active:scale-95'}`}>
+          <button onClick={handleSave} disabled={isSubmitting || isSuccess} className={`relative w-full py-5 md:py-6 rounded-[2rem] font-black text-xs md:text-sm uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 border-2 overflow-hidden group shadow-[0_20px_50px_rgba(0,0,0,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${isSuccess ? 'bg-emerald-500 border-emerald-400 text-black scale-105' : 'bg-[#0a0a0a]/90 backdrop-blur-xl border-emerald-500/50 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:border-emerald-400 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(16,185,129,0.5)] active:scale-95'}`}>
             {/* Lśnienie w tle przycisku */}
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
             

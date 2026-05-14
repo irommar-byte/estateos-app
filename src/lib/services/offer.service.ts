@@ -7,10 +7,92 @@ import {
 } from '@prisma/client';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
 import {
+  attachVerificationMetaToDescription,
   buildOfferVerificationMeta,
+  extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
+import {
+  isOfferAlterPrivilegeError,
+  isOfferLegalColumnMissingError,
+} from '@/lib/offerSchemaErrors';
+
+let offerLegalColumnsEnsured = false;
+let offerLegalColumnsPromise: Promise<void> | null = null;
+
+function isIgnorableAddColumnError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Duplicate column name/i.test(message) || /already exists/i.test(message);
+}
+
+function isAddColumnSyntaxError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /syntax/i.test(message) && /if not exists/i.test(message);
+}
+
+async function hasOfferColumn(columnName: string): Promise<boolean> {
+  const rows = await prisma.$queryRawUnsafe<any[]>(
+    `
+      SELECT COUNT(*) AS total
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'Offer'
+        AND column_name = ?
+    `,
+    columnName
+  );
+  return Number(rows?.[0]?.total || 0) > 0;
+}
+
+async function ensureOfferColumn(columnName: string) {
+  const quotedColumn = `\`${columnName}\``;
+  const alterSql = `ALTER TABLE \`Offer\` ADD COLUMN IF NOT EXISTS ${quotedColumn} VARCHAR(64) NULL`;
+  try {
+    await prisma.$executeRawUnsafe(alterSql);
+    return;
+  } catch (error) {
+    if (isIgnorableAddColumnError(error)) return;
+    if (!isAddColumnSyntaxError(error)) throw error;
+  }
+
+  // Fallback for older MySQL/MariaDB that don't support ADD COLUMN IF NOT EXISTS.
+  const exists = await hasOfferColumn(columnName);
+  if (!exists) {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE \`Offer\` ADD COLUMN ${quotedColumn} VARCHAR(64) NULL`
+    );
+  }
+}
+
+/**
+ * Self-healing guard for production environments where DB schema lagged behind Prisma schema.
+ * Keeps offer create/update usable even if deploy omitted the Offer legal columns migration.
+ */
+export async function ensureOfferLegalColumns() {
+  if (offerLegalColumnsEnsured) return;
+  if (offerLegalColumnsPromise) return offerLegalColumnsPromise;
+
+  offerLegalColumnsPromise = (async () => {
+    await ensureOfferColumn('landRegistryNumber');
+    await ensureOfferColumn('apartmentNumber');
+
+    offerLegalColumnsEnsured = true;
+  })();
+
+  try {
+    await offerLegalColumnsPromise;
+  } catch (error) {
+    if (isOfferAlterPrivilegeError(error) || isOfferLegalColumnMissingError(error)) {
+      // Fallback mode: DB user cannot ALTER or legacy schema still missing columns.
+      offerLegalColumnsEnsured = true;
+      return;
+    }
+    throw error;
+  } finally {
+    offerLegalColumnsPromise = null;
+  }
+}
 
 // =======================
 // MAPOWANIA
@@ -63,6 +145,7 @@ function mapStatus(val?: string): OfferStatus {
 // =======================
 export async function createOffer(body: any) {
   const { userId, lat, lng } = body;
+  await ensureOfferLegalColumns();
 
   if (!userId) throw new Error('Brak ID użytkownika');
   if (lat === undefined || lng === undefined || lat === null || lng === null) {
@@ -78,6 +161,10 @@ export async function createOffer(body: any) {
     apartmentNumber: body.apartmentNumber,
     landRegistryNumber: body.landRegistryNumber,
   });
+  const descriptionWithVerification = attachVerificationMetaToDescription(
+    String(body.description || ''),
+    verificationMeta
+  );
   const hasLegalVerificationSeed = Boolean(
     verificationMeta.apartmentNumber && verificationMeta.landRegistryNumber
   );
@@ -89,10 +176,9 @@ export async function createOffer(body: any) {
     agentCommissionPercent = v.value;
   }
 
-  return prisma.offer.create({
-    data: {
+  const createData: any = {
       title: body.title || "Nowa Oferta",
-      description: body.description || "",
+      description: descriptionWithVerification,
 
       transactionType: mapTransactionType(body.transactionType),
       propertyType: mapPropertyType(body.propertyType),
@@ -143,8 +229,20 @@ export async function createOffer(body: any) {
       ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
 
       userId: Number(userId)
-    }
-  });
+  };
+
+  try {
+    return await prisma.offer.create({
+      data: createData
+    });
+  } catch (error) {
+    if (!isOfferLegalColumnMissingError(error)) throw error;
+
+    const fallbackData = { ...createData };
+    delete fallbackData.landRegistryNumber;
+    delete fallbackData.apartmentNumber;
+    return prisma.offer.create({ data: fallbackData });
+  }
 }
 
 // =======================
@@ -152,13 +250,51 @@ export async function createOffer(body: any) {
 // =======================
 export async function updateOffer(body: any) {
   const { id, userId } = body;
+  await ensureOfferLegalColumns();
 
   if (!id || !userId) {
     throw new Error('Brak ID oferty lub użytkownika');
   }
 
   const existing = await prisma.offer.findUnique({
-    where: { id: Number(id) }
+    where: { id: Number(id) },
+    select: {
+      id: true,
+      userId: true,
+      title: true,
+      description: true,
+      transactionType: true,
+      propertyType: true,
+      condition: true,
+      price: true,
+      area: true,
+      rooms: true,
+      floor: true,
+      totalFloors: true,
+      yearBuilt: true,
+      city: true,
+      district: true,
+      images: true,
+      videoUrl: true,
+      floorPlanUrl: true,
+      hasBalcony: true,
+      hasElevator: true,
+      hasStorage: true,
+      hasParking: true,
+      hasGarden: true,
+      isFurnished: true,
+      heating: true,
+      adminFee: true,
+      deposit: true,
+      plotArea: true,
+      isExactLocation: true,
+      lat: true,
+      lng: true,
+      street: true,
+      buildingNumber: true,
+      status: true,
+      agentCommissionPercent: true,
+    }
   });
 
   if (!existing || existing.userId !== Number(userId)) {
@@ -186,78 +322,71 @@ export async function updateOffer(body: any) {
   }
 
   const oldPrice = Number(existing.price);
+  const existingVerification = extractVerificationMeta(String(existing.description || ''));
   const nextLandRegistryNumber =
     body.landRegistryNumber !== undefined
       ? String(body.landRegistryNumber || '').trim().toUpperCase().slice(0, 64)
-      : existing.landRegistryNumber;
+      : existingVerification.verification.landRegistryNumber;
   const nextApartmentNumber =
     body.apartmentNumber !== undefined
       ? String(body.apartmentNumber || '').trim().slice(0, 64)
-      : existing.apartmentNumber;
+      : existingVerification.verification.apartmentNumber;
   const legalFieldsChanged =
     body.landRegistryNumber !== undefined || body.apartmentNumber !== undefined;
   const shouldResetLegalVerification = Boolean(
     legalFieldsChanged && nextLandRegistryNumber && nextApartmentNumber
   );
-  const updatedOffer = await prisma.offer.update({
-    where: { id: Number(id) },
-    data: {
-      ...(body.title !== undefined && { title: body.title }),
-      ...(body.description !== undefined && { description: body.description }),
+  const nextDescription = attachVerificationMetaToDescription(
+    String(body.description !== undefined ? body.description : existingVerification.cleanDescription || ''),
+    buildOfferVerificationMeta({
+      apartmentNumber: nextApartmentNumber || '',
+      landRegistryNumber: nextLandRegistryNumber || '',
+    })
+  );
 
+  const updateData: any = {
+      ...(body.title !== undefined && { title: body.title }),
+      description: nextDescription,
       ...(body.transactionType !== undefined && {
         transactionType: mapTransactionType(body.transactionType)
       }),
-
       ...(body.propertyType !== undefined && {
         propertyType: mapPropertyType(body.propertyType)
       }),
-
       ...(body.condition !== undefined && {
         condition: mapCondition(body.condition)
       }),
-
       ...(body.price !== undefined && {
         price: Number(body.price)
       }),
-
       ...(body.area !== undefined && {
         area: Number(body.area)
       }),
-
       ...(body.rooms !== undefined && {
         rooms: body.rooms === null ? null : Number(body.rooms)
       }),
-
       ...(body.floor !== undefined && {
         floor: body.floor === null ? null : Number(body.floor)
       }),
-
       ...(body.totalFloors !== undefined && {
         totalFloors: body.totalFloors === null ? null : Number(body.totalFloors)
       }),
-
       ...(body.yearBuilt !== undefined && {
         yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
       }),
-
       ...(body.city !== undefined && {
         city: locationValidation?.city
       }),
-
       ...(body.district !== undefined && {
         district: locationValidation?.district
       }),
-
       ...(body.images !== undefined && {
         images: typeof body.images === 'string'
           ? body.images
           : JSON.stringify(body.images)
       }),
-
       ...(body.videoUrl !== undefined && { videoUrl: body.videoUrl || null }),
       ...(body.floorPlanUrl !== undefined && { floorPlanUrl: body.floorPlanUrl || null }),
-
       ...(body.hasBalcony !== undefined && { hasBalcony: !!body.hasBalcony }),
       ...(body.hasElevator !== undefined && { hasElevator: !!body.hasElevator }),
       ...(body.hasStorage !== undefined && { hasStorage: !!body.hasStorage }),
@@ -267,7 +396,6 @@ export async function updateOffer(body: any) {
       ...(body.heating !== undefined && {
         heating: body.heating ? String(body.heating).trim() : null
       }),
-
       ...(body.adminFee !== undefined && {
         adminFee: body.adminFee === null || body.adminFee === '' ? null : Number(body.adminFee),
       }),
@@ -277,7 +405,6 @@ export async function updateOffer(body: any) {
       ...(body.plotArea !== undefined && {
         plotArea: body.plotArea === null || body.plotArea === '' ? null : Number(body.plotArea),
       }),
-
       ...(body.isExactLocation !== undefined && {
         isExactLocation: !!body.isExactLocation,
       }),
@@ -308,14 +435,28 @@ export async function updateOffer(body: any) {
         legalCheckRejectionText: null,
         isLegalSafeVerified: false,
       }),
-
       ...(body.status !== undefined && {
         status: mapStatus(body.status)
       }),
-
       ...(agentCommissionPercent !== undefined && { agentCommissionPercent })
-    }
-  });
+    };
+
+  let updatedOffer: any;
+  try {
+    updatedOffer = await prisma.offer.update({
+      where: { id: Number(id) },
+      data: updateData
+    });
+  } catch (error) {
+    if (!isOfferLegalColumnMissingError(error)) throw error;
+    const fallbackData = { ...updateData };
+    delete fallbackData.landRegistryNumber;
+    delete fallbackData.apartmentNumber;
+    updatedOffer = await prisma.offer.update({
+      where: { id: Number(id) },
+      data: fallbackData
+    });
+  }
   const newPrice = Number(updatedOffer.price);
   if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
     await dispatchFavoritesPriceChangePush({
