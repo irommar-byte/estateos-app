@@ -21,6 +21,33 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 
+/** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
+const OFFER_WEB_PUT_SELECT = {
+  id: true,
+  userId: true,
+  title: true,
+  description: true,
+  propertyType: true,
+  district: true,
+  price: true,
+  area: true,
+  images: true,
+  rooms: true,
+  floor: true,
+  yearBuilt: true,
+  plotArea: true,
+  floorPlanUrl: true,
+  heating: true,
+  isFurnished: true,
+  transactionType: true,
+  street: true,
+  buildingNumber: true,
+  lat: true,
+  lng: true,
+  isExactLocation: true,
+  status: true,
+} as const;
+
 async function resolveCurrentUser() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
@@ -89,13 +116,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!offer) return NextResponse.json({ error: "Nie znaleziono oferty" }, { status: 404 });
 
     let isRealPro = false;
-    let loggedInEmail = null;
+    let loggedInEmail: string | null = null;
     const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('estateos_session');
+    const sessionToken =
+      cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value || '';
 
-    if (sessionCookie) {
-      const sessionData = decryptSession(sessionCookie.value);
-      loggedInEmail = sessionData?.email || null;
+    if (sessionToken) {
+      try {
+        const sessionData = decryptSession(sessionToken) as { email?: string } | null;
+        loggedInEmail = sessionData?.email ? String(sessionData.email).trim().toLowerCase() : null;
+      } catch {
+        loggedInEmail = null;
+      }
     }
 
     if (loggedInEmail) {
@@ -149,31 +181,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     // Pobieramy aktualny stan oferty z bazy przed dokonaniem zmian
     const currentOffer = await prisma.offer.findUnique({
        where: { id: Number(resolvedParams.id) },
-       select: {
-        id: true,
-        userId: true,
-        title: true,
-        description: true,
-        propertyType: true,
-        district: true,
-        price: true,
-        area: true,
-        images: true,
-        rooms: true,
-        floor: true,
-        yearBuilt: true,
-        plotArea: true,
-        floorPlanUrl: true,
-        heating: true,
-        isFurnished: true,
-        transactionType: true,
-        street: true,
-        buildingNumber: true,
-        lat: true,
-        lng: true,
-        isExactLocation: true,
-        status: true,
-       },
+       select: OFFER_WEB_PUT_SELECT,
     });
 
     if (!currentOffer) {
@@ -281,7 +289,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           ? !!body.isFurnished
           : currentOffer.isFurnished,
         status: newStatus,
-      }
+      },
+      select: OFFER_WEB_PUT_SELECT,
     });
 
     const oldPrice = Number(currentOffer.price);

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
-import { activeChallenges, origin, rpID } from '../../store';
+import { activeChallenges, getOrigin, getRpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
@@ -64,8 +64,8 @@ export async function POST(req: Request) {
     const verification = await verifyAuthenticationResponse({
       response: assertion,
       expectedChallenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
+      expectedOrigin: getOrigin(),
+      expectedRPID: getRpID(),
       credential: {
         id: authRecord.credentialID,
         publicKey: publicKeyBytes,

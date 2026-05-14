@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { activeChallenges, rpID } from '../../store';
+import { activeChallenges, getRpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     }
 
     const options = await generateAuthenticationOptions({
-      rpID,
+      rpID: getRpID(),
       timeout: 60000,
       userVerification: 'preferred',
       allowCredentials,

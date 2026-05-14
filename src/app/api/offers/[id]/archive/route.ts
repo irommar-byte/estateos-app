@@ -1,4 +1,4 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';

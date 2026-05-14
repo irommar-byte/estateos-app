@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from 'next/server';
 import { verifyRegistrationResponse } from '@simplewebauthn/server';
-import { activeChallenges, rpID, origin } from '../../store';
+import { activeChallenges, getRpID, getOrigin } from '../../store';
 import { prisma } from '@/lib/prisma';
 import { encodeCredentialPublicKeyForDb, normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
@@ -19,8 +19,8 @@ export async function POST(req: Request) {
     const verification = await verifyRegistrationResponse({
       response: credential,
       expectedChallenge,
-      expectedOrigin: origin,
-      expectedRPID: rpID,
+      expectedOrigin: getOrigin(),
+      expectedRPID: getRpID(),
     });
 
     if (verification.verified && verification.registrationInfo) {

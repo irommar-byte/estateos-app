@@ -14,6 +14,7 @@ import {
 import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
+  toPublicOfferErrorMessage,
 } from '@/lib/offerSchemaErrors';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -225,7 +226,7 @@ export async function PUT(req: Request) {
         { status: 503 }
       );
     }
-    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    const message = toPublicOfferErrorMessage(e);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

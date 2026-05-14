@@ -12,5 +12,15 @@ export const activeChallenges = global.activeChallenges;
 export const credentialsDB = global.credentialsDB;
 
 export const rpName = 'EstateOS';
-export const rpID = getPasskeyRpId();
-export const origin = getPasskeyOrigin();
+
+/**
+ * Resolve env-backed values at request time (not module import time),
+ * so Next.js build can collect route metadata safely.
+ */
+export function getRpID(): string {
+  return getPasskeyRpId();
+}
+
+export function getOrigin(): string {
+  return getPasskeyOrigin();
+}

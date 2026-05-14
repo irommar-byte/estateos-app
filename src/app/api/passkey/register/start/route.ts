@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from 'next/server';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
-import { activeChallenges, rpName, rpID } from '../../store';
+import { activeChallenges, rpName, getRpID } from '../../store';
 import jwt from 'jsonwebtoken';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { prisma } from '@/lib/prisma';
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
     const options = await generateRegistrationOptions({
       rpName,
-      rpID,
+      rpID: getRpID(),
       userID: new Uint8Array(Buffer.from(String(userId))),
       userName: email,
       timeout: 60000,

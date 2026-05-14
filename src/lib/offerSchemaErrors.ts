@@ -23,3 +23,20 @@ export function isOfferSchemaCompatibilityError(error: unknown): boolean {
 export function getOfferSchemaCompatibilityMessage(): string {
   return 'Tymczasowy problem zgodności schematu ofert. Spróbuj ponownie za chwilę. Jeśli problem wraca, skontaktuj się z obsługą.';
 }
+
+/** Nie zwracaj surowych komunikatów Prisma / P2022 do klienta mobilnego. */
+export function toPublicOfferErrorMessage(error: unknown): string {
+  if (isOfferSchemaCompatibilityError(error)) {
+    return getOfferSchemaCompatibilityMessage();
+  }
+  const msg = error instanceof Error ? error.message : String(error || '');
+  if (
+    /\bP20\d{2}\b/i.test(msg) ||
+    /Invalid\s+`?prisma\.offer/i.test(msg) ||
+    /Unknown column/i.test(msg) ||
+    /does not exist in the current database/i.test(msg)
+  ) {
+    return 'Błąd zapisu lub odczytu oferty. Spróbuj ponownie. Jeśli się powtarza, skontaktuj się z obsługą.';
+  }
+  return msg || 'Błąd serwera';
+}
