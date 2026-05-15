@@ -15,7 +15,7 @@
     },
 "ios": {
   "supportsTablet": false,
-  "buildNumber": "1",
+  "buildNumber": "20",
   "bundleIdentifier": "pl.estateos.app",      "associatedDomains": [
         "webcredentials:estateos.pl",
         "applinks:estateos.pl"
