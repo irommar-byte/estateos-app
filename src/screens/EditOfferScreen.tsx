@@ -632,19 +632,76 @@ export default function EditOfferScreen({ route }: any) {
     }
 
     try {
-      const response = await persistMobileOfferUpdate({
+      const stringifySaveError = (data: any, response: Response) =>
+        data?.message ||
+        data?.error ||
+        (typeof data?._raw === 'string' ? String(data._raw).slice(0, 420) : null) ||
+        `Serwer odrzucił zapis (HTTP ${response.status}).`;
+      const isLegacyKwColumnError = (msg: string) => {
+        const t = String(msg || '').toLowerCase();
+        return (
+          (
+            t.includes('prisma.offer.findunique') ||
+            t.includes('unknown column') ||
+            t.includes('invalid prisma')
+          ) &&
+          (
+            t.includes('landregistrynumber') ||
+            t.includes('apartmentnumber') ||
+            t.includes('dregistrynumber')
+          ) &&
+          (
+            t.includes('does not exist') ||
+            t.includes('nie istnieje') ||
+            t.includes('unknown column')
+          )
+        );
+      };
+      const hasKwPayload = Boolean(
+        String(updatePayload?.landRegistryNumber || '').trim() ||
+        String(updatePayload?.apartmentNumber || '').trim()
+      );
+
+      let effectivePayload = updatePayload;
+      let usedLegacyKwFallback = false;
+      let response = await persistMobileOfferUpdate({
         offerId: Number(offerId),
         token: token.trim(),
-        payload: updatePayload,
+        payload: effectivePayload,
       });
-      const saveData = await readMobileOfferResponseBody(response);
+      let saveData = await readMobileOfferResponseBody(response);
+
       if (isExplicitMobileOfferSaveFailure(saveData, response.ok)) {
-        throw new Error(
-          saveData?.message ||
-            saveData?.error ||
-            (typeof saveData?._raw === 'string' ? String(saveData._raw).slice(0, 240) : null) ||
-            `Serwer odrzucił zapis (HTTP ${response.status}).`
-        );
+        const firstError = stringifySaveError(saveData, response);
+        const genericReadWriteError = String(firstError).toLowerCase().includes('błąd zapisu lub odczytu oferty');
+        const shouldTryLegacyRetry =
+          hasKwPayload ||
+          isLegacyKwColumnError(firstError) ||
+          genericReadWriteError;
+
+        if (shouldTryLegacyRetry) {
+          // Fallback produkcyjny: niezależnie od formatu błędu backendu, przy
+          // problemach z kolumnami KW zawsze próbujemy zapis bez pól legal.
+          const legacyPayload = { ...updatePayload };
+          delete legacyPayload.landRegistryNumber;
+          delete legacyPayload.apartmentNumber;
+          response = await persistMobileOfferUpdate({
+            offerId: Number(offerId),
+            token: token.trim(),
+            payload: legacyPayload,
+          });
+          saveData = await readMobileOfferResponseBody(response);
+          if (isExplicitMobileOfferSaveFailure(saveData, response.ok)) {
+            throw new Error(
+              stringifySaveError(saveData, response) ||
+              firstError
+            );
+          }
+          effectivePayload = legacyPayload;
+          usedLegacyKwFallback = true;
+        } else {
+          throw new Error(firstError);
+        }
       }
       if (__DEV__) {
         // Pomocne przy diagnostyce „nie zapisuje się przybliżonej lokalizacji":
@@ -694,27 +751,31 @@ export default function EditOfferScreen({ route }: any) {
       // natychmiast po zapisie, bez kolejnego round-tripu sieci.
       setOriginalData({
         ...(originalData || {}),
-        title: updatePayload.title,
-        description: updatePayload.description,
-        price: updatePayload.price,
-        adminFee: updatePayload.adminFee,
+        title: effectivePayload.title,
+        description: effectivePayload.description,
+        price: effectivePayload.price,
+        adminFee: effectivePayload.adminFee,
         agentCommissionPercent:
           isAgentUser && resolvedCommission !== undefined ? resolvedCommission : originalData?.agentCommissionPercent ?? null,
-        area: updatePayload.area,
-        rooms: updatePayload.rooms,
-        floor: updatePayload.floor,
-        yearBuilt: updatePayload.yearBuilt,
-        heating: updatePayload.heating || '',
-        apartmentNumber: updatePayload.apartmentNumber || '',
-        landRegistryNumber: updatePayload.landRegistryNumber || '',
-        condition: updatePayload.condition,
-        isExactLocation: updatePayload.isExactLocation,
-        hasBalcony: updatePayload.hasBalcony,
-        hasParking: updatePayload.hasParking,
-        hasStorage: updatePayload.hasStorage,
-        hasElevator: updatePayload.hasElevator,
-        hasGarden: updatePayload.hasGarden,
-        isFurnished: updatePayload.isFurnished,
+        area: effectivePayload.area,
+        rooms: effectivePayload.rooms,
+        floor: effectivePayload.floor,
+        yearBuilt: effectivePayload.yearBuilt,
+        heating: effectivePayload.heating || '',
+        apartmentNumber: usedLegacyKwFallback
+          ? String(originalData?.apartmentNumber || '')
+          : effectivePayload.apartmentNumber || '',
+        landRegistryNumber: usedLegacyKwFallback
+          ? String(originalData?.landRegistryNumber || '')
+          : effectivePayload.landRegistryNumber || '',
+        condition: effectivePayload.condition,
+        isExactLocation: effectivePayload.isExactLocation,
+        hasBalcony: effectivePayload.hasBalcony,
+        hasParking: effectivePayload.hasParking,
+        hasStorage: effectivePayload.hasStorage,
+        hasElevator: effectivePayload.hasElevator,
+        hasGarden: effectivePayload.hasGarden,
+        isFurnished: effectivePayload.isFurnished,
       });
       setOriginalImageKeys(images.filter((i) => i.isRemote).map((i) => i.serverPath || i.uri));
 
@@ -772,9 +833,15 @@ export default function EditOfferScreen({ route }: any) {
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Zapisano', 'Zmiany zostały pomyślnie zapisane.', [
+      Alert.alert(
+        usedLegacyKwFallback ? 'Częściowo zapisano' : 'Zapisano',
+        usedLegacyKwFallback
+          ? 'Zapisano zmiany oferty, ale numer KW i numer mieszkania nie zostały wysłane (backend produkcyjny wymaga migracji bazy). Możesz kontynuować pracę, a sekcję KW zapisać po aktualizacji serwera.'
+          : 'Zmiany zostały pomyślnie zapisane.',
+        [
         { text: 'Super', onPress: () => navigation.goBack() },
-      ]);
+        ]
+      );
     } catch (e: any) {
       Alert.alert('Błąd', e?.message || 'Wystąpił problem podczas zapisywania na serwerze.');
     }
