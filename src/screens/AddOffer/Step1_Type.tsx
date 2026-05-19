@@ -153,13 +153,42 @@ export default function Step1_Type({ theme }: { theme: any }) {
   const scrollRef = useRef<ScrollView>(null);
   const section2YRef = useRef<number>(0);
   const section3YRef = useRef<number>(0);
+  /** Scroll dopiero po onLayout sekcji, która dopiero się montuje po pierwszym wyborze. */
+  const pendingScrollRef = useRef<'section2' | 'section3' | 'end' | null>(null);
 
   const scrollToY = useCallback((y: number) => {
-    // LayoutAnimation zajmuje ~280-340ms — czekamy aż sekcja faktycznie urośnie do swojej wysokości.
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
-    }, 360);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+      }, 220);
+    });
   }, []);
+
+  const scrollToEndDeferred = useCallback(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 120);
+    });
+  }, []);
+
+  const flushPendingScroll = useCallback(
+    (target: 'section2' | 'section3') => {
+      if (pendingScrollRef.current !== target) return;
+      pendingScrollRef.current = null;
+      const y = target === 'section2' ? section2YRef.current : section3YRef.current;
+      if (y > 0) scrollToY(y);
+    },
+    [scrollToY],
+  );
+
+  const isStep2Unlocked = draft.transactionType === 'SELL' || draft.transactionType === 'RENT';
+  const isStep3Unlocked =
+    isStep2Unlocked &&
+    (draft.propertyType === 'FLAT' ||
+      draft.propertyType === 'HOUSE' ||
+      draft.propertyType === 'PREMISES' ||
+      draft.propertyType === 'PLOT');
 
   const handleSelect = (key: string, value: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -167,24 +196,30 @@ export default function Step1_Type({ theme }: { theme: any }) {
     updateDraft({ [key]: value });
 
     if (key === 'transactionType') {
-      // Po wyborze Sprzedaż/Wynajem przewijamy do sekcji "Co oferujesz?".
-      scrollToY(section2YRef.current);
+      pendingScrollRef.current = 'section2';
     } else if (key === 'propertyType') {
-      if (value === 'PLOT') {
-        // Działka — sekcja "stan" nie istnieje, przewijamy lekko niżej żeby pokazać przycisk "Dalej" / podpowiedź.
-        setTimeout(() => {
-          scrollRef.current?.scrollToEnd({ animated: true });
-        }, 360);
-      } else {
-        scrollToY(section3YRef.current);
-      }
+      pendingScrollRef.current = value === 'PLOT' ? 'end' : 'section3';
     }
   };
 
-  // TWARDA BLOKADA LOGICZNA (Strict Check)
-  // Sprawdzamy, czy w pamięci jest DOKŁADNIE ten konkretny string, a nie "cokolwiek"
-  const isStep2Unlocked = draft.transactionType === 'SELL' || draft.transactionType === 'RENT';
-  const isStep3Unlocked = isStep2Unlocked && (draft.propertyType === 'FLAT' || draft.propertyType === 'HOUSE' || draft.propertyType === 'PREMISES' || draft.propertyType === 'PLOT');
+  useEffect(() => {
+    if (pendingScrollRef.current !== 'end') return;
+    if (draft.propertyType !== 'PLOT') return;
+    pendingScrollRef.current = null;
+    scrollToEndDeferred();
+  }, [draft.propertyType, scrollToEndDeferred]);
+
+  useEffect(() => {
+    if (pendingScrollRef.current === 'section2' && isStep2Unlocked && section2YRef.current > 0) {
+      flushPendingScroll('section2');
+    }
+  }, [isStep2Unlocked, draft.transactionType, flushPendingScroll]);
+
+  useEffect(() => {
+    if (pendingScrollRef.current === 'section3' && isStep3Unlocked && section3YRef.current > 0) {
+      flushPendingScroll('section3');
+    }
+  }, [isStep3Unlocked, draft.propertyType, flushPendingScroll]);
 
   // Sekcje ukrywamy całkowicie (opacity 0 + lekkie translateY) póki nie spełniony warunek —
   // pojawiają się z animacją „pop-in” jak udogodnienia w Step 3.
@@ -285,7 +320,10 @@ export default function Step1_Type({ theme }: { theme: any }) {
         {/* SEKCJA 2: TYP NIERUCHOMOŚCI — pojawia się po wyborze Sprzedaż / Wynajem */}
         {isStep2Unlocked && (
           <Animated.View
-            onLayout={(e) => { section2YRef.current = e.nativeEvent.layout.y; }}
+            onLayout={(e) => {
+              section2YRef.current = e.nativeEvent.layout.y;
+              flushPendingScroll('section2');
+            }}
             style={[
               styles.section,
               {
@@ -309,7 +347,10 @@ export default function Step1_Type({ theme }: { theme: any }) {
         {/* SEKCJA 3: STAN WYKOŃCZENIA — pojawia się po wyborze typu nieruchomości (z wyjątkiem Działki) */}
         {isStep3Unlocked && draft.propertyType !== 'PLOT' && (
           <Animated.View
-            onLayout={(e) => { section3YRef.current = e.nativeEvent.layout.y; }}
+            onLayout={(e) => {
+              section3YRef.current = e.nativeEvent.layout.y;
+              flushPendingScroll('section3');
+            }}
             style={[
               styles.section,
               {

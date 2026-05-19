@@ -1,5 +1,15 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+  Pressable,
+  Platform,
+  Keyboard,
+  KeyboardAvoidingView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -7,6 +17,9 @@ import { useOfferStore } from '../../store/useOfferStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import NumericKeyboardAccessory, {
+  ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID,
+} from '../../components/NumericKeyboardAccessory';
 import {
   AGENT_COMMISSION_MAX_PERCENT,
   AGENT_COMMISSION_MIN_PERCENT,
@@ -35,7 +48,33 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const user = useAuthStore((s) => s.user);
   const isAgent = isAgentCommissionAccount(user);
   const navigation = useNavigation<any>();
+  const scrollRef = useRef<ScrollView>(null);
+  const [bottomPad, setBottomPad] = useState(220);
+
   useFocusEffect(useCallback(() => { setCurrentStep(4); }, []));
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const kh = e.endCoordinates?.height ?? 320;
+      setBottomPad(kh + 140);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setBottomPad(220));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const scrollToAdminField = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: 200, animated: true });
+    }, 120);
+  }, []);
+
+  const numericInputProps =
+    Platform.OS === 'ios' ? { inputAccessoryViewID: ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID } : {};
 
   const isDark = theme.glass === 'dark';
   const isRent = draft.transactionType === 'RENT';
@@ -155,8 +194,18 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={[styles.container, { backgroundColor: theme.background }]}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomPad }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={4} draft={draft} theme={theme} navigation={navigation} />
@@ -164,7 +213,18 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
         <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{isRent ? 'Czynsz Najmu (zł)' : 'Cena Całkowita (zł)'}</Text>
         <View style={[styles.mainInputBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 2 }]}>
-          <TextInput style={[styles.mainInput, { color: theme.text }]} placeholder="0" placeholderTextColor={theme.subtitle} value={formatNumber(draft.price)} onChangeText={(t) => updateDraft({ price: t.replace(/\s/g, '') })} keyboardType="numeric" maxLength={11} />
+          <TextInput
+            style={[styles.mainInput, { color: theme.text }]}
+            placeholder="0"
+            placeholderTextColor={theme.subtitle}
+            value={formatNumber(draft.price)}
+            onChangeText={(t) => updateDraft({ price: t.replace(/\s/g, '') })}
+            keyboardType="numeric"
+            maxLength={11}
+            returnKeyType="done"
+            blurOnSubmit
+            {...numericInputProps}
+          />
         </View>
 
         {!isRent && (
@@ -210,6 +270,10 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                 value={formatNumber(isRent ? draft.deposit : (draft.adminFee || draft.rent))}
                 onChangeText={handleSecondaryAmountChange}
                 keyboardType="numeric"
+                returnKeyType="done"
+                blurOnSubmit
+                onFocus={scrollToAdminField}
+                {...numericInputProps}
               />
             </View>
           </View>
@@ -334,6 +398,9 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                         placeholderTextColor={theme.subtitle}
                         keyboardType="decimal-pad"
                         maxLength={5}
+                        returnKeyType="done"
+                        blurOnSubmit
+                        {...numericInputProps}
                       />
                       <Text style={[styles.commissionInputSuffix, { color: theme.text }]}>%</Text>
                     </View>
@@ -397,8 +464,8 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           icon="wallet-outline"
           text="Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku."
         />
-        <View style={{ height: 200 }} />
       </ScrollView>
+      <NumericKeyboardAccessory isDark={isDark} />
     </KeyboardAvoidingView>
   );
 }

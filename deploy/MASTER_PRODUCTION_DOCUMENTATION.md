@@ -10,8 +10,8 @@ Traktuj go jako "single source of truth" dla zespolu mobilnego, backendu i osoby
 - Bundle ID iOS: `pl.estateos.app`
 - API produkcyjne: `https://estateos.pl`
 - Model platnosci:
-  - Pakiet Plus (sloty publikacji): natywne IAP na iOS/Android
-  - Pakiet PRO: komunikat "wkrotce" po stronie iOS (bez zewnetrznego checkoutu in-app)
+  - Pakiet Plus: jednorazowy consumable IAP na iOS/Android; pozwala dodac jedna dodatkowa publikacje na 30 dni: nowa oferte albo zakonczona oferte przywrocona jako nowa 30-dniowa publikacje; nie przedluza aktywnych ogloszen i nie jest planem konta
+  - Pakiet PRO / Investor Pro: status konta dostepny poza aplikacja; aplikacja nie prowadzi do zakupu Pro ani cennika
 
 ## 2. Dokumenty obowiazkowe przed produkcja
 

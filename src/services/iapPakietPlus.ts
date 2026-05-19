@@ -30,13 +30,13 @@ export function getPakietPlusProductId(): IapProductId {
 export const PAKIET_PLUS_PRICE_LABEL = '49 zł';
 
 export type PurchasePakietPlusResult =
-  | { ok: true; backendRegistered: boolean }
+  | { ok: true; backendRegistered: boolean; extraListings?: number }
   | { ok: false; cancelled?: boolean; message?: string };
 
 /**
  * Uruchamia natywny sheet App Store / Google Play dla consumable Pakiet
- * Plus. Cały lifecycle (verify backend, finishTransaction, persistence)
- * obsługuje globalny `IAPManager`.
+ * Plus: jedna dodatkowa nowa oferta na 30 dni. To nie jest subskrypcja,
+ * plan konta ani przedłużenie istniejącego ogłoszenia.
  *
  * NOTE: parametry `apiUrl` / `token` są nadal w sygnaturze dla
  * kompatybilności z istniejącym kodem, ALE w runtime używany jest
@@ -51,7 +51,11 @@ export async function purchasePakietPlusConsumable(
   const result = await IAPManager.purchaseConsumable(productId);
 
   if (result.ok) {
-    return { ok: true, backendRegistered: result.backendVerified };
+    return {
+      ok: true,
+      backendRegistered: result.backendVerified,
+      extraListings: result.extraListings,
+    };
   }
   if (result.cancelled) {
     return { ok: false, cancelled: true };

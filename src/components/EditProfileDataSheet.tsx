@@ -18,8 +18,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
+import { isValidPhoneNumber } from 'libphonenumber-js';
+import type { CountryCode } from 'libphonenumber-js';
 import { useAuthStore } from '../store/useAuthStore';
 import { API_URL } from '../config/network';
+import { PhoneCountryPickerPanel } from './phone/PhoneCountryPickerModal';
+import {
+  buildE164FromNational,
+  dialCodeFor,
+  formatNationalAsYouType,
+  getDeviceRegionCountry,
+  normalizePhoneE164,
+  parseStoredPhoneToLine,
+  flagEmojiFromIso2,
+} from '../utils/phoneRegions';
 
 const nameChangeStorageKey = (userId: number | string) => `@estateos_profile_name_change_used_${userId}`;
 
@@ -31,12 +43,6 @@ type Props = {
   /** Po otwarciu przewiń listę do sekcji (np. z profilu: weryfikacja e-mail). */
   initialScrollSection?: 'personal' | 'email' | null;
 };
-
-function digitsToPhoneDraft(phone?: string | null): string {
-  const raw = String(phone || '').replace(/\D/g, '');
-  const nine = raw.startsWith('48') && raw.length >= 11 ? raw.slice(-9) : raw.length >= 9 ? raw.slice(-9) : raw.replace(/^48/, '');
-  return nine.replace(/(\d{3})(?=\d)/g, '$1 ').trim();
-}
 
 export default function EditProfileDataSheet({
   visible,
@@ -59,7 +65,9 @@ export default function EditProfileDataSheet({
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [phoneDraft, setPhoneDraft] = useState('');
+  const [phoneCountryIso, setPhoneCountryIso] = useState<CountryCode>('PL');
+  const [phoneNationalDisplay, setPhoneNationalDisplay] = useState('');
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [busyBasics, setBusyBasics] = useState(false);
@@ -87,7 +95,9 @@ export default function EditProfileDataSheet({
     if (!visible || !user) return;
     setFirstName(String(user.firstName || '').trim());
     setLastName(String(user.lastName || '').trim());
-    setPhoneDraft(digitsToPhoneDraft(user.phone));
+    const line = parseStoredPhoneToLine(user.phone, getDeviceRegionCountry());
+    setPhoneCountryIso(line.iso);
+    setPhoneNationalDisplay(formatNationalAsYouType(line.iso, line.nationalDigits));
     const pending = String(user.pendingEmail || '').trim();
     setNewEmail(pending && pending.toLowerCase() !== String(user.email || '').trim().toLowerCase() ? pending : '');
     setEmailCode('');
@@ -104,6 +114,12 @@ export default function EditProfileDataSheet({
       cancelled = true;
     };
   }, [visible, user?.id]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const d = phoneNationalDisplay.replace(/\D/g, '');
+    setPhoneNationalDisplay(formatNationalAsYouType(phoneCountryIso, d));
+  }, [phoneCountryIso, visible]);
 
   useEffect(() => {
     if (!visible) {
@@ -123,10 +139,12 @@ export default function EditProfileDataSheet({
     return () => clearTimeout(id);
   }, [visible, initialScrollSection, emailSectionY]);
 
+  const phoneNationalDigits = phoneNationalDisplay.replace(/\D/g, '');
+  const draftPhoneE164 = buildE164FromNational(phoneCountryIso, phoneNationalDigits);
+  const draftPhoneValid = Boolean(draftPhoneE164 && isValidPhoneNumber(draftPhoneE164));
+
   const handlePhoneChange = (text: string) => {
-    const cleaned = text.replace(/\D/g, '').substring(0, 9);
-    const parts = cleaned.match(/.{1,3}/g);
-    setPhoneDraft(parts ? parts.join(' ') : cleaned);
+    setPhoneNationalDisplay(formatNationalAsYouType(phoneCountryIso, text.replace(/\D/g, '')));
   };
 
   /** Walidacja dostępności e-maila — od razu z debounce, używa endpointu rejestracji. */
@@ -186,29 +204,27 @@ export default function EditProfileDataSheet({
       setPhoneCheck('idle');
       return;
     }
-    const clean = String(phoneDraft || '').replace(/\s/g, '');
-    if (!clean) {
+    if (!phoneNationalDigits) {
       setPhoneCheck('idle');
       return;
     }
-    if (clean.length !== 9) {
+    if (!draftPhoneE164 || !draftPhoneValid) {
       setPhoneCheck('invalid');
       return;
     }
-    const currentClean = String(user?.phone || '').replace(/\D/g, '').slice(-9);
-    if (currentClean && clean === currentClean) {
+    const currentE164 = normalizePhoneE164(user?.phone);
+    if (currentE164 && draftPhoneE164 === currentE164) {
       setPhoneCheck('same');
       return;
     }
     setPhoneCheck('loading');
     const ctrl = new AbortController();
-    const e164 = '+48 ' + clean;
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/auth/check-exists`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: e164, field: 'phone', value: e164 }),
+          body: JSON.stringify({ phone: draftPhoneE164, field: 'phone', value: draftPhoneE164 }),
           signal: ctrl.signal,
         });
         if (!res.ok) {
@@ -231,7 +247,7 @@ export default function EditProfileDataSheet({
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [visible, phoneDraft, phoneVerified, user?.phone]);
+  }, [visible, phoneNationalDigits, draftPhoneE164, draftPhoneValid, phoneVerified, user?.phone]);
 
   const saveBasics = useCallback(async () => {
     if (!user || busyBasics) return;
@@ -262,13 +278,12 @@ export default function EditProfileDataSheet({
         payload.lastName = ln;
       }
       if (!phoneVerified) {
-        const d = phoneDraft.replace(/\s/g, '');
-        if (d.length !== 9) {
-          Alert.alert('Telefon', 'Podaj 9 cyfr numeru (bez +48).');
+        if (!draftPhoneE164 || !draftPhoneValid) {
+          Alert.alert('Telefon', 'Wybierz kraj i podaj prawidłowy numer telefonu.');
           setBusyBasics(false);
           return;
         }
-        payload.phone = `+48 ${d.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')}`;
+        payload.phone = draftPhoneE164;
       }
 
       if (namesLocked && !payload.phone) {
@@ -304,7 +319,10 @@ export default function EditProfileDataSheet({
     busyBasics,
     firstName,
     lastName,
-    phoneDraft,
+    phoneNationalDisplay,
+    draftPhoneE164,
+    draftPhoneValid,
+    phoneCountryIso,
     phoneVerified,
     namesLocked,
     updateProfileBasics,
@@ -453,7 +471,7 @@ export default function EditProfileDataSheet({
       return (
         <View style={[styles.checkRow, styles.checkRowWarn]}>
           <Ionicons name="alert-circle" size={16} color="#b25b00" />
-          <Text style={styles.checkTextWarn}>{kind === 'email' ? 'Nieprawidłowy format e-maila.' : 'Wpisz 9 cyfr numeru telefonu.'}</Text>
+          <Text style={styles.checkTextWarn}>{kind === 'email' ? 'Nieprawidłowy format e-maila.' : 'Podaj prawidłowy numer dla wybranego kraju.'}</Text>
         </View>
       );
     }
@@ -470,6 +488,7 @@ export default function EditProfileDataSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
       <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
@@ -567,24 +586,52 @@ export default function EditProfileDataSheet({
                     </View>
                   )}
                 </View>
-                <View style={styles.inputRow}>
-                  <TextInput
-                    value={phoneDraft}
-                    onChangeText={handlePhoneChange}
-                    placeholder="000 000 000"
-                    placeholderTextColor={theme.subtitle}
-                    keyboardType="number-pad"
-                    editable={!phoneVerified}
-                    style={[
-                      styles.input,
-                      styles.inputFlex,
-                      { color: theme.text, backgroundColor: inputBg, borderColor: border },
-                      phoneVerified && styles.inputDisabled,
-                      !phoneVerified && phoneCheck === 'taken' && styles.inputBorderErr,
-                      !phoneVerified && phoneCheck === 'available' && styles.inputBorderOk,
-                    ]}
-                  />
-                </View>
+                {!phoneVerified ? (
+                  <>
+                    <Pressable
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setPhonePickerOpen(true);
+                      }}
+                      style={[styles.countryRow, { backgroundColor: inputBg, borderColor: border }]}
+                    >
+                      <Text style={{ fontSize: 22 }}>{flagEmojiFromIso2(phoneCountryIso)}</Text>
+                      <Text style={{ flex: 1, fontSize: 16, fontWeight: '700', color: textMain }}>
+                        +{dialCodeFor(phoneCountryIso)}
+                      </Text>
+                      <Ionicons name="chevron-down" size={18} color={String(textMuted)} />
+                    </Pressable>
+                    <View style={styles.inputRow}>
+                      <TextInput
+                        value={phoneNationalDisplay}
+                        onChangeText={handlePhoneChange}
+                        placeholder={phoneCountryIso === 'PL' ? 'np. 500 600 700' : 'Numer krajowy'}
+                        placeholderTextColor={theme.subtitle}
+                        keyboardType="number-pad"
+                        style={[
+                          styles.input,
+                          styles.inputFlex,
+                          { color: theme.text, backgroundColor: inputBg, borderColor: border },
+                          phoneCheck === 'taken' && styles.inputBorderErr,
+                          phoneCheck === 'available' && styles.inputBorderOk,
+                        ]}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.inputRow}>
+                    <TextInput
+                      value={user?.phone || phoneNationalDisplay}
+                      editable={false}
+                      style={[
+                        styles.input,
+                        styles.inputFlex,
+                        { color: theme.text, backgroundColor: inputBg, borderColor: border },
+                        styles.inputDisabled,
+                      ]}
+                    />
+                  </View>
+                )}
                 {!phoneVerified ? renderCheckInline(phoneCheck, 'phone') : null}
                 {phoneVerified ? (
                   <Text style={[styles.hint, { color: textMuted }]}>
@@ -593,7 +640,7 @@ export default function EditProfileDataSheet({
                 ) : (
                   <>
                     <Text style={[styles.hint, { color: textMuted }]}>
-                      9 cyfr bez prefiksu +48 (prefiks dodamy przy zapisie). Po potwierdzeniu SMS-em zmiana będzie zablokowana.
+                      Wybierz kraj (flaga i prefiks), wpisz numer w lokalnym formacie. Po potwierdzeniu SMS-em zmiana będzie zablokowana.
                     </Text>
                     <Pressable
                       onPress={() => {
@@ -833,6 +880,26 @@ export default function EditProfileDataSheet({
           </View>
         </KeyboardAvoidingView>
       </BlurView>
+      {phonePickerOpen ? (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 100 }]} pointerEvents="box-none">
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
+            onPress={() => setPhonePickerOpen(false)}
+          />
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 101, elevation: 40 }}>
+            <PhoneCountryPickerPanel
+              selectedIso={phoneCountryIso}
+              onSelect={(iso) => {
+                setPhoneCountryIso(iso);
+                setPhoneNationalDisplay(formatNationalAsYouType(iso, phoneNationalDigits));
+              }}
+              onClose={() => setPhonePickerOpen(false)}
+              isDark={isDark}
+            />
+          </View>
+        </View>
+      ) : null}
+      </View>
     </Modal>
   );
 }
@@ -860,6 +927,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 12 : 10,
     fontSize: 16,
+  },
+  countryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+    marginBottom: 8,
   },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inputFlex: { flex: 1 },

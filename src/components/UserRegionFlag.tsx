@@ -29,7 +29,11 @@ export default function UserRegionFlag({
 }: Props) {
   const systemScheme = useColorScheme();
   const isDark = isDarkProp ?? systemScheme === 'dark';
-  const iso = useMemo(() => inferCountryFromPhone(phone, fallbackIso), [phone, fallbackIso]);
+  const iso = useMemo(() => {
+    const raw = String(phone || '').trim();
+    if (!raw || raw === 'Brak numeru') return fallbackIso;
+    return inferCountryFromPhone(phone, fallbackIso);
+  }, [phone, fallbackIso]);
   const emoji = flagEmojiFromIso2(iso);
   const swing = useRef(new Animated.Value(0)).current;
 

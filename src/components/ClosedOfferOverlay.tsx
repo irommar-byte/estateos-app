@@ -39,6 +39,7 @@ type Props = {
   reason: OfferLifecycleReason;
   headline: string;
   subline: string;
+  /** @deprecated Overlay ma stały ciemny motyw; prop zostawiony dla kompatybilności API. */
   isDark?: boolean;
   /**
    * Czy zalogowany użytkownik jest właścicielem zamkniętej oferty.
@@ -65,7 +66,6 @@ export default function ClosedOfferOverlay({
   reason,
   headline,
   subline,
-  isDark = true,
   isOwner = false,
   onGoBack,
   onBrowseSimilar,
@@ -110,6 +110,7 @@ export default function ClosedOfferOverlay({
   const accent = ACCENT_BY_REASON[reason] || '#9ca3af';
   const dotOpacity = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
   const dotScale = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
+  const fineprint = getFineprintCopy(reason, isOwner);
 
   return (
     <Animated.View pointerEvents="auto" style={[StyleSheet.absoluteFill, styles.root, { opacity: fade }]}>
@@ -148,7 +149,7 @@ export default function ClosedOfferOverlay({
 
         <View style={[styles.divider, { backgroundColor: accent, shadowColor: accent }]} />
 
-        <Text style={styles.subline}>{subline}</Text>
+        <Text style={styles.subline}>{isOwner ? formatOwnerSubline(subline, reason) : subline}</Text>
 
         <View style={styles.actionsRow}>
           {onGoBack ? (
@@ -157,15 +158,11 @@ export default function ClosedOfferOverlay({
                 Haptics.selectionAsync();
                 onGoBack();
               }}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                pressed && { opacity: 0.85 },
-                isDark && { backgroundColor: '#ffffff' },
-              ]}
+              style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.88 }]}
             >
-              <ChevronLeft size={18} color={isDark ? '#000000' : '#ffffff'} />
-              <Text style={[styles.primaryBtnText, { color: isDark ? '#000000' : '#ffffff' }]} numberOfLines={1}>
-                {isOwner ? 'Wróć do panelu' : 'Wróć'}
+              <ChevronLeft size={18} color="#0a0a0a" />
+              <Text style={styles.primaryBtnText} numberOfLines={1}>
+                {isOwner ? 'Wróć do panelu' : 'Wróć do Radaru'}
               </Text>
             </Pressable>
           ) : null}
@@ -185,7 +182,7 @@ export default function ClosedOfferOverlay({
           ) : null}
         </View>
 
-        <Text style={styles.fineprint}>EstateOS™ chroni Twoje decyzje. Tej oferty nie da się dzisiaj wziąć.</Text>
+        <Text style={styles.fineprint}>{fineprint}</Text>
       </View>
     </Animated.View>
   );
@@ -195,6 +192,35 @@ function formatOwnerHeadline(headline: string): string {
   // Drobny lift tonu dla właściciela: zamiast bezosobowego komunikatu
   // używamy „Twoja oferta jest …". Jest mniej dystansująco.
   return headline.replace(/^Oferta /, 'Twoja oferta jest ').replace(/^Nieruchomość /, 'Twoja nieruchomość ');
+}
+
+function formatOwnerSubline(subline: string, reason: OfferLifecycleReason): string {
+  if (reason === 'SOLD') {
+    return 'Transakcja została sfinalizowana. Oferta nie jest już widoczna dla kupujących.';
+  }
+  if (reason === 'EXPIRED') {
+    return 'Minął okres publikacji. Oferta zniknęła z Radaru — możesz ją przywrócić w Moje ogłoszenia.';
+  }
+  if (reason === 'ARCHIVED' || /wycofał/i.test(subline)) {
+    return 'Wycofałeś tę ofertę z rynku. Nie przyjmuje już wiadomości ani nowych propozycji.';
+  }
+  return subline;
+}
+
+function getFineprintCopy(reason: OfferLifecycleReason, isOwner: boolean): string {
+  if (isOwner) {
+    if (reason === 'SOLD') {
+      return 'Sprzedaż została zamknięta. Oferta pozostaje w archiwum jako potwierdzenie transakcji.';
+    }
+    if (reason === 'EXPIRED') {
+      return 'Okres publikacji minął. W Moje ogłoszenia możesz przywrócić ofertę na kolejne 30 dni przez Pakiet Plus.';
+    }
+    return 'Oferta nie jest widoczna na rynku. W Moje ogłoszenia możesz ją zarządzać lub przywrócić publikację przez Pakiet Plus.';
+  }
+  if (reason === 'SOLD') {
+    return 'Ta nieruchomość została sprzedana. Nie można już wysłać wiadomości ani złożyć propozycji.';
+  }
+  return 'Ta oferta nie przyjmuje już kontaktu ani propozycji. Wróć do Radaru, aby zobaczyć aktywne ogłoszenia.';
 }
 
 const styles = StyleSheet.create({
@@ -285,6 +311,7 @@ const styles = StyleSheet.create({
     minWidth: 140,
   },
   primaryBtnText: {
+    color: '#0a0a0a',
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: 0.2,

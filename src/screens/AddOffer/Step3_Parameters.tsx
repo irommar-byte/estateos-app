@@ -15,6 +15,7 @@ import {
   isValidLandRegistryNumber,
   normalizeLandRegistryNumber,
 } from '../../utils/landRegistry';
+import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -62,6 +63,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const isYearUnlocked = isPlot ? false : (isFloorUnlocked && !!draft.floor);
   
   const isAmenitiesUnlocked = !isPlot && isYearUnlocked && !!(draft.yearBuilt || draft.buildYear);
+  const showLandRegistryVerification = isPolandLocationDraft(draft);
   const landRegistryRaw = String(draft.landRegistryNumber || '').trim();
   const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
@@ -258,6 +260,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
             </View>
 
+            {showLandRegistryVerification ? (
+            <>
             <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 20 }]}>Weryfikacja dokumentów (opcjonalnie)</Text>
             <View style={[styles.docsCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
               <TextInput
@@ -318,13 +322,19 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
                 zgody.
               </Text>
             </View>
+            </>
+            ) : null}
           </Animated.View>
         )}
 
         <AddOfferStepFooterHint
           theme={theme}
           icon="options-outline"
-          text="Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami oraz na szacunki finansowe w następnym kroku. Uzupełniaj pola po kolei — kolejne sekcje odblokują się, gdy poprzednie są spójne. Dla działki wystarczy powierzchnia (bez udogodnień typowych dla lokalu)."
+          text={
+            showLandRegistryVerification
+              ? 'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami oraz na szacunki finansowe w następnym kroku. Uzupełniaj pola po kolei — kolejne sekcje odblokują się, gdy poprzednie są spójne. Dla działki wystarczy powierzchnia (bez udogodnień typowych dla lokalu).'
+              : 'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami. Dla nieruchomości poza Polską nie stosujemy weryfikacji księgi wieczystej (KW) — dotyczy wyłącznie polskiego rejestru.'
+          }
         />
         <View style={{ height: 200 }} />
       </ScrollView>

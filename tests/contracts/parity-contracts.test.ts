@@ -7,7 +7,10 @@ import {
   buildCanonicalRadarPreferencesDto,
   canFinalizeTransition,
   extractPushDealAndOfferIds,
+  isDealSaleFinalizedMessage,
+  isDealTransactionFinalized,
   isFinalizedOwnerAcceptanceMessage,
+  isOfferMarketReserveMessage,
   mergePushPayload,
   shouldPrioritizeDealroom,
   validateSharedDealReviewPayload,
@@ -20,8 +23,44 @@ test('owner acceptance -> finalized/review contracts', () => {
   const finalizationMsg =
     'Decyzja właściciela: oferta została wycofana z publikacji (transakcja sfinalizowana, przywrócenie wymaga kolejnych środków).';
   assert.equal(isFinalizedOwnerAcceptanceMessage(finalizationMsg), true);
+  assert.equal(isDealSaleFinalizedMessage(finalizationMsg), true);
   assert.equal(isFinalizedOwnerAcceptanceMessage('zwykła wiadomość'), false);
+  assert.equal(
+    isOfferMarketReserveMessage(
+      'Decyzja właściciela: oferta została wycofana z publikacji (rezerwacja uzgodnionej ceny).'
+    ),
+    true
+  );
+  assert.equal(
+    isDealSaleFinalizedMessage(
+      'Decyzja właściciela: oferta została wycofana z publikacji (rezerwacja uzgodnionej ceny).'
+    ),
+    false
+  );
+  assert.equal(
+    isDealSaleFinalizedMessage(
+      'Decyzja właściciela: ostatecznie akceptuję cenę 600 000 PLN i zamykam sprzedaż. Oferta została wycofana z rynku.'
+    ),
+    true
+  );
   assert.equal(DEAL_REVIEW_PREFIX, '[[DEAL_REVIEW]]');
+});
+
+test('isDealTransactionFinalized — AGREED to nie zamknięcie', () => {
+  assert.equal(
+    isDealTransactionFinalized({
+      dealStatus: 'AGREED',
+      messages: [{ content: 'Akceptuję Twoją cenę. Proszę o ostateczne potwierdzenie sprzedaży.' }],
+    }),
+    false
+  );
+  assert.equal(
+    isDealTransactionFinalized({
+      dealStatus: 'FINALIZED',
+      messages: [],
+    }),
+    true
+  );
 });
 
 test('push dealId payload -> Dealroom priority over offer fallback', () => {

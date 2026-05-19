@@ -16,7 +16,8 @@
  * ║     aplikacji w trakcie zakupu, po restore.                          ║
  * ║                                                                       ║
  * ║  ② Pending transactions z poprzedniej sesji muszą zostać DRENOWANE   ║
- * ║     przy boot — inaczej pieniądze są pobrane, a slot nie naliczony.  ║
+ * ║     przy boot — inaczej pieniądze są pobrane, a dodatkowa publikacja ║
+ * ║     nie zostanie naliczona.                                          ║
  * ║                                                                       ║
  * ║  ③ Retry backend notification z exponential backoff: jak backend     ║
  * ║     nie odpowie (network, 5xx), transakcja jest CACHOWANA lokalnie  ║
@@ -64,7 +65,7 @@ export type IapPurchaseResult =
       transactionId: string;
       /** Czy backend potwierdził weryfikację (true) czy jeszcze pending (false). */
       backendVerified: boolean;
-      /** Liczba dodatkowych slotów po zaksięgowaniu (jeśli backend zwrócił). */
+      /** Liczba dodatkowych publikacji po zaksięgowaniu (jeśli backend zwrócił). */
       extraListings?: number;
     }
   | { ok: false; cancelled: true; message?: string }
@@ -140,6 +141,15 @@ class IAPManagerImpl {
     });
     this.purchaseErrorSub = iap.purchaseErrorListener((err) => {
       if (__DEV__) console.log('[IAP] purchaseErrorListener:', err);
+      if (this.isCancelled(err)) {
+        this.resolveWaiterForError(err, true);
+        return;
+      }
+      if (this.isDuplicatePurchaseError(err)) {
+        void this.recoverDuplicatePurchase(err);
+        return;
+      }
+      this.resolveWaiterForError(err);
     });
 
     // Foreground rehydration: gdy aplikacja wraca z background, próbujemy
@@ -181,7 +191,11 @@ class IAPManagerImpl {
 
     // Walidacja: produkt musi istnieć w sklepie.
     try {
-      const products = await this.iap!.fetchProducts({ skus: [productId], type: 'in-app' });
+      const products = await this.withTimeout(
+        this.iap!.fetchProducts({ skus: [productId], type: 'in-app' }),
+        15_000,
+        'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.',
+      );
       if (!products?.length) {
         return {
           ok: false,
@@ -233,6 +247,10 @@ class IAPManagerImpl {
           }
           return;
         }
+        if (this.isDuplicatePurchaseError(err)) {
+          void this.recoverDuplicatePurchase(err);
+          return;
+        }
         if (this.waiters.delete(waiterKey)) {
           clearTimeout(timeout);
           resolve({
@@ -249,8 +267,8 @@ class IAPManagerImpl {
   /**
    * Restore Purchases (App Store Review Guideline 3.1.1).
    * Pobiera wszystkie historyczne zakupy non-consumable / subscriptions
-   * i zgłasza je do backendu. Dla pure-consumable'ów (jak Pakiet Plus
-   * 30d) zwraca pustą listę, ale Apple wymaga żeby przycisk DZIAŁAŁ —
+   * i zgłasza je do backendu. Pakiet Plus jest consumable: jedna dodatkowa
+   * nowa oferta na 30 dni. Apple może zwrócić pustą listę, ale wymaga żeby przycisk DZIAŁAŁ —
    * dlatego return value to zawsze obiekt z liczbą restored.
    */
   async restorePurchases(): Promise<{ ok: boolean; restored: number; message?: string }> {
@@ -263,7 +281,7 @@ class IAPManagerImpl {
     }
 
     try {
-      const purchases = await this.iap.getAvailablePurchases();
+      const purchases = await this.getRecoverableStorePurchases();
       let restored = 0;
       for (const purchase of purchases || []) {
         const reported = await this.handleIncomingPurchase(purchase, { silent: true });
@@ -325,8 +343,31 @@ class IAPManagerImpl {
     return code === this.iap.ErrorCode?.UserCancelled;
   }
 
+  private isDuplicatePurchaseError(err: unknown): boolean {
+    const code = String((err as { code?: unknown })?.code || '').toLowerCase();
+    const message = String((err as { message?: unknown })?.message || '').toLowerCase();
+    return code === 'duplicate-purchase' || message.includes('duplicate purchase');
+  }
+
   private errMessage(e: unknown, fallback: string): string {
     if (e instanceof Error && e.message) return e.message;
+    if (e && typeof e === 'object') {
+      const obj = e as {
+        message?: unknown;
+        code?: unknown;
+        debugMessage?: unknown;
+        responseCode?: unknown;
+        productId?: unknown;
+      };
+      const parts = [
+        typeof obj.message === 'string' && obj.message.trim() ? obj.message.trim() : null,
+        typeof obj.code === 'string' && obj.code.trim() ? `Kod: ${obj.code.trim()}` : null,
+        typeof obj.debugMessage === 'string' && obj.debugMessage.trim() ? obj.debugMessage.trim() : null,
+        obj.responseCode != null ? `Response: ${String(obj.responseCode)}` : null,
+        typeof obj.productId === 'string' && obj.productId.trim() ? `Produkt: ${obj.productId.trim()}` : null,
+      ].filter((x): x is string => Boolean(x));
+      if (parts.length > 0) return parts.join('\n');
+    }
     if (typeof e === 'string' && e) return e;
     return fallback;
   }
@@ -391,6 +432,7 @@ class IAPManagerImpl {
         productId: payload.productId,
         transactionId: this.transactionIdOf(payload),
         backendVerified: false,
+        extraListings: verifyResult.extraListings,
       });
       return true;
     }
@@ -474,6 +516,92 @@ class IAPManagerImpl {
     }
   }
 
+  private resolveWaiterForError(err: unknown, cancelled = false): void {
+    const productId = (err as { productId?: string })?.productId;
+    const message = this.errMessage(err, 'Zakup nie powiódł się.');
+    const result: IapPurchaseResult = cancelled ? { ok: false, cancelled: true } : { ok: false, message };
+    if (productId && this.isKnownProductId(productId)) {
+      this.resolveWaiterFor(productId, result);
+      return;
+    }
+    // Niektóre błędy StoreKit z Nitro przychodzą bez productId. Wtedy zwracamy
+    // błąd do najstarszego oczekującego zakupu, żeby UI nie wisiał 90 sekund.
+    const oldest = this.waiters.entries().next().value as [string, (r: IapPurchaseResult) => void] | undefined;
+    if (!oldest) return;
+    const [key, fn] = oldest;
+    this.waiters.delete(key);
+    fn(result);
+  }
+
+  private async recoverDuplicatePurchase(err: unknown): Promise<void> {
+    const productIdFromError = String((err as { productId?: unknown })?.productId || '');
+    try {
+      const purchases = await this.getRecoverableStorePurchases();
+      const matching = purchases.find((p) => {
+        if (productIdFromError) return p.productId === productIdFromError;
+        return this.isKnownProductId(String(p.productId));
+      });
+
+      if (matching) {
+        const handled = await this.handleIncomingPurchase(matching);
+        if (handled) return;
+      }
+    } catch (recoverError) {
+      if (__DEV__) console.log('[IAP] duplicate recovery failed:', recoverError);
+    }
+
+    this.resolveWaiterForError({
+      ...((err && typeof err === 'object') ? (err as Record<string, unknown>) : {}),
+      message:
+        'Apple ma niedokończony wcześniejszy zakup Pakietu Plus. Wejdź w Profil → Przywróć zakupy albo uruchom aplikację ponownie, a transakcja zostanie dokończona automatycznie.',
+    });
+  }
+
+  private async getRecoverableStorePurchases(): Promise<IapPurchase[]> {
+    if (!this.iap) return [];
+    const byKey = new Map<string, IapPurchase>();
+    const add = (items: IapPurchase[] | null | undefined) => {
+      for (const purchase of items || []) {
+        const productId = String(purchase.productId || '');
+        if (!this.isKnownProductId(productId)) continue;
+        const key =
+          String((purchase as any).transactionId || (purchase as any).id || (purchase as any).purchaseToken || '') ||
+          `${productId}:${byKey.size}`;
+        byKey.set(key, purchase);
+      }
+    };
+
+    try {
+      add(await this.iap.getAvailablePurchases());
+    } catch (error) {
+      if (__DEV__) console.log('[IAP] getAvailablePurchases failed:', error);
+    }
+
+    if (Platform.OS === 'ios' && typeof this.iap.getPendingTransactionsIOS === 'function') {
+      try {
+        add(await this.iap.getPendingTransactionsIOS());
+      } catch (error) {
+        if (__DEV__) console.log('[IAP] getPendingTransactionsIOS failed:', error);
+      }
+    }
+
+    return Array.from(byKey.values());
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
   // -------------------------------------------------------------------------
   //  INTERNAL — backend communication
   // -------------------------------------------------------------------------
@@ -511,7 +639,7 @@ class IAPManagerImpl {
       if (data.success === false && !data.shouldRetry) {
         // Trwały błąd (np. INVALID_RECEIPT, DUPLICATE_TRANSACTION).
         // Usuwamy z pending — nie ma sensu retry. Ale finishTransaction
-        // i tak zrobimy, żeby Apple nie wisiał (DUPLICATE = już dostał slot).
+        // i tak zrobimy, żeby Apple nie wisiał (DUPLICATE = już zaksięgowane prawo publikacji).
         await this.removePending(key);
       } else {
         await this.bumpPendingAttempts(key);
@@ -580,13 +708,11 @@ class IAPManagerImpl {
     if (!this.iap) return;
 
     // (1) StoreKit/Play — drainuj transakcje które system trzyma natywnie.
-    try {
-      const native = await this.iap.getAvailablePurchases();
-      for (const p of native || []) {
-        await this.handleIncomingPurchase(p, { silent: true });
-      }
-    } catch (e) {
-      if (__DEV__) console.log('[IAP] getAvailablePurchases failed:', e);
+    // iOS potrafi zgłosić duplicate-purchase dla transakcji widocznej dopiero
+    // w `getPendingTransactionsIOS`, więc używamy wspólnego recovery helpera.
+    const native = await this.getRecoverableStorePurchases();
+    for (const p of native || []) {
+      await this.handleIncomingPurchase(p, { silent: true });
     }
 
     // (2) AsyncStorage — drainuj te które backend wcześniej odrzucił/timeoutował.

@@ -1,6 +1,5 @@
 import * as Device from "expo-device";
 import { usePushNotifications } from './src/hooks/usePushNotifications';
-import PushOnboardingSheet from "./src/components/PushOnboardingSheet";
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
 import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
@@ -19,7 +18,15 @@ import * as Notifications from "expo-notifications";
 
 import { createNavigationContainerRef } from "@react-navigation/native";
 
-import { NavigationContainer, DarkTheme, DefaultTheme, StackActions, useNavigation, useNavigationState } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DarkTheme,
+  DefaultTheme,
+  StackActions,
+  useFocusEffect,
+  useNavigation,
+  useNavigationState,
+} from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,6 +82,17 @@ const navigationRef = createNavigationContainerRef();
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
+  const navigation = useNavigation<any>();
+
+  /** Przy wpisywaniu kwot FAB „Dalej” musi zostać widoczny (klawiatura numeryczna bez Enter). */
+  useFocusEffect(
+    useCallback(() => {
+      const tab = navigation.getParent?.();
+      tab?.setOptions?.({ tabBarHideOnKeyboard: false });
+      return () => tab?.setOptions?.({ tabBarHideOnKeyboard: true });
+    }, [navigation]),
+  );
+
   return (
     <AddOfferStack.Navigator
       screenOptions={{
@@ -165,10 +183,10 @@ const FloatingNextButton = ({ onPress }: any) => {
   const isFocused = activeRouteName === 'Dodaj';
 
   let isValid = false;
-  let errorMessage = getStepBlockMessage(step);
+  let errorMessage = getStepBlockMessage(step, draft);
   if (step >= 1 && step <= 5) {
     isValid = isStepValid(step, draft);
-    errorMessage = getStepBlockMessage(step);
+    errorMessage = getStepBlockMessage(step, draft);
   }
 
   useEffect(() => {
@@ -208,6 +226,20 @@ const FloatingNextButton = ({ onPress }: any) => {
   const handlePress = (e: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const currentDraft = useOfferStore.getState().draft;
+      const shouldStartFresh =
+        step >= 6 ||
+        (
+          !String(currentDraft?.title || '').trim() &&
+          !String(currentDraft?.price || '').trim() &&
+          !String(currentDraft?.description || '').trim() &&
+          (!Array.isArray(currentDraft?.images) || currentDraft.images.length === 0)
+        );
+      if (shouldStartFresh) {
+        useOfferStore.getState().setNavigationGate(null);
+        navigation.navigate('Dodaj', { screen: 'Step1' });
+        return;
+      }
       navigation.navigate('Dodaj');
       return;
     }
@@ -1186,7 +1218,7 @@ const parsePushTargetFromResponse = (
 
 export default function App() {
   const { token } = useAuthStore();
-  const { askForPermission } = usePushNotifications(token);
+  usePushNotifications(token);
   const systemColorScheme = useColorScheme();
 
   /** Live Activity: gasimy, gdy w store radar jest wyłączony. Z dysku NIGDY nie wyłączamy radaru w store (tylko użytkownik w kalibracji) — na `active` ewentualnie tylko „podciągamy” włączenie, gdy na dysku jest `1`, a store jeszcze `false` (race po hydratacji). */
@@ -1371,9 +1403,6 @@ export default function App() {
         </NavigationContainer>
       </GestureHandlerRootView>
 
-      {token && !isSplashVisible && (
-        <PushOnboardingSheet onAccept={askForPermission} />
-      )}
     </>
   );
 }

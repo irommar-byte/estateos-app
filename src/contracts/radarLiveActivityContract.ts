@@ -1,3 +1,12 @@
+import {
+  DEFAULT_LOCALITY_COUNTRY,
+  DEFAULT_LOCALITY_COUNTRY_CODE,
+  REST_OF_COUNTRY_CITY,
+  localityCountryIso,
+  normalizeLocalityCountryLabel,
+} from '../constants/locationEcosystem';
+import { flagEmojiFromIso2 } from '../utils/phoneRegions';
+
 export type RadarLiveActivityTransactionType = 'SELL' | 'RENT';
 
 /**
@@ -10,6 +19,10 @@ export interface RadarLiveActivitySnapshot {
   transactionType: RadarLiveActivityTransactionType;
   /** Zwykle nazwa miasta z kalibracji (np. „Warszawa"). */
   city: string;
+  /** Polska nazwa państwa (np. Polska, Czechy). */
+  localityCountry: string;
+  /** Kod ISO państwa (PL, CZ…) — pod flagę emoji. */
+  localityCountryCode: string;
   /** Lista wybranych dzielnic / obszarów; pusta = całe miasto. */
   districts: string[];
   /** Typ nieruchomości: FLAT, HOUSE, PLOT, PREMISES, ALL. */
@@ -97,6 +110,8 @@ export const buildRadarLiveActivitySnapshot = (input: Partial<RadarLiveActivityS
   enabled: input.enabled === true,
   transactionType: normalizeTransactionType(input.transactionType),
   city: normalizeCity(input.city),
+  localityCountry: normalizeLocalityCountryLabel(input.localityCountry),
+  localityCountryCode: localityCountryIso(input.localityCountryCode, input.localityCountry),
   districts: normalizeDistricts(input.districts),
   propertyType: normalizePropertyType(input.propertyType),
   maxPrice: normalizeOptionalNumber(input.maxPrice),
@@ -131,6 +146,33 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
 
 const transactionLabel = (type: RadarLiveActivityTransactionType) =>
   type === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+
+/**
+ * Etykieta miejsca w stylu: „Warszawa 🇵🇱 Polska" (lub „Pilzno 🇨🇿 Czechy").
+ */
+export const formatRadarLocationPlace = (
+  city: string,
+  districts: string[],
+  countryLabel?: string,
+  countryCode?: string,
+): string => {
+  const country = normalizeLocalityCountryLabel(countryLabel || DEFAULT_LOCALITY_COUNTRY);
+  const iso = localityCountryIso(countryCode, country);
+  const flag = flagEmojiFromIso2(iso);
+  const cityTrim = String(city || '').trim();
+  let place = cityTrim || country;
+  if (cityTrim === REST_OF_COUNTRY_CITY) {
+    const locality = (districts || []).find((d) => {
+      const t = String(d || '').trim();
+      return t.length > 0 && !/^[A-Za-z]{2}$/i.test(t);
+    });
+    place = locality || country;
+  }
+  if (place.toLowerCase() === country.toLowerCase()) {
+    return `${flag} ${country}`;
+  }
+  return `${place} ${flag} ${country}`;
+};
 
 const formatPriceShort = (value: number, type: RadarLiveActivityTransactionType): string => {
   if (type === 'RENT' || value < 100_000) {
@@ -168,8 +210,16 @@ const formatDistricts = (districts: string[]): string => {
 export const formatRadarLiveActivityLines = (snapshot: RadarLiveActivitySnapshot): string[] => {
   const lines: string[] = ['Radar aktywny · skan rynku trwa'];
 
-  // Linia 2 — tryb · miasto · próg jakości
-  lines.push(`${transactionLabel(snapshot.transactionType)} · ${snapshot.city} · próg ${snapshot.minMatchThreshold}%`);
+  // Linia 2 — tryb · miasto · państwo · próg jakości
+  const place = formatRadarLocationPlace(
+    snapshot.city,
+    snapshot.districts,
+    snapshot.localityCountry,
+    snapshot.localityCountryCode,
+  );
+  lines.push(
+    `${transactionLabel(snapshot.transactionType)} · ${place} · próg ${snapshot.minMatchThreshold}%`,
+  );
 
   // Linia 3 (dolna) — typ · od metrażu · do ceny [ · NOWE! N (tylko gdy nowe)]
   // ZASADA: liczbę dopasowań pokazujemy WYŁĄCZNIE, gdy są nowe od ostatniego wejścia

@@ -23,9 +23,11 @@ import { useAuthStore } from '../store/useAuthStore';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import HeartbeatWaitingPulse from '../components/dealroom/HeartbeatWaitingPulse';
+import OwnerFinalDecisionCta from '../components/dealroom/OwnerFinalDecisionCta';
 import FinalConfirmationModal from '../components/dealroom/FinalConfirmationModal';
 import { API_URL } from '../config/network';
 import { postDealroomTextMessage, setOfferStatusPending } from '../utils/dealroomOfferReserve';
+import { archiveOwnOfferViaMobileAdmin } from '../utils/mobileOfferArchive';
 import { setActiveDealroomContext } from '../utils/activeDealroomPush';
 import { offerPresentationCalendarAfterAcceptance } from '../utils/presentationCalendar';
 import {
@@ -45,7 +47,8 @@ import {
   buildSharedDealReviewPayload,
   canFinalizeTransition,
   DEAL_REVIEW_PREFIX,
-  isFinalizedOwnerAcceptanceMessage,
+  isDealSaleFinalizedMessage,
+  isDealTransactionFinalized,
   validateSharedDealReviewPayload,
 } from '../contracts/parityContracts';
 
@@ -371,6 +374,7 @@ export default function DealroomChatScreen() {
   const seenNegotiationEventKeysRef = useRef<Set<string>>(new Set());
   const negotiationBootstrappedRef = useRef(false);
   const lastReviewNotificationKeyRef = useRef<string | null>(null);
+  const archiveAfterSaleAttemptedRef = useRef(false);
 
   // Animations
   const attachmentUploadPulse = useSharedValue(0);
@@ -1081,8 +1085,20 @@ export default function DealroomChatScreen() {
     return 'W trakcie negocjacji';
   }, [acceptedAppointment, appointmentStatus, latestActionableAppointmentFromOther, latestAppointment, user?.id]);
 
+  const transactionFinalized = useMemo(
+    () =>
+      isDealTransactionFinalized({
+        dealStatus: dealStatusSnapshot,
+        messages,
+      }),
+    [dealStatusSnapshot, messages],
+  );
+
   const priceStatusText = useMemo(() => {
     if (priceStatus === 'IDLE') return 'Brak ofert';
+    if (ownerNeedsFinalDecision && !transactionFinalized) {
+      return 'Dotknij zielone okienko „Ostateczna decyzja sprzedaży” poniżej';
+    }
     if (awaitingOwnerPriceFinalize) {
       return 'Oczekiwanie na finalną akceptację właściciela';
     }
@@ -1106,20 +1122,29 @@ export default function DealroomChatScreen() {
     isWaitingForOtherOnPrice,
     priceStatus,
     user?.id,
+    ownerNeedsFinalDecision,
+    transactionFinalized,
   ]);
 
-  const transactionFinalized = useMemo(() => {
-    const canonicalByDealState =
-      canFinalizeTransition({
-        dealStatus: dealStatusSnapshot,
-        acceptedBidId: acceptedBidIdSnapshot,
-      }) ||
-      ['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD'].includes(String(dealStatusSnapshot || '').toUpperCase());
-    if (canonicalByDealState) return true;
+  useEffect(() => {
+    if (ownerNeedsFinalDecision && !transactionFinalized) {
+      setPriceSectionExpanded(true);
+    }
+  }, [ownerNeedsFinalDecision, transactionFinalized]);
 
-    // Legacy fallback dla starszych wiadomości.
-    return messages.some((m) => isFinalizedOwnerAcceptanceMessage(String(m?.content || '')));
-  }, [dealStatusSnapshot, acceptedBidIdSnapshot, messages]);
+  useEffect(() => {
+    archiveAfterSaleAttemptedRef.current = false;
+  }, [dealId]);
+
+  /** Gdy modal finalizacji nie zarchiwizował oferty — ponów po wykryciu zamknięcia sprzedaży. */
+  useEffect(() => {
+    if (!transactionFinalized || !isListingOwner || !token || !resolvedOfferId) return;
+    if (archiveAfterSaleAttemptedRef.current) return;
+    archiveAfterSaleAttemptedRef.current = true;
+    const oid = Number(resolvedOfferId);
+    if (!Number.isFinite(oid) || oid <= 0) return;
+    void archiveOwnOfferViaMobileAdmin(API_URL, token, oid);
+  }, [transactionFinalized, isListingOwner, token, resolvedOfferId]);
 
   const presentationHappened = useMemo(() => {
     const raw = acceptedAppointment?.event?.proposedDate;
@@ -1168,7 +1193,7 @@ export default function DealroomChatScreen() {
 
   const finalizationTimestamp = useMemo(() => {
     const finalizedMessage = messages.find((m) =>
-      isFinalizedOwnerAcceptanceMessage(String(m?.content || ''))
+      isDealSaleFinalizedMessage(String(m?.content || ''))
     );
     if (finalizedMessage?.createdAt) {
       const ts = new Date(finalizedMessage.createdAt).getTime();
@@ -1373,7 +1398,15 @@ export default function DealroomChatScreen() {
         return;
       }
       await persistLocalReview();
-      // backward compatibility: jeśli backend jeszcze emituje review w czacie, odśwież i pokaż partnera
+      try {
+        await postDealroomTextMessage({
+          dealId: Number(dealId),
+          token,
+          content: `${DEAL_REVIEW_PREFIX}${JSON.stringify(reviewPayload)}`,
+        });
+      } catch {
+        // wpis w wątku ułatwia drugiej stronie zobaczenie formularza opinii
+      }
       await fetchMessages();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       // brak alertu — UI od razu pokazuje stempel „Pomyślnie wystawiono opinię"
@@ -1864,22 +1897,10 @@ export default function DealroomChatScreen() {
                   POTWIERDZAM / NIE POTWIERDZAM.
                 */}
                 {ownerNeedsFinalDecision && priceStatus !== 'ACCEPTED' && !transactionFinalized ? (
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      setIsFinalConfirmOpen(true);
-                    }}
-                    style={({ pressed }) => [
-                      styles.finalCtaBtn,
-                      pressed && { opacity: 0.85 },
-                    ]}
-                  >
-                    <Text style={styles.finalCtaEyebrow}>OSTATECZNA DECYZJA SPRZEDAŻY</Text>
-                    <Text style={styles.finalCtaAmount} numberOfLines={1} adjustsFontSizeToFit>
-                      {Number(finalAcceptanceContext?.amount || 0).toLocaleString('pl-PL')} PLN
-                    </Text>
-                    <Text style={styles.finalCtaSub}>Kupujący zaakceptował — Twoje słowo zamyka transakcję</Text>
-                  </Pressable>
+                  <OwnerFinalDecisionCta
+                    amount={Number(finalAcceptanceContext?.amount || 0)}
+                    onPress={() => setIsFinalConfirmOpen(true)}
+                  />
                 ) : null}
 
                 {/*
@@ -2425,49 +2446,6 @@ const styles = StyleSheet.create({
   actionPrimaryTxt: { color: '#000', fontWeight: '700', fontSize: 13 },
   actionSecondaryTxt: { color: COLORS.textBase, fontWeight: '600', fontSize: 13 },
 
-  /**
-   * „Final CTA" — uroczysty przycisk dla WŁAŚCICIELA, gdy kupujący wysłał
-   * finalną akceptację. Klik otwiera `FinalConfirmationModal`. Wygląda jak
-   * pieczęć: złota ramka, środek wypełniony zielonym tłem (kolor finalizacji),
-   * z eyebrow uppercase i wielką kwotą w środku.
-   */
-  finalCtaBtn: {
-    marginTop: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(16,185,129,0.14)',
-    borderWidth: 1.4,
-    borderColor: 'rgba(245,197,106,0.7)',
-    alignItems: 'center',
-    shadowColor: '#F5C56A',
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  finalCtaEyebrow: {
-    color: '#F5C56A',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 2.4,
-    textTransform: 'uppercase',
-  },
-  finalCtaAmount: {
-    color: '#E7FFEF',
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-    marginTop: 6,
-    fontVariant: ['tabular-nums'],
-  },
-  finalCtaSub: {
-    color: '#A8DCC0',
-    fontSize: 11.5,
-    fontWeight: '600',
-    marginTop: 5,
-    letterSpacing: 0.2,
-    textAlign: 'center',
-  },
   royalSealWrap: {
     marginTop: 12,
     alignItems: 'center',

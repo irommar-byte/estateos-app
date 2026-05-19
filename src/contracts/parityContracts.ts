@@ -136,9 +136,43 @@ export function shouldPrioritizeDealroom(data: AnyObj, dealId: number | null): b
   return target === 'dealroom' || targetType === 'DEAL' || !!dealId;
 }
 
+/**
+ * Zamknięcie sprzedaży (właściciel potwierdził cenę i wycofał ofertę z rynku).
+ * NIE obejmuje rezerwacji po prezentacji (PENDING) — tam oferta nie jest sfinalizowana.
+ */
+export function isDealSaleFinalizedMessage(content: string): boolean {
+  const c = String(content || '').trim();
+  if (!c) return false;
+  if (/zamykam sprzedaż/i.test(c)) return true;
+  if (/ostatecznie akceptuję cenę/i.test(c) && /wycofan[aą]\s+z\s+rynku/i.test(c)) return true;
+  if (/transakcja\s+sfinalizowana/i.test(c)) return true;
+  return false;
+}
+
+/** Rezerwacja po prezentacji — oferta schodzi do PENDING, bez zamknięcia deala. */
+export function isOfferMarketReserveMessage(content: string): boolean {
+  return /rezerwacja uzgodnionej ceny/i.test(String(content || ''));
+}
+
+/** @deprecated alias — używaj `isDealSaleFinalizedMessage`. */
 export function isFinalizedOwnerAcceptanceMessage(content: string): boolean {
-  return /Decyzja właściciela: oferta została wycofana z publikacji|transakcja sfinalizowana|rezerwacja uzgodnionej ceny/i.test(
-    String(content || '')
+  return isDealSaleFinalizedMessage(content);
+}
+
+const CLOSED_DEAL_STATUSES = new Set(['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD']);
+
+/** Czy transakcja w dealroomie jest faktycznie zamknięta (obie strony mogą wystawiać opinie). */
+export function isDealTransactionFinalized(params: {
+  dealStatus?: unknown;
+  messages?: Array<{ content?: unknown; text?: unknown }>;
+}): boolean {
+  const status = String(params.dealStatus ?? '')
+    .trim()
+    .toUpperCase();
+  if (CLOSED_DEAL_STATUSES.has(status)) return true;
+  const msgs = params.messages ?? [];
+  return msgs.some((m) =>
+    isDealSaleFinalizedMessage(String(m?.content ?? m?.text ?? ''))
   );
 }
 

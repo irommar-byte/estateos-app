@@ -1,8 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -16,8 +15,6 @@ import {
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const APPLE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';
 
 type Props = {
   visible: boolean;
@@ -47,10 +44,6 @@ export default function DeleteAccountSheet({
     setPassword('');
     setBusy(false);
   }, [visible]);
-
-  const openSubs = useCallback(() => {
-    void Linking.openURL(APPLE_SUBSCRIPTIONS_URL);
-  }, []);
 
   const handleSubmit = async () => {
     if (!ack || !password.trim() || busy) return;
@@ -106,13 +99,13 @@ export default function DeleteAccountSheet({
               />
               <Bullet text="Czat Dealroom oraz historia transakcji mogą zostać zanonimizowane dla drugiej strony." textMain={textMain} textMuted={textMuted} />
 
-              {hasPaidIndicators && Platform.OS === 'ios' ? (
-                <Pressable onPress={openSubs} style={({ pressed }) => [styles.subsBtn, { borderColor: border, opacity: pressed ? 0.85 : 1 }]}>
-                  <Text style={[styles.subsBtnText, { color: '#0A84FF' }]}>Zarządzaj subskrypcjami Apple</Text>
+              {hasPaidIndicators ? (
+                <View style={[styles.subsBtn, { borderColor: border }]}>
+                  <Text style={[styles.subsBtnText, { color: textMain }]}>Aktywne płatne funkcje</Text>
                   <Text style={[styles.subsHint, { color: textMuted }]}>
-                    Usunięcie konta nie anuluje aktywnej subskrypcji — zrób to tutaj lub w Ustawieniach → Subskrypcje.
+                    Usunięcie konta usuwa dostęp do funkcji konta w EstateOS. Pakiet Plus jest jednorazowym zakupem w aplikacji pozwalającym dodać jedną dodatkową publikację na 30 dni; Investor Pro nie jest kupowany w aplikacji.
                   </Text>
-                </Pressable>
+                </View>
               ) : null}
 
               <View style={[styles.confirmRow, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: border }]}>

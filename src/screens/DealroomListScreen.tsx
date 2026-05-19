@@ -31,7 +31,7 @@ import { findWebOfferById, fetchWebOffersArray } from '../utils/webOffersFallbac
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
-import { canFinalizeTransition, isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
+import { isDealTransactionFinalized } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { formatLocationLabel } from '../constants/locationEcosystem';
@@ -85,19 +85,7 @@ function tryParseDealEventPayload(content: string): Record<string, unknown> | nu
 /** Klasyfikacja na podstawie treści wiadomości w wątku (spójnie z czatem dealroom). */
 function classifyDealPhaseFromMessages(messages: any[], deal?: any): DealPhase {
   const rawStatus = String(firstDefined(deal?.status, deal?.dealStatus) || '').trim().toUpperCase();
-  if (['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD'].includes(rawStatus)) return 'finalized';
-  if (
-    canFinalizeTransition({
-      dealStatus: rawStatus,
-      acceptedBidId: firstDefined(deal?.acceptedBidId, deal?.acceptedBid?.id),
-    })
-  ) {
-    return 'finalized';
-  }
-  for (const m of messages) {
-    const body = String(m?.content ?? m?.text ?? '');
-    if (isFinalizedOwnerAcceptanceMessage(body)) return 'finalized';
-  }
+  if (isDealTransactionFinalized({ dealStatus: rawStatus, messages })) return 'finalized';
   for (const m of messages) {
     const body = String(m?.content ?? m?.text ?? '');
     const ev = tryParseDealEventPayload(body);

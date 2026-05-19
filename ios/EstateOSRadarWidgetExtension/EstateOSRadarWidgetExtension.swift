@@ -15,6 +15,8 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         var transactionType: String
         var city: String
+        var localityCountry: String
+        var localityCountryCode: String
         var districts: [String]
         var propertyType: String
         var maxPrice: Double
@@ -88,6 +90,35 @@ struct EstateOSRadarLiveActivity: Widget {
         return "\(districts.prefix(2).joined(separator: ", ")) +\(districts.count - 2)"
     }
 
+    private func flagEmoji(iso: String) -> String {
+        let u = iso.uppercased().filter { $0.isLetter }
+        guard u.count == 2 else { return "🏳️" }
+        let base: UInt32 = 127397
+        var emoji = ""
+        for scalar in u.unicodeScalars {
+            if let flag = UnicodeScalar(base + scalar.value) {
+                emoji.append(String(flag))
+            }
+        }
+        return emoji.isEmpty ? "🏳️" : emoji
+    }
+
+    private func locationPlaceLabel(_ state: RadarLiveActivityAttributes.ContentState) -> String {
+        let country = state.localityCountry.isEmpty ? "Polska" : state.localityCountry
+        let iso = state.localityCountryCode.isEmpty ? "PL" : state.localityCountryCode
+        let flag = flagEmoji(iso: iso)
+        var place = state.city.isEmpty ? country : state.city
+        if place == "Reszta kraju" {
+            if let locality = state.districts.first(where: { !$0.isEmpty && $0.count != 2 }) {
+                place = locality
+            }
+        }
+        if place.caseInsensitiveCompare(country) == .orderedSame {
+            return "\(flag) \(country)"
+        }
+        return "\(place) \(flag) \(country)"
+    }
+
 
     private func radiusValueLabel(_ km: Double) -> String {
         let formatter = NumberFormatter()
@@ -149,9 +180,8 @@ struct EstateOSRadarLiveActivity: Widget {
     /// co 20 s halo), więc tu zostaje sam string „Wynajem · Piaseczno".
     private func headlineMessage(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> String {
         let state = context.state
-        let city = state.city.isEmpty ? "Polska" : state.city
         let tx = txLabel(state.transactionType)
-        return "\(tx) · \(city)"
+        return "\(tx) · \(locationPlaceLabel(state))"
     }
 
     /// Linijki rotującego tickera — pomijamy tylko nagłówek statusowy
@@ -1002,6 +1032,48 @@ struct EstateOSRadarLiveActivity: Widget {
         }
     }
 
+    /// Prawy róg Live Activity: priorytet „nowe dopasowania radaru”, potem Dealroom.
+    private struct RadarTrailingBadge: View {
+        let newMatchesCount: Int
+        let unreadDealroomCount: Int
+
+        var body: some View {
+            VStack(alignment: .trailing, spacing: 2) {
+                if newMatchesCount > 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color(red: 0.96, green: 0.31, blue: 0.31))
+                        Text("\(newMatchesCount)")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.45))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color(red: 0.96, green: 0.31, blue: 0.31).opacity(0.55), lineWidth: 0.8)
+                            )
+                    )
+                    Text("nowe oferty")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundColor(Color(red: 0.96, green: 0.31, blue: 0.31).opacity(0.9))
+                        .lineLimit(1)
+                } else {
+                    DealroomInboxPill(count: unreadDealroomCount)
+                    Text("wiadomości")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundColor(Color(red: 0.98, green: 0.79, blue: 0.24).opacity(0.85))
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RadarLiveActivityAttributes.self) { context in
             VStack(spacing: 8) {
@@ -1040,13 +1112,10 @@ struct EstateOSRadarLiveActivity: Widget {
 
                     Spacer(minLength: 8)
 
-                    VStack(alignment: .trailing, spacing: 2) {
-                        DealroomInboxPill(count: context.state.unreadDealroomMessagesCount)
-                        Text("nieprzeczytane")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundColor(Color(red: 0.98, green: 0.79, blue: 0.24).opacity(0.85))
-                            .lineLimit(1)
-                    }
+                    RadarTrailingBadge(
+                        newMatchesCount: context.state.newMatchesCount,
+                        unreadDealroomCount: context.state.unreadDealroomMessagesCount
+                    )
                 }
 
                 // POŁĄCZONA DOLNA LINIA

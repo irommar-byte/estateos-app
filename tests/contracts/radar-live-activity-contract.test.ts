@@ -76,7 +76,7 @@ test('formatRadarLiveActivityLines: brak nowych dopasowań → segment NOWE pomi
 
   const lines = formatRadarLiveActivityLines(snapshot);
   assert.equal(lines[0], 'Radar aktywny · skan rynku trwa');
-  assert.equal(lines[1], 'Sprzedaż · Warszawa · próg 85%');
+  assert.match(lines[1], /^Sprzedaż · Warszawa 🇵🇱 Polska · próg 85%$/);
   assert.equal(lines[2], 'Mieszkanie · od 50 m² · do 850 tys. zł');
   assert.equal(lines[3], 'Dzielnice: Mokotów, Wilanów +2');
   assert.equal(lines[4], 'Rok budowy: od 2000 r.');
@@ -98,7 +98,7 @@ test('formatRadarLiveActivityLines: nowe dopasowania → prefix NOWE!', () => {
   });
 
   const lines = formatRadarLiveActivityLines(snapshot);
-  assert.equal(lines[1], 'Sprzedaż · Warszawa · próg 90%');
+  assert.match(lines[1], /^Sprzedaż · Warszawa 🇵🇱 Polska · próg 90%$/);
   assert.equal(lines[2], 'Mieszkanie · od 50 m² · do 850 tys. zł · NOWE! 3');
 });
 
@@ -115,7 +115,7 @@ test('formatRadarLiveActivityLines: minimum konfiguracji', () => {
 
   const lines = formatRadarLiveActivityLines(snapshot);
   assert.equal(lines.length, 3);
-  assert.equal(lines[1], 'Wynajem · Radom · próg 100%');
+  assert.match(lines[1], /^Wynajem · Radom 🇵🇱 Polska · próg 100%$/);
   assert.equal(lines[2], 'Dowolny typ');
 });
 
@@ -134,7 +134,7 @@ test('formatRadarLiveActivityLines: obszar mapy + nowe dopasowania', () => {
   });
 
   const lines = formatRadarLiveActivityLines(snapshot);
-  assert.equal(lines[1], 'Sprzedaż · Kraków · próg 90%');
+  assert.match(lines[1], /^Sprzedaż · Kraków 🇵🇱 Polska · próg 90%$/);
   assert.equal(lines[2], 'Dowolny typ · do 2,5 mln zł · NOWE! 1');
   assert.equal(lines[3], 'Obszar mapy: 8,5 km');
 });

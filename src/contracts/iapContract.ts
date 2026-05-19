@@ -22,8 +22,13 @@
  * ║     unique constraint w bazie.                                        ║
  * ║                                                                       ║
  * ║  ③ ATOMOWOŚĆ: po WERYFIKACJI z Apple/Google backend ZAPISUJE          ║
- * ║     transakcję w bazie i ZWIĘKSZA `extraListings` użytkownika         ║
- * ║     (lub przedłuża `plusExpiresAt`) w jednej transakcji DB.           ║
+ * ║     transakcję w bazie i ZWIĘKSZA `extraListings` użytkownika.        ║
+ * ║     Pakiet Plus pozwala dodać JEDNĄ dodatkową publikację na 30 dni:   ║
+ * ║     nową ofertę albo zakończoną ofertę przywróconą jako nową          ║
+ * ║     30-dniową publikację. NIE przedłuża aktywnych ogłoszeń i NIE jest ║
+ * ║     planem konta.                                                     ║
+ * ║     Pakiet Plus NIGDY nie ustawia `isPro`, `planType=PRO` ani         ║
+ * ║     `proExpiresAt` — Investor Pro jest osobnym statusem konta.        ║
  * ║                                                                       ║
  * ║  ④ ODPOWIEDŹ ≤ 5 s. Jeśli weryfikacja Apple/Google trwa dłużej,      ║
  * ║     backend musi zwrócić `202 Pending` z `pendingPurchaseId` —        ║
@@ -43,7 +48,7 @@
 
 /** Identyfikatory produktów wg konwencji `pl.estateos.app.<typ>_<okres>`. */
 export const IAP_PRODUCT_IDS = {
-  /** Consumable: dodaje 1 slot publikacji na 30 dni. */
+  /** Consumable: pozwala dodać 1 dodatkową publikację na 30 dni. */
   PAKIET_PLUS_30D: 'pl.estateos.app.pakiet_plus_30d',
 } as const;
 
@@ -64,7 +69,7 @@ export function getProductKind(productId: string): IapProductKind | null {
 /**
  * Body dla `POST /api/mobile/v1/iap/verify`.
  * Frontend wysyła PO sukcesie z natywnego sklepu, PRZED `finishTransaction`.
- * Backend musi zweryfikować z Apple/Google i zapisać slot/wpis.
+ * Backend musi zweryfikować z Apple/Google i zapisać prawo do dodatkowej publikacji.
  */
 export type IapVerifyRequest =
   | {
@@ -107,9 +112,9 @@ export type IapVerifyResponse =
       productId: IapProductId;
       /** ECHO transakcji — frontend zapisuje, żeby nie wysłać 2x. */
       transactionId: string;
-      /** Aktualna liczba dodatkowych slotów po zaksięgowaniu zakupu. */
+      /** Aktualna liczba dodatkowych publikacji po zaksięgowaniu zakupu. */
       extraListings?: number;
-      /** Data wygaśnięcia Pakietu Plus (ISO 8601) — gdy plan time-based. */
+      /** Data końca 30-dniowej dodatkowej publikacji / prawa publikacji (ISO 8601), jeśli backend ją zwraca. */
       plusExpiresAt?: string | null;
       /** Czy backend POTWIERDZIŁ weryfikację z Apple/Google.
        *  - true → transakcja zaksięgowana atomowo, można `finishTransaction`
@@ -153,7 +158,7 @@ export const IAP_ENDPOINTS = {
    * Backend MUSI:
    *  1. Zweryfikować `jwsRepresentation` z Apple App Store Server API.
    *  2. Sprawdzić idempotencję po `transactionId`.
-   *  3. Atomowo zaksięgować slot/wpis w DB.
+   *  3. Atomowo zaksięgować jedną dodatkową publikację w DB.
    *  4. Zwrócić `IapVerifyResponse`.
    */
   VERIFY: '/api/mobile/v1/iap/verify',

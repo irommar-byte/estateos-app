@@ -4,25 +4,14 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
 import { stopRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
-import { ALLOWED_PHONE_COUNTRY_SET } from '../utils/phoneRegions';
-
-const formatPhone = (p?: string) => {
-  if (!p || !String(p).trim()) return 'Brak numeru';
-  const raw = String(p).trim();
-  if (raw === 'Brak numeru') return 'Brak numeru';
-  const n = parsePhoneNumberFromString(raw);
-  if (n?.isValid()) return n.formatInternational();
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 9 && !raw.includes('+')) {
-    const pl = parsePhoneNumberFromString(digits, 'PL');
-    if (pl?.isValid()) return pl.formatInternational();
-  }
-  if (digits.startsWith('48') && digits.length >= 11) {
-    const intl = parsePhoneNumberFromString(`+${digits}`);
-    if (intl?.isValid()) return intl.formatInternational();
-  }
-  return raw;
-};
+import {
+  ALLOWED_PHONE_COUNTRY_SET,
+  extractRawPhoneFromApi,
+  formatPhoneForDisplay,
+  mergePhoneIntoUser,
+  normalizePhoneE164,
+  userHasDialablePhone,
+} from '../utils/phoneRegions';
 
 interface User {
   id: number;
@@ -61,7 +50,11 @@ interface AuthState {
   error: string | null;
   isRadarActive: boolean; // 🔥 Nowość
   setRadarActive: (isActive: boolean) => Promise<void>; // 🔥 Nowość
-  login: (email: string, pass: string) => Promise<boolean>;
+  login: (
+    email: string,
+    pass: string,
+    options?: { registrationPhoneE164?: string },
+  ) => Promise<boolean>;
   register: (
     email: string,
     pass: string,
@@ -113,7 +106,7 @@ const normalizeUser = (apiUser: any) => {
     ...apiUser,
     firstName: nameParts[0] || 'Użytkownik',
     lastName: nameParts.slice(1).join(' ') || '',
-    phone: formatPhone(apiUser.phone || apiUser.contactPhone),
+    phone: formatPhoneForDisplay(extractRawPhoneFromApi(apiUser)),
     avatar: apiUser.image || apiUser.avatar || null,
     /**
      * Weryfikacja numeru telefonu — tylko jawne flagi SMS. Stary ogólny
@@ -223,6 +216,18 @@ const preserveVerificationFlags = (next: any, prev: any | null | undefined, rawA
   return merged;
 };
 
+/** Gdy GET /auth nie zwraca telefonu, nie kasuj numeru już pokazanego w profilu. */
+const preservePhoneIfMissingFromApi = (next: any, prev: any | null | undefined, rawApi: any) => {
+  if (!next) return next;
+  const merged = { ...next };
+  const apiRaw = extractRawPhoneFromApi(rawApi);
+  const apiHasPhone = userHasDialablePhone(formatPhoneForDisplay(apiRaw));
+  if (!apiHasPhone && userHasDialablePhone(prev?.phone)) {
+    merged.phone = prev.phone;
+  }
+  return merged;
+};
+
 /**
  * Dokleja lokalnie zapisany „kiedyś przeszedł weryfikację” do obiektu usera.
  * Stosuje się gdy backend zwraca `phoneVerified` jako `undefined` / `false`,
@@ -284,8 +289,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  login: async (email: string, pass: string) => {
+  login: async (email: string, pass: string, options?: { registrationPhoneE164?: string }) => {
     set({ isLoading: true, error: null });
+    const regPhone = options?.registrationPhoneE164;
     try {
       const response = await fetch(`${API_URL}/api/mobile/v1/auth/login`, {
         method: 'POST',
@@ -295,13 +301,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await response.json().catch(() => ({} as any));
       if (!response.ok) throw new Error(data.error || 'Błąd logowania');
       
-      const normUser = await hydrateWithLocalFlags(normalizeUser(data.user));
+      let normUser = await hydrateWithLocalFlags(normalizeUser(data.user));
+      normUser = mergePhoneIntoUser(normUser, regPhone);
       const normalizedToken = normalizeToken(data.token);
       if (!normalizedToken) throw new Error('Nie otrzymano poprawnego tokena logowania');
       await AsyncStorage.setItem('mobile_token', normalizedToken);
       await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
       set({ user: normUser, token: normalizedToken, isLoading: false });
+      if (regPhone && !userHasDialablePhone(normUser?.phone)) {
+        const e164 = normalizePhoneE164(regPhone);
+        if (e164) {
+          const sync = await get().updateProfileBasics({ phone: e164 });
+          if (__DEV__ && !sync?.ok) console.warn('[auth] registration phone sync', sync?.error);
+        }
+      }
       await get().refreshUser();
+      const afterRefresh = get().user;
+      const withPhone = mergePhoneIntoUser(afterRefresh, regPhone);
+      if (withPhone && withPhone !== afterRefresh) {
+        set({ user: withPhone });
+        await AsyncStorage.setItem('user_data', JSON.stringify(withPhone));
+      }
       return true;
     } catch (err: any) {
       const raw = String(err?.message || '').trim();
@@ -341,11 +361,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // `companyName` (string, wymagane przez backend dla tej roli).
       // Dla pozostałych ról pole jest pomijane — backend powinien
       // zwalidować po stronie serwera, że AGENT ma niepuste companyName.
+      const phoneE164 = normalizePhoneE164(phone) || String(phone || '').trim();
       const payload: Record<string, unknown> = {
         email,
         password: pass,
         name: `${fName} ${lName}`,
-        phone,
+        phone: phoneE164,
+        contactPhone: phoneE164,
         role,
       };
       if (role === 'AGENT' && companyName && companyName.trim().length > 0) {
@@ -434,7 +456,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await res.json();
       if (res.ok && data?.user) {
         const refreshed = await hydrateWithLocalFlags(
-          preserveVerificationFlags(normalizeUser(data.user), user, data.user)
+          preservePhoneIfMissingFromApi(
+            preserveVerificationFlags(normalizeUser(data.user), user, data.user),
+            user,
+            data.user,
+          ),
         );
         set({ user: refreshed });
         await AsyncStorage.setItem('user_data', JSON.stringify(refreshed));
@@ -573,17 +599,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const e164 = parsed.number;
       body.phone = e164;
       body.contactPhone = e164;
-      let prevE164: string | null = null;
-      const prevParsed = parsePhoneNumberFromString(String(user.phone || '').trim());
-      if (prevParsed?.isValid()) prevE164 = prevParsed.number;
-      else {
-        const d = String(user.phone || '').replace(/\D/g, '');
-        const nine = d.slice(-9);
-        if (/^\d{9}$/.test(nine)) {
-          const pl = parsePhoneNumberFromString(nine, 'PL');
-          if (pl?.isValid()) prevE164 = pl.number;
-        }
-      }
+      const prevE164 = normalizePhoneE164(user.phone);
       if (prevE164 !== e164) phoneIsChanging = true;
     }
     if (Object.keys(body).length === 0) {

@@ -9,7 +9,20 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
-import { STRICT_CITIES, STRICT_CITY_DISTRICTS, REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
+import {
+  STRICT_CITIES,
+  STRICT_CITY_DISTRICTS,
+  REST_OF_COUNTRY_CITY,
+  DEFAULT_LOCALITY_COUNTRY,
+  DEFAULT_LOCALITY_COUNTRY_CODE,
+  buildGeocodeQuery,
+  resolveLocalityCountryFromPlace,
+  localityCountryIso,
+  normalizeLocalityCountryLabel,
+  getLocationDraftRepairPatch,
+  streetLineFromGeocodedPlace,
+} from '../../constants/locationEcosystem';
+import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { coordKeyForCityDistrict } from './districtCoordKeys';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -642,26 +655,43 @@ const localityFromPlace = (place: Location.LocationGeocodedAddress) => {
   return t || 'Ogólna';
 };
 
+const POLAND_LOCATION = {
+  localityCountry: DEFAULT_LOCALITY_COUNTRY,
+  localityCountryCode: DEFAULT_LOCALITY_COUNTRY_CODE,
+} as const;
+
 const normalizeStrictLocation = (
   cityCandidate: string | null | undefined,
   districtCandidate?: string | null,
   restLocality?: string | null,
+  place?: Location.LocationGeocodedAddress | null,
 ) => {
+  const geocodedCountry = place ? resolveLocalityCountryFromPlace(place) : null;
   const cand = String(cityCandidate || '').trim();
   if (!STRICT_CITY_SET.has(cand)) {
     const locality = (restLocality || '').trim() || 'Ogólna';
-    return { city: REST_OF_COUNTRY_CITY, district: locality };
+    return {
+      city: REST_OF_COUNTRY_CITY,
+      district: locality,
+      localityCountry: normalizeLocalityCountryLabel(geocodedCountry?.labelPl),
+      localityCountryCode: geocodedCountry?.code || DEFAULT_LOCALITY_COUNTRY_CODE,
+    };
   }
   if (cand === REST_OF_COUNTRY_CITY) {
     const d = (districtCandidate || restLocality || '').trim() || 'Ogólna';
-    return { city: REST_OF_COUNTRY_CITY, district: d };
+    return {
+      city: REST_OF_COUNTRY_CITY,
+      district: d,
+      localityCountry: normalizeLocalityCountryLabel(geocodedCountry?.labelPl),
+      localityCountryCode: geocodedCountry?.code || DEFAULT_LOCALITY_COUNTRY_CODE,
+    };
   }
   const city = cand;
   const districts = DISTRICTS_DATA[city] || [];
   const district = districts.includes(String(districtCandidate || ''))
     ? String(districtCandidate)
     : districts[0] || '';
-  return { city, district };
+  return { city, district, ...POLAND_LOCATION };
 };
 
 export default function Step2_Location({ theme }: { theme: any }) {
@@ -728,20 +758,71 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.03)';
 
   const hasAddress = !!draft.street && draft.street.length > 2;
-  const safeDraftCity = STRICT_CITY_SET.has(String(draft.city || '')) ? String(draft.city) : DEFAULT_STRICT_CITY;
+  const rawDraftCity = String(draft.city || '').trim();
+  const safeDraftLocalityCountry = normalizeLocalityCountryLabel(draft.localityCountry);
+  const safeDraftLocalityCountryIso = localityCountryIso(
+    draft.localityCountryCode,
+    safeDraftLocalityCountry,
+  );
+  const isPolandLocation = safeDraftLocalityCountryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
+  const safeDraftCity = (() => {
+    if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
+    if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
+    if (rawDraftCity) return REST_OF_COUNTRY_CITY;
+    return DEFAULT_STRICT_CITY;
+  })();
   const isRestOfCountry = safeDraftCity === REST_OF_COUNTRY_CITY;
+  const showGeocodedLocality = !isPolandLocation || isRestOfCountry;
+  const showPolishCityPicker = hasAddress && isPolandLocation && !isRestOfCountry;
   const safeDraftDistricts = DISTRICTS_DATA[safeDraftCity] || [];
   const safeDraftDistrict = isRestOfCountry
-    ? String(draft.district || '').trim() || 'Ogólna'
+    ? (() => {
+        if (rawDraftCity && rawDraftCity !== REST_OF_COUNTRY_CITY && !STRICT_CITY_SET.has(rawDraftCity)) {
+          return rawDraftCity;
+        }
+        const d = String(draft.district || '').trim();
+        if (/^[A-Za-z]{2}$/i.test(d)) return 'Ogólna';
+        return d || 'Ogólna';
+      })()
     : safeDraftDistricts.includes(String(draft.district || ''))
       ? String(draft.district)
       : (safeDraftDistricts[0] || '');
+  const localityCountryFlag = flagEmojiFromIso2(safeDraftLocalityCountryIso);
 
   useEffect(() => {
-    if (safeDraftCity !== draft.city || safeDraftDistrict !== draft.district) {
-      updateDraft({ city: safeDraftCity, district: safeDraftDistrict });
+    const trimmedStreet = String(streetInput || '').trim();
+    if (trimmedStreet.length > 2 && trimmedStreet !== String(draft.street || '').trim()) {
+      updateDraft({ street: trimmedStreet });
     }
-  }, [draft.city, draft.district, safeDraftCity, safeDraftDistrict, updateDraft]);
+  }, [streetInput, draft.street, updateDraft]);
+
+  useEffect(() => {
+    const repair = getLocationDraftRepairPatch(draft);
+    if (repair) {
+      updateDraft(repair);
+      return;
+    }
+    if (
+      safeDraftCity !== draft.city ||
+      safeDraftDistrict !== draft.district ||
+      safeDraftLocalityCountry !== draft.localityCountry
+    ) {
+      updateDraft({
+        city: safeDraftCity,
+        district: safeDraftDistrict,
+        localityCountry: safeDraftLocalityCountry,
+        localityCountryCode: localityCountryIso(draft.localityCountryCode, safeDraftLocalityCountry),
+      });
+    }
+  }, [
+    draft.city,
+    draft.district,
+    draft.localityCountry,
+    safeDraftCity,
+    safeDraftDistrict,
+    safeDraftLocalityCountry,
+    updateDraft,
+  ]);
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
     isProgrammaticMove.current = true;
@@ -760,12 +841,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
     const normalized = query.trim();
     if (!normalized) return null;
     if (geoCacheRef.current[normalized]) return geoCacheRef.current[normalized];
-    const result = await Location.geocodeAsync(`${normalized}, Polska`);
+    const countryLabel = String(draft.localityCountry || DEFAULT_LOCALITY_COUNTRY).trim();
+    const result = await Location.geocodeAsync(buildGeocodeQuery(normalized, countryLabel));
     if (!result.length) return null;
     const coords = { lat: result[0].latitude, lng: result[0].longitude };
     geoCacheRef.current[normalized] = coords;
     return coords;
-  }, []);
+  }, [draft.localityCountry]);
 
   useEffect(() => {
     const initFromDeviceLocation = async () => {
@@ -779,6 +861,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
         let finalCity: string = DEFAULT_STRICT_CITY;
         let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
+        let finalCountry = DEFAULT_LOCALITY_COUNTRY;
+        let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
         let newStreet = '';
         if (reverse.length > 0) {
           const place = reverse[0];
@@ -786,14 +870,16 @@ export default function Step2_Location({ theme }: { theme: any }) {
           const normalized = strictCity
             ? normalizeStrictLocation(
                 strictCity,
-                getClosestDistrict(latitude, longitude, strictCity, place.district)
+                getClosestDistrict(latitude, longitude, strictCity, place.district),
+                null,
+                place,
               )
-            : normalizeStrictLocation(null, null, localityFromPlace(place));
+            : normalizeStrictLocation(null, null, localityFromPlace(place), place);
           finalCity = normalized.city;
           finalDistrict = normalized.district;
-          if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
-          else if (place.street) newStreet = place.street;
-          else if (place.name) newStreet = place.name;
+          finalCountry = normalized.localityCountry;
+          finalCountryCode = normalized.localityCountryCode;
+          newStreet = streetLineFromGeocodedPlace(place, '');
         }
         if (newStreet && !streetInput) setStreetInput(newStreet);
         updateDraft({
@@ -801,6 +887,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
           lng: longitude,
           city: finalCity,
           district: finalDistrict,
+          localityCountry: finalCountry,
+          localityCountryCode: finalCountryCode,
           ...(newStreet ? { street: newStreet } : {}),
         });
         flyTo(latitude, longitude, draft.isExactLocation ?? true);
@@ -813,7 +901,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
     if (streetInput.length < 3) return;
     if (!/\d/.test(streetInput)) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); Alert.alert("Brak numeru", "Proszę podać dokładny adres z numerem, np. 'Wolska 56'."); return; }
     try {
-      const result = await Location.geocodeAsync(streetInput + ", Polska");
+      const countryLabel = String(draft.localityCountry || DEFAULT_LOCALITY_COUNTRY).trim();
+      const result = await Location.geocodeAsync(buildGeocodeQuery(streetInput, countryLabel));
       if (result.length > 0) {
         const { latitude, longitude } = result[0];
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -824,23 +913,38 @@ export default function Step2_Location({ theme }: { theme: any }) {
         let newStreet = streetInput;
         let finalCity: string = DEFAULT_STRICT_CITY;
         let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
-        
+        let finalCountry = DEFAULT_LOCALITY_COUNTRY;
+        let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
+
         if (reverse.length > 0) {
           const place = reverse[0];
           const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
           const normalized = strictCity
             ? normalizeStrictLocation(
                 strictCity,
-                getClosestDistrict(latitude, longitude, strictCity, place.district)
+                getClosestDistrict(latitude, longitude, strictCity, place.district),
+                null,
+                place,
               )
-            : normalizeStrictLocation(null, null, localityFromPlace(place));
+            : normalizeStrictLocation(null, null, localityFromPlace(place), place);
           finalCity = normalized.city;
           finalDistrict = normalized.district;
-          if (place.street && place.streetNumber) newStreet = `${place.street} ${place.streetNumber}`;
+          finalCountry = normalized.localityCountry;
+          finalCountryCode = normalized.localityCountryCode;
+          newStreet = streetLineFromGeocodedPlace(place, streetInput);
         }
         
         setStreetInput(newStreet);
-        updateDraft({ city: finalCity, district: finalDistrict, lat: latitude, lng: longitude, isExactLocation: true, street: newStreet });
+        updateDraft({
+          city: finalCity,
+          district: finalDistrict,
+          localityCountry: finalCountry,
+          localityCountryCode: finalCountryCode,
+          lat: latitude,
+          lng: longitude,
+          isExactLocation: true,
+          street: newStreet,
+        });
         flyTo(latitude, longitude, true);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -870,35 +974,38 @@ export default function Step2_Location({ theme }: { theme: any }) {
       if (reverse.length > 0) {
         const place = reverse[0];
         
-        let newStreet = streetInput;
-        if (place.street && place.streetNumber) {
-          newStreet = `${place.street} ${place.streetNumber}`;
-        } else if (place.street) {
-          newStreet = place.street;
-        } else if (place.name) {
-          newStreet = place.name;
-        }
+        const newStreet = streetLineFromGeocodedPlace(place, streetInput);
 
         const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
         const normalized = strictCity
           ? normalizeStrictLocation(
               strictCity,
-              getClosestDistrict(region.latitude, region.longitude, strictCity, place.district)
+              getClosestDistrict(region.latitude, region.longitude, strictCity, place.district),
+              null,
+              place,
             )
-          : normalizeStrictLocation(null, null, localityFromPlace(place));
+          : normalizeStrictLocation(null, null, localityFromPlace(place), place);
         const finalCity = normalized.city;
         const finalDistrict = normalized.district;
         const shouldUpdate =
           newStreet !== streetInput ||
           finalCity !== draft.city ||
-          finalDistrict !== draft.district;
+          finalDistrict !== draft.district ||
+          normalized.localityCountry !== draft.localityCountry ||
+          normalized.localityCountryCode !== draft.localityCountryCode;
 
         if (shouldUpdate) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           
           setStreetInput(newStreet);
-          updateDraft({ city: finalCity, district: finalDistrict, street: newStreet });
+          updateDraft({
+            city: finalCity,
+            district: finalDistrict,
+            localityCountry: normalized.localityCountry,
+            localityCountryCode: normalized.localityCountryCode,
+            street: newStreet,
+          });
         }
       }
     } catch (e) {
@@ -911,7 +1018,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
     const normalized = normalizeStrictLocation(city, null);
     const newDistricts = DISTRICTS_DATA[normalized.city as keyof typeof DISTRICTS_DATA];
     const coords = DISTRICT_COORDS[normalized.city] || await resolvePlaceCoords(normalized.city) || { lat: 52.0, lng: 19.0 };
-    updateDraft({ city: normalized.city, district: normalized.district || newDistricts[0], lat: coords.lat, lng: coords.lng });
+    updateDraft({
+      city: normalized.city,
+      district: normalized.district || newDistricts[0],
+      localityCountry: normalized.localityCountry,
+      localityCountryCode: normalized.localityCountryCode,
+      lat: coords.lat,
+      lng: coords.lng,
+    });
     flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
   };
   
@@ -919,7 +1033,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
     const selectedCity = STRICT_CITY_SET.has(String(draft.city || '')) ? String(draft.city) : DEFAULT_STRICT_CITY;
     const normalized = normalizeStrictLocation(selectedCity, district);
-    updateDraft({ city: normalized.city, district: normalized.district });
+    updateDraft({
+      city: normalized.city,
+      district: normalized.district,
+      localityCountry: normalized.localityCountry,
+      localityCountryCode: normalized.localityCountryCode,
+    });
     const isAmbiguousDistrict = (DISTRICT_CITY_USAGE[district] || 0) > 1;
     const coords =
       await resolvePlaceCoords(`${normalized.district}, ${normalized.city}`) ||
@@ -1015,7 +1134,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
           <TextInput style={[styles.input, { color: theme.text }]} placeholder="np. Wolska 56" placeholderTextColor={theme.subtitle} value={streetInput} onChangeText={setStreetInput} onSubmitEditing={handleAddressSearch} returnKeyType="search" selectionColor="#dc2626" />
         </View>
 
-        {isRestOfCountry ? (
+        {showGeocodedLocality ? (
           <>
             <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIEJSCEWOŚĆ</Text>
             <View style={[styles.restLocalityCard, { backgroundColor: cardBg, borderColor }, shadow]}>
@@ -1024,38 +1143,53 @@ export default function Step2_Location({ theme }: { theme: any }) {
                 Ustalana z mapy i adresu (geokodowanie). Przesuń pinezkę lub wpisz adres z numerem, aby zmienić nazwę.
               </Text>
             </View>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>PAŃSTWO</Text>
+            <View style={[styles.restLocalityCard, { backgroundColor: cardBg, borderColor }, shadow]}>
+              <View style={styles.countryRow}>
+                <Text style={styles.countryFlag} accessibilityLabel={safeDraftLocalityCountry}>
+                  {localityCountryFlag}
+                </Text>
+                <Text style={[styles.restLocalityName, styles.countryName, { color: theme.text }]}>
+                  {safeDraftLocalityCountry}
+                </Text>
+              </View>
+              <Text style={[styles.restLocalityHint, { color: theme.subtitle }]}>
+                Wykrywane z mapy (np. Polska, Ukraina). Przesuń pinezkę na właściwy kraj, jeśli nazwa jest niepoprawna.
+              </Text>
+            </View>
           </>
         ) : null}
 
-        <View pointerEvents={hasAddress ? "auto" : "none"} style={{ opacity: hasAddress ? 1 : 0.35 }}>
-          <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIASTO</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
-            {STRICT_CITIES.map(c => (
-              <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
-                <Text style={[styles.pillText, safeDraftCity === c && { color: '#FFF' }]}>{c}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+        {showPolishCityPicker ? (
+          <View pointerEvents="auto">
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIASTO</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
+              {STRICT_CITIES.filter((c) => c !== REST_OF_COUNTRY_CITY).map((c) => (
+                <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                  <Text style={[styles.pillText, safeDraftCity === c && { color: '#FFF' }]}>{c}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
 
-          {!isRestOfCountry ? (
-            <>
-              <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 30 }}>
-                {(DISTRICTS_DATA[safeDraftCity as keyof typeof DISTRICTS_DATA] || []).map(d => (
-                  <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, safeDraftDistrict === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
-                    <Text style={[styles.pillText, safeDraftDistrict === d && { color: '#FFF' }]}>{d}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          ) : null}
-
-        </View>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 30 }}>
+              {(DISTRICTS_DATA[safeDraftCity as keyof typeof DISTRICTS_DATA] || []).map((d) => (
+                <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, safeDraftDistrict === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+                  <Text style={[styles.pillText, safeDraftDistrict === d && { color: '#FFF' }]}>{d}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         <AddOfferStepFooterHint
           theme={theme}
           icon="map-outline"
-          text="Najważniejsza jest zgodność pinezki na mapie z faktycznym miejscem nieruchomości. Miasto i dzielnica z listy to doprecyzowanie dla filtrów — treść pola adresu powinna odpowiadać pozycji znacznika. Poza głównymi aglomeracjami nazwa miejscowości jest ustalana z geokodowania (mapa lub wyszukiwany adres)."
+          text={
+            isPolandLocation
+              ? 'Najważniejsza jest zgodność pinezki na mapie z faktycznym miejscem nieruchomości. W Polsce możesz doprecyzować miasto i dzielnicę z listy — adres powinien odpowiadać pinezce. Poza głównymi aglomeracjami nazwa miejscowości pochodzi z geokodowania.'
+              : 'Lokalizacja poza Polską: miasto i miejscowość wynikają wyłącznie z mapy i adresu (geokodowanie). Lista polskich miast nie dotyczy tej oferty — ustaw pinezkę i podaj dokładny adres z numerem.'
+          }
         />
 
         <View pointerEvents={hasAddress ? "auto" : "none"} style={{ opacity: hasAddress ? 1 : 0.35, marginTop: 8 }}>
@@ -1098,6 +1232,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
               <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Miasto i dzielnica</Text>
               <Text style={[styles.confirmValue, { color: theme.text }]}>{locationCityDistrict || 'Brak'}</Text>
             </View>
+            {showGeocodedLocality ? (
+              <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+                <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Państwo</Text>
+                <View style={styles.confirmCountryValue}>
+                  <Text style={styles.confirmCountryFlag}>{localityCountryFlag}</Text>
+                  <Text style={[styles.confirmValue, { color: theme.text }]}>{safeDraftLocalityCountry}</Text>
+                </View>
+              </View>
+            ) : null}
             <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
               <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Adres</Text>
               <Text style={[styles.confirmValue, { color: theme.text }]}>{locationStreet}</Text>
@@ -1154,7 +1297,12 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   restLocalityName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.3, marginBottom: 8 },
+  countryRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  countryFlag: { fontSize: 28, lineHeight: 32 },
+  countryName: { flex: 1, marginBottom: 0 },
   restLocalityHint: { fontSize: 12, lineHeight: 17, fontWeight: '500' },
+  confirmCountryValue: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  confirmCountryFlag: { fontSize: 20, lineHeight: 24 },
   confirmOverlay: {
     flex: 1,
     justifyContent: 'center',

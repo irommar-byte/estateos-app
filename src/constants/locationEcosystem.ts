@@ -1,10 +1,208 @@
 /** Oferty spoza listy głównych aglomeracji — miejscowość trzymamy w `district` (np. „Przemyśl”). */
 export const REST_OF_COUNTRY_CITY = 'Reszta kraju' as const;
 
-export function formatLocationLabel(cityInput: unknown, districtInput: unknown, fallback = 'Polska'): string {
+export const DEFAULT_LOCALITY_COUNTRY = 'Polska';
+export const DEFAULT_LOCALITY_COUNTRY_CODE = 'PL';
+
+const ENGLISH_COUNTRY_TO_PL: Record<string, string> = {
+  poland: 'Polska',
+  ukraine: 'Ukraina',
+  germany: 'Niemcy',
+  czechia: 'Czechy',
+  'czech republic': 'Czechy',
+  slovakia: 'Słowacja',
+  belarus: 'Białoruś',
+  lithuania: 'Litwa',
+  russia: 'Rosja',
+  austria: 'Austria',
+  hungary: 'Węgry',
+  romania: 'Rumunia',
+  moldova: 'Mołdawia',
+  'united states': 'Stany Zjednoczone',
+  'united states of america': 'Stany Zjednoczone',
+  usa: 'Stany Zjednoczone',
+};
+
+const PL_COUNTRY_TO_ISO: Record<string, string> = {
+  Polska: 'PL',
+  Ukraina: 'UA',
+  Niemcy: 'DE',
+  Czechy: 'CZ',
+  Słowacja: 'SK',
+  Białoruś: 'BY',
+  Litwa: 'LT',
+  'Stany Zjednoczone': 'US',
+};
+
+export function countryLabelPlFromIso(iso: string): string {
+  const code = String(iso || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return '';
+  try {
+    const dn = new Intl.DisplayNames(['pl-PL'], { type: 'region' });
+    return dn.of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+/** Państwo z wyniku `reverseGeocodeAsync` (ISO → polska nazwa, np. Polska / Ukraina). */
+export function resolveLocalityCountryFromPlace(place: {
+  country?: string | null;
+  isoCountryCode?: string | null;
+}): { code: string; labelPl: string } {
+  const iso = String(place.isoCountryCode || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(iso)) {
+    return {
+      code: iso,
+      labelPl: countryLabelPlFromIso(iso) || DEFAULT_LOCALITY_COUNTRY,
+    };
+  }
+  const raw = String(place.country || '').trim();
+  if (/^[A-Za-z]{2}$/.test(raw)) {
+    const code = raw.toUpperCase();
+    return { code, labelPl: countryLabelPlFromIso(code) || code };
+  }
+  if (!raw) {
+    return { code: DEFAULT_LOCALITY_COUNTRY_CODE, labelPl: DEFAULT_LOCALITY_COUNTRY };
+  }
+  const fromEn = ENGLISH_COUNTRY_TO_PL[raw.toLowerCase()];
+  if (fromEn) {
+    return { code: PL_COUNTRY_TO_ISO[fromEn] || DEFAULT_LOCALITY_COUNTRY_CODE, labelPl: fromEn };
+  }
+  if (/^polska$/i.test(raw)) return { code: 'PL', labelPl: 'Polska' };
+  const fromPlIso = PL_COUNTRY_TO_ISO[raw];
+  if (fromPlIso) return { code: fromPlIso, labelPl: raw };
+  return { code: '', labelPl: raw };
+}
+
+/** Polska nazwa kraju — akceptuje też dwuliterowy kod (np. CZ → Czechy). */
+export function normalizeLocalityCountryLabel(labelOrCode?: unknown): string {
+  const s = String(labelOrCode || '').trim();
+  if (!s) return DEFAULT_LOCALITY_COUNTRY;
+  if (/^[A-Za-z]{2}$/.test(s)) {
+    return countryLabelPlFromIso(s.toUpperCase()) || s.toUpperCase();
+  }
+  return s;
+}
+
+/** Kod ISO (PL, UA…) z draftu lub polskiej nazwy kraju. */
+export function localityCountryIso(code?: string | null, labelPl?: string | null): string {
+  const iso = String(code || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(iso)) return iso;
+  const label = String(labelPl || '').trim();
+  return PL_COUNTRY_TO_ISO[label] || DEFAULT_LOCALITY_COUNTRY_CODE;
+}
+
+export function buildGeocodeQuery(addressPart: string, countryLabelPl: string): string {
+  const part = String(addressPart || '').trim();
+  let country = normalizeLocalityCountryLabel(countryLabelPl);
+  if (/^[A-Z]{2}$/.test(country)) {
+    try {
+      const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+      country = dn.of(country) || country;
+    } catch {
+      /* noop */
+    }
+  }
+  country = String(country || DEFAULT_LOCALITY_COUNTRY).trim() || DEFAULT_LOCALITY_COUNTRY;
+  if (!part) return country;
+  return `${part}, ${country}`;
+}
+
+export type DraftLocationPresentation = {
+  city: string;
+  district: string;
+  countryLabelPl: string;
+  countryIso: string;
+  locationText: string;
+};
+
+const isStrictCityName = (city: string) =>
+  (STRICT_CITIES as readonly string[]).includes(city);
+
+/**
+ * Ujednolica zapis lokalizacji w szkicu (m.in. naprawa: city=Pilzno, district=CZ).
+ * Zwraca gotowy tekst „Miejscowość, Państwo” oraz kod ISO pod flagę.
+ */
+export function getDraftLocationPresentation(draft: {
+  city?: string;
+  district?: string;
+  localityCountry?: string;
+  localityCountryCode?: string;
+}): DraftLocationPresentation {
+  let city = String(draft.city ?? '').trim();
+  let district = String(draft.district ?? '').trim();
+  let countryLabelPl = normalizeLocalityCountryLabel(draft.localityCountry);
+  let countryIso = localityCountryIso(draft.localityCountryCode, countryLabelPl);
+
+  if (!isStrictCityName(city) && city && city !== REST_OF_COUNTRY_CITY) {
+    if (/^[A-Za-z]{2}$/i.test(district)) {
+      countryIso = district.toUpperCase();
+      countryLabelPl = countryLabelPlFromIso(countryIso) || countryLabelPl;
+    }
+    district = city;
+    city = REST_OF_COUNTRY_CITY;
+  } else if (city === REST_OF_COUNTRY_CITY && /^[A-Za-z]{2}$/i.test(district)) {
+    const isoFromDistrict = district.toUpperCase();
+    const codeFromDraft = String(draft.localityCountryCode ?? '').trim().toUpperCase();
+    countryIso = /^[A-Z]{2}$/.test(codeFromDraft) ? codeFromDraft : isoFromDistrict;
+    countryLabelPl =
+      countryLabelPlFromIso(countryIso) || normalizeLocalityCountryLabel(draft.localityCountry) || countryLabelPl;
+    // Kod kraju (np. „US”) trafił do district — nie zamieniaj miejscowości na „Ogólna”.
+    district = '';
+  }
+
+  const locationText = formatLocationLabel(city, district, DEFAULT_LOCALITY_COUNTRY, countryLabelPl);
+  return { city, district, countryLabelPl, countryIso, locationText };
+}
+
+/** Patch do `updateDraft`, gdy lokalizacja w szkicu jest w starym / błędnym kształcie. */
+export function getLocationDraftRepairPatch(draft: {
+  city?: string;
+  district?: string;
+  localityCountry?: string;
+  localityCountryCode?: string;
+}): {
+  city: string;
+  district: string;
+  localityCountry: string;
+  localityCountryCode: string;
+} | null {
+  const fixed = getDraftLocationPresentation(draft);
+  const city = String(draft.city ?? '').trim();
+  const district = String(draft.district ?? '').trim();
+  const country = normalizeLocalityCountryLabel(draft.localityCountry);
+  const iso = String(draft.localityCountryCode ?? '').trim().toUpperCase();
+
+  const needsRepair =
+    city !== fixed.city ||
+    district !== fixed.district ||
+    country !== fixed.countryLabelPl ||
+    (iso !== fixed.countryIso && !(iso === '' && fixed.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE));
+
+  if (!needsRepair) return null;
+  return {
+    city: fixed.city,
+    district: fixed.district,
+    localityCountry: fixed.countryLabelPl,
+    localityCountryCode: fixed.countryIso,
+  };
+}
+
+export function formatLocationLabel(
+  cityInput: unknown,
+  districtInput: unknown,
+  fallback = 'Polska',
+  countryLabel?: unknown,
+): string {
   const city = String(cityInput ?? '').trim();
   const district = String(districtInput ?? '').trim();
-  if (city === REST_OF_COUNTRY_CITY) return district || fallback;
+  const country = normalizeLocalityCountryLabel(countryLabel);
+  if (city === REST_OF_COUNTRY_CITY) {
+    const locality = district;
+    if (locality && country) return `${locality}, ${country}`;
+    return locality || country || fallback;
+  }
   if (city && district) return `${city}, ${district}`;
   if (city) return city;
   if (district) return district;
@@ -68,15 +266,141 @@ export function formatPublicAddress(
   districtInput: unknown,
   streetInput: unknown,
   isExactInput: unknown,
-  fallback = 'Polska',
+  countryOrFallback = DEFAULT_LOCALITY_COUNTRY,
 ): string {
-  const baseLabel = formatLocationLabel(cityInput, districtInput, fallback);
+  const country = normalizeLocalityCountryLabel(countryOrFallback);
+  const baseLabel = formatLocationLabel(cityInput, districtInput, country, country);
   const isExact = resolveIsExactLocation(isExactInput);
   const street = String(streetInput ?? '').trim();
   if (!street) return baseLabel;
   const visibleStreet = isExact ? street : stripHouseNumber(street);
   if (!visibleStreet) return baseLabel;
   return `${baseLabel} • ${visibleStreet}`;
+}
+
+/** Jedna linia na listę ofert (Profil, admin): miejscowość + kraj + opcjonalnie ulica. Bez „Reszta kraju”. */
+/** Adres z wyniku reverse-geocode (Apple Maps). W USA `streetNumber` bywa puste — bierzemy też `name`. */
+export function streetLineFromGeocodedPlace(
+  place: { street?: string | null; streetNumber?: string | null; name?: string | null } | null | undefined,
+  fallback = '',
+): string {
+  const street = String(place?.street ?? '').trim();
+  const num = String(place?.streetNumber ?? '').trim();
+  if (street && num) return `${street} ${num}`.trim();
+  if (street) return street;
+  const name = String(place?.name ?? '').trim();
+  if (name.length > 2) return name;
+  return String(fallback || '').trim();
+}
+
+/** Przybliżony bounding box Polski — wystarcza do ukrycia KW / EKW poza krajem. */
+export function isCoordinatesInPoland(lat: number, lng: number): boolean {
+  return lat >= 49.0 && lat <= 54.95 && lng >= 14.05 && lng <= 24.25;
+}
+
+/** Księga wieczysta (KW) dotyczy wyłącznie nieruchomości w Polsce. */
+export function isPolandLocationDraft(draft: {
+  city?: unknown;
+  district?: unknown;
+  localityCountry?: unknown;
+  localityCountryCode?: unknown;
+  lat?: unknown;
+  lng?: unknown;
+} | null | undefined): boolean {
+  if (!draft) return true;
+
+  const lat = Number(draft.lat);
+  const lng = Number(draft.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && !isCoordinatesInPoland(lat, lng)) {
+    return false;
+  }
+
+  const explicitCode = String(draft.localityCountryCode ?? '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(explicitCode) && explicitCode !== DEFAULT_LOCALITY_COUNTRY_CODE) {
+    return false;
+  }
+
+  const countryLabel = String(draft.localityCountry ?? '').trim();
+  if (countryLabel) {
+    if (/^polska$/i.test(countryLabel)) {
+      // jawna Polska
+    } else {
+      const isoFromPl = PL_COUNTRY_TO_ISO[countryLabel];
+      if (isoFromPl) return isoFromPl === DEFAULT_LOCALITY_COUNTRY_CODE;
+      if (/^[A-Za-z]{2}$/.test(countryLabel)) {
+        return countryLabel.toUpperCase() === DEFAULT_LOCALITY_COUNTRY_CODE;
+      }
+      const fromEn = ENGLISH_COUNTRY_TO_PL[countryLabel.toLowerCase()];
+      if (fromEn) return fromEn === DEFAULT_LOCALITY_COUNTRY;
+      if (countryLabel !== DEFAULT_LOCALITY_COUNTRY) return false;
+    }
+  }
+
+  const pres = getDraftLocationPresentation({
+    city: String(draft.city ?? ''),
+    district: String(draft.district ?? ''),
+    localityCountry: countryLabel,
+    localityCountryCode: explicitCode,
+  });
+  return pres.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
+}
+
+export function isLocationStepComplete(draft: {
+  lat?: unknown;
+  lng?: unknown;
+  city?: unknown;
+  district?: unknown;
+  street?: unknown;
+  localityCountry?: unknown;
+  localityCountryCode?: unknown;
+} | null | undefined): boolean {
+  if (!draft) return false;
+  const lat = Number(draft.lat);
+  const lng = Number(draft.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+  const pres = getDraftLocationPresentation({
+    city: String(draft.city ?? ''),
+    district: String(draft.district ?? ''),
+    localityCountry: String(draft.localityCountry ?? ''),
+    localityCountryCode: String(draft.localityCountryCode ?? ''),
+  });
+  const locality = String(pres.district || '').trim();
+  const hasLocality = locality.length > 0 && locality !== 'Ogólna';
+  const isPoland = pres.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
+  const street = String(draft.street || '').trim();
+
+  if (isPoland) {
+    return hasLocality && street.length > 2 && /\d/.test(street);
+  }
+  return hasLocality && (street.length > 2 || hasLocality);
+}
+
+export function formatOfferLocationLine(
+  offer: {
+    city?: unknown;
+    district?: unknown;
+    street?: unknown;
+    localityCountry?: unknown;
+    localityCountryCode?: unknown;
+    isExactLocation?: unknown;
+  } | null
+  | undefined,
+): string {
+  if (!offer) return '';
+  const pres = getDraftLocationPresentation({
+    city: String(offer.city ?? ''),
+    district: String(offer.district ?? ''),
+    localityCountry: String(offer.localityCountry ?? ''),
+    localityCountryCode: String(offer.localityCountryCode ?? ''),
+  });
+  return formatPublicAddress(
+    pres.city,
+    pres.district,
+    offer.street,
+    offer.isExactLocation,
+    pres.countryLabelPl,
+  );
 }
 
 export const STRICT_CITIES = [

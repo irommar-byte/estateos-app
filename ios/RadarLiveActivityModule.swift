@@ -6,6 +6,8 @@ private struct RadarLiveSnapshot: Decodable {
   let enabled: Bool
   let transactionType: String
   let city: String
+  let localityCountry: String?
+  let localityCountryCode: String?
   let districts: [String]?
   let propertyType: String?
   let maxPrice: Double?
@@ -30,6 +32,8 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
     var transactionType: String
     var city: String
+    var localityCountry: String
+    var localityCountryCode: String
     var districts: [String]
     var propertyType: String
     var maxPrice: Double
@@ -54,6 +58,15 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
 @available(iOS 16.1, *)
 private enum RadarLiveActivityStore {
   static var activity: Activity<RadarLiveActivityAttributes>?
+
+  /// Kończy WSZYSTKIE aktywne Live Activities radaru (np. po restarcie aplikacji
+  /// pamięć modułu jest pusta, ale iOS nadal trzyma stare karty na lock screenie).
+  static func endAllRadarActivities() async {
+    for activity in Activity<RadarLiveActivityAttributes>.activities {
+      await activity.end(dismissalPolicy: .immediate)
+    }
+    activity = nil
+  }
 }
 
 @objc(RadarLiveActivityModule)
@@ -93,11 +106,7 @@ final class RadarLiveActivityModule: NSObject {
     }
 
     Task {
-      if let activity = RadarLiveActivityStore.activity {
-        await activity.end(dismissalPolicy: .immediate)
-        RadarLiveActivityStore.activity = nil
-      }
-
+      await RadarLiveActivityStore.endAllRadarActivities()
       resolve(["status": "stopped"])
     }
   }
@@ -137,6 +146,8 @@ final class RadarLiveActivityModule: NSObject {
         let contentState = RadarLiveActivityAttributes.ContentState(
           transactionType: snapshot.transactionType,
           city: snapshot.city,
+          localityCountry: snapshot.localityCountry ?? "Polska",
+          localityCountryCode: snapshot.localityCountryCode ?? "PL",
           districts: snapshot.districts ?? [],
           propertyType: snapshot.propertyType ?? "ALL",
           maxPrice: snapshot.maxPrice ?? 0,
@@ -155,12 +166,22 @@ final class RadarLiveActivityModule: NSObject {
           updatedAtIso: snapshot.updatedAtIso
         )
 
-        // Jeśli mamy zapamiętaną Activity, ale jej stan jest .dismissed/.ended,
-        // traktujemy ją jak nieobecną — inaczej `update(using:)` poszedłby do trupa.
-        if let existing = RadarLiveActivityStore.activity {
+        // Jedna karta na lock screen — zsynchronizuj z tym, co iOS faktycznie trzyma.
+        let systemActivities = Activity<RadarLiveActivityAttributes>.activities
+        if systemActivities.count > 1 {
+          NSLog("[RadarLiveActivity] Wykryto \(systemActivities.count) aktywnych kart — zamykam duplikaty.")
+          await RadarLiveActivityStore.endAllRadarActivities()
+        }
+
+        if let existing = RadarLiveActivityStore.activity ?? systemActivities.first {
+          RadarLiveActivityStore.activity = existing
           let state = existing.activityState
           if state == .active {
             await existing.update(using: contentState)
+            // Zamknij ewentualne „sieroty" poza zapamiętaną instancją.
+            for orphan in Activity<RadarLiveActivityAttributes>.activities where orphan.id != existing.id {
+              await orphan.end(dismissalPolicy: .immediate)
+            }
             resolve(["status": "updated"])
             return
           } else {
@@ -169,6 +190,8 @@ final class RadarLiveActivityModule: NSObject {
             RadarLiveActivityStore.activity = nil
           }
         }
+
+        await RadarLiveActivityStore.endAllRadarActivities()
 
         let attributes = RadarLiveActivityAttributes(
           title: "Radar aktywny"

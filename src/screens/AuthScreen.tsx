@@ -309,9 +309,10 @@ export default function AuthScreen({
     const timer = setTimeout(async () => {
       setPhoneStatus('loading');
       try {
-        const display = parsePhoneNumberFromString(e164)?.formatInternational() || e164;
         const res = await fetch(`${API_URL}/api/auth/check-exists`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: display, field: 'phone', value: display })
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: e164, field: 'phone', value: e164 }),
         });
         if (!res.ok) throw new Error();
         const d = await res.json();
@@ -374,13 +375,13 @@ export default function AuthScreen({
           password,
           firstName,
           lastName,
-          parsePhoneNumberFromString(regE164)?.formatInternational() || regE164,
+          regE164,
           role,
           role === 'AGENT' ? companyName.trim() : null,
         );
         
         if (isRegistered) {
-          const isLogged = await store.login(email, password);
+          const isLogged = await store.login(email, password, { registrationPhoneE164: regE164 });
           if (isLogged) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             // Od razu po rejestracji wysyłamy kod weryfikacyjny na podany e-mail (jeśli backend wspiera).

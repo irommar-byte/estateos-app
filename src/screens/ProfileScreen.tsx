@@ -18,7 +18,6 @@ import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
-import { openStripeCheckoutForPlan } from '../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
@@ -30,6 +29,13 @@ import BlockedUsersModal from '../components/BlockedUsersModal';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import AdminLegalVerificationModal from '../components/AdminLegalVerificationModal';
 import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
+import {
+  persistMobileOfferUpdate,
+  readMobileOfferResponseBody,
+  isExplicitMobileOfferSaveFailure,
+} from '../utils/mobileOfferUpdate';
+import { formatOfferLocationLine } from '../constants/locationEcosystem';
+import { getAdditionalListingSlots } from '../utils/listingQuota';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -150,7 +156,7 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
       : pushPermissionStatus === 'denied'
         ? 'Wyłączone (ustawienia systemowe)'
         : pushPermissionStatus === 'undetermined'
-          ? 'Nie ustawiono — możesz zezwolić'
+          ? 'Nie ustawiono'
           : '—';
 
   return (
@@ -176,13 +182,13 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
                 style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
               >
                 <Text style={{ color: '#007AFF', fontWeight: '700', fontSize: 15 }}>
-                  {pushPermissionStatus === 'denied' ? 'Ustawienia' : 'Zezwól'}
+                  {pushPermissionStatus === 'denied' ? 'Ustawienia' : 'Dalej'}
                 </Text>
               </Pressable>
             </View>
           </View>
           <Text style={styles.sectionFooter}>
-            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady — przełącznik pojawi się w Ustawieniach dopiero po pierwszej próbie zezwolenia. Po włączeniu otrzymasz powiadomienie Push na ekran blokady, które natychmiast przeniesie Cię do odpowiedniego widoku w aplikacji.
+            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady. Po włączeniu otrzymasz powiadomienia Radaru i wiadomości Dealroom, które przeniosą Cię do odpowiedniego widoku w aplikacji.
           </Text>
         </ScrollView>
       </View>
@@ -447,8 +453,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ACTIVE');
   const [selectedOffer, setSelectedOffer] = useState(null);
-  const [pendingReactivationOfferId, setPendingReactivationOfferId] = useState<number | null>(null);
   const [reactivating, setReactivating] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   
   const { user, token, refreshUser } = useAuthStore();
   const isDark = theme.glass === 'dark';
@@ -471,17 +477,6 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     }
   }, [visible]);
 
-  useEffect(() => {
-    if (!pendingReactivationOfferId || !visible) return;
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
-      const offerId = pendingReactivationOfferId;
-      setPendingReactivationOfferId(null);
-      void finalizeOfferReactivation(offerId);
-    });
-    return () => sub.remove();
-  }, [pendingReactivationOfferId, visible]);
-
   const handleOpenManagement = (offer) => {
     Haptics.selectionAsync();
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -494,41 +489,45 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     setSelectedOffer(null);
   };
 
-  const finalizeOfferReactivation = async (offerId: number) => {
-    if (!token) return;
+  const reactivateEndedOfferWithPakietPlus = async (offerId: number, offerTitle: string) => {
+    if (!token || reactivating) return;
     setReactivating(true);
     try {
-      await fetch(`${API_URL}/api/stripe/force-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      }).catch(() => null);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const payload = {
+        id: offerId,
+        userId: user?.id,
+        status: 'ACTIVE',
+        newStatus: 'ACTIVE',
+        reactivateAsNew: true,
+        publishAsNewPlus: true,
+        consumePlusPublication: true,
+        refreshCreatedAt: true,
+        activatedAt: now.toISOString(),
+        expiresAt,
+      };
+      const res = await persistMobileOfferUpdate({ offerId, token, payload });
+      const body = await readMobileOfferResponseBody(res);
 
-      const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          offerId,
-          newStatus: 'ACTIVE',
-          renewDays: 30,
-          extendDays: 30,
-          reactivationPaid: true,
-          reactivateAsNew: true,
-          refreshCreatedAt: true,
-          notifyRadar: true,
-        }),
-      });
-      if (!res.ok) throw new Error('Serwer odrzucił reaktywację.');
+      if (isExplicitMobileOfferSaveFailure(body, res.ok)) {
+        throw new Error(
+          body?.message ||
+          body?.error ||
+          (typeof body?._raw === 'string' ? body._raw.slice(0, 240) : null) ||
+          `Serwer odrzucił przywrócenie oferty (HTTP ${res.status}).`
+        );
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await fetchMyOffers();
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setOffers((prev) => prev.map((o) => Number(o?.id) === offerId ? { ...o, status: 'ACTIVE', expiresAt } : o));
       setSelectedOffer(null);
       setActiveTab('ACTIVE');
-      Alert.alert('Oferta aktywowana', 'Ogłoszenie zostało aktywowane ponownie na kolejne 30 dni.');
-    } catch {
-      Alert.alert(
-        'Nie udało się aktywować',
-        'Po opłaceniu pakietu wróć tutaj i ponów aktywację. Jeśli płatność była przed chwilą, synchronizacja może potrwać chwilę.'
-      );
+      await Promise.all([fetchMyOffers(), refreshUser?.()]);
+      Alert.alert('Oferta przywrócona', `„${offerTitle}" wróciła do aktywnej sprzedaży na 30 dni jako publikacja Pakiet Plus.`);
+    } catch (e) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Nie udało się przywrócić', e?.message || 'Spróbuj ponownie za chwilę.');
     } finally {
       setReactivating(false);
     }
@@ -555,107 +554,97 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       onClose();
       setTimeout(() => navigation.navigate('EditOffer', { offerId: selectedOffer.id }), 200);
     } else if (actionType === 'BUMP') {
-      if (!selectedOffer?.id || !token || reactivating) return;
-      if (Platform.OS === 'ios') {
-        Alert.alert(
-          'Odśwież ofertę (+30 dni)',
-          'Podbicie działa jak odnowienie: po zakupie Pakietu Plus w App Store oferta dostanie kolejne 30 dni i wróci jak świeża na radarze.',
-          [
-            { text: 'Anuluj', style: 'cancel' },
-            {
-              text: `Kup w App Store (~${PAKIET_PLUS_PRICE_LABEL})`,
-              onPress: async () => {
-                const r = await purchasePakietPlusConsumable(API_URL, token);
-                if (r.cancelled) return;
-                if (!r.ok) {
-                  if (r.message) Alert.alert('Sklep', r.message);
-                  return;
-                }
-                await refreshUser?.();
-                await finalizeOfferReactivation(selectedOffer.id);
-              },
-            },
-          ]
-        );
-      } else {
-        Alert.alert(
-          "Odśwież ofertę (+30 dni)",
-          "Podbicie działa jak odnowienie: po płatności oferta dostaje kolejne 30 dni, wraca do aktywnych i może być promowana jak nowa na radarze.",
-          [
-            { text: "Anuluj", style: "cancel" },
-            {
-              text: "Przejdź do płatności",
-              onPress: async () => {
-                const opened = await openStripeCheckoutForPlan(API_URL, token, 'renewal', {
-                  offerId: Number(selectedOffer.id),
-                  metadata: { action: 'bump_as_renew_30d' },
-                });
-                if (opened) setPendingReactivationOfferId(selectedOffer.id);
-              },
-            },
-          ]
-        );
-      }
+      Alert.alert(
+        'Pakiet Plus',
+        'Pakiet Plus służy wyłącznie do dodania jednej dodatkowej nowej oferty na 30 dni. Nie podbija i nie przedłuża istniejących ogłoszeń.',
+        [{ text: 'OK' }]
+      );
     } else if (actionType === 'ARCHIVE') {
-      Alert.alert("Zakończ ogłoszenie", "Czy na pewno chcesz wycofać ofertę do archiwum?", [
+      if (!selectedOffer?.id || !token || archiving) return;
+      const offerId = Number(selectedOffer.id);
+      const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
+      Alert.alert(
+        "Zakończ ogłoszenie",
+        "Czy na pewno chcesz wycofać ofertę do archiwum? Niewykorzystane dni tej publikacji przepadną. Aby przywrócić ofertę do aktywnej sprzedaży, trzeba będzie ponownie wykupić Pakiet Plus na 30 dni.",
+        [
         { text: "Anuluj", style: "cancel" },
         { text: "Wycofaj", style: "destructive", onPress: async () => {
+          setArchiving(true);
           try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ offerId: selectedOffer.id, newStatus: 'ARCHIVED' })
+            const payload = {
+              id: offerId,
+              userId: user?.id,
+              status: 'ARCHIVED',
+              newStatus: 'ARCHIVED',
+              archivedAt: new Date().toISOString(),
+            };
+            const res = await persistMobileOfferUpdate({
+              offerId,
+              token,
+              payload,
             });
-            if (res.ok) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              await fetchMyOffers();
-              handleGoBack();
+            const body = await readMobileOfferResponseBody(res);
+
+            if (isExplicitMobileOfferSaveFailure(body, res.ok)) {
+              throw new Error(
+                body?.message ||
+                body?.error ||
+                (typeof body?._raw === 'string' ? body._raw.slice(0, 240) : null) ||
+                `Serwer odrzucił wycofanie oferty (HTTP ${res.status}).`
+              );
             }
-          } catch(e) { Alert.alert("Błąd", "Nie udało się wycofać oferty."); }
+
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setOffers((prev) => prev.map((o) => Number(o?.id) === offerId ? { ...o, status: 'ARCHIVED' } : o));
+            setSelectedOffer(null);
+            await fetchMyOffers();
+            Alert.alert('Oferta wycofana', `„${offerTitle}" została przeniesiona do zakończonych ogłoszeń.`);
+          } catch(e) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert("Nie udało się wycofać", e?.message || "Spróbuj ponownie za chwilę.");
+          } finally {
+            setArchiving(false);
+          }
         }}
-      ]);
+        ]
+      );
     } else if (actionType === 'REACTIVATE_30D') {
       if (!selectedOffer?.id || !token || reactivating) return;
-      if (Platform.OS === 'ios') {
-        Alert.alert(
-          'Aktywuj ponownie na 30 dni',
-          `Kup Pakiet Plus w App Store (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni). Po udanej płatności oferta zostanie ponownie uruchomiona.`,
-          [
-            { text: 'Anuluj', style: 'cancel' },
-            {
-              text: `Kup w App Store (~${PAKIET_PLUS_PRICE_LABEL})`,
-              onPress: async () => {
-                const r = await purchasePakietPlusConsumable(API_URL, token);
-                if (r.cancelled) return;
-                if (!r.ok) {
-                  if (r.message) Alert.alert('Sklep', r.message);
-                  return;
-                }
-                await refreshUser?.();
-                await finalizeOfferReactivation(selectedOffer.id);
-              },
+      const offerId = Number(selectedOffer.id);
+      const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
+      Alert.alert(
+        'Przywróć na 30 dni',
+        `Pakiet Plus przywróci tę zakończoną ofertę do aktywnej sprzedaży na 30 dni, tak jak dodatkową nową publikację. Zakup odbywa się wyłącznie przez sklep systemowy.`,
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          {
+            text: `Kup Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL})`,
+            onPress: async () => {
+              const r = await purchasePakietPlusConsumable(API_URL, token);
+              if (r.cancelled) return;
+              if (!r.ok) {
+                if (r.message) Alert.alert('Sklep', r.message);
+                return;
+              }
+              await refreshUser?.();
+              let slots = getAdditionalListingSlots(useAuthStore.getState().user);
+              if (!r.backendRegistered && slots < 1) {
+                const restored = await restorePakietPlusPurchases();
+                if (restored.ok) await refreshUser?.();
+                slots = getAdditionalListingSlots(useAuthStore.getState().user);
+              }
+              if (r.backendRegistered || slots > 0) {
+                await reactivateEndedOfferWithPakietPlus(offerId, offerTitle);
+                return;
+              }
+              Alert.alert(
+                'Pakiet Plus',
+                'Zakup z Apple został przyjęty, ale serwer jeszcze nie potwierdził dodatkowej publikacji. Poczekaj ok. 1 minutę i użyj „Przywróć zakupy" w Profilu, a następnie spróbuj przywrócić ofertę ponownie.',
+              );
             },
-          ]
-        );
-      } else {
-        Alert.alert(
-          'Aktywuj ponownie na 30 dni',
-          'Aby ponownie aktywować zakończone ogłoszenie na 30 dni, przejdź do płatności Stripe. Po powrocie aplikacja spróbuje automatycznie odnowić ofertę.',
-          [
-            { text: 'Anuluj', style: 'cancel' },
-            {
-              text: 'Przejdź do Stripe',
-              onPress: async () => {
-                const opened = await openStripeCheckoutForPlan(API_URL, token, 'renewal', {
-                  offerId: Number(selectedOffer.id),
-                  metadata: { action: 'reactivate_offer_30d' },
-                });
-                if (opened) setPendingReactivationOfferId(selectedOffer.id);
-              },
-            },
-          ]
-        );
-      }
+          },
+        ]
+      );
     }
   };
 
@@ -678,7 +667,9 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
            {imageUri ? <Image source={{ uri: imageUri }} style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15 }} /> : <View style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', justifyContent: 'center', alignItems: 'center' }}><Ionicons name="home" size={24} color="#8E8E93" /></View>}
            <View style={{ flex: 1, justifyContent: 'center' }}>
               <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 4 }]} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.offerSubtitle}>{item.price} PLN • {item.city}</Text>
+              <Text style={styles.offerSubtitle} numberOfLines={2}>
+                {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+              </Text>
            </View>
         </View>
 
@@ -739,17 +730,16 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title="Podgląd" subtitle="Z perspektywy klienta" theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title="Edytuj" subtitle="Zmień parametry" theme={theme} isDark={isDark} />
-          <PremiumActionButton isPrimary={true} disabled={selSt !== 'ACTIVE' || reactivating} onPress={() => handleAction('BUMP')} icon="rocket" color={{ bg: selSt === 'ACTIVE' ? 'rgba(52,199,89,0.15)' : 'rgba(142,142,147,0.1)', icon: selSt === 'ACTIVE' ? '#34C759' : '#8E8E93' }} title={reactivating && selSt === 'ACTIVE' ? 'Odświeżanie...' : 'Podbij (+30 dni)'} subtitle={Platform.OS === 'ios' ? `Pakiet Plus — App Store (~${PAKIET_PLUS_PRICE_LABEL})` : 'Płatność Stripe lub sklep'} theme={theme} isDark={isDark} />
-          <PremiumActionButton disabled={selSt === 'ARCHIVED'} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title="Wycofaj" subtitle="Zakończ ofertę" theme={theme} isDark={isDark} />
+          <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? 'Wycofywanie...' : 'Wycofaj'} subtitle="Zakończ ofertę" theme={theme} isDark={isDark} />
           {selSt === 'ARCHIVED' && (
             <PremiumActionButton
-              isPrimary={true}
+              isPrimary
               disabled={reactivating}
               onPress={() => handleAction('REACTIVATE_30D')}
               icon="refresh-circle"
-              color={{ bg: 'rgba(59,130,246,0.15)', icon: '#3b82f6' }}
-              title={reactivating ? 'Aktywowanie...' : 'Aktywuj ponownie'}
-              subtitle={Platform.OS === 'ios' ? `Pakiet Plus — App Store (~${PAKIET_PLUS_PRICE_LABEL})` : '30 dni po płatności Stripe'}
+              color={{ bg: 'rgba(52,199,89,0.14)', icon: '#34C759' }}
+              title={reactivating ? 'Przywracanie...' : 'Przywróć na 30 dni'}
+              subtitle={`Pakiet Plus — sklep systemowy (~${PAKIET_PLUS_PRICE_LABEL})`}
               theme={theme}
               isDark={isDark}
             />
@@ -1155,7 +1145,9 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
           })()}
         </View>
       </Pressable>
-      <Text style={styles.offerSubtitle}>{item.price} PLN • {item.city}</Text>
+      <Text style={styles.offerSubtitle} numberOfLines={2}>
+        {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+      </Text>
       
       <View style={styles.adminActionRow}>
         {normalizeOfferTabStatus(item?.status) === 'PENDING' && (
@@ -1429,7 +1421,9 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
             </View>
           </View>
         </Pressable>
-        <Text style={styles.offerSubtitle}>{item.price} PLN • {item.city}</Text>
+        <Text style={styles.offerSubtitle} numberOfLines={2}>
+          {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+        </Text>
         <Text style={styles.offerUser}>Autor: {item.user?.email}</Text>
         <View style={styles.adminActionRow}>
           {activeTab === 'PENDING' && (
@@ -2592,9 +2586,27 @@ export default function ProfileScreen({
     const raw = String(user?.phone || '').trim();
     if (!raw || raw === 'Brak numeru') return false;
     if (isValidPhoneNumber(raw)) return true;
+    const withPlus = raw.startsWith('+') ? raw : `+${raw.replace(/\D/g, '')}`;
+    if (isValidPhoneNumber(withPlus)) return true;
     const p = parsePhoneNumberFromString(raw, 'PL');
     return Boolean(p?.isValid());
   })();
+
+  const plusSlots = Math.max(0, Math.floor(Number((user as any)?.extraListings || 0)));
+  const plusExpiresAtRaw = String((user as any)?.plusExpiresAt || '').trim();
+  const plusExpiresAtMs = plusExpiresAtRaw ? new Date(plusExpiresAtRaw).getTime() : null;
+  const plusHasValidExpiry = plusExpiresAtMs != null && Number.isFinite(plusExpiresAtMs);
+  const plusDaysLeft = plusHasValidExpiry ? Math.max(0, Math.ceil((plusExpiresAtMs! - Date.now()) / 86400000)) : null;
+  const hasPlusPublicationAvailable = plusSlots > 0;
+  const plusExpiryLabel = plusHasValidExpiry
+    ? new Date(plusExpiresAtMs!).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+  const plusDaysLabel =
+    plusDaysLeft == null
+      ? 'Dodatkowa oferta będzie ważna 30 dni od publikacji'
+      : plusDaysLeft === 0
+        ? 'Ostatnia dodatkowa publikacja kończy się dzisiaj'
+        : `Ostatnia dodatkowa publikacja: ${plusDaysLeft} ${plusDaysLeft === 1 ? 'dzień' : 'dni'} do końca`;
 
   const profileScreenBg = isDark ? '#000' : '#F2F2F7';
 
@@ -2811,30 +2823,27 @@ export default function ProfileScreen({
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Twoje Nieruchomości</Text>
           <ListGroup isDark={isDark}>
-            <ListItem icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd, edycja i podbijanie" onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
+            <ListItem icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd, edycja i wycofanie" onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
           </ListGroup>
         </View>
 
-        {/*
-          === SEKCJA „Powiadomienia i Ustawienia" — UKRYTA ===
-
-          Tymczasowo wyłączona, bo wewnątrz było tylko jedno pole „Powiadomienia"
-          prowadzące do modala, który NIE jest podpięty do backendu (przełączniki
-          „Zmiany cen" / „Nowe propozycje" były placebo). Status systemowych
-          uprawnień push można w razie potrzeby pokazać w innym miejscu —
-          do czasu, gdy będzie kontrakt na realne preferencje powiadomień.
-
-          Pozostawiamy zarówno `NotificationsSettingsModal`, jak i stan
-          `isNotificationsVisible` — żaden z nich nie jest dziś otwierany,
-          ale komponent jest gotowy do ponownego użycia po dopięciu API.
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Powiadomienia i Ustawienia</Text>
-            <ListGroup isDark={isDark}>
-              <ListItem icon="notifications" color="#FF2D55" title="Powiadomienia" subtitle="Ulubione, zmiany cen i alerty" onPress={() => setIsNotificationsVisible(true)} isLast={true} isDark={isDark} />
-            </ListGroup>
-          </View>
-        */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Powiadomienia</Text>
+          <ListGroup isDark={isDark}>
+            <ListItem
+              icon="notifications"
+              color="#FF2D55"
+              title="Powiadomienia systemowe"
+              subtitle="Status zgody i alerty Radaru"
+              onPress={() => setIsNotificationsVisible(true)}
+              isLast={true}
+              isDark={isDark}
+            />
+          </ListGroup>
+          <Text style={styles.sectionFooter}>
+            Wejdź tutaj, żeby dobrowolnie włączyć alerty systemowe dla Radaru i wiadomości.
+          </Text>
+        </View>
 
         {/* --- SEKCJA BEZPIECZEŃSTWA PASSKEY --- */}
         <View style={styles.section}>
@@ -2882,6 +2891,59 @@ export default function ProfileScreen({
         */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Zakupy i sklep</Text>
+          <View
+            style={[
+              styles.plusStatusCard,
+              {
+                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                borderColor: hasPlusPublicationAvailable
+                  ? 'rgba(16,185,129,0.42)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.06)'
+                    : 'rgba(0,0,0,0.04)',
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.plusStatusIcon,
+                { backgroundColor: hasPlusPublicationAvailable ? '#10B981' : '#8E8E93' },
+              ]}
+            >
+              <Ionicons name={hasPlusPublicationAvailable ? 'checkmark-circle' : 'add-circle'} size={22} color="#FFFFFF" />
+            </View>
+            <View style={styles.plusStatusBody}>
+              <View style={styles.plusStatusHeaderRow}>
+                <Text style={[styles.plusStatusTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Pakiet Plus
+                </Text>
+                <View
+                  style={[
+                    styles.plusStatusPill,
+                    {
+                      backgroundColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.14)' : 'rgba(142,142,147,0.14)',
+                      borderColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.42)' : 'rgba(142,142,147,0.28)',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.plusStatusPillText, { color: hasPlusPublicationAvailable ? '#10B981' : '#8E8E93' }]}>
+                    {hasPlusPublicationAvailable ? 'DOSTĘPNA' : 'BRAK'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.plusStatusSubtitle}>
+                {hasPlusPublicationAvailable
+                  ? 'Możesz dodać jedną dodatkową nową ofertę na 30 dni.'
+                  : 'Brak dostępnej dodatkowej publikacji.'}
+              </Text>
+              {hasPlusPublicationAvailable && plusExpiryLabel ? (
+                <Text style={styles.plusStatusMeta}>{plusDaysLabel} ({plusExpiryLabel})</Text>
+              ) : null}
+              <Text style={styles.plusStatusMeta}>
+                Dostępne dodatkowe publikacje: {plusSlots}
+              </Text>
+            </View>
+          </View>
           <ListGroup isDark={isDark}>
             <Pressable
               onPress={handleRestorePurchases}
@@ -2918,8 +2980,8 @@ export default function ProfileScreen({
           </ListGroup>
           <Text style={styles.sectionFooter}>
             {Platform.OS === 'ios'
-              ? `Pakiet Plus to consumable kupowany jednorazowo (~${PAKIET_PLUS_PRICE_LABEL}/30 dni). Jeśli zakup się nie zaksięgował automatycznie, przywróć go tutaj.`
-              : `Pakiet Plus to zakup jednorazowy (~${PAKIET_PLUS_PRICE_LABEL}/30 dni). Jeśli zakup się nie zaksięgował, użyj tego przycisku.`}
+              ? `Pakiet Plus to jednorazowy zakup w aplikacji (~${PAKIET_PLUS_PRICE_LABEL}), który pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń. Jeśli zakup się nie zaksięgował, przywróć go tutaj.`
+              : `Pakiet Plus to jednorazowy zakup, który pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń.`}
           </Text>
         </View>
 
@@ -3286,6 +3348,29 @@ const styles = StyleSheet.create({
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 13, color: '#8E8E93', textTransform: 'uppercase', marginLeft: 16, marginBottom: 8, letterSpacing: 0.3 },
   sectionFooter: { fontSize: 13, color: '#8E8E93', marginLeft: 16, marginTop: 8, marginRight: 16, lineHeight: 18 },
+  plusStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 10,
+  },
+  plusStatusIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  plusStatusBody: { flex: 1, minWidth: 0 },
+  plusStatusHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  plusStatusTitle: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
+  plusStatusPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  plusStatusPillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
+  plusStatusSubtitle: { color: '#8E8E93', fontSize: 13, fontWeight: '700', marginTop: 3 },
+  plusStatusMeta: { color: '#8E8E93', fontSize: 12, marginTop: 3 },
   listGroup: { borderRadius: 12, overflow: 'hidden', borderWidth: 1 },
   listItem: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16 },
   listIconBox: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 14 },

@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RadarFilters } from '../components/RadarCalibrationModal';
+import {
+  localityCountryIso,
+  normalizeLocalityCountryLabel,
+  REST_OF_COUNTRY_CITY,
+} from '../constants/locationEcosystem';
+import { flagEmojiFromIso2 } from './phoneRegions';
 
 const STORAGE_KEY = '@estateos_radar_recent_areas_v1';
 const MAX_ENTRIES = 3;
@@ -64,6 +70,43 @@ function formatPriceShort(n: number, transactionType: 'RENT' | 'SELL'): string {
   }
   if (n >= 1000) return `do ${Math.round(n / 1000)} tys.`;
   return `do ${n} PLN`;
+}
+
+function effectiveMapRadiusKm(baseRadiusKm: number, matchThreshold: number): number {
+  const t = Math.max(50, Math.min(100, matchThreshold));
+  const relax = Math.max(0, Math.min(1, (100 - t) / 50));
+  return baseRadiusKm * (1 + relax);
+}
+
+/** Jedna linia pod „Status: LIVE" na mapie — gdzie i czego szuka radar. */
+export function buildRadarActiveScopeLine(
+  filters: RadarFilters,
+  mapBounds: RadarRecentMapBounds | null,
+): string {
+  const country = normalizeLocalityCountryLabel(filters.localityCountry);
+  const flag = flagEmojiFromIso2(localityCountryIso(filters.localityCountryCode, country));
+  const cityRaw = String(filters.city || '').trim() || 'Polska';
+  const cityLabel =
+    cityRaw === REST_OF_COUNTRY_CITY && filters.selectedDistricts.length > 0
+      ? filters.selectedDistricts[0]
+      : cityRaw;
+
+  let where: string;
+  if (filters.calibrationMode === 'MAP' && mapBounds) {
+    const km = effectiveMapRadiusKm(mapBounds.radiusKm, filters.matchThreshold)
+      .toFixed(1)
+      .replace('.', ',');
+    where = `${cityLabel} ${flag} · obszar ${km} km`;
+  } else if (filters.selectedDistricts.length === 1) {
+    where = `${cityLabel} ${flag} · ${filters.selectedDistricts[0]}`;
+  } else if (filters.selectedDistricts.length > 1) {
+    where = `${cityLabel} ${flag} · ${filters.selectedDistricts.length} dzielnice`;
+  } else {
+    where = `${cityLabel} ${flag} · całe miasto`;
+  }
+
+  const trans = filters.transactionType === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+  return `${where} · ${trans} · ${propertyTypeLabel(filters.propertyType)}`;
 }
 
 export function buildRadarRecentLabels(

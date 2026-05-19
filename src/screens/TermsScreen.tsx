@@ -139,11 +139,13 @@ export default function TermsScreen() {
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>4. Płatności w aplikacji</Text>
         <Text style={[styles.paragraph, { color: textColor }]}>
-          Płatne pakiety (np. „Pakiet Plus" — dodatkowy slot na 30 dni) są realizowane wyłącznie
-          przez systemy płatnicze platform: Apple App Store na iOS i Google Play na Androidzie.
-          Subskrypcjami i fakturami zarządzasz w ustawieniach swojego konta Apple ID lub Google.
-          Zakupy są jednorazowe (consumable), nie odnawiają się automatycznie. Apple i Google
-          dostarczają osobne potwierdzenia płatności na adres e-mail powiązany z kontem.
+          Pakiet Plus pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo
+          zakończoną ofertę przywróconą jako nową 30-dniową publikację. Nie jest subskrypcją,
+          nie odnawia się automatycznie, nie przedłuża aktywnych ogłoszeń i nie aktywuje planu
+          konta. Zakup jest jednorazowy (consumable) i odbywa się wyłącznie przez systemy płatnicze
+          platform: Apple App Store na iOS i Google Play na Androidzie. Apple i Google dostarczają
+          osobne potwierdzenia płatności na adres e-mail powiązany z kontem.
+          Investor Pro jest statusem konta dostępnym poza aplikacją i nie jest kupowany w aplikacji.
         </Text>
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>5. Prowizja agentów</Text>

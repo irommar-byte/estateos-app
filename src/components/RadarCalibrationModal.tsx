@@ -56,6 +56,9 @@ export type RadarFilters = {
   transactionType: 'RENT' | 'SELL';
   propertyType: string;
   city: string;
+  /** Państwo obszaru radaru (geokodowanie / domyślnie Polska). */
+  localityCountry?: string;
+  localityCountryCode?: string;
   selectedDistricts: string[];
   maxPrice: number;
   minArea: number;

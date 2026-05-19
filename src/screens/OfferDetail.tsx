@@ -1,7 +1,7 @@
 import FloorPlanViewer from '../components/FloorPlanViewer';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, Linking, ActivityIndicator, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Share, Alert, Modal, Platform, Pressable, ScrollView, ActivityIndicator, useColorScheme } from 'react-native';
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,13 +30,21 @@ import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
 import { getOfferLifecycleState } from '../utils/offerLifecycle';
-import { formatLocationLabel, formatPublicAddress, resolveIsExactLocation } from '../constants/locationEcosystem';
+import {
+  formatLocationLabel,
+  formatOfferLocationLine,
+  formatPublicAddress,
+  isPolandLocationDraft,
+  resolveIsExactLocation,
+} from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { describeOfferAgentCommission, parseOfferNumeric } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
 import BlockUserSheet from '../components/BlockUserSheet';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
+import { useFocusEffect } from '@react-navigation/native';
+import { deriveOfferDealPresentation } from '../utils/offerDealPresentation';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
@@ -156,11 +164,12 @@ export default function OfferDetail({ route, navigation }: any) {
   const isOwner = viewerUserId > 0 && ownerCandidateIds.includes(viewerUserId);
   const proExpiryMs = user?.proExpiresAt ? new Date(user.proExpiresAt).getTime() : null;
   const isProStillActive = Boolean(!proExpiryMs || proExpiryMs > Date.now());
+  const viewerPlanType = String(user?.planType || '').trim().toUpperCase();
   const isProUser = Boolean(
-    (user?.isPro && isProStillActive) ||
+    (viewerPlanType !== 'PLUS' && user?.isPro && isProStillActive) ||
     user?.role === 'ADMIN' ||
-    user?.planType === 'PRO' ||
-    user?.planType === 'AGENCY'
+    viewerPlanType === 'PRO' ||
+    viewerPlanType === 'AGENCY'
   );
   const [timeLeftMs, setTimeLeftMs] = useState(0);
 
@@ -304,19 +313,11 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (Platform.OS === 'ios') {
-      Alert.alert(
-        'Pakiet PRO',
-        'Wkrótce zakup pakietu PRO bezpośrednio w aplikacji. Tymczasem szczegóły oferty odblokują się po standardowym czasie oczekiwania.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    try {
-      await Linking.openURL(`${SITE_ORIGIN}/cennik`);
-    } catch (_error) {
-      Alert.alert('EstateOS', 'Nie udało się otworzyć strony cennika PRO.');
-    }
+    Alert.alert(
+      'Investor Pro',
+      'Investor Pro jest statusem konta dostępnym poza aplikacją. W aplikacji nie prowadzimy do zakupu Pro; ta oferta odblokuje się automatycznie po czasie oczekiwania.',
+      [{ text: 'OK' }]
+    );
   };
 
   const openAuthEntry = (intent: 'login' | 'register') => {
@@ -489,7 +490,7 @@ export default function OfferDetail({ route, navigation }: any) {
       Number.isFinite(priceNumeric) && priceNumeric > 0
         ? new Intl.NumberFormat('pl-PL').format(Math.round(priceNumeric)) + ' PLN'
         : 'Cena na zapytanie',
-    location: formatLocationLabel(offer?.city, offer?.district, 'Warszawa'),
+    location: formatOfferLocationLine(offer) || formatLocationLabel(offer?.city, offer?.district, 'Warszawa'),
     description: sanitizeOfferDescription(offer?.description) || 'Brak opisu dla tej nieruchomości.',
     stats: { beds: offer?.rooms || '-', size: offer?.area ? `${offer.area} m²` : '- m²' }
   };
@@ -510,16 +511,22 @@ export default function OfferDetail({ route, navigation }: any) {
   const isExactLocation = resolveIsExactLocation(offer?.isExactLocation);
   const streetRaw = firstDefined(offer?.street, offer?.addressStreet, offer?.location?.street);
   const streetForPublic = String(streetRaw || '').trim();
-  const locationLine = formatPublicAddress(
-    offer?.city,
-    offer?.district,
-    streetForPublic,
-    isExactLocation,
-    'Polska',
-  );
 
   const latRaw = Number(firstDefined(offer?.lat, offer?.latitude, offer?.location?.lat, offer?.location?.latitude));
   const lngRaw = Number(firstDefined(offer?.lng, offer?.lon, offer?.longitude, offer?.location?.lng, offer?.location?.lon, offer?.location?.longitude));
+
+  const locationLine =
+    formatOfferLocationLine(offer) ||
+    formatPublicAddress(offer?.city, offer?.district, streetForPublic, isExactLocation);
+
+  const isPolandOffer = isPolandLocationDraft({
+    city: offer?.city,
+    district: offer?.district,
+    localityCountry: offer?.localityCountry,
+    localityCountryCode: offer?.localityCountryCode,
+    lat: latRaw,
+    lng: lngRaw,
+  });
   const hasValidMapCoords = Number.isFinite(latRaw) && Number.isFinite(lngRaw);
   // Prezentacja mapy zależy od dwóch rzeczy: czy właściciel pozwolił na pokazanie
   // dokładnego adresu, oraz czy oglądający TO właściciel/partner (wtedy zawsze
@@ -597,6 +604,10 @@ export default function OfferDetail({ route, navigation }: any) {
   const isHydrationMissing =
     hydrationStatus === 'missing' && !!idFromParams && !offerFromParams?.title && !offerFromParams?.price;
   const isOfferLocked = lifecycleState.isClosed || isHydrationMissing;
+  const dealPresentation = dealNegotiationState?.presentation;
+  const blockBuyerNegotiation = Boolean(
+    !isOwner && dealPresentation?.shouldHideBuyerNegotiationButtons,
+  );
 
   /**
    * ====================================================================
@@ -868,68 +879,120 @@ export default function OfferDetail({ route, navigation }: any) {
     });
   };
 
-  useEffect(() => {
-    const loadDealState = async () => {
-      if (!token || !offer?.id || isOwner) {
+  const loadDealState = useCallback(async () => {
+    if (!token || !offer?.id) {
+      setDealNegotiationState(null);
+      return;
+    }
+    if (isOwner) {
+      setDealNegotiationState(null);
+      return;
+    }
+    setDealSyncLoading(true);
+    try {
+      const dealsRes = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const dealsJson = await dealsRes.json();
+      const deals = Array.isArray(dealsJson)
+        ? dealsJson
+        : Array.isArray(dealsJson?.deals)
+          ? dealsJson.deals
+          : Array.isArray(dealsJson?.items)
+            ? dealsJson.items
+            : Array.isArray(dealsJson?.data?.deals)
+              ? dealsJson.data.deals
+              : Array.isArray(dealsJson?.data?.items)
+                ? dealsJson.data.items
+                : [];
+      const matchingDeal = deals.find(
+        (d: any) =>
+          Number(d?.offerId || d?.offer?.id || d?.listingId || d?.propertyId || 0) === Number(offer.id),
+      );
+      if (!matchingDeal?.id) {
         setDealNegotiationState(null);
         return;
       }
-      setDealSyncLoading(true);
-      try {
-        const dealsRes = await fetch(`${API_URL}/api/mobile/v1/deals`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const dealsJson = await dealsRes.json();
-        const deals = Array.isArray(dealsJson)
-          ? dealsJson
-          : Array.isArray(dealsJson?.deals)
-            ? dealsJson.deals
-            : Array.isArray(dealsJson?.items)
-              ? dealsJson.items
-              : Array.isArray(dealsJson?.data?.deals)
-                ? dealsJson.data.deals
-                : Array.isArray(dealsJson?.data?.items)
-                  ? dealsJson.data.items
-                  : [];
-        const matchingDeal = deals.find((d: any) => Number(
-          d?.offerId || d?.offer?.id || d?.listingId || d?.propertyId || 0
-        ) === Number(offer.id));
-        if (!matchingDeal?.id) {
-          setDealNegotiationState(null);
-          return;
-        }
-        const existingDealId = Number(matchingDeal.id);
-        setDealId(existingDealId);
-        const messagesRes = await fetch(`${API_URL}/api/mobile/v1/deals/${existingDealId}/messages?t=${Date.now()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const messagesJson = await messagesRes.json();
-        const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
-        const eventMessages = messages
-          .map((msg: any) => {
-            const event = parseDealEvent(msg?.content);
-            return event ? { ...event, senderId: msg?.senderId, createdAt: msg?.createdAt } : null;
-          })
-          .filter(Boolean);
-        const bidHistory = eventMessages.filter((e: any) => e.entity === 'BID');
-        const appointmentHistory = eventMessages.filter((e: any) => e.entity === 'APPOINTMENT');
-        const latestBid = bidHistory.length > 0 ? bidHistory[bidHistory.length - 1] : null;
-        const latestAppointment = appointmentHistory.length > 0 ? appointmentHistory[appointmentHistory.length - 1] : null;
-        setDealNegotiationState({
-          dealId: existingDealId,
-          bidHistory,
-          appointmentHistory,
-          latestBid,
-          latestAppointment,
-        });
-      } catch {
-        // noop
-      } finally {
-        setDealSyncLoading(false);
-      }
-    };
-    loadDealState();
+      const existingDealId = Number(matchingDeal.id);
+      setDealId(existingDealId);
+      const messagesRes = await fetch(
+        `${API_URL}/api/mobile/v1/deals/${existingDealId}/messages?t=${Date.now()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const messagesJson = await messagesRes.json();
+      const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+      const eventMessages = messages
+        .map((msg: any) => {
+          const event = parseDealEvent(msg?.content);
+          return event ? { ...event, senderId: msg?.senderId, createdAt: msg?.createdAt } : null;
+        })
+        .filter(Boolean);
+      const bidHistory = eventMessages.filter((e: any) => e.entity === 'BID');
+      const appointmentHistory = eventMessages.filter((e: any) => e.entity === 'APPOINTMENT');
+      const latestBid = bidHistory.length > 0 ? bidHistory[bidHistory.length - 1] : null;
+      const latestAppointment =
+        appointmentHistory.length > 0 ? appointmentHistory[appointmentHistory.length - 1] : null;
+      const presentation = deriveOfferDealPresentation({
+        messages,
+        dealStatus: matchingDeal?.status ?? matchingDeal?.dealStatus,
+        acceptedBidId: matchingDeal?.acceptedBidId ?? matchingDeal?.acceptedBid?.id,
+      });
+      setDealNegotiationState({
+        dealId: existingDealId,
+        bidHistory,
+        appointmentHistory,
+        latestBid,
+        latestAppointment,
+        presentation,
+      });
+    } catch {
+      // noop
+    } finally {
+      setDealSyncLoading(false);
+    }
   }, [token, offer?.id, isOwner]);
+
+  useEffect(() => {
+    void loadDealState();
+  }, [loadDealState]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadDealState();
+    }, [loadDealState]),
+  );
+
+  const reloadOfferHydration = useCallback(async () => {
+    const id = Number(offer?.id || idFromParams || 0);
+    if (!id) return;
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const detailRes = await fetch(`${API_URL}/api/mobile/v1/offers/${id}`, { headers });
+      if (!detailRes.ok) return;
+      const detailJson = await detailRes.json();
+      const candidate =
+        detailJson?.offer ??
+        detailJson?.data?.offer ??
+        detailJson?.data ??
+        (detailJson?.id ? detailJson : null);
+      if (candidate) {
+        setHydratedOffer((prev: any) => ({
+          ...(prev || offerFromParams || {}),
+          ...candidate,
+          id: Number(candidate?.id) || id,
+        }));
+        setHydrationStatus('success');
+      }
+    } catch {
+      /* noop */
+    }
+  }, [offer?.id, idFromParams, token, offerFromParams]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void reloadOfferHydration();
+    }, [reloadOfferHydration]),
+  );
 
   useEffect(() => {
     const loadOwnerProfile = async () => {
@@ -1206,7 +1269,7 @@ export default function OfferDetail({ route, navigation }: any) {
             <Text style={[styles.locationText, isDark && { color: '#9ca3af' }]}>{locationLine}</Text>
           </Pressable>
 
-          {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 ? (
+          {!isLegalSafeVerified && isOwner && Number(offer?.id) > 0 && isPolandOffer ? (
             <View style={styles.legalVerificationBlock}>
               <OwnerLegalVerificationCard
                 offerId={Number(offer.id)}
@@ -1319,30 +1382,22 @@ export default function OfferDetail({ route, navigation }: any) {
               </Text>
             </View>
           )}
-          {!isOwner && !dealSyncLoading && dealNegotiationState?.latestBid && (
+          {!isOwner && !dealSyncLoading && dealPresentation?.priceNegotiation ? (
             <View
               style={[
                 styles.negotiationMemoryBox,
-                String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
-                  ? styles.negotiationMemoryBoxConfirmed
-                  : styles.negotiationMemoryBoxPending
+                dealPresentation.priceNegotiation.tone === 'finalized'
+                  ? styles.negotiationMemoryBoxFinalized
+                  : dealPresentation.priceNegotiation.tone === 'confirmed'
+                    ? styles.negotiationMemoryBoxConfirmed
+                    : styles.negotiationMemoryBoxPending,
               ]}
             >
               <Text style={styles.negotiationMemoryLabel}>NEGOCJACJE CENOWE</Text>
-              <Text style={styles.negotiationMemoryTitle}>
-                {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
-                  ? 'Cena: uzgodniona'
-                  : 'Cena: w negocjacji'}
-              </Text>
-              <Text style={styles.negotiationMemoryText}>
-                {String(dealNegotiationState.latestBid.action || '').toUpperCase() === 'ACCEPTED'
-                  ? `Uzgodniona kwota transakcyjna: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN.`
-                  : Number(dealNegotiationState.latestBid?.senderId || 0) === Number(user?.id || 0)
-                    ? `Twoja ostatnia propozycja: ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN — czekasz na decyzję właściciela (akceptacja, kontroferta lub odrzucenie).`
-                    : `Właściciel zaproponował ${Number(dealNegotiationState.latestBid?.amount || 0).toLocaleString('pl-PL')} PLN — Twoja kolej z przycisku „Negocjuj cenę”.`}
-              </Text>
+              <Text style={styles.negotiationMemoryTitle}>{dealPresentation.priceNegotiation.title}</Text>
+              <Text style={styles.negotiationMemoryText}>{dealPresentation.priceNegotiation.body}</Text>
             </View>
-          )}
+          ) : null}
           {/*
             Przezroczysty paddingBottom ScrollView pokazywał hero zdjęcia = „szczelina” między
             białą kartą a dolnym paskiem. Ten blok ma ten sam kolor co contentSheet.
@@ -1691,6 +1746,20 @@ export default function OfferDetail({ route, navigation }: any) {
                 <Pencil size={18} color={isDark ? '#000000' : '#fff'} />
                 <Text style={[styles.primaryAppleButtonText, { color: isDark ? '#000000' : '#ffffff' }]}>Edytuj ofertę</Text>
               </TouchableOpacity>
+            ) : blockBuyerNegotiation ? (
+              <TouchableOpacity
+                style={[styles.primaryAppleButton, { flex: 1 }]}
+                onPress={() => {
+                  if (guardPhoneVerification()) return;
+                  openDealroom();
+                }}
+                activeOpacity={0.85}
+              >
+                <Handshake size={16} color="#fff" />
+                <Text style={styles.primaryAppleButtonText}>
+                  {dealPresentation?.transactionFinalized ? 'Zobacz Dealroom' : 'Dealroom — status ceny'}
+                </Text>
+              </TouchableOpacity>
             ) : (
               <>
                 <Animated.View style={[styles.actionFlexWrap, apptBtnAnimatedStyle]}>
@@ -2001,7 +2070,7 @@ export default function OfferDetail({ route, navigation }: any) {
               </View>
               <TouchableOpacity activeOpacity={0.9} style={styles.offMarketPrimaryButton} onPress={handleBecomePro}>
                 <Crown color="#0a0a0a" size={16} />
-                <Text style={styles.offMarketPrimaryButtonText}>Zostań PRO i zobacz</Text>
+                <Text style={styles.offMarketPrimaryButtonText}>Informacja o Investor Pro</Text>
               </TouchableOpacity>
               <TouchableOpacity activeOpacity={0.9} style={styles.offMarketSecondaryButton} onPress={() => navigation?.goBack()}>
                 <Text style={styles.offMarketSecondaryButtonText}>Poczekam cierpliwie</Text>
@@ -2818,6 +2887,10 @@ const styles = StyleSheet.create({
   negotiationMemoryBoxConfirmed: {
     borderColor: 'rgba(16, 185, 129, 0.5)',
     backgroundColor: 'rgba(16, 185, 129, 0.12)',
+  },
+  negotiationMemoryBoxFinalized: {
+    borderColor: 'rgba(59, 130, 246, 0.55)',
+    backgroundColor: 'rgba(59, 130, 246, 0.14)',
   },
   negotiationMemoryLabel: {
     color: '#6b7280',

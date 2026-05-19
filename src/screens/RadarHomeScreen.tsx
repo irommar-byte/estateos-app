@@ -36,6 +36,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RadarCalibrationModal, { RadarFilters } from '../components/RadarCalibrationModal';
 import {
+  buildRadarActiveScopeLine,
   isRadarFactoryDefaults,
   loadRadarRecentAreas,
   pushRadarRecentArea,
@@ -43,7 +44,12 @@ import {
 } from '../utils/radarRecentAreas';
 import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
-import { STRICT_CITIES, STRICT_CITY_DISTRICTS, resolveIsExactLocation } from '../constants/locationEcosystem';
+import {
+  STRICT_CITIES,
+  STRICT_CITY_DISTRICTS,
+  resolveIsExactLocation,
+  resolveLocalityCountryFromPlace,
+} from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
@@ -262,6 +268,28 @@ type MapOffer = {
 };
 
 type UserLocation = { latitude: number; longitude: number } | null;
+
+function extractOfferOwnerCandidateIds(offer: MapOffer): number[] {
+  return [
+    offer.raw?.userId,
+    offer.raw?.ownerId,
+    offer.raw?.sellerId,
+    offer.raw?.authorId,
+    offer.raw?.createdById,
+    offer.raw?.user?.id,
+    offer.raw?.owner?.id,
+    offer.raw?.seller?.id,
+    offer.raw?.createdBy?.id,
+  ]
+    .map((v) => Number(v || 0))
+    .filter((v) => Number.isFinite(v) && v > 0);
+}
+
+function isBlockedMapOffer(offer: MapOffer, blockedIds: Set<number>): boolean {
+  if (blockedIds.size === 0) return false;
+  return extractOfferOwnerCandidateIds(offer).some((id) => blockedIds.has(id));
+}
+
 type AdvancedLocationMode = 'CITY' | 'MAP';
 type AdvancedMapBounds = {
   centerLat: number;
@@ -872,6 +900,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     transactionType: 'SELL' as 'RENT' | 'SELL',
     propertyType: 'ALL',
     city: 'Warszawa',
+    localityCountry: 'Polska',
+    localityCountryCode: 'PL',
     selectedDistricts: [] as string[],
     maxPrice: 5000000,
     minArea: 0,
@@ -1453,25 +1483,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           if (hasAskedLocationInCurrentSession) return;
           hasAskedLocationInCurrentSession = true;
 
-          Alert.alert(
-            'Lokalizacja',
-            'Czy chcesz udostępnić położenie, aby od razu pokazać nieruchomości w okolicy?',
-            [
-              { text: 'Nie teraz', style: 'cancel' },
-              {
-                text: 'Zezwól',
-                onPress: async () => {
-                  try {
-                    const req = await Location.requestForegroundPermissionsAsync();
-                    if (!mounted || req.status !== 'granted') return;
-                    await locateUserAndCenterMap();
-                  } catch {
-                    // noop
-                  }
-                },
-              },
-            ]
-          );
+          // Apple 5.1.1(iv): przed dialogiem systemowym nie pokazujemy
+          // własnego okna zachęcającego do zgody ani opcji odroczenia.
+          const req = await Location.requestForegroundPermissionsAsync();
+          if (!mounted || req.status !== 'granted') return;
+          await locateUserAndCenterMap();
         } catch {
           // noop
         }
@@ -1642,39 +1658,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const blockedIds = useBlockedUsersStore((s) => s.blockedIds);
 
   const filteredOffers = useMemo(() => {
-    const extractOwnerCandidates = (offer: MapOffer): number[] =>
-      [
-        offer.raw?.userId,
-        offer.raw?.ownerId,
-        offer.raw?.sellerId,
-        offer.raw?.authorId,
-        offer.raw?.createdById,
-        offer.raw?.user?.id,
-        offer.raw?.owner?.id,
-        offer.raw?.seller?.id,
-        offer.raw?.createdBy?.id,
-      ]
-        .map((v) => Number(v || 0))
-        .filter((v) => Number.isFinite(v) && v > 0);
-
     const isMyOffer = (offer: MapOffer) => {
       const myId = Number(user?.id || 0);
       if (!myId) return false;
-      return extractOwnerCandidates(offer).includes(myId);
-    };
-
-    const isBlockedOffer = (offer: MapOffer) => {
-      if (blockedIds.size === 0) return false;
-      const owners = extractOwnerCandidates(offer);
-      for (const id of owners) {
-        if (blockedIds.has(id)) return true;
-      }
-      return false;
+      return extractOfferOwnerCandidateIds(offer).includes(myId);
     };
 
     // Bazowa lista po wycięciu blokad — wszystkie poniższe gałęzie
     // (radar matches, search, advanced filters) operują na tym samym zbiorze.
-    const offersAfterBlocks = blockedIds.size > 0 ? offers.filter((o) => !isBlockedOffer(o)) : offers;
+    const offersAfterBlocks = blockedIds.size > 0 ? offers.filter((o) => !isBlockedMapOffer(o, blockedIds)) : offers;
 
     const matchesAdvancedFilters = (offer: MapOffer) => {
       const rawPrice = Number(String(offer.raw?.price ?? '').replace(/[^\d]/g, '')) || 0;
@@ -2233,13 +2225,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return offers.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
   }, [offers, radarFilters, radarMapBounds, isRadarActive]);
 
+  const visibleRadarMatchingOffers = useMemo(() => {
+    if (blockedIds.size === 0) return radarMatchingOffers;
+    return radarMatchingOffers.filter((o) => !isBlockedMapOffer(o, blockedIds));
+  }, [radarMatchingOffers, blockedIds]);
+
   const newRadarMatchesCount = useMemo(() => {
     let count = 0;
-    for (const o of radarMatchingOffers) {
+    for (const o of visibleRadarMatchingOffers) {
       if (!seenRadarOfferIds.has(Number(o.id))) count += 1;
     }
     return count;
-  }, [radarMatchingOffers, seenRadarOfferIds]);
+  }, [visibleRadarMatchingOffers, seenRadarOfferIds]);
+
+  const radarActiveScopeLine = useMemo(() => {
+    if (!isRadarActive) return '';
+    return buildRadarActiveScopeLine(radarFilters, radarMapBounds);
+  }, [isRadarActive, radarFilters, radarMapBounds]);
 
   /**
    * Auto-wygaszanie trybu „Dopasowania Radaru" gdy pojawia się jakikolwiek
@@ -2283,6 +2285,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       enabled: isRadarActive,
       transactionType: radarFilters.transactionType,
       city: radarFilters.city,
+      localityCountry: radarFilters.localityCountry || 'Polska',
+      localityCountryCode: radarFilters.localityCountryCode || 'PL',
       districts: radarFilters.selectedDistricts || [],
       propertyType: radarFilters.propertyType,
       maxPrice: sanitizedMaxPrice,
@@ -2290,7 +2294,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       minYear: sanitizedMinYear,
       areaRadiusKm: radarMapBounds?.radiusKm ?? null,
       minMatchThreshold: radarFilters.matchThreshold,
-      activeMatchesCount: radarMatchingOffers.length,
+      activeMatchesCount: visibleRadarMatchingOffers.length,
       newMatchesCount: newRadarMatchesCount,
       unreadDealroomMessagesCount,
       requireBalcony: !!radarFilters.requireBalcony,
@@ -2308,6 +2312,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     isRadarActive,
     radarFilters.transactionType,
     radarFilters.city,
+    radarFilters.localityCountry,
+    radarFilters.localityCountryCode,
     radarFilters.selectedDistricts,
     radarFilters.propertyType,
     radarFilters.maxPrice,
@@ -2320,7 +2326,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     radarFilters.requireParking,
     radarFilters.requireFurnished,
     radarMapBounds?.radiusKm,
-    radarMatchingOffers.length,
+    visibleRadarMatchingOffers.length,
     newRadarMatchesCount,
     unreadDealroomMessagesCount,
   ]);
@@ -2379,8 +2385,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (cancelled) return;
       setTimeout(() => {
         if (cancelled) return;
-        if (radarMatchingOffers.length === 0) return;
-        focusMapToOffers(radarMatchingOffers);
+        if (visibleRadarMatchingOffers.length === 0) return;
+        focusMapToOffers(visibleRadarMatchingOffers);
         setActiveIndex(0);
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       }, Platform.OS === 'ios' ? 220 : 160);
@@ -2388,7 +2394,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return () => {
       cancelled = true;
     };
-  }, [showRadarMatchesOnly, isRadarActive, radarMatchingOffers, focusMapToOffers]);
+  }, [showRadarMatchesOnly, isRadarActive, visibleRadarMatchingOffers, focusMapToOffers]);
 
   useEffect(() => {
     const pending = pendingSearchMapFocusRef.current;
@@ -2642,7 +2648,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    */
   useFocusEffect(
     useCallback(() => {
-      const ids = radarMatchingOffers
+      const ids = visibleRadarMatchingOffers
         .map((o) => Number(o?.id))
         .filter((n) => Number.isFinite(n) && n > 0);
       if (ids.length === 0) return;
@@ -2656,7 +2662,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       setSeenRadarOfferIds(trimmed);
       seenRadarOfferIdsRef.current = trimmed;
       void AsyncStorage.setItem('@estateos_radar_seen_offer_ids', JSON.stringify(Array.from(trimmed)));
-    }, [radarMatchingOffers])
+    }, [visibleRadarMatchingOffers])
   );
 
   const syncRadarPreferencesToBackend = async (payload: typeof radarFilters) => {
@@ -2909,9 +2915,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     // Heurystyka ofertowa była niepoprawna w pustym lub mieszanym obszarze — pokazywała sąsiednią
     // metropolię zamiast miasta, w które użytkownik faktycznie wycelował.
     let reverseCity = '';
+    let reverseCountry = resolveLocalityCountryFromPlace({});
     try {
       const reverse = await Location.reverseGeocodeAsync(center);
       const place = reverse?.[0];
+      if (place) {
+        reverseCountry = resolveLocalityCountryFromPlace(place);
+      }
       reverseCity = String(
         place?.city || place?.district || place?.subregion || place?.region || ''
       ).trim();
@@ -2947,6 +2957,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       ...baseRadarFilters,
       calibrationMode: 'MAP',
       city: cityForFilters,
+      localityCountry: reverseCountry.labelPl,
+      localityCountryCode: reverseCountry.code,
       selectedDistricts: [],
     };
 
@@ -3040,6 +3052,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ''
         ).trim();
         if (locality) setAreaPickerResolvedLocality(locality);
+        if (place) {
+          const country = resolveLocalityCountryFromPlace(place);
+          setRadarFilters((prev) => ({
+            ...prev,
+            localityCountry: country.labelPl,
+            localityCountryCode: country.code,
+          }));
+        }
       } catch {
         // noop - zostawiamy ostatnią znaną miejscowość
       }
@@ -3867,34 +3887,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 <View style={styles.radarPillTextWrap}>
                   <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>EstateOS™ Radar</Text>
                   <Text style={styles.radarStatus}>{isRadarActive ? 'Status: LIVE' : 'Status: NIEAKTYWNY'}</Text>
+                  {isRadarActive && radarActiveScopeLine ? (
+                    <Text
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                      style={[
+                        styles.radarScopeLine,
+                        { color: isDark ? 'rgba(16,185,129,0.92)' : 'rgba(5,120,85,0.95)' },
+                      ]}
+                    >
+                      {radarActiveScopeLine}
+                    </Text>
+                  ) : null}
                 </View>
               </BlurView>
             </Pressable>
-            {/* Mini-CTA: „Pokaż N dopasowań" — pokazujemy gdy Radar ma realne
-                trafienia, a tryb dedykowanego widoku jest jeszcze nieaktywny.
-                To zamyka pętlę dla użytkownika, który nie tapnął pusha: jednym
-                klikiem przełącza widok listy/mapy na tylko-dopasowania. */}
-            {isRadarActive && !showRadarMatchesOnly && radarMatchingOffers.length > 0 && (
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setShowRadarMatchesOnly(true);
-                }}
-                style={({ pressed }) => [
-                  styles.radarMatchesCta,
-                  pressed && { transform: [{ scale: 0.97 }] },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Pokaż ${radarMatchingOffers.length} dopasowań Radaru`}
-              >
-                <View style={styles.radarMatchesCtaDot} />
-                <Text style={styles.radarMatchesCtaText}>
-                  Pokaż {radarMatchingOffers.length} {pluralOffers(radarMatchingOffers.length)}
-                  {newRadarMatchesCount > 0 ? ` · ${newRadarMatchesCount} NOWE` : ''}
-                </Text>
-                <Ionicons name="chevron-forward" size={12} color="#10b981" />
-              </Pressable>
-            )}
           </View>
         </Animated.View>
       )}
@@ -3909,6 +3916,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             myślał, że appka się zawiesiła. */}
         {!loading && (() => {
           const isEmpty = offerDisplayReason.severity === 'empty';
+          const showRadarMatchesAction = isRadarActive && !showRadarMatchesOnly && visibleRadarMatchingOffers.length > 0;
           // W pustym stanie nakładamy delikatny amber halo na akcent trybu —
           // info wizualne, że to nie awaria, tylko brak wyników dla filtrów.
           const reasonAccent = isEmpty ? '#F59E0B' : offerDisplayReason.accent;
@@ -3962,22 +3970,46 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     {offerDisplayReason.subtitle}
                   </Text>
                 </View>
-                {offerDisplayReason.action && (
-                  <Pressable
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      offerDisplayReason.action?.onPress();
-                    }}
-                    style={({ pressed }) => [
-                      styles.offerReasonAction,
-                      { backgroundColor: `${reasonAccent}1F`, borderColor: `${reasonAccent}55` },
-                      pressed && { transform: [{ scale: 0.96 }] },
-                    ]}
-                  >
-                    <Text style={[styles.offerReasonActionText, { color: reasonAccent }]}>
-                      {offerDisplayReason.action.label}
-                    </Text>
-                  </Pressable>
+                {(showRadarMatchesAction || offerDisplayReason.action) && (
+                  <View style={styles.offerReasonActions}>
+                    {showRadarMatchesAction && (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setShowRadarMatchesOnly(true);
+                        }}
+                        style={({ pressed }) => [
+                          styles.offerReasonAction,
+                          styles.offerReasonRadarAction,
+                          pressed && { transform: [{ scale: 0.96 }] },
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Pokaż ${visibleRadarMatchingOffers.length} dopasowań Radaru`}
+                      >
+                        <View style={styles.offerReasonRadarDot} />
+                        <Text style={styles.offerReasonRadarActionText}>
+                          Pokaż {visibleRadarMatchingOffers.length}
+                        </Text>
+                      </Pressable>
+                    )}
+                    {offerDisplayReason.action && (
+                      <Pressable
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          offerDisplayReason.action?.onPress();
+                        }}
+                        style={({ pressed }) => [
+                          styles.offerReasonAction,
+                          { backgroundColor: `${reasonAccent}1F`, borderColor: `${reasonAccent}55` },
+                          pressed && { transform: [{ scale: 0.96 }] },
+                        ]}
+                      >
+                        <Text style={[styles.offerReasonActionText, { color: reasonAccent }]}>
+                          {offerDisplayReason.action.label}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </View>
                 )}
               </BlurView>
             </View>
@@ -4960,9 +4992,12 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     gap: 10,
     minWidth: 220,
+    maxWidth: '92%',
   },
   radarPillTextWrap: {
     flexDirection: 'column',
+    flex: 1,
+    minWidth: 0,
   },
   radarTitle: {
     fontSize: 14,
@@ -4976,45 +5011,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
     letterSpacing: 0.7,
   },
-  /**
-   * Mini-CTA pod pillem „EstateOS™ Radar / Status: LIVE" — pojawia się tylko,
-   * gdy Radar realnie złowił coś, a użytkownik nie jest jeszcze w trybie
-   * „Dopasowania Radaru". Jedno tapnięcie ⇒ przełączenie listy/mapy na same
-   * dopasowania (alternatywna ścieżka dla user-a, który nie tapnął pusha).
-   */
-  radarMatchesCta: {
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(16,185,129,0.16)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(16,185,129,0.55)',
-    borderRadius: 16,
-    shadowColor: '#10b981',
-    shadowOpacity: 0.22,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  radarMatchesCtaDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10b981',
-    shadowColor: '#10b981',
-    shadowOpacity: 0.8,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  radarMatchesCtaText: {
-    color: '#10b981',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+  radarScopeLine: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 4,
+    lineHeight: 13,
+    letterSpacing: 0.15,
   },
   favoritesScopeContainer: {
     position: 'absolute',
@@ -5066,10 +5068,39 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  offerReasonActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   offerReasonActionText: {
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.2,
+  },
+  offerReasonRadarAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16,185,129,0.18)',
+    borderColor: 'rgba(16,185,129,0.6)',
+    shadowColor: '#10b981',
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  offerReasonRadarDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
+  },
+  offerReasonRadarActionText: {
+    color: '#10b981',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.25,
   },
   offerCard: {
     flexDirection: 'row',

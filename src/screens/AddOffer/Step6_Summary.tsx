@@ -10,16 +10,25 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
-import { REST_OF_COUNTRY_CITY, formatLocationLabel, stripHouseNumber } from '../../constants/locationEcosystem';
+import { getStepBlockMessage, isStepValid } from './flow';
+import {
+  REST_OF_COUNTRY_CITY,
+  formatLocationLabel,
+  stripHouseNumber,
+  getDraftLocationPresentation,
+  getLocationDraftRepairPatch,
+} from '../../constants/locationEcosystem';
+import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
+import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
 import {
   fetchCountableUserOffers,
   allowsMultipleCountableListings,
   canPublishCountableListing,
   getAdditionalListingSlots,
-  openPlusStripeCheckout,
+  userAfterPakietPlusPurchase,
 } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
@@ -196,6 +205,10 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const isDark = Boolean(theme?.dark || theme?.glass === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
   const isCompactScreen = width <= 390;
+  const isFinalDraftValid = [1, 2, 3, 4, 5].every((step) => isStepValid(step, draft));
+  const invalidSteps = [1, 2, 3, 4, 5].filter((step) => !isStepValid(step, draft));
+  const locationPresentation = getDraftLocationPresentation(draft);
+  const locationFlag = flagEmojiFromIso2(locationPresentation.countryIso);
 
   /**
    * Po opublikowaniu robimy `resetDraft()` + `popToTop()`. Defensywa: jeśli z
@@ -220,12 +233,28 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         }
         return;
       }
+      const repair = getLocationDraftRepairPatch(currentDraft);
+      if (repair) {
+        useOfferStore.getState().updateDraft(repair);
+      }
       setCurrentStep(6);
     }, [navigation, setCurrentStep]),
   );
 
   const handlePublish = async (forceBypass = false) => {
     if (loading) return;
+
+    if (!isFinalDraftValid) {
+      const firstInvalidStep = [1, 2, 3, 4, 5].find((step) => !isStepValid(step, draft)) || 1;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert('Uzupełnij ofertę', getStepBlockMessage(firstInvalidStep, draft), [
+        {
+          text: 'Popraw dane',
+          onPress: () => navigation.navigate(`Step${firstInvalidStep}` as never),
+        },
+      ]);
+      return;
+    }
     
     if (!user || !user.id || !token) {
       Alert.alert("Błąd autoryzacji", "Zaloguj się ponownie, aby opublikować ofertę.");
@@ -269,44 +298,40 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       const existingCount = await fetchCountableUserOffers(API_URL, token, user.id);
       if (!canPublishCountableListing(latestUser, existingCount)) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        const slots = getAdditionalListingSlots(latestUser);
-        const quotaBody =
-          Platform.OS === 'ios'
-            ? `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dokupione sloty aktywne: ${slots}. Kolejne ogłoszenia wymagają Pakietu Plus (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni za 1 dodatkowy slot). Zakup w App Store.`
-            : `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dokupione sloty aktywne: ${slots}. Kolejne ogłoszenia wymagają Pakietu Plus (ok. ${PAKIET_PLUS_PRICE_LABEL} za 30 dni za 1 dodatkowy slot). Natywna płatność: App Store / Google Play; alternatywnie Stripe na estateos.pl.`;
+        const additionalPublications = getAdditionalListingSlots(latestUser);
+        const quotaBody = `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dostępne dodatkowe publikacje: ${additionalPublications}. Pakiet Plus pozwala dodać jedną kolejną publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń i nie aktywuje żadnego planu konta. Zakup odbywa się wyłącznie przez sklep systemowy w aplikacji.`;
         const quotaButtons: {
           text: string;
           style?: 'cancel' | 'default' | 'destructive';
           onPress?: () => void;
         }[] = [{ text: 'Zamknij', style: 'cancel' }];
-        if (Platform.OS !== 'ios') {
-          quotaButtons.push({
-            text: 'Wykup na stronie (Stripe)',
-            onPress: () => {
-              void openPlusStripeCheckout(API_URL, token);
-            },
-          });
-        }
         quotaButtons.push({
-          text: Platform.OS === 'ios' ? `Kup w App Store (~${PAKIET_PLUS_PRICE_LABEL})` : `Kup w sklepie (~${PAKIET_PLUS_PRICE_LABEL})`,
+          text: `Kup Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL})`,
           onPress: () => {
             void (async () => {
               const r = await purchasePakietPlusConsumable(API_URL, token);
               if (r.ok) {
                 await refreshUser();
-                if (r.backendRegistered) {
-                  Alert.alert('Pakiet Plus', 'Płatność potwierdzona. Publikuję ofertę...', [
-                    {
-                      text: 'OK',
-                      onPress: () => {
-                        void handlePublish(true);
-                      },
-                    },
-                  ]);
-                } else {
+                const apiUser = useAuthStore.getState().user;
+                const effectiveUser = userAfterPakietPlusPurchase(apiUser, {
+                  backendRegistered: r.backendRegistered,
+                  extraListings: r.extraListings,
+                });
+                if (effectiveUser && effectiveUser !== apiUser) {
+                  useAuthStore.setState({ user: effectiveUser });
+                }
+                const refreshedCount = await fetchCountableUserOffers(API_URL, token, user.id);
+                const canPublishAfterPurchase = canPublishCountableListing(
+                  effectiveUser,
+                  refreshedCount,
+                );
+                if (canPublishAfterPurchase) {
+                  const pendingNote = !r.backendRegistered
+                    ? ' Płatność z Apple została przyjęta — księgowanie na serwerze dokończy się w tle.'
+                    : '';
                   Alert.alert(
                     'Pakiet Plus',
-                    'Zakup w sklepie został dokończony. Publikuję ofertę jednorazowo na podstawie potwierdzonej płatności. Jeśli backend jeszcze nie odświeżył slotu, synchronizacja dojdzie chwilę później.',
+                    `Płatność potwierdzona.${pendingNote} Publikuję dodatkową nową ofertę na 30 dni...`,
                     [
                       {
                         text: 'OK',
@@ -314,7 +339,27 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                           void handlePublish(true);
                         },
                       },
-                    ]
+                    ],
+                  );
+                } else if (r.backendRegistered) {
+                  Alert.alert(
+                    'Limit ogłoszeń',
+                    `Zakup Pakietu Plus został zaksięgowany, ale nadal masz maksymalną liczbę aktywnych lub oczekujących ogłoszeń (${refreshedCount}). Zakończ lub zarchiwizuj inną ofertę w Profilu, a następnie opublikuj ponownie.`,
+                    [{ text: 'OK' }],
+                  );
+                } else {
+                  Alert.alert(
+                    'Pakiet Plus',
+                    'Zakup z Apple został przyjęty, ale serwer jeszcze nie potwierdził dodatkowej publikacji. Poczekaj ok. 1 minutę, użyj „Przywróć zakupy" w Profilu albo spróbuj opublikować ponownie.',
+                    [
+                      { text: 'OK' },
+                      {
+                        text: 'Spróbuj ponownie',
+                        onPress: () => {
+                          void handlePublish();
+                        },
+                      },
+                    ],
                   );
                 }
               } else if (!r.cancelled && r.message) {
@@ -328,8 +373,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
     }
 
+    const isPolandOffer = isPolandLocationDraft(draft);
     const landRegistryRaw = String(draft.landRegistryNumber || '').trim();
-    if (!isValidLandRegistryNumber(landRegistryRaw)) {
+    if (isPolandOffer && landRegistryRaw && !isValidLandRegistryNumber(landRegistryRaw)) {
       Alert.alert('Walidacja', 'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6');
       return;
     }
@@ -369,6 +415,8 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       condition: draft.condition || 'READY',
       city: draft.city || 'Warszawa',
       district: draft.district || 'Śródmieście',
+      localityCountry: draft.localityCountry || 'Polska',
+      localityCountryCode: draft.localityCountryCode || 'PL',
       street: draft.street || '',
       buildingNumber: draft.buildingNumber || '',
       isExactLocation: draft.isExactLocation !== undefined ? draft.isExactLocation : true,
@@ -392,8 +440,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       hasGarden: draft.hasGarden || false,
       isFurnished: draft.isFurnished || false,
       heating: String(draft.heating || '').trim() || null,
-      apartmentNumber: String(draft.apartmentNumber || '').trim() || undefined,
-      landRegistryNumber: String(draft.landRegistryNumber || '').trim() || undefined,
+      ...(isPolandOffer
+        ? {
+            apartmentNumber: String(draft.apartmentNumber || '').trim() || undefined,
+            landRegistryNumber: String(draft.landRegistryNumber || '').trim() || undefined,
+          }
+        : {}),
       
       description: draft.description || '', 
       images: '[]', 
@@ -498,7 +550,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
 
       let legalQueueSubmitted = false;
-      if (createdOfferId && token) {
+      if (createdOfferId && token && isPolandOffer) {
         const kwSubmit = String(draft.landRegistryNumber || '').trim();
         const aptSubmit = String(draft.apartmentNumber || '').trim();
         if (kwSubmit && aptSubmit && isValidLandRegistryNumber(kwSubmit)) {
@@ -637,6 +689,27 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     );
   };
 
+  const LocationDetailRow = () => {
+    const { locationText, countryLabelPl } = locationPresentation;
+    if (!locationText) return null;
+    return (
+      <View style={styles.detailRow}>
+        <View style={[styles.detailIconBox, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.18)' }]}>
+          <Ionicons name="location" size={18} color={colors.primary} />
+        </View>
+        <Text style={[styles.detailLabel, { color: colors.subtitle }]}>Lokalizacja</Text>
+        <View style={styles.locationValueWrap}>
+          <Text style={styles.locationFlag} accessibilityLabel={countryLabelPl}>
+            {locationFlag}
+          </Text>
+          <Text style={[styles.detailValue, styles.locationValueText, { color: colors.text }]} numberOfLines={2}>
+            {locationText}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   const priceNum = parseLocaleNumber(draft.price);
   const areaNum = parseLocaleNumber(draft.area);
   const pricePerSqm = areaNum > 0 && priceNum > 0 ? Math.round(priceNum / areaNum) : null;
@@ -760,7 +833,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               </View>
             </View>
             <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)' }]} />
-            <DetailRow icon="location" label="Lokalizacja" value={formatLocationLabel(draft.city, draft.district, 'Polska')} />
+            <LocationDetailRow />
             {/* Publiczna widoczność adresu:
                   • ON  — pełen adres („Reymonta 12") + dokładny pin,
                   • OFF — sama nazwa ulicy („Reymonta", bez numeru) + obszar ~200 m.
@@ -888,10 +961,25 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
       <View style={styles.absoluteBottom}>
         <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.blurWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.1)' }]}>
-          <Pressable onPress={() => { void handlePublish(); }} disabled={loading} style={({ pressed }) => [styles.publishButton, { opacity: pressed || loading ? 0.8 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
+          {!isFinalDraftValid && invalidSteps.length > 0 ? (
+            <Text style={[styles.validationHint, { color: colors.subtitle }]}>
+              Brakuje danych w kroku {invalidSteps.join(', ')} — dotknij przycisku, aby przejść do uzupełnienia.
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={() => { void handlePublish(); }}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.publishButton,
+              {
+                opacity: loading ? 0.45 : !isFinalDraftValid ? 0.72 : pressed ? 0.8 : 1,
+                transform: [{ scale: pressed && !loading ? 0.98 : 1 }],
+              },
+            ]}
+          >
             {loading ? <ActivityIndicator color="#FFF" style={{ marginRight: 10 }} /> : <Ionicons name="rocket" size={20} color="#fff" style={{ marginRight: 10 }} />}
             <Text style={styles.publishButtonText}>
-              {loading ? (uploadProgressText || 'Publikowanie...') : 'Opublikuj w Ekosystemie'}
+              {loading ? (uploadProgressText || 'Publikowanie...') : isFinalDraftValid ? 'Opublikuj w Ekosystemie' : 'Uzupełnij dane oferty'}
             </Text>
           </Pressable>
           <Pressable onPress={handleGoBack} disabled={loading} style={({ pressed }) => [styles.editButton, { opacity: pressed ? 0.5 : 1 }]}>
@@ -936,6 +1024,10 @@ const styles = StyleSheet.create({
   detailIconBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   detailLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.subtitle },
   detailValue: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  locationValueWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  locationFlag: { fontSize: 20, lineHeight: 24 },
+  locationValueText: { flex: 1 },
+  validationHint: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginBottom: 4, fontWeight: '600' },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: Colors.subtitle, letterSpacing: 1.5, marginBottom: 15 },
   gridBox: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   mediaSummaryText: { fontSize: 14, fontWeight: '600', color: '#D1D1D6', lineHeight: 20 },

@@ -27,6 +27,7 @@ import {
   dialCodeFor,
   formatNationalAsYouType,
   getDeviceRegionCountry,
+  normalizePhoneE164,
   parseStoredPhoneToLine,
   flagEmojiFromIso2,
 } from '../../utils/phoneRegions';
@@ -69,12 +70,7 @@ export default function EditPhoneSheet({ visible, onClose, theme, isDark = false
     setPhoneCheck('idle');
   }, [visible, user?.id, user?.phone]);
 
-  const currentUserE164 = (() => {
-    const p = parsePhoneNumberFromString(String(user?.phone || '').trim());
-    if (p?.isValid()) return p.number;
-    const legacy = buildE164FromNational('PL', String(user?.phone || '').replace(/\D/g, '').slice(-9));
-    return legacy && isValidPhoneNumber(legacy) ? legacy : null;
-  })();
+  const currentUserE164 = normalizePhoneE164(user?.phone);
 
   useEffect(() => {
     if (!visible || phoneVerified) {
@@ -95,13 +91,12 @@ export default function EditPhoneSheet({ visible, onClose, theme, isDark = false
     }
     setPhoneCheck('loading');
     const ctrl = new AbortController();
-    const display = parsePhoneNumberFromString(draftE164)?.formatInternational() || draftE164;
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/auth/check-exists`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: display, field: 'phone', value: display }),
+          body: JSON.stringify({ phone: draftE164, field: 'phone', value: draftE164 }),
           signal: ctrl.signal,
         });
         if (!res.ok) {
@@ -149,8 +144,7 @@ export default function EditPhoneSheet({ visible, onClose, theme, isDark = false
 
     setBusySave(true);
     try {
-      const display = parsePhoneNumberFromString(draftE164)?.formatInternational() || draftE164;
-      const r = await updateProfileBasics({ phone: display });
+      const r = await updateProfileBasics({ phone: draftE164 });
       if (!r?.ok) {
         Alert.alert('Nie udało się zapisać', r?.error || 'Spróbuj ponownie.');
         return false;

@@ -9,6 +9,13 @@ import {
 } from '../contracts/radarLiveActivityContract';
 
 const FALLBACK_NOTIFICATION_KEY = '@estateos_radar_live_activity_notification_id';
+/** Stały identyfikator — iOS podmienia to powiadomienie zamiast dokładać kolejne. */
+const FALLBACK_NOTIFICATION_IDENTIFIER = 'estateos-radar-live-activity-sticky';
+const FALLBACK_MIN_INTERVAL_MS = 45_000;
+
+let fallbackUpdateQueue: Promise<void> = Promise.resolve();
+let lastFallbackSignature = '';
+let lastFallbackAtMs = 0;
 
 type NativeRadarLiveActivityModuleShape = {
   startMonitoring?: (snapshotJson: string) => Promise<void> | void;
@@ -34,13 +41,27 @@ const formatFallbackBody = (snapshot: RadarLiveActivitySnapshot): string => {
   return lines.join('\n');
 };
 
+const fallbackContentSignature = (snapshot: RadarLiveActivitySnapshot): string =>
+  [
+    snapshot.newMatchesCount,
+    snapshot.activeMatchesCount,
+    snapshot.city,
+    snapshot.localityCountry,
+    snapshot.localityCountryCode,
+    snapshot.transactionType,
+    snapshot.propertyType,
+    snapshot.minMatchThreshold,
+    (snapshot.districts || []).join(','),
+  ].join('|');
+
 const dismissFallbackNotification = async () => {
   try {
+    await Notifications.dismissNotificationAsync(FALLBACK_NOTIFICATION_IDENTIFIER);
     const prevId = await AsyncStorage.getItem(FALLBACK_NOTIFICATION_KEY);
-    if (prevId) {
+    if (prevId && prevId !== FALLBACK_NOTIFICATION_IDENTIFIER) {
       await Notifications.dismissNotificationAsync(prevId);
-      await AsyncStorage.removeItem(FALLBACK_NOTIFICATION_KEY);
     }
+    await AsyncStorage.removeItem(FALLBACK_NOTIFICATION_KEY);
   } catch {
     // noop
   }
@@ -50,22 +71,35 @@ const updateFallbackNotification = async (snapshot: RadarLiveActivitySnapshot) =
   const permission = await Notifications.getPermissionsAsync();
   if (!permission.granted) return;
 
-  await dismissFallbackNotification();
-  const identifier = await Notifications.scheduleNotificationAsync({
-    content: {
-      title: fallbackTitle,
-      subtitle: 'Radar aktywny · skan rynku trwa',
-      body: formatFallbackBody(snapshot),
-      sound: false,
-      sticky: true,
-      data: {
-        feature: 'radar_live_activity',
-        snapshot,
+  const signature = fallbackContentSignature(snapshot);
+  const now = Date.now();
+  if (signature === lastFallbackSignature && now - lastFallbackAtMs < FALLBACK_MIN_INTERVAL_MS) {
+    return;
+  }
+
+  fallbackUpdateQueue = fallbackUpdateQueue.then(async () => {
+    await dismissFallbackNotification();
+    await Notifications.scheduleNotificationAsync({
+      identifier: FALLBACK_NOTIFICATION_IDENTIFIER,
+      content: {
+        title: fallbackTitle,
+        subtitle: 'Radar aktywny · skan rynku trwa',
+        body: formatFallbackBody(snapshot),
+        sound: false,
+        sticky: true,
+        data: {
+          feature: 'radar_live_activity',
+          snapshot,
+        },
       },
-    },
-    trigger: null,
+      trigger: null,
+    });
+    await AsyncStorage.setItem(FALLBACK_NOTIFICATION_KEY, FALLBACK_NOTIFICATION_IDENTIFIER);
+    lastFallbackSignature = signature;
+    lastFallbackAtMs = Date.now();
   });
-  await AsyncStorage.setItem(FALLBACK_NOTIFICATION_KEY, identifier);
+
+  await fallbackUpdateQueue;
 };
 
 const callNative = async (
@@ -98,6 +132,8 @@ export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivityS
   if (hasNativeLiveActivityModule) {
     try {
       await callNative('updateMonitoring', snapshot);
+      // Live Activity działa — gasimy ewentualne stare sticky z fallbacku (inaczej zostają w centrum powiadomień).
+      await dismissFallbackNotification();
       return;
     } catch (updateError) {
       console.warn('[RadarLiveActivity] updateMonitoring failed — próbuję start:', updateError);
@@ -110,6 +146,7 @@ export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivityS
       }
       try {
         await callNative('startMonitoring', snapshot);
+        await dismissFallbackNotification();
         return;
       } catch (startError) {
         console.warn('[RadarLiveActivity] startMonitoring failed — używam fallback notification:', startError);

@@ -13,7 +13,7 @@ Plan testow E2E pod wydanie produkcyjne iOS/Android.
   - slabasiec / offline test
 - Konta:
   - konto zwykle
-  - konto z dodatkowymi slotami
+  - konto z dostepna dodatkowa publikacja Pakiet Plus
   - konto testowe do IAP sandbox
 
 ## 2. Priorytety i klasyfikacja
@@ -47,8 +47,9 @@ Plan testow E2E pod wydanie produkcyjne iOS/Android.
 
 ### Payments / Quota
 - [ ] iOS: limit publikacji pokazuje flow IAP (bez Stripe)
-- [ ] IAP Pakiet Plus potwierdza odblokowanie slotu
-- [ ] Reaktywacja/podbicie oferty po platnosci dziala
+- [ ] IAP Pakiet Plus potwierdza mozliwosc dodania jednej dodatkowej publikacji na 30 dni
+- [ ] Pakiet Plus przywraca zakonczona oferte jako nowa 30-dniowa publikacje
+- [ ] Pakiet Plus nie przedluza ani nie podbija aktywnych ogloszen
 
 ### Push / Deeplink
 - [ ] Tap push otwiera poprawny ekran

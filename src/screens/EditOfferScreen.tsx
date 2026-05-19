@@ -35,7 +35,13 @@ import {
   isValidLandRegistryNumber,
   normalizeLandRegistryNumber,
 } from '../utils/landRegistry';
-import { formatPublicAddress, resolveIsExactLocation, stripHouseNumber } from '../constants/locationEcosystem';
+import {
+  formatPublicAddress,
+  getDraftLocationPresentation,
+  isPolandLocationDraft,
+  resolveIsExactLocation,
+  stripHouseNumber,
+} from '../constants/locationEcosystem';
 import {
   AGENT_COMMISSION_DEFAULT_PERCENT,
   AGENT_COMMISSION_MAX_PERCENT,
@@ -102,6 +108,19 @@ type EditableImage = {
 const isTrue = (val: any) => val === true || val === 'true' || val === 1;
 
 const easeOut = Easing.out(Easing.cubic);
+
+const normalizeTextForDirty = (value: unknown) => String(value ?? '').trim();
+const normalizeNumberForDirty = (value: unknown) => {
+  const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  if (raw === '') return '';
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? String(parsed) : raw;
+};
+const normalizeImageKeyForDirty = (value: unknown) =>
+  String(value ?? '')
+    .trim()
+    .replace(API_URL, '')
+    .replace(/^https?:\/\/[^/]+/i, '');
 
 /**
  * Spójna animacja LayoutAnimation dla mikro-zmian (reorder zdjęć, pokazywanie
@@ -188,6 +207,7 @@ export default function EditOfferScreen({ route }: any) {
     isFurnished: false,
   });
 
+  const showLandRegistryVerification = isPolandLocationDraft(originalData);
   const landRegistryRaw = landRegistryNumber.trim();
   const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
@@ -330,15 +350,16 @@ export default function EditOfferScreen({ route }: any) {
    * a po zapisie pasek znika. Również steruje to active-state przycisku
    * sticky-save oraz alertem o utracie zmian przy `goBack`.
    */
-  const { isDirty, dirtyCount } = useMemo(() => {
-    if (!originalData) return { isDirty: false, dirtyCount: 0 };
+  const { isDirty, dirtyCount, dirtyLabels, dirtySummary } = useMemo(() => {
+    if (!originalData) return { isDirty: false, dirtyCount: 0, dirtyLabels: [] as string[], dirtySummary: '' };
     const diffs: string[] = [];
-    const same = (a: any, b: any) => String(a ?? '') === String(b ?? '');
+    const sameText = (a: any, b: any) => normalizeTextForDirty(a) === normalizeTextForDirty(b);
+    const sameNumber = (a: any, b: any) => normalizeNumberForDirty(a) === normalizeNumberForDirty(b);
     const originalCleanDescription = extractVerifyTokens(originalData.description || '').clean;
-    if (!same(title, originalData.title)) diffs.push('tytuł');
-    if (!same(description.trim(), originalCleanDescription)) diffs.push('opis');
-    if (!same(price, originalData.price)) diffs.push('cena');
-    if (!same(adminFee, originalData.adminFee)) diffs.push('czynsz');
+    if (!sameText(title, originalData.title)) diffs.push('tytuł');
+    if (!sameText(description, originalCleanDescription)) diffs.push('opis');
+    if (!sameNumber(price, originalData.price)) diffs.push('cena');
+    if (!sameNumber(adminFee, originalData.adminFee)) diffs.push('czynsz');
     // Prowizja — porównujemy SPARSOWANE liczby, żeby '2,5' vs '2.5' vs 2.5 dawały
     // ten sam diff (bez fałszywych „dirty"). null vs null = brak zmian.
     {
@@ -348,27 +369,32 @@ export default function EditOfferScreen({ route }: any) {
       const b = currentCp === null ? 'NULL' : String(roundToQuarter(currentCp));
       if (a !== b) diffs.push('prowizja');
     }
-    if (!same(area, originalData.area)) diffs.push('powierzchnia');
-    if (!same(rooms, originalData.rooms)) diffs.push('pokoje');
-    if (!same(floor, originalData.floor)) diffs.push('piętro');
-    if (!same(yearBuilt, originalData.yearBuilt ?? originalData.buildYear)) diffs.push('rok');
-    if (!same(heating, originalData.heating)) diffs.push('ogrzewanie');
-    if (!same(apartmentNumber, originalData.apartmentNumber)) diffs.push('nr mieszkania');
-    if (!same(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('KW');
-    if (!same(condition, originalData.condition || 'READY')) diffs.push('stan');
+    if (!sameNumber(area, originalData.area)) diffs.push('powierzchnia');
+    if (!sameNumber(rooms, originalData.rooms)) diffs.push('pokoje');
+    if (!sameNumber(floor, originalData.floor)) diffs.push('piętro');
+    if (!sameNumber(yearBuilt, originalData.yearBuilt ?? originalData.buildYear)) diffs.push('rok budowy');
+    if (!sameText(heating, originalData.heating)) diffs.push('ogrzewanie');
+    if (!sameText(apartmentNumber, originalData.apartmentNumber)) diffs.push('nr mieszkania');
+    if (!sameText(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('KW');
+    if (!sameText(condition, originalData.condition || 'READY')) diffs.push('stan');
     if (Boolean(isExactLocation) !== resolveIsExactLocation(originalData.isExactLocation)) diffs.push('lokalizacja');
     (
       ['hasBalcony', 'hasParking', 'hasStorage', 'hasElevator', 'hasGarden', 'isFurnished'] as const
     ).forEach((k) => {
       if (Boolean((amenities as any)[k]) !== isTrue(originalData[k])) diffs.push(k);
     });
-    const currentKeys = images.map((i) => i.serverPath || i.uri);
+    const currentKeys = images.map((i) => normalizeImageKeyForDirty(i.serverPath || i.uri));
+    const originalKeys = originalImageKeys.map(normalizeImageKeyForDirty);
     const sameImages =
-      currentKeys.length === originalImageKeys.length &&
-      currentKeys.every((k, i) => k === originalImageKeys[i]) &&
+      currentKeys.length === originalKeys.length &&
+      currentKeys.every((k, i) => k === originalKeys[i]) &&
       images.every((i) => i.isRemote);
     if (!sameImages) diffs.push('zdjęcia');
-    return { isDirty: diffs.length > 0, dirtyCount: diffs.length };
+    const dirtySummary =
+      diffs.length <= 3
+        ? diffs.join(', ')
+        : `${diffs.slice(0, 3).join(', ')} +${diffs.length - 3}`;
+    return { isDirty: diffs.length > 0, dirtyCount: diffs.length, dirtyLabels: diffs, dirtySummary };
   }, [
     originalData,
     title,
@@ -403,7 +429,7 @@ export default function EditOfferScreen({ route }: any) {
       e.preventDefault();
       Alert.alert(
         'Niezapisane zmiany',
-        'Masz wprowadzone zmiany, które nie zostały jeszcze zapisane. Czy na pewno chcesz wyjść?',
+        `Masz niezapisane zmiany: ${dirtySummary || 'formularz'}. Czy na pewno chcesz wyjść?`,
         [
           { text: 'Wróć do edycji', style: 'cancel' },
           {
@@ -415,7 +441,7 @@ export default function EditOfferScreen({ route }: any) {
       );
     });
     return unsub;
-  }, [navigation, isDirty, saving]);
+  }, [navigation, isDirty, saving, dirtySummary]);
 
   // -------- ZARZĄDZANIE ZDJĘCIAMI --------
   const pickImage = async () => {
@@ -561,7 +587,7 @@ export default function EditOfferScreen({ route }: any) {
       setSaving(false);
       return;
     }
-    if (!isLandRegistryValid) {
+    if (showLandRegistryVerification && landRegistryRaw && !isLandRegistryValid) {
       Alert.alert(
         'Walidacja',
         'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6'
@@ -624,8 +650,12 @@ export default function EditOfferScreen({ route }: any) {
       images: remoteImages,
       ...amenities,
       heating: heating.trim() || null,
-      apartmentNumber: apartmentNumber.trim() || undefined,
-      landRegistryNumber: landRegistryNumber.trim() || undefined,
+      ...(showLandRegistryVerification
+        ? {
+            apartmentNumber: apartmentNumber.trim() || undefined,
+            landRegistryNumber: landRegistryNumber.trim() || undefined,
+          }
+        : {}),
     };
     if (isAgentUser && resolvedCommission !== undefined) {
       updatePayload.agentCommissionPercent = resolvedCommission;
@@ -1039,9 +1069,14 @@ export default function EditOfferScreen({ route }: any) {
           {isDirty && (
             <View style={styles.dirtyPill}>
               <View style={styles.dirtyDot} />
-              <Text style={styles.dirtyText}>
-                Niezapisane zmiany ({dirtyCount}) — pamiętaj, by zatwierdzić „Zapisz”
-              </Text>
+              <View style={styles.dirtyTextWrap}>
+                <Text style={styles.dirtyText}>
+                  Niezapisane zmiany ({dirtyCount})
+                </Text>
+                <Text style={styles.dirtySubText} numberOfLines={1}>
+                  Zmieniono: {dirtySummary || dirtyLabels.join(', ')}
+                </Text>
+              </View>
               <Pressable
                 onPress={() => {
                   Alert.alert(
@@ -1778,7 +1813,9 @@ export default function EditOfferScreen({ route }: any) {
             </View>
           </View>
 
-          {/* ====== WERYFIKACJA NIERUCHOMOŚCI — TARCZA BEZPIECZEŃSTWA ====== */}
+          {showLandRegistryVerification ? (
+          <>
+          {/* ====== WERYFIKACJA NIERUCHOMOŚCI — TARCZA BEZPIECZEŃSTWA (tylko PL) ====== */}
           <Text style={styles.sectionTitle}>TARCZA BEZPIECZEŃSTWA</Text>
 
           {/* Karta wyjaśniająca — co zyskujesz */}
@@ -1972,6 +2009,8 @@ export default function EditOfferScreen({ route }: any) {
               ) : null}
             </View>
           </View>
+          </>
+          ) : null}
 
           {/* ====== LOKALIZACJA — Z ŻYWYM PODGLĄDEM ====== */}
           <Text style={styles.sectionTitle}>MAPA I WIDOCZNOŚĆ</Text>
@@ -2002,6 +2041,8 @@ export default function EditOfferScreen({ route }: any) {
               city={originalData?.city}
               district={originalData?.district}
               street={originalData?.street || originalData?.addressStreet}
+              localityCountry={originalData?.localityCountry}
+              localityCountryCode={originalData?.localityCountryCode}
             />
           </View>
           <Text style={styles.sectionFooter}>
@@ -2114,6 +2155,8 @@ function LocationPreview({
   city,
   district,
   street,
+  localityCountry,
+  localityCountryCode,
 }: {
   isExactLocation: boolean;
   isDark: boolean;
@@ -2121,6 +2164,8 @@ function LocationPreview({
   city?: string;
   district?: string;
   street?: string;
+  localityCountry?: string;
+  localityCountryCode?: string;
 }) {
   const pulse = useRef(new Animated.Value(0)).current;
   // Animujemy fade na samym TEKŚCIE adresu, żeby zmiana była natychmiast czytelna.
@@ -2149,7 +2194,19 @@ function LocationPreview({
   const districtRaw = String(district || '').trim();
   const streetRaw = String(street || '').trim();
   const hasStreet = streetRaw.length > 0;
-  const previewLine = formatPublicAddress(cityRaw, districtRaw, streetRaw, isExactLocation, 'Polska');
+  const locPres = getDraftLocationPresentation({
+    city: cityRaw,
+    district: districtRaw,
+    localityCountry: String(localityCountry ?? ''),
+    localityCountryCode: String(localityCountryCode ?? ''),
+  });
+  const previewLine = formatPublicAddress(
+    locPres.city,
+    locPres.district,
+    streetRaw,
+    isExactLocation,
+    locPres.countryLabelPl,
+  );
   const visibleStreet = hasStreet ? (isExactLocation ? streetRaw : stripHouseNumber(streetRaw)) : '';
 
   const surfaceColor = isDark ? '#2C2C2E' : '#EEF1F5';
@@ -2387,7 +2444,9 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dirtyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF9500' },
-  dirtyText: { flex: 1, fontSize: 12.5, fontWeight: '600', color: '#FF9500' },
+  dirtyTextWrap: { flex: 1 },
+  dirtyText: { fontSize: 12.5, fontWeight: '800', color: '#FF9500' },
+  dirtySubText: { marginTop: 1, fontSize: 11.5, fontWeight: '600', color: 'rgba(201,108,0,0.82)' },
   dirtyResetBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,

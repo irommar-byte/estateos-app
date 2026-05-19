@@ -110,29 +110,105 @@ export type ParsedLine = {
   nationalDigits: string;
 };
 
+/** Pierwszy sensowny numer z obiektu usera API (różne nazwy pól na backendzie). */
+export function extractRawPhoneFromApi(apiUser: any): string | null {
+  if (!apiUser || typeof apiUser !== 'object') return null;
+  const candidates = [
+    apiUser.phone,
+    apiUser.contactPhone,
+    apiUser.phoneNumber,
+    apiUser.mobile,
+    apiUser.mobilePhone,
+    apiUser.user?.phone,
+    apiUser.user?.contactPhone,
+  ];
+  for (const c of candidates) {
+    const s = String(c ?? '').trim();
+    if (s && s !== 'null' && s !== 'undefined') return s;
+  }
+  return null;
+}
+
+export function userHasDialablePhone(phone?: string | null): boolean {
+  const raw = String(phone || '').trim();
+  if (!raw || raw === 'Brak numeru') return false;
+  return Boolean(normalizePhoneE164(raw) || raw.replace(/\D/g, '').length >= 6);
+}
+
+/**
+ * Kanoniczny E.164 (+48123456789) z dowolnego zapisu API / legacy.
+ * Kolejność: parse bezpośredni → cyfry z prefiksem „+” → legacy PL (9 cyfr krajowych).
+ */
+export function normalizePhoneE164(phone?: string | null, hintIso: CountryCode = 'PL'): string | null {
+  const raw = String(phone || '').trim();
+  if (!raw || raw === 'Brak numeru') return null;
+
+  let p = parsePhoneNumberFromString(raw);
+  if (p?.isValid() && p.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) {
+    return p.number as string;
+  }
+
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+
+  if (!raw.includes('+')) {
+    p = parsePhoneNumberFromString(`+${digits}`);
+    if (p?.isValid() && p.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) {
+      return p.number as string;
+    }
+  }
+
+  if (digits.length === 9 && !raw.includes('+')) {
+    p = parsePhoneNumberFromString(digits, 'PL');
+    if (p?.isValid() && p.country === 'PL') {
+      return p.number as string;
+    }
+  }
+
+  return null;
+}
+
+/** Format do wyświetlenia w profilu (np. „+49 170 1234567”). */
+export function formatPhoneForDisplay(phone?: string | null, hintIso: CountryCode = 'PL'): string {
+  if (!phone || !String(phone).trim()) return 'Brak numeru';
+  const raw = String(phone).trim();
+  if (raw === 'Brak numeru') return 'Brak numeru';
+  const e164 = normalizePhoneE164(raw, hintIso);
+  if (e164) {
+    const n = parsePhoneNumberFromString(e164);
+    if (n?.isValid()) return n.formatInternational();
+  }
+  if (raw.replace(/\D/g, '').length >= 6) return raw;
+  return 'Brak numeru';
+}
+
+/** Uzupełnia brakujący numer po rejestracji, gdy login/GET /auth go nie zwraca. */
+export function mergePhoneIntoUser<T extends { phone?: string }>(
+  user: T | null,
+  phoneE164?: string | null,
+): T | null {
+  if (!user) return user;
+  if (userHasDialablePhone(user.phone)) return user;
+  const e164 = normalizePhoneE164(phoneE164);
+  if (!e164) return user;
+  return { ...user, phone: formatPhoneForDisplay(e164) };
+}
+
 /** Z istniejącego stringu telefonu (E.164 lub legacy PL) — tylko dozwolone kraje. */
 export function parseStoredPhoneToLine(phone?: string | null, fallbackIso: CountryCode = 'PL'): ParsedLine {
   const raw = String(phone || '').trim();
   if (!raw) {
     return { iso: fallbackIso, nationalDigits: '' };
   }
-  let p = parsePhoneNumberFromString(raw);
-  if (p?.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) {
-    return { iso: p.country, nationalDigits: String(p.nationalNumber || '') };
-  }
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 9 && !raw.includes('+')) {
-    p = parsePhoneNumberFromString(digits, 'PL');
-    if (p?.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) {
-      return { iso: 'PL', nationalDigits: String(p.nationalNumber || '') };
-    }
-  }
-  if (digits.startsWith('48') && digits.length >= 11) {
-    p = parsePhoneNumberFromString(`+${digits}`);
+
+  const e164 = normalizePhoneE164(raw, fallbackIso);
+  if (e164) {
+    const p = parsePhoneNumberFromString(e164);
     if (p?.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) {
       return { iso: p.country, nationalDigits: String(p.nationalNumber || '') };
     }
   }
+
   return { iso: fallbackIso, nationalDigits: '' };
 }
 
@@ -154,11 +230,7 @@ export function buildE164FromNational(iso: CountryCode, nationalDigits: string) 
 export function inferCountryFromPhone(phone?: string | null, fallback: CountryCode = 'PL'): CountryCode {
   const raw = String(phone || '').trim();
   if (!raw || raw === 'Brak numeru') return fallback;
-  const p = parsePhoneNumberFromString(raw);
-  if (p?.country && ALLOWED_PHONE_COUNTRY_SET.has(p.country)) return p.country;
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 9 && !raw.includes('+')) return 'PL';
-  const p2 = parsePhoneNumberFromString(`+${digits}`);
-  if (p2?.country && ALLOWED_PHONE_COUNTRY_SET.has(p2.country)) return p2.country;
+  const line = parseStoredPhoneToLine(raw, fallback);
+  if (line.nationalDigits.length > 0) return line.iso;
   return fallback;
 }

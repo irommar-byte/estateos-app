@@ -49,7 +49,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
-import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
+import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
 import { postDealroomTextMessage } from '../../utils/dealroomOfferReserve';
 
 type Props = {
@@ -210,18 +210,7 @@ export default function FinalConfirmationModal({
         }
         const numericOfferId = Number(offerId || 0);
         if (Number.isFinite(numericOfferId) && numericOfferId > 0) {
-          try {
-            const archived = await archiveOwnOfferViaMobileAdmin(API_URL, safeToken, numericOfferId);
-            if (!archived) {
-              setError(
-                'Sprzedaż została zaakceptowana, ale nie udało się od razu wycofać oferty z rynku. Możesz to zrobić w „Moje oferty → Wycofaj".',
-              );
-            }
-          } catch {
-            setError(
-              'Sprzedaż została zaakceptowana, ale nie udało się od razu wycofać oferty z rynku. Możesz to zrobić w „Moje oferty → Wycofaj".',
-            );
-          }
+          await archiveOfferAfterSaleClosed(API_URL, safeToken, numericOfferId);
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
@@ -304,7 +293,7 @@ export default function FinalConfirmationModal({
                 <Text style={styles.consequenceTitle}>Co się stanie, gdy potwierdzisz:</Text>
                 <Text style={styles.consequenceLine}>• Sprzedaż zostanie ostatecznie zakończona.</Text>
                 <Text style={styles.consequenceLine}>• Oferta zostanie wycofana z rynku i przeniesiona do „Sfinalizowane”.</Text>
-                <Text style={styles.consequenceLine}>• Ponowne wystawienie wymagać będzie nowej publikacji.</Text>
+                <Text style={styles.consequenceLine}>• Ponowne przywrócenie oferty wymagać będzie nowej publikacji Pakiet Plus.</Text>
               </View>
 
               <Pressable
@@ -316,6 +305,7 @@ export default function FinalConfirmationModal({
                 </View>
                 <Text style={styles.ackTxt}>
                   Jestem świadomy/-a, że potwierdzenie kończy transakcję i wycofuje ofertę z rynku.
+                  Rozumiem, że ewentualne przywrócenie będzie wymagało nowej publikacji Pakiet Plus.
                 </Text>
               </Pressable>
 

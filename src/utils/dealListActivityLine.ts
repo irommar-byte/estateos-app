@@ -1,5 +1,5 @@
 import { parseDealEvent, normalizeDealEvent } from './dealEventParse';
-import { isFinalizedOwnerAcceptanceMessage } from '../contracts/parityContracts';
+import { isDealSaleFinalizedMessage } from '../contracts/parityContracts';
 
 const shortPl = (iso: string) =>
   new Date(iso).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -39,7 +39,7 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
 
   for (const m of sorted) {
     const body = String(m?.content ?? m?.text ?? '');
-    if (isFinalizedOwnerAcceptanceMessage(body)) {
+    if (isDealSaleFinalizedMessage(body)) {
       return 'Transakcja sfinalizowana: oferta wycofana z publikacji i przeniesiona do archiwum';
     }
   }

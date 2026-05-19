@@ -36,7 +36,7 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation,
     }
 
     if (!canMoveForward) {
-      Alert.alert('Uzupełnij dane', getStepBlockMessage(currentStep));
+      Alert.alert('Uzupełnij dane', getStepBlockMessage(currentStep, draft));
       return;
     }
 

@@ -41,6 +41,30 @@ export function isAgentRoleIdentity(input: any): boolean {
 }
 
 export function isInvestorProIdentity(input: any): boolean {
+  const plusSignals = [
+    input?.planType,
+    input?.subscriptionPlan,
+    input?.subscriptionTier,
+    input?.tier,
+    input?.type,
+    input?.user?.planType,
+    input?.user?.subscriptionPlan,
+    input?.user?.subscriptionTier,
+    input?.user?.tier,
+    input?.user?.type,
+  ]
+    .map((v) => String(v || '').trim().toUpperCase())
+    .filter(Boolean);
+
+  const hasPlusEntitlement =
+    plusSignals.some((x) => x === 'PLUS' || x === 'PAKIET_PLUS' || x === 'PAKIET-PLUS') ||
+    Boolean(input?.plusExpiresAt || input?.user?.plusExpiresAt) ||
+    Number(input?.extraListings ?? input?.user?.extraListings ?? 0) > 0;
+
+  if (hasPlusEntitlement && !plusSignals.some((x) => x.includes('PRO'))) {
+    return false;
+  }
+
   const candidates = [
     input?.planType,
     input?.subscriptionPlan,

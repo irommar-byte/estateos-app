@@ -13,10 +13,11 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-"ios": {
-  "supportsTablet": false,
-  "buildNumber": "20",
-  "bundleIdentifier": "pl.estateos.app",      "associatedDomains": [
+    "ios": {
+      "supportsTablet": false,
+      "buildNumber": "23",
+      "bundleIdentifier": "pl.estateos.app",
+      "associatedDomains": [
         "webcredentials:estateos.pl",
         "applinks:estateos.pl"
       ],

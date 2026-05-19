@@ -38,16 +38,18 @@ If the test account is locked or expired, please request a fresh one at
 
 ## 3) In-App Purchase (Apple IAP only on iOS)
 
-- **Product:** `pl.estateos.app.pakiet_plus_30d` — consumable, +1 listing
-  slot valid for 30 days.
+- **Product:** `pl.estateos.app.pakiet_plus_30d` — consumable. It allows one
+  additional 30-day publication: either a new listing or an ended listing restored
+  as a new 30-day publication. It does not extend active listings and it is not an
+  account plan/subscription.
 - **How to trigger:**
   - After publishing the first free listing, try to add a second one.
     A dialog suggests the purchase using the native App Store sheet.
-  - Or open Profile → "Pakiet Plus" tile.
+  - Profile → "Zakupy i sklep" only shows available additional publications and restore.
 - **Restore Purchases:** Profile → "Zakupy i sklep" → "Przywróć zakupy".
-- **No external payment:** on iOS we **never** show "buy on the website"
-  links or external Stripe links. Stripe checkout is restricted to Android
-  builds via `Platform.OS !== 'ios'` guards.
+- **No external payment:** the app does not show web checkout, pricing-page,
+  Pro-purchase, or external Stripe payment links. Pakiet Plus is the only
+  purchasable product in the app and uses the native store flow.
 
 ## 4) Account deletion (Guideline 5.1.1(v))
 

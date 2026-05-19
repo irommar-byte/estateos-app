@@ -35,6 +35,9 @@ const initialDraft = {
   condition: null,
   city: 'Warszawa',
   district: 'OTHER',
+  /** Państwo miejscowości (geokodowanie), np. Polska, Ukraina */
+  localityCountry: 'Polska',
+  localityCountryCode: 'PL',
   street: '',
   buildingNumber: '',
   lat: null,
