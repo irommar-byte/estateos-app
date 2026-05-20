@@ -58,10 +58,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const verificationStatus = String(offer.verificationStatus || "UNVERIFIED");
   const verificationUi =
     verificationStatus === "VERIFIED"
-      ? { label: "Zweryfikowana", hint: "Znaczek jakości EstateOS", cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
+      ? { label: "Verified", hint: "EstateOS quality badge", cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
       : verificationStatus === "PENDING_REVIEW"
         ? { label: "Weryfikacja w toku", hint: "Sprawdzamy dokumenty i stan prawny", cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
-        : { label: "Niezweryfikowana", hint: "Brak pełnej weryfikacji dokumentów", cls: "text-zinc-300 bg-white/5 border-white/15" };
+        : { label: "Not verified", hint: "Full document verification missing", cls: "text-zinc-300 bg-white/5 border-white/15" };
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -119,7 +119,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     e.preventDefault();
     e.stopPropagation();
     if (!currentUser) {
-      alert('Musisz być zalogowany, aby rozpocząć negocjacje.');
+      alert('You must be signed in to start negotiations.');
       window.location.href = '/login';
       return false;
     }
@@ -137,17 +137,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   };
 
   const locationParams = [
-    { label: "Miejscowość", value: offer.city || 'Nie podano' },
-    { label: "Dzielnica", value: isLocked ? 'Ukryta — przed premierą na szerokim rynku' : offer.district },
-    { label: "Adres (Ulica)", value: isLocked ? 'Ukryty — przed premierą na szerokim rynku' : offer.address }
+    { label: "City", value: offer.city || 'Nie podano' },
+    { label: "Dzielnica", value: isLocked ? 'Hidden — before full market launch' : offer.district },
+    { label: "Adres (Ulica)", value: isLocked ? 'Hidden — before full market launch' : offer.address }
   ].filter(p => p.value);
 
   const mainParams = [
     { label: "Powierzchnia", value: numericArea > 0 ? `${numericArea} m²` : null },
     { label: "Cena za m²", value: pricePerSqm !== 'Brak' && !isLocked ? `${pricePerSqm} PLN` : (isLocked ? 'Ukryta' : null) },
     { label: "Liczba pokoi", value: offer.rooms },
-    { label: "Piętro", value: offer.floor },
-    { label: "Stan wykończenia", value: offer.condition || offer.finishCondition }
+    { label: "Floor", value: offer.floor },
+    { label: "Finish standard", value: offer.condition || offer.finishCondition }
   ].filter(p => p.value);
 
   const buildingParams = [
@@ -156,7 +156,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     { label: "Ogrzewanie", value: offer.heating },
     { label: "Umeblowane", value: offer.isFurnished === true ? "Tak" : offer.isFurnished === false ? "Nie" : null },
     { label: "Czynsz", value: offer.rent ? `${String(offer.rent).replace(/\D/g, '')} PLN` : null },
-    { label: "Dostępność", value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString('pl-PL') : null }
+    { label: "Availability", value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString('pl-PL') : null }
   ].filter(p => p.value);
 
   return (
@@ -168,7 +168,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           {/* Lewa strona: Guzik powrotu */}
           <div className="flex flex-wrap gap-2 sm:gap-4 pointer-events-auto">
             <Link href="/" className="px-4 sm:px-6 py-2 sm:py-3 bg-black/40 backdrop-blur-2xl rounded-full border border-white/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white hover:text-black transition-all shadow-2xl flex items-center gap-2">
-              ← Powrót do mapy
+              ← Back to map
             </Link>
           </div>
           
@@ -195,7 +195,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   
                   <div className="flex flex-col items-start leading-tight">
                       <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? 'Agencja' : 'Właściciel Prywatny')}</span>
+                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? 'Agency' : 'Private owner')}</span>
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
@@ -217,7 +217,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   <span className="w-px h-6 bg-white/10"></span>
 
                   <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Wyświetleń</span>
+                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Views</span>
                       <div className="flex items-center gap-1.5">
                           <Eye size={12} className="text-white/70" />
                           <span className="text-[11px] font-black text-white/90 tracking-widest">{offer?.views || 0}</span>
@@ -248,7 +248,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             
             
 <h1 className="text-4xl sm:text-[7vw] font-bold tracking-tighter text-center leading-tight drop-shadow-2xl px-4 sm:px-8 max-w-7xl mx-auto [text-wrap:balance]">
-              {isLocked ? "Przed premierą na szerokim rynku" : offer.title}
+              {isLocked ? "Before full market launch" : offer.title}
             </h1>
         </div>
         <div className="absolute bottom-0 w-full h-1/2 z-20 bg-gradient-to-t from-[#050505] to-transparent" />
@@ -259,7 +259,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                    <ArchiveX size={32} className="text-white/50" />
                 </div>
                 <h2 className="text-3xl sm:text-5xl font-black text-white mb-2 uppercase tracking-tighter opacity-50">Nieaktualne</h2>
-                <p className="text-white/30 text-xs sm:text-sm font-bold uppercase tracking-widest">Ta oferta została zarchiwizowana</p>
+                <p className="text-white/30 text-xs sm:text-sm font-bold uppercase tracking-widest">This listing has been archived</p>
              </div>
           </div>
         )}
@@ -278,7 +278,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               
               <h2 className="text-2xl sm:text-4xl font-black text-white mb-4 relative z-10 tracking-tighter">Jeszcze nie na szerokim rynku</h2>
               <p className="text-white/50 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">
-                Pierwsze 24 godziny po publikacji to okres premiery: adres, zdjęcia w pełnej rozdzielczości i kontakt widzi od razu wyłącznie właściciel oraz użytkownicy PRO. Po tym czasie szczegóły stają się widoczne dla wszystkich — tak jak na szerokim rynku.
+                The first 24 hours after publishing are a launch window: full address, full-resolution photos, and contact are visible only to the owner and PRO users. After that, details become visible to everyone, like on the open market.
               </p>
               
               <div className="text-4xl sm:text-6xl font-mono font-black text-emerald-500 mb-10 tracking-widest drop-shadow-[0_0_20px_rgba(16,185,129,0.5)] relative z-10 flex items-center justify-center gap-4">
@@ -287,9 +287,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               </div>
               
               <Link href="/cennik" className="btn-action w-full block py-5 sm:py-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest relative z-10 shadow-[0_20px_40px_rgba(16,185,129,0.2)] bg-emerald-500 text-black hover:bg-emerald-400 transition-colors">
-                Przejdź na PRO i Odblokuj Teraz
+                Upgrade to PRO and unlock now
               </Link>
-              <p className="mt-6 text-[10px] uppercase tracking-widest text-white/30 font-bold relative z-10">Uzyskaj widok jak po premierze na szerokim rynku — od razu pełny adres, zdjęcia i kontakt.</p>
+              <p className="mt-6 text-[10px] uppercase tracking-widest text-white/30 font-bold relative z-10">Get post-launch visibility immediately — full address, photos, and contact from now.</p>
             </div>
           </div>
         )}
@@ -313,7 +313,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h2 className="text-3xl sm:text-4xl md:text-6xl font-black tracking-tighter mb-6 sm:mb-8">{priceDisplay} PLN</h2>
                 
                 <div className="bg-white/5 border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 md:p-10 backdrop-blur-md shadow-2xl">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6">O Nieruchomości</h3>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6">About property</h3>
                   <p className="text-sm sm:text-base text-white/80 leading-loose font-light whitespace-pre-line break-words">{offer.description}</p>
                 </div>
 
@@ -334,7 +334,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 {offer.floorPlan && !isLocked && (
                 <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 md:p-10 backdrop-blur-md mt-6 sm:mt-8 shadow-2xl">
                   <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6 flex items-center gap-2">
-                    <FileImage size={14} /> Rzut Nieruchomości
+                    <FileImage size={14} /> Property floor plan
                   </h3>
                   <div 
                     onClick={() => setIsFloorplanModalOpen(true)}
@@ -343,7 +343,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <img src={offer.floorPlan} className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt="Rzut Lokalu" />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                        <span className="px-6 py-3 bg-black/60 backdrop-blur-md rounded-full text-white font-bold text-[10px] uppercase tracking-widest border border-white/20 flex items-center gap-2 shadow-2xl">
-                         <Maximize2 size={14} /> Powiększ
+                         <Maximize2 size={14} /> Zoom
                        </span>
                     </div>
                   </div>
@@ -373,7 +373,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 {/* SEKCJA PARAMETRÓW GŁÓWNYCH */}
                 {mainParams.length > 0 && (
                   <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col gap-5">
-                    <h4 className="text-[9px] uppercase tracking-widest text-emerald-500 font-black mb-1">Główne Parametry</h4>
+                    <h4 className="text-[9px] uppercase tracking-widest text-emerald-500 font-black mb-1">Main parameters</h4>
                     {mainParams.map((param, idx) => (
                       <div key={idx} className={`flex justify-between items-center ${idx !== mainParams.length - 1 ? 'border-b border-white/5 pb-5' : ''}`}>
                         <span className="text-white/40 uppercase tracking-widest text-[10px] sm:text-xs font-bold">{param.label}</span>
@@ -406,7 +406,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
                     </span>
                     <span className="text-[10px] text-white/80 font-black uppercase tracking-[0.2em] relative z-10">
-                      {negotiatorsCount === 1 ? '1 osoba złożyła ofertę' : `${negotiatorsCount} osoby złożyły ofertę`}
+                      {negotiatorsCount === 1 ? '1 person submitted an offer' : `${negotiatorsCount} people submitted an offer`}
                     </span>
                   </motion.div>
                 )}
@@ -419,8 +419,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   {isArchived ? (
                   <div className="py-8 text-center flex flex-col items-center justify-center border-t border-white/5 mt-4">
                      <ArchiveX size={24} className="text-white/20 mb-3" />
-                     <p className="text-white/40 font-black uppercase tracking-widest text-[10px]">Kontakt Wyłączony</p>
-                     <p className="text-white/20 text-[8px] mt-1 uppercase tracking-widest">Oferta znajduje się w archiwum</p>
+                     <p className="text-white/40 font-black uppercase tracking-widest text-[10px]">Contact disabled</p>
+                     <p className="text-white/20 text-[8px] mt-1 uppercase tracking-widest">Listing is in archive</p>
                   </div>
                 ) : (
                   <>
@@ -432,7 +432,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                     
                     <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight" style={{ color: '#000000' }}>
-                      <><Briefcase size={22} style={{ color: "#000000" }} /> Złóż Ofertę / Negocjuj</>
+                      <><Briefcase size={22} style={{ color: "#000000" }} /> Submit offer / Negotiate</>
                     </span>
                     <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] mt-0.5" style={{ color: 'rgba(0,0,0,0.6)' }}>
                       Rozpocznij Negocjacje
@@ -484,7 +484,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <X size={24} />
             </button>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="relative w-full max-w-5xl max-h-screen flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-              <img src={offer.floorPlan} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt="Rzut Powiększony" />
+              <img src={offer.floorPlan} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 bg-[#0a0a0a]" alt="Rzut Zoomony" />
             </motion.div>
           </motion.div>
         )}

@@ -46,8 +46,8 @@ export async function POST(req: Request) {
     if (plan === 'investor') {
       productName = 'EstateOS Investor PRO';
       productDesc =
-        'Natychmiastowy Radar (bez okna premiery), 5 aktywnych ogłoszeń, pełne szczegóły od razu — zanim oferta pojawi się na szerokim rynku (24 h).';
-      unitAmount = 14900;
+        'Natychmiastowy Radar (bez okna premiery), 3 złote sloty ogłoszeń PRO, wczesny dostęp 24 h. Kolejne ogłoszenia — Pakiet + (30 dni / kredyt).';
+      unitAmount = 24900;
     } else if (plan === 'renewal') {
       productName = 'Odnowienie Oferty (30 Dni)';
       productDesc = 'Przedłużenie ważności Twojej oferty o kolejne 30 dni z natychmiastowym efektem.';

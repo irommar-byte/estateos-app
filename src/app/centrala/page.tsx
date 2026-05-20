@@ -11,24 +11,33 @@ export default function Centrala() {
   const [togglingSms, setTogglingSms] = useState(false);
 
   useEffect(() => {
-    fetch('/api/user/profile')
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          setDebugMsg("Błąd API: " + data.error);
-        } else if (data.role !== 'ADMIN') {
-          setDebugMsg("Odmowa dostępu. Twoja rola to: " + (data.role || "BRAK"));
+    void (async () => {
+      try {
+        const res = await fetch('/api/user/profile', {
+          cache: 'no-store',
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        const role = data?.role ?? data?.user?.role;
+        if (!res.ok) {
+          setDebugMsg(
+            data?.error ? `Błąd API: ${data.error}` : `Brak sesji (${res.status}). Zaloguj się ponownie.`
+          );
+        } else if (role !== 'ADMIN') {
+          setDebugMsg("Odmowa dostępu. Twoja rola to: " + (role || "BRAK"));
         } else {
           setIsAdmin(true);
-          // Wczytywanie stanu przełącznika
-          fetch('/api/admin/settings').then(r => r.json()).then(d => setSmsEnabled(d.smsEnabled)).catch(()=>{});
+          fetch('/api/admin/settings', { credentials: 'include' })
+            .then((r) => r.json())
+            .then((d) => setSmsEnabled(d.smsEnabled))
+            .catch(() => {});
         }
-        setIsLoading(false);
-      })
-      .catch((err) => {
+      } catch {
         setDebugMsg("Błąd serwera.");
+      } finally {
         setIsLoading(false);
-      });
+      }
+    })();
   }, []);
 
   
@@ -69,7 +78,7 @@ export default function Centrala() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 pt-32 md:p-16 md:pt-40">
+    <div className="theme-aware-dashboard min-h-screen bg-[#050505] text-white p-6 pt-32 md:p-16 md:pt-40">
       <nav className="max-w-7xl mx-auto flex justify-between items-center mb-24">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-center text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]">

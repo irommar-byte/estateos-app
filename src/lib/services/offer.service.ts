@@ -290,20 +290,26 @@ export async function createOffer(body: any) {
       userId: Number(userId)
   };
 
-  try {
-    return await prisma.offer.create({
-      data: createData,
-      select: MOBILE_OFFER_WRITE_RESPONSE_SELECT as any,
+  const createOfferRecord = async (data: Record<string, unknown>, select: any) => {
+    const user = await prisma.user.findUnique({
+      where: { id: Number(userId) },
+      select: { id: true },
     });
+    if (!user) throw new Error('Użytkownik nie istnieje');
+    return prisma.offer.create({
+      data: data as any,
+      select,
+    });
+  };
+
+  try {
+    return await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
   } catch (error) {
     if (!isOfferLegalColumnMissingError(error)) throw error;
 
     const fallbackData = { ...createData };
     stripLegacyLegalColumns(fallbackData);
-    return prisma.offer.create({
-      data: fallbackData,
-      select: MOBILE_OFFER_PRISMA_SELECT as any,
-    });
+    return createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
   }
 }
 
@@ -414,6 +420,12 @@ export async function updateOffer(body: any) {
     })
   );
 
+  const requestedStatusRaw = String(body.newStatus ?? body.status ?? '').toUpperCase();
+  const requestedStatus = requestedStatusRaw ? mapStatus(requestedStatusRaw) : null;
+  if (requestedStatus === OfferStatus.ACTIVE && existing.status !== OfferStatus.ACTIVE) {
+    throw new OfferValidationError('Aktywacja oferty wymaga dedykowanego endpointu publikacji.');
+  }
+
   const updateData: any = {
       ...(body.title !== undefined && { title: body.title }),
       description: nextDescription,
@@ -505,8 +517,8 @@ export async function updateOffer(body: any) {
         legalCheckRejectionText: null,
         isLegalSafeVerified: false,
       }),
-      ...(body.status !== undefined && {
-        status: mapStatus(body.status)
+      ...((body.status !== undefined || body.newStatus !== undefined) && {
+        status: requestedStatus,
       }),
       ...(agentCommissionPercent !== undefined && { agentCommissionPercent })
     };

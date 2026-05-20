@@ -63,7 +63,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                             <EliteStatusBadges subject={data.user} isDark compact className="justify-center mb-2" />
                             <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany {data.user.type === 'AGENCY' ? 'Agent' : 'Użytkownik'}</span>
+                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany {data.user.type === 'AGENCY' ? 'Agent' : 'User'}</span>
                             </div>
                         </div>
 
@@ -103,7 +103,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                         {/* 4. Aktualne Oferty (Cross-selling) */}
                         {data.offers.length > 0 && (
                             <div>
-                                <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-4 text-center">Inne oferty użytkownika ({data.offers.length})</h4>
+                                <h4 className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-4 text-center">Other listings by this user ({data.offers.length})</h4>
                                 <div className="flex flex-col gap-3">
                                     {data.offers.map((o: any) => (
                                         <Link key={o.id} href={`/oferta/${o.id}`} className="flex items-center gap-4 p-3 bg-[#111] hover:bg-[#1a1a1a] border border-white/5 hover:border-emerald-500/30 rounded-2xl transition-all group">
@@ -136,7 +136,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                                                 </div>
                                                 <span className="text-[8px] text-white/30 uppercase tracking-widest">{new Date(r.createdAt).toLocaleDateString()}</span>
                                             </div>
-                                            <p className="text-xs text-white/70 italic leading-relaxed">"{r.comment || 'Brak treści komentarza.'}"</p>
+                                            <p className="text-xs text-white/70 italic leading-relaxed">"{r.comment || 'No comment content.'}"</p>
                                         </div>
                                     ))}
                                 </div>
@@ -145,7 +145,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
 
                     </div>
                 ) : (
-                    <div className="p-10 text-center text-white/50">Wystąpił błąd podczas ładowania profilu.</div>
+                    <div className="p-10 text-center text-white/50">An error occurred while loading profile.</div>
                 )}
             </motion.div>
         </div>

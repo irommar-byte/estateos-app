@@ -4,6 +4,8 @@ import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
+import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
 
 function parseUserIdFromAuthToken(token: string): number | null {
   const verified = verifyMobileToken(token) as Record<string, unknown> | null;
@@ -50,10 +52,11 @@ async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
     where: { id: user.id },
     select: MOBILE_USER_SELECT,
   });
+  const hasPasskey = await userHasRegisteredPasskey(user.id);
 
   return NextResponse.json({
     success: true,
-    user: fullUser ? shapeMobileUser(fullUser) : null,
+    user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
     token,
   });
 }
@@ -79,7 +82,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, user: shapeMobileUser(user) });
+    const hasPasskey = await userHasRegisteredPasskey(userId);
+    return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     return NextResponse.json({ success: false, message }, { status: 500 });
@@ -151,7 +155,7 @@ export async function POST(req: Request) {
         select: MOBILE_USER_SELECT,
       });
 
-      return NextResponse.json({ success: true, user: shapeMobileUser(user) });
+      return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey: false } });
     }
     
     if (normalizedAction === 'update') {
@@ -176,7 +180,8 @@ export async function POST(req: Request) {
         data: { image: safeAvatar },
         select: MOBILE_USER_SELECT,
       });
-      return NextResponse.json({ success: true, user: shapeMobileUser(updatedUser) });
+      const hasPasskey = await userHasRegisteredPasskey(updatedUser.id);
+      return NextResponse.json({ success: true, user: { ...shapeMobileUser(updatedUser), hasPasskey } });
     }
 
     return NextResponse.json({ success: false, message: 'Błędna akcja' }, { status: 400 });

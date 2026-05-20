@@ -43,11 +43,11 @@ export default function UpgradeModal() {
           </div>
 
           <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-2">
-            Wymagana Subskrypcja {upgradeModalType === 'AGENCY' ? 'AGENCJA' : 'INWESTOR PRO'}
+            Subscription required {upgradeModalType === 'AGENCY' ? 'AGENCJA' : 'INWESTOR PRO'}
           </h2>
           
           <p className="text-white/60 text-sm mb-8 leading-relaxed">
-            Tryb {upgradeModalType === 'AGENCY' ? 'Partnera' : 'Właściciela'} jest dostępny wyłącznie dla zweryfikowanych użytkowników z aktywnym planem premium.
+            Mode {upgradeModalType === 'AGENCY' ? 'Agency' : 'Owner'} is available only for verified users with an active premium plan.
           </p>
 
           <div className="w-full space-y-3">
@@ -57,10 +57,10 @@ export default function UpgradeModal() {
               className="w-full py-4 bg-emerald-500 text-black rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-400 transition-all flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(52,211,153,0.4)] hover:shadow-[0_0_30px_rgba(52,211,153,0.8)] disabled:opacity-50"
             >
               <Zap size={18} className="fill-black" /> 
-              {isLoading ? 'Łączenie z bramką...' : 'Opłać pakiet teraz'}
+              {isLoading ? 'Connecting to payment gateway...' : 'Pay for plan now'}
             </button>
             <button onClick={() => setIsUpgradeModalOpen(false)} className="w-full py-4 bg-white/5 text-white/40 rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-white/10 transition-all">
-              Może później
+              Maybe later
             </button>
           </div>
         </div>

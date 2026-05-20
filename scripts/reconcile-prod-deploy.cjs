@@ -52,6 +52,10 @@ const sqlOfferLandLegalColumnsFile = path.join(
   root,
   'docs/reconciliation/sql/add_offer_land_registry_and_legal_columns_if_missing.sql'
 );
+const sqlOfferPublicationsFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_offer_publications_and_free_first.sql'
+);
 
 const summary = {
   rollbackSha: null,
@@ -59,6 +63,7 @@ const summary = {
   sqlAgentCommission: null,
   sqlLegalVerification: null,
   sqlOfferLandLegal: null,
+  sqlOfferPublications: null,
   check: null,
   verifyE2e: null,
   releaseShip: null,
@@ -197,6 +202,15 @@ function main() {
     throw new Error('sql:offerLandLegal');
   }
 
+  console.log('[deploy:recon] SQL prisma db execute (OfferPublication + FREE_FIRST + IAP consume)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlOfferPublicationsFile]);
+  if (r.ok) summary.sqlOfferPublications = 'APPLIED';
+  else {
+    summary.sqlOfferPublications = 'FAIL';
+    summary.error = r.out.slice(-4000);
+    throw new Error('sql:offerPublications');
+  }
+
   console.log('[deploy:recon] release:ship');
   releaseShipOrThrow('deploy');
   summary.releaseShip = 'PASS';
@@ -257,6 +271,7 @@ function printReport(ok) {
   console.log('SQL agentCommission:', summary.sqlAgentCommission);
   console.log('SQL legalVerification:', summary.sqlLegalVerification);
   console.log('SQL offerLandLegal:', summary.sqlOfferLandLegal);
+  console.log('SQL offerPublications:', summary.sqlOfferPublications);
   console.log('check:', summary.check);
   console.log('verify:recon:', summary.verifyE2e);
   console.log('release:ship:', summary.releaseShip);

@@ -5,6 +5,7 @@ import { signMobileToken } from '@/lib/jwtMobile';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -39,10 +40,11 @@ export async function POST(req: Request) {
       where: { id: user.id },
       select: MOBILE_USER_SELECT,
     });
+    const hasPasskey = await userHasRegisteredPasskey(user.id);
 
     return NextResponse.json({
       success: true,
-      user: fullUser ? shapeMobileUser(fullUser) : null,
+      user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
       token,
     });
   } catch (error) {

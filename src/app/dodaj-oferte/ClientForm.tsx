@@ -791,7 +791,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   return (
-    <main className="min-h-screen bg-[#050505] text-[#f5f5f7] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-[#10b981]/30">
+    <main className="theme-aware-dashboard min-h-screen bg-[#050505] text-[#f5f5f7] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-[#10b981]/30">
       
       {/* Dynamiczne Tło */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-[#10b981]/5 to-transparent blur-[150px] pointer-events-none rounded-full" />

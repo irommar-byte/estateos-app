@@ -8,18 +8,26 @@ export default function FloatingAuthButton() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/user/profile')
-      .then(res => res.json())
-      .then(data => {
-        if (!data.error) setUser(data);
+    void (async () => {
+      try {
+        const res = await fetch('/api/user/profile', {
+          cache: 'no-store',
+          credentials: 'include',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data?.id || data?.user?.id)) setUser(data);
+        else setUser(null);
+      } catch {
+        setUser(null);
+      } finally {
         setIsLoading(false);
-      })
-      .catch(() => setIsLoading(false));
+      }
+    })();
   }, []);
 
   if (isLoading || !user) return null;
 
-  const isAdmin = user.id === 'admin' || user.role === 'ADMIN';
+  const isAdmin = user.role === 'ADMIN';
 
   return (
     <AnimatePresence>

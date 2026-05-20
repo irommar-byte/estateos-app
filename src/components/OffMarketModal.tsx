@@ -59,16 +59,16 @@ export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }: OffM
               </div>
            </div>
            
-           <h2 className="text-2xl font-black text-center text-white mb-2 tracking-tight">Przed premierą na szerokim rynku</h2>
+           <h2 className="text-2xl font-black text-center text-white mb-2 tracking-tight">Before full market launch</h2>
            <p className="text-white/50 text-center text-sm mb-8 leading-relaxed">
-             Oferta jest już w bazie, ale pierwsze {OFFER_PREMARKET_EMBARGO_HOURS} godzin to okres premiery — pełne szczegóły zobaczą wszyscy dopiero po tym czasie. Konto PRO otwiera je od razu.
+             This listing is already in the system, but the first {OFFER_PREMARKET_EMBARGO_HOURS} hours are a launch window — full details become public only after that. PRO unlocks them immediately.
            </p>
 
            {/* ZEGAR Z SEKUNDAMI */}
            <div className="flex justify-center gap-5 mb-10">
                <div className="flex flex-col items-center">
                   <span className="text-4xl font-black text-white">{timeLeft.hours.toString().padStart(2, '0')}</span>
-                  <span className="text-[10px] text-white/30 uppercase font-bold tracking-widest mt-1">Godz</span>
+                  <span className="text-[10px] text-white/30 uppercase font-bold tracking-widest mt-1">Hrs</span>
                </div>
                <span className="text-3xl font-black text-white/20 mt-1">:</span>
                <div className="flex flex-col items-center">
@@ -78,7 +78,7 @@ export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }: OffM
                <span className="text-3xl font-black text-white/20 mt-1">:</span>
                <div className="flex flex-col items-center">
                   <span className="text-4xl font-black text-[#D4AF37] animate-pulse">{timeLeft.seconds.toString().padStart(2, '0')}</span>
-                  <span className="text-[10px] text-[#D4AF37]/50 uppercase font-bold tracking-widest mt-1">Sek</span>
+                  <span className="text-[10px] text-[#D4AF37]/50 uppercase font-bold tracking-widest mt-1">Sec</span>
                </div>
            </div>
 
@@ -88,13 +88,13 @@ export default function OffMarketModal({ isOpen, onClose, offerCreatedAt }: OffM
                 onClick={() => { router.push('/cennik'); onClose(); }} 
                 className="w-full py-4 bg-gradient-to-r from-[#D4AF37] to-[#B5952F] text-black font-black uppercase tracking-widest rounded-2xl flex justify-center items-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_20px_rgba(212,175,55,0.3)]"
               >
-                <Crown size={18} /> Chcę zostać PRO
+                <Crown size={18} /> Upgrade to PRO
               </button>
               <button 
                 onClick={onClose} 
                 className="w-full py-4 bg-white/5 text-white/40 font-bold uppercase tracking-widest text-xs rounded-2xl hover:bg-white/10 hover:text-white transition-all"
               >
-                Poczekam cierpliwie
+                I will wait
               </button>
            </div>
         </motion.div>

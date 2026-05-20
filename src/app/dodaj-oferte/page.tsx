@@ -2,6 +2,7 @@ import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import ClientForm from './ClientForm';
+import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimits';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -37,12 +38,9 @@ export default async function AddOfferPage() {
           }
         });
 
-        let limit = 1 + (realUser.extraListings || 0);
-        const pType = realUser.planType?.toLowerCase() || '';
-        
-        if (realUser.isPro || pType === 'investor' || pType === 'agency') {
-          limit = (pType === 'agency') ? 999999 : 5 + (realUser.extraListings || 0);
-        }
+        const limits = computeListingLimits(realUser);
+        const activePlusCredits = limits.plusCredits;
+        const limit = limits.isAgency ? 999999 : limits.totalSlots;
 
         // Twarda blokada - przekazujemy do formularza
         const limitReached = activeOffersCount >= limit;
@@ -55,6 +53,8 @@ export default async function AddOfferPage() {
           email: realUser.email,
           role: realUser.role,
           isPro: realUser.isPro,
+          extraListings: activePlusCredits,
+          plusExpiresAt: isPlusCreditActive(realUser) ? realUser.plusExpiresAt : null,
           limitReached: limitReached 
         };
       }

@@ -79,7 +79,7 @@ export default function CatalogPage() {
         const msg =
           data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
             ? (data as { error: string }).error
-            : "Nie udało się pobrać katalogu.";
+            : "Failed to load catalog.";
         setError(msg);
         setOffers([]);
         return;
@@ -91,7 +91,7 @@ export default function CatalogPage() {
       }
       setOffers(data as CatalogOffer[]);
     } catch {
-      setError("Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.");
+      setError("No server connection. Check your network and try again.");
       setOffers([]);
     } finally {
       setLoading(false);
@@ -103,19 +103,19 @@ export default function CatalogPage() {
   }, [load]);
 
   return (
-    <main className="min-h-screen bg-black pb-24 pt-40 font-sans text-white">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-40 font-sans text-[var(--eos-text)]">
       <div className="mx-auto max-w-7xl px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-24 border-b border-white/10 pb-12"
+          className="mb-24 border-b border-[var(--eos-border)] pb-12"
         >
-          <h1 className="mb-8 text-6xl font-bold leading-none tracking-tighter md:text-8xl">
+          <h1 className="mb-8 text-6xl font-bold leading-none tracking-tighter text-[var(--eos-text)] md:text-8xl">
             Katalog <br />
-            <span className="italic text-white/30">rezydencji.</span>
+            <span className="italic text-[var(--eos-muted)]">rezydencji.</span>
           </h1>
-          <p className="max-w-3xl text-xl font-light tracking-wide text-white/50 md:text-2xl">
-            Oferty na żywo z serwera EstateOS — te same dane co w mapie i w aplikacji mobilnej.
+          <p className="max-w-3xl text-xl font-light tracking-wide text-[var(--eos-muted)] md:text-2xl">
+            Live listings from EstateOS server — the same data as on the map and in the mobile app.
           </p>
         </motion.div>
 
@@ -126,12 +126,12 @@ export default function CatalogPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center gap-4 py-32 text-white/45"
+              className="flex flex-col items-center justify-center gap-4 py-32 text-[var(--eos-muted)]"
               role="status"
               aria-live="polite"
             >
               <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" aria-hidden />
-              <p className="text-xs font-semibold uppercase tracking-[0.35em]">Ładowanie katalogu</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em]">Loading catalog</p>
             </motion.div>
           ) : error ? (
             <motion.div
@@ -139,16 +139,16 @@ export default function CatalogPage() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="mx-auto max-w-lg rounded-[2rem] border border-white/10 bg-white/[0.03] p-10 text-center backdrop-blur-md"
+              className="mx-auto max-w-lg rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-10 text-center backdrop-blur-md"
               role="alert"
             >
-              <p className="mb-8 text-sm leading-relaxed text-white/70">{error}</p>
+              <p className="mb-8 text-sm leading-relaxed text-[var(--eos-muted)]">{error}</p>
               <button
                 type="button"
                 onClick={() => void load()}
                 className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-400 transition hover:bg-emerald-500/20"
               >
-                Spróbuj ponownie
+                Try again
               </button>
             </motion.div>
           ) : offers.length === 0 ? (
@@ -156,7 +156,7 @@ export default function CatalogPage() {
               key="empty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="py-24 text-center text-sm uppercase tracking-[0.25em] text-white/35"
+              className="py-24 text-center text-sm uppercase tracking-[0.25em] text-[var(--eos-muted)]"
             >
               Brak aktywnych ofert w katalogu.
             </motion.p>
@@ -176,7 +176,7 @@ export default function CatalogPage() {
                     transition={{ delay: Math.min(i * 0.06, 0.42), duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
                     className="group cursor-pointer"
                   >
-                    <div className="relative mb-6 aspect-[4/3] w-full overflow-hidden rounded-[2rem] border border-white/5 bg-[#0a0a0a]">
+                    <div className="relative mb-6 aspect-[4/3] w-full overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)]">
                       {offer.imageUrl ? (
                         <Image
                           src={offer.imageUrl}
@@ -195,16 +195,16 @@ export default function CatalogPage() {
 
                     <div className="flex items-start justify-between px-2">
                       <div>
-                        <h2 className="mb-2 text-3xl font-bold tracking-tight transition-colors group-hover:text-white">
+                        <h2 className="mb-2 text-3xl font-bold tracking-tight text-[var(--eos-text)] transition-colors group-hover:text-emerald-500">
                           {offer.title?.trim() || `Oferta #${offer.id}`}
                         </h2>
-                        <p className="text-xs font-medium uppercase tracking-widest text-white/40">
+                        <p className="text-xs font-medium uppercase tracking-widest text-[var(--eos-muted)]">
                           {formatAreaLabel(offer)} · {formatLocationLabel(offer)}
                         </p>
                       </div>
                       <div className="flex flex-col items-end text-right">
-                        <p className="text-xl font-bold tabular-nums">{formatPriceLabel(offer)}</p>
-                        <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/30 transition-colors group-hover:text-white">
+                        <p className="text-xl font-bold tabular-nums text-[var(--eos-text)]">{formatPriceLabel(offer)}</p>
+                        <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)] transition-colors group-hover:text-emerald-500">
                           Odkryj <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                         </div>
                       </div>

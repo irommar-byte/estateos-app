@@ -5,12 +5,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { mobileBearerUserId, readJson } from '@/lib/mobileApiAuth';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
-
-function plusExpiry() {
-  const d = new Date();
-  d.setMonth(d.getMonth() + 1);
-  return d;
-}
+import { buildPakietPlusUserUpdate, isPakietPlusProductId } from '@/lib/mobileIapEntitlements';
 
 export async function POST(req: Request) {
   const userId = mobileBearerUserId(req);
@@ -25,23 +20,32 @@ export async function POST(req: Request) {
   const originalTransactionId =
     body?.originalTransactionId != null ? String(body.originalTransactionId).trim() : null;
   const receipt = body?.receipt ?? body?.receiptData ?? body?.transactionReceipt ?? null;
+  const deferPublicationConsume = Boolean(body?.deferPublicationConsume);
+  const publicationIntent = String(body?.publicationIntent ?? '').trim().slice(0, 32);
+  const targetOfferIdRaw = Number(body?.targetOfferId);
+  const targetOfferId = Number.isFinite(targetOfferIdRaw) && targetOfferIdRaw > 0 ? targetOfferIdRaw : null;
 
   if (!productId) {
     return NextResponse.json({ success: false, message: 'Brak productId' }, { status: 400 });
+  }
+  if (!isPakietPlusProductId(productId)) {
+    return NextResponse.json({ success: false, message: 'Nieobsługiwany productId Pakietu Plus' }, { status: 400 });
   }
 
   await ensureMobileIapTables();
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO MobileIapPurchase
-        (userId, pendingPurchaseId, platform, productId, transactionId, originalTransactionId, receipt, status, rawPayload)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'VERIFIED', ?)
+        (userId, pendingPurchaseId, platform, productId, transactionId, originalTransactionId, receipt, status, verifyStatus, targetOfferId, rawPayload)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'VERIFIED', 'VERIFIED', ?, ?)
       ON DUPLICATE KEY UPDATE
         productId = VALUES(productId),
         transactionId = VALUES(transactionId),
         originalTransactionId = VALUES(originalTransactionId),
         receipt = VALUES(receipt),
         status = 'VERIFIED',
+        verifyStatus = 'VERIFIED',
+        targetOfferId = COALESCE(VALUES(targetOfferId), targetOfferId),
         rawPayload = VALUES(rawPayload)
     `,
     userId,
@@ -51,20 +55,89 @@ export async function POST(req: Request) {
     transactionId,
     originalTransactionId,
     receipt ? String(receipt).slice(0, 10000) : null,
-    JSON.stringify(body ?? {})
+    targetOfferId,
+    JSON.stringify({ ...(body ?? {}), publicationIntent, deferPublicationConsume })
   );
 
-  const proExpiresAt = plusExpiry();
-  await prisma.user.update({
+  const purchaseKeys = [pendingPurchaseId, transactionId, originalTransactionId].filter(Boolean);
+  const alreadyGranted = purchaseKeys.length
+    ? await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+        `
+          SELECT id
+          FROM MobileIapPurchase
+          WHERE productId = ?
+            AND entitlementGrantedAt IS NOT NULL
+            AND (
+              pendingPurchaseId IN (${purchaseKeys.map(() => '?').join(',')})
+              OR transactionId IN (${purchaseKeys.map(() => '?').join(',')})
+              OR originalTransactionId IN (${purchaseKeys.map(() => '?').join(',')})
+            )
+          LIMIT 1
+        `,
+        productId,
+        ...purchaseKeys,
+        ...purchaseKeys,
+        ...purchaseKeys
+      )
+    : [];
+
+  const current = await prisma.user.findUnique({
     where: { id: userId },
-    data: { isPro: true, planType: 'PRO' as any, proExpiresAt },
+    select: { extraListings: true, plusExpiresAt: true },
   });
+  if (!current) {
+    return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
+  }
+
+  let plusExpiresAt = current.plusExpiresAt;
+  let extraListings = current.extraListings;
+  let entitlementGranted = false;
+  if (!deferPublicationConsume && alreadyGranted.length === 0) {
+    const update = buildPakietPlusUserUpdate();
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: update,
+      select: { extraListings: true, plusExpiresAt: true },
+    });
+    extraListings = updatedUser.extraListings;
+    plusExpiresAt = updatedUser.plusExpiresAt;
+    entitlementGranted = true;
+  }
+
+  if (purchaseKeys.length && !deferPublicationConsume) {
+    await prisma.$executeRawUnsafe(
+      `
+        UPDATE MobileIapPurchase
+        SET
+          userId = ?,
+          entitlementGrantedAt = COALESCE(entitlementGrantedAt, NOW(3))
+        WHERE productId = ?
+          AND (
+            pendingPurchaseId IN (${purchaseKeys.map(() => '?').join(',')})
+            OR transactionId IN (${purchaseKeys.map(() => '?').join(',')})
+            OR originalTransactionId IN (${purchaseKeys.map(() => '?').join(',')})
+          )
+      `,
+      userId,
+      productId,
+      ...purchaseKeys,
+      ...purchaseKeys,
+      ...purchaseKeys
+    );
+  }
 
   return NextResponse.json({
     success: true,
+    verified: true,
     status: 'VERIFIED',
+    publicationConsumeDeferred: deferPublicationConsume,
     pendingPurchaseId,
     productId,
-    entitlements: { plus: true, proExpiresAt: proExpiresAt.toISOString() },
+    transactionId,
+    extraListings: deferPublicationConsume ? 0 : extraListings,
+    plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null,
+    backendRegistered: true,
+    entitlementGranted,
+    entitlements: { plus: true, plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null },
   });
 }

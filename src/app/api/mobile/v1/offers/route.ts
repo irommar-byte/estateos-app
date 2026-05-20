@@ -16,6 +16,11 @@ import {
   isOfferSchemaCompatibilityError,
   toPublicOfferErrorMessage,
 } from '@/lib/offerSchemaErrors';
+import {
+  activateOfferPublication,
+  activePublicationOfferIds,
+  getPublicationQuote,
+} from '@/lib/offerPublication';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -101,7 +106,18 @@ export async function GET(req: Request) {
       select: MOBILE_OFFER_PRISMA_SELECT as any,
     });
 
-    const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    const publicVisibleIds =
+      userId || includeAll
+        ? null
+        : await activePublicationOfferIds(
+            offers.map((offer: any) => Number(offer.id)).filter((id) => Number.isFinite(id))
+          );
+    const visibleOffers =
+      publicVisibleIds === null
+        ? offers
+        : offers.filter((offer: any) => publicVisibleIds.has(Number(offer.id)));
+
+    const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
       return NextResponse.json({ success: true, offers: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
@@ -121,7 +137,7 @@ export async function GET(req: Request) {
     );
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
-    const normalizedOffers = offers.map((offer: any) => {
+    const normalizedOffers = visibleOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
       const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
       return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });
@@ -181,15 +197,68 @@ export async function POST(req: Request) {
       }
     }
 
+    const wantsActivation = body?.activateOnCreate === true || body?.publication;
     const offer = await createOffer(body);
+    if (!wantsActivation) {
+      return NextResponse.json({ success: true, offer });
+    }
 
+    const quote = await getPublicationQuote({
+      userId: authUserId,
+      offerId: Number(offer.id),
+      action: 'CREATE_AND_ACTIVATE',
+    });
+    if (quote.requiresPayment) {
+      const txId = String(body?.publication?.iapTransactionId ?? '').trim();
+      if (!txId) {
+        return NextResponse.json(
+          {
+            success: true,
+            offer,
+            activationSkipped: true,
+            errorCode: 'PUBLICATION_REQUIRES_PLUS',
+            message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
+            quote,
+          },
+          { status: 422 }
+        );
+      }
+    }
 
-    return NextResponse.json({ success: true, offer });
+    const activation = await activateOfferPublication({
+      userId: authUserId,
+      offerId: Number(offer.id),
+      kind: quote.allowedFreeFirst ? 'FREE_FIRST' : 'PLUS_PAID',
+      iapTransactionId: quote.allowedFreeFirst
+        ? null
+        : String(body?.publication?.iapTransactionId ?? '').trim(),
+      iapProductId: quote.productId,
+    });
+
+    return NextResponse.json({
+      success: true,
+      offer: { ...offer, status: 'ACTIVE', expiresAt: activation.endsAt.toISOString() },
+      publication: {
+        status: activation.status,
+        kind: activation.kind,
+        endsAt: activation.endsAt.toISOString(),
+      },
+    });
   } catch (e: unknown) {
     if (e instanceof OfferValidationError) {
       return NextResponse.json(
         { success: false, message: e.message, code: 'OFFER_VALIDATION' },
         { status: 400 }
+      );
+    }
+    if (e instanceof Error && e.message === 'IAP_TRANSACTION_NOT_AVAILABLE') {
+      return NextResponse.json(
+        {
+          success: false,
+          errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
+          message: 'Nie znaleziono niewykorzystanej transakcji IAP dla publikacji.',
+        },
+        { status: 409 }
       );
     }
     if (isOfferSchemaCompatibilityError(e)) {

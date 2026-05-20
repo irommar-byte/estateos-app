@@ -3,29 +3,54 @@ export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcrypt';
 import { prisma } from '@/lib/prisma';
-import { encryptSession } from '@/lib/sessionUtils';
+import { encryptSession, resolveSessionSecret } from '@/lib/sessionUtils';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
+import { buildPhoneLookupVariants } from '@/lib/phoneE164';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
 
   try {
     const body = await req.json();
-    const email = String(body?.email || body?.login || '').trim().toLowerCase();
+    /** Ten sam kontrakt co `api/mobile/v1/auth/login` — aplikacja jest źródłem prawdy. */
+    const rawLogin = String(body?.email || body?.identifier || body?.login || '').trim();
     const password = String(body?.password || '');
+    const emailKey = rawLogin.toLowerCase().replace(/\s+/g, '');
+    const phoneDigits = rawLogin.replace(/\D/g, '');
 
     const ipBucket = checkRateLimit(`auth-login:ip:${ip}`, 20, 60_000);
     if (!ipBucket.allowed) return rateLimitResponse(ipBucket.retryAfterSeconds);
 
-    if (!email || !password) {
+    if ((!emailKey && !phoneDigits) || !password) {
       return NextResponse.json({ success: false, message: 'Brak danych' }, { status: 400 });
     }
 
-    const idBucket = checkRateLimit(`auth-login:id:${email}`, 8, 60_000);
+    const rateKey = emailKey || phoneDigits || rawLogin;
+    const idBucket = checkRateLimit(`auth-login:id:${rateKey}`, 8, 60_000);
     if (!idBucket.allowed) return rateLimitResponse(idBucket.retryAfterSeconds);
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user: Awaited<ReturnType<typeof prisma.user.findUnique>> = null;
+
+    if (rawLogin.includes('@')) {
+      /** Wyłącznie email — nigdy nie mieszaj z OR po telefonie z cyfr w lokalnej części adresu. */
+      user = await prisma.user.findUnique({ where: { email: emailKey } });
+    } else if (phoneDigits.length >= 9) {
+      const phoneOr: Array<{ phone: string }> = [];
+      phoneOr.push({ phone: phoneDigits });
+      if (!phoneDigits.startsWith('48')) {
+        phoneOr.push({ phone: `48${phoneDigits}` });
+        phoneOr.push({ phone: `+48${phoneDigits}` });
+      } else {
+        phoneOr.push({ phone: `+${phoneDigits}` });
+      }
+      user = await prisma.user.findFirst({
+        where: { OR: phoneOr },
+      });
+    } else {
+      /** Mobilne logowanie: samo `email` (np. krótki identyfikator w dev). */
+      user = await prisma.user.findUnique({ where: { email: emailKey } });
+    }
     if (!user || !user.password) {
       return NextResponse.json({ success: false, message: 'Błędne dane logowania' }, { status: 401 });
     }
@@ -40,8 +65,10 @@ export async function POST(req: Request) {
       await prisma.user.update({ where: { id: user.id }, data: { password: newHash } });
     }
 
-    const jwtSecret = String(process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || '').trim();
-    if (!jwtSecret) {
+    let jwtSecret: string;
+    try {
+      jwtSecret = resolveSessionSecret();
+    } catch {
       return NextResponse.json(
         { success: false, message: 'Brak konfiguracji klucza sesji/JWT na serwerze' },
         { status: 500 }

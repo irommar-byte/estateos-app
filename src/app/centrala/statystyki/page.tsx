@@ -140,7 +140,7 @@ export default function Statystyki() {
   if (!stats) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-8 md:p-12 font-sans selection:bg-emerald-500 selection:text-white">
+    <div className="theme-aware-dashboard min-h-screen bg-[#050505] text-white p-8 md:p-12 font-sans selection:bg-emerald-500 selection:text-white">
       <button onClick={() => router.push('/centrala')} className="flex items-center gap-2 text-gray-500 hover:text-white mb-12 text-[10px] font-black uppercase tracking-[0.4em] transition-all">
         <ArrowLeft size={14}/> Centrala
       </button>

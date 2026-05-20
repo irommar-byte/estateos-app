@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1500" role="img" aria-label="EstateOS luxury residence placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#07110e"/>
+      <stop offset="0.45" stop-color="#050505"/>
+      <stop offset="1" stop-color="#1c1209"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="30%" r="70%">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.22"/>
+      <stop offset="0.55" stop-color="#10b981" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop offset="0" stop-color="#d9b58b"/>
+      <stop offset="1" stop-color="#70451f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="1500" fill="url(#bg)"/>
+  <rect width="1200" height="1500" fill="url(#glow)"/>
+  <path d="M224 974 600 646l376 328v222H224Z" fill="#0b0b0b" stroke="rgba(255,255,255,0.13)" stroke-width="4"/>
+  <path d="M290 940h620v256H290Z" fill="rgba(255,255,255,0.035)"/>
+  <path d="M426 826h348" stroke="url(#gold)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M466 1196V942h268v254" fill="#050505" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+  <circle cx="600" cy="1064" r="24" fill="#10b981" opacity="0.82"/>
+  <text x="600" y="1346" fill="rgba(255,255,255,0.64)" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="800" letter-spacing="12" text-anchor="middle">ESTATEOS</text>
+</svg>

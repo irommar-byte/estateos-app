@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { Prisma } from '@prisma/client';
+import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -116,8 +117,70 @@ export async function POST(req: Request) {
     if (deal.buyerId !== actorId && deal.sellerId !== actorId) {
       return NextResponse.json({ error: 'Brak dostepu do transakcji' }, { status: 403 });
     }
-    if (!deal.isActive && type !== 'BID_PROPOSE' && type !== 'APPOINTMENT_PROPOSE') {
+    if (
+      !deal.isActive &&
+      type !== 'BID_PROPOSE' &&
+      type !== 'APPOINTMENT_PROPOSE' &&
+      type !== 'DEAL_FINALIZE'
+    ) {
       return NextResponse.json({ error: 'Transakcja jest zamknieta' }, { status: 400 });
+    }
+
+    if (type === 'DEAL_FINALIZE') {
+      if (actorId !== deal.sellerId) {
+        return NextResponse.json({ error: 'Tylko wlasciciel moze sfinalizowac transakcje' }, { status: 403 });
+      }
+      if (deal.status !== 'AGREED' || !deal.acceptedBidId) {
+        return NextResponse.json(
+          { error: 'Transakcja musi miec zaakceptowana cene przed finalizacja' },
+          { status: 400 }
+        );
+      }
+
+      const acceptedBid = await prisma.bid.findUnique({
+        where: { id: deal.acceptedBidId },
+        select: { id: true, amount: true },
+      });
+      if (!acceptedBid) {
+        return NextResponse.json({ error: 'Brak zaakceptowanej oferty ceny' }, { status: 400 });
+      }
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          await finalizeDealWithOfferArchive(tx, {
+            dealId,
+            offerId: deal.offerId,
+            sellerId: deal.sellerId,
+            buyerId: deal.buyerId,
+            actorUserId: actorId,
+            acceptedBidId: acceptedBid.id,
+            finalPrice: acceptedBid.amount,
+          });
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'DEAL_ALREADY_FINALIZED') {
+          return NextResponse.json({ error: 'Transakcja zostala juz sfinalizowana' }, { status: 409 });
+        }
+        throw error;
+      }
+
+      return NextResponse.json({
+        deal: {
+          id: dealId,
+          status: 'FINALIZED',
+          offerId: deal.offerId,
+          finalPrice: acceptedBid.amount,
+          finalizedAt: new Date().toISOString(),
+        },
+        offer: {
+          id: deal.offerId,
+          status: 'SOLD',
+        },
+        publication: {
+          status: 'ENDED',
+          endReason: 'SOLD',
+        },
+      });
     }
 
     if (type === 'BID_PROPOSE') {
@@ -198,25 +261,105 @@ export async function POST(req: Request) {
       if (bid.senderId === actorId) {
         return NextResponse.json({ error: 'Nie mozesz odpowiedziec na swoja oferte' }, { status: 403 });
       }
-      if (bid.status !== 'PENDING') {
+      const sellerFinalAcceptFlow =
+        decision === 'ACCEPT' &&
+        actorId === deal.sellerId &&
+        deal.status === 'AGREED' &&
+        Number(deal.acceptedBidId || 0) === bidId;
+      if (!sellerFinalAcceptFlow && bid.status !== 'PENDING') {
         return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
       }
 
       const senderOfOriginalBid = bid.senderId;
 
       if (decision === 'ACCEPT') {
+        if (sellerFinalAcceptFlow) {
+          const finalized = await prisma.$transaction(async (tx) => {
+            const latestDeal = await tx.deal.findUnique({
+              where: { id: dealId },
+              select: { status: true, acceptedBidId: true },
+            });
+            if (
+              !latestDeal ||
+              latestDeal.status !== 'AGREED' ||
+              Number(latestDeal.acceptedBidId || 0) !== bidId
+            ) {
+              throw new Error('DEAL_NOT_READY_FOR_FINALIZATION');
+            }
+
+            const summary = await finalizeDealWithOfferArchive(tx, {
+              dealId,
+              offerId: deal.offerId,
+              sellerId: deal.sellerId,
+              buyerId: deal.buyerId,
+              actorUserId: actorId,
+              acceptedBidId: bidId,
+              finalPrice: bid.amount,
+            });
+            await tx.dealMessage.create({
+              data: {
+                dealId,
+                senderId: actorId,
+                content: buildEventContent({
+                  entity: 'BID',
+                  action: 'FINALIZED',
+                  bidId,
+                  amount: bid.amount,
+                  note,
+                  status: 'FINALIZED',
+                  createdAt: new Date().toISOString(),
+                }),
+              },
+            });
+            return summary;
+          });
+
+          await prisma.deal.update({ where: { id: dealId }, data: { updatedAt: new Date() } });
+          await notifyNegotiationEvent({
+            recipientUserId: senderOfOriginalBid,
+            dealId,
+            offerId: deal.offerId,
+            title: 'Transakcja zostala sfinalizowana',
+            body: `${bid.amount.toLocaleString('pl-PL')} PLN`,
+            eventId: `deal:${dealId}:bid:${bidId}:FINALIZED`,
+            type: 'BID_RECEIVED',
+          });
+          return NextResponse.json({
+            deal: {
+              id: dealId,
+              status: 'FINALIZED',
+              offerId: deal.offerId,
+              finalPrice: bid.amount,
+              finalizedAt: new Date().toISOString(),
+            },
+            offer: {
+              id: deal.offerId,
+              status: 'SOLD',
+            },
+            publication: {
+              status: finalized.publicationStatus,
+              endReason: finalized.publicationEndReason,
+            },
+          });
+        }
+
         const accepted = await prisma.$transaction(async (tx) => {
           const updatedBid = await tx.bid.updateMany({
             where: { id: bidId, dealId, status: 'PENDING' },
-            data: { status: 'ACCEPTED' }
+            data: { status: 'ACCEPTED' },
           });
           if (updatedBid.count === 0) return false;
 
-          await tx.bid.updateMany({ where: { dealId, id: { not: bidId }, status: { in: ['PENDING', 'COUNTER_OFFER'] } }, data: { status: 'REJECTED' } });
+          await tx.bid.updateMany({
+            where: { dealId, id: { not: bidId }, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
+            data: { status: 'REJECTED' },
+          });
+
           await tx.deal.update({
             where: { id: dealId },
-            data: { acceptedBidId: bidId, status: 'AGREED', isActive: false },
+            data: { acceptedBidId: bidId, status: 'AGREED', isActive: true },
           });
+
           await tx.dealMessage.create({
             data: {
               dealId,
@@ -247,7 +390,13 @@ export async function POST(req: Request) {
           eventId: `deal:${dealId}:bid:${bidId}:ACCEPTED`,
           type: 'BID_RECEIVED',
         });
-        return NextResponse.json({ success: true, status: 'ACCEPTED' });
+        return NextResponse.json({
+          success: true,
+          status: 'ACCEPTED',
+          finalized: false,
+          offerId: deal.offerId,
+          finalPrice: bid.amount,
+        });
       }
 
       if (decision === 'REJECT') {
@@ -563,6 +712,12 @@ export async function POST(req: Request) {
     }
     if (error instanceof Error && error.message === 'APPOINTMENT_ALREADY_HANDLED') {
       return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === 'DEAL_NOT_READY_FOR_FINALIZATION') {
+      return NextResponse.json(
+        { error: 'Finalizacja możliwa dopiero po etapie AGREED i acceptedBidId.' },
+        { status: 409 }
+      );
     }
     console.error('MOBILE DEAL ACTIONS ERROR:', error);
     return NextResponse.json({ error: 'Blad serwera' }, { status: 500 });

@@ -6,6 +6,7 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
 
 const PROFILE_SELECT = MOBILE_USER_SELECT;
 const shapeProfileResponse = shapeMobileUser;
@@ -268,7 +269,11 @@ export async function PATCH(req: Request) {
       data.name = nextName;
     }
 
-    const phone = sanitizePhone(body.phone);
+    const phoneRaw =
+      body.phone !== undefined || body.contactPhone !== undefined
+        ? extractPhoneFromBody(body)
+        : undefined;
+    const phone = sanitizePhone(phoneRaw);
     if (phone !== undefined) data.phone = phone;
 
     const image = body.image === undefined ? undefined : sanitizeString(body.image, 4000);

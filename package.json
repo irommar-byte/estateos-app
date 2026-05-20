@@ -17,6 +17,7 @@
     "release:ship": "npm run check && npm run build && npm run pm2:reload && npm run pm2:save",
     "lint": "eslint .",
     "type-check": "tsc --noEmit --incremental false",
+    "test:pakiet-plus": "node scripts/regression-pakiet-plus.cjs",
     "check": "npm run type-check",
     "smoke:postdeploy": "node scripts/postdeploy-smoke.cjs",
     "verify:recon": "npm run check && node scripts/verify-reconciliation-e2e.cjs",

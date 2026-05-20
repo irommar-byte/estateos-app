@@ -15,7 +15,8 @@ function getStripeClient() {
 export async function POST(req: Request) {
   try {
     const { plan, offerId, sessionId } = await req.json();
-    if (!plan) return NextResponse.json({ error: 'Brak planu' });
+    const normalizedPlan = String(plan || '').trim().toLowerCase();
+    if (!normalizedPlan) return NextResponse.json({ error: 'Brak planu' }, { status: 400 });
 
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('estateos_session');
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nieprawidłowa sesja' }, { status: 401 });
     }
 
-    if (plan === 'renewal') {
+    if (normalizedPlan === 'renewal') {
       const numericOfferId = Number(offerId);
       if (!Number.isFinite(numericOfferId) || numericOfferId <= 0) {
         return NextResponse.json({ error: 'Nieprawidłowy offerId' }, { status: 400 });
@@ -68,8 +69,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, renewedOfferId: numericOfferId });
     }
 
-    if (plan !== 'pakiet_plus') {
-      const planType = plan === 'agency' ? 'AGENCY' : 'PRO';
+    if (normalizedPlan === 'pakiet_plus') {
+      // Pakiet Plus nie może być przyznawany przez ślepy sync z URL-a.
+      // Księgowanie odbywa się wyłącznie po zweryfikowanej transakcji IAP/webhook.
+      return NextResponse.json({ success: true, skipped: 'pakiet_plus_requires_verified_transaction' });
+    }
+
+    if (normalizedPlan === 'agency' || normalizedPlan === 'investor' || normalizedPlan === 'pro') {
+      const planType = normalizedPlan === 'agency' ? 'AGENCY' : 'PRO';
       const expires = new Date();
       expires.setDate(expires.getDate() + 30);
       
@@ -79,9 +86,10 @@ export async function POST(req: Request) {
         data: { isPro: true, planType, proExpiresAt: expires }
       });
       console.log(`🔥 FORCE-SYNC: Użytkownik ${email} otrzymał wymuszone PRO (${planType})`);
+      return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ error: 'Nieobsługiwany plan płatności' }, { status: 400 });
   } catch (error) {
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
   }

@@ -1,15 +1,37 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { User, LogOut, Menu, X, Home, Building2, Shield, LogIn, Crown } from "lucide-react";
+
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Building2,
+  Crown,
+  Home,
+  LogIn,
+  LogOut,
+  Menu,
+  Shield,
+  User,
+  X,
+} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
 import ReviewPrompt from "@/components/ReviewPrompt";
+import LanguageSwitcher from "@/components/layout/LanguageSwitcher";
+import ThemeSwitcher from "@/components/layout/ThemeSwitcher";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
+import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
 
+type CurrentUser = {
+  id?: string | number;
+  role?: string;
+  plan?: string;
+  user?: { id?: string | number };
+};
+
 export default function Navbar() {
-  const [user, setUser] = useState<any>(null);
+  const { dict } = useLocale();
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -20,234 +42,285 @@ export default function Navbar() {
   }, [pathname]);
 
   useEffect(() => {
-    fetch('/api/user/profile')
-      .then(res => res.json())
-      .then(data => {
-        if (!data.error) {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/user/profile", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = (await res.json().catch(() => ({}))) as CurrentUser;
+        if (cancelled) return;
+
+        if (res.ok && (data?.id || data?.user?.id)) {
           setUser(data);
           initModeFromUser(data);
+        } else {
+          setUser(null);
         }
-      })
-      .catch(() => setUser(null));
-  }, [initModeFromUser]);
+      } catch {
+        if (!cancelled) setUser(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, initModeFromUser]);
 
   const handleLogout = async () => {
-    // 1. Twarde żądanie do serwera (z uprawnieniami do ciastek)
-    try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }); } catch(e) {}
-    
-    // 2. Czystka absolutna na frontendzie
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      /* ignore logout network failures */
+    }
+
+    const savedTheme = localStorage.getItem("estateos_theme");
+    const savedLocale = document.cookie
+      .split(";")
+      .find((part) => part.trim().startsWith("estateos_lang="));
+
     localStorage.clear();
     sessionStorage.clear();
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+    document.cookie.split(";").forEach((cookie) => {
+      document.cookie = cookie
+        .replace(/^ +/, "")
+        .replace(/=.*/, `=;expires=${new Date().toUTCString()};path=/`);
     });
-    
-    // 3. Twarde przeładowanie (omija Cache Next.js)
+
+    if (savedTheme) localStorage.setItem("estateos_theme", savedTheme);
+    if (savedLocale) {
+      document.cookie = `${savedLocale.trim()};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`;
+    }
+
     window.location.replace("/login");
   };
 
   const handleNavClick = (path: string, isMap = false) => {
     if (isMap) {
-      if (pathname === '/') document.getElementById('map-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      else router.push('/#map');
+      if (pathname === "/") {
+        document.getElementById("map-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        router.push("/#map");
+      }
     } else {
       router.push(path);
     }
     setIsOpen(false);
   };
 
+  const managePath = user?.role === "ADMIN" ? "/centrala" : "/moje-konto";
+  const manageLabel = user?.role === "ADMIN" ? dict.nav.manageCentral : dict.nav.manage;
+
   return (
-    <nav className="fixed top-0 z-50 w-full border-b border-white/10 bg-zinc-950/95 font-sans backdrop-blur-xl supports-[backdrop-filter]:bg-black/70 supports-[backdrop-filter]:backdrop-blur-2xl [@media(prefers-reduced-transparency:reduce)]:bg-zinc-950 [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none [padding-top:env(safe-area-inset-top)]">
+    <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
       <div
-        className="relative z-[100] mx-auto flex h-24 max-w-[1400px] items-start justify-between px-3 pt-2 sm:h-20 sm:items-center sm:pt-0 md:px-6"
+        className="relative z-[100] mx-auto grid h-20 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 md:px-6"
         style={{
-          paddingLeft: "max(0.75rem, env(safe-area-inset-left))",
-          paddingRight: "max(0.75rem, env(safe-area-inset-right))",
+          paddingLeft: "max(1rem, env(safe-area-inset-left))",
+          paddingRight: "max(1rem, env(safe-area-inset-right))",
         }}
       >
-        
-        {/* LOGO */}
-        <div onClick={() => router.push('/')} className="cursor-pointer group flex-shrink-0 relative z-20 hidden sm:block">
-          <span className="text-xl font-black tracking-tighter text-white uppercase italic transition-all group-hover:text-emerald-500">
-            <span className="text-[#10b981]">E</span>state<span className="text-[#10b981]">OS</span>&trade;
+        <button
+          type="button"
+          onClick={() => router.push("/")}
+          className="group relative z-20 flex min-w-0 items-center gap-3 rounded-full px-1 text-left"
+          aria-label="EstateOS home"
+        >
+          <span className="flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-xs font-black text-[var(--eos-accent)] shadow-[var(--eos-shadow-soft)]">
+            EOS
           </span>
-        </div>
-        
-        {/* Małe Logo dla Mobajla, by zrobic miejsce na przełącznik */}
-        <div onClick={() => router.push('/')} className="cursor-pointer group flex-shrink-0 relative z-20 sm:hidden hidden">
-          <span className="text-lg font-black tracking-tighter text-emerald-500 uppercase italic">
-            E<span className="text-white">OS</span>
+          <span className="hidden text-xl font-black uppercase italic tracking-tighter sm:block">
+            <span className="text-[var(--eos-accent)]">E</span>state
+            <span className="text-[var(--eos-accent)]">OS</span>
+            <sup className="ml-0.5 text-[0.48em] not-italic text-[var(--eos-muted)]">TM</sup>
           </span>
+        </button>
+
+        <div className="hidden min-w-0 items-center justify-center gap-1 xl:flex 2xl:gap-2">
+          <button type="button" onClick={() => handleNavClick("/", true)} className="eos-nav-link">
+            {dict.nav.discoverMap}
+          </button>
+          <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link">
+            {dict.nav.market}
+          </button>
+          <button type="button" onClick={() => handleNavClick("/cennik")} className="eos-nav-link text-amber-500">
+            {dict.nav.elite}
+          </button>
         </div>
 
-        {/* MOBILE LOGO CENTERED */}
-        <div className="sm:hidden absolute left-1/2 -translate-x-1/2 top-1 z-[15] pointer-events-none">
-          <span className="text-lg font-black tracking-tighter uppercase italic text-white relative overflow-hidden shimmer-logo">
-            <span className="text-[#10b981]">E</span>state<span className="text-[#10b981]">OS</span>&trade;
-          </span>
-        </div>
-
-        {/* CENTRALNY PRZEŁĄCZNIK – TYLKO DLA ZALOGOWANYCH */}
         {user && (
-          <div
-            className={`absolute left-1/2 top-9 z-[12] flex max-lg:w-full max-lg:justify-center -translate-x-1/2 flex-col items-center sm:top-1 md:top-2 ${isOpen ? 'max-lg:pointer-events-none max-lg:opacity-0' : ''}`}
-            aria-hidden={isOpen ? true : undefined}
-          >
+          <div className={`absolute left-1/2 hidden -translate-x-1/2 2xl:block ${isOpen ? "opacity-0" : ""}`}>
             <PremiumModeToggle currentUser={user} />
           </div>
         )}
 
-        {/* DESKTOP NAV */}
-        <div className="hidden lg:flex items-center justify-end flex-1 ml-10">
-            <div className="flex items-center gap-5">
-               {user && <NotificationCenter />}
-               
-               {user ? (
-                 <div className="flex items-center gap-4 ml-1">
-                   <button onClick={() => router.push('/moje-konto')} className="text-[10px] font-black uppercase tracking-widest text-white/70 hover:text-white transition-colors px-2">
-                     Profil
-                   </button>
-                   <button onClick={() => router.push(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')} style={{ backgroundColor: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981" }} className="text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full hover:bg-emerald-500 hover:text-black transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">
-                     {user.role === 'ADMIN' ? 'Centrala' : 'Zarządzaj'}
-                   </button>
-                   <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 transition-colors"><LogOut size={18} /></button>
-                 </div>
-               ) : (
-                 <button onClick={() => router.push('/login')} className="text-[10px] font-black uppercase tracking-widest text-white hover:text-emerald-500 transition-colors flex items-center gap-2 ml-1">
-                   Zaloguj <LogIn size={14} />
-                 </button>
-               )}
+        <div className="hidden min-w-0 items-center justify-end gap-2 lg:flex 2xl:gap-3">
+          <ThemeSwitcher compact />
+          <LanguageSwitcher />
+          {user && <NotificationCenter />}
+
+          {user ? (
+            <div className="ml-1 flex items-center gap-2">
+              <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link">
+                {dict.nav.profile}
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(managePath)}
+                className="rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black"
+              >
+                {manageLabel}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-red-500/10 hover:text-red-500"
+                aria-label={dict.nav.logout}
+              >
+                <LogOut className="size-5" />
+              </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => router.push("/login")}
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)]"
+            >
+              {dict.nav.login}
+              <LogIn className="size-4" />
+            </button>
+          )}
         </div>
 
-        {/* WYZWALACZ MOBILNY */}
-        <div className="relative z-40 mt-0.5 flex items-center gap-2.5 lg:hidden">
+        <div className="relative z-40 flex min-w-0 items-center justify-end gap-2 lg:hidden">
+          <ThemeSwitcher compact className="hidden md:flex" />
+          <LanguageSwitcher className="hidden sm:flex" />
           {user && <NotificationCenter />}
-          <button onClick={() => setIsOpen(!isOpen)} className="text-white p-2 hover:text-emerald-500 transition-colors bg-black/35 rounded-xl border border-white/10">
-             {isOpen ? <X size={24} /> : <Menu size={24} />}
+          <button
+            type="button"
+            onClick={() => setIsOpen((open) => !open)}
+            className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2.5 text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-colors hover:text-[var(--eos-accent)]"
+            aria-label={isOpen ? "Close menu" : "Open menu"}
+            aria-expanded={isOpen}
+          >
+            {isOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>
       </div>
 
-      {/* MENU MOBILNE */}
       <AnimatePresence>
         {isOpen && (
           <>
             <motion.button
               key="mobile-nav-backdrop"
               type="button"
-              aria-label="Zamknij menu"
+              aria-label="Close menu"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+6rem)] z-30 bg-black/55 backdrop-blur-[2px] supports-[backdrop-filter]:backdrop-blur-sm lg:hidden [@media(prefers-reduced-transparency:reduce)]:backdrop-blur-none sm:top-[calc(env(safe-area-inset-top)+5.25rem)]"
+              className="fixed inset-x-0 bottom-0 top-[calc(env(safe-area-inset-top)+5rem)] z-30 bg-black/45 backdrop-blur-sm lg:hidden"
               onClick={() => setIsOpen(false)}
             />
             <motion.div
               key="mobile-nav-panel"
-              initial={{ opacity: 0, height: 0, y: -12 }}
-              animate={{ opacity: 1, height: 'auto', y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -12 }}
-              className="relative z-40 lg:hidden overflow-hidden border-b border-white/10 bg-zinc-950 shadow-2xl"
+              initial={{ opacity: 0, y: -12, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -12, height: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="relative z-40 overflow-hidden border-b border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-[var(--eos-shadow-strong)] lg:hidden"
             >
-              <div className="flex flex-col gap-8 p-6 pb-10">
-                <div className="mt-2 space-y-5 px-1">
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick('/', true)}
-                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5 active:bg-white/10"
-                  >
-                    <Home size={20} className="shrink-0 text-emerald-400" aria-hidden />
-                    Odkryj Mapę
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick('/oferty')}
-                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5 active:bg-white/10"
-                  >
-                    <Building2 size={20} className="shrink-0 text-emerald-400" aria-hidden />
-                    Rynek Nieruchomości
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick('/cennik')}
-                    className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-amber-200 transition-colors hover:bg-amber-500/10 active:bg-amber-500/15"
-                  >
-                    <Crown size={20} className="shrink-0 text-amber-300" aria-hidden />
-                    EstateOS™ Elite
-                  </button>
+              <div className="space-y-6 p-5 pb-8">
+                <div className="flex items-center justify-between gap-3 sm:hidden">
+                  <ThemeSwitcher compact />
+                  <LanguageSwitcher />
                 </div>
-                <div className="h-px bg-white/10" />
-                <div className="space-y-3 px-1">
-                  {user ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleNavClick('/moje-konto')}
-                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-100 transition-colors hover:bg-white/5"
-                      >
-                        <User size={20} className="shrink-0 text-zinc-300" aria-hidden />
-                        Profil
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleNavClick(user.role === 'ADMIN' ? '/centrala' : '/moje-konto')}
-                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-emerald-300 transition-colors hover:bg-emerald-500/10"
-                      >
-                        <Shield size={20} className="shrink-0 text-emerald-400" aria-hidden />
-                        {user.role === 'ADMIN' ? 'Zarządzaj (Centrala)' : 'Zarządzaj Kontem'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleLogout();
-                          setIsOpen(false);
-                        }}
-                        className="flex w-full items-center gap-4 rounded-xl px-2 py-3 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-red-300 transition-colors hover:bg-red-500/10"
-                      >
-                        <LogOut size={20} className="shrink-0 text-red-400" aria-hidden />
-                        Wyloguj
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleNavClick('/login')}
-                      style={{ backgroundColor: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)' }}
-                      className="flex w-full items-center gap-4 rounded-2xl p-4 text-left text-xs font-black uppercase tracking-[0.2em] text-emerald-400"
-                    >
-                      <User size={20} className="shrink-0" aria-hidden />
-                      Zaloguj do Systemu
-                    </button>
-                  )}
+
+                {user && (
+                  <div className="flex justify-center rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 xl:hidden">
+                    <PremiumModeToggle currentUser={user} />
+                  </div>
+                )}
+
+                <div className="grid gap-2">
+                  <MobileNavButton icon={Home} label={dict.nav.discoverMap} onClick={() => handleNavClick("/", true)} />
+                  <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} />
+                  <MobileNavButton icon={Crown} label={dict.nav.elite} accent="amber" onClick={() => handleNavClick("/cennik")} />
                 </div>
+
+                <div className="h-px bg-[var(--eos-border)]" />
+
+                {user ? (
+                  <div className="grid gap-2">
+                    <MobileNavButton icon={User} label={dict.nav.profile} onClick={() => handleNavClick("/moje-konto")} />
+                    <MobileNavButton icon={Shield} label={user.role === "ADMIN" ? dict.nav.manageCentral : dict.nav.manageAccount} onClick={() => handleNavClick(managePath)} />
+                    <MobileNavButton icon={LogOut} label={dict.nav.logout} accent="red" onClick={handleLogout} />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleNavClick("/login")}
+                    className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-accent)]/25 bg-[var(--eos-accent-soft)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-accent)]"
+                  >
+                    <LogIn className="size-5" />
+                    {dict.nav.login}
+                  </button>
+                )}
               </div>
             </motion.div>
           </>
         )}
       </AnimatePresence>
-      <ReviewPrompt />
-<style jsx>{`
-.shimmer-logo::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -150%;
-  width: 150%;
-  height: 100%;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.35), transparent 70%);
-  transform: skewX(-20deg);
-  animation: shimmerMove 15s infinite;
-}
-@keyframes shimmerMove {
-  0% { left: -150%; opacity: 0; }
-  5% { opacity: 1; }
-  10% { left: 150%; opacity: 0; }
-  100% { left: 150%; opacity: 0; }
-}
-`}</style>
 
+      <ReviewPrompt />
+
+      <style jsx>{`
+        .eos-nav-link {
+          border-radius: 999px;
+          padding: 0.65rem 0.85rem;
+          color: var(--eos-muted);
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          transition: color 0.2s ease, background-color 0.2s ease;
+        }
+        .eos-nav-link:hover {
+          background: var(--eos-input);
+          color: var(--eos-text);
+        }
+      `}</style>
     </nav>
+  );
+}
+
+function MobileNavButton({
+  icon: Icon,
+  label,
+  onClick,
+  accent = "emerald",
+}: {
+  icon: typeof Home;
+  label: string;
+  onClick: () => void;
+  accent?: "emerald" | "amber" | "red";
+}) {
+  const accentClass =
+    accent === "amber"
+      ? "text-amber-500"
+      : accent === "red"
+        ? "text-red-500"
+        : "text-[var(--eos-accent)]";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left text-xs font-bold uppercase tracking-[0.13em] text-[var(--eos-text)] transition-colors hover:bg-[var(--eos-input)]"
+    >
+      <Icon className={`size-5 shrink-0 ${accentClass}`} aria-hidden />
+      {label}
+    </button>
   );
 }

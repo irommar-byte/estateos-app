@@ -143,7 +143,7 @@ export default function ReviewPrompt() {
                       disabled={isSubmitting || rating === 0}
                       className="mt-4 w-full py-4 bg-gradient-to-r from-yellow-600 to-yellow-500 text-black font-black uppercase tracking-widest text-[10px] rounded-xl flex items-center justify-center gap-2 hover:shadow-[0_0_30px_rgba(234,179,8,0.4)] hover:scale-[1.02] transition-all disabled:opacity-50 disabled:hover:scale-100"
                     >
-                      {isSubmitting ? 'Przesyłanie...' : <><Send size={14} /> Opublikuj Opinię</>}
+                      {isSubmitting ? 'Uploading...' : <><Send size={14} /> Opublikuj Opinię</>}
                     </button>
                   </motion.div>
                 </div>

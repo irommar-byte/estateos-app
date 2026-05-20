@@ -11,7 +11,7 @@ const MARKER_SUFFIX = "-->";
 const KW_SANITIZE_REGEX = /[^A-Za-z0-9/]/g;
 
 function normalizeApartmentNumber(value: unknown): string {
-  return String(value || "").trim().slice(0, 24);
+  return String(value || "").trim().slice(0, 32);
 }
 
 function normalizeLandRegistryNumber(value: unknown): string {

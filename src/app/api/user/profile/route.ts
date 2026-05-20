@@ -5,6 +5,10 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { normalizePhoneE164 } from '@/lib/phoneE164';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const PROFILE_SELECT = {
   ...MOBILE_USER_SELECT,
@@ -14,10 +18,15 @@ const PROFILE_SELECT = {
   searchRooms: true,
   searchDistricts: true,
   searchAmenities: true,
-  cityStats: true,
-  districtStats: true,
-  propertyStats: true,
-  reasonStats: true,
+  /** Pola JSON są na modelu `DiscoveryProfile`, nie na `User` — select na User powodował P2019 runtime. */
+  discoveryProfile: {
+    select: {
+      cityStats: true,
+      districtStats: true,
+      propertyStats: true,
+      reasonStats: true,
+    },
+  },
   offers: {
     orderBy: { updatedAt: 'desc' as const },
     select: {
@@ -180,14 +189,21 @@ export async function GET() {
     const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
     const badges = resolveEliteBadges(user);
 
-    return NextResponse.json({
-      success: true,
-      user: shaped,
-      ...shaped,
-      offers: user.offers,
-      badges,
-      matchedOffers,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        user: shaped,
+        ...shaped,
+        offers: user.offers,
+        badges,
+        matchedOffers,
+      },
+      {
+        headers: {
+          'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+        },
+      }
+    );
   } catch (error) {
     return NextResponse.json(
       {

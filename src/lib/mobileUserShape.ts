@@ -8,9 +8,11 @@ export type MobileUserCore = {
   isVerified: boolean;
   emailVerifiedAt?: Date | null;
   phoneVerifiedAt?: Date | null;
-  planType: string;
+  planType: string | null;
+  extraListings?: number | null;
   isPro: boolean;
   proExpiresAt: Date | null;
+  plusExpiresAt?: Date | null;
   companyName?: string | null;
   pendingEmail?: string | null;
 };
@@ -40,23 +42,30 @@ export function shapeMobileUser(user: MobileUserCore) {
   const phoneVerified = Boolean(user.phone && phoneVerifiedAt);
   const lockedRole = user.role === 'AGENT' || user.role === 'ADMIN';
 
+  const phone = user.phone;
+
   return {
     id: user.id,
     email: user.email,
     name: user.name,
     firstName,
     lastName,
-    phone: user.phone,
+    phone,
+    contactPhone: phone,
+    phoneNumber: phone,
+    mobile: phone,
     image: user.image,
     avatar: user.image,
     role: user.role,
     planType: user.planType,
+    extraListings: user.extraListings ?? 0,
     isPro: computeIsProActive({
       role: user.role,
       isPro: user.isPro,
       proExpiresAt: user.proExpiresAt,
     }),
     proExpiresAt: user.proExpiresAt,
+    plusExpiresAt: user.plusExpiresAt ?? null,
     emailVerified,
     isEmailVerified: emailVerified,
     emailVerifiedAt,
@@ -82,8 +91,10 @@ export const MOBILE_USER_SELECT = {
   emailVerifiedAt: true,
   phoneVerifiedAt: true,
   planType: true,
+  extraListings: true,
   isPro: true,
   proExpiresAt: true,
+  plusExpiresAt: true,
   companyName: true,
   pendingEmail: true,
 } as const;

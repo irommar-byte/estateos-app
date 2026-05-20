@@ -51,6 +51,7 @@ import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Cr
 import AppointmentManager from "@/components/AppointmentManager";
 import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import OfferListingSlots from "@/components/crm/OfferListingSlots";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -716,6 +717,10 @@ export default function CRMDashboard() {
     const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (searchParams && searchParams.get('payment_success') === 'true') {
        const plan = searchParams.get('plan_activated');
+       if (!plan) {
+         window.history.replaceState({}, document.title, window.location.pathname);
+         return;
+       }
        if (plan === 'pakiet_plus') setWowType('plus');
        else if (plan === 'agency') setWowType('agency');
        else if (plan === 'renewal') setWowType('renewal');
@@ -906,7 +911,7 @@ export default function CRMDashboard() {
   const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
+    <div className="theme-aware-dashboard min-h-screen bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[#111] via-[#050505] to-black text-white px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
         {wowPlusType && <WowPlusOverlay />}
         {wowType && <WowOverlay type={wowType as "investor" | "agency" | "plus"} />}
@@ -1124,18 +1129,18 @@ export default function CRMDashboard() {
 
           <div className="relative z-10 text-center md:text-left">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
-               {activeTab === 'radar' && <>Radar <span className="text-emerald-500">Inwestycyjny</span></>}
-              {activeTab === 'my_offers' && <>Moje <span className="text-blue-500">Ogłoszenia</span></>}
-              {activeTab === 'offers' && <>Moje <span className="text-blue-500">Ulubione</span></>}
-               {activeTab === 'planowanie' && <>Centrum <span className="text-purple-500">Planowania</span></>}
-                {activeTab === 'transakcje' && <>Szyfrowane <span className="text-amber-500">Deal Roomy</span></>}
+              {activeTab === 'radar' && <>Investment <span className="text-emerald-500">Radar</span></>}
+              {activeTab === 'my_offers' && <>My <span className="text-blue-500">Listings</span></>}
+              {activeTab === 'offers' && <>My <span className="text-blue-500">Favorites</span></>}
+               {activeTab === 'planowanie' && <>Planning <span className="text-purple-500">Center</span></>}
+                {activeTab === 'transakcje' && <>Encrypted <span className="text-amber-500">Deal Rooms</span></>}
             </h2>
             <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
-               {activeTab === 'radar' && 'Ustaw kryteria dokładnie jak w aplikacji mobilnej: lokalizacja, metraż, budżet i tryb transakcji. Po zapisaniu radar natychmiast przelicza dopasowania.'}
-               {activeTab === 'my_offers' && 'Zarządzaj własnymi ogłoszeniami w jednym miejscu: statusy, odświeżenia, negocjacje i statystyki wyświetleń.'}
-               {activeTab === 'offers' && 'Twoja lista obserwowanych ofert z rynku. Szybko wrócisz do kluczowych nieruchomości i sprawdzisz ich aktualny status.'}
-               {activeTab === 'planowanie' && 'Kalendarz działa jako centrum ustaleń: prezentacje, negocjacje i priorytety dnia, zsynchronizowane z Twoimi transakcjami.'}
-               {activeTab === 'transakcje' && 'Szyfrowane Deal Roomy do finalizacji spraw: wiadomości, oferty cenowe, dokumenty i kontakt ze stroną transakcji.'}
+               {activeTab === 'radar' && 'Set criteria exactly like in mobile: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.'}
+               {activeTab === 'my_offers' && 'Manage your listings in one place: statuses, renewals, negotiations, and view statistics.'}
+               {activeTab === 'offers' && 'Your market watchlist. Quickly return to key properties and check their current status.'}
+               {activeTab === 'planowanie' && 'Calendar as your planning hub: showings, negotiations, and daily priorities synced with your deals.'}
+               {activeTab === 'transakcje' && 'Encrypted Deal Rooms for closing: messages, pricing offers, documents, and direct party contact.'}
             </p>
           </div>
         </motion.div>
@@ -1170,11 +1175,11 @@ export default function CRMDashboard() {
                      )}
                   </div>
                   <div>
-                    <h3 className="text-white text-2xl font-black tracking-tighter">Aktywne Skanowanie</h3>
+                    <h3 className="text-white text-2xl font-black tracking-tighter">Active Scanning</h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${isPartnerMode ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
                       <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${isPartnerMode ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
-                        {isPartnerMode ? 'Podwójny radar w toku' : 'Radar w toku'}
+                        {isPartnerMode ? 'Dual radar active' : 'Radar active'}
                       </span>
                     </div>
                   </div>
@@ -1182,33 +1187,33 @@ export default function CRMDashboard() {
 
                 <button onClick={openRadarEditor} className="relative flex items-center gap-2 px-5 py-3 bg-transparent border border-white/20 hover:border-emerald-500 hover:bg-emerald-500/10 text-white/80 hover:text-white rounded-xl font-bold uppercase tracking-widest text-[10px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] cursor-pointer group">
                   <SlidersHorizontal size={14} className="text-emerald-500 transition-colors" />
-                  <span>KALIBRUJ RADAR</span>
+                  <span>CALIBRATE RADAR</span>
                 </button>
               </div>
 
               <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Lokalizacja</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchDistricts ? currentUser.searchDistricts.split(',').length + ' Dzielnic' : 'Wszystkie'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Location</span>
+                    <span className="text-white font-black text-sm truncate">{currentUser?.searchDistricts ? currentUser.searchDistricts.split(',').length + ' Districts' : 'All'}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Minimalny Metraż</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchAreaFrom ? 'Od ' + currentUser.searchAreaFrom + ' m²' : 'Dowolny metraż'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Minimum area</span>
+                    <span className="text-white font-black text-sm truncate">{currentUser?.searchAreaFrom ? 'From ' + currentUser.searchAreaFrom + ' m²' : 'Any area'}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Pokoje</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchRooms ? currentUser.searchRooms + ' Pok.' : 'Wszystkie'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Rooms</span>
+                    <span className="text-white font-black text-sm truncate">{currentUser?.searchRooms ? currentUser.searchRooms + ' rooms' : 'All'}</span>
                  </div>
                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
-                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">Maks. Budżet</span>
-                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{currentUser?.searchMaxPrice ? 'Do ' + new Intl.NumberFormat('pl-PL').format(currentUser.searchMaxPrice) + ' PLN' : 'Bez limitu'}</span>
+                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">Max budget</span>
+                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{currentUser?.searchMaxPrice ? 'Up to ' + new Intl.NumberFormat('en-US').format(currentUser.searchMaxPrice) + ' PLN' : 'No limit'}</span>
                  </div>
               </div>
               
               {currentUser?.searchAmenities && (
                  <div className="relative z-10 mt-6 pt-6 border-t border-white/5 flex gap-3 flex-wrap items-center">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mr-2">Zaznaczone Udogodnienia:</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mr-2">Selected amenities:</span>
                     {currentUser.searchAmenities.split(',').map((a: string) => (
                        <span key={a} className="px-4 py-2 bg-[#161616] border border-white/10 rounded-xl text-white/70 text-[10px] font-black uppercase tracking-widest shadow-inner">{a.trim()}</span>
                     ))}
@@ -1229,8 +1234,8 @@ export default function CRMDashboard() {
                                 <Radar className="text-emerald-500" size={20} />
                             </div>
                             <div>
-                                <h3 className="text-2xl font-black text-white">Konfiguracja Radaru</h3>
-                                <p className="text-white/40 text-xs uppercase tracking-widest mt-1">Ustawienia Matchmakingu</p>
+                                <h3 className="text-2xl font-black text-white">Radar configuration</h3>
+                                <p className="text-white/40 text-xs uppercase tracking-widest mt-1">Matchmaking settings</p>
                             </div>
                         </div>
 
@@ -1238,13 +1243,13 @@ export default function CRMDashboard() {
 
                             {/* PRZEŁĄCZNIK KUPNO / WYNAJEM DLA RADARU */}
                             <div>
-                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Cel Poszukiwań</label>
+                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Search objective</label>
                                 <div className="flex bg-[#111] border border-white/10 rounded-full p-1.5 shadow-inner relative w-full">
                                     <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${radarFormData.searchTransactionType === 'sale' ? 'translate-x-[calc(100%+4px)]' : (radarFormData.searchTransactionType === 'rent' ? 'translate-x-[calc(200%+8px)]' : 'translate-x-0')}`}></div>
                                     
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'all'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'all' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>Wszystkie</button>
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'sale'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'sale' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>Na Kupno</button>
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'rent'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'rent' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>Na Najem</button>
+                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'all'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'all' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>All</button>
+                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'sale'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'sale' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>For purchase</button>
+                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'rent'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'rent' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>For rent</button>
                                 </div>
                             </div>
 
@@ -1471,6 +1476,14 @@ export default function CRMDashboard() {
                 </button>
               </div>
             </div>
+          )}
+
+          {isListingsTab && offerSectionFilter === 'ACTIVE' && (
+            <OfferListingSlots
+              user={currentUser}
+              activeOffers={offersBySection.ACTIVE}
+              onAddOffer={goToAddOffer}
+            />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

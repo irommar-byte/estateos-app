@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { finalizeDealWithOfferArchive, isOwnerFinalAccept } from '@/lib/dealFinalize';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -147,18 +148,28 @@ export async function POST(
           data: { status: 'REJECTED' }
         });
 
-        // B. Update DEAL
-        await tx.deal.update({
-          where: { id: dealId },
-          data: {
-            status: 'AGREED',
-            acceptedBidId: bidId,
-            isActive: false
-          }
-        });
+        const ownerFinalizesNow = isOwnerFinalAccept(userId, deal.sellerId);
 
-        // C. Oferta SOLD + anulowanie konkurencyjnych deali — dopiero w POST …/finalize (drugi krok właściciela),
-        // żeby akceptacja ceny przez kupującego nie zamykała rynku przed finalną decyzją właściciela.
+        if (ownerFinalizesNow) {
+          await finalizeDealWithOfferArchive(tx, {
+            dealId,
+            offerId: deal.offerId,
+            sellerId: deal.sellerId,
+            buyerId: deal.buyerId,
+            actorUserId: userId,
+            acceptedBidId: bidId,
+            finalPrice: bid.amount,
+          });
+        } else {
+          await tx.deal.update({
+            where: { id: dealId },
+            data: {
+              status: 'AGREED',
+              acceptedBidId: bidId,
+              isActive: false,
+            },
+          });
+        }
 
         // D. SYSTEM MESSAGE (canonical DEAL_EVENT)
         await tx.dealMessage.create({
@@ -167,8 +178,8 @@ export async function POST(
             senderId: userId,
             content: buildEventContent({
               entity: 'BID',
-              action: 'ACCEPTED',
-              status: 'ACCEPTED',
+              action: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
+              status: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
               bidId,
               amount: bid.amount,
               note: safeNote,

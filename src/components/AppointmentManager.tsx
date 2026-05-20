@@ -73,8 +73,8 @@ export default function AppointmentManager({ appointment, onClose }: any) {
         body: JSON.stringify(payload)
       });
       if (res.ok) { window.dispatchEvent(new Event('refreshNotifications')); onClose(); } 
-      else alert("Błąd przetwarzania");
-    } catch(e) { alert("Błąd połączenia"); } finally { setIsSubmitting(false); }
+      else alert("Processing error");
+    } catch(e) { alert("Connection error"); } finally { setIsSubmitting(false); }
   };
 
   if (!mounted || !appointment) return null;
@@ -99,7 +99,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                <button onClick={() => { setView(initView); setCounterStep(1); }} className="w-8 h-8 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-white/80 transition-colors"><ChevronLeft size={16} /></button> 
             )}
             <h3 className="text-sm md:text-base font-black text-white uppercase tracking-widest">
-               {view === 'IDLE' ? 'Negocjacje' : view === 'ACCEPTED_VIEW' ? 'Potwierdzono' : 'Zarządzanie'}
+               {view === 'IDLE' ? 'Negotiation' : view === 'ACCEPTED_VIEW' ? 'Confirmed' : 'Management'}
             </h3>
           </div>
           <button onClick={onClose} className="w-8 h-8 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-white/50 transition-colors"><X size={16} /></button>
@@ -124,7 +124,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                 {appointment.message && (
                   <div className="bg-[#151515] p-3 md:p-4 rounded-2xl border border-white/5 relative">
                      <MessageSquare className="absolute top-4 right-4 text-white/10" size={24} />
-                     <p className="text-[9px] text-white/40 font-bold uppercase tracking-widest mb-1">Wiadomość:</p>
+                     <p className="text-[9px] text-white/40 font-bold uppercase tracking-widest mb-1">Message:</p>
                      <p className="text-xs text-white/80 leading-relaxed italic relative z-10">"{appointment.message}"</p>
                   </div>
                 )}
@@ -137,16 +137,16 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                       <div className="pt-2 flex flex-col gap-3">
                         <div className="bg-[#111] p-4 rounded-[1.5rem] border border-white/5 text-center relative">
                            <Loader2 className="animate-spin text-white/20 mx-auto mb-2" size={20} />
-                           <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-1">Oczekujemy na odpowiedź</h4>
-                           <p className="text-[9px] text-white/40 font-medium">Twój ruch został wykonany. Zostaniesz powiadomiony po decyzji partnera.</p>
+                           <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-1">Waiting for response</h4>
+                           <p className="text-[9px] text-white/40 font-medium">Your action has been submitted. You will be notified after the partner decision.</p>
                         </div>
-                        <button onClick={() => setView('DECLINING')} className={`${btnClass} ${neonRed}`}><X size={16} /> Wycofaj Ofertę</button>
+                        <button onClick={() => setView('DECLINING')} className={`${btnClass} ${neonRed}`}><X size={16} /> Withdraw offer</button>
                       </div>
                     ) : (
                       <div className="pt-2 flex flex-col gap-2.5">
-                        <button onClick={() => setView('ACCEPTING')} className={`${btnClass} ${neonGreen}`}><CheckCircle size={16} /> Akceptuję Termin</button>
+                        <button onClick={() => setView('ACCEPTING')} className={`${btnClass} ${neonGreen}`}><CheckCircle size={16} /> Accept time</button>
                         <button onClick={() => setView('COUNTERING')} className={`${btnClass} ${neonYellow}`}><Clock size={16} /> Zaproponuj Inny</button>
-                        <button onClick={() => setView('DECLINING')} className={`${btnClass} ${neonRed}`}><X size={16} /> Odrzuć</button>
+                        <button onClick={() => setView('DECLINING')} className={`${btnClass} ${neonRed}`}><X size={16} /> Decline</button>
                       </div>
                     )}
                   </>
@@ -166,11 +166,11 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                     <p className="text-emerald-500 font-black text-sm">{currentPropDate.getDate()} {currentPropDate.toLocaleDateString('pl-PL', { month: 'long' })} o {currentPropDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</p>
                  </div>
                  
-                 <p className="text-[10px] text-white/40 leading-relaxed px-4 pb-4">Spotkanie zostało oficjalnie wpisane do systemu. W przypadku braku możliwości dotarcia, poinformuj drugą stronę, aby uniknąć negatywnej noty w profilu.</p>
+                 <p className="text-[10px] text-white/40 leading-relaxed px-4 pb-4">The meeting has been officially recorded. If you cannot attend, notify the other side to avoid negative profile feedback.</p>
 
                  <div className="w-full rounded-2xl border border-white/10 bg-white/5 p-3">
                    <p className="text-[10px] text-white/60 uppercase tracking-widest font-black">Tryb canonical</p>
-                   <p className="text-xs text-white/50 mt-1">Ocena i zamknięcie są obsługiwane po finalizacji transakcji w DealRoom.</p>
+                   <p className="text-xs text-white/50 mt-1">Rating and closure are handled after finalization in DealRoom.</p>
                  </div>
               </motion.div>
             )}
@@ -182,7 +182,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                   <h4 className="text-lg md:text-xl font-black text-white tracking-tighter">Zatwierdzasz spotkanie?</h4>
                   <p className="text-white/40 text-[10px] md:text-xs leading-relaxed px-4 pb-4">Druga strona otrzyma natychmiastowe powiadomienie o akceptacji terminu w systemie.</p>
                   <button onClick={() => handleAction('ACCEPTED')} disabled={isSubmitting} className={`${btnClass} ${neonGreen}`}>
-                    {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : 'Potwierdzam Wiążąco'}
+                    {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : 'Confirm binding'}
                   </button>
                </motion.div>
             )}
@@ -221,11 +221,11 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                             <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest">Nowy Termin</span>
                             <span className="text-yellow-500 font-black text-sm flex items-center gap-1.5"><CalendarIcon size={12}/> {newDate?.toLocaleDateString('pl-PL')} o {newHour}</span>
                          </div>
-                         <button onClick={() => { setCounterStep(1); setNewDate(null); setNewHour(null); }} className="text-[8px] font-black uppercase text-white/30 hover:text-white border border-white/10 px-2 py-1 rounded-full">Zmień</button>
+                         <button onClick={() => { setCounterStep(1); setNewDate(null); setNewHour(null); }} className="text-[8px] font-black uppercase text-white/30 hover:text-white border border-white/10 px-2 py-1 rounded-full">Change</button>
                       </div>
                       <textarea placeholder="Dlaczego proponujesz ten termin..." maxLength={300} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full h-[80px] md:h-[100px] bg-[#111] border border-white/10 rounded-[1.5rem] p-4 text-xs text-white outline-none focus:border-yellow-500/50 resize-none transition-colors" />
                       <button onClick={() => handleAction('COUNTER')} disabled={isSubmitting} className={`${btnClass} ${neonYellow}`}>
-                        {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <><Send size={16}/> Wyślij Propozycję</>}
+                        {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <><Send size={16}/> Send proposal</>}
                       </button>
                    </div>
                 )}
@@ -235,10 +235,10 @@ export default function AppointmentManager({ appointment, onClose }: any) {
             {view === 'DECLINING' && (
               <motion.div key="decline" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col h-full space-y-4 my-auto text-center">
                  <h4 className="text-lg md:text-xl font-black text-white tracking-tighter">Odrzucenie wizyty</h4>
-                 <p className="text-white/40 text-[10px] leading-relaxed px-4">Napisz krótko, dlaczego odrzucasz tę prośbę. To pozwoli uniknąć nieporozumień i zaoszczędzi czas.</p>
-                 <textarea placeholder="Np. Oferta jest już nieaktualna..." maxLength={300} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full flex-1 min-h-[100px] bg-[#111] border border-white/10 rounded-[1.5rem] p-4 text-xs text-white outline-none focus:border-red-500/50 resize-none transition-colors" />
+                 <p className="text-white/40 text-[10px] leading-relaxed px-4">Briefly explain why you are rejecting this request. It helps avoid misunderstandings and saves time.</p>
+                 <textarea placeholder="e.g. The listing is no longer available..." maxLength={300} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full flex-1 min-h-[100px] bg-[#111] border border-white/10 rounded-[1.5rem] p-4 text-xs text-white outline-none focus:border-red-500/50 resize-none transition-colors" />
                  <button onClick={() => handleAction('DECLINED')} disabled={isSubmitting} className={`${btnClass} ${neonRed}`}>
-                   {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <><X size={16}/> Definitywnie Odrzuć</>}
+                   {isSubmitting ? <Loader2 className="animate-spin" size={16}/> : <><X size={16}/> Definitywnie Decline</>}
                  </button>
               </motion.div>
             )}
@@ -250,7 +250,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                   <h4 className="text-xl font-black text-white tracking-tighter">
                     Odrzucono
                   </h4>
-                  <p className="text-xs text-white/40">Status tej operacji został już zamknięty i zarchiwizowany w systemie.</p>
+                  <p className="text-xs text-white/40">This operation status has already been closed and archived in the system.</p>
                   <button onClick={onClose} className="mt-4 px-6 py-3 border border-white/10 rounded-full text-xs font-black uppercase tracking-widest hover:bg-white/5 transition-colors">Zamknij</button>
                </motion.div>
             )}

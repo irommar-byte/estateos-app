@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
-function resolveSessionSecret(): string {
+/** Ten sam sekret co do szyfrowania ciastka sesji — używaj też do SignJWT w `/api/auth/login`, żeby nie rozjeżdżać kolejności zmiennych env. */
+export function resolveSessionSecret(): string {
     const fromEnv =
         process.env.AUTH_SECRET ||
         process.env.NEXTAUTH_SECRET ||

@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
         destination: "https://estateos.pl/:path*",
         permanent: true,
       },
+      /** Alias pod App Store / linki zewnętrzne — treść EN na działającej trasie prawnej. */
+      { source: "/privacy-policy", destination: "/polityka-prywatnosci", permanent: false },
+      { source: "/privacy-policy/", destination: "/polityka-prywatnosci", permanent: false },
     ];
   },
   async rewrites() {

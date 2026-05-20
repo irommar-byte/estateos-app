@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -74,6 +75,10 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    const activePublicationIds = await activePublicationOfferIds(
+      offers.map((offer) => Number(offer.id)).filter((id) => Number.isFinite(id))
+    );
+
     const dislikedOfferIds = new Set(
       recentEvents
         .filter((e) => e.eventType === 'DISCOVERY_DISLIKE' || e.eventType === 'DISCOVERY_DISLIKE_REASON')
@@ -96,6 +101,7 @@ export async function GET(req: Request) {
     const qualityPenalty = Number(reasonStats.QUALITY_LOW || 0);
 
     const ranked = offers
+      .filter((offer) => activePublicationIds.has(Number(offer.id)))
       .filter((o) => !likedOfferIds.has(Number(o.id)))
       .map((offer) => {
         let raw = 55;

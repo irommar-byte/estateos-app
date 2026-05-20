@@ -1,11 +1,11 @@
 import Pricing from "@/components/Pricing";
 
 export const metadata = {
-  title: 'Cennik | EstateOS',
-  description: 'Wybierz plan dopasowany do Twoich potrzeb inwestycyjnych i sprzedażowych.',
+  title: 'Pricing | EstateOS',
+  description: 'Choose a plan tailored to your investment and sales needs.',
 };
 
-export default function CennikPage() {
+export default function PricingPage() {
   return (
     <main className="bg-black min-h-screen pt-20">
       <Pricing />

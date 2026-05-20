@@ -20,8 +20,9 @@ model User {
   companyName          String?
   nip                  String?
   role                 Role                     @default(USER)
-  planType             PlanType                 @default(NONE)
+  planType             PlanType?                @default(NONE)
   extraListings        Int                      @default(0)
+  plusExpiresAt        DateTime?
   proExpiresAt         DateTime?
   isVerified           Boolean                  @default(false)
   emailVerifiedAt      DateTime?
@@ -386,6 +387,7 @@ enum Role {
 enum PlanType {
   NONE
   PRO
+  PLUS
   AGENCY
   INVESTOR
 }

@@ -1,0 +1,457 @@
+./.agent_deploy_recon2.log
+./.agent_deploy_recon.log
+./deploy/BACKEND_AGENT_ERROR_CODES.md
+./deploy/BACKEND_AGENT_INDEX.md
+./deploy/BACKEND_AGENT_OFFER_API.md
+./deploy/BACKEND_AGENT_PROFILE_EDIT_API.md
+./deploy/BACKEND_AGENT_REGISTRATION_API.md
+./deploy/BACKEND_AGENT_ROLE_OVERVIEW.md
+./deploy/HANDOFF_MOBILE_AGENT.txt
+./deploy/nginx-well-known-proxy.inc
+./deploy/nginx-www-to-apex.conf
+./deploy/patch-nginx-well-known.sh
+./deploy/USAGE.txt
+./docs/AI_OPERATOR_RULES.md
+./docs/reconciliation/MASTER_EXECUTION_PLAN.md
+./docs/reconciliation/mobile-backend-www-master-audit.md
+./docs/reconciliation/PASSKEYS_CANONICAL.md
+./docs/reconciliation/sql/add_agent_commission_percent.sql
+./docs/reconciliation/sql/add_legal_verification_request.sql
+./docs/reconciliation/sql/add_offer_land_registry_and_legal_columns_if_missing.sql
+./docs/reconciliation/sql/add_offer_land_registry_number.sql
+./docs/sql/add_offer_kw_columns_mysql.sql
+./docs/sql/offer_legal_columns_full_hotfix.sql
+./ecosystem.config.cjs
+./.env
+./.env.example
+./eslint.config.mjs
+./.gitignore
+./next.config.ts
+./next-env.d.ts
+./package.json
+./package-lock.json
+./postcss.config.js
+./postcss.config.mjs
+./prisma/manual/sql/2026-04-30_schema_sync.sql
+./prisma/manual/sql/2026-05-07_dealroom_review_finalization_fallback.sql
+./prisma/manual/sql/2026-05-09_favorites_price_push.sql
+./prisma/manual/sql/2026-05-11_user_email_change_pending.sql
+./prisma/manual/sql/2026-05-11_user_email_verify_pending.sql
+./prisma/manual/sql/2026-05-11_user_phone_verified_at.sql
+./prisma/migration_lock.toml
+./prisma/migrations/20260515143000_offer_land_registry_apartment/migration.sql
+./prisma/schema.prisma
+./public/offer-landing.html
+./README.md
+./scripts/check_pro_expiration.js
+./scripts/deploy-prod.sh
+./scripts/postdeploy-smoke.cjs
+./scripts/purge-legacy-middleware.cjs
+./scripts/reconcile-prod-deploy.cjs
+./scripts/reviews-finalization-fallback.cjs
+./scripts/set-user-partner.mjs
+./scripts/smoke-offer-kw-update.mjs
+./scripts/verify-reconciliation-e2e.cjs
+./src/app/admin/page.tsx
+./src/app/api/admin/dashboard/route.ts
+./src/app/api/admin/offers/route.ts
+./src/app/api/admin/settings/route.ts
+./src/app/api/admin/snapshot-create/route.ts
+./src/app/api/admin/snapshot-rollback/route.ts
+./src/app/api/admin/snapshots/route.ts
+./src/app/api/admin/stats/route.ts
+./src/app/api/admin/users/delete/route.ts
+./src/app/api/admin/users/[id]/toggle-pro/route.ts
+./src/app/api/admin/users/route.ts
+./src/app/api/ai/generate/route.ts
+./src/app/api/alerts/route.ts
+./src/app/api/appointments/check-turn/route.ts
+./src/app/api/appointments/propose/route.ts
+./src/app/api/appointments/respond/route.ts
+./src/app/api/appointments/route.ts
+./src/app/api/auth/check-exists/route.ts
+./src/app/api/auth/check/route.ts
+./src/app/api/auth/login/route.ts
+./src/app/api/auth/logout/route.ts
+./src/app/api/auth/me/route.ts
+./src/app/api/auth/[...nextauth]/route.ts
+./src/app/api/auth/register-agency/route.ts
+./src/app/api/auth/reset-password/route.ts
+./src/app/api/bids/respond/route.ts
+./src/app/api/bids/route.ts
+./src/app/api/concierge/counter/route.ts
+./src/app/api/concierge/get-offer-details/route.ts
+./src/app/api/concierge/request/route.ts
+./src/app/api/concierge/respond/route.ts
+./src/app/api/crm/board/route.ts
+./src/app/api/crm/data/route.ts
+./src/app/api/crm/deals/route.ts
+./src/app/api/crm/push/route.ts
+./src/app/api/crm/radar/route.ts
+./src/app/api/crm/radar/send/route.ts
+./src/app/api/dealroom/messages/route.ts
+./src/app/api/deals/[id]/appointments/[appointmentId]/respond/route.ts
+./src/app/api/deals/[id]/appointments/route.ts
+./src/app/api/deals/[id]/bids/[bidId]/respond/route.ts
+./src/app/api/deals/[id]/finalize/route.ts
+./src/app/api/deals/[id]/messages/route.ts
+./src/app/api/deals/[id]/read/route.ts
+./src/app/api/deals/[id]/route.ts
+./src/app/api/deals/[id]/typing/route.ts
+./src/app/api/deals/initiate/route.ts
+./src/app/api/deals/init/route.ts
+./src/app/api/deals/messages/action/route.ts
+./src/app/api/deals/messages/route.ts
+./src/app/api/deals/my/route.ts
+./src/app/api/deals/route.ts
+./src/app/api/eksperci/route.ts
+./src/app/api/ekspert/[id]/route.ts
+./src/app/api/health/route.ts
+./src/app/api/home/live-stats/route.ts
+./src/app/api/location/districts/route.ts
+./src/app/api/location/reverse/route.ts
+./src/app/api/login/route.ts
+./src/app/api/metrics/favorites-price/route.ts
+./src/app/api/mobile/v1/admin/legal-verification/[offerId]/approve/route.ts
+./src/app/api/mobile/v1/admin/legal-verification/[offerId]/reject/route.ts
+./src/app/api/mobile/v1/admin/legal-verification/route.ts
+./src/app/api/mobile/v1/admin/offers/route.ts
+./src/app/api/mobile/v1/admin/radar-analytics/route.ts
+./src/app/api/mobile/v1/admin/users/route.ts
+./src/app/api/mobile/v1/admin/users/[userId]/route.ts
+./src/app/api/mobile/v1/auth/change-email/route.ts
+./src/app/api/mobile/v1/auth/change-email/verify/route.ts
+./src/app/api/mobile/v1/auth/login/route.ts
+./src/app/api/mobile/v1/auth/route.ts
+./src/app/api/mobile/v1/auth/sms/send/route.ts
+./src/app/api/mobile/v1/auth/sms/verify/route.ts
+./src/app/api/mobile/v1/bids/route.ts
+./src/app/api/mobile/v1/blocks/route.ts
+./src/app/api/mobile/v1/blocks/[userId]/route.ts
+./src/app/api/mobile/v1/deals/[id]/actions/route.ts
+./src/app/api/mobile/v1/deals/[id]/messages/route.ts
+./src/app/api/mobile/v1/deals/[id]/route.ts
+./src/app/api/mobile/v1/deals/[id]/typing/route.ts
+./src/app/api/mobile/v1/deals/route.ts
+./src/app/api/mobile/v1/discovery/events/route.ts
+./src/app/api/mobile/v1/discovery/feed/route.ts
+./src/app/api/mobile/v1/iap/pakiet-plus/route.ts
+./src/app/api/mobile/v1/iap/status/[pendingPurchaseId]/route.ts
+./src/app/api/mobile/v1/iap/verify/route.ts
+./src/app/api/mobile/v1/legal-verification/route.ts
+./src/app/api/mobile/v1/locations/route.ts
+./src/app/api/mobile/v1/login/route.ts
+./src/app/api/mobile/v1/offers/[offerId]/legal-verification/route.ts
+./src/app/api/mobile/v1/offers/[offerId]/legal-verification/submit/route.ts
+./src/app/api/mobile/v1/offers/[offerId]/route.ts
+./src/app/api/mobile/v1/offers/route.ts
+./src/app/api/mobile/v1/passkeys/auth-options/route.ts
+./src/app/api/mobile/v1/passkeys/auth-verify/route.ts
+./src/app/api/mobile/v1/passkeys/_challengeStore.ts
+./src/app/api/mobile/v1/passkeys/register-options/route.ts
+./src/app/api/mobile/v1/passkeys/register-verify/route.ts
+./src/app/api/mobile/v1/passkeys/remove/route.ts
+./src/app/api/mobile/v1/reports/categories/route.ts
+./src/app/api/mobile/v1/reports/route.ts
+./src/app/api/mobile/v1/user/avatar/route.ts
+./src/app/api/mobile/v1/user/me/email-change/confirm/route.ts
+./src/app/api/mobile/v1/user/me/email-change/request/route.ts
+./src/app/api/mobile/v1/user/me/email-change/route.ts
+./src/app/api/mobile/v1/user/me/email-verify/confirm/route.ts
+./src/app/api/mobile/v1/user/me/email-verify/send/route.ts
+./src/app/api/mobile/v1/user/me/route.ts
+./src/app/api/mobile/v1/user/push-token/route.ts
+./src/app/api/mobile/v1/user/update/route.ts
+./src/app/api/notifications/device/route.ts
+./src/app/api/notifications/read/route.ts
+./src/app/api/notifications/route.ts
+./src/app/api/offers/[id]/archive/route.ts
+./src/app/api/offers/[id]/favorite/route.ts
+./src/app/api/offers/[id]/floorplan/route.ts
+./src/app/api/offers/[id]/match/route.ts
+./src/app/api/offers/[id]/negotiations/route.ts
+./src/app/api/offers/[id]/route.ts
+./src/app/api/offers/[id]/view/route.ts
+./src/app/api/offers/mobile/route.ts
+./src/app/api/offers/route.ts
+./src/app/api/passkey/login/finish/route.ts
+./src/app/api/passkey/login/start/route.ts
+./src/app/api/passkey/register/finish/route.ts
+./src/app/api/passkey/register/start/route.ts
+./src/app/api/passkey/revoke/route.ts
+./src/app/api/passkeys/auth-options/route.ts
+./src/app/api/passkeys/auth-verify/route.ts
+./src/app/api/passkeys/check/route.ts
+./src/app/api/passkeys/delete/route.ts
+./src/app/api/passkeys/register-options/route.ts
+./src/app/api/passkeys/register-verify/route.ts
+./src/app/api/passkey/status/route.ts
+./src/app/api/passkey/store.ts
+./src/app/api/profil/[id]/route.ts
+./src/app/api/radar/preferences/route.ts
+./src/app/api/realtime/route.ts
+./src/app/api/register/route.ts
+./src/app/api/reviews/pending/route.ts
+./src/app/api/reviews/route.ts
+./src/app/api/reviews/submit/route.ts
+./src/app/api/stats/market/route.ts
+./src/app/api/stripe/checkout/route.ts
+./src/app/api/stripe/force-sync/route.ts
+./src/app/api/stripe/webhook/route.ts
+./src/app/api/szukaj/aktualizuj/route.ts
+./src/app/api/szukaj/rejestracja/route.ts
+./src/app/api/szukaj/weryfikacja/route.ts
+./src/app/api/track/route.ts
+./src/app/api/upload/mobile/route.ts
+./src/app/api/upload/route.ts
+./src/app/api/user/notes/route.ts
+./src/app/api/user/profile/route.ts
+./src/app/api/users/[id]/public/route.ts
+./src/app/apple-app-site-association/route.ts
+./src/app/apple-icon.tsx
+./src/app/cennik/page.tsx
+./src/app/centrala/oferty/page.tsx
+./src/app/centrala/page.tsx
+./src/app/centrala/statystyki/page.tsx
+./src/app/centrala/uzytkownicy/page.tsx
+./src/app/dealroom/[id]/page.tsx
+./src/app/dla-agencji/page.tsx
+./src/app/dodaj-oferte/ClientForm.tsx
+./src/app/dodaj-oferte/page.tsx
+./src/app/edytuj-oferte/[id]/page.tsx
+./src/app/eksperci/page.tsx
+./src/app/ekspert/[id]/page.tsx
+./src/app/globals.css
+./src/app/icon.tsx
+./src/app/layout.tsx
+./src/app/login/page.tsx
+./src/app/manifest.ts
+./src/app/moje-konto/crm/page.tsx
+./src/app/moje-konto/layout.tsx
+./src/app/moje-konto/page.tsx
+./src/app/not-found.tsx
+./src/app/oferta/[id]/page.tsx
+./src/app/oferty/page.tsx
+./src/app/opengraph-image.tsx
+./src/app/page.tsx
+./src/app/polityka-prywatnosci/en/page.tsx
+./src/app/polityka-prywatnosci/page.tsx
+./src/app/profil/[id]/page.tsx
+./src/app/push-register/route.ts
+./src/app/regulamin/page.tsx
+./src/app/szukaj/page.tsx
+./src/app/twitter-image.tsx
+./src/app/uploads/[filename]/route.ts
+./src/app/.well-known/apple-app-site-association/route.ts
+./src/app/.well-known/assetlinks.json/route.ts
+./src/components/AppointmentManager.tsx
+./src/components/AppointmentModal.tsx
+./src/components/BiddingModal.tsx
+./src/components/crm/DealRoom.tsx
+./src/components/FloatingAuthButton.tsx
+./src/components/GoalModal.tsx
+./src/components/hero3d/HeroDepthEffect.tsx
+./src/components/hero3d/HeroDepthEffect.v1.tsx
+./src/components/home/EosDynamicIslandBadge.tsx
+./src/components/home/FeaturedGallery.tsx
+./src/components/home/GlobalStats.tsx
+./src/components/home/MarketPulseBar.tsx
+./src/components/home/PremiumClockWidget.tsx
+./src/components/home/PremiumSearchBar.tsx
+./src/components/home/SignatureHighlights.tsx
+./src/components/layout/Footer.tsx
+./src/components/layout/LanguageSwitcher.tsx
+./src/components/layout/LocaleDocumentMeta.tsx
+./src/components/layout/Navbar.tsx
+./src/components/layout/SkipToContent.tsx
+./src/components/layout/SmoothScroll.tsx
+./src/components/layout/WelcomeGate.tsx
+./src/components/LimitModal.tsx
+./src/components/map/InteractiveMap.tsx
+./src/components/NotificationCenter.tsx
+./src/components/offer/OfferActions.tsx
+./src/components/offer/OfferShareLink.tsx
+./src/components/OffMarketModal.tsx
+./src/components/PasskeyToggle.tsx
+./src/components/PremiumButton.tsx
+./src/components/PremiumMatchmaking.tsx
+./src/components/Pricing.tsx
+./src/components/ProWidget.tsx
+./src/components/PublicProfileModal.tsx
+./src/components/RadarActivationEffect.tsx
+./src/components/ReviewPrompt.tsx
+./src/components/ReviewsModal.tsx
+./src/components/Tracker.tsx
+./src/components/ui/BaseModal.tsx
+./src/components/ui/CinematicLoader.tsx
+./src/components/ui/CustomCursor.tsx
+./src/components/ui/EliteStatusBadges.tsx
+./src/components/ui/ModeTransition.tsx
+./src/components/ui/PremiumModeToggle.tsx
+./src/components/ui/UpgradeModal.tsx
+./src/components/ui/WorkspaceSwitcher.tsx
+./src/components/UnifiedSmsModal.tsx
+./src/contexts/LocaleContext.tsx
+./src/contexts/UserModeContext.tsx
+./src/contracts/homeCtaContract.ts
+./src/i18n/config.ts
+./src/i18n/dictionaries.ts
+./src/i18n/ticker.ts
+./src/instrumentation.ts
+./src/lib/agentCommission.ts
+./src/lib/core/notification.core.ts
+./src/lib/dealroomReviews.ts
+./src/lib/eliteStatus.ts
+./src/lib/emailChangeRoute.ts
+./src/lib/emailChange.ts
+./src/lib/email/transactional.ts
+./src/lib/emailVerify.ts
+./src/lib/env.server.ts
+./src/lib/favoritesPricePush.ts
+./src/lib/jwtMobile.ts
+./src/lib/location/locationCatalog.ts
+./src/lib/mobileAdminAuth.ts
+./src/lib/mobileApiAuth.ts
+./src/lib/mobileAuth.ts
+./src/lib/mobileIapTables.ts
+./src/lib/mobileLegalVerificationHandlers.ts
+./src/lib/mobileOfferLegalPayload.ts
+./src/lib/mobileOfferPrismaSelect.ts
+./src/lib/mobilePasskeyStatus.ts
+./src/lib/mobileUgcTables.ts
+./src/lib/mobileUserShape.ts
+./src/lib/observability.ts
+./src/lib/offerLegalPublicShape.ts
+./src/lib/offerLegalStatusOverlay.ts
+./src/lib/offerPremarket.ts
+./src/lib/offerSchemaErrors.ts
+./src/lib/offers/primaryImage.ts
+./src/lib/offerVerification.ts
+./src/lib/passkeyDbEncoding.ts
+./src/lib/prisma.ts
+./src/lib/pushTelemetry.ts
+./src/lib/rateLimit.ts
+./src/lib/requestFormData.ts
+./src/lib/reviewAuth.ts
+./src/lib/securityRateLimit.ts
+./src/lib/services/notification.service.ts
+./src/lib/services/offer.service.ts
+./src/lib/services/radar.service.ts
+./src/lib/sessionUtils.ts
+./src/lib/sms.ts
+./src/lib/upload/offerMediaUpload.ts
+./src/lib/upload/resolveUploader.ts
+./src/lib/wellKnownAppLinks.ts
+./src/proxy.ts
+./src/store/useOfferStore.ts
+./src/utils/partnerIdentity.ts
+./struktura_web.txt
+./tailwind.config.js
+./tsconfig.json
+./tsconfig.tsbuildinfo
+./types/next-auth.d.ts
+
+
+=== PACKAGE.JSON ===
+
+{
+  "name": "apple-style-website",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "prebuild": "node scripts/purge-legacy-middleware.cjs && prisma generate",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "start:prod": "NODE_ENV=production next start -p 3000",
+    "start:prod:verify": "NODE_ENV=production next start -p 3010",
+    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:reload": "pm2 startOrReload ecosystem.config.cjs --env production",
+    "pm2:save": "pm2 save",
+    "deploy:prod": "npm ci && npm run build && npm run pm2:reload && npm run pm2:save",
+    "deploy:server-only": "npm run build && npm run pm2:reload",
+    "release:ship": "npm run check && npm run build && npm run pm2:reload && npm run pm2:save",
+    "lint": "eslint .",
+    "type-check": "tsc --noEmit --incremental false",
+    "check": "npm run type-check",
+    "smoke:postdeploy": "node scripts/postdeploy-smoke.cjs",
+    "verify:recon": "npm run check && node scripts/verify-reconciliation-e2e.cjs",
+    "deploy:recon": "node scripts/reconcile-prod-deploy.cjs"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@hookform/resolvers": "^5.2.2",
+    "@next-auth/prisma-adapter": "^1.0.7",
+    "@prisma/client": "^5.22.0",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.0",
+    "@types/lru-cache": "^7.10.10",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.3.1",
+    "expo-server-sdk": "^6.1.0",
+    "framer-motion": "^12.35.0",
+    "jose": "^6.2.2",
+    "jsonwebtoken": "^9.0.3",
+    "lenis": "^1.3.18",
+    "lru-cache": "^11.2.7",
+    "lucide-react": "^0.577.0",
+    "mapbox-gl": "^3.19.1",
+    "multer": "^2.1.1",
+    "next": "16.1.6",
+    "next-auth": "^4.24.13",
+    "nodemailer": "7.0.13",
+    "openai": "^6.32.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.71.2",
+    "react-map-gl": "^8.1.0",
+    "recharts": "^3.8.0",
+    "sharp": "^0.34.5",
+    "stripe": "^20.4.1",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mapbox-gl": "^3.5.0",
+    "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "prisma": "^5.22.0",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3"
+  }
+}
+
+
+=== TAILWIND CONFIG ===
+
+
+
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: [
+    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}" // Wymusza skanowanie CAŁEGO katalogu src
+  ],
+  theme: {
+    extend: {
+      colors: {
+        gold: '#D4AF37',
+      }
+    },
+  },
+  plugins: [],
+};

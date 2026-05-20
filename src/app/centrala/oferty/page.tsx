@@ -99,7 +99,7 @@ export default function OfertyAdmin() {
   });
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 pt-32 md:p-16 md:pt-40">
+    <div className="theme-aware-dashboard min-h-screen bg-[#050505] text-white p-6 pt-32 md:p-16 md:pt-40">
       <Link href="/centrala" className="text-white/40 hover:text-white mb-10 inline-block text-[10px] uppercase tracking-widest font-bold transition-colors">
         ← Wróć do Centrali
       </Link>

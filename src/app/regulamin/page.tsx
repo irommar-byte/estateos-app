@@ -64,9 +64,13 @@ export default function TermsPage() {
         </p>
 
         <p className="pt-4 text-sm text-zinc-500">
-          Polityka prywatności:{' '}
+          Polityka prywatności (PL):{' '}
           <Link className="text-emerald-700 underline" href="/polityka-prywatnosci">
             /polityka-prywatnosci
+          </Link>
+          {' · '}
+          <Link className="text-emerald-700 underline" href="/polityka-prywatnosci/en">
+            Privacy Policy (EN)
           </Link>
         </p>
       </section>

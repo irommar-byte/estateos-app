@@ -17,6 +17,7 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,11 @@ export async function GET() {
       },
     });
 
+    const activeIds = await activePublicationOfferIds(
+      offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id))
+    );
+    const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
+
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
       const badges = resolveEliteBadges({ user });
@@ -112,9 +118,9 @@ export async function GET() {
       };
     };
 
-    const offerIds = offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
-      return NextResponse.json(offers.map((o) => toPublicOffer(o, 0)));
+      return NextResponse.json(visibleOffers.map((o) => toPublicOffer(o, 0)));
     }
 
     const viewsRows = await prisma.$queryRawUnsafe<any[]>(
@@ -132,7 +138,7 @@ export async function GET() {
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
     return NextResponse.json(
-      offers.map((offer: any) => {
+      visibleOffers.map((offer: any) => {
         const viewsCount = viewsMap.get(Number(offer.id)) || 0;
         return toPublicOffer(applyLegalStatusOverride(offer, legalOverrides), viewsCount);
       })

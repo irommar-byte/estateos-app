@@ -20,32 +20,18 @@ import {
 import OffMarketModal from "@/components/OffMarketModal";
 import { AnimatePresence, motion } from "framer-motion";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
+import { useLocale } from "@/contexts/LocaleContext";
+import type { HomeMapSearchDetail } from "@/components/home/PremiumSearchBar";
 
 /** Zgodnie z `dodaj-oferte/ClientForm` (enum Prisma ↔ etykiety w aplikacji). */
 const EMPTY_DISTRICTS: string[] = [];
 
 const MAP_PROPERTY_TYPES = [
-  { id: "FLAT", label: "Mieszkanie" },
-  { id: "HOUSE", label: "Dom" },
-  { id: "PLOT", label: "Działka" },
-  { id: "COMMERCIAL", label: "Lokal" },
+  { id: "FLAT", labelKey: "apartment" },
+  { id: "HOUSE", labelKey: "house" },
+  { id: "PLOT", labelKey: "land" },
+  { id: "COMMERCIAL", labelKey: "commercial" },
 ] as const;
-
-const SALE_PRICE_OPTIONS: { key: string; label: string }[] = [
-  { key: "ALL", label: "Wszystkie" },
-  { key: "lte1m", label: "do 1 mln zł" },
-  { key: "1_3", label: "1 – 3 mln zł" },
-  { key: "3_5", label: "3 – 5 mln zł" },
-  { key: "gt5", label: "5+ mln zł" },
-];
-
-const RENT_PRICE_OPTIONS: { key: string; label: string }[] = [
-  { key: "ALL", label: "Wszystkie" },
-  { key: "lte3k", label: "do 3 000 zł" },
-  { key: "3_5k", label: "3 – 5 000 zł" },
-  { key: "5_8k", label: "5 – 8 000 zł" },
-  { key: "gt8k", label: "8 000+ zł" },
-];
 
 function parseOfferPrice(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -82,8 +68,8 @@ function formatOfferPinLabel(price: unknown, offerTx: unknown): string {
   const tx = normalizeTransactionTypeStatic(offerTx);
   const n = parseOfferPrice(price);
   if (!Number.isFinite(n) || n <= 0) return "—";
-  const fmt = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 }).format(n);
-  return tx === "rent" ? `${fmt} zł/m` : `${fmt} zł`;
+  const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
+  return tx === "rent" ? `${fmt} / mo` : fmt;
 }
 
 const OFFER_PIN_BASE =
@@ -102,6 +88,7 @@ function offerPinColorClasses(normalizeTx: (v: unknown) => "sale" | "rent" | "ot
 }
 
 export default function InteractiveMap() {
+  const { dict, locale } = useLocale();
   const mapContainer = useRef(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<{ [key: string]: mapboxgl.Marker }>({});
@@ -113,7 +100,7 @@ export default function InteractiveMap() {
 
   type DistrictCatalog = { strictCities: string[]; strictCityDistricts: Record<string, string[]> };
   const [locationCatalog, setLocationCatalog] = useState<DistrictCatalog>({ strictCities: [], strictCityDistricts: {} });
-  const [filterCity, setFilterCity] = useState("Warszawa");
+  const [filterCity, setFilterCity] = useState("");
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
   const [filterPropertyType, setFilterPropertyType] = useState<"ALL" | (typeof MAP_PROPERTY_TYPES)[number]["id"]>("ALL");
   const [filterPriceBucket, setFilterPriceBucket] = useState("ALL");
@@ -126,6 +113,27 @@ export default function InteractiveMap() {
     const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
+    const onHomeSearch = (event: Event) => {
+      const detail = (event as CustomEvent<HomeMapSearchDetail>).detail || {};
+      const nextCity = canonicalizeCity(detail.city || detail.query || "");
+
+      if (detail.transactionMode) setTransactionMode(detail.transactionMode);
+      if (detail.propertyType) setFilterPropertyType(detail.propertyType);
+      setFilterPriceBucket("ALL");
+      setFilterPlotArea("");
+      setSelectedDistricts([]);
+      setFilterCity(nextCity || (detail.city || detail.query || "").trim());
+
+      window.setTimeout(() => {
+        document.getElementById("map-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 40);
+    };
+
+    window.addEventListener("estateos:map-search", onHomeSearch);
+    return () => window.removeEventListener("estateos:map-search", onHomeSearch);
+  }, []);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       (window as any).isLoggedIn = isLoggedIn;
       (window as any).triggerTeaser = () => setShowTeaser(true);
@@ -133,6 +141,15 @@ export default function InteractiveMap() {
         (window as any).isPro = isPro;
     }
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!showTeaser) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showTeaser]);
 
   useEffect(() => {
     fetch("/api/user/profile")
@@ -247,7 +264,22 @@ export default function InteractiveMap() {
     setFilterPriceBucket("ALL");
   }, [transactionMode]);
 
-  const priceBucketOptions = transactionMode === "rent" ? RENT_PRICE_OPTIONS : SALE_PRICE_OPTIONS;
+  const priceBucketOptions =
+    transactionMode === "rent"
+      ? [
+          { key: "ALL", label: dict.map.allPrices },
+          { key: "lte3k", label: `≤ 3K ${dict.map.pricePerMonth.replace(dict.map.price, "").trim()}` },
+          { key: "3_5k", label: `3K – 5K ${dict.map.pricePerMonth.replace(dict.map.price, "").trim()}` },
+          { key: "5_8k", label: `5K – 8K ${dict.map.pricePerMonth.replace(dict.map.price, "").trim()}` },
+          { key: "gt8k", label: `8K+ ${dict.map.pricePerMonth.replace(dict.map.price, "").trim()}` },
+        ]
+      : [
+          { key: "ALL", label: dict.map.allPrices },
+          { key: "lte1m", label: "≤ 1M" },
+          { key: "1_3", label: "1M – 3M" },
+          { key: "3_5", label: "3M – 5M" },
+          { key: "gt5", label: "5M+" },
+        ];
 
   // INICJALIZACJA MAPY
   useEffect(() => {
@@ -395,38 +427,38 @@ export default function InteractiveMap() {
 
   const districtSummary =
     selectedDistricts.length === 0
-      ? "Całe miasto"
+      ? dict.map.wholeCity
       : selectedDistricts.length === 1
         ? selectedDistricts[0]!
-        : `${selectedDistricts.length} wybrane`;
+        : dict.map.selectedCount.replace("{n}", String(selectedDistricts.length));
 
   return (
-    <div className="w-full bg-[#050505] py-7 sm:py-10 lg:py-12 relative">
+    <div className="w-full bg-[var(--eos-bg-elevated)] py-7 text-[var(--eos-text)] sm:py-10 lg:py-12 relative">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 relative z-30 flex flex-col items-center">
         
         {/* NOWY PRZEŁĄCZNIK KUPNO / WYNAJEM */}
-        <div className="relative z-50 mb-4 bg-black/40 backdrop-blur-2xl border border-white/10 rounded-full p-1 flex shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+        <div className="eos-glass relative z-50 mb-4 flex rounded-full p-1">
            <button onClick={() => setTransactionMode('sale')} className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all relative flex items-center gap-1.5 ${transactionMode === 'sale' ? 'text-black' : 'text-emerald-500/70 hover:text-emerald-500'}`}>
              {transactionMode === 'sale' && <motion.div layoutId="transactionTab" className="absolute inset-0 bg-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] -z-10" />}
-             <span className="relative z-10">Na Sprzedaż</span>
+             <span className="relative z-10">{dict.map.forSale}</span>
            </button>
            <button onClick={() => setTransactionMode('rent')} className={`px-5 py-2 rounded-full text-[9px] font-black uppercase tracking-widest transition-all relative flex items-center gap-1.5 ${transactionMode === 'rent' ? 'text-black' : 'text-blue-500/70 hover:text-blue-500'}`}>
              {transactionMode === 'rent' && <motion.div layoutId="transactionTab" className="absolute inset-0 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)] -z-10" />}
-             <span className="relative z-10">Na Wynajem</span>
+             <span className="relative z-10">{dict.map.forRent}</span>
            </button>
         </div>
 
 
         {/* Filtry mapy — kompaktowa lista (iOS-like), dzielnice w poziomym scrollu */}
-        <div className="z-50 w-full max-w-xl sm:max-w-2xl lg:max-w-3xl rounded-2xl border border-white/10 bg-zinc-950/95 shadow-[0_16px_48px_rgba(0,0,0,0.45)] supports-[backdrop-filter]:bg-zinc-950/80 supports-[backdrop-filter]:backdrop-blur-xl">
-          <div className="divide-y divide-white/[0.06] px-1 sm:px-2">
+        <div className="eos-glass z-50 w-full max-w-xl rounded-2xl sm:max-w-2xl lg:max-w-3xl">
+          <div className="divide-y divide-[var(--eos-border)] px-1 sm:px-2">
             <label className="flex cursor-pointer items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 active:bg-white/[0.04]">
               <Home className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
               <div className="min-w-0 flex-1">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Miasto</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{dict.map.market}</span>
                 <div className="relative mt-0.5">
                   <select
-                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-[var(--eos-text)] outline-none"
                     value={filterCity}
                     onChange={(e) => {
                       setFilterCity(e.target.value);
@@ -448,10 +480,10 @@ export default function InteractiveMap() {
             <label className="flex cursor-pointer items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 active:bg-white/[0.04]">
               <Building2 className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
               <div className="min-w-0 flex-1">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Typ</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{dict.map.type}</span>
                 <div className="relative mt-0.5">
                   <select
-                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-[var(--eos-text)] outline-none"
                     value={filterPropertyType}
                     onChange={(e) => {
                       const v = e.target.value as typeof filterPropertyType;
@@ -460,11 +492,11 @@ export default function InteractiveMap() {
                     }}
                   >
                     <option className="bg-zinc-900 text-white" value="ALL">
-                      Wszystkie typy
+                      {dict.map.allTypes}
                     </option>
                     {MAP_PROPERTY_TYPES.map((t) => (
                       <option key={t.id} className="bg-zinc-900 text-white" value={t.id}>
-                        {t.label}
+                        {dict.map[t.labelKey]}
                       </option>
                     ))}
                   </select>
@@ -477,11 +509,11 @@ export default function InteractiveMap() {
               <SlidersHorizontal className="size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
               <div className="min-w-0 flex-1">
                 <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
-                  Cena{transactionMode === "rent" ? " / mc" : ""}
+                  {transactionMode === "rent" ? dict.map.pricePerMonth : dict.map.price}
                 </span>
                 <div className="relative mt-0.5">
                   <select
-                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-white outline-none"
+                    className="w-full cursor-pointer appearance-none bg-transparent py-0.5 pr-8 text-[16px] font-semibold leading-snug text-[var(--eos-text)] outline-none"
                     value={filterPriceBucket}
                     onChange={(e) => setFilterPriceBucket(e.target.value)}
                   >
@@ -505,12 +537,12 @@ export default function InteractiveMap() {
               >
                 <Maximize className="mt-0.5 size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Min. pow. działki (m²)</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{dict.map.minPlot}</p>
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder="np. 500"
-                    className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[16px] font-semibold text-white outline-none ring-emerald-500/40 placeholder:text-white/30 focus:border-emerald-500/50 focus:ring-2"
+                    placeholder={dict.map.placeholderPlot}
+                    className="mt-1.5 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-[16px] font-semibold text-[var(--eos-text)] outline-none ring-emerald-500/40 placeholder:text-[var(--eos-subtle)] focus:border-emerald-500/50 focus:ring-2"
                     value={filterPlotArea}
                     onChange={(e) => setFilterPlotArea(e.target.value.replace(/\D/g, ""))}
                   />
@@ -523,15 +555,15 @@ export default function InteractiveMap() {
                 <MapPinned className="mt-0.5 size-[18px] shrink-0 text-emerald-400/90" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Dzielnice</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">{dict.map.districts}</span>
                     <span className="text-[12px] font-medium text-white/70">{districtSummary}</span>
                   </div>
                   <p className="mt-1 text-[12px] leading-relaxed text-white/40">
-                    Przesuń palcem — wybór jak w wyszukiwarce. Pusto = całe {filterCity}.
+                    {dict.map.districtsHint}
                   </p>
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {districtChoices.length === 0 ? (
-                      <span className="text-[13px] text-white/45">Ładuję listę…</span>
+                      <span className="text-[13px] text-white/45">{dict.map.loadingDistricts}</span>
                     ) : (
                       districtChoices.map((d) => {
                         const on = selectedDistricts.includes(d);
@@ -558,7 +590,7 @@ export default function InteractiveMap() {
                       onClick={() => setSelectedDistricts([])}
                       className="mt-2 text-[12px] font-medium text-emerald-400/90 hover:text-emerald-300"
                     >
-                      Wyczyść dzielnice
+                      {dict.map.clearDistricts}
                     </button>
                   )}
                 </div>
@@ -566,7 +598,7 @@ export default function InteractiveMap() {
             </div>
           </div>
 
-          <div className="border-t border-white/[0.06] p-3 sm:p-4">
+          <div className="border-t border-[var(--eos-border)] p-3 sm:p-4">
             <button
               type="button"
               onClick={handleFocusMap}
@@ -577,15 +609,11 @@ export default function InteractiveMap() {
                 <MapPin size={20} className="relative text-emerald-400 transition-colors group-hover:text-emerald-200" />
                 <div className="relative text-left">
                   <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/50 group-hover:text-white/70">
-                    Pokaż na mapie
+                    {dict.map.showOnMap}
                   </span>
                   <span className="text-[15px] font-bold text-white">
                     {filteredOffers.length}{" "}
-                    {filteredOffers.length === 1
-                      ? "oferta"
-                      : filteredOffers.length > 1 && filteredOffers.length < 5
-                        ? "oferty"
-                        : "ofert"}
+                    {filteredOffers.length === 1 ? dict.map.listing : dict.map.listings}
                   </span>
                 </div>
               </div>
@@ -602,8 +630,24 @@ export default function InteractiveMap() {
     
       <AnimatePresence>
         {showTeaser && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/60 backdrop-blur-md flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-6">
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-[#0a0a0a] border border-white/10 p-10 rounded-[3rem] max-w-lg w-full shadow-[0_0_100px_rgba(0,0,0,1)] relative text-center">
+          <motion.div
+            data-lenis-prevent
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onWheel={(event) => event.stopPropagation()}
+            onTouchMove={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-[999999] flex items-center justify-center overflow-hidden bg-black/60 p-4 backdrop-blur-md sm:p-6"
+          >
+            <motion.div
+              data-lenis-prevent
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onWheel={(event) => event.stopPropagation()}
+              onTouchMove={(event) => event.stopPropagation()}
+              className="relative max-h-[calc(100svh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[2rem] border border-white/10 bg-[#0a0a0a] p-6 text-center shadow-[0_0_100px_rgba(0,0,0,1)] [-webkit-overflow-scrolling:touch] sm:max-h-[calc(100svh-3rem)] sm:rounded-[3rem] sm:p-10"
+            >
               <button onClick={() => setShowTeaser(false)} className="absolute top-8 right-8 text-white/20 hover:text-white transition-colors">✕</button>
               
               <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-emerald-500/20">

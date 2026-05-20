@@ -193,7 +193,7 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
         });
         setSelectedDate(null);
       }
-    } catch(e) { alert("Błąd zapisu notatki"); }
+    } catch(e) { alert("Save error notatki"); }
   };
 
   const openNoteModal = (day: number) => {
