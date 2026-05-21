@@ -74,10 +74,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
     }
 
-    const cityRaw = body?.city ?? body?.location?.city;
+    const location = body?.location as { city?: unknown; districts?: unknown } | undefined;
+    const cityRaw = body?.city ?? location?.city;
     const normalizedCity = cityRaw ? canonicalizeCity(String(cityRaw)) : null;
     const strictCity = isStrictCity(normalizedCity);
-    const districtsInput = body?.selectedDistricts ?? body?.districts ?? body?.location?.districts;
+    const districtsInput = body?.selectedDistricts ?? body?.districts ?? location?.districts;
     const normalizedDistricts = Array.isArray(districtsInput)
       ? districtsInput
           .map((district: unknown) =>
