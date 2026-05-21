@@ -38,10 +38,26 @@ async function authorizeRadarUserWrite(req: Request, targetUserId: number) {
   return { ok: true as const };
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, unknown>> {
+  try {
+    const parsed = await req.json();
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const targetUserId = Number(body?.userId ?? body?.user?.id);
+    const adminGate = await requireMobileAdmin(req);
+    const token = extractBearerToken(req);
+    const callerId = token ? parseUserIdFromMobileJwt(token) : null;
+    if (!adminGate.ok && !callerId) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji' }, { status: 401 });
+    }
+
+    const body = await readJsonBody(req);
+    const targetUserId = Number(body?.userId ?? (body?.user as { id?: number })?.id);
 
     if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
       return NextResponse.json({ success: false, message: 'Brak lub nieprawidłowy userId' }, { status: 400 });
