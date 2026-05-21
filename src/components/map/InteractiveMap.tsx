@@ -41,6 +41,12 @@ function parseOfferPrice(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function getOfferFilterPricePln(offer: { pricePln?: unknown; price?: unknown }): number {
+  const pln = offer.pricePln;
+  if (typeof pln === "number" && Number.isFinite(pln) && pln > 0) return pln;
+  return parseOfferPrice(offer.price);
+}
+
 function matchesPriceBucket(mode: "sale" | "rent", pricePln: number, key: string): boolean {
   if (key === "ALL") return true;
   if (mode === "sale") {
@@ -219,7 +225,7 @@ export default function InteractiveMap() {
     }
 
     const priceMode: "sale" | "rent" = transactionMode === "rent" ? "rent" : "sale";
-    result = result.filter((o) => matchesPriceBucket(priceMode, parseOfferPrice(o.price), filterPriceBucket));
+    result = result.filter((o) => matchesPriceBucket(priceMode, getOfferFilterPricePln(o), filterPriceBucket));
 
     const showPlotArea = filterPropertyType === "HOUSE" || filterPropertyType === "PLOT";
     if (showPlotArea && filterPlotArea) {

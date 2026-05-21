@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
+import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -129,6 +130,8 @@ export async function GET() {
           id: true,
           title: true,
           price: true,
+          pricePln: true,
+          priceCurrency: true,
           area: true,
           rooms: true,
           city: true,
@@ -151,7 +154,7 @@ export async function GET() {
           return false;
         }
 
-        const offerPrice = parseInt(String(offer.price).replace(/\D/g, ''), 10) || 0;
+        const offerPrice = getCanonicalOfferPricePln(offer);
         if (user.searchMaxPrice && offerPrice > user.searchMaxPrice) return false;
 
         const offerArea = parseFloat(String(offer.area).replace(',', '.')) || 0;

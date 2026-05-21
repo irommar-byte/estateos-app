@@ -18,6 +18,7 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +55,10 @@ export async function GET() {
         propertyType: true,
         condition: true,
         price: true,
+        priceCurrency: true,
+        pricePln: true,
+        exchangeRateUsed: true,
+        exchangeRateDate: true,
         pricePerSqm: true,
         adminFee: true,
         agentCommissionPercent: true,
@@ -105,7 +110,7 @@ export async function GET() {
         legalCheckStatus: rest.legalCheckStatus,
         isLegalSafeVerified: rest.isLegalSafeVerified,
       });
-      return {
+      return enrichOfferMoneyFields({
         ...rest,
         imageUrl: resolveOfferPrimaryImage(rest),
         description: cleanDescription,
@@ -115,7 +120,7 @@ export async function GET() {
         badges,
         views: viewsCount,
         viewsCount,
-      };
+      });
     };
 
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));

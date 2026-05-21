@@ -20,7 +20,13 @@ import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
   isOfferAlterPrivilegeError,
   isOfferLegalColumnMissingError,
+  isOfferMoneyColumnMissingError,
 } from '@/lib/offerSchemaErrors';
+import {
+  bodyTouchesOfferPrice,
+  getCanonicalOfferPricePln,
+  resolveOfferPriceFromBody,
+} from '@/lib/money/offerPrice';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -58,8 +64,17 @@ function stripLegacyLegalColumns(data: Record<string, unknown>) {
   delete data.isLegalSafeVerified;
 }
 
+function stripMoneyColumns(data: Record<string, unknown>) {
+  delete data.priceCurrency;
+  delete data.pricePln;
+  delete data.exchangeRateUsed;
+  delete data.exchangeRateDate;
+}
+
 let offerLegalColumnsEnsured = false;
 let offerLegalColumnsPromise: Promise<void> | null = null;
+let offerMoneyColumnsEnsured = false;
+let offerMoneyColumnsPromise: Promise<void> | null = null;
 
 function isIgnorableAddColumnError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -149,6 +164,37 @@ export async function ensureOfferLegalColumns() {
   }
 }
 
+export async function ensureOfferMoneyColumns() {
+  if (offerMoneyColumnsEnsured) return;
+  if (offerMoneyColumnsPromise) return offerMoneyColumnsPromise;
+
+  offerMoneyColumnsPromise = (async () => {
+    await ensureOfferColumn('priceCurrency', "VARCHAR(8) NOT NULL DEFAULT 'PLN'");
+    await ensureOfferColumn('pricePln', 'DOUBLE NULL');
+    await ensureOfferColumn('exchangeRateUsed', 'DOUBLE NULL');
+    await ensureOfferColumn('exchangeRateDate', 'DATE NULL');
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`priceCurrency\` = 'PLN' WHERE \`priceCurrency\` IS NULL OR TRIM(\`priceCurrency\`) = ''`
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`pricePln\` = \`price\` WHERE \`pricePln\` IS NULL`
+    );
+    offerMoneyColumnsEnsured = true;
+  })();
+
+  try {
+    await offerMoneyColumnsPromise;
+  } catch (error) {
+    if (isOfferAlterPrivilegeError(error) || isOfferMoneyColumnMissingError(error)) {
+      offerMoneyColumnsEnsured = true;
+      return;
+    }
+    throw error;
+  } finally {
+    offerMoneyColumnsPromise = null;
+  }
+}
+
 // =======================
 // MAPOWANIA
 // =======================
@@ -201,6 +247,8 @@ function mapStatus(val?: string): OfferStatus {
 export async function createOffer(body: any) {
   const { userId, lat, lng } = body;
   await ensureOfferLegalColumns();
+  await ensureOfferMoneyColumns();
+  const resolvedPrice = await resolveOfferPriceFromBody(body);
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
     validateLandRegistryNumberInput(body.landRegistryNumber);
@@ -243,7 +291,7 @@ export async function createOffer(body: any) {
       propertyType: mapPropertyType(body.propertyType),
       condition: mapCondition(body.condition),
 
-      price: Number(body.price) || 0,
+      ...resolvedPrice,
       area: Number(body.area) || 0,
       adminFee: body.adminFee !== undefined && body.adminFee !== null ? Number(body.adminFee) : null,
       deposit: body.deposit !== undefined && body.deposit !== null ? Number(body.deposit) : null,
@@ -305,10 +353,11 @@ export async function createOffer(body: any) {
   try {
     return await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
   } catch (error) {
-    if (!isOfferLegalColumnMissingError(error)) throw error;
+    if (!isOfferLegalColumnMissingError(error) && !isOfferMoneyColumnMissingError(error)) throw error;
 
     const fallbackData = { ...createData };
     stripLegacyLegalColumns(fallbackData);
+    stripMoneyColumns(fallbackData);
     return createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
   }
 }
@@ -319,6 +368,7 @@ export async function createOffer(body: any) {
 export async function updateOffer(body: any) {
   const { id, userId } = body;
   await ensureOfferLegalColumns();
+  await ensureOfferMoneyColumns();
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
     validateLandRegistryNumberInput(body.landRegistryNumber);
@@ -339,6 +389,8 @@ export async function updateOffer(body: any) {
       propertyType: true,
       condition: true,
       price: true,
+      priceCurrency: true,
+      pricePln: true,
       area: true,
       rooms: true,
       floor: true,
@@ -393,7 +445,7 @@ export async function updateOffer(body: any) {
     }
   }
 
-  const oldPrice = Number(existing.price);
+  const oldPrice = getCanonicalOfferPricePln(existing);
   const existingVerification = extractVerificationMeta(String(existing.description || ''));
   const nextLandRegistryNumber =
     body.landRegistryNumber !== undefined
@@ -426,6 +478,14 @@ export async function updateOffer(body: any) {
     throw new OfferValidationError('Aktywacja oferty wymaga dedykowanego endpointu publikacji.');
   }
 
+  const pricePatch = bodyTouchesOfferPrice(body)
+    ? await resolveOfferPriceFromBody({
+        price: body.priceAmount ?? body.price ?? existing.price,
+        priceAmount: body.priceAmount ?? body.price,
+        priceCurrency: body.priceCurrency ?? existing.priceCurrency ?? 'PLN',
+      })
+    : {};
+
   const updateData: any = {
       ...(body.title !== undefined && { title: body.title }),
       description: nextDescription,
@@ -438,9 +498,7 @@ export async function updateOffer(body: any) {
       ...(body.condition !== undefined && {
         condition: mapCondition(body.condition)
       }),
-      ...(body.price !== undefined && {
-        price: Number(body.price)
-      }),
+      ...pricePatch,
       ...(body.area !== undefined && {
         area: Number(body.area)
       }),
@@ -531,16 +589,17 @@ export async function updateOffer(body: any) {
       select: MOBILE_OFFER_WRITE_RESPONSE_SELECT as any,
     });
   } catch (error) {
-    if (!isOfferLegalColumnMissingError(error)) throw error;
+    if (!isOfferLegalColumnMissingError(error) && !isOfferMoneyColumnMissingError(error)) throw error;
     const fallbackData = { ...updateData };
     stripLegacyLegalColumns(fallbackData);
+    stripMoneyColumns(fallbackData);
     updatedOffer = await prisma.offer.update({
       where: { id: Number(id) },
       data: fallbackData,
       select: MOBILE_OFFER_PRISMA_SELECT as any,
     });
   }
-  const newPrice = Number(updatedOffer.price);
+  const newPrice = getCanonicalOfferPricePln(updatedOffer);
   if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
     await dispatchFavoritesPriceChangePush({
       offerId: Number(updatedOffer.id),

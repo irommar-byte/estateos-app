@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/core/notification.core';
 import { normalizeText } from '@/lib/location/locationCatalog';
+import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
 export const radarService = {
   async matchNewOffer(offer: any) {
@@ -55,7 +56,7 @@ export const radarService = {
           title: score >= 85 ? '💎 Idealne trafienie' :
                  score >= 70 ? '🔥 Świeża okazja' :
                                '🎯 Właśnie wpadła',
-          body: `${offer.title} • ${offer.price} PLN`,
+          body: `${offer.title} • ${getCanonicalOfferPricePln(offer).toLocaleString('pl-PL')} PLN`,
           data: { targetType: 'OFFER', targetId: String(offer.id) },
         });
 
@@ -108,7 +109,8 @@ export const radarService = {
     }
 
     if (pref.maxPrice) {
-      if (offer.price <= pref.maxPrice) score += 20;
+      const offerPricePln = getCanonicalOfferPricePln(offer);
+      if (offerPricePln <= pref.maxPrice) score += 20;
       else score -= 20;
     }
 

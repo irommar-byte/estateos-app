@@ -1,6 +1,44 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from '@/lib/location/locationCatalog';
+import { requireMobileAdmin, parseUserIdFromMobileJwt, extractBearerToken } from '@/lib/mobileAdminAuth';
+import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const userIdParam = searchParams.get('userId');
+    const targetUserId = Number(userIdParam);
+
+    if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+      return NextResponse.json({ success: false, message: 'Brak lub nieprawidłowy userId' }, { status: 400 });
+    }
+
+    const adminGate = await requireMobileAdmin(req);
+    if (!adminGate.ok) {
+      const token = extractBearerToken(req);
+      const callerId = token ? parseUserIdFromMobileJwt(token) : null;
+      if (!callerId || callerId !== targetUserId) {
+        return adminGate.response;
+      }
+    }
+
+    const pref = await prisma.radarPreference.findUnique({
+      where: { userId: targetUserId },
+    });
+
+    const radarPreference = shapeRadarPreference(pref);
+
+    return NextResponse.json({
+      success: true,
+      radarPreference,
+      pref: radarPreference,
+    });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ success: false, message }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -86,9 +124,15 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json({ success: true, pref });
+    const radarPreference = shapeRadarPreference(pref);
 
-  } catch (e: any) {
-    return NextResponse.json({ success: false, message: e.message });
+    return NextResponse.json({
+      success: true,
+      pref,
+      radarPreference,
+    });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

@@ -56,6 +56,14 @@ const sqlOfferPublicationsFile = path.join(
   root,
   'docs/reconciliation/sql/add_offer_publications_and_free_first.sql'
 );
+const sqlOfferPricePlnFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_offer_price_pln_columns_if_missing.sql'
+);
+const sqlRadarSearchHistoryFile = path.join(
+  root,
+  'docs/reconciliation/sql/add_radar_search_history.sql'
+);
 
 const summary = {
   rollbackSha: null,
@@ -64,6 +72,9 @@ const summary = {
   sqlLegalVerification: null,
   sqlOfferLandLegal: null,
   sqlOfferPublications: null,
+  sqlOfferPricePln: null,
+  sqlRadarSearchHistory: null,
+  migrateOfferPricePln: null,
   check: null,
   verifyE2e: null,
   releaseShip: null,
@@ -211,6 +222,33 @@ function main() {
     throw new Error('sql:offerPublications');
   }
 
+  console.log('[deploy:recon] SQL prisma db execute (Offer price PLN/EUR columns, idempotent)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlOfferPricePlnFile]);
+  if (r.ok) summary.sqlOfferPricePln = 'APPLIED';
+  else {
+    summary.sqlOfferPricePln = 'FAIL';
+    summary.error = r.out.slice(-4000);
+    throw new Error('sql:offerPricePln');
+  }
+
+  console.log('[deploy:recon] SQL prisma db execute (RadarSearchHistory table)');
+  r = run('npx', ['prisma', 'db', 'execute', '--file', sqlRadarSearchHistoryFile]);
+  if (r.ok) summary.sqlRadarSearchHistory = 'APPLIED';
+  else if (sqlDuplicateColumn(r.out)) summary.sqlRadarSearchHistory = 'SKIP_DUPLICATE';
+  else {
+    summary.sqlRadarSearchHistory = 'FAIL';
+    summary.error = r.out.slice(-4000);
+    throw new Error('sql:radarSearchHistory');
+  }
+
+  console.log('[deploy:recon] migrate existing offers → pricePln');
+  r = run('node', ['scripts/migrate-offer-price-pln.cjs']);
+  summary.migrateOfferPricePln = r.ok ? 'PASS' : 'FAIL';
+  if (!r.ok) {
+    summary.error = r.out.slice(-4000);
+    throw new Error('migrate:offerPricePln');
+  }
+
   console.log('[deploy:recon] release:ship');
   releaseShipOrThrow('deploy');
   summary.releaseShip = 'PASS';
@@ -272,6 +310,9 @@ function printReport(ok) {
   console.log('SQL legalVerification:', summary.sqlLegalVerification);
   console.log('SQL offerLandLegal:', summary.sqlOfferLandLegal);
   console.log('SQL offerPublications:', summary.sqlOfferPublications);
+  console.log('SQL offerPricePln:', summary.sqlOfferPricePln);
+  console.log('SQL radarSearchHistory:', summary.sqlRadarSearchHistory);
+  console.log('migrate offerPricePln:', summary.migrateOfferPricePln);
   console.log('check:', summary.check);
   console.log('verify:recon:', summary.verifyE2e);
   console.log('release:ship:', summary.releaseShip);

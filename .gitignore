@@ -1,6 +1,7 @@
 node_modules
 .next
 .env
+.cache/
 *.log
 
 # TypeScript incremental (regenerowany lokalnie)

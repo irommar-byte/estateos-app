@@ -210,6 +210,13 @@ export default function LoginPage() {
             {loading ? <Loader2 className="animate-spin" size={24} /> : "Enter dashboard ➔"}
           </button>
 
+          <p className="text-center text-[10px] font-bold uppercase tracking-widest text-white/40">
+            No account?{" "}
+            <Link href="/rejestracja" className="text-emerald-500 hover:text-emerald-400">
+              Create one
+            </Link>
+          </p>
+
           <div className="relative flex items-center py-6 mt-4">
             <div className="flex-grow border-t border-white/5"></div>
             <span className="flex-shrink-0 mx-4 text-white/20 text-[10px] font-bold uppercase tracking-[0.3em]">Biometric sign-in</span>

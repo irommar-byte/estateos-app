@@ -64,6 +64,7 @@ model User {
   favoriteOffers       FavoriteOffer[]
   devicePushPrefs      DevicePushPreference?
   radarPreference    RadarPreference?
+  radarSearchHistory RadarSearchHistory[]
   calendarNotes      CalendarNote[]
   discoveryEvents    DiscoveryEvent[]
   discoveryProfile   DiscoveryProfile?
@@ -133,6 +134,12 @@ model Offer {
   propertyType     PropertyType    @default(FLAT)
   condition        PropertyCondition @default(READY)
   price           Float
+  /// Kwota w walucie wpisanej przez użytkownika (alias API: priceAmount).
+  priceCurrency   String         @default("PLN") @db.VarChar(8)
+  /// Canonical PLN — sortowanie, filtry radaru, porównania.
+  pricePln        Float?
+  exchangeRateUsed Float?
+  exchangeRateDate DateTime?      @db.Date
   pricePerSqm     Float?
   adminFee        Float?
   /// Prowizja agenta (% od ceny oferty), 0 lub 0,5–10 z krokiem 0,25 — informacyjnie; rozliczenia poza platformą.
@@ -615,6 +622,38 @@ model RadarPreference {
   radius          Float?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Historia wyszukiwań / kalibracji radaru (jeden wiersz = jedno zdarzenie z mobile).
+model RadarSearchHistory {
+  id              Int              @id @default(autoincrement())
+  userId          Int
+  eventType       String           @default("RADAR_SEARCH") @db.VarChar(64)
+  transactionType TransactionType?
+  propertyType    PropertyType?
+  city            String?          @db.VarChar(128)
+  districts       Json?
+  maxPrice        Float?
+  minArea         Float?
+  minYear         Int?
+  requireBalcony  Boolean          @default(false)
+  requireGarden   Boolean          @default(false)
+  requireElevator Boolean          @default(false)
+  requireParking  Boolean          @default(false)
+  requireFurnished Boolean         @default(false)
+  matchCount      Int?
+  lat             Float?
+  lng             Float?
+  radius          Float?
+  queryText       String?          @db.VarChar(512)
+  source          String           @default("mobile") @db.VarChar(32)
+  searchedAt      DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, searchedAt])
+  @@index([userId, createdAt])
 }
 
 model DiscoveryEvent {

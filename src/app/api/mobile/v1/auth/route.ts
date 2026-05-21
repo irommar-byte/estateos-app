@@ -5,7 +5,11 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
-import { extractPhoneFromBody, normalizePhoneE164 } from '@/lib/phoneE164';
+import {
+  buildPhoneLookupVariants,
+  extractPhoneFromBody,
+  normalizePhoneE164,
+} from '@/lib/phoneE164';
 
 function parseUserIdFromAuthToken(token: string): number | null {
   const verified = verifyMobileToken(token) as Record<string, unknown> | null;
@@ -135,27 +139,43 @@ export async function POST(req: Request) {
 
       const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
       if (existing) return NextResponse.json({ success: false, message: 'Email zajęty' }, { status: 400 });
-      
+
+      const phoneE164 = normalizePhoneE164(extractPhoneFromBody({ phone, ...body }));
+      if (phoneE164) {
+        const phoneVariants = buildPhoneLookupVariants(phoneE164);
+        const existingPhone = await prisma.user.findFirst({
+          where: { OR: phoneVariants.map((variant) => ({ phone: variant })) },
+        });
+        if (existingPhone) {
+          return NextResponse.json({ success: false, message: 'Ten numer telefonu jest już w użyciu.' }, { status: 400 });
+        }
+      }
+
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const isPartner = String(role || '').toUpperCase() === 'PARTNER';
       const fullName = `${firstName || ''} ${lastName || ''}`.trim();
 
-      // Partner (EstateOS™ Partner) = plan agencji w całym systemie — jak `/api/auth/register-agency`.
-      // Samo `role: AGENT` nie włącza trybu Partner w UI (tam wymagane jest `planType: AGENCY`).
       const user = await prisma.user.create({
         data: {
           email: normalizedEmail,
           password: hashedPassword,
           name: fullName || normalizedEmail,
-          phone: phone || null,
+          phone: phoneE164,
           role: 'USER',
           planType: isPartner ? 'AGENCY' : 'NONE',
         },
         select: MOBILE_USER_SELECT,
       });
 
-      return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey: false } });
+      const token = signMobileToken({ id: user.id, email: user.email, role: user.role });
+      return NextResponse.json({
+        success: true,
+        user: { ...shapeMobileUser(user), hasPasskey: false },
+        token,
+        phone: phoneE164,
+        contactPhone: phoneE164,
+      });
     }
     
     if (normalizedAction === 'update') {

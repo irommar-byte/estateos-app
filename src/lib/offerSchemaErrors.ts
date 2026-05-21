@@ -1,3 +1,16 @@
+export function isOfferMoneyColumnMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  const moneyColumnsPattern = /(pricecurrency|pricepln|exchangerateused|exchangeratedate)/i;
+  return (
+    /offer\.pricecurrency/i.test(message) ||
+    /offer\.pricepln/i.test(message) ||
+    /offer\.exchangerateused/i.test(message) ||
+    /offer\.exchangeratedate/i.test(message) ||
+    (/unknown column/i.test(message) && moneyColumnsPattern.test(message)) ||
+    (/does not exist/i.test(message) && moneyColumnsPattern.test(message))
+  );
+}
+
 export function isOfferLegalColumnMissingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error || '');
   const legalColumnsPattern =
@@ -29,7 +42,11 @@ export function isOfferAlterPrivilegeError(error: unknown): boolean {
 }
 
 export function isOfferSchemaCompatibilityError(error: unknown): boolean {
-  return isOfferLegalColumnMissingError(error) || isOfferAlterPrivilegeError(error);
+  return (
+    isOfferLegalColumnMissingError(error) ||
+    isOfferMoneyColumnMissingError(error) ||
+    isOfferAlterPrivilegeError(error)
+  );
 }
 
 export function getOfferSchemaCompatibilityMessage(): string {

@@ -22,6 +22,13 @@ const coreChecks = [
   { name: 'health', url: '/api/health', expectStatus: [200, 503] },
   { name: 'mobile discovery feed requires auth', url: '/api/mobile/v1/discovery/feed', expectStatus: [401] },
   { name: 'offers catalog', url: '/api/offers', expectStatus: [200] },
+  { name: 'fx eur-pln', url: '/api/fx/eur-pln', expectStatus: [200] },
+  {
+    name: 'publication-quote requires auth',
+    url: '/api/mobile/v1/offers/publication-quote',
+    expectStatus: [401],
+  },
+  { name: 'radar search-history requires auth', url: '/api/radar/search-history', method: 'POST', expectStatus: [401] },
   { name: 'assetlinks', url: '/.well-known/assetlinks.json', expectStatus: [200] },
   { name: 'aasa well-known', url: '/.well-known/apple-app-site-association', expectStatus: [200] },
   { name: 'aasa root', url: '/apple-app-site-association', expectStatus: [200] },

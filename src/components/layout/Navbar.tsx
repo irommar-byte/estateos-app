@@ -258,14 +258,23 @@ export default function Navbar() {
                     <MobileNavButton icon={LogOut} label={dict.nav.logout} accent="red" onClick={handleLogout} />
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleNavClick("/login")}
-                    className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-accent)]/25 bg-[var(--eos-accent-soft)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-accent)]"
-                  >
-                    <LogIn className="size-5" />
-                    {dict.nav.login}
-                  </button>
+                  <div className="grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick("/rejestracja")}
+                      className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-accent)]/25 bg-[var(--eos-accent-soft)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-accent)]"
+                    >
+                      Załóż konto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick("/login")}
+                      className="flex w-full items-center justify-center gap-3 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-4 text-xs font-black uppercase tracking-[0.2em] text-[var(--eos-text)]"
+                    >
+                      <LogIn className="size-5" />
+                      {dict.nav.login}
+                    </button>
+                  </div>
                 )}
               </div>
             </motion.div>

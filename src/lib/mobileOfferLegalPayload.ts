@@ -1,6 +1,7 @@
 import type { OfferVerificationStatus } from '@/lib/offerVerification';
 import { setVerificationStatusInDescription } from '@/lib/offerVerification';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
+import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
 
 export function normalizeLegalStatus(raw: unknown): 'NONE' | 'PENDING' | 'REJECTED' | 'VERIFIED' {
   const value = String(raw || '').trim().toUpperCase();
@@ -27,7 +28,7 @@ export function enrichOfferWithLegalAliases(offer: Record<string, unknown>) {
   const descStatus = legalDbToDescriptionVerificationStatus(legal.legalCheckStatus);
   const description = setVerificationStatusInDescription(offer?.description, descStatus);
 
-  return {
+  return enrichOfferMoneyFields({
     ...offer,
     description,
     legalCheckStatus: legal.legalCheckStatus,
@@ -39,5 +40,5 @@ export function enrichOfferWithLegalAliases(offer: Record<string, unknown>) {
       ...((offer?.legalVerification as Record<string, unknown>) || {}),
       status: legal.legalCheckStatus,
     },
-  };
+  });
 }

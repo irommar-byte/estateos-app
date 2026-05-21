@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
+import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
           isVerified: true,
           createdAt: true,
           _count: { select: { offers: true } },
-          radarPreference: { select: { pushNotifications: true, minMatchThreshold: true } },
+          radarPreference: true,
         },
         orderBy,
         skip,
@@ -87,9 +88,18 @@ export async function GET(req: Request) {
       prisma.user.count({ where }),
     ]);
 
+    const usersWithRadar = users.map((u) => {
+      const shaped = shapeRadarPreference(u.radarPreference);
+      return {
+        ...u,
+        radarPreference: shaped,
+        RadarPreference: shaped,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      users,
+      users: usersWithRadar,
       pagination: {
         page,
         limit,

@@ -5,6 +5,7 @@ import { OFFER_PREMARKET_EMBARGO_HOURS } from '@/lib/offerPremarket';
 import { cookies } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
+import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
 
     // 3. Algorytm swatania: Basic nie widzi ID kupców do momentu „premiery na szerokim rynku” (embargo)
     const radarResults = myOffers.map(offer => {
-       const offerPrice = toNumericPrice(offer.price);
+       const offerPrice = getCanonicalOfferPricePln(offer);
        
        const matches = allBuyers.filter(buyer => {
           if (buyer.id === user.id) return false; // Nie sprzedajemy samemu sobie

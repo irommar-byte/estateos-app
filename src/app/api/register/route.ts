@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { encryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
-import { Role } from '@prisma/client';
+import { PlanType, Role } from '@prisma/client';
 import { buildWelcomeEmailHtml, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
   buildPhoneLookupVariants,
@@ -17,14 +17,23 @@ const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().tri
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, password, name, role, companyName } = body;
+    const { email, password, name, role, companyName, firstName, lastName } = body;
     const cleanEmail = normalizeEmail(email);
     const phoneE164 = normalizePhoneE164(extractPhoneFromBody(body));
     const companyNameTrimmed =
       typeof companyName === 'string' ? companyName.trim() : String(companyName || '').trim();
+    const fullNameFromParts = [String(firstName || '').trim(), String(lastName || '').trim()]
+      .filter(Boolean)
+      .join(' ');
+    const displayName = fullNameFromParts || String(name || '').trim() || 'Użytkownik';
+    const roleUpper = String(role || '').toUpperCase();
+    const isPartner = roleUpper === 'PARTNER';
 
     if (!cleanEmail || !password) {
       return NextResponse.json({ success: false, message: 'Brak danych' }, { status: 400 });
+    }
+    if (String(password).length < 6) {
+      return NextResponse.json({ success: false, message: 'Hasło musi mieć min. 6 znaków' }, { status: 400 });
     }
 
     const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
@@ -47,8 +56,15 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(password, 10);
 
     let dbRole: Role = Role.USER;
-    if (role === 'PARTNER' || role === 'AGENT') dbRole = Role.AGENT;
-    if (role === 'ADMIN') dbRole = Role.ADMIN;
+    let userPlanType: PlanType = PlanType.NONE;
+    if (isPartner) {
+      dbRole = Role.USER;
+      userPlanType = PlanType.AGENCY;
+    } else if (roleUpper === 'AGENT') {
+      dbRole = Role.AGENT;
+    } else if (roleUpper === 'ADMIN') {
+      dbRole = Role.ADMIN;
+    }
 
     if (dbRole === Role.AGENT && !companyNameTrimmed) {
       return NextResponse.json(
@@ -65,9 +81,10 @@ export async function POST(req: Request) {
       data: {
         email: cleanEmail,
         password: hashed,
-        name: name || 'Użytkownik',
+        name: displayName,
         phone: phoneE164,
         role: dbRole,
+        planType: userPlanType,
         companyName: companyNameTrimmed || null,
       },
       select: MOBILE_USER_SELECT,

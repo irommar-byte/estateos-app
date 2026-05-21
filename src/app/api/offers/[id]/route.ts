@@ -9,7 +9,8 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
-import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
+import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services/offer.service';
+import { enrichOfferMoneyFields, parsePriceAmount, resolveOfferPriceFromBody } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import {
@@ -311,7 +312,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       });
     }
     
-    return NextResponse.json({ success: true, offer: updatedOffer, statusChanged: requireReverification });
+    return NextResponse.json({
+      success: true,
+      offer: enrichOfferMoneyFields(updatedOffer as Record<string, unknown>),
+      statusChanged: requireReverification,
+    });
   } catch (error) {
     if (isOfferSchemaCompatibilityError(error)) {
       return NextResponse.json(
