@@ -42,6 +42,11 @@ const coreChecks = [
 const mobileReconciliationChecks = [
   { name: 'mobile push-token probe', url: '/api/mobile/v1/user/push-token', expectStatus: [200] },
   { name: 'mobile admin users requires auth', url: '/api/mobile/v1/admin/users', expectStatus: [401] },
+  {
+    name: 'mobile admin core metrics requires auth',
+    url: '/api/mobile/v1/admin/core/metrics',
+    expectStatus: [401],
+  },
   { name: 'mobile admin offers requires auth', url: '/api/mobile/v1/admin/offers', expectStatus: [401] },
   { name: 'mobile admin radar-analytics requires auth', url: '/api/mobile/v1/admin/radar-analytics', expectStatus: [401] },
   {
