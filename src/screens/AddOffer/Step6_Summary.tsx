@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import type { Camera } from 'react-native-maps';
@@ -23,14 +23,14 @@ import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
 import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
-import {
-  fetchCountableUserOffers,
-  allowsMultipleCountableListings,
-  canPublishCountableListing,
-  getAdditionalListingSlots,
-  userAfterPakietPlusPurchase,
-} from '../../utils/listingQuota';
+import { allowsMultipleCountableListings } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
+import {
+  PUBLICATION_COPY,
+  buildCreatePublicationPayload,
+  fetchPublicationQuote,
+  isPublicationRequiresPlusError,
+} from '../../services/offerPublicationService';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
 import {
   computeAgentCommissionAmount,
@@ -48,6 +48,12 @@ const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E'
 const LIGHT_COLORS = { primary: '#10b981', background: '#F2F2F7', card: '#FFFFFF', text: '#111827', subtitle: '#6B7280', danger: '#ef4444' };
 // Fallback for static StyleSheet colors; runtime theme overrides are applied inline via `colors`.
 const Colors = DARK_COLORS;
+
+/** Kredyt Pakiet Plus po zakupie — zużycie dopiero przy udanym POST /offers. */
+type PlusPublishContext = {
+  transactionId: string;
+  deferConsume: boolean;
+};
 
 /** Backend zapisuje piętro jako liczbę; „Parter” z pickera → 0. */
 function normalizeFloorForCreate(f: unknown): number {
@@ -202,6 +208,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
+  const pendingPlusCreditRef = useRef<PlusPublishContext | null>(null);
   const isDark = Boolean(theme?.dark || theme?.glass === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
   const isCompactScreen = width <= 390;
@@ -241,7 +248,44 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     }, [navigation, setCurrentStep]),
   );
 
-  const handlePublish = async (forceBypass = false) => {
+  const runPakietPlusPurchaseAndPublish = async () => {
+    if (!token) return;
+    const r = await purchasePakietPlusConsumable(API_URL, token, {
+      deferPublicationConsume: true,
+    });
+    if (!r.ok) {
+      if (!r.cancelled && r.message) {
+        Alert.alert('Sklep', r.message);
+      }
+      return;
+    }
+
+    const transactionId = r.transactionId ?? '';
+    const deferConsume = Boolean(
+      r.deferPublicationConsume || r.publicationConsumeDeferred || transactionId,
+    );
+    if (transactionId) {
+      pendingPlusCreditRef.current = { transactionId, deferConsume: true };
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setUploadProgressText(PUBLICATION_COPY.publishAfterPurchase);
+    await handlePublish(true, transactionId ? { transactionId, deferConsume: true } : undefined);
+  };
+
+  const promptPaidPublication = () => {
+    Alert.alert(PUBLICATION_COPY.paywallTitle, PUBLICATION_COPY.paywallBody, [
+      { text: 'Anuluj', style: 'cancel' },
+      {
+        text: `${PUBLICATION_COPY.paywallCta} (~${PAKIET_PLUS_PRICE_LABEL})`,
+        onPress: () => {
+          void runPakietPlusPurchaseAndPublish();
+        },
+      },
+    ]);
+  };
+
+  const handlePublish = async (forceBypass = false, plusCtx?: PlusPublishContext) => {
     if (loading) return;
 
     if (!isFinalDraftValid) {
@@ -294,81 +338,16 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       return;
     }
 
-    if (!forceBypass && !allowsMultipleCountableListings(latestUser)) {
-      const existingCount = await fetchCountableUserOffers(API_URL, token, user.id);
-      if (!canPublishCountableListing(latestUser, existingCount)) {
+    const pendingPlus = pendingPlusCreditRef.current;
+    const plusConsume = plusCtx ?? pendingPlus;
+
+    let publicationQuote: Awaited<ReturnType<typeof fetchPublicationQuote>>['quote'] | null = null;
+    if (!allowsMultipleCountableListings(latestUser) && !plusConsume) {
+      const q = await fetchPublicationQuote(API_URL, token);
+      publicationQuote = q.quote;
+      if (!forceBypass && q.quote.requiresPayment) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        const additionalPublications = getAdditionalListingSlots(latestUser);
-        const quotaBody = `Na koncie standardowym możesz mieć jednocześnie jedno aktywne lub oczekujące ogłoszenie. Dostępne dodatkowe publikacje: ${additionalPublications}. Pakiet Plus pozwala dodać jedną kolejną publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń i nie aktywuje żadnego planu konta. Zakup odbywa się wyłącznie przez sklep systemowy w aplikacji.`;
-        const quotaButtons: {
-          text: string;
-          style?: 'cancel' | 'default' | 'destructive';
-          onPress?: () => void;
-        }[] = [{ text: 'Zamknij', style: 'cancel' }];
-        quotaButtons.push({
-          text: `Kup Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL})`,
-          onPress: () => {
-            void (async () => {
-              const r = await purchasePakietPlusConsumable(API_URL, token);
-              if (r.ok) {
-                await refreshUser();
-                const apiUser = useAuthStore.getState().user;
-                const effectiveUser = userAfterPakietPlusPurchase(apiUser, {
-                  backendRegistered: r.backendRegistered,
-                  extraListings: r.extraListings,
-                });
-                if (effectiveUser && effectiveUser !== apiUser) {
-                  useAuthStore.setState({ user: effectiveUser });
-                }
-                const refreshedCount = await fetchCountableUserOffers(API_URL, token, user.id);
-                const canPublishAfterPurchase = canPublishCountableListing(
-                  effectiveUser,
-                  refreshedCount,
-                );
-                if (canPublishAfterPurchase) {
-                  const pendingNote = !r.backendRegistered
-                    ? ' Płatność z Apple została przyjęta — księgowanie na serwerze dokończy się w tle.'
-                    : '';
-                  Alert.alert(
-                    'Pakiet Plus',
-                    `Płatność potwierdzona.${pendingNote} Publikuję dodatkową nową ofertę na 30 dni...`,
-                    [
-                      {
-                        text: 'OK',
-                        onPress: () => {
-                          void handlePublish(true);
-                        },
-                      },
-                    ],
-                  );
-                } else if (r.backendRegistered) {
-                  Alert.alert(
-                    'Limit ogłoszeń',
-                    `Zakup Pakietu Plus został zaksięgowany, ale nadal masz maksymalną liczbę aktywnych lub oczekujących ogłoszeń (${refreshedCount}). Zakończ lub zarchiwizuj inną ofertę w Profilu, a następnie opublikuj ponownie.`,
-                    [{ text: 'OK' }],
-                  );
-                } else {
-                  Alert.alert(
-                    'Pakiet Plus',
-                    'Zakup z Apple został przyjęty, ale serwer jeszcze nie potwierdził dodatkowej publikacji. Poczekaj ok. 1 minutę, użyj „Przywróć zakupy" w Profilu albo spróbuj opublikować ponownie.',
-                    [
-                      { text: 'OK' },
-                      {
-                        text: 'Spróbuj ponownie',
-                        onPress: () => {
-                          void handlePublish();
-                        },
-                      },
-                    ],
-                  );
-                }
-              } else if (!r.cancelled && r.message) {
-                Alert.alert('Sklep', r.message);
-              }
-            })();
-          },
-        });
-        Alert.alert('Limit darmowej publikacji', quotaBody, quotaButtons);
+        promptPaidPublication();
         return;
       }
     }
@@ -400,9 +379,16 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     setLoading(true);
     setUploadProgressText('Tworzenie oferty w bazie...');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
+
+    const publication = buildCreatePublicationPayload({
+      plusTransactionId: plusConsume?.transactionId,
+      quote: publicationQuote,
+    });
+
     const offerData = {
-      userId: user.id, 
+      userId: user.id,
+      activateOnCreate: true,
+      ...(publication ? { publication } : {}),
       lat: draft.lat || 52.2297,
       lng: draft.lng || 21.0122,
       title:
@@ -476,7 +462,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.message || errData.error || 'Błąd serwera przy tworzeniu oferty');
+        if (response.status === 422 && isPublicationRequiresPlusError(errData)) {
+          promptPaidPublication();
+          return;
+        }
+        throw new Error(
+          (errData as { message?: string }).message ||
+            (errData as { error?: string }).error ||
+            'Błąd serwera przy wystawianiu ogłoszenia na rynek',
+        );
       }
 
       const data = await response.json();
@@ -567,6 +561,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         }
       }
 
+      if (plusConsume?.transactionId) {
+        pendingPlusCreditRef.current = null;
+        await refreshUser();
+      }
+
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
@@ -608,9 +607,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
 
       let detail = '';
+      if (plusConsume?.transactionId) {
+        pendingPlusCreditRef.current = plusConsume;
+        detail +=
+          '\n\nOpłata za wystawienie została przyjęta, ale ogłoszenie nie trafiło na rynek — naciśnij „Opublikuj w Ekosystemie” ponownie (bez drugiej opłaty).';
+      }
       if (createdOfferId != null && token) {
         const archived = await archiveOwnOfferViaMobileAdmin(API_URL, token, createdOfferId);
-        detail = archived
+        detail += archived
           ? '\n\nNieukończoną ofertę wycofaliśmy automatycznie — możesz bezpiecznie spróbować ponownie.'
           : `\n\nNie udało się automatycznie wycofać oferty z błędem publikacji (ID: ${createdOfferId}). Napisz do pomocy, żeby usunęli duplikat.`;
       }

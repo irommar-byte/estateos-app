@@ -278,7 +278,11 @@ const WARSZAWA_DISTRICT_SEEDS: Record<string, Array<{ lat: number; lng: number }
   // Pojedyncze centroidy wystarczą dla małych dzielnic
   'Śródmieście': [{ lat: 52.2310, lng: 21.0120 }, { lat: 52.2400, lng: 21.0080 }],
   'Ochota': [{ lat: 52.2110, lng: 20.9850 }, { lat: 52.2200, lng: 20.9900 }],
-  'Włochy': [{ lat: 52.1960, lng: 20.9450 }, { lat: 52.1860, lng: 20.9250 }],
+  'Włochy': [
+    { lat: 52.1960, lng: 20.9450 },
+    { lat: 52.1860, lng: 20.9250 },
+    { lat: 52.1785, lng: 20.9850 }, // Okęcie / Raków — granica z Mokotowem
+  ],
   'Ursus': [{ lat: 52.1960, lng: 20.8860 }],
   'Wilanów': [{ lat: 52.1660, lng: 21.0900 }, { lat: 52.1550, lng: 21.0950 }],
   'Żoliborz': [{ lat: 52.2730, lng: 20.9840 }, { lat: 52.2680, lng: 20.9900 }],
@@ -458,7 +462,9 @@ const normalizeForMatch = (raw: string): string => {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[ł]/g, 'l')
-    .replace(/[–—]/g, '-')
+    .replace(/[-_/]/g, ' ')
+    .replace(/[.,;:()]+/g, ' ')
+    .replace(/[–—]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 };
@@ -479,21 +485,43 @@ const matchDistrictByName = (rawDistrict: string | null | undefined, city: strin
   const needle = normalizeForMatch(rawDistrict);
   if (!needle) return null;
 
+  // Warszawa: "Praga" bez kierunku jest niejednoznaczna — nie zgadujemy.
+  // Jeśli OS zwróci tylko "Praga", oddajemy sterowanie fallbackowi geograficznemu.
+  if (city === 'Warszawa' && /\bpraga\b/.test(needle)) {
+    if (/\b(polnoc|pn)\b/.test(needle)) return 'Praga-Północ';
+    if (/\b(poludnie|pd|poludniowa)\b/.test(needle)) return 'Praga-Południe';
+    if (needle === 'praga') return null;
+  }
+
   // 1) exact match po normalizacji
   for (const district of cityDistricts) {
     if (normalizeForMatch(district) === needle) return district;
   }
   // 2) prefix — np. „Praga" w place.district vs „Praga-Północ" w naszej liście
+  let prefixMatch: string | null = null;
   for (const district of cityDistricts) {
     const n = normalizeForMatch(district);
-    if (n.startsWith(needle) || needle.startsWith(n)) return district;
+    if (n.startsWith(needle) || needle.startsWith(n)) {
+      if (prefixMatch && prefixMatch !== district) {
+        // Niejednoznaczny prefix (np. "Praga") — zostawiamy decyzję geometrii.
+        return null;
+      }
+      prefixMatch = district;
+    }
   }
+  if (prefixMatch) return prefixMatch;
   // 3) substring — np. „Stare Mokotów" → „Mokotów"
+  let substringMatch: string | null = null;
   for (const district of cityDistricts) {
     const n = normalizeForMatch(district);
-    if (n.includes(needle) || needle.includes(n)) return district;
+    if (n.includes(needle) || needle.includes(n)) {
+      if (substringMatch && substringMatch !== district) {
+        return null;
+      }
+      substringMatch = district;
+    }
   }
-  return null;
+  return substringMatch;
 };
 
 /**
@@ -765,10 +793,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
     safeDraftLocalityCountry,
   );
   const isPolandLocation = safeDraftLocalityCountryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
+  const hasCoords =
+    Number.isFinite(Number(draft.lat)) && Number.isFinite(Number(draft.lng));
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
     if (rawDraftCity) return REST_OF_COUNTRY_CITY;
+    if (hasCoords) return REST_OF_COUNTRY_CITY;
     return DEFAULT_STRICT_CITY;
   })();
   const isRestOfCountry = safeDraftCity === REST_OF_COUNTRY_CITY;
@@ -797,32 +828,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
   }, [streetInput, draft.street, updateDraft]);
 
   useEffect(() => {
-    const repair = getLocationDraftRepairPatch(draft);
-    if (repair) {
-      updateDraft(repair);
-      return;
+    const patch = getLocationDraftRepairPatch(draft);
+    if (patch) {
+      updateDraft(patch);
     }
-    if (
-      safeDraftCity !== draft.city ||
-      safeDraftDistrict !== draft.district ||
-      safeDraftLocalityCountry !== draft.localityCountry
-    ) {
-      updateDraft({
-        city: safeDraftCity,
-        district: safeDraftDistrict,
-        localityCountry: safeDraftLocalityCountry,
-        localityCountryCode: localityCountryIso(draft.localityCountryCode, safeDraftLocalityCountry),
-      });
-    }
-  }, [
-    draft.city,
-    draft.district,
-    draft.localityCountry,
-    safeDraftCity,
-    safeDraftDistrict,
-    safeDraftLocalityCountry,
-    updateDraft,
-  ]);
+  }, [draft.city, draft.district, draft.localityCountry, draft.localityCountryCode, updateDraft]);
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
     isProgrammaticMove.current = true;
@@ -954,10 +964,23 @@ export default function Step2_Location({ theme }: { theme: any }) {
   };
 
   const handleRegionChangeComplete = async (region: Region, details: any) => {
-    updateDraft({ lat: region.latitude, lng: region.longitude });
+    const isProgrammatic = isProgrammaticMove.current;
+    const isNonGesture = details && details.isGesture === false;
 
-    if (isProgrammaticMove.current) return;
-    if (details && details.isGesture === false) return;
+    if (!isProgrammatic) {
+      const prevLat = Number(draft.lat);
+      const prevLng = Number(draft.lng);
+      const latChanged =
+        !Number.isFinite(prevLat) || Math.abs(prevLat - region.latitude) > 1e-6;
+      const lngChanged =
+        !Number.isFinite(prevLng) || Math.abs(prevLng - region.longitude) > 1e-6;
+      if (latChanged || lngChanged) {
+        updateDraft({ lat: region.latitude, lng: region.longitude });
+      }
+    }
+
+    if (isProgrammatic) return;
+    if (isNonGesture) return;
 
     // Pierwszy faktyczny gest na mapie — chowamy MapInteractionTip.
     // Sprawdzamy `details.isGesture` (iOS RN-Maps), żeby nie liczyć ruchów

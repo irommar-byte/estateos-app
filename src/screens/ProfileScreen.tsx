@@ -33,9 +33,14 @@ import {
   persistMobileOfferUpdate,
   readMobileOfferResponseBody,
   isExplicitMobileOfferSaveFailure,
+  extractMobileOfferJson,
 } from '../utils/mobileOfferUpdate';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
-import { getAdditionalListingSlots } from '../utils/listingQuota';
+import {
+  activateOfferPublication,
+  fetchPublicationQuote,
+  PUBLICATION_COPY,
+} from '../services/offerPublicationService';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -95,6 +100,55 @@ const AnimatedStatusDot = ({ status }) => {
       <Animated.View style={[styles.ledGlow, { backgroundColor: color, opacity: animOpacity, transform: [{ scale: animScale }] }]} />
       <View style={[styles.ledCore, { backgroundColor: color }]} />
     </View>
+  );
+};
+
+/** Delikatna pigułka „Synchronizacja” — iOS-style po reaktywacji oferty (status stabilizuje się z serwerem). */
+const OfferStatusSyncPill = ({ isDark }: { isDark: boolean }) => {
+  const spin = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0.55)).current;
+
+  useEffect(() => {
+    const rotateLoop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1400,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.55, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    rotateLoop.start();
+    pulseLoop.start();
+    return () => {
+      rotateLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [pulse, spin]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <Animated.View
+      style={[
+        styles.syncPill,
+        {
+          opacity: pulse,
+          backgroundColor: isDark ? 'rgba(10,132,255,0.16)' : 'rgba(10,132,255,0.08)',
+          borderColor: isDark ? 'rgba(10,132,255,0.32)' : 'rgba(10,132,255,0.2)',
+        },
+      ]}
+    >
+      <Animated.View style={{ transform: [{ rotate }] }}>
+        <Ionicons name="sync" size={12} color="#0A84FF" />
+      </Animated.View>
+      <Text style={styles.syncPillText}>Synchronizacja</Text>
+    </Animated.View>
   );
 };
 
@@ -455,9 +509,43 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [selectedOffer, setSelectedOffer] = useState(null);
   const [reactivating, setReactivating] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [syncTick, setSyncTick] = useState(0);
+  const recentlyReactivatedUntilRef = useRef<Record<number, number>>({});
   
   const { user, token, refreshUser } = useAuthStore();
   const isDark = theme.glass === 'dark';
+
+  const REACTIVATE_STATUS_LOCK_MS = 30000;
+
+  const isOfferSyncing = (offerId: number) => {
+    void syncTick;
+    return Number(recentlyReactivatedUntilRef.current[offerId] || 0) > Date.now();
+  };
+
+  const clearReactivateLock = (offerId: number) => {
+    if (!Number.isFinite(offerId) || offerId <= 0) return;
+    delete recentlyReactivatedUntilRef.current[offerId];
+  };
+
+  useEffect(() => {
+    if (!visible) {
+      recentlyReactivatedUntilRef.current = {};
+      return;
+    }
+    const pulse = () => {
+      const now = Date.now();
+      Object.keys(recentlyReactivatedUntilRef.current).forEach((k) => {
+        const id = Number(k);
+        if ((recentlyReactivatedUntilRef.current[id] || 0) <= now) {
+          delete recentlyReactivatedUntilRef.current[id];
+        }
+      });
+      setSyncTick((n) => n + 1);
+    };
+    pulse();
+    const id = setInterval(pulse, 1000);
+    return () => clearInterval(id);
+  }, [visible]);
 
   const fetchMyOffers = async () => {
     if (!user || !token) return;
@@ -466,7 +554,24 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user.id}`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.offers) ? data.offers : [];
-      if (res.ok) setOffers(list);
+      if (res.ok) {
+        const now = Date.now();
+        const protectedList = list.map((o: any) => {
+          const id = Number(o?.id);
+          const lockUntil = Number(recentlyReactivatedUntilRef.current[id] || 0);
+          if (!id || lockUntil <= now) return o;
+          const normalized = normalizeOfferTabStatus(o?.status);
+          if (normalized === 'ACTIVE') {
+            clearReactivateLock(id);
+            return o;
+          }
+          if (normalized === 'ARCHIVED') {
+            return { ...o, status: 'ACTIVE' };
+          }
+          return o;
+        });
+        setOffers(protectedList);
+      }
     } catch (e) {} finally { setLoading(false); }
   };
 
@@ -489,45 +594,49 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     setSelectedOffer(null);
   };
 
-  const reactivateEndedOfferWithPakietPlus = async (offerId: number, offerTitle: string) => {
+  const reactivateEndedOfferWithPakietPlus = async (
+    offerId: number,
+    offerTitle: string,
+    iapTransactionId: string,
+  ) => {
     if (!token || reactivating) return;
     setReactivating(true);
     try {
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-      const payload = {
-        id: offerId,
-        userId: user?.id,
-        status: 'ACTIVE',
-        newStatus: 'ACTIVE',
-        reactivateAsNew: true,
-        publishAsNewPlus: true,
-        consumePlusPublication: true,
-        refreshCreatedAt: true,
-        activatedAt: now.toISOString(),
-        expiresAt,
-      };
-      const res = await persistMobileOfferUpdate({ offerId, token, payload });
-      const body = await readMobileOfferResponseBody(res);
-
-      if (isExplicitMobileOfferSaveFailure(body, res.ok)) {
+      const res = await activateOfferPublication(API_URL, token, offerId, iapTransactionId);
+      if (!res.ok) {
         throw new Error(
-          body?.message ||
-          body?.error ||
-          (typeof body?._raw === 'string' ? body._raw.slice(0, 240) : null) ||
-          `Serwer odrzucił przywrócenie oferty (HTTP ${res.status}).`
+          res.body?.message ||
+            res.body?.error ||
+            `Serwer odrzucił aktywację ogłoszenia (HTTP ${res.status}).`,
         );
       }
 
+      const endsAt =
+        typeof res.body?.publication?.endsAt === 'string'
+          ? res.body.publication.endsAt
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const serverOffer = extractMobileOfferJson(res.body);
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setOffers((prev) => prev.map((o) => Number(o?.id) === offerId ? { ...o, status: 'ACTIVE', expiresAt } : o));
+      recentlyReactivatedUntilRef.current[offerId] = Date.now() + REACTIVATE_STATUS_LOCK_MS;
+      setOffers((prev) =>
+        prev.map((o) => {
+          if (Number(o?.id) !== offerId) return o;
+          const merged = serverOffer ? { ...o, ...serverOffer } : { ...o, status: 'ACTIVE' };
+          return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
+        }),
+      );
       setSelectedOffer(null);
       setActiveTab('ACTIVE');
-      await Promise.all([fetchMyOffers(), refreshUser?.()]);
-      Alert.alert('Oferta przywrócona', `„${offerTitle}" wróciła do aktywnej sprzedaży na 30 dni jako publikacja Pakiet Plus.`);
+      await refreshUser?.();
+      await fetchMyOffers();
+      Alert.alert(
+        'Ogłoszenie na rynku',
+        `„${offerTitle}" jest ponownie publicznie wystawione na 30 dni.`,
+      );
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Nie udało się przywrócić', e?.message || 'Spróbuj ponownie za chwilę.');
+      Alert.alert('Nie udało się wystawić', e?.message || 'Spróbuj ponownie za chwilę.');
     } finally {
       setReactivating(false);
     }
@@ -556,7 +665,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } else if (actionType === 'BUMP') {
       Alert.alert(
         'Pakiet Plus',
-        'Pakiet Plus służy wyłącznie do dodania jednej dodatkowej nowej oferty na 30 dni. Nie podbija i nie przedłuża istniejących ogłoszeń.',
+        'Pakiet Plus opłaca publiczne wystawienie konkretnego ogłoszenia na rynek (30 dni). Nie podbija ani nie przedłuża już aktywnego ogłoszenia.',
         [{ text: 'OK' }]
       );
     } else if (actionType === 'ARCHIVE') {
@@ -565,7 +674,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
       Alert.alert(
         "Zakończ ogłoszenie",
-        "Czy na pewno chcesz wycofać ofertę do archiwum? Niewykorzystane dni tej publikacji przepadną. Aby przywrócić ofertę do aktywnej sprzedaży, trzeba będzie ponownie wykupić Pakiet Plus na 30 dni.",
+        PUBLICATION_COPY.archiveWarning,
         [
         { text: "Anuluj", style: "cancel" },
         { text: "Wycofaj", style: "destructive", onPress: async () => {
@@ -595,8 +704,17 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             }
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setOffers((prev) => prev.map((o) => Number(o?.id) === offerId ? { ...o, status: 'ARCHIVED' } : o));
+            clearReactivateLock(offerId);
+            const archivedOffer = extractMobileOfferJson(body);
+            setOffers((prev) =>
+              prev.map((o) => {
+                if (Number(o?.id) !== offerId) return o;
+                const merged = archivedOffer ? { ...o, ...archivedOffer } : { ...o, status: 'ARCHIVED' };
+                return { ...merged, status: 'ARCHIVED' };
+              }),
+            );
             setSelectedOffer(null);
+            setActiveTab('ARCHIVED');
             await fetchMyOffers();
             Alert.alert('Oferta wycofana', `„${offerTitle}" została przeniesiona do zakończonych ogłoszeń.`);
           } catch(e) {
@@ -612,39 +730,35 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       if (!selectedOffer?.id || !token || reactivating) return;
       const offerId = Number(selectedOffer.id);
       const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
-      Alert.alert(
-        'Przywróć na 30 dni',
-        `Pakiet Plus przywróci tę zakończoną ofertę do aktywnej sprzedaży na 30 dni, tak jak dodatkową nową publikację. Zakup odbywa się wyłącznie przez sklep systemowy.`,
-        [
-          { text: 'Anuluj', style: 'cancel' },
-          {
-            text: `Kup Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL})`,
-            onPress: async () => {
-              const r = await purchasePakietPlusConsumable(API_URL, token);
-              if (r.cancelled) return;
-              if (!r.ok) {
-                if (r.message) Alert.alert('Sklep', r.message);
-                return;
-              }
-              await refreshUser?.();
-              let slots = getAdditionalListingSlots(useAuthStore.getState().user);
-              if (!r.backendRegistered && slots < 1) {
-                const restored = await restorePakietPlusPurchases();
-                if (restored.ok) await refreshUser?.();
-                slots = getAdditionalListingSlots(useAuthStore.getState().user);
-              }
-              if (r.backendRegistered || slots > 0) {
-                await reactivateEndedOfferWithPakietPlus(offerId, offerTitle);
-                return;
-              }
-              Alert.alert(
-                'Pakiet Plus',
-                'Zakup z Apple został przyjęty, ale serwer jeszcze nie potwierdził dodatkowej publikacji. Poczekaj ok. 1 minutę i użyj „Przywróć zakupy" w Profilu, a następnie spróbuj przywrócić ofertę ponownie.',
-              );
-            },
+      Alert.alert(PUBLICATION_COPY.reactivateTitle, PUBLICATION_COPY.reactivateBody, [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: `Opłać wystawienie (~${PAKIET_PLUS_PRICE_LABEL})`,
+          onPress: async () => {
+            const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
+            if (!quoteRes.ok && quoteRes.status !== 0) {
+              Alert.alert('Błąd', quoteRes.quote.message || 'Nie udało się sprawdzić wymagań publikacji.');
+              return;
+            }
+            const r = await purchasePakietPlusConsumable(API_URL, token, {
+              deferPublicationConsume: true,
+              targetOfferId: offerId,
+            });
+            if (r.cancelled) return;
+            if (!r.ok) {
+              if (r.message) Alert.alert('Sklep', r.message);
+              return;
+            }
+            const tx = r.transactionId ?? '';
+            if (!tx) {
+              Alert.alert('Pakiet Plus', PUBLICATION_COPY.restoreHint);
+              return;
+            }
+            await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, tx);
+            await refreshUser?.();
           },
-        ]
-      );
+        },
+      ]);
     }
   };
 
@@ -658,12 +772,13 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
 
   const renderMyOffer = ({ item }) => {
     const imageUri = extractOfferCardImage(item);
-
+    const offerId = Number(item?.id);
     const rowStatus = normalizeOfferTabStatus(item.status);
+    const syncing = offerId > 0 && isOfferSyncing(offerId);
 
     return (
       <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: syncing ? 10 : 15 }}>
            {imageUri ? <Image source={{ uri: imageUri }} style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15 }} /> : <View style={{ width: 65, height: 65, borderRadius: 14, marginRight: 15, backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', justifyContent: 'center', alignItems: 'center' }}><Ionicons name="home" size={24} color="#8E8E93" /></View>}
            <View style={{ flex: 1, justifyContent: 'center' }}>
               <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 4 }]} numberOfLines={2}>{item.title}</Text>
@@ -672,6 +787,15 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
               </Text>
            </View>
         </View>
+
+        {syncing ? (
+          <View style={styles.syncPillRow}>
+            <OfferStatusSyncPill isDark={isDark} />
+            <Text style={[styles.syncPillHint, { color: theme.subtitle }]}>
+              Status potwierdza się z serwerem
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', paddingTop: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -738,8 +862,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
               onPress={() => handleAction('REACTIVATE_30D')}
               icon="refresh-circle"
               color={{ bg: 'rgba(52,199,89,0.14)', icon: '#34C759' }}
-              title={reactivating ? 'Przywracanie...' : 'Przywróć na 30 dni'}
-              subtitle={`Pakiet Plus — sklep systemowy (~${PAKIET_PLUS_PRICE_LABEL})`}
+              title={reactivating ? 'Wystawianie…' : 'Wystaw ponownie na rynek'}
+              subtitle={`Pakiet Plus — 30 dni publicznie (~${PAKIET_PLUS_PRICE_LABEL})`}
               theme={theme}
               isDark={isDark}
             />
@@ -785,7 +909,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         {loading ? (
            <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
         ) : (
-           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={activeTab} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej sekcji.</Text>} />
+           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej sekcji.</Text>} />
         )}
       </View>
     </Modal>
@@ -2275,6 +2399,7 @@ export default function ProfileScreen({
    * w trakcie operacji (Apple lubi wizualne potwierdzenie).
    */
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
+  const [backendFirstFreePublicationUsed, setBackendFirstFreePublicationUsed] = useState<boolean | null>(null);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -2467,6 +2592,48 @@ export default function ProfileScreen({
     fetchOwnPublicProfile();
   }, [user?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshFirstFreePublicationStatus = async () => {
+      if (!token) {
+        if (!cancelled) setBackendFirstFreePublicationUsed(null);
+        return;
+      }
+      const quoteRes = await fetchPublicationQuote(API_URL, token);
+      if (cancelled) return;
+
+      if (!quoteRes.ok && quoteRes.status !== 422) {
+        setBackendFirstFreePublicationUsed(null);
+        return;
+      }
+
+      const quote = quoteRes.quote || ({} as any);
+      if (quote.allowedFreeFirst === true || quote.kind === 'FREE_FIRST') {
+        setBackendFirstFreePublicationUsed(false);
+        return;
+      }
+      if (
+        quote.allowedFreeFirst === false ||
+        quote.kind === 'PLUS_PAID' ||
+        quote.requiresPayment === true
+      ) {
+        setBackendFirstFreePublicationUsed(true);
+        return;
+      }
+      setBackendFirstFreePublicationUsed(null);
+    };
+
+    void refreshFirstFreePublicationStatus();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshFirstFreePublicationStatus();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [token, user?.id]);
+
   const toggleSms = async (value) => {
     setIsSmsEnabled(value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2541,7 +2708,7 @@ export default function ProfileScreen({
         if (result.restored > 0) {
           Alert.alert(
             'Przywrócono zakupy',
-            `Odnowiono ${result.restored} transakcj${result.restored === 1 ? 'ę' : 'i'}. Sloty zostaną zaktualizowane w ciągu chwili.`,
+            `Przetworzono ${result.restored} transakcj${result.restored === 1 ? 'ę' : 'e'}. Jeśli któraś płatność nie aktywowała publikacji, status zaktualizuje się po chwili.`,
           );
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } else {
@@ -2598,6 +2765,38 @@ export default function ProfileScreen({
   const plusHasValidExpiry = plusExpiresAtMs != null && Number.isFinite(plusExpiresAtMs);
   const plusDaysLeft = plusHasValidExpiry ? Math.max(0, Math.ceil((plusExpiresAtMs! - Date.now()) / 86400000)) : null;
   const hasPlusPublicationAvailable = plusSlots > 0;
+  const firstFreePublicationUsedRaw =
+    backendFirstFreePublicationUsed ??
+    (user as any)?.firstFreePublicationUsed ??
+    (user as any)?.first_free_publication_used ??
+    (user as any)?.firstFreeUsed ??
+    (user as any)?.freeFirstPublicationUsed;
+  const firstFreePublicationUsed =
+    typeof firstFreePublicationUsedRaw === 'boolean' ? firstFreePublicationUsedRaw : null;
+  const firstFreePillLabel =
+    firstFreePublicationUsed == null
+      ? 'Sprawdzanie'
+      : firstFreePublicationUsed
+        ? 'Wykorzystane'
+        : 'Niewykorzystane';
+  const firstFreePillColor =
+    firstFreePublicationUsed == null
+      ? '#0A84FF'
+      : firstFreePublicationUsed
+        ? '#FF9F0A'
+        : '#34C759';
+  const firstFreePillBg =
+    firstFreePublicationUsed == null
+      ? 'rgba(10,132,255,0.14)'
+      : firstFreePublicationUsed
+        ? 'rgba(255,159,10,0.14)'
+        : 'rgba(52,199,89,0.14)';
+  const firstFreePillBorder =
+    firstFreePublicationUsed == null
+      ? 'rgba(10,132,255,0.32)'
+      : firstFreePublicationUsed
+        ? 'rgba(255,159,10,0.38)'
+        : 'rgba(52,199,89,0.38)';
   const plusExpiryLabel = plusHasValidExpiry
     ? new Date(plusExpiresAtMs!).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
@@ -2907,10 +3106,10 @@ export default function ProfileScreen({
             <View
               style={[
                 styles.plusStatusIcon,
-                { backgroundColor: hasPlusPublicationAvailable ? '#10B981' : '#8E8E93' },
+                { backgroundColor: hasPlusPublicationAvailable ? '#10B981' : '#0A84FF' },
               ]}
             >
-              <Ionicons name={hasPlusPublicationAvailable ? 'checkmark-circle' : 'add-circle'} size={22} color="#FFFFFF" />
+              <Ionicons name={hasPlusPublicationAvailable ? 'checkmark-circle' : 'bag-add'} size={22} color="#FFFFFF" />
             </View>
             <View style={styles.plusStatusBody}>
               <View style={styles.plusStatusHeaderRow}>
@@ -2921,26 +3120,69 @@ export default function ProfileScreen({
                   style={[
                     styles.plusStatusPill,
                     {
-                      backgroundColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.14)' : 'rgba(142,142,147,0.14)',
-                      borderColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.42)' : 'rgba(142,142,147,0.28)',
+                      backgroundColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.14)' : 'rgba(10,132,255,0.14)',
+                      borderColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.42)' : 'rgba(10,132,255,0.32)',
                     },
                   ]}
                 >
-                  <Text style={[styles.plusStatusPillText, { color: hasPlusPublicationAvailable ? '#10B981' : '#8E8E93' }]}>
-                    {hasPlusPublicationAvailable ? 'DOSTĘPNA' : 'BRAK'}
+                  <Text style={[styles.plusStatusPillText, { color: hasPlusPublicationAvailable ? '#10B981' : '#0A84FF' }]}>
+                    {hasPlusPublicationAvailable ? 'DOSTĘPNA' : 'NA ŻĄDANIE'}
                   </Text>
                 </View>
               </View>
               <Text style={styles.plusStatusSubtitle}>
-                {hasPlusPublicationAvailable
-                  ? 'Możesz dodać jedną dodatkową nową ofertę na 30 dni.'
-                  : 'Brak dostępnej dodatkowej publikacji.'}
+                Opłata dotyczy publicznego wystawienia konkretnego ogłoszenia na 30 dni — przy dodawaniu lub ponownym wystawieniu z Profilu.
               </Text>
-              {hasPlusPublicationAvailable && plusExpiryLabel ? (
-                <Text style={styles.plusStatusMeta}>{plusDaysLabel} ({plusExpiryLabel})</Text>
-              ) : null}
               <Text style={styles.plusStatusMeta}>
-                Dostępne dodatkowe publikacje: {plusSlots}
+                To nie jest abonament. Kupujesz tylko wtedy, gdy publikujesz kolejne ogłoszenie.
+              </Text>
+            </View>
+          </View>
+          <View
+            style={[
+              styles.plusStatusCard,
+              {
+                marginTop: 10,
+                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                borderColor: firstFreePillBorder,
+              },
+            ]}
+          >
+            <View style={[styles.plusStatusIcon, { backgroundColor: firstFreePillColor }]}>
+              <Ionicons
+                name={firstFreePublicationUsed ? 'checkmark-done-circle' : 'gift'}
+                size={22}
+                color="#FFFFFF"
+              />
+            </View>
+            <View style={styles.plusStatusBody}>
+              <View style={styles.plusStatusHeaderRow}>
+                <Text style={[styles.plusStatusTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Darmowe Ogłoszenie
+                </Text>
+                <View
+                  style={[
+                    styles.plusStatusPill,
+                    {
+                      backgroundColor: firstFreePillBg,
+                      borderColor: firstFreePillBorder,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.plusStatusPillText, { color: firstFreePillColor }]}>
+                    {firstFreePillLabel}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.plusStatusSubtitle}>
+                Pierwsze publiczne wystawienie oferty na koncie jest bezpłatne.
+              </Text>
+              <Text style={styles.plusStatusMeta}>
+                {firstFreePublicationUsed == null
+                  ? 'Sprawdzamy status na serwerze.'
+                  : firstFreePublicationUsed
+                    ? 'Darmowe wystawienie zostało już wykorzystane.'
+                    : 'Darmowe wystawienie jest gotowe do użycia.'}
               </Text>
             </View>
           </View>
@@ -2980,8 +3222,8 @@ export default function ProfileScreen({
           </ListGroup>
           <Text style={styles.sectionFooter}>
             {Platform.OS === 'ios'
-              ? `Pakiet Plus to jednorazowy zakup w aplikacji (~${PAKIET_PLUS_PRICE_LABEL}), który pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń. Jeśli zakup się nie zaksięgował, przywróć go tutaj.`
-              : `Pakiet Plus to jednorazowy zakup, który pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo zakończoną ofertę przywróconą jako nową publikację. Nie przedłuża aktywnych ogłoszeń.`}
+              ? `Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL}) opłaca publiczne wystawienie wybranego ogłoszenia na rynek na 30 dni. Nie jest to abonament ani „slot” na koncie. Pierwsze publiczne wystawienie pierwszej oferty na koncie było bezpłatne. Jeśli płatność nie zaksięgowała wystawienia, użyj Przywróć zakupy.`
+              : `Pakiet Plus opłaca publiczne wystawienie wybranego ogłoszenia na 30 dni. Pierwsze publiczne wystawienie pierwszej oferty na koncie było bezpłatne.`}
           </Text>
         </View>
 
@@ -3395,6 +3637,30 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, marginHorizontal: 4 },
   tabText: { fontSize: 13, fontWeight: '700' },
   offerCard: { padding: 16, borderRadius: 20, marginBottom: 15, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  syncPillRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  syncPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  syncPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.15,
+    color: '#0A84FF',
+  },
+  syncPillHint: {
+    flex: 1,
+    minWidth: 120,
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: -0.1,
+    lineHeight: 16,
+  },
   offerTitle: { fontSize: 17, fontWeight: '700', marginBottom: 5 },
   offerSubtitle: { fontSize: 14, color: '#8E8E93', fontWeight: '600' },
   offerUser: { fontSize: 12, color: '#8E8E93', marginTop: 4, marginBottom: 10, fontWeight: '600' },

@@ -58,6 +58,16 @@ export type IapInitOptions = {
   getToken: TokenProvider;
 };
 
+export type PurchaseConsumableOptions = {
+  /**
+   * Zakup pod publikację: verify z Apple, consume przy aktywacji oferty
+   * (`POST /offers` lub `POST /offers/{id}/activate`).
+   */
+  deferPublicationConsume?: boolean;
+  /** Opcjonalnie — reaktywacja konkretnego ogłoszenia. */
+  targetOfferId?: number;
+};
+
 export type IapPurchaseResult =
   | {
       ok: true;
@@ -67,6 +77,9 @@ export type IapPurchaseResult =
       backendVerified: boolean;
       /** Liczba dodatkowych publikacji po zaksięgowaniu (jeśli backend zwrócił). */
       extraListings?: number;
+      /** Żądano odłożonego zużycia slotu (nie bumpuj extraListings w UI przed publish). */
+      deferPublicationConsume?: boolean;
+      publicationConsumeDeferred?: boolean;
     }
   | { ok: false; cancelled: true; message?: string }
   | { ok: false; cancelled?: false; message: string };
@@ -104,6 +117,7 @@ class IAPManagerImpl {
   private appStateSub: { remove: () => void } | null = null;
   private purchaseUpdateSub: { remove: () => void } | null = null;
   private purchaseErrorSub: { remove: () => void } | null = null;
+  private activePurchaseOptions: PurchaseConsumableOptions | null = null;
   /** Listener'y czekające na konkretną transakcję (np. Step6 podczas zakupu). */
   private waiters = new Map<string, (r: IapPurchaseResult) => void>();
 
@@ -171,7 +185,19 @@ class IAPManagerImpl {
    * Wykonuje natywny zakup consumable. Wynik dochodzi przez globalny
    * `purchaseUpdatedListener` → `handleIncomingPurchase` → resolver waitera.
    */
-  async purchaseConsumable(productId: IapProductId): Promise<IapPurchaseResult> {
+  async purchaseConsumable(
+    productId: IapProductId,
+    options?: PurchaseConsumableOptions,
+  ): Promise<IapPurchaseResult> {
+    this.activePurchaseOptions = options ?? null;
+    try {
+      return await this.purchaseConsumableInner(productId);
+    } finally {
+      this.activePurchaseOptions = null;
+    }
+  }
+
+  private async purchaseConsumableInner(productId: IapProductId): Promise<IapPurchaseResult> {
     const iap = this.iap;
     if (!iap || !this.initialized) {
       const reInit = await this.init({ apiUrl: this.apiUrl, getToken: this.getToken });
@@ -189,7 +215,6 @@ class IAPManagerImpl {
       return { ok: false, message: 'Brak połączenia ze sklepem. Spróbuj ponownie za chwilę.' };
     }
 
-    // Walidacja: produkt musi istnieć w sklepie.
     try {
       const products = await this.withTimeout(
         this.iap!.fetchProducts({ skus: [productId], type: 'in-app' }),
@@ -420,6 +445,10 @@ class IAPManagerImpl {
         transactionId: this.transactionIdOf(payload),
         backendVerified: true,
         extraListings: verifyResult.extraListings,
+        deferPublicationConsume: Boolean(
+          'deferPublicationConsume' in payload && payload.deferPublicationConsume,
+        ),
+        publicationConsumeDeferred: verifyResult.publicationConsumeDeferred,
       });
       return true;
     }
@@ -433,6 +462,10 @@ class IAPManagerImpl {
         transactionId: this.transactionIdOf(payload),
         backendVerified: false,
         extraListings: verifyResult.extraListings,
+        deferPublicationConsume: Boolean(
+          'deferPublicationConsume' in payload && payload.deferPublicationConsume,
+        ),
+        publicationConsumeDeferred: verifyResult.publicationConsumeDeferred,
       });
       return true;
     }
@@ -461,6 +494,8 @@ class IAPManagerImpl {
       if (!jws || !tx) return null;
       const transactionId = String(tx);
       const receipt = String(jws);
+      const deferPublicationConsume = Boolean(this.activePurchaseOptions?.deferPublicationConsume);
+      const targetOfferId = this.activePurchaseOptions?.targetOfferId;
       return {
         platform: 'ios',
         productId,
@@ -473,16 +508,32 @@ class IAPManagerImpl {
         receipt,
         receiptData: receipt,
         pendingPurchaseId: `ios:${transactionId}`,
+        ...(deferPublicationConsume
+          ? {
+              deferPublicationConsume: true,
+              publicationIntent: 'NEW_OFFER' as const,
+              ...(targetOfferId != null && targetOfferId > 0 ? { targetOfferId } : {}),
+            }
+          : {}),
       };
     }
 
     const token = (p as any).purchaseToken ?? null;
     if (!token) return null;
+    const deferPublicationConsume = Boolean(this.activePurchaseOptions?.deferPublicationConsume);
+    const targetOfferId = this.activePurchaseOptions?.targetOfferId;
     return {
       platform: 'android',
       productId,
       purchaseToken: String(token),
       transactionId: (p as any).transactionId ?? undefined,
+      ...(deferPublicationConsume
+        ? {
+            deferPublicationConsume: true,
+            publicationIntent: 'NEW_OFFER' as const,
+            ...(targetOfferId != null && targetOfferId > 0 ? { targetOfferId } : {}),
+          }
+        : {}),
     };
   }
 

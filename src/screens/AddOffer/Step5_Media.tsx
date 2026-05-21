@@ -2,42 +2,32 @@ import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, Dimensions, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import {
+  OFFER_MEDIA_MAX_IMAGES,
+  OFFER_MEDIA_UPLOAD_CAP_BYTES,
+  OFFER_MEDIA_UPLOAD_CAP_MB,
+  estimateBytesForDraftImage,
+  sumEstimatedUploadBytes,
+  pruneImageByteSizes,
+  canAcceptDraftImage,
+  formatMediaCapacityAlert,
+} from '../../utils/offerMediaCapacity';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
 const MAX_TITLE_LENGTH = 70;
-const MAX_IMAGES = 20;
-const MAX_MB = 20;
-/** Gdy brak fileSize z pickera (np. po powrocie na krok) — realistyczny szacunek ~0,9 MB */
-const FALLBACK_BYTES_PER_IMAGE = Math.round(0.9 * 1024 * 1024);
-const MAX_BYTES = MAX_MB * 1024 * 1024;
-
-function sumImageBytes(uris: string[], sizes: Record<string, number> | undefined): number {
-  const map = sizes || {};
-  return uris.reduce((acc, uri) => acc + (map[uri] ?? FALLBACK_BYTES_PER_IMAGE), 0);
-}
+const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
+const MAX_MB = OFFER_MEDIA_UPLOAD_CAP_MB;
+const MAX_BYTES = OFFER_MEDIA_UPLOAD_CAP_BYTES;
 
 function countUnknownImageSizes(uris: string[], sizes: Record<string, number> | undefined): number {
   const map = sizes || {};
   return uris.reduce((acc, uri) => acc + (typeof map[uri] === 'number' && map[uri] > 0 ? 0 : 1), 0);
-}
-
-/** Mapa rozmiarów bez wpisów dla URI których już nie ma na liście (oraz przy duplikatach kluczy w obiekcie bez zmian wartości). */
-function pruneImageByteSizes(images: string[], sizes: Record<string, number>): Record<string, number> {
-  const unique = [...new Set(images)];
-  const out: Record<string, number> = {};
-  for (const uri of unique) {
-    const b = sizes[uri];
-    if (typeof b === 'number' && b > 0) out[uri] = Math.round(b);
-  }
-  return out;
 }
 
 function uniqueImages(uris: string[]): string[] {
@@ -49,51 +39,6 @@ function uniqueImages(uris: string[]): string[] {
     out.push(uri);
   }
   return out;
-}
-
-/**
- * Rozmiar „do limitu aplikacji” musi pasować do tego co później wysyła Step6 (_JPEG compress 0.8_ dla HEIC).
- * Sam rozmiar z pickera dla HEIC bywa znacznie mniejszy niż wyjściowy JPG → fałszywy zapas lub fałszywy limit.
- */
-async function estimateBytesForDraftImage(uri: string, pickerFileSize?: number | null): Promise<number> {
-  const lower = uri.toLowerCase();
-  const looksHeic = lower.endsWith('.heic') || lower.endsWith('.heif');
-
-  try {
-    let measureUri = uri;
-    let tempConvert: string | null = null;
-    if (looksHeic) {
-      const converted = await ImageManipulator.manipulateAsync(uri, [], {
-        format: ImageManipulator.SaveFormat.JPEG,
-        compress: 0.8,
-      });
-      measureUri = converted.uri;
-      tempConvert = converted.uri;
-    }
-
-    /** Expo SDK 54: `getInfoAsync` zwraca m.in. `size` bez opcji `{ size: true }` (typ `InfoOptions` jej nie ma). */
-    const info = await FileSystem.getInfoAsync(measureUri);
-    if (info.exists && typeof info.size === 'number' && info.size > 0) {
-      if (tempConvert) {
-        FileSystem.deleteAsync(tempConvert, { idempotent: true }).catch(() => {});
-      }
-      return Math.round(info.size);
-    }
-
-    if (tempConvert) {
-      FileSystem.deleteAsync(tempConvert, { idempotent: true }).catch(() => {});
-    }
-  } catch {
-    // przejdź po fallbackach
-  }
-
-  if (typeof pickerFileSize === 'number' && pickerFileSize > 0) {
-    /** HEIC bez pomiaru: bufor w górę, żeby limit nie uwierzył w mały rozmiar z biblioteki. */
-    const mul = looksHeic ? 2.4 : 1;
-    return Math.round(Math.max(pickerFileSize * mul, pickerFileSize + 220 * 1024));
-  }
-
-  return looksHeic ? Math.round(2.8 * FALLBACK_BYTES_PER_IMAGE) : FALLBACK_BYTES_PER_IMAGE;
 }
 
 // --- MATEMATYKA SIATKI ---
@@ -362,7 +307,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const displayImages = dragSnapshot ?? draft.images;
   const imageSizes: Record<string, number> = draft.imageByteSizes || {};
   const usedMB =
-    sumImageBytes(displayImages, imageSizes) / (1024 * 1024);
+    sumEstimatedUploadBytes(displayImages, imageSizes) / (1024 * 1024);
   const estimatedCount = countUnknownImageSizes(displayImages, imageSizes);
 
   const isTitleValid = (draft.title?.length || 0) >= 10;
@@ -410,26 +355,29 @@ export default function Step5_Media({ theme }: { theme: any }) {
       let nextSizes = pruneImageByteSizes(nextImages, { ...(draft.imageByteSizes || {}) });
       updateDraft({ imageByteSizes: nextSizes });
 
-      let runningBytes = sumImageBytes(nextImages, nextSizes);
+      let runningBytes = sumEstimatedUploadBytes(nextImages, nextSizes);
 
       for (const asset of result.assets) {
         if (nextImages.length >= MAX_IMAGES) break;
 
         const measured = await estimateBytesForDraftImage(asset.uri, asset.fileSize ?? null);
 
-        if (runningBytes + measured > MAX_BYTES) {
-          Alert.alert(
-            'Limit miejsca',
-            `Po konwersji (np. HEIC→JPEG) zestaw zbliża się do pojemności maksimum ${MAX_MB} MB.` +
-              `\nSpróbuj usunąć zdjęcia z listy albo dopisać jeśli jest miejsce, albo prześlij kilka pojedynczych plików.`
-          );
+        const accept = canAcceptDraftImage({
+          currentUris: nextImages,
+          sizes: nextSizes,
+          newEstimatedBytes: measured,
+          pickerReportedBytes: asset.fileSize ?? null,
+          newUri: asset.uri,
+        });
+        if (!accept.ok) {
+          Alert.alert('Limit miejsca', formatMediaCapacityAlert(accept.reason));
           break;
         }
 
         if (!nextImages.includes(asset.uri)) nextImages.push(asset.uri);
         nextSizes[asset.uri] = measured;
         nextSizes = pruneImageByteSizes(nextImages, nextSizes);
-        runningBytes = sumImageBytes(nextImages, nextSizes);
+        runningBytes = sumEstimatedUploadBytes(nextImages, nextSizes);
         setUploadProgress((prev) => ({ ...prev, [asset.uri]: 0 }));
         startFakeUploadProgress(asset.uri);
       }

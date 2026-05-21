@@ -88,6 +88,15 @@ export type IapVerifyRequest =
       receiptData?: string;
       /** Opcjonalne ID pending, jeśli frontend ponawia wcześniej zapisany zakup. */
       pendingPurchaseId?: string;
+      /**
+       * Gdy true: backend weryfikuje transakcję z Apple, ale NIE zużywa slotu
+       * publikacji — zużycie dopiero przy `POST /offers` z `consumePlusPublication`.
+       */
+      deferPublicationConsume?: boolean;
+      /** Kontekst zużycia — `NEW_OFFER` przy publikacji z kreatora. */
+      publicationIntent?: 'NEW_OFFER' | 'RESTORE_ENDED_OFFER' | 'REACTIVATE_OFFER';
+      /** Przy reaktywacji — ID ogłoszenia do aktywacji po verify. */
+      targetOfferId?: number;
       /** Identyfikator urządzenia dla anti-fraud (opcjonalne). */
       deviceId?: string;
     }
@@ -98,6 +107,9 @@ export type IapVerifyRequest =
       purchaseToken: string;
       /** Order ID z Google Play (jeśli dostępne). */
       transactionId?: string;
+      deferPublicationConsume?: boolean;
+      publicationIntent?: 'NEW_OFFER' | 'RESTORE_ENDED_OFFER' | 'REACTIVATE_OFFER';
+      targetOfferId?: number;
       deviceId?: string;
     };
 
@@ -116,6 +128,8 @@ export type IapVerifyResponse =
       extraListings?: number;
       /** Data końca 30-dniowej dodatkowej publikacji / prawa publikacji (ISO 8601), jeśli backend ją zwraca. */
       plusExpiresAt?: string | null;
+      /** Echo: verify przyjęte, slot zużyty dopiero przy utworzeniu oferty. */
+      publicationConsumeDeferred?: boolean;
       /** Czy backend POTWIERDZIŁ weryfikację z Apple/Google.
        *  - true → transakcja zaksięgowana atomowo, można `finishTransaction`
        *  - false → backend przyjął zgłoszenie, ale czeka na Apple/Google */

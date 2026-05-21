@@ -10,7 +10,7 @@
 
 import Constants from 'expo-constants';
 import { IAP_PRODUCT_IDS } from '../contracts/iapContract';
-import { IAPManager, type IapProductId } from './iapManager';
+import { IAPManager, type IapProductId, type PurchaseConsumableOptions } from './iapManager';
 
 const DEFAULT_PRODUCT_ID: IapProductId = IAP_PRODUCT_IDS.PAKIET_PLUS_30D;
 
@@ -30,7 +30,14 @@ export function getPakietPlusProductId(): IapProductId {
 export const PAKIET_PLUS_PRICE_LABEL = '49 zł';
 
 export type PurchasePakietPlusResult =
-  | { ok: true; backendRegistered: boolean; extraListings?: number }
+  | {
+      ok: true;
+      backendRegistered: boolean;
+      extraListings?: number;
+      transactionId?: string;
+      deferPublicationConsume?: boolean;
+      publicationConsumeDeferred?: boolean;
+    }
   | { ok: false; cancelled?: boolean; message?: string };
 
 /**
@@ -46,15 +53,19 @@ export type PurchasePakietPlusResult =
 export async function purchasePakietPlusConsumable(
   _apiUrl: string,
   _token: string,
+  options?: PurchaseConsumableOptions & { targetOfferId?: number },
 ): Promise<PurchasePakietPlusResult> {
   const productId = getPakietPlusProductId();
-  const result = await IAPManager.purchaseConsumable(productId);
+  const result = await IAPManager.purchaseConsumable(productId, options);
 
   if (result.ok) {
     return {
       ok: true,
       backendRegistered: result.backendVerified,
       extraListings: result.extraListings,
+      transactionId: result.transactionId,
+      deferPublicationConsume: result.deferPublicationConsume,
+      publicationConsumeDeferred: result.publicationConsumeDeferred,
     };
   }
   if (result.cancelled) {

@@ -152,6 +152,10 @@ export function getDraftLocationPresentation(draft: {
     district = '';
   }
 
+  if (city === REST_OF_COUNTRY_CITY && !String(district).trim()) {
+    district = 'Ogólna';
+  }
+
   const locationText = formatLocationLabel(city, district, DEFAULT_LOCALITY_COUNTRY, countryLabelPl);
   return { city, district, countryLabelPl, countryIso, locationText };
 }
@@ -180,13 +184,28 @@ export function getLocationDraftRepairPatch(draft: {
     country !== fixed.countryLabelPl ||
     (iso !== fixed.countryIso && !(iso === '' && fixed.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE));
 
-  if (!needsRepair) return null;
-  return {
-    city: fixed.city,
-    district: fixed.district,
-    localityCountry: fixed.countryLabelPl,
-    localityCountryCode: fixed.countryIso,
-  };
+  if (needsRepair) {
+    return {
+      city: fixed.city,
+      district: fixed.district,
+      localityCountry: fixed.countryLabelPl,
+      localityCountryCode: fixed.countryIso,
+    };
+  }
+
+  if (isStrictCityName(fixed.city) && fixed.city !== REST_OF_COUNTRY_CITY) {
+    const allowed = STRICT_CITY_DISTRICTS[fixed.city] || [];
+    if (allowed.length > 0 && !allowed.includes(district)) {
+      return {
+        city: fixed.city,
+        district: allowed[0],
+        localityCountry: fixed.countryLabelPl,
+        localityCountryCode: fixed.countryIso,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function formatLocationLabel(
