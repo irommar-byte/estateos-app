@@ -25,18 +25,78 @@ export const PUBLICATION_COPY = {
     'Zakup z Apple został przyjęty. Jeśli ogłoszenie nie weszło na rynek, użyj „Przywróć zakupy” i spróbuj ponownie — bez drugiej opłaty.',
 } as const;
 
-function parseQuote(data: unknown): PublicationQuote {
+function extractServerMessage(data: unknown, httpStatus: number): string | undefined {
+  const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  for (const key of ['message', 'error', 'detail'] as const) {
+    const v = d[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  if (httpStatus > 0) return `Serwer zwrócił HTTP ${httpStatus}.`;
+  return undefined;
+}
+
+function parseQuote(data: unknown, httpStatus = 0): PublicationQuote {
   const d = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   return {
     offerId: d.offerId != null ? Number(d.offerId) : null,
     action: typeof d.action === 'string' ? d.action : undefined,
     requiresPayment: Boolean(d.requiresPayment),
     allowedFreeFirst: d.allowedFreeFirst === true,
-    kind: d.kind === 'FREE_FIRST' || d.kind === 'PLUS_PAID' ? d.kind : undefined,
+    kind:
+      d.kind === 'FREE_FIRST' || d.kind === 'PLUS_PAID' || d.kind === 'PLUS_CREDIT'
+        ? d.kind
+        : undefined,
     reason: typeof d.reason === 'string' ? d.reason : undefined,
     productId: typeof d.productId === 'string' ? d.productId : undefined,
-    message: typeof d.message === 'string' ? d.message : undefined,
+    message: extractServerMessage(data, httpStatus),
   };
+}
+
+export type ReactivationQuoteDecision =
+  | { action: 'block'; title: string; message: string }
+  | { action: 'iap' }
+  | { action: 'activate_free' };
+
+/** Decyzja przed IAP przy „Wystaw ponownie” — quote jest pomocniczy, nie blokuje płatności przy awarii API. */
+export function decideReactivationFromQuote(
+  quoteRes: Awaited<ReturnType<typeof fetchPublicationQuote>>,
+): ReactivationQuoteDecision {
+  if (quoteRes.ok) {
+    if (!quoteRes.quote.requiresPayment) {
+      return { action: 'activate_free' };
+    }
+    return { action: 'iap' };
+  }
+
+  if (quoteRes.status === 0) {
+    return {
+      action: 'block',
+      title: 'Brak połączenia',
+      message: quoteRes.quote.message || 'Sprawdź internet i spróbuj ponownie.',
+    };
+  }
+
+  if (quoteRes.status === 401 || quoteRes.status === 403) {
+    return {
+      action: 'block',
+      title: 'Sesja wygasła',
+      message: 'Zaloguj się ponownie i spróbuj wystawić ogłoszenie.',
+    };
+  }
+
+  if (quoteRes.status === 404 || quoteRes.status === 405 || quoteRes.status >= 500) {
+    return { action: 'iap' };
+  }
+
+  if (quoteRes.status === 400 || quoteRes.status === 422) {
+    return {
+      action: 'block',
+      title: 'Nie można wystawić',
+      message: quoteRes.quote.message || 'Serwer odrzucił ponowne wystawienie tej oferty.',
+    };
+  }
+
+  return { action: 'iap' };
 }
 
 export async function fetchPublicationQuote(
@@ -54,7 +114,7 @@ export async function fetchPublicationQuote(
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, quote: parseQuote(data) };
+    return { ok: res.ok, status: res.status, quote: parseQuote(data, res.status) };
   } catch {
     return {
       ok: false,
@@ -68,9 +128,13 @@ export async function activateOfferPublication(
   apiUrl: string,
   token: string,
   offerId: number,
-  iapTransactionId: string,
+  iapTransactionId?: string,
 ): Promise<{ ok: boolean; status: number; body: ActivateOfferPublicationResponse }> {
   const base = apiUrl.replace(/\/$/, '');
+  const tx = String(iapTransactionId || '').trim();
+  const payload = tx
+    ? { iapTransactionId: tx, consumePlusPublication: true }
+    : {};
   try {
     const res = await fetch(`${base}/api/mobile/v1/offers/${offerId}/activate`, {
       method: 'POST',
@@ -78,10 +142,7 @@ export async function activateOfferPublication(
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        iapTransactionId,
-        consumePlusPublication: true,
-      }),
+      body: JSON.stringify(payload),
     });
     const body = (await res.json().catch(() => ({}))) as ActivateOfferPublicationResponse;
     return { ok: res.ok, status: res.status, body };
@@ -111,7 +172,7 @@ export function buildCreatePublicationPayload(opts: {
     };
   }
   if (opts.quote && !opts.quote.requiresPayment) {
-    return { kind: 'FREE_FIRST' };
+    return { kind: opts.quote.allowedFreeFirst ? 'FREE_FIRST' : 'PLUS_CREDIT' };
   }
   return undefined;
 }

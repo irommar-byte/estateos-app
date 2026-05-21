@@ -1,11 +1,12 @@
 /** Kontrakt publikacji ofert — zgodny z backend `offerPublication.ts`. */
 
-export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID';
+export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
 
 export type PublicationQuoteReason =
   | 'FREE_FIRST_AVAILABLE'
   | 'NOT_FIRST_OFFER'
   | 'FREE_ALREADY_USED'
+  | 'PLUS_CREDIT_AVAILABLE'
   | 'REACTIVATION'
   | 'REACTIVATION_AFTER_ARCHIVE'
   | 'REACTIVATION_AFTER_SOLD'

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import type { Camera } from 'react-native-maps';
@@ -23,7 +23,11 @@ import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
 import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
-import { allowsMultipleCountableListings } from '../../utils/listingQuota';
+import {
+  allowsMultipleCountableListings,
+  hasAdditionalPlusPublication,
+  userAfterPakietPlusPurchase,
+} from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
 import {
   PUBLICATION_COPY,
@@ -32,6 +36,10 @@ import {
   isPublicationRequiresPlusError,
 } from '../../services/offerPublicationService';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
+import { buildOfferPricePayload } from '../../money/offerPrice';
+import { getEurPlnRate } from '../../money/fxRateService';
+import { normalizeListingCurrency } from '../../money/convert';
+import { formatAmountWithCurrency, formatApproxLine } from '../../money/format';
 import {
   computeAgentCommissionAmount,
   formatPercentLabel,
@@ -216,6 +224,19 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const invalidSteps = [1, 2, 3, 4, 5].filter((step) => !isStepValid(step, draft));
   const locationPresentation = getDraftLocationPresentation(draft);
   const locationFlag = flagEmojiFromIso2(locationPresentation.countryIso);
+  const mapExact = draft.isExactLocation !== false;
+  const [previewFxRate, setPreviewFxRate] = useState(4.32);
+  const listingCurrency = normalizeListingCurrency(draft.priceCurrency);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getEurPlnRate().then((snap) => {
+      if (!cancelled) setPreviewFxRate(snap.rate);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Po opublikowaniu robimy `resetDraft()` + `popToTop()`. Defensywa: jeśli z
@@ -250,9 +271,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
   const runPakietPlusPurchaseAndPublish = async () => {
     if (!token) return;
-    const r = await purchasePakietPlusConsumable(API_URL, token, {
-      deferPublicationConsume: true,
-    });
+    const r = await purchasePakietPlusConsumable(API_URL, token);
     if (!r.ok) {
       if (!r.cancelled && r.message) {
         Alert.alert('Sklep', r.message);
@@ -260,17 +279,18 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       return;
     }
 
-    const transactionId = r.transactionId ?? '';
-    const deferConsume = Boolean(
-      r.deferPublicationConsume || r.publicationConsumeDeferred || transactionId,
-    );
-    if (transactionId) {
-      pendingPlusCreditRef.current = { transactionId, deferConsume: true };
+    await refreshUser();
+    const patched = userAfterPakietPlusPurchase(useAuthStore.getState().user, {
+      backendRegistered: Boolean(r.backendRegistered),
+      extraListings: r.extraListings,
+    });
+    if (patched) {
+      useAuthStore.setState({ user: { ...useAuthStore.getState().user, ...patched } });
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setUploadProgressText(PUBLICATION_COPY.publishAfterPurchase);
-    await handlePublish(true, transactionId ? { transactionId, deferConsume: true } : undefined);
+    await handlePublish(true);
   };
 
   const promptPaidPublication = () => {
@@ -341,14 +361,23 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     const pendingPlus = pendingPlusCreditRef.current;
     const plusConsume = plusCtx ?? pendingPlus;
 
+    const hasPlusCredit = hasAdditionalPlusPublication(latestUser);
+
     let publicationQuote: Awaited<ReturnType<typeof fetchPublicationQuote>>['quote'] | null = null;
     if (!allowsMultipleCountableListings(latestUser) && !plusConsume) {
       const q = await fetchPublicationQuote(API_URL, token);
       publicationQuote = q.quote;
-      if (!forceBypass && q.quote.requiresPayment) {
+      if (!forceBypass && q.quote.requiresPayment && !hasPlusCredit) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         promptPaidPublication();
         return;
+      }
+      if (hasPlusCredit && q.quote.requiresPayment) {
+        publicationQuote = {
+          ...q.quote,
+          requiresPayment: false,
+          reason: 'PLUS_CREDIT_AVAILABLE',
+        };
       }
     }
 
@@ -385,6 +414,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       quote: publicationQuote,
     });
 
+    const fxSnap = await getEurPlnRate();
+    const listingCurrency = normalizeListingCurrency(draft.priceCurrency);
+    const pricePayload = buildOfferPricePayload({
+      priceString: draft.price || '0',
+      priceCurrency: listingCurrency,
+      rate: fxSnap.rate,
+    });
+
     const offerData = {
       userId: user.id,
       activateOnCreate: true,
@@ -407,8 +444,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       buildingNumber: draft.buildingNumber || '',
       isExactLocation: draft.isExactLocation !== undefined ? draft.isExactLocation : true,
       
-      area: draft.area || '0',          
-      price: draft.price || '0',
+      area: draft.area || '0',
+      price: pricePayload.price,
+      priceAmount: pricePayload.priceAmount,
+      priceCurrency: pricePayload.priceCurrency,
+      pricePln: pricePayload.pricePln,
       adminFee: draft.transactionType !== 'RENT' && parseLocaleNumber(draft.adminFee || draft.rent) > 0
         ? parseLocaleNumber(draft.adminFee || draft.rent)
         : null,
@@ -682,34 +722,57 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     );
   };
 
-  const DetailRow = ({ icon, label, value }: { icon: any, label: string, value: string }) => {
-    if (!value) return null;
-    return (
-      <View style={styles.detailRow}>
-        <View style={[styles.detailIconBox, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.18)' }]}><Ionicons name={icon} size={18} color={colors.primary} /></View>
-        <Text style={[styles.detailLabel, { color: colors.subtitle }]}>{label}</Text>
-        <Text style={[styles.detailValue, { color: colors.text }]} numberOfLines={1}>{value}</Text>
+  const LocationAddressSection = () => {
+    const { locationText, countryLabelPl } = locationPresentation;
+    const publicAddress = (() => {
+      if (draft.street) {
+        return mapExact
+          ? String(draft.street)
+          : `${stripHouseNumber(draft.street) || draft.street} · numer ukryty (obszar ~200 m)`;
+      }
+      return !mapExact ? 'Ukryty (obszar ~200 m)' : '';
+    })();
+    const publicAddressIcon: React.ComponentProps<typeof Ionicons>['name'] = mapExact ? 'map' : 'shield-checkmark-outline';
+
+    if (!locationText && !publicAddress) return null;
+
+    const iconBg = isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.18)';
+
+    const StackItem = ({
+      icon,
+      label,
+      children,
+    }: {
+      icon: React.ComponentProps<typeof Ionicons>['name'];
+      label: string;
+      children: React.ReactNode;
+    }) => (
+      <View style={styles.locationStackItem}>
+        <View style={styles.locationStackHead}>
+          <View style={[styles.detailIconBox, { backgroundColor: iconBg }]}>
+            <Ionicons name={icon} size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.locationStackLabel, { color: colors.subtitle }]}>{label}</Text>
+        </View>
+        <View style={styles.locationStackBody}>{children}</View>
       </View>
     );
-  };
 
-  const LocationDetailRow = () => {
-    const { locationText, countryLabelPl } = locationPresentation;
-    if (!locationText) return null;
     return (
-      <View style={styles.detailRow}>
-        <View style={[styles.detailIconBox, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.18)' }]}>
-          <Ionicons name="location" size={18} color={colors.primary} />
-        </View>
-        <Text style={[styles.detailLabel, { color: colors.subtitle }]}>Lokalizacja</Text>
-        <View style={styles.locationValueWrap}>
-          <Text style={styles.locationFlag} accessibilityLabel={countryLabelPl}>
-            {locationFlag}
-          </Text>
-          <Text style={[styles.detailValue, styles.locationValueText, { color: colors.text }]} numberOfLines={2}>
-            {locationText}
-          </Text>
-        </View>
+      <View style={styles.locationStack}>
+        {locationText ? (
+          <StackItem icon="location" label="Lokalizacja">
+            <Text style={styles.locationFlag} accessibilityLabel={countryLabelPl}>
+              {locationFlag}
+            </Text>
+            <Text style={[styles.locationStackValue, { color: colors.text }]}>{locationText}</Text>
+          </StackItem>
+        ) : null}
+        {publicAddress ? (
+          <StackItem icon={publicAddressIcon} label="Adres publiczny">
+            <Text style={[styles.locationStackValue, { color: colors.text }]}>{publicAddress}</Text>
+          </StackItem>
+        ) : null}
       </View>
     );
   };
@@ -759,7 +822,6 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     'information-circle-outline';
   const mapLat = draft.lat != null && !Number.isNaN(Number(draft.lat)) ? Number(draft.lat) : 52.2297;
   const mapLng = draft.lng != null && !Number.isNaN(Number(draft.lng)) ? Number(draft.lng) : 21.0122;
-  const mapExact = draft.isExactLocation !== false;
 
   return (
     <KeyboardAvoidingView
@@ -806,12 +868,21 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             {draft.title?.trim() ? <Text style={[styles.offerTitle, { color: colors.text }]} numberOfLines={3}>{draft.title.trim()}</Text> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={[styles.priceLarge, { color: colors.text }]}>{Math.round(priceNum).toLocaleString('pl-PL')} <Text style={{ fontSize: 22, color: colors.subtitle }}>PLN</Text></Text>
+                <Text style={[styles.priceLarge, { color: colors.text }]}>
+                  {formatAmountWithCurrency(priceNum, listingCurrency)}
+                </Text>
+                {priceNum > 0 ? (
+                  <Text style={[styles.pricePerSqmText, { color: colors.subtitle, marginTop: 6 }]}>
+                    {formatApproxLine(priceNum, listingCurrency, previewFxRate)}
+                  </Text>
+                ) : null}
                 {draft.transactionType === 'RENT' ? (
                   <Text style={[styles.priceSubLabel, { marginTop: 4, color: colors.subtitle }]}>Czynsz najmu (całkowity)</Text>
                 ) : null}
                 {pricePerSqm != null ? (
-                  <Text style={[styles.pricePerSqmText, { color: colors.subtitle }]}>{pricePerSqm.toLocaleString('pl-PL')} PLN / m²</Text>
+                  <Text style={[styles.pricePerSqmText, { color: colors.subtitle }]}>
+                    {pricePerSqm.toLocaleString('pl-PL')} {listingCurrency} / m²
+                  </Text>
                 ) : null}
                 {draft.transactionType === 'RENT' && depositNum > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Kaucja {Math.round(depositNum).toLocaleString('pl-PL')} PLN</Text>
@@ -837,27 +908,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               </View>
             </View>
             <View style={[styles.divider, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)' }]} />
-            <LocationDetailRow />
-            {/* Publiczna widoczność adresu:
-                  • ON  — pełen adres („Reymonta 12") + dokładny pin,
-                  • OFF — sama nazwa ulicy („Reymonta", bez numeru) + obszar ~200 m.
-                Tutaj pokazujemy DOKŁADNIE to, co zobaczy kupujący, żeby decyzja
-                o przełączeniu była jednoznaczna. */}
-            {draft.street ? (
-              mapExact ? (
-                <DetailRow icon="map" label="Adres publiczny" value={draft.street} />
-              ) : (
-                <DetailRow
-                  icon="shield-checkmark-outline"
-                  label="Adres publiczny"
-                  value={`${stripHouseNumber(draft.street) || draft.street} · numer ukryty (obszar ~200 m)`}
-                />
-              )
-            ) : (
-              !mapExact ? (
-                <DetailRow icon="shield-checkmark-outline" label="Adres publiczny" value="Ukryty (obszar ~200 m)" />
-              ) : null
-            )}
+            <LocationAddressSection />
             <SummaryLocationMap
               latitude={mapLat}
               longitude={mapLng}
@@ -967,7 +1018,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.blurWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.1)' }]}>
           {!isFinalDraftValid && invalidSteps.length > 0 ? (
             <Text style={[styles.validationHint, { color: colors.subtitle }]}>
-              Brakuje danych w kroku {invalidSteps.join(', ')} — dotknij przycisku, aby przejść do uzupełnienia.
+              Brakuje danych w kroku {invalidSteps.join(', ')} — dotknij przucisku, aby przejść do uzupełnienia.
+            </Text>
+          ) : null}
+          {isFinalDraftValid && hasAdditionalPlusPublication(user) ? (
+            <Text style={[styles.validationHint, { color: '#10B981' }]}>
+              Masz Pakiet Plus na koncie — publikacja zużyje 1 kredyt (bez drugiej opłaty w sklepie).
             </Text>
           ) : null}
           <Pressable
@@ -1024,13 +1080,14 @@ const styles = StyleSheet.create({
   },
   mapPreview: { width: '100%', height: '100%' },
   mapPreviewCaption: { fontSize: 12, fontWeight: '600', color: Colors.subtitle, marginTop: 10, lineHeight: 17 },
-  detailRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  detailIconBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  detailLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.subtitle },
-  detailValue: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  locationValueWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  detailIconBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(16, 185, 129, 0.1)', justifyContent: 'center', alignItems: 'center' },
+  locationStack: { marginBottom: 16, gap: 14 },
+  locationStackItem: { gap: 6 },
+  locationStackHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  locationStackLabel: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  locationStackBody: { paddingLeft: 44, flexDirection: 'row', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' },
+  locationStackValue: { fontSize: 16, fontWeight: '700', lineHeight: 22, flex: 1 },
   locationFlag: { fontSize: 20, lineHeight: 24 },
-  locationValueText: { flex: 1 },
   validationHint: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginBottom: 4, fontWeight: '600' },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: Colors.subtitle, letterSpacing: 1.5, marginBottom: 15 },
   gridBox: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

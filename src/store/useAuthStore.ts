@@ -26,6 +26,8 @@ interface User {
   isPro?: boolean;
   proExpiresAt?: string | null;
   plusExpiresAt?: string | null;
+  /** Licznik kupionych publikacji Plus (zużywany przy publikacji ogłoszenia). */
+  extraListings?: number | null;
   isVerifiedPhone?: boolean;
   /** Zweryfikowany adres e-mail (osobno od telefonu / profilu). */
   isEmailVerified?: boolean;
@@ -70,7 +72,7 @@ interface AuthState {
      */
     companyName?: string | null,
   ) => Promise<boolean>;
-  loginWithPasskey: () => Promise<boolean>;
+  loginWithPasskey: (email?: string | null) => Promise<boolean>;
   refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
@@ -307,6 +309,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!normalizedToken) throw new Error('Nie otrzymano poprawnego tokena logowania');
       await AsyncStorage.setItem('mobile_token', normalizedToken);
       await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
+      const loginEmail = String(email || '').trim().toLowerCase();
+      if (loginEmail) {
+        await AsyncStorage.setItem('@estateos_last_login_email', loginEmail);
+      }
       set({ user: normUser, token: normalizedToken, isLoading: false });
       if (regPhone && !userHasDialablePhone(normUser?.phone)) {
         const e164 = normalizePhoneE164(regPhone);
@@ -421,10 +427,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   // 🔥 PRAWDZIWE LOGOWANIE PASSKEY 🔥
-  loginWithPasskey: async () => {
+  loginWithPasskey: async (email?: string | null) => {
     set({ isLoading: true, error: null });
     try {
-      const data = await PasskeyService.login();
+      let hintEmail = String(email || '').trim().toLowerCase();
+      if (!hintEmail) {
+        try {
+          hintEmail = String((await AsyncStorage.getItem('@estateos_last_login_email')) || '').trim().toLowerCase();
+        } catch {
+          hintEmail = '';
+        }
+      }
+      const data = await PasskeyService.login(hintEmail || null);
       
       if (data && data.token) {
         const normUser = await hydrateWithLocalFlags(normalizeUser(data.user));
@@ -432,6 +446,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (!normalizedToken) throw new Error('Nie otrzymano poprawnego tokena passkey');
         await AsyncStorage.setItem('mobile_token', normalizedToken);
         await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
+        if (hintEmail) {
+          await AsyncStorage.setItem('@estateos_last_login_email', hintEmail);
+        }
         set({ user: normUser, token: normalizedToken, isLoading: false });
         await get().refreshUser();
         return true; 

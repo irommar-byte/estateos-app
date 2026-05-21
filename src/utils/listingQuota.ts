@@ -28,9 +28,19 @@ export function hasUnlimitedListingAccess(user: MinimalUser | null): boolean {
   );
 }
 
-/** Pakiet Plus nie jest planem konta. To liczba dodatkowych publikacji, które backend zaksięgował po IAP. */
+/** Zgodne z backendem `hasPlusCreditOnUser` — slot + ważny termin kredytu. */
+export function isPlusCreditActive(user: MinimalUser | null): boolean {
+  const slots = getAdditionalListingSlots(user);
+  if (slots <= 0) return false;
+  const raw = user?.plusExpiresAt;
+  if (!raw) return false;
+  const exp = new Date(raw).getTime();
+  return Number.isFinite(exp) && exp > Date.now();
+}
+
+/** Pakiet Plus nie jest planem konta. To liczba dodatkowych publikacji kupionych przez IAP. */
 export function hasAdditionalPlusPublication(user: MinimalUser | null): boolean {
-  return getAdditionalListingSlots(user) > 0;
+  return isPlusCreditActive(user);
 }
 
 export function allowsMultipleCountableListings(user: MinimalUser | null): boolean {
@@ -49,18 +59,23 @@ export function getAdditionalListingSlots(user: MinimalUser | null): number {
  */
 export function applyOptimisticPlusPublicationSlot(user: MinimalUser | null): MinimalUser | null {
   if (!user) return null;
-  if (getAdditionalListingSlots(user) > 0) return user;
-  return { ...user, extraListings: 1 };
+  if (isPlusCreditActive(user)) return user;
+  const plusExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  return { ...user, extraListings: getAdditionalListingSlots(user) + 1, plusExpiresAt };
 }
 
 /** Po zakupie IAP: slot z odpowiedzi verify, optymistyczny bump albo stan z API. */
 export function userAfterPakietPlusPurchase(
   user: MinimalUser | null,
-  opts: { backendRegistered: boolean; extraListings?: number },
+  opts: { backendRegistered: boolean; extraListings?: number; plusExpiresAt?: string | null },
 ): MinimalUser | null {
   if (!user) return null;
   if (opts.extraListings != null && opts.extraListings > 0) {
-    return { ...user, extraListings: Math.floor(opts.extraListings) };
+    return {
+      ...user,
+      extraListings: Math.floor(opts.extraListings),
+      ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
+    };
   }
   if (!opts.backendRegistered) {
     return applyOptimisticPlusPublicationSlot(user);

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -28,7 +28,21 @@ import EditEmailSheet from '../components/profile/EditEmailSheet';
 import BlockedUsersModal from '../components/BlockedUsersModal';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import AdminLegalVerificationModal from '../components/AdminLegalVerificationModal';
+import AdminContentReportsModal from '../components/AdminContentReportsModal';
+import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCenterModal';
+import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
+import {
+  coalesceRadarPreferenceFromPayload,
+  fetchAdminUserRadarPreference,
+  hasMeaningfulRadarFields,
+  mergeRadarPreferenceForAdminUser,
+} from '../services/adminUserRadarService';
+import { useDisplayCurrencyStore } from '../store/useDisplayCurrencyStore';
+import { DISPLAY_CURRENCY_LABELS } from '../money/constants';
+import type { DisplayCurrencyPreference } from '../money/types';
 import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
+import { fetchAdminContentReports } from '../services/adminReportsService';
+import { userAfterPakietPlusPurchase } from '../utils/listingQuota';
 import {
   persistMobileOfferUpdate,
   readMobileOfferResponseBody,
@@ -36,8 +50,10 @@ import {
   extractMobileOfferJson,
 } from '../utils/mobileOfferUpdate';
 import { formatOfferLocationLine } from '../constants/locationEcosystem';
+import { useMoneyContext } from '../money/useMoneyContext';
 import {
   activateOfferPublication,
+  decideReactivationFromQuote,
   fetchPublicationQuote,
   PUBLICATION_COPY,
 } from '../services/offerPublicationService';
@@ -503,6 +519,7 @@ const getBestUserAvatarUrl = (userLike: any): string | null => {
 
 const MyOffersModal = ({ visible, onClose, theme }) => {
   const navigation = useNavigation();
+  const { formatOffer } = useMoneyContext();
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ACTIVE');
@@ -736,8 +753,14 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           text: `Opłać wystawienie (~${PAKIET_PLUS_PRICE_LABEL})`,
           onPress: async () => {
             const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
-            if (!quoteRes.ok && quoteRes.status !== 0) {
-              Alert.alert('Błąd', quoteRes.quote.message || 'Nie udało się sprawdzić wymagań publikacji.');
+            const decision = decideReactivationFromQuote(quoteRes);
+            if (decision.action === 'block') {
+              Alert.alert(decision.title, decision.message);
+              return;
+            }
+            if (decision.action === 'activate_free') {
+              await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, '');
+              await refreshUser?.();
               return;
             }
             const r = await purchasePakietPlusConsumable(API_URL, token, {
@@ -783,7 +806,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
            <View style={{ flex: 1, justifyContent: 'center' }}>
               <Text style={[styles.offerTitle, { color: theme.text, marginBottom: 4 }]} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.offerSubtitle} numberOfLines={2}>
-                {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+                {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
               </Text>
            </View>
         </View>
@@ -833,7 +856,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           {imageUri ? <Image source={{ uri: imageUri }} style={styles.mgtImage} /> : <View style={[styles.mgtImage, { backgroundColor: isDark ? '#333' : '#E5E5EA', justifyContent: 'center', alignItems: 'center' }]}><Ionicons name="home" size={30} color="#8E8E93" /></View>}
           <View style={{ flex: 1, justifyContent: 'center' }}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: theme.text, marginBottom: 4 }} numberOfLines={2}>{selectedOffer.title}</Text>
-            <Text style={{ fontSize: 15, fontWeight: '600', color: theme.subtitle }}>{selectedOffer.price} PLN</Text>
+            <Text style={{ fontSize: 15, fontWeight: '600', color: theme.subtitle }}>{formatOffer(selectedOffer).primary}</Text>
           </View>
         </View>
 
@@ -1022,10 +1045,12 @@ function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }) {
 const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme }) => {
   const navigation = useNavigation();
   const { token } = useAuthStore();
+  const { formatOffer } = useMoneyContext();
   const [userData, setUserData] = useState(initialUser || null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [offerThumbById, setOfferThumbById] = useState<Record<number, string>>({});
+  const [radarFetchMiss, setRadarFetchMiss] = useState(false);
   const isDark = theme.glass === 'dark';
 
   const fetchUserDetails = async () => {
@@ -1036,6 +1061,25 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
     }
     setLoading(true);
     setFetchError(null);
+
+    const attachRadarPreference = async (base: Record<string, unknown>) => {
+      const fromDetail = coalesceRadarPreferenceFromPayload(base);
+      const remoteRadar =
+        fromDetail && hasMeaningfulRadarFields(fromDetail)
+          ? null
+          : await fetchAdminUserRadarPreference(userId, token);
+      const mergedRadar = mergeRadarPreferenceForAdminUser(base, remoteRadar);
+      const enrichedUser = {
+        ...base,
+        radarPreference: Object.keys(mergedRadar).length ? mergedRadar : base.radarPreference,
+      };
+      const pushOn = Boolean(
+        mergedRadar.pushNotifications === true || mergedRadar.push_notifications === true,
+      );
+      setRadarFetchMiss(pushOn && !hasMeaningfulRadarFields(mergedRadar));
+      return enrichedUser;
+    };
+
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/users/${userId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -1090,6 +1134,36 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
             // noop
           }
         }
+        try {
+          const bpRes = await fetch(`${API_URL}/api/mobile/v1/admin/users/${userId}/buyer-profile`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store',
+          });
+          const bpData = await bpRes.json().catch(() => ({}));
+          if (bpRes.ok) {
+            const bp =
+              bpData?.buyerProfile ||
+              bpData?.buyer_profile ||
+              bpData?.profile ||
+              (bpData?.success && typeof bpData === 'object' ? bpData : null);
+            if (bp && typeof bp === 'object') {
+              enriched = {
+                ...enriched,
+                ...bp,
+                radarPreference: enriched.radarPreference || bp.radarPreference || bp.radar_preference,
+                radarSearchHistory:
+                  bp.radarSearchHistory ||
+                  bp.radar_search_history ||
+                  enriched.radarSearchHistory ||
+                  enriched.radar_search_history,
+              };
+            }
+          }
+        } catch {
+          // endpoint opcjonalny — karta działa z danymi user detail
+        }
+
+        enriched = await attachRadarPreference(enriched as Record<string, unknown>);
         setUserData(enriched);
         setFetchError(null);
       } else {
@@ -1140,7 +1214,11 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
           offers,
         };
         const hasAnyUsefulData = mergedFallback && (mergedFallback.id != null || mergedFallback.email || mergedFallback.name);
-        setUserData(hasAnyUsefulData ? mergedFallback : (initialUser || null));
+        if (hasAnyUsefulData) {
+          setUserData(await attachRadarPreference(mergedFallback as Record<string, unknown>));
+        } else {
+          setUserData(initialUser || null);
+        }
         setFetchError(data?.error || data?.message || `Serwer zwrócił kod ${res.status}. Spróbuj ponownie.`);
       }
     } catch {
@@ -1155,6 +1233,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
       setUserData(null);
       setFetchError(null);
       setLoading(false);
+      setRadarFetchMiss(false);
       return;
     }
     if (initialUser) setUserData(initialUser);
@@ -1270,7 +1349,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
         </View>
       </Pressable>
       <Text style={styles.offerSubtitle} numberOfLines={2}>
-        {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+        {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
       </Text>
       
       <View style={styles.adminActionRow}>
@@ -1342,6 +1421,14 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
               <ListItem icon="call" color="#34C759" title="Telefon" value={userData.phone || 'Brak'} isDark={isDark} />
               <ListItem icon="calendar" color="#FF9F0A" title="Dołączył(a)" value={formatDate(userData.createdAt)} isLast={true} isDark={isDark} />
             </ListGroup>
+
+            <AdminBuyerSearchSection
+              user={userData}
+              theme={theme}
+              isDark={isDark}
+              radarFetchMiss={radarFetchMiss}
+            />
+
             <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Ogłoszenia ({userData.offers?.length || 0})</Text>
             {(() => {
               const offers = Array.isArray(userData?.offers) ? [...userData.offers] : [];
@@ -1389,6 +1476,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
 const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => {
   const navigation = useNavigation();
   const { token } = useAuthStore();
+  const { formatOffer } = useMoneyContext();
   const [activeTab, setActiveTab] = useState('PENDING');
   const [transactionFilter, setTransactionFilter] = useState('ALL');
   const [txFilterContainerWidth, setTxFilterContainerWidth] = useState(0);
@@ -1546,7 +1634,7 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
           </View>
         </Pressable>
         <Text style={styles.offerSubtitle} numberOfLines={2}>
-          {item.price} PLN • {formatOfferLocationLine(item) || item.city || '—'}
+          {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
         </Text>
         <Text style={styles.offerUser}>Autor: {item.user?.email}</Text>
         <View style={styles.adminActionRow}>
@@ -1649,6 +1737,11 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
   const [verificationFilter, setVerificationFilter] = useState('ALL');
   const [radarFilter, setRadarFilter] = useState('ALL');
   const [presenceFilter, setPresenceFilter] = useState('ALL');
+  const [toolsExpanded, setToolsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setToolsExpanded(false);
+  }, [visible]);
 
   const isVerifiedUser = (u) => Boolean(u?.isVerified || u?.isVerifiedPhone);
   const isRadarEnabledForUser = (u) => Boolean(u?.radarPreference?.pushNotifications);
@@ -1806,6 +1899,190 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
   const radarOnUsers = filteredUsers.filter((u) => isRadarEnabledForUser(u)).length;
   const unverifiedUsers = Math.max(0, totalUsers - verifiedUsers);
 
+  const sortOptions = useMemo(
+    () => [
+      { id: 'createdAt', label: 'Najnowsi' },
+      { id: 'offersCount', label: 'Najwięcej ofert' },
+      { id: 'email', label: 'E-mail A→Z' },
+      { id: 'name', label: 'Imię A→Z' },
+    ],
+    [],
+  );
+  const activeSortLabel = sortOptions.find((o) => o.id === sortBy)?.label || 'Sortowanie';
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (roleFilter !== 'ALL') n += 1;
+    if (verificationFilter !== 'ALL') n += 1;
+    if (radarFilter !== 'ALL') n += 1;
+    if (presenceFilter !== 'ALL') n += 1;
+    return n;
+  }, [roleFilter, verificationFilter, radarFilter, presenceFilter]);
+  const hasRefinedList = activeFilterCount > 0 || search.trim().length > 0;
+  const borderSubtle = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const surfaceCard = isDark ? '#1C1C1E' : '#FFFFFF';
+  const insetGrouped = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+
+  const toggleToolsExpanded = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+    Haptics.selectionAsync();
+    setToolsExpanded((v) => !v);
+  };
+
+  const renderFilterChip = (activeValue, label, value, setter) => (
+    <Pressable
+      key={value}
+      onPress={() => { Haptics.selectionAsync(); setter(value); }}
+      style={[
+        styles.userFilterChip,
+        activeValue === value && styles.userFilterChipActive,
+        { backgroundColor: activeValue === value ? 'rgba(0,122,255,0.16)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') },
+      ]}
+    >
+      <Text style={[styles.userFilterChipText, activeValue === value && styles.userFilterChipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+
+  const renderFilterGroup = (title, chips) => (
+    <View style={styles.adminFilterGroup}>
+      <Text style={[styles.adminFilterSectionLabel, { color: theme.subtitle }]}>{title}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.adminFilterChipRow}>
+        {chips}
+      </ScrollView>
+    </View>
+  );
+
+  const usersListHeader = (
+    <View style={styles.adminUsersListHeader}>
+      <View style={[styles.adminSearchBar, { backgroundColor: surfaceCard, borderColor: borderSubtle }]}>
+        <Ionicons name="search" size={17} color="#8E8E93" />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Szukaj: email, imię, telefon…"
+          placeholderTextColor="#8E8E93"
+          style={[styles.adminSearchInput, { color: theme.text }]}
+          clearButtonMode="while-editing"
+        />
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); setSortDir((d) => (d === 'desc' ? 'asc' : 'desc')); }}
+          style={[styles.adminSortDirBtn, { borderColor: borderSubtle }]}
+          hitSlop={8}
+        >
+          <Ionicons name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} size={18} color="#007AFF" />
+        </Pressable>
+      </View>
+
+      <Pressable
+        onPress={toggleToolsExpanded}
+        style={({ pressed }) => [
+          styles.adminToolsDisclosure,
+          { backgroundColor: insetGrouped, borderColor: borderSubtle, opacity: pressed ? 0.88 : 1 },
+        ]}
+      >
+        <View style={styles.adminToolsDisclosureMain}>
+          <Text style={[styles.adminToolsDisclosureTitle, { color: theme.text }]}>Sortowanie i filtry</Text>
+          <Text style={styles.adminToolsDisclosureMeta} numberOfLines={1}>
+            {activeSortLabel}
+            {activeFilterCount > 0 ? ` · ${activeFilterCount} filtr${activeFilterCount === 1 ? '' : 'y'}` : ''}
+            {hasRefinedList ? ` · ${totalUsers} wyników` : ''}
+          </Text>
+        </View>
+        {activeFilterCount > 0 && (
+          <View style={styles.adminFilterBadge}>
+            <Text style={styles.adminFilterBadgeText}>{activeFilterCount}</Text>
+          </View>
+        )}
+        <Ionicons name={toolsExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#8E8E93" />
+      </Pressable>
+
+      {!toolsExpanded && (
+        <Text style={[styles.adminStatsCompact, { color: theme.subtitle }]} numberOfLines={2}>
+          {totalUsers} na liście · {verifiedUsers} zweryfik. · {unverifiedUsers} bez wer. · {radarOnUsers} radar ON
+        </Text>
+      )}
+
+      {toolsExpanded && (
+        <View style={[styles.adminToolsPanel, { backgroundColor: insetGrouped, borderColor: borderSubtle }]}>
+          <Text style={[styles.adminStatsCompact, { color: theme.subtitle, marginBottom: 10 }]}>
+            Podgląd bieżącej listy: {totalUsers} · zweryfik. {verifiedUsers} · radar {radarOnUsers}
+          </Text>
+
+          {renderFilterGroup(
+            'Sortowanie',
+            sortOptions.map((opt) => {
+              const active = sortBy === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  onPress={() => { Haptics.selectionAsync(); setSortBy(opt.id); }}
+                  style={[styles.userSortChip, active && styles.userSortChipActive, { backgroundColor: active ? 'rgba(0,122,255,0.12)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') }]}
+                >
+                  <Text style={[styles.userSortChipText, active && styles.userSortChipTextActive]}>{opt.label}</Text>
+                </Pressable>
+              );
+            }),
+          )}
+
+          {renderFilterGroup(
+            'Rola',
+            [
+              { k: 'ALL', l: 'Wszyscy' },
+              { k: 'ADMIN', l: 'Admin' },
+              { k: 'AGENT', l: 'Agent' },
+              { k: 'USER', l: 'User' },
+            ].map((r) => renderFilterChip(roleFilter, r.l, r.k, setRoleFilter)),
+          )}
+
+          {renderFilterGroup(
+            'Weryfikacja',
+            [
+              { k: 'ALL', l: 'Wszystkie' },
+              { k: 'VERIFIED', l: 'Zweryfikowani' },
+              { k: 'UNVERIFIED', l: 'Bez weryfikacji' },
+            ].map((r) => renderFilterChip(verificationFilter, r.l, r.k, setVerificationFilter)),
+          )}
+
+          {renderFilterGroup(
+            'Radar',
+            [
+              { k: 'ALL', l: 'Wszystkie' },
+              { k: 'ON', l: 'Radar ON' },
+              { k: 'OFF', l: 'Radar OFF' },
+            ].map((r) => renderFilterChip(radarFilter, r.l, r.k, setRadarFilter)),
+          )}
+
+          {renderFilterGroup(
+            'Aktywność',
+            [
+              { k: 'ALL', l: 'Wszystkie' },
+              { k: 'ONLINE', l: 'Online' },
+              { k: 'RECENT', l: 'Niedawno' },
+              { k: 'OFFLINE', l: 'Offline' },
+            ].map((r) => renderFilterChip(presenceFilter, r.l, r.k, setPresenceFilter)),
+          )}
+
+          {(hasRefinedList || activeFilterCount > 0) && (
+            <Pressable
+              onPress={() => {
+                Haptics.selectionAsync();
+                setRoleFilter('ALL');
+                setVerificationFilter('ALL');
+                setRadarFilter('ALL');
+                setPresenceFilter('ALL');
+                setSearch('');
+                setSortBy('createdAt');
+                setSortDir('desc');
+              }}
+              style={styles.adminResetFiltersBtn}
+            >
+              <Text style={styles.adminResetFiltersText}>Wyczyść filtry i sortowanie</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
   const renderUser = ({ item }) => {
     const verified = isVerifiedUser(item);
     const radarOn = isRadarEnabledForUser(item);
@@ -1908,133 +2185,14 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
     );
   };
 
-  const renderFilterChip = (activeValue, label, value, setter) => (
-    <Pressable
-      key={value}
-      onPress={() => { Haptics.selectionAsync(); setter(value); }}
-      style={[
-        styles.userFilterChip,
-        activeValue === value && styles.userFilterChipActive,
-        { backgroundColor: activeValue === value ? 'rgba(0,122,255,0.16)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') },
-      ]}
-    >
-      <Text style={[styles.userFilterChipText, activeValue === value && styles.userFilterChipTextActive]}>{label}</Text>
-    </Pressable>
-  );
-
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Centrum Użytkowników</Text>
-          <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
-        </View>
-
-        <View style={{ paddingHorizontal: 20, paddingBottom: 10 }}>
-          <View style={[styles.userCommandCenter, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}>
-            <Text style={[styles.userCommandTitle, { color: theme.text }]}>Centrum zarządzania</Text>
-            <Text style={styles.userCommandSubtitle}>Filtruj, sortuj i zarządzaj użytkownikami z jednego miejsca.</Text>
-            <View style={styles.userKpiRow}>
-              <View style={styles.userKpiCard}>
-                <AnimatedStatusDot status="ACTIVE" />
-                <Text style={[styles.userKpiValue, { color: theme.text }]}>{totalUsers}</Text>
-                <Text style={styles.userKpiLabel}>Na liście</Text>
-              </View>
-              <View style={styles.userKpiCard}>
-                <AnimatedStatusDot status={verifiedUsers > 0 ? 'ACTIVE' : 'ARCHIVED'} />
-                <Text style={[styles.userKpiValue, { color: theme.text }]}>{verifiedUsers}</Text>
-                <Text style={styles.userKpiLabel}>Zweryfikowani</Text>
-              </View>
-              <View style={styles.userKpiCard}>
-                <AnimatedStatusDot status={unverifiedUsers > 0 ? 'PENDING' : 'ACTIVE'} />
-                <Text style={[styles.userKpiValue, { color: theme.text }]}>{unverifiedUsers}</Text>
-                <Text style={styles.userKpiLabel}>Bez weryfikacji</Text>
-              </View>
-              <View style={styles.userKpiCard}>
-                <AnimatedStatusDot status={radarOnUsers > 0 ? 'PENDING' : 'ARCHIVED'} />
-                <Text style={[styles.userKpiValue, { color: theme.text }]}>{radarOnUsers}</Text>
-                <Text style={styles.userKpiLabel}>Radar ON</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-            <View style={{ flex: 1, backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderRadius: 14, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="search" size={18} color="#8E8E93" />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Szukaj: email, imię, telefon…"
-                placeholderTextColor="#8E8E93"
-                style={{ flex: 1, marginLeft: 10, color: theme.text, fontWeight: '600' }}
-              />
-              {search.length > 0 && (
-                <Pressable onPress={() => setSearch('')} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color="#8E8E93" />
-                </Pressable>
-              )}
-            </View>
-            <Pressable
-              onPress={() => { Haptics.selectionAsync(); setSortDir((d) => (d === 'desc' ? 'asc' : 'desc')); }}
-              style={{ width: 50, height: 50, borderRadius: 14, backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' }}
-            >
-              <Ionicons name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} size={20} color="#007AFF" />
-            </Pressable>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 10, gap: 8 }}>
-            {[
-              { id: 'createdAt', label: 'Najnowsi' },
-              { id: 'offersCount', label: 'Najwięcej ofert' },
-              { id: 'email', label: 'E-mail A→Z' },
-              { id: 'name', label: 'Imię A→Z' },
-            ].map((opt) => {
-              const active = sortBy === opt.id;
-              return (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => { Haptics.selectionAsync(); setSortBy(opt.id); }}
-                  style={[styles.userSortChip, active && styles.userSortChipActive]}
-                >
-                  <Text style={[styles.userSortChipText, active && styles.userSortChipTextActive]}>{opt.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 10, gap: 8 }}>
-            {[
-              { k: 'ALL', l: 'Wszyscy' },
-              { k: 'ADMIN', l: 'Admin' },
-              { k: 'AGENT', l: 'Agent' },
-              { k: 'USER', l: 'User' },
-            ].map((r) => renderFilterChip(roleFilter, r.l, r.k, setRoleFilter))}
-          </ScrollView>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 8, gap: 8 }}>
-            {[
-              { k: 'ALL', l: 'Weryfikacja: wszystkie' },
-              { k: 'VERIFIED', l: 'Zweryfikowani' },
-              { k: 'UNVERIFIED', l: 'Bez weryfikacji' },
-            ].map((r) => renderFilterChip(verificationFilter, r.l, r.k, setVerificationFilter))}
-          </ScrollView>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 8, gap: 8 }}>
-            {[
-              { k: 'ALL', l: 'Radar: wszystkie' },
-              { k: 'ON', l: 'Radar ON' },
-              { k: 'OFF', l: 'Radar OFF' },
-            ].map((r) => renderFilterChip(radarFilter, r.l, r.k, setRadarFilter))}
-          </ScrollView>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingTop: 8, gap: 8 }}>
-            {[
-              { k: 'ALL', l: 'Aktywność: wszystkie' },
-              { k: 'ONLINE', l: 'Online teraz' },
-              { k: 'RECENT', l: 'Aktywni niedawno' },
-              { k: 'OFFLINE', l: 'Offline' },
-            ].map((r) => renderFilterChip(presenceFilter, r.l, r.k, setPresenceFilter))}
-          </ScrollView>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Ionicons name="close-circle" size={32} color={theme.subtitle} />
+          </Pressable>
         </View>
 
         {loading && users.length === 0 ? (
@@ -2044,11 +2202,22 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
             data={filteredUsers}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderUser}
-            contentContainerStyle={{ padding: 20, paddingTop: 8 }}
-            ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak użytkowników dla tych filtrów.</Text>}
+            ListHeaderComponent={usersListHeader}
+            contentContainerStyle={styles.adminUsersListContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <Text style={[styles.adminUsersEmpty, { color: theme.subtitle }]}>
+                Brak użytkowników dla tych filtrów.
+              </Text>
+            }
             onEndReached={() => { if (!loading && hasMore) fetchUsers('append'); }}
             onEndReachedThreshold={0.6}
-            ListFooterComponent={loading && users.length > 0 ? <ActivityIndicator style={{ paddingVertical: 20 }} /> : <View style={{ height: 20 }} />}
+            ListFooterComponent={
+              loading && users.length > 0
+                ? <ActivityIndicator style={{ paddingVertical: 20 }} color="#FF2D55" />
+                : <View style={{ height: 24 }} />
+            }
           />
         )}
       </View>
@@ -2356,7 +2525,14 @@ export default function ProfileScreen({
   const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
+  const displayCurrency = useDisplayCurrencyStore((s) => s.preference);
+  const setDisplayCurrency = useDisplayCurrencyStore((s) => s.setPreference);
+  const hydrateDisplayCurrency = useDisplayCurrencyStore((s) => s.hydrate);
   const isDark = theme.glass === 'dark';
+
+  useEffect(() => {
+    void hydrateDisplayCurrency();
+  }, [hydrateDisplayCurrency]);
   
   const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
@@ -2365,7 +2541,10 @@ export default function ProfileScreen({
   const [isAdminRadarVisible, setIsAdminRadarVisible] = useState(false);
   const [isAdminDealroomCheckVisible, setIsAdminDealroomCheckVisible] = useState(false);
   const [isAdminLegalVerifyVisible, setIsAdminLegalVerifyVisible] = useState(false);
+  const [isAdminCoreVisible, setIsAdminCoreVisible] = useState(false);
+  const [isAdminReportsVisible, setIsAdminReportsVisible] = useState(false);
   const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
+  const [adminPendingReportsCount, setAdminPendingReportsCount] = useState(0);
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
   const [adminPendingOffersCount, setAdminPendingOffersCount] = useState(0);
   const [isSmsEnabled, setIsSmsEnabled] = useState(true);
@@ -2399,6 +2578,7 @@ export default function ProfileScreen({
    * w trakcie operacji (Apple lubi wizualne potwierdzenie).
    */
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
+  const [isBuyingPakietPlus, setIsBuyingPakietPlus] = useState(false);
   const [backendFirstFreePublicationUsed, setBackendFirstFreePublicationUsed] = useState<boolean | null>(null);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
@@ -2493,14 +2673,28 @@ export default function ProfileScreen({
     }
   };
 
+  const refreshAdminPendingReports = async () => {
+    if (!isZarzad || !token) return;
+    try {
+      const { counts } = await fetchAdminContentReports(token, { status: 'PENDING', targetType: 'ALL' });
+      setAdminPendingReportsCount(counts.pending);
+    } catch {
+      // noop
+    }
+  };
+
   useEffect(() => {
     if (!isZarzad) return;
     refreshAdminPendingLegalVerifications();
+    void refreshAdminPendingReports();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshAdminPendingLegalVerifications();
+      if (state === 'active') {
+        void refreshAdminPendingLegalVerifications();
+        void refreshAdminPendingReports();
+      }
     });
     return () => sub.remove();
-  }, [isZarzad]);
+  }, [isZarzad, token]);
 
   const togglePasskey = async (value) => {
     if (value) {
@@ -2726,6 +2920,50 @@ export default function ProfileScreen({
     }
   };
 
+  /**
+   * Bezpośredni zakup z sekcji „Zakupy i sklep" — żeby reviewer i użytkownik
+   * mogli uruchomić StoreKit bez konieczności przechodzenia przez flow oferty.
+   */
+  const handleBuyPakietPlus = async () => {
+    if (isBuyingPakietPlus) return;
+    if (!token) {
+      Alert.alert('Wymagane logowanie', 'Zaloguj się ponownie, aby kupić Pakiet Plus.');
+      return;
+    }
+
+    setIsBuyingPakietPlus(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const result = await purchasePakietPlusConsumable(API_URL, token);
+      if (result.cancelled) return;
+      if (!result.ok) {
+        Alert.alert('Zakup Pakietu Plus', result.message || 'Nie udało się rozpocząć zakupu.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+
+      await refreshUser?.();
+      const patched = userAfterPakietPlusPurchase(useAuthStore.getState().user, {
+        backendRegistered: Boolean(result.backendRegistered),
+        extraListings: result.extraListings,
+      });
+      if (patched) {
+        useAuthStore.setState({ user: { ...useAuthStore.getState().user, ...patched } });
+      }
+
+      const slotsAfter = Math.max(0, Number((patched as any)?.extraListings ?? 0));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Pakiet Plus aktywny',
+        slotsAfter > 0
+          ? `Masz ${slotsAfter} ${slotsAfter === 1 ? 'publikację' : 'publikacje'} Plus do wykorzystania przy publikacji ogłoszenia.`
+          : 'Płatność została przyjęta. Księgowanie trwa — odśwież Profil za chwilę.',
+      );
+    } finally {
+      setIsBuyingPakietPlus(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert("Wyloguj się", "Czy na pewno chcesz wylogować się?", [
       { text: "Anuluj", style: "cancel" },
@@ -2764,7 +3002,15 @@ export default function ProfileScreen({
   const plusExpiresAtMs = plusExpiresAtRaw ? new Date(plusExpiresAtRaw).getTime() : null;
   const plusHasValidExpiry = plusExpiresAtMs != null && Number.isFinite(plusExpiresAtMs);
   const plusDaysLeft = plusHasValidExpiry ? Math.max(0, Math.ceil((plusExpiresAtMs! - Date.now()) / 86400000)) : null;
-  const hasPlusPublicationAvailable = plusSlots > 0;
+  const hasPlusPublicationAvailable =
+    plusSlots > 0 &&
+    plusHasValidExpiry &&
+    (plusExpiresAtMs ?? 0) > Date.now();
+  const plusCounterLabel = hasPlusPublicationAvailable
+    ? plusSlots === 1
+      ? '1 publikacja Plus do wykorzystania'
+      : `${plusSlots} publikacji Plus do wykorzystania`
+    : 'Brak pakietów — kup przed kolejną płatną publikacją';
   const firstFreePublicationUsedRaw =
     backendFirstFreePublicationUsed ??
     (user as any)?.firstFreePublicationUsed ??
@@ -3126,15 +3372,17 @@ export default function ProfileScreen({
                   ]}
                 >
                   <Text style={[styles.plusStatusPillText, { color: hasPlusPublicationAvailable ? '#10B981' : '#0A84FF' }]}>
-                    {hasPlusPublicationAvailable ? 'DOSTĘPNA' : 'NA ŻĄDANIE'}
+                    {hasPlusPublicationAvailable ? String(plusSlots) : '0'}
                   </Text>
                 </View>
               </View>
               <Text style={styles.plusStatusSubtitle}>
-                Opłata dotyczy publicznego wystawienia konkretnego ogłoszenia na 30 dni — przy dodawaniu lub ponownym wystawieniu z Profilu.
+                {plusCounterLabel}
               </Text>
               <Text style={styles.plusStatusMeta}>
-                To nie jest abonament. Kupujesz tylko wtedy, gdy publikujesz kolejne ogłoszenie.
+                {hasPlusPublicationAvailable
+                  ? `Ważne do ${plusExpiryLabel || '—'}. Publikacja zdejmie 1 pakiet z licznika.`
+                  : 'Kup Pakiet Plus poniżej — potem opublikuj ogłoszenie bez drugiej płatności.'}
               </Text>
             </View>
           </View>
@@ -3187,6 +3435,34 @@ export default function ProfileScreen({
             </View>
           </View>
           <ListGroup isDark={isDark}>
+            <Pressable
+              onPress={handleBuyPakietPlus}
+              disabled={isBuyingPakietPlus}
+              style={({ pressed }) => [
+                styles.listItem,
+                { paddingVertical: 12, opacity: isBuyingPakietPlus ? 0.7 : 1 },
+                pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' },
+              ]}
+            >
+              <View style={[styles.listIconBox, { backgroundColor: '#10B981' }]}>
+                {isBuyingPakietPlus ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="bag-check" size={21} color="#FFFFFF" />
+                )}
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
+                  Kup Pakiet Plus
+                </Text>
+                <Text style={styles.listSubtitle}>
+                  Otwórz App Store i opłać 1 dodatkowe wystawienie (~{PAKIET_PLUS_PRICE_LABEL})
+                </Text>
+              </View>
+              {!isBuyingPakietPlus && (
+                <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
+              )}
+            </Pressable>
             <Pressable
               onPress={handleRestorePurchases}
               disabled={isRestoringPurchases}
@@ -3245,6 +3521,39 @@ export default function ProfileScreen({
                 ) : undefined}
               />
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
+              <ListItem
+                icon="flag"
+                color="#FF453A"
+                title="Zgłoszenia UGC"
+                subtitle={
+                  adminPendingReportsCount > 0
+                    ? `${adminPendingReportsCount} oczekuje na reakcję`
+                    : 'Oferty i użytkownicy — moderacja'
+                }
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsAdminReportsVisible(true);
+                }}
+                isDark={isDark}
+                rightElement={
+                  adminPendingReportsCount > 0 ? (
+                    <View style={styles.adminPendingBadge}>
+                      <Text style={styles.adminPendingBadgeText}>{adminPendingReportsCount}</Text>
+                    </View>
+                  ) : undefined
+                }
+              />
+              <ListItem
+                icon="pulse"
+                color="#10b981"
+                title="EstateOS™ CORE"
+                subtitle="Centrum dowodzenia — CPU, RAM, dysk, LIVE"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsAdminCoreVisible(true);
+                }}
+                isDark={isDark}
+              />
               <ListItem icon="stats-chart" color="#FF2D55" title="Analityka Radaru" onPress={() => setIsAdminRadarVisible(true)} isDark={isDark} />
               <ListItem icon="albums" color="#30B0C7" title="Dealroom Check" subtitle="Lista dealroomów i uczestników" onPress={() => setIsAdminDealroomCheckVisible(true)} isDark={isDark} />
               {/*
@@ -3340,6 +3649,30 @@ export default function ProfileScreen({
           </ListGroup>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ceny w aplikacji</Text>
+          <ListGroup isDark={isDark}>
+            {(['PLN', 'EUR', 'LISTING'] as DisplayCurrencyPreference[]).map((code, idx, arr) => (
+              <ListItem
+                key={code}
+                icon={code === 'EUR' ? 'logo-euro' : code === 'PLN' ? 'cash' : 'pricetag'}
+                color={code === 'EUR' ? '#007AFF' : '#34C759'}
+                title={DISPLAY_CURRENCY_LABELS[code]}
+                subtitle={code === displayCurrency ? 'Aktywne' : undefined}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  void setDisplayCurrency(code);
+                }}
+                isLast={idx === arr.length - 1}
+                isDark={isDark}
+              />
+            ))}
+          </ListGroup>
+          <Text style={styles.sectionFooter}>
+            Oferty w euro zobaczysz z przeliczeniem na zł (i odwrotnie) po bieżącym kursie NBP.
+          </Text>
+        </View>
+
         <View style={[styles.section, { marginTop: 10 }]}>
           <ListGroup isDark={isDark}>
             <Pressable onPress={handleLogout} style={({ pressed }) => [styles.logoutBtn, pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
@@ -3407,6 +3740,11 @@ export default function ProfileScreen({
         }}
         theme={theme}
       />
+      <AdminCoreCommandCenterModal
+        visible={isAdminCoreVisible}
+        onClose={() => setIsAdminCoreVisible(false)}
+        theme={theme}
+      />
       <AdminRadarAnalyticsModal visible={isAdminRadarVisible} onClose={() => setIsAdminRadarVisible(false)} theme={theme} />
       <AdminDealroomCheckModal visible={isAdminDealroomCheckVisible} onClose={() => setIsAdminDealroomCheckVisible(false)} theme={theme} />
       <AdminLegalVerificationModal
@@ -3419,6 +3757,15 @@ export default function ProfileScreen({
         }}
         theme={theme}
         onQueueChange={setAdminPendingLegalCount}
+      />
+      <AdminContentReportsModal
+        visible={isAdminReportsVisible}
+        onClose={() => {
+          setIsAdminReportsVisible(false);
+          void refreshAdminPendingReports();
+        }}
+        theme={theme}
+        onQueueChange={setAdminPendingReportsCount}
       />
 
       <EditNameSheet
@@ -3936,28 +4283,68 @@ const styles = StyleSheet.create({
   userPresenceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginBottom: 2 },
   userPresenceDot: { width: 8, height: 8, borderRadius: 4 },
   userPresenceText: { fontSize: 11, fontWeight: '700' },
-  userCommandCenter: {
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
-  },
-  userCommandTitle: { fontSize: 15, fontWeight: '900', letterSpacing: -0.2 },
-  userCommandSubtitle: { fontSize: 12, color: '#8E8E93', marginTop: 3, fontWeight: '600' },
-  userKpiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  userKpiCard: {
-    width: '48.5%',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(150,150,150,0.16)',
-    backgroundColor: 'rgba(150,150,150,0.08)',
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+  adminUsersListHeader: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10 },
+  adminUsersListContent: { paddingHorizontal: 16, paddingBottom: 28 },
+  adminUsersEmpty: { textAlign: 'center', marginTop: 40, fontSize: 15, fontWeight: '600' },
+  adminSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12,
+    minHeight: 44,
     gap: 8,
   },
-  userKpiValue: { fontSize: 16, fontWeight: '900', marginRight: 4 },
-  userKpiLabel: { fontSize: 11, color: '#8E8E93', fontWeight: '700' },
+  adminSearchInput: { flex: 1, fontSize: 16, fontWeight: '500', paddingVertical: 10 },
+  adminSortDirBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adminToolsDisclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  adminToolsDisclosureMain: { flex: 1, minWidth: 0 },
+  adminToolsDisclosureTitle: { fontSize: 15, fontWeight: '700', letterSpacing: -0.2 },
+  adminToolsDisclosureMeta: { fontSize: 12, color: '#8E8E93', fontWeight: '500', marginTop: 2 },
+  adminFilterBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  adminFilterBadgeText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  adminStatsCompact: { fontSize: 12, fontWeight: '600', marginTop: 8, lineHeight: 17 },
+  adminToolsPanel: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  adminFilterGroup: { marginBottom: 8 },
+  adminFilterSectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  adminFilterChipRow: { gap: 8, paddingRight: 4 },
+  adminResetFiltersBtn: { alignItems: 'center', paddingVertical: 10, marginTop: 4 },
+  adminResetFiltersText: { color: '#007AFF', fontSize: 14, fontWeight: '700' },
   userSortChip: {
     paddingHorizontal: 14,
     paddingVertical: 10,

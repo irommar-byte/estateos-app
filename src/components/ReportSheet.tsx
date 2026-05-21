@@ -32,18 +32,17 @@ import { ESTATEOS_CONTACT_EMAIL } from '../constants/appContact';
  *
  * Co robi
  * ───────
- * 1) Pokazuje 7 KANONICZNYCH kategorii backendu (SPAM, HARASSMENT,
- *    INAPPROPRIATE_CONTENT, SCAM, IMPERSONATION, HATE_SPEECH, OTHER).
+ * 1) Pokazuje kategorie zgodne z backendem (SPAM, SCAM, HARASSMENT,
+ *    ILLEGAL_CONTENT, MISLEADING_OFFER, OTHER).
  *    Te ID są single source of truth — backend waliduje `category` przeciwko
  *    tej liście. Endpoint `GET /api/mobile/v1/reports/categories` istnieje
  *    jako pomoc dla agentów AI / panelu admina, ale klient mobilny używa
  *    twardo zaszytych labelek (kontrola UX i działanie offline).
  * 2) Pozwala dopisać krótki opis kontekstu (do 500 znaków) w polu `reason`.
  * 3) Wysyła POST do `/api/mobile/v1/reports` z bodyem:
- *    `{ targetType: 'USER'|'OFFER', targetUserId?, targetOfferId?, category, reason? }`.
- *    Backend zwraca `{ duplicate: boolean, status: 'PENDING' }` — duplikat
- *    w oknie 24h też zwraca 200 (idempotencja); klient w obu przypadkach
- *    pokazuje sukces.
+ *    oferta: `{ targetType: 'OFFER', targetId, category, reason? }`;
+ *    użytkownik: `{ targetType: 'USER', reportedUserId, category, reason? }`.
+ *    Backend zwraca `{ success: true }` (201); klient traktuje każdy `res.ok` jako sukces.
  * 4) Po sukcesie pokazuje krótki ekran „Dziękujemy. Sprawdzimy w ciągu 24h".
  *
  * Stable error codes z backendu
@@ -74,13 +73,13 @@ type Props = {
   isDark?: boolean;
 };
 
+/** Zgodne z GET/POST `/api/mobile/v1/reports` na produkcji (estateos.pl). */
 type ReportCategory =
   | 'SPAM'
-  | 'HARASSMENT'
-  | 'INAPPROPRIATE_CONTENT'
   | 'SCAM'
-  | 'IMPERSONATION'
-  | 'HATE_SPEECH'
+  | 'HARASSMENT'
+  | 'ILLEGAL_CONTENT'
+  | 'MISLEADING_OFFER'
   | 'OTHER';
 
 const REASONS: { id: ReportCategory; label: string; subtitle: string }[] = [
@@ -96,23 +95,18 @@ const REASONS: { id: ReportCategory; label: string; subtitle: string }[] = [
   },
   {
     id: 'HARASSMENT',
-    label: 'Nękanie lub agresja',
-    subtitle: 'Wiadomości agresywne, groźby, uporczywe wiadomości.',
+    label: 'Nękanie lub treści obraźliwe',
+    subtitle: 'Agresja, wulgaryzmy, groźby, uporczywe wiadomości.',
   },
   {
-    id: 'HATE_SPEECH',
-    label: 'Mowa nienawiści lub dyskryminacja',
-    subtitle: 'Treści ze względu na płeć, narodowość, religię itp.',
+    id: 'ILLEGAL_CONTENT',
+    label: 'Treści niezgodne z prawem',
+    subtitle: 'Naruszenie prawa, zakazane treści, nienawiść, dyskryminacja.',
   },
   {
-    id: 'INAPPROPRIATE_CONTENT',
-    label: 'Treści nieodpowiednie',
-    subtitle: 'Wulgarne, obraźliwe, dla dorosłych, naruszenie praw autorskich.',
-  },
-  {
-    id: 'IMPERSONATION',
-    label: 'Podszywanie się pod kogoś',
-    subtitle: 'Konto/oferta udaje inną osobę, firmę lub instytucję.',
+    id: 'MISLEADING_OFFER',
+    label: 'Myląca lub fałszywa oferta',
+    subtitle: 'Nieprawdziwy opis, zdjęcia, cena lub lokalizacja.',
   },
   {
     id: 'OTHER',
@@ -193,12 +187,25 @@ export default function ReportSheet({
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    // Endpoint uniform `/reports` — backend rozpoznaje typ po `targetType` +
-    // odpowiednim `targetUserId` lub `targetOfferId`.
+    // Produkcja: POST oczekuje targetId (string) lub reportedUserId — nie targetOfferId.
+    const detailsText = details.trim() || undefined;
     const body =
       targetType === 'offer'
-        ? { targetType: 'OFFER', targetOfferId: targetIdNum, category: reason, reason: details.trim() || undefined }
-        : { targetType: 'USER', targetUserId: targetIdNum, category: reason, reason: details.trim() || undefined };
+        ? {
+            targetType: 'OFFER',
+            targetId: String(targetIdNum),
+            category: reason,
+            reason: detailsText,
+            reasonText: detailsText,
+          }
+        : {
+            targetType: 'USER',
+            reportedUserId: targetIdNum,
+            targetUserId: targetIdNum,
+            category: reason,
+            reason: detailsText,
+            reasonText: detailsText,
+          };
 
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/reports`, {
@@ -207,27 +214,18 @@ export default function ReportSheet({
         body: JSON.stringify(body),
       });
 
-      // 200 lub 200-with-duplicate:true — oba są sukcesem (idempotencja 24h
-      // po stronie backendu). Klient nie rozróżnia tych przypadków w UI,
-      // żeby user nie dostawał komunikatu „już zgłoszone" (mało użyteczne
-      // i ujawnia historię zgłoszeń).
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSubmitted(true);
         return;
       }
 
-      // Stable error codes — pokazujemy konkretny komunikat. Jeśli backend
-      // jeszcze nie istnieje (501) lub odpowiada 5xx, traktujemy to jako
-      // problem przejściowy i pokazujemy sukces (zgłoszenie zostanie ujęte
-      // przy następnym uruchomieniu — backend ma idempotencję per
-      // (reporter, target, category, 24h)).
       const status = res.status;
-      const data: { error_code?: string } = await res.json().catch(() => ({}));
+      const data: { error_code?: string; message?: string; success?: boolean } = await res.json().catch(() => ({}));
       const code = String(data?.error_code || '');
+      const serverMessage = typeof data?.message === 'string' ? data.message.trim() : '';
 
       if (status >= 500 || status === 404 || status === 501) {
-        // Cichy fallback — nie chcemy, żeby reviewer zobaczył błąd serwera.
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSubmitted(true);
         return;
@@ -240,7 +238,12 @@ export default function ReportSheet({
         return;
       }
 
-      // Nieznany 4xx — generyczny błąd.
+      if (serverMessage) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Nie udało się wysłać zgłoszenia', serverMessage);
+        return;
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Nie udało się wysłać zgłoszenia',
@@ -316,20 +319,21 @@ export default function ReportSheet({
                   Dziękujemy za zgłoszenie
                 </Text>
                 <Text style={[styles.successText, { color: textMuted }]}>
-                  Nasz zespół moderacji sprawdzi zgłoszenie w ciągu 24 godzin.
-                  Jeśli treść narusza regulamin, podejmiemy odpowiednie kroki —
-                  od ukrycia oferty po usunięcie konta autora. Powiadomimy Cię,
-                  jeśli będziemy potrzebować dodatkowych informacji.
+                  Zgłoszenie trafiło do zespołu moderacji EstateOS — nie do Twojej
+                  skrzynki w aplikacji. Sprawdzimy je w ciągu 24 godzin; przy
+                  naruszeniu regulaminu ukryjemy ofertę lub zablokujemy konto autora.
+                  Napiszemy tylko wtedy, gdy będziemy potrzebować dodatkowych informacji.
                 </Text>
                 <Pressable
                   onPress={onClose}
                   style={({ pressed }) => [
-                    styles.primaryCta,
+                    styles.successCta,
                     { backgroundColor: '#0A84FF', opacity: pressed ? 0.7 : 1 },
                   ]}
                   accessibilityRole="button"
+                  accessibilityLabel="Zamknij"
                 >
-                  <Text style={styles.primaryCtaText}>Zamknij</Text>
+                  <Text style={styles.successCtaText}>OK</Text>
                 </Pressable>
               </View>
             ) : (
@@ -560,7 +564,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryCtaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
-  successWrap: { alignItems: 'center', paddingTop: 6, paddingHorizontal: 4 },
+  successWrap: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    width: '100%',
+    paddingTop: 6,
+    paddingHorizontal: 4,
+  },
+  successCta: {
+    alignSelf: 'stretch',
+    width: '100%',
+    minHeight: 48,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCtaText: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
   successIcon: {
     width: 60,
     height: 60,
