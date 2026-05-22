@@ -40,7 +40,6 @@ import {
   dismissProfilePromoCardForever,
   loadDismissedProfilePromoIds,
 } from '../utils/profilePromoDismissStorage';
-import { detectAndNotifyNewBonusCoupons } from '../utils/bonusCouponNotification';
 import { buildBonusCouponStack } from '../utils/buildBonusCouponStack';
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
 import {
@@ -2982,7 +2981,6 @@ function ProfileScreenLoggedIn({
       firstFreePublicationUsed: legacyUsed ? true : false,
     });
     setUserPromoCards(cards);
-    void detectAndNotifyNewBonusCoupons(user.id, cards, t);
   }, [token, user?.id, user?.email, t]);
 
   useFocusEffect(
@@ -3023,7 +3021,6 @@ function ProfileScreenLoggedIn({
       });
       if (!cancelled) {
         setUserPromoCards(cards);
-        void detectAndNotifyNewBonusCoupons(user.id, cards, t);
       }
     };
     void loadPromos();

@@ -9,6 +9,11 @@ const DEEPLINK = 'estateos://profil/kupony-bonusowe';
 const seenNotifyKey = (userId: string | number) =>
   `@estateos_bonus_coupon_notify_seen_${userId}`;
 
+/** Zapobiega równoległym wywołaniom (Bootstrap + Profil) i podwójnemu pushowi. */
+const notifyRunByUser = new Map<string, Promise<void>>();
+const recentlyPresentedCouponIds = new Map<string, number>();
+const PRESENT_DEDUPE_MS = 120_000;
+
 export type BonusCouponNotifyCopy = {
   title: string;
   body: string;
@@ -61,6 +66,12 @@ export async function presentBonusCouponReceivedNotification(
   copy: BonusCouponNotifyCopy,
 ): Promise<void> {
   if (Platform.OS === 'web') return;
+  const dedupeKey = String(card.id || '').trim();
+  if (dedupeKey) {
+    const last = recentlyPresentedCouponIds.get(dedupeKey) ?? 0;
+    if (Date.now() - last < PRESENT_DEDUPE_MS) return;
+    recentlyPresentedCouponIds.set(dedupeKey, Date.now());
+  }
   if (!(await ensureNotificationPermission())) return;
 
   try {
@@ -110,7 +121,7 @@ async function saveSeenCouponIds(userId: string | number, seen: Set<string>): Pr
  * Porównuje listę kuponów z ostatnio powiadomionymi — dla nowych wysyła push lokalny.
  * Wywołuj po `fetchUserProfilePromoCards` (Profil, wejście w aplikację).
  */
-export async function detectAndNotifyNewBonusCoupons(
+async function detectAndNotifyNewBonusCouponsInner(
   userId: string | number,
   cards: ProfilePromoCardRecord[],
   t: (key: string, vars?: Record<string, unknown>) => string,
@@ -124,13 +135,28 @@ export async function detectAndNotifyNewBonusCoupons(
   const fresh = candidates.filter((c) => !seen.has(c.id));
 
   for (const card of fresh) {
+    seen.add(card.id);
+    await saveSeenCouponIds(userId, seen);
     const copy = buildBonusCouponNotifyCopy(card, t);
     await presentBonusCouponReceivedNotification(card, copy);
-    seen.add(card.id);
   }
 
   for (const c of candidates) {
     seen.add(c.id);
   }
   await saveSeenCouponIds(userId, seen);
+}
+
+export async function detectAndNotifyNewBonusCoupons(
+  userId: string | number,
+  cards: ProfilePromoCardRecord[],
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): Promise<void> {
+  const uid = String(userId);
+  const prev = notifyRunByUser.get(uid) ?? Promise.resolve();
+  const run = prev
+    .then(() => detectAndNotifyNewBonusCouponsInner(userId, cards, t))
+    .catch(() => {});
+  notifyRunByUser.set(uid, run);
+  await run;
 }
