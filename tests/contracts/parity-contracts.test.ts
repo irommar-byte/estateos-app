@@ -156,6 +156,7 @@ test('radar preferences use canonical DTO names', () => {
     requireElevator: true,
     requireParking: true,
     requireFurnished: false,
+    requireTwoLevel: false,
     pushNotifications: true,
     minMatchThreshold: 72,
     lat: 52.2297,
