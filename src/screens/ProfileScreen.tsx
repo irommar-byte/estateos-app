@@ -8,7 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
@@ -76,7 +76,11 @@ import PublicationChoiceModal, {
   type PublicationChoiceConfirm,
 } from '../components/publication/PublicationChoiceModal';
 import { gatherPublicationBonusCoupons } from '../services/publicationBonusCoupons';
-import { markProfilePromoCouponUsed } from '../services/profilePromoService';
+import {
+  markProfilePromoCouponUsed,
+  patchPromoCardCouponUsed,
+  subscribeProfilePromoCouponUsed,
+} from '../services/profilePromoService';
 import {
   getAdditionalListingSlots,
   hasAdditionalPlusPublication,
@@ -2981,12 +2985,26 @@ function ProfileScreenLoggedIn({
     void detectAndNotifyNewBonusCoupons(user.id, cards, t);
   }, [token, user?.id, user?.email, t]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void reloadUserPromoCards();
+    }, [reloadUserPromoCards]),
+  );
+
   useEffect(() => {
     if (!user?.id) {
       setDismissedPromoIds(new Set());
       return;
     }
     void loadDismissedProfilePromoIds(user.id).then(setDismissedPromoIds);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    return subscribeProfilePromoCouponUsed((uid, cardId) => {
+      if (String(uid) !== String(user.id)) return;
+      setUserPromoCards((prev) => patchPromoCardCouponUsed(prev, cardId));
+    });
   }, [user?.id]);
 
   useEffect(() => {

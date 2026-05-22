@@ -752,7 +752,10 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         pendingPlusCreditRef.current = null;
       }
       if (redemption?.source === 'bonus_coupon') {
-        await markProfilePromoCouponUsed(user.id, redemption.couponId, token);
+        const usedCouponId = redemption.couponId;
+        setPublicationChoiceCoupons((prev) => prev.filter((c) => c.id !== usedCouponId));
+        setPrefetchedPublicationCoupons((prev) => prev.filter((c) => c.id !== usedCouponId));
+        await markProfilePromoCouponUsed(user.id, usedCouponId, token);
       }
       await refreshUser();
 

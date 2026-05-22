@@ -10,6 +10,50 @@ import {
 
 const localKey = (userId: string | number) => `@estateos_profile_promos_${userId}`;
 
+export type ProfilePromoCouponUsedListener = (
+  userId: string | number,
+  cardId: string,
+) => void;
+
+const couponUsedListeners = new Set<ProfilePromoCouponUsedListener>();
+
+/** Natychmiastowy refresh kart kuponów w Profilu (bez czekania na refetch). */
+export function subscribeProfilePromoCouponUsed(
+  listener: ProfilePromoCouponUsedListener,
+): () => void {
+  couponUsedListeners.add(listener);
+  return () => {
+    couponUsedListeners.delete(listener);
+  };
+}
+
+function emitProfilePromoCouponUsed(userId: string | number, cardId: string) {
+  const uid = String(userId);
+  const cid = String(cardId);
+  for (const listener of couponUsedListeners) {
+    try {
+      listener(uid, cid);
+    } catch {
+      // noop
+    }
+  }
+}
+
+/** Oznacza rekord jako zużyty w pamięci lokalnej (ten sam kształt co po PATCH API). */
+export function patchPromoCardCouponUsed(
+  cards: ProfilePromoCardRecord[],
+  cardId: string,
+): ProfilePromoCardRecord[] {
+  const id = String(cardId);
+  let changed = false;
+  const next = cards.map((card) => {
+    if (String(card.id) !== id) return card;
+    changed = true;
+    return { ...card, couponUsed: true as const };
+  });
+  return changed ? next : cards;
+}
+
 function normalizePromoRow(raw: any): ProfilePromoCardRecord | null {
   const id = String(raw?.id ?? '').trim();
   if (!id) return null;
@@ -280,6 +324,8 @@ export async function markProfilePromoCouponUsed(
   cardId: string,
   token?: string | null,
 ): Promise<void> {
+  emitProfilePromoCouponUsed(userId, cardId);
+
   if (token) {
     const paths = [
       `/api/mobile/v1/me/promo-cards/${encodeURIComponent(String(cardId))}`,
