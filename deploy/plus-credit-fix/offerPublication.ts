@@ -231,25 +231,6 @@ export async function getPublicationQuote(params: {
   const user = userRows[0];
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  const firstRows = (await db.$queryRawUnsafe(
-    'SELECT MIN(id) AS firstOfferId FROM `Offer` WHERE userId = ?',
-    userId
-  )) as Array<{ firstOfferId: number | null }>;
-  const firstOfferId = Number(firstRows?.[0]?.firstOfferId ?? 0) || null;
-
-  const firstFreeUsed = toBooleanFlag(user.firstFreePublicationUsed);
-  const canUseFreeFirst = firstOfferId === offerId && !firstFreeUsed;
-  if (canUseFreeFirst) {
-    return {
-      offerId,
-      action,
-      requiresPayment: false,
-      allowedFreeFirst: true,
-      reason: null,
-      productId: PAKIET_PLUS_PRODUCT_ID,
-    };
-  }
-
   if (hasPlusCreditOnUser(user)) {
     return {
       offerId,
@@ -265,7 +246,6 @@ export async function getPublicationQuote(params: {
   let reason: PublicationQuoteReason = 'NOT_FIRST_OFFER';
   if (last?.endReason === 'SOLD') reason = 'REACTIVATION_AFTER_SOLD';
   else if (last) reason = 'REACTIVATION_AFTER_ARCHIVE';
-  else if (firstOfferId === offerId && firstFreeUsed) reason = 'FREE_ALREADY_USED';
 
   return {
     offerId,
@@ -295,23 +275,14 @@ export async function getCreatePublicationQuote(params: {
   const user = userRows[0];
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  const count = await db.offer.count({ where: { userId: params.userId } });
-  const firstFreeUsed = toBooleanFlag(user.firstFreePublicationUsed);
-  const allowedFreeFirst = count === 0 && !firstFreeUsed;
   const hasPlusCredit = hasPlusCreditOnUser(user);
-  const requiresPayment = !allowedFreeFirst && !hasPlusCredit;
+  const requiresPayment = !hasPlusCredit;
   return {
     offerId: null,
     action: 'CREATE_AND_ACTIVATE',
     requiresPayment,
-    allowedFreeFirst,
-    reason: allowedFreeFirst
-      ? null
-      : hasPlusCredit
-        ? 'PLUS_CREDIT_AVAILABLE'
-        : firstFreeUsed
-          ? 'FREE_ALREADY_USED'
-          : 'NOT_FIRST_OFFER',
+    allowedFreeFirst: false,
+    reason: hasPlusCredit ? 'PLUS_CREDIT_AVAILABLE' : 'PUBLICATION_REQUIRES_PLUS',
     productId: PAKIET_PLUS_PRODUCT_ID,
   };
 }

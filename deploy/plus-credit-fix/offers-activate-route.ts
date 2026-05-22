@@ -54,11 +54,17 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
 
-    const activationKind = quote.allowedFreeFirst
-      ? 'FREE_FIRST'
-      : txId
+    const pub = body?.publication;
+    const activationKind =
+      pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
         ? 'PLUS_PAID'
-        : 'PLUS_CREDIT';
+        : pub?.kind === 'PLUS_CREDIT' || pub?.consumePlusPublication === true
+          ? 'PLUS_CREDIT'
+          : pub?.kind === 'FREE_FIRST' || pub?.bonusCouponId
+            ? 'FREE_FIRST'
+            : txId
+              ? 'PLUS_PAID'
+              : 'PLUS_CREDIT';
 
     const activation = await activateOfferPublication({
       userId,
