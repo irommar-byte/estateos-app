@@ -590,6 +590,22 @@ export const addOffer = {
     mediaNo: 'нет',
     validationHint: 'На шаге {{steps}} отсутствуют данные — нажмите кнопку, чтобы вернуться и завершить его.',
     plusCreditHint: 'У вас есть бонус Plus — при публикации будет использован 1 кредит (без комиссии за второй магазин).',
+    couponPublishHint:
+      'У вас {{count}} купон(ов) на публикацию — после «Опубликовать» выберите купон (например, именинный), чтобы не тратить кредит Plus.',
+    publicationChoice: {
+      title: 'Как опубликовать объявление?',
+      subtitle: 'Используйте бонусный купон на публикацию или оплатите кредитом Pakiet Plus.',
+      couponPriorityHint:
+        'Есть активные купоны — по умолчанию выбран первый. Выберите купон, чтобы не тратить кредит Plus.',
+      couponsSection: 'Бонусные купоны',
+      couponsEmpty: 'Нет активных купонов на публикацию.',
+      plusSection: 'Пакет Plus',
+      plusCreditTitle: 'Использовать кредит Plus',
+      plusCreditSubtitle: 'На счёте: {{count}} публикаций',
+      buyPlusTitle: 'Купить Pakiet Plus',
+      buyPlusSubtitle: 'Оплатить одну публикацию в App Store (~{{price}})',
+      publish: 'Опубликовать',
+    },
     publish: {
       publishing: 'Издательский...',
       publish: 'Публикация в экосистеме',

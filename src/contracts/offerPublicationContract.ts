@@ -28,7 +28,15 @@ export type OfferPublicationPayload = {
   kind: PublicationKind;
   iapTransactionId?: string;
   consumePlusPublication?: boolean;
+  /** Id kuponu bonusowego (np. urodzinowego) — do śledzenia zużycia po stronie API. */
+  bonusCouponId?: string;
+  bonusCouponKind?: string;
 };
+
+export type CreatePublicationRedemption =
+  | { source: 'bonus_coupon'; couponId: string; couponKind: string }
+  | { source: 'plus_credit' }
+  | { source: 'plus_iap'; transactionId: string };
 
 export type ActivateOfferPublicationResponse = {
   offer?: Record<string, unknown>;

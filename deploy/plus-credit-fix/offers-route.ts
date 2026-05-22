@@ -208,25 +208,27 @@ export async function POST(req: Request) {
       offerId: Number(offer.id),
       action: 'CREATE_AND_ACTIVATE',
     });
-    if (quote.requiresPayment) {
-      const txId = String(body?.publication?.iapTransactionId ?? '').trim();
-      if (!txId) {
-        return NextResponse.json(
-          {
-            success: true,
-            offer,
-            activationSkipped: true,
-            errorCode: 'PUBLICATION_REQUIRES_PLUS',
-            message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
-            quote,
-          },
-          { status: 422 }
-        );
-      }
-    }
-
-    const txId = String(body?.publication?.iapTransactionId ?? '').trim();
     const pub = body?.publication;
+    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
+    const bypassPaymentRequirement =
+      pub?.kind === 'FREE_FIRST' ||
+      Boolean(pub?.bonusCouponId) ||
+      pub?.kind === 'PLUS_CREDIT' ||
+      pub?.consumePlusPublication === true;
+
+    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
+      return NextResponse.json(
+        {
+          success: false,
+          offer,
+          activationSkipped: true,
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
+          quote,
+        },
+        { status: 422 }
+      );
+    }
     const activationKind =
       pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
         ? 'PLUS_PAID'

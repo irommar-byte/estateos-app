@@ -1,6 +1,6 @@
 // @ts-nocheck
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState, Linking } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Animated, Alert, Platform, Image, Modal, FlatList, ActivityIndicator, Switch, Easing, Dimensions, LayoutAnimation, UIManager, TextInput, useWindowDimensions, AppState, Linking, InteractionManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,9 +33,15 @@ import AdminContentReportsModal from '../components/AdminContentReportsModal';
 import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCenterModal';
 import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
-import PromoCardStack from '../components/profile/PromoCardStack';
+import BonusCouponsSection from '../components/profile/BonusCouponsSection';
+import PlusPackageShopPanel from '../components/profile/PlusPackageShopPanel';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
-import { buildProfilePromoStack } from '../utils/buildProfilePromoStack';
+import {
+  dismissProfilePromoCardForever,
+  loadDismissedProfilePromoIds,
+} from '../utils/profilePromoDismissStorage';
+import { detectAndNotifyNewBonusCoupons } from '../utils/bonusCouponNotification';
+import { buildBonusCouponStack } from '../utils/buildBonusCouponStack';
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
 import {
   coalesceRadarPreferenceFromPayload,
@@ -63,7 +69,19 @@ import {
   decideReactivationFromQuote,
   fetchPublicationQuote,
   getPublicationCopy,
+  isPublicationRequiresPlusError,
+  readFirstFreePublicationUsed,
 } from '../services/offerPublicationService';
+import PublicationChoiceModal, {
+  type PublicationChoiceConfirm,
+} from '../components/publication/PublicationChoiceModal';
+import { gatherPublicationBonusCoupons } from '../services/publicationBonusCoupons';
+import { markProfilePromoCouponUsed } from '../services/profilePromoService';
+import {
+  getAdditionalListingSlots,
+  hasAdditionalPlusPublication,
+} from '../utils/listingQuota';
+import type { CreatePublicationRedemption } from '../contracts/offerPublicationContract';
 import { localeToDateFormat, useI18n } from '../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -539,6 +557,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [reactivating, setReactivating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
+  const [reactivationChoiceVisible, setReactivationChoiceVisible] = useState(false);
+  const [reactivationChoiceCoupons, setReactivationChoiceCoupons] = useState([]);
+  const [reactivationChoicePlusSlots, setReactivationChoicePlusSlots] = useState(0);
+  const [reactivationChoiceHasPlus, setReactivationChoiceHasPlus] = useState(false);
+  const pendingReactivationRef = useRef<{ offerId: number; offerTitle: string } | null>(null);
   const recentlyReactivatedUntilRef = useRef<Record<number, number>>({});
   
   const { user, token, refreshUser } = useAuthStore();
@@ -626,13 +649,38 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const reactivateEndedOfferWithPakietPlus = async (
     offerId: number,
     offerTitle: string,
-    iapTransactionId: string,
+    opts?: {
+      iapTransactionId?: string;
+      redemption?: CreatePublicationRedemption | null;
+    },
   ) => {
     if (!token || reactivating) return;
     setReactivating(true);
     try {
-      const res = await activateOfferPublication(API_URL, token, offerId, iapTransactionId);
+      const res = await activateOfferPublication(API_URL, token, offerId, {
+        iapTransactionId: opts?.iapTransactionId,
+        redemption: opts?.redemption ?? null,
+      });
       if (!res.ok) {
+        if (res.status === 422 && isPublicationRequiresPlusError(res.body)) {
+          const latestUser = useAuthStore.getState().user ?? user;
+          const gathered = await gatherPublicationBonusCoupons({
+            apiUrl: API_URL,
+            token,
+            userId: user?.id,
+            email: latestUser?.email,
+            firstFreePublicationUsed: readFirstFreePublicationUsed(
+              latestUser as Record<string, unknown>,
+            ),
+            t,
+          });
+          pendingReactivationRef.current = { offerId, offerTitle };
+          setReactivationChoiceCoupons(gathered.coupons);
+          setReactivationChoicePlusSlots(getAdditionalListingSlots(latestUser));
+          setReactivationChoiceHasPlus(hasAdditionalPlusPublication(latestUser));
+          setReactivationChoiceVisible(true);
+          return;
+        }
         throw new Error(
           res.body?.message ||
             res.body?.error ||
@@ -655,6 +703,9 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           return { ...merged, status: 'ACTIVE', expiresAt: endsAt };
         }),
       );
+      if (opts?.redemption?.source === 'bonus_coupon' && user?.id) {
+        await markProfilePromoCouponUsed(user.id, opts.redemption.couponId, token);
+      }
       setSelectedOffer(null);
       setActiveTab('ACTIVE');
       await refreshUser?.();
@@ -672,6 +723,73 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } finally {
       setReactivating(false);
     }
+  };
+
+  const openReactivationPublicationChoice = async (offerId: number, offerTitle: string) => {
+    if (!token || !user?.id || reactivating) return;
+    const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
+    const decision = decideReactivationFromQuote(quoteRes);
+    if (decision.action === 'block') {
+      Alert.alert(decision.title, decision.message);
+      return;
+    }
+
+    const latestUser = useAuthStore.getState().user ?? user;
+    const gathered = await gatherPublicationBonusCoupons({
+      apiUrl: API_URL,
+      token,
+      userId: user.id,
+      email: latestUser?.email,
+      firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
+      t,
+    });
+    const hasPlusCredit = hasAdditionalPlusPublication(latestUser);
+    const hasCoupons = gathered.coupons.length > 0;
+
+    if (decision.action === 'activate_free' && !hasCoupons && !hasPlusCredit) {
+      await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, {});
+      return;
+    }
+
+    pendingReactivationRef.current = { offerId, offerTitle };
+    setReactivationChoiceCoupons(gathered.coupons);
+    setReactivationChoicePlusSlots(getAdditionalListingSlots(latestUser));
+    setReactivationChoiceHasPlus(hasPlusCredit);
+    setReactivationChoiceVisible(true);
+  };
+
+  const handleReactivationPublicationChoice = (result: PublicationChoiceConfirm) => {
+    setReactivationChoiceVisible(false);
+    const pending = pendingReactivationRef.current;
+    if (!pending) return;
+    if (result.action === 'cancel') return;
+
+    if (result.action === 'buy_plus') {
+      void (async () => {
+        const r = await purchasePakietPlusConsumable(API_URL, token, {
+          deferPublicationConsume: true,
+          targetOfferId: pending.offerId,
+        });
+        if (r.cancelled) return;
+        if (!r.ok) {
+          if (r.message) Alert.alert(t('profile.myOffers.alerts.storeTitle'), r.message);
+          return;
+        }
+        const tx = r.transactionId ?? '';
+        if (!tx) {
+          Alert.alert(t('profile.myOffers.alerts.plusTitle'), publicationCopy.restoreHint);
+          return;
+        }
+        await reactivateEndedOfferWithPakietPlus(pending.offerId, pending.offerTitle, {
+          redemption: { source: 'plus_iap', transactionId: tx },
+        });
+      })();
+      return;
+    }
+
+    void reactivateEndedOfferWithPakietPlus(pending.offerId, pending.offerTitle, {
+      redemption: result.redemption,
+    });
   };
 
   const handleAction = async (actionType) => {
@@ -768,41 +886,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       if (!selectedOffer?.id || !token || reactivating) return;
       const offerId = Number(selectedOffer.id);
       const offerTitle = String(selectedOffer.title || t('profile.myOffers.defaultOfferTitle'));
-      Alert.alert(publicationCopy.reactivateTitle, publicationCopy.reactivateBody, [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('profile.myOffers.alerts.payListing', { price: PAKIET_PLUS_PRICE_LABEL }),
-          onPress: async () => {
-            const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
-            const decision = decideReactivationFromQuote(quoteRes);
-            if (decision.action === 'block') {
-              Alert.alert(decision.title, decision.message);
-              return;
-            }
-            if (decision.action === 'activate_free') {
-              await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, '');
-              await refreshUser?.();
-              return;
-            }
-            const r = await purchasePakietPlusConsumable(API_URL, token, {
-              deferPublicationConsume: true,
-              targetOfferId: offerId,
-            });
-            if (r.cancelled) return;
-            if (!r.ok) {
-              if (r.message) Alert.alert(t('profile.myOffers.alerts.storeTitle'), r.message);
-              return;
-            }
-            const tx = r.transactionId ?? '';
-            if (!tx) {
-              Alert.alert(t('profile.myOffers.alerts.plusTitle'), publicationCopy.restoreHint);
-              return;
-            }
-            await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, tx);
-            await refreshUser?.();
-          },
-        },
-      ]);
+      void openReactivationPublicationChoice(offerId, offerTitle);
     }
   };
 
@@ -918,6 +1002,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         
@@ -957,6 +1042,32 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         )}
       </View>
     </Modal>
+    <PublicationChoiceModal
+      visible={reactivationChoiceVisible}
+      isDark={isDark}
+      title={publicationCopy.reactivateTitle}
+      subtitle={publicationCopy.reactivateBody}
+      couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
+      couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
+      plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
+      plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
+      plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
+        count: reactivationChoicePlusSlots,
+      })}
+      buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
+      buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
+        price: PAKIET_PLUS_PRICE_LABEL,
+      })}
+      publishLabel={t('profile.myOffers.republish')}
+      cancelLabel={t('common.cancel')}
+      couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
+      coupons={reactivationChoiceCoupons}
+      plusSlots={reactivationChoicePlusSlots}
+      hasPlusCredit={reactivationChoiceHasPlus}
+      onConfirm={handleReactivationPublicationChoice}
+      onClose={() => setReactivationChoiceVisible(false)}
+    />
+    </>
   );
 };
 
@@ -2536,10 +2647,30 @@ const AdminDealroomCheckModal = ({ visible, onClose, theme }) => {
   );
 };
 
+/** Cienka brama auth — stała liczba hooków; pełny profil w osobnym komponencie. */
 export default function ProfileScreen({
   theme,
-  /** Z `App.tsx` Tab.Screen — pewne źródło parametrów (np. authIntent z nawigacji z oferty). */
   tabRouteParams,
+}: {
+  theme: any;
+  tabRouteParams?: { authIntent?: 'login' | 'register' };
+}) {
+  const route = useRoute<any>();
+  const authIntent = (tabRouteParams?.authIntent ?? route.params?.authIntent) as
+    | 'login'
+    | 'register'
+    | undefined;
+  const user = useAuthStore((s) => s.user);
+
+  if (!user) {
+    return <AuthScreen theme={theme} authIntent={authIntent} embedded />;
+  }
+
+  return <ProfileScreenLoggedIn theme={theme} />;
+}
+
+function ProfileScreenLoggedIn({
+  theme,
 }: {
   theme: any;
   tabRouteParams?: { authIntent?: 'login' | 'register' };
@@ -2547,8 +2678,6 @@ export default function ProfileScreen({
   const { t, locale } = useI18n();
   const dateLocale = localeToDateFormat(locale);
   const navigation = useNavigation();
-  const route = useRoute<any>();
-  const authIntent = (tabRouteParams?.authIntent ?? route.params?.authIntent) as 'login' | 'register' | undefined;
   const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
@@ -2584,6 +2713,7 @@ export default function ProfileScreen({
   const [isAdminReportsVisible, setIsAdminReportsVisible] = useState(false);
   const [isAdminPromoWindowsVisible, setIsAdminPromoWindowsVisible] = useState(false);
   const [userPromoCards, setUserPromoCards] = useState<ProfilePromoCardRecord[]>([]);
+  const [dismissedPromoIds, setDismissedPromoIds] = useState<Set<string>>(() => new Set());
   const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
   const [adminPendingReportsCount, setAdminPendingReportsCount] = useState(0);
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
@@ -2620,7 +2750,6 @@ export default function ProfileScreen({
    */
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [isBuyingPakietPlus, setIsBuyingPakietPlus] = useState(false);
-  const [backendFirstFreePublicationUsed, setBackendFirstFreePublicationUsed] = useState<boolean | null>(null);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -2836,47 +2965,29 @@ export default function ProfileScreen({
     fetchOwnPublicProfile();
   }, [user?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const refreshFirstFreePublicationStatus = async () => {
-      if (!token) {
-        if (!cancelled) setBackendFirstFreePublicationUsed(null);
-        return;
-      }
-      const quoteRes = await fetchPublicationQuote(API_URL, token);
-      if (cancelled) return;
-
-      if (!quoteRes.ok && quoteRes.status !== 422) {
-        setBackendFirstFreePublicationUsed(null);
-        return;
-      }
-
-      const quote = quoteRes.quote || ({} as any);
-      if (quote.allowedFreeFirst === true || quote.kind === 'FREE_FIRST') {
-        setBackendFirstFreePublicationUsed(false);
-        return;
-      }
-      if (
-        quote.allowedFreeFirst === false ||
-        quote.kind === 'PLUS_PAID' ||
-        quote.requiresPayment === true
-      ) {
-        setBackendFirstFreePublicationUsed(true);
-        return;
-      }
-      setBackendFirstFreePublicationUsed(null);
-    };
-
-    void refreshFirstFreePublicationStatus();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshFirstFreePublicationStatus();
+  const reloadUserPromoCards = useCallback(async () => {
+    if (!token || !user?.id) {
+      setUserPromoCards([]);
+      return;
+    }
+    const legacyUsed =
+      (user as any)?.firstFreePublicationUsed === true ||
+      (user as any)?.first_free_publication_used === true;
+    const cards = await fetchUserProfilePromoCards(token, user.id, {
+      email: user.email,
+      firstFreePublicationUsed: legacyUsed ? true : false,
     });
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
-  }, [token, user?.id]);
+    setUserPromoCards(cards);
+    void detectAndNotifyNewBonusCoupons(user.id, cards, t);
+  }, [token, user?.id, user?.email, t]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setDismissedPromoIds(new Set());
+      return;
+    }
+    void loadDismissedProfilePromoIds(user.id).then(setDismissedPromoIds);
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2885,8 +2996,17 @@ export default function ProfileScreen({
         if (!cancelled) setUserPromoCards([]);
         return;
       }
-      const cards = await fetchUserProfilePromoCards(token, user.id);
-      if (!cancelled) setUserPromoCards(cards);
+      const legacyUsed =
+        (user as any)?.firstFreePublicationUsed === true ||
+        (user as any)?.first_free_publication_used === true;
+      const cards = await fetchUserProfilePromoCards(token, user.id, {
+        email: user.email,
+        firstFreePublicationUsed: legacyUsed ? true : false,
+      });
+      if (!cancelled) {
+        setUserPromoCards(cards);
+        void detectAndNotifyNewBonusCoupons(user.id, cards, t);
+      }
     };
     void loadPromos();
     const sub = AppState.addEventListener('change', (state) => {
@@ -2896,7 +3016,128 @@ export default function ProfileScreen({
       cancelled = true;
       sub.remove();
     };
-  }, [token, user?.id]);
+  }, [token, user?.id, user?.email, t]);
+
+  const handleRequestDismissPromoCard = useCallback(
+    (card: ProfilePromoCardRecord) => {
+      if (!user?.id) return;
+      Alert.alert(
+        t('profile.shop.promoDismissTitle'),
+        t('profile.shop.promoDismissBody', { title: card.title }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('profile.shop.promoDismissConfirm'),
+            style: 'destructive',
+            onPress: () => {
+              void dismissProfilePromoCardForever(user.id, card.id).then(() => {
+                setDismissedPromoIds((prev) => new Set([...prev, card.id]));
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              });
+            },
+          },
+        ],
+      );
+    },
+    [user?.id, t],
+  );
+
+  const [profileShellReady, setProfileShellReady] = useState(false);
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setProfileShellReady(true));
+    });
+    return () => handle.cancel();
+  }, []);
+
+  const dismissProfileOverlays = useCallback(() => {
+    setIsMyOffersVisible(false);
+    setIsNotificationsVisible(false);
+    setIsAdminOffersVisible(false);
+    setIsAdminUsersVisible(false);
+    setIsAdminRadarVisible(false);
+    setIsAdminDealroomCheckVisible(false);
+    setIsAdminLegalVerifyVisible(false);
+    setIsAdminCoreVisible(false);
+    setIsAdminReportsVisible(false);
+    setIsAdminPromoWindowsVisible(false);
+    setIsOwnPublicProfileOpen(false);
+    setIsDeleteAccountVisible(false);
+    setIsBlockedUsersVisible(false);
+    setIsEditNameVisible(false);
+    setIsEditPhoneVisible(false);
+    setIsEditEmailVisible(false);
+    setAdminSelectedUser(null);
+  }, []);
+
+  const handleLogout = () => {
+    Alert.alert(t('profile.session.logoutConfirmTitle'), t('profile.session.logoutConfirmBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('profile.session.logoutAction'),
+        style: 'destructive',
+        onPress: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          dismissProfileOverlays();
+          InteractionManager.runAfterInteractions(() => {
+            void (async () => {
+              try {
+                (navigation as any).navigate('Radar');
+              } catch {
+                // noop
+              }
+              await logout();
+            })();
+          });
+        },
+      },
+    ]);
+  };
+
+  const plusSlots = Math.max(0, Math.floor(Number((user as any)?.extraListings || 0)));
+  const plusExpiresAtRaw = String((user as any)?.plusExpiresAt || '').trim();
+  const plusExpiresAtMs = plusExpiresAtRaw ? new Date(plusExpiresAtRaw).getTime() : null;
+  const plusHasValidExpiry = plusExpiresAtMs != null && Number.isFinite(plusExpiresAtMs);
+  const plusDaysLeft = plusHasValidExpiry ? Math.max(0, Math.ceil((plusExpiresAtMs! - Date.now()) / 86400000)) : null;
+  const hasPlusPublicationAvailable =
+    !!user &&
+    plusSlots > 0 &&
+    plusHasValidExpiry &&
+    (plusExpiresAtMs ?? 0) > Date.now();
+  const plusCounterLabel = hasPlusPublicationAvailable
+    ? plusSlots === 1
+      ? t('profile.shop.plusSlotOne')
+      : t('profile.shop.plusSlotsMany', { count: plusSlots })
+    : t('profile.shop.noPackages');
+  const plusExpiryLabel = plusHasValidExpiry
+    ? new Date(plusExpiresAtMs!).toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+  const plusDaysLabel =
+    plusDaysLeft == null
+      ? t('profile.shop.plusDaysDefault')
+      : plusDaysLeft === 0
+        ? t('profile.shop.plusDaysToday')
+        : t('profile.shop.plusDaysLeft', {
+            days: plusDaysLeft,
+            daysLabel: plusDaysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
+          });
+
+  const bonusCouponCards = useMemo(
+    () => {
+      if (!user) return [];
+      return buildBonusCouponStack({
+        t,
+        adminPromos: userPromoCards,
+        dismissedIds: dismissedPromoIds,
+      });
+    },
+    [user?.id, t, userPromoCards, dismissedPromoIds],
+  );
+
+  const plusExpiryLine =
+    hasPlusPublicationAvailable && plusExpiryLabel
+      ? t('profile.shop.plusValidUntil', { date: plusExpiryLabel })
+      : null;
 
   const toggleSms = async (value) => {
     setIsSmsEnabled(value);
@@ -2908,7 +3149,13 @@ export default function ProfileScreen({
     }
   };
 
-  if (!user) return <AuthScreen theme={theme} authIntent={authIntent} />;
+  if (!profileShellReady) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#10b981" />
+      </View>
+    );
+  }
 
   const handleAvatarPick = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -3038,13 +3285,6 @@ export default function ProfileScreen({
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert(t('profile.session.logoutConfirmTitle'), t('profile.session.logoutConfirmBody'), [
-      { text: t('common.cancel'), style: "cancel" },
-      { text: t('profile.session.logoutAction'), style: "destructive", onPress: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); logout(); } }
-    ]);
-  };
-
   const ownReviews = Array.isArray(ownPublicProfile?.reviews) ? ownPublicProfile.reviews : [];
   const ownAverageRating = ownReviews.length > 0
     ? ownReviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) / ownReviews.length
@@ -3070,64 +3310,6 @@ export default function ProfileScreen({
     const p = parsePhoneNumberFromString(raw, 'PL');
     return Boolean(p?.isValid());
   })();
-
-  const plusSlots = Math.max(0, Math.floor(Number((user as any)?.extraListings || 0)));
-  const plusExpiresAtRaw = String((user as any)?.plusExpiresAt || '').trim();
-  const plusExpiresAtMs = plusExpiresAtRaw ? new Date(plusExpiresAtRaw).getTime() : null;
-  const plusHasValidExpiry = plusExpiresAtMs != null && Number.isFinite(plusExpiresAtMs);
-  const plusDaysLeft = plusHasValidExpiry ? Math.max(0, Math.ceil((plusExpiresAtMs! - Date.now()) / 86400000)) : null;
-  const hasPlusPublicationAvailable =
-    plusSlots > 0 &&
-    plusHasValidExpiry &&
-    (plusExpiresAtMs ?? 0) > Date.now();
-  const plusCounterLabel = hasPlusPublicationAvailable
-    ? plusSlots === 1
-      ? t('profile.shop.plusSlotOne')
-      : t('profile.shop.plusSlotsMany', { count: plusSlots })
-    : t('profile.shop.noPackages');
-  const firstFreePublicationUsedRaw =
-    backendFirstFreePublicationUsed ??
-    (user as any)?.firstFreePublicationUsed ??
-    (user as any)?.first_free_publication_used ??
-    (user as any)?.firstFreeUsed ??
-    (user as any)?.freeFirstPublicationUsed;
-  const firstFreePublicationUsed =
-    typeof firstFreePublicationUsedRaw === 'boolean' ? firstFreePublicationUsedRaw : null;
-  const plusExpiryLabel = plusHasValidExpiry
-    ? new Date(plusExpiresAtMs!).toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
-    : null;
-  const plusDaysLabel =
-    plusDaysLeft == null
-      ? t('profile.shop.plusDaysDefault')
-      : plusDaysLeft === 0
-        ? t('profile.shop.plusDaysToday')
-        : t('profile.shop.plusDaysLeft', {
-            days: plusDaysLeft,
-            daysLabel: plusDaysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
-          });
-
-  const profilePromoStackCards = useMemo(
-    () =>
-      buildProfilePromoStack({
-        t,
-        firstFreeUsed: firstFreePublicationUsed,
-        plusSlots,
-        hasPlusAvailable: hasPlusPublicationAvailable,
-        plusCounterLabel,
-        plusExpiryLabel,
-        plusBuyHint: t('profile.shop.plusBuyHint'),
-        adminPromos: userPromoCards,
-      }),
-    [
-      t,
-      firstFreePublicationUsed,
-      plusSlots,
-      hasPlusPublicationAvailable,
-      plusCounterLabel,
-      plusExpiryLabel,
-      userPromoCards,
-    ],
-  );
 
   const profileScreenBg = isDark ? '#000' : '#F2F2F7';
 
@@ -3416,74 +3598,43 @@ export default function ProfileScreen({
           z idempotencją po `transactionId`.
         */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.shop.sectionTitle')}</Text>
-          <PromoCardStack
-            cards={profilePromoStackCards}
+          <BonusCouponsSection
+            cards={bonusCouponCards}
             isDark={isDark}
+            title={t('profile.shop.bonusCouponsTitle')}
+            subtitle={t('profile.shop.bonusCouponsSubtitle')}
             swipeHint={t('profile.shop.promoSwipeHint')}
+            dismissHint={t('profile.shop.promoDismissHint')}
+            emptyHint={t('profile.shop.bonusCouponsEmpty')}
+            onRequestDismiss={handleRequestDismissPromoCard}
           />
-          <ListGroup isDark={isDark}>
-            <Pressable
-              onPress={handleBuyPakietPlus}
-              disabled={isBuyingPakietPlus}
-              style={({ pressed }) => [
-                styles.listItem,
-                { paddingVertical: 12, opacity: isBuyingPakietPlus ? 0.7 : 1 },
-                pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' },
-              ]}
-            >
-              <View style={[styles.listIconBox, { backgroundColor: '#10B981' }]}>
-                {isBuyingPakietPlus ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="bag-check" size={21} color="#FFFFFF" />
-                )}
-              </View>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
-                  {t('profile.shop.buyPlus')}
-                </Text>
-                <Text style={styles.listSubtitle}>
-                  {t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
-                </Text>
-              </View>
-              {!isBuyingPakietPlus && (
-                <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleRestorePurchases}
-              disabled={isRestoringPurchases}
-              style={({ pressed }) => [
-                styles.listItem,
-                { paddingVertical: 12, opacity: isRestoringPurchases ? 0.7 : 1 },
-                pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' },
-              ]}
-            >
-              <View style={[styles.listIconBox, { backgroundColor: '#0A84FF' }]}>
-                {isRestoringPurchases ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Ionicons name="refresh-circle" size={22} color="#FFFFFF" />
-                )}
-              </View>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
-                  {t('profile.shop.restorePurchases')}
-                </Text>
-                <Text style={styles.listSubtitle}>
-                  {isRestoringPurchases
-                    ? t('profile.shop.restoring')
-                    : Platform.OS === 'ios'
-                      ? t('profile.shop.restoreIos')
-                      : t('profile.shop.restoreAndroid')}
-                </Text>
-              </View>
-              {!isRestoringPurchases && (
-                <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />
-              )}
-            </Pressable>
-          </ListGroup>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.shop.plusSectionTitle')}</Text>
+          <PlusPackageShopPanel
+            isDark={isDark}
+            title={t('profile.shop.plusPackage')}
+            plusSlots={plusSlots}
+            hasPlusAvailable={hasPlusPublicationAvailable}
+            counterLabel={plusCounterLabel}
+            expiryLabel={plusExpiryLine}
+            daysLabel={plusDaysLabel}
+            buyLabel={t('profile.shop.buyPlus')}
+            buySubtitle={t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
+            restoreLabel={t('profile.shop.restorePurchases')}
+            restoreSubtitle={
+              isRestoringPurchases
+                ? t('profile.shop.restoring')
+                : Platform.OS === 'ios'
+                  ? t('profile.shop.restoreIos')
+                  : t('profile.shop.restoreAndroid')
+            }
+            buying={isBuyingPakietPlus}
+            restoring={isRestoringPurchases}
+            onBuy={handleBuyPakietPlus}
+            onRestore={handleRestorePurchases}
+          />
           <Text style={styles.sectionFooter}>
             {Platform.OS === 'ios'
               ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
@@ -3513,7 +3664,7 @@ export default function ProfileScreen({
                 icon="sparkles"
                 color="#AF52DE"
                 title="Promocyjne okienka"
-                subtitle="Wyślij kartę promocyjną do slota w Profilu użytkownika"
+                subtitle="Wyślij kupon do sekcji Kupony bonusowe"
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setIsAdminPromoWindowsVisible(true);

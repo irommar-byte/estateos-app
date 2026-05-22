@@ -229,10 +229,13 @@ const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
 export default function AuthScreen({
   theme,
   authIntent,
+  embedded = false,
 }: {
   theme: any;
   /** Z nawigacji (np. gość z oferty): który formularz pokazać od razu. */
   authIntent?: 'login' | 'register';
+  /** Render w zakładce Profil — bez animacji „warp” i bez navigate('Profil'). */
+  embedded?: boolean;
 }) {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
@@ -421,25 +424,28 @@ export default function AuthScreen({
 
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
-        // 2. KINOWA SEKWENCJA ANIMACJI
+        if (embedded) {
+          // Profil sam przełączy się na widok zalogowany — bez navigate i bez 3D (stabilność RN).
+          return;
+        }
         Animated.sequence([
-          // Faza 1: Zapalenie zielonej aury sukcesu
           Animated.timing(successGlowAnim, {
             toValue: 1,
             duration: 150,
             useNativeDriver: false,
           }),
-          // Faza 2: Skok w nadprzestrzeń (Warp) - pełny obrót o 180 stopni
           Animated.timing(warpAnim, {
             toValue: 1,
             duration: 850,
             easing: Easing.bezier(0.25, 0.1, 0.25, 1),
             useNativeDriver: true,
-          })
+          }),
         ]).start(() => {
-          // 3. Po zakończeniu 3D przenosimy prosto i bezbłędnie do profilu
-          navigation.navigate('Profil'); 
+          try {
+            navigation.navigate('Profil');
+          } catch {
+            // noop
+          }
         });
       }
     } catch (e: any) {
@@ -488,28 +494,30 @@ export default function AuthScreen({
     outputRange: ['rgba(0,0,0,0)', 'rgba(16, 185, 129, 0.6)']
   });
 
+  const FormShell = embedded ? View : Animated.View;
+  const formShellStyle = embedded
+    ? { flex: 1 as const }
+    : {
+        flex: 1 as const,
+        opacity,
+        transform: [
+          { perspective: 850 },
+          { scale },
+          { rotateX },
+          { rotateY },
+        ],
+        shadowColor: glowShadow,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: successGlowAnim,
+        shadowRadius: 50,
+        elevation: 20,
+        backfaceVisibility: 'hidden' as const,
+      };
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
       
-      {/* KONTENER ANIMACJI NADPRZESTRZENNEJ */}
-      <Animated.View 
-        style={{ 
-          flex: 1,
-          opacity,
-          transform: [
-            { perspective: 850 }, 
-            { scale },
-            { rotateX },
-            { rotateY }
-          ],
-          shadowColor: glowShadow,
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: successGlowAnim,
-          shadowRadius: 50,
-          elevation: 20,
-          backfaceVisibility: 'hidden'
-        }}
-      >
+      <FormShell style={formShellStyle}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 50 }}>
           
           <View style={[styles.iconWrapper, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -682,7 +690,7 @@ export default function AuthScreen({
           </Pressable>
 
         </ScrollView>
-      </Animated.View>
+      </FormShell>
       <PhoneCountryPickerModal
         visible={phonePickerOpen}
         onClose={() => setPhonePickerOpen(false)}

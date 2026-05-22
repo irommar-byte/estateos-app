@@ -328,6 +328,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: withPhone });
         await AsyncStorage.setItem('user_data', JSON.stringify(withPhone));
       }
+      const grantUser = get().user;
+      if (grantUser?.id) {
+        const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
+        const legacyUsed =
+          grantUser.firstFreePublicationUsed === true ||
+          (grantUser as any).first_free_publication_used === true;
+        await ensureWelcomeCouponForUser(grantUser.id, {
+          email: loginEmail,
+          firstFreePublicationUsed: legacyUsed ? true : false,
+        });
+      }
       return true;
     } catch (err: any) {
       const raw = String(err?.message || '').trim();
@@ -387,6 +398,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Błąd rejestracji');
       set({ isLoading: false });
+      const { markPendingWelcomeCouponForEmail } = await import('../services/welcomeCouponService');
+      await markPendingWelcomeCouponForEmail(email);
       return true;
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
@@ -451,6 +464,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
         set({ user: normUser, token: normalizedToken, isLoading: false });
         await get().refreshUser();
+        const grantUser = get().user;
+        if (grantUser?.id) {
+          const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
+          const legacyUsed =
+            grantUser.firstFreePublicationUsed === true ||
+            (grantUser as any).first_free_publication_used === true;
+          await ensureWelcomeCouponForUser(grantUser.id, {
+            email: hintEmail || grantUser.email,
+            firstFreePublicationUsed: legacyUsed ? true : false,
+          });
+        }
         return true; 
       }
       
@@ -489,15 +513,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     const { user: prevUser } = get();
-    if (prevUser?.id != null) {
-      await persistLocalPhoneVerified(prevUser.id, false);
-      await persistLocalEmailVerified(prevUser.id, false);
-    }
-    await AsyncStorage.removeItem('mobile_token');
-    await AsyncStorage.removeItem('user_data');
-    await AsyncStorage.removeItem('@estateos_radar_active'); // Czyścimy radar
-    await stopRadarLiveActivity();
+    // Najpierw UI/store — unikamy wiszenia na natywnym stop Live Activity przy wylogowaniu.
     set({ user: null, token: null, isRadarActive: false });
+    if (prevUser?.id != null) {
+      void persistLocalPhoneVerified(prevUser.id, false);
+      void persistLocalEmailVerified(prevUser.id, false);
+    }
+    void stopRadarLiveActivity().catch(() => undefined);
+    try {
+      await AsyncStorage.multiRemove([
+        'mobile_token',
+        'user_data',
+        '@estateos_radar_active',
+      ]);
+    } catch {
+      // noop
+    }
   },
 
   deleteAccount: async (password: string) => {

@@ -16,6 +16,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const Colors = { primary: '#10b981' };
 
+const STEP1_PROPERTY_TYPES = ['FLAT', 'HOUSE', 'PREMISES', 'PLOT'] as const;
+
+function isStep1PropertyType(value: unknown): value is (typeof STEP1_PROPERTY_TYPES)[number] {
+  return STEP1_PROPERTY_TYPES.includes(String(value || '') as (typeof STEP1_PROPERTY_TYPES)[number]);
+}
+
 /**
  * SelectionTapTip — animowana wskazówka „dotknij, aby wybrać" dla Kroku 1.
  *
@@ -194,30 +200,33 @@ export default function Step1_Type({ theme }: { theme: any }) {
   );
 
   const isStep2Unlocked = draft.transactionType === 'SELL' || draft.transactionType === 'RENT';
-  const isStep3Unlocked =
-    isStep2Unlocked &&
-    (draft.propertyType === 'FLAT' ||
-      draft.propertyType === 'HOUSE' ||
-      draft.propertyType === 'PREMISES' ||
-      draft.propertyType === 'PLOT');
+  const isStep3Unlocked = isStep2Unlocked && isStep1PropertyType(draft.propertyType);
 
   const handleSelect = (key: string, value: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    if (key === 'propertyType') {
-      updateDraft({
-        [key]: value,
-        isExactLocation: defaultExactLocationForPropertyType(value),
-      });
-    } else {
-      updateDraft({ [key]: value });
-    }
 
     if (key === 'transactionType') {
+      updateDraft({
+        transactionType: value,
+        propertyType: '',
+        condition: null,
+      });
       pendingScrollRef.current = 'section2';
-    } else if (key === 'propertyType') {
-      pendingScrollRef.current = value === 'PLOT' ? 'end' : 'section3';
+      return;
     }
+
+    if (key === 'propertyType') {
+      updateDraft({
+        propertyType: value,
+        condition: null,
+        isExactLocation: defaultExactLocationForPropertyType(value),
+      });
+      pendingScrollRef.current = value === 'PLOT' ? 'end' : 'section3';
+      return;
+    }
+
+    updateDraft({ [key]: value });
   };
 
   useEffect(() => {

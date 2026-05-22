@@ -19,9 +19,9 @@ Backend (**estateos.pl**) jest wdrażany na serwerze **bez gitowej synchronizacj
 
 ## Teraz (ostatnio od backendu)
 
-- **GET** na `/api/notifications/device` jest **wdrożony po stronie serwera** po `npm run build` + `pm2 reload`. **Kontraktu POST nie zmieniamy** — aplikacja wysyła push tak jak dotąd.
-- Domyślny deploy backendu na maszynie projektu (bez git pull, dopóki nie ustalono inaczej):  
-  `cd ~/estateos && npm run deploy:server-only`  
-  (skrypt = build Next + reload pm2).
+- **2026-05-22 — publikacja kuponem (produkcja):** wdrożono `deploy/plus-credit-fix/*` na `estateos.pl` — `POST /api/mobile/v1/offers` i `POST .../activate` akceptują `publication.kind: FREE_FIRST` + `bonusCouponId` bez IAP; `pm2 reload` + smoke **21/21 PASS**.
+- Z repo aplikacji (jednorazowo): `./scripts/deploy-production-patches.sh` — kopiuje patche + `deploy:server-only` na hoście `estateos`.
+- **GET** na `/api/notifications/device` działa (smoke TLS: JSON `ok`). **Kontraktu POST nie zmieniamy** — aplikacja wysyła push tak jak dotąd.
+- Ręczny deploy na serwerze: `cd ~/estateos && npm run deploy:server-only` (build Next + reload pm2).
 
 <!-- Aktualizuj wyłącznie powyższą sekcję „Teraz”, gdy backend dopisze nowe ustalenia -->

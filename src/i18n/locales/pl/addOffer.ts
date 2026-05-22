@@ -590,6 +590,23 @@ export const addOffer = {
     mediaNo: 'nie',
     validationHint: 'Brakuje danych w kroku {{steps}} — dotknij przycisku, aby przejść do uzupełnienia.',
     plusCreditHint: 'Masz Pakiet Plus na koncie — publikacja zużyje 1 kredyt (bez drugiej opłaty w sklepie).',
+    couponPublishHint:
+      'Masz {{count}} kuponów na publikację — po „Opublikuj” wybierz kupon (np. urodzinowy), żeby nie zużywać kredytu Plus.',
+    publicationChoice: {
+      title: 'Jak opublikować ofertę?',
+      subtitle:
+        'Możesz wykorzystać kupon bonusowy na publikację albo opłacić wystawienie kredytem Pakietu Plus.',
+      couponPriorityHint:
+        'Masz aktywne kupony — domyślnie zaznaczony jest pierwszy. Wybierz kupon, żeby nie zużyć kredytu Plus.',
+      couponsSection: 'Kupony bonusowe',
+      couponsEmpty: 'Brak aktywnych kuponów na publikację.',
+      plusSection: 'Pakiet Plus',
+      plusCreditTitle: 'Użyj kredytu Plus',
+      plusCreditSubtitle: 'Na koncie: {{count}} publikacji do wykorzystania',
+      buyPlusTitle: 'Kup Pakiet Plus',
+      buyPlusSubtitle: 'Opłać jedno wystawienie w App Store (~{{price}})',
+      publish: 'Opublikuj ofertę',
+    },
     publish: {
       publishing: 'Publikowanie...',
       publish: 'Opublikuj w Ekosystemie',

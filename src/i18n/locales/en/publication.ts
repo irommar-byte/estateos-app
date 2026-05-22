@@ -3,7 +3,7 @@ export const publication = {
   paywallBody:
     'You can list this property on the market (Radar) only after purchasing Plus in the App Store. ' +
     'Payment activates this specific listing for 30 days — it is not a subscription or an account “slot”. ' +
-    'Your first public listing on this account was free.',
+    'You can pay for your first publication with the welcome coupon received after sign-up (Profile → Coupons).',
   paywallCta: 'Pay to publish (Plus)',
   archiveWarning:
     'The listing will leave the market. Any unused public period is forfeited. ' +

@@ -3,7 +3,7 @@ export const publication = {
   paywallBody:
     'To ogłoszenie możesz wystawić na rynek (Radar) tylko po opłacie Pakiet Plus w sklepie aplikacji. ' +
     'Płatność dotyczy aktywacji tego konkretnego ogłoszenia na 30 dni — nie jest to abonament ani „slot” na koncie. ' +
-    'Pierwsze publiczne wystawienie pierwszej oferty na koncie było bezpłatne.',
+    'Pierwszą publikację możesz opłacić kuponem powitalnym otrzymanym po rejestracji (Profil → Kupony).',
   paywallCta: 'Opłać wystawienie (Pakiet Plus)',
   archiveWarning:
     'Oferta zniknie z rynku. Niewykorzystany okres publicznej publikacji przepada. ' +

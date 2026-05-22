@@ -42,8 +42,15 @@ export async function POST(req: Request, context: RouteContext) {
       });
     }
 
-    const txId = String(body?.iapTransactionId ?? '').trim();
-    if (quote.requiresPayment && !txId) {
+    const pub = body?.publication;
+    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
+    const bypassPaymentRequirement =
+      pub?.kind === 'FREE_FIRST' ||
+      Boolean(pub?.bonusCouponId) ||
+      pub?.kind === 'PLUS_CREDIT' ||
+      pub?.consumePlusPublication === true;
+
+    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
       return NextResponse.json(
         {
           errorCode: 'PUBLICATION_REQUIRES_PLUS',
@@ -53,8 +60,6 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 422 }
       );
     }
-
-    const pub = body?.publication;
     const activationKind =
       pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
         ? 'PLUS_PAID'

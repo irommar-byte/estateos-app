@@ -756,13 +756,34 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const geoCacheRef = useRef<Record<string, { lat: number; lng: number }>>({});
   const allowStep3NavigationRef = useRef(false);
   const reverseGeocodeSeq = useRef(0);
-  
+  const geoInitStartedRef = useRef(false);
+
   useFocusEffect(
     useCallback(() => {
-      setCurrentStep(2);
-      // Rejestrujemy gate, który przechwytuje wszystkie próby nawigacji w obrębie
-      // kreatora — zarówno z FAB (FloatingNextButton w App.tsx) jak i z numerków
-      // steppera. Zwracamy `false` żeby anulować nawigację i pokazać modal.
+      const store = useOfferStore.getState();
+      if (store.currentStep !== 2) setCurrentStep(2);
+
+      const currentDraft = store.draft;
+      const repair = getLocationDraftRepairPatch(currentDraft);
+      if (repair) {
+        const repairChanged = (Object.keys(repair) as (keyof typeof repair)[]).some(
+          (key) => currentDraft[key] !== repair[key],
+        );
+        if (repairChanged) store.updateDraft(repair);
+      }
+
+      if (currentDraft.isExactLocation == null) {
+        store.updateDraft({
+          isExactLocation: defaultExactLocationForPropertyType(currentDraft.propertyType),
+        });
+      }
+
+      const lat = Number(currentDraft.lat);
+      const lng = Number(currentDraft.lng);
+      const hasCoords =
+        Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
+      if (!hasCoords) geoInitStartedRef.current = false;
+
       setNavigationGate((targetStep: number) => {
         if (targetStep === 2) return true;
         pendingNavActionRef.current = {
@@ -841,19 +862,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
       : (safeDraftDistricts[0] || '');
   const localityCountryFlag = flagEmojiFromIso2(safeDraftLocalityCountryIso);
 
-  useEffect(() => {
+  const syncStreetToDraft = useCallback(() => {
     const trimmedStreet = String(streetInput || '').trim();
     if (trimmedStreet.length > 2 && trimmedStreet !== String(draft.street || '').trim()) {
       updateDraft({ street: trimmedStreet });
     }
   }, [streetInput, draft.street, updateDraft]);
-
-  useEffect(() => {
-    const patch = getLocationDraftRepairPatch(draft);
-    if (patch) {
-      updateDraft(patch);
-    }
-  }, [draft.city, draft.district, draft.localityCountry, draft.localityCountryCode, updateDraft]);
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
     isProgrammaticMove.current = true;
@@ -880,53 +894,64 @@ export default function Step2_Location({ theme }: { theme: any }) {
     return coords;
   }, [draft.localityCountry]);
 
+  const initFromDeviceLocation = useCallback(async () => {
+    if (geoInitStartedRef.current) return;
+    geoInitStartedRef.current = true;
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') return;
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+      let finalCity: string = DEFAULT_STRICT_CITY;
+      let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
+      let finalCountry = DEFAULT_LOCALITY_COUNTRY;
+      let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
+      let newStreet = '';
+      if (reverse.length > 0) {
+        const place = reverse[0];
+        const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
+        const normalized = strictCity
+          ? normalizeStrictLocation(
+              strictCity,
+              getClosestDistrict(latitude, longitude, strictCity, place.district),
+              null,
+              place,
+            )
+          : normalizeStrictLocation(null, null, localityFromPlace(place), place);
+        finalCity = normalized.city;
+        finalDistrict = normalized.district;
+        finalCountry = normalized.localityCountry;
+        finalCountryCode = normalized.localityCountryCode;
+        newStreet = streetLineFromGeocodedPlace(place, '');
+      }
+      const d = useOfferStore.getState().draft;
+      const mapExact = resolveIsExactLocation(
+        d.isExactLocation ?? defaultExactLocationForPropertyType(d.propertyType),
+      );
+      if (newStreet && !String(streetInput || '').trim()) setStreetInput(newStreet);
+      updateDraft({
+        lat: latitude,
+        lng: longitude,
+        city: finalCity,
+        district: finalDistrict,
+        localityCountry: finalCountry,
+        localityCountryCode: finalCountryCode,
+        ...(newStreet ? { street: newStreet } : {}),
+      });
+      flyTo(latitude, longitude, mapExact);
+    } catch (_e) {
+      geoInitStartedRef.current = false;
+    }
+  }, [streetInput, updateDraft]);
+
   useEffect(() => {
-    const initFromDeviceLocation = async () => {
-      if (draft.lat && draft.lng) return;
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.status !== 'granted') return;
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-        let finalCity: string = DEFAULT_STRICT_CITY;
-        let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
-        let finalCountry = DEFAULT_LOCALITY_COUNTRY;
-        let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
-        let newStreet = '';
-        if (reverse.length > 0) {
-          const place = reverse[0];
-          const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-          const normalized = strictCity
-            ? normalizeStrictLocation(
-                strictCity,
-                getClosestDistrict(latitude, longitude, strictCity, place.district),
-                null,
-                place,
-              )
-            : normalizeStrictLocation(null, null, localityFromPlace(place), place);
-          finalCity = normalized.city;
-          finalDistrict = normalized.district;
-          finalCountry = normalized.localityCountry;
-          finalCountryCode = normalized.localityCountryCode;
-          newStreet = streetLineFromGeocodedPlace(place, '');
-        }
-        if (newStreet && !streetInput) setStreetInput(newStreet);
-        updateDraft({
-          lat: latitude,
-          lng: longitude,
-          city: finalCity,
-          district: finalDistrict,
-          localityCountry: finalCountry,
-          localityCountryCode: finalCountryCode,
-          ...(newStreet ? { street: newStreet } : {}),
-        });
-        flyTo(latitude, longitude, draft.isExactLocation ?? true);
-      } catch (_e) {}
-    };
-    initFromDeviceLocation();
-  }, [draft.lat, draft.lng, draft.isExactLocation, resolvePlaceCoords, streetInput, updateDraft]);
+    const lat = Number(draft.lat);
+    const lng = Number(draft.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) return;
+    void initFromDeviceLocation();
+  }, [draft.lat, draft.lng, initFromDeviceLocation]);
 
   const handleAddressSearch = async () => {
     if (streetInput.length < 3) return;
@@ -1204,7 +1229,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
             placeholderTextColor={theme.subtitle}
             value={streetInput}
             onChangeText={setStreetInput}
-            onSubmitEditing={handleAddressSearch}
+            onBlur={syncStreetToDraft}
+            onSubmitEditing={() => {
+              syncStreetToDraft();
+              void handleAddressSearch();
+            }}
             returnKeyType="search"
             selectionColor="#dc2626"
           />

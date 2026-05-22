@@ -1,5 +1,6 @@
 import type {
   ActivateOfferPublicationResponse,
+  CreatePublicationRedemption,
   OfferPublicationPayload,
   PublicationQuote,
 } from '../contracts/offerPublicationContract';
@@ -120,17 +121,45 @@ export async function fetchPublicationQuote(
   }
 }
 
+export function readFirstFreePublicationUsed(
+  user: Record<string, unknown> | null | undefined,
+): boolean | null {
+  if (!user) return null;
+  if (user.firstFreePublicationUsed === true || user.first_free_publication_used === true) return true;
+  if (user.firstFreePublicationUsed === false || user.first_free_publication_used === false) {
+    return false;
+  }
+  return null;
+}
+
 export async function activateOfferPublication(
   apiUrl: string,
   token: string,
   offerId: number,
-  iapTransactionId?: string,
+  opts?: {
+    iapTransactionId?: string;
+    redemption?: CreatePublicationRedemption | null;
+  },
 ): Promise<{ ok: boolean; status: number; body: ActivateOfferPublicationResponse }> {
   const base = apiUrl.replace(/\/$/, '');
-  const tx = String(iapTransactionId || '').trim();
-  const payload = tx
-    ? { iapTransactionId: tx, consumePlusPublication: true }
-    : {};
+  const publication = buildCreatePublicationPayload({
+    plusTransactionId: opts?.iapTransactionId,
+    redemption: opts?.redemption ?? null,
+  });
+  const payload: Record<string, unknown> = {};
+  if (publication) payload.publication = publication;
+  if (publication?.kind === 'PLUS_PAID' && publication.iapTransactionId) {
+    payload.iapTransactionId = publication.iapTransactionId;
+  }
+  if (publication?.consumePlusPublication) {
+    payload.consumePlusPublication = true;
+  } else if (!publication && opts?.iapTransactionId) {
+    const tx = String(opts.iapTransactionId || '').trim();
+    if (tx) {
+      payload.iapTransactionId = tx;
+      payload.consumePlusPublication = true;
+    }
+  }
   try {
     const res = await fetch(`${base}/api/mobile/v1/offers/${offerId}/activate`, {
       method: 'POST',
@@ -155,10 +184,48 @@ export function isPublicationRequiresPlusError(err: unknown): boolean {
   return msg.includes('pakiet plus') || msg.includes('publication');
 }
 
+/** POST /offers zwrócił 422 — oferta zapisana, aktywacja pominięta (stary backend bez kuponu). */
+export function isPublicationActivationSkippedResponse(err: unknown): boolean {
+  const d = (err && typeof err === 'object' ? err : {}) as Record<string, unknown>;
+  if (d.activationSkipped !== true) return false;
+  const offer = d.offer;
+  if (!offer || typeof offer !== 'object') return false;
+  const id = Number((offer as Record<string, unknown>).id);
+  return Number.isFinite(id) && id > 0;
+}
+
+export function extractOfferIdFromErrorBody(err: unknown): number | null {
+  const d = (err && typeof err === 'object' ? err : {}) as Record<string, unknown>;
+  const offer = d.offer;
+  if (!offer || typeof offer !== 'object') return null;
+  const id = Number((offer as Record<string, unknown>).id);
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 export function buildCreatePublicationPayload(opts: {
   plusTransactionId?: string | null;
   quote?: PublicationQuote | null;
+  redemption?: CreatePublicationRedemption | null;
 }): OfferPublicationPayload | undefined {
+  const redemption = opts.redemption;
+  if (redemption?.source === 'bonus_coupon') {
+    return {
+      kind: 'FREE_FIRST',
+      bonusCouponId: redemption.couponId,
+      bonusCouponKind: redemption.couponKind,
+    };
+  }
+  if (redemption?.source === 'plus_credit') {
+    return { kind: 'PLUS_CREDIT', consumePlusPublication: true };
+  }
+  if (redemption?.source === 'plus_iap') {
+    return {
+      kind: 'PLUS_PAID',
+      iapTransactionId: redemption.transactionId,
+      consumePlusPublication: true,
+    };
+  }
+
   const tx = String(opts.plusTransactionId || '').trim();
   if (tx) {
     return {
@@ -166,9 +233,6 @@ export function buildCreatePublicationPayload(opts: {
       iapTransactionId: tx,
       consumePlusPublication: true,
     };
-  }
-  if (opts.quote && !opts.quote.requiresPayment) {
-    return { kind: opts.quote.allowedFreeFirst ? 'FREE_FIRST' : 'PLUS_CREDIT' };
   }
   return undefined;
 }

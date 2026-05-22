@@ -590,6 +590,22 @@ export const addOffer = {
     mediaNo: 'no',
     validationHint: 'Missing data in step {{steps}} — tap the button to go back and complete it.',
     plusCreditHint: 'You have Plus credit — publishing will use 1 credit (no second store charge).',
+    couponPublishHint:
+      'You have {{count}} publication coupon(s) — after “Publish”, pick a coupon (e.g. birthday) so Plus credit is not used.',
+    publicationChoice: {
+      title: 'How do you want to publish?',
+      subtitle: 'Use a bonus coupon for publication or pay with a Plus Package credit.',
+      couponPriorityHint:
+        'You have active coupons — the first one is selected by default. Pick a coupon to keep your Plus credit.',
+      couponsSection: 'Bonus coupons',
+      couponsEmpty: 'No active publication coupons.',
+      plusSection: 'Plus Package',
+      plusCreditTitle: 'Use Plus credit',
+      plusCreditSubtitle: 'On account: {{count}} publications available',
+      buyPlusTitle: 'Buy Plus Package',
+      buyPlusSubtitle: 'Pay for one listing in the App Store (~{{price}})',
+      publish: 'Publish listing',
+    },
     publish: {
       publishing: 'Publishing...',
       publish: 'Publish to ecosystem',

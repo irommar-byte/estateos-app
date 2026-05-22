@@ -18,10 +18,13 @@ type NavigationGate = (targetStep: number) => boolean;
 interface OfferStore {
   currentStep: number;
   draft: any;
+  /** Po udanej publikacji — wejście na zakładkę „Dodaj” zaczyna od Step1. */
+  needsFreshAddOfferEntry: boolean;
   navigationGate: NavigationGate | null;
   setCurrentStep: (step: number) => void;
   updateDraft: (data: any) => void;
   resetDraft: () => void;
+  clearFreshAddOfferEntry: () => void;
   setNavigationGate: (gate: NavigationGate | null) => void;
 }
 
@@ -30,11 +33,12 @@ const initialDraft = {
   // Krok 1 & 2: Podstawy i Lokalizacja
   title: '',
   description: '',
-  transactionType: 'SALE',
-  propertyType: 'APARTMENT',
+  /** Puste — user wybiera sam w Kroku 1 (po kolei: cel → typ → stan). */
+  transactionType: '',
+  propertyType: '',
   condition: null,
   city: 'Warszawa',
-  district: 'OTHER',
+  district: 'Bemowo',
   /** Państwo miejscowości (geokodowanie), np. Polska, Ukraina */
   localityCountry: 'Polska',
   localityCountryCode: 'PL',
@@ -87,12 +91,25 @@ const initialDraft = {
 export const useOfferStore = create<OfferStore>((set) => ({
   currentStep: 0,
   draft: initialDraft,
+  needsFreshAddOfferEntry: false,
   navigationGate: null,
-  setCurrentStep: (step) => set({ currentStep: step }),
-  updateDraft: (data) => set((state) => ({ draft: { ...state.draft, ...data } })),
-  resetDraft: () => set({ 
-    currentStep: 0, 
-    draft: initialDraft 
-  }),
+  setCurrentStep: (step) =>
+    set((state) => (state.currentStep === step ? state : { currentStep: step })),
+  updateDraft: (data) =>
+    set((state) => {
+      const keys = Object.keys(data);
+      if (keys.length > 0 && keys.every((k) => state.draft[k] === data[k])) {
+        return state;
+      }
+      return { draft: { ...state.draft, ...data } };
+    }),
+  resetDraft: () =>
+    set({
+      currentStep: 0,
+      needsFreshAddOfferEntry: true,
+      draft: { ...initialDraft, images: [], imageByteSizes: {} },
+    }),
+  clearFreshAddOfferEntry: () =>
+    set((state) => (state.needsFreshAddOfferEntry ? { needsFreshAddOfferEntry: false } : state)),
   setNavigationGate: (gate) => set({ navigationGate: gate }),
 }));

@@ -284,6 +284,7 @@ export function stripHouseNumber(streetInput: unknown): string {
 export function defaultExactLocationForPropertyType(propertyType: unknown): boolean {
   const t = String(propertyType || '').toUpperCase();
   if (t === 'HOUSE' || t === 'PLOT') return false;
+  if (t === 'APARTMENT' || t === 'FLAT' || t === 'PREMISES') return true;
   return true;
 }
 

@@ -10,7 +10,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
-import { getStepBlockMessage, isStepValid } from './flow';
+import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './flow';
 import {
   REST_OF_COUNTRY_CITY,
   formatLocationLabel,
@@ -25,16 +25,25 @@ import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
 import {
   allowsMultipleCountableListings,
+  getAdditionalListingSlots,
   hasAdditionalPlusPublication,
   userAfterPakietPlusPurchase,
 } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
 import {
+  activateOfferPublication,
   getPublicationCopy,
   buildCreatePublicationPayload,
   fetchPublicationQuote,
+  isPublicationActivationSkippedResponse,
   isPublicationRequiresPlusError,
 } from '../../services/offerPublicationService';
+import type { CreatePublicationRedemption } from '../../contracts/offerPublicationContract';
+import { gatherPublicationBonusCoupons } from '../../services/publicationBonusCoupons';
+import { markProfilePromoCouponUsed } from '../../services/profilePromoService';
+import PublicationChoiceModal, {
+  type PublicationChoiceConfirm,
+} from '../../components/publication/PublicationChoiceModal';
 import { useI18n } from '../../i18n';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
 import { buildOfferPricePayload } from '../../money/offerPrice';
@@ -72,6 +81,13 @@ function normalizeFloorForCreate(f: unknown): number {
   if (s === 'parter') return 0;
   const n = parseInt(String(f).replace(/\D/g, ''), 10);
   return Number.isFinite(n) ? n : 0;
+}
+
+function readFirstFreePublicationUsed(user: Record<string, unknown> | null | undefined): boolean | null {
+  if (!user) return null;
+  if (user.firstFreePublicationUsed === true || user.first_free_publication_used === true) return true;
+  if (user.firstFreePublicationUsed === false || user.first_free_publication_used === false) return false;
+  return null;
 }
 
 /** Krok 3 zapisuje rok w buildYear — scalamy z yearBuilt przed POST. */
@@ -243,6 +259,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const [loading, setLoading] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState('');
   const pendingPlusCreditRef = useRef<PlusPublishContext | null>(null);
+  const [publicationChoiceVisible, setPublicationChoiceVisible] = useState(false);
+  const [publicationChoiceCoupons, setPublicationChoiceCoupons] = useState<
+    Awaited<ReturnType<typeof gatherPublicationBonusCoupons>>['coupons']
+  >([]);
+  const [publicationChoicePlusSlots, setPublicationChoicePlusSlots] = useState(0);
+  const [publicationChoiceHasPlus, setPublicationChoiceHasPlus] = useState(false);
+  const [prefetchedPublicationCoupons, setPrefetchedPublicationCoupons] = useState<
+    Awaited<ReturnType<typeof gatherPublicationBonusCoupons>>['coupons']
+  >([]);
   const isDark = Boolean(theme?.dark || theme?.glass === 'dark');
   const colors = isDark ? DARK_COLORS : LIGHT_COLORS;
   const isCompactScreen = width <= 390;
@@ -265,20 +290,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   }, []);
 
   /**
-   * Po opublikowaniu robimy `resetDraft()` + `popToTop()`. Defensywa: jeśli z
-   * jakiegoś powodu Step6 odzyska focus z PUSTYM draftem (świeży reset po
-   * publikacji), natychmiast wracamy do Step1 — żeby user nie zobaczył
-   * niedopubliokowanej kopii oferty z poprzedniego flow.
+   * Po udanej publikacji `resetDraft()` ustawia `needsFreshAddOfferEntry`.
+   * Jeśli stack nadal wskazuje Step6, zwijamy go do Step1 (tylko wtedy).
    */
   useFocusEffect(
     useCallback(() => {
-      const currentDraft = useOfferStore.getState().draft;
-      const looksLikeFreshDraft =
-        !String(currentDraft?.title || '').trim() &&
-        !String(currentDraft?.price || '').trim() &&
-        !String(currentDraft?.description || '').trim() &&
-        (!Array.isArray(currentDraft?.images) || currentDraft.images.length === 0);
-      if (looksLikeFreshDraft) {
+      const store = useOfferStore.getState();
+      if (store.needsFreshAddOfferEntry && !hasAddOfferDraftProgress(store.draft)) {
+        store.clearFreshAddOfferEntry();
         // @ts-ignore — popToTop istnieje dla native-stack-navigator
         if (typeof (navigation as any).popToTop === 'function') {
           (navigation as any).popToTop();
@@ -287,12 +306,26 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         }
         return;
       }
+      const currentDraft = store.draft;
       const repair = getLocationDraftRepairPatch(currentDraft);
       if (repair) {
         useOfferStore.getState().updateDraft(repair);
       }
       setCurrentStep(6);
-    }, [navigation, setCurrentStep]),
+      if (token && user?.id) {
+        void gatherPublicationBonusCoupons({
+          apiUrl: API_URL,
+          token,
+          userId: user.id,
+          email: user.email,
+          firstFreePublicationUsed: readFirstFreePublicationUsed(user as Record<string, unknown>),
+          t,
+        }).then((gathered) => {
+          setPrefetchedPublicationCoupons(gathered.coupons);
+          setPublicationChoiceCoupons(gathered.coupons);
+        });
+      }
+    }, [navigation, setCurrentStep, token, user?.id, t]),
   );
 
   const runPakietPlusPurchaseAndPublish = async () => {
@@ -319,19 +352,21 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     await handlePublish(true);
   };
 
-  const promptPaidPublication = () => {
-    Alert.alert(publicationCopy.paywallTitle, publicationCopy.paywallBody, [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: `${publicationCopy.paywallCta} (~${PAKIET_PLUS_PRICE_LABEL})`,
-        onPress: () => {
-          void runPakietPlusPurchaseAndPublish();
-        },
-      },
-    ]);
+  const handlePublicationChoice = (result: PublicationChoiceConfirm) => {
+    setPublicationChoiceVisible(false);
+    if (result.action === 'cancel') return;
+    if (result.action === 'buy_plus') {
+      void runPakietPlusPurchaseAndPublish();
+      return;
+    }
+    void handlePublish(true, undefined, result.redemption);
   };
 
-  const handlePublish = async (forceBypass = false, plusCtx?: PlusPublishContext) => {
+  const handlePublish = async (
+    skipChoiceModal = false,
+    plusCtx?: PlusPublishContext,
+    redemption?: CreatePublicationRedemption | null,
+  ) => {
     if (loading) return;
 
     if (!isFinalDraftValid) {
@@ -388,21 +423,47 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     const plusConsume = plusCtx ?? pendingPlus;
 
     const hasPlusCredit = hasAdditionalPlusPublication(latestUser);
+    const plusSlots = getAdditionalListingSlots(latestUser);
+    const gathered = await gatherPublicationBonusCoupons({
+      apiUrl: API_URL,
+      token,
+      userId: user.id,
+      email: latestUser?.email,
+      firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
+      t,
+    });
+    setPrefetchedPublicationCoupons(gathered.coupons);
+    const hasPublicationCoupons = gathered.coupons.length > 0;
+    const mustPickPublicationMethod =
+      (!allowsMultipleCountableListings(latestUser) || hasPublicationCoupons) &&
+      !plusConsume &&
+      !redemption;
+
+    if (mustPickPublicationMethod) {
+      setPublicationChoiceCoupons(gathered.coupons);
+      setPublicationChoicePlusSlots(plusSlots);
+      setPublicationChoiceHasPlus(hasPlusCredit);
+      setPublicationChoiceVisible(true);
+      return;
+    }
 
     let publicationQuote: Awaited<ReturnType<typeof fetchPublicationQuote>>['quote'] | null = null;
     if (!allowsMultipleCountableListings(latestUser) && !plusConsume) {
       const q = await fetchPublicationQuote(API_URL, token);
       publicationQuote = q.quote;
-      if (!forceBypass && q.quote.requiresPayment && !hasPlusCredit) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        promptPaidPublication();
-        return;
-      }
-      if (hasPlusCredit && q.quote.requiresPayment) {
+      if (redemption?.source === 'plus_credit' && hasPlusCredit) {
         publicationQuote = {
           ...q.quote,
           requiresPayment: false,
           reason: 'PLUS_CREDIT_AVAILABLE',
+        };
+      }
+      if (redemption?.source === 'bonus_coupon') {
+        publicationQuote = {
+          ...q.quote,
+          requiresPayment: false,
+          allowedFreeFirst: true,
+          kind: 'FREE_FIRST',
         };
       }
     }
@@ -438,6 +499,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     const publication = buildCreatePublicationPayload({
       plusTransactionId: plusConsume?.transactionId,
       quote: publicationQuote,
+      redemption: redemption ?? null,
     });
 
     const fxSnap = await getEurPlnRate();
@@ -531,21 +593,66 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         body: JSON.stringify(offerData)
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        const data = await response.json();
+        createdOfferId = Number(data.offer?.id);
+      } else {
         const errData = await response.json().catch(() => ({}));
-        if (response.status === 422 && isPublicationRequiresPlusError(errData)) {
-          promptPaidPublication();
+        if (
+          publication &&
+          isPublicationActivationSkippedResponse(errData)
+        ) {
+          const skippedId = Number((errData as { offer?: { id?: number } }).offer?.id);
+          const activation = await activateOfferPublication(API_URL, token, skippedId, {
+            redemption: redemption ?? null,
+            iapTransactionId: plusConsume?.transactionId,
+          });
+          if (activation.ok) {
+            createdOfferId = skippedId;
+          } else {
+            await archiveOwnOfferViaMobileAdmin(API_URL, token, skippedId);
+            throw new Error(
+              activation.body?.message ||
+                activation.body?.error ||
+                t('addOffer.step6.alerts.publishError.serverError'),
+            );
+          }
+        } else if (response.status === 422 && isPublicationRequiresPlusError(errData)) {
+          const orphanId = Number((errData as { offer?: { id?: number } }).offer?.id);
+          if (Number.isFinite(orphanId) && orphanId > 0) {
+            await archiveOwnOfferViaMobileAdmin(API_URL, token, orphanId);
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          const u = useAuthStore.getState().user;
+          const gathered = await gatherPublicationBonusCoupons({
+            apiUrl: API_URL,
+            token,
+            userId: user.id,
+            email: u?.email,
+            firstFreePublicationUsed: readFirstFreePublicationUsed(u as Record<string, unknown>),
+            t,
+          });
+          setPublicationChoiceCoupons(gathered.coupons);
+          setPublicationChoicePlusSlots(getAdditionalListingSlots(u));
+          setPublicationChoiceHasPlus(hasAdditionalPlusPublication(u));
+          setPublicationChoiceVisible(true);
           return;
+        } else {
+          const orphanId = Number((errData as { offer?: { id?: number } }).offer?.id);
+          if (Number.isFinite(orphanId) && orphanId > 0) {
+            await archiveOwnOfferViaMobileAdmin(API_URL, token, orphanId);
+          }
+          throw new Error(
+            (errData as { message?: string }).message ||
+              (errData as { error?: string }).error ||
+              t('addOffer.step6.alerts.publishError.serverError'),
+          );
         }
-        throw new Error(
-          (errData as { message?: string }).message ||
-            (errData as { error?: string }).error ||
-            t('addOffer.step6.alerts.publishError.serverError'),
-        );
       }
 
-      const data = await response.json();
-      createdOfferId = Number(data.offer.id);
+      if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
+        throw new Error(t('addOffer.step6.alerts.publishError.serverError'));
+      }
 
       // 2. WGRYWANIE ZDJĘĆ
       if (createdOfferId && draft.images && draft.images.length > 0) {
@@ -643,8 +750,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
       if (plusConsume?.transactionId) {
         pendingPlusCreditRef.current = null;
-        await refreshUser();
       }
+      if (redemption?.source === 'bonus_coupon') {
+        await markProfilePromoCouponUsed(user.id, redemption.couponId, token);
+      }
+      await refreshUser();
 
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1092,7 +1202,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               {t('addOffer.step6.validationHint', { steps: invalidSteps.join(', ') })}
             </Text>
           ) : null}
-          {isFinalDraftValid && hasAdditionalPlusPublication(user) ? (
+          {isFinalDraftValid && prefetchedPublicationCoupons.length > 0 ? (
+            <Text style={[styles.validationHint, { color: '#FF9F0A' }]}>
+              {t('addOffer.step6.couponPublishHint', { count: prefetchedPublicationCoupons.length })}
+            </Text>
+          ) : isFinalDraftValid && hasAdditionalPlusPublication(user) ? (
             <Text style={[styles.validationHint, { color: '#10B981' }]}>
               {t('addOffer.step6.plusCreditHint')}
             </Text>
@@ -1123,6 +1237,31 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         </BlurView>
       </View>
     </View>
+      <PublicationChoiceModal
+        visible={publicationChoiceVisible}
+        isDark={isDark}
+        title={t('addOffer.step6.publicationChoice.title')}
+        subtitle={t('addOffer.step6.publicationChoice.subtitle')}
+        couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
+        couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
+        plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
+        plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
+        plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
+          count: publicationChoicePlusSlots,
+        })}
+        buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
+        buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
+          price: PAKIET_PLUS_PRICE_LABEL,
+        })}
+        publishLabel={t('addOffer.step6.publicationChoice.publish')}
+        cancelLabel={t('common.cancel')}
+        couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
+        coupons={publicationChoiceCoupons}
+        plusSlots={publicationChoicePlusSlots}
+        hasPlusCredit={publicationChoiceHasPlus}
+        onConfirm={handlePublicationChoice}
+        onClose={() => setPublicationChoiceVisible(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

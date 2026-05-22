@@ -53,7 +53,7 @@ import Step4_Finance from './src/screens/AddOffer/Step4_Finance';
 import Step5_Media from './src/screens/AddOffer/Step5_Media';
 import Step6_Summary from './src/screens/AddOffer/Step6_Summary';
 import AuthScreen from './src/screens/AuthScreen';
-import { getStepBlockMessage, isStepValid } from './src/screens/AddOffer/flow';
+import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './src/screens/AddOffer/flow';
 
 const Colors = {
   light: { background: '#f5f5f7', text: '#1d1d1f', subtitle: '#86868b', glass: 'light' as const },
@@ -62,6 +62,7 @@ const Colors = {
 };
 
 import ProfileScreen from './src/screens/ProfileScreen';
+import BonusCouponNotifyBootstrap from './src/components/profile/BonusCouponNotifyBootstrap';
 import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
@@ -229,17 +230,12 @@ const FloatingNextButton = ({ onPress }: any) => {
   const handlePress = (e: any) => {
     if (!isFocused) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const currentDraft = useOfferStore.getState().draft;
+      const store = useOfferStore.getState();
       const shouldStartFresh =
-        step >= 6 ||
-        (
-          !String(currentDraft?.title || '').trim() &&
-          !String(currentDraft?.price || '').trim() &&
-          !String(currentDraft?.description || '').trim() &&
-          (!Array.isArray(currentDraft?.images) || currentDraft.images.length === 0)
-        );
+        store.needsFreshAddOfferEntry && !hasAddOfferDraftProgress(store.draft);
       if (shouldStartFresh) {
-        useOfferStore.getState().setNavigationGate(null);
+        store.clearFreshAddOfferEntry();
+        store.setNavigationGate(null);
         navigation.navigate('Dodaj', { screen: 'Step1' });
         return;
       }
@@ -1239,6 +1235,23 @@ const parsePushTargetFromResponse = (
     };
   }
 
+  if (
+    data.kind === 'bonus_coupon_received' ||
+    data.target === 'profile_bonus_coupons' ||
+    routeHint.includes('bonus') ||
+    routeHint.includes('kupon') ||
+    routeHint.includes('coupon') ||
+    routeHint.includes('profil') ||
+    routeHint.includes('profile') ||
+    deeplinkLower.includes('profil/kupon') ||
+    deeplinkLower.includes('profile/bonus')
+  ) {
+    return {
+      screen: 'MainTabs',
+      params: { screen: 'Profil' },
+    };
+  }
+
   // 6) Fallback radar bez offerId — to typowy „Radar znalazł X ofert" zbiorczy
   // alert. Oprócz przekierowania na zakładkę Radar dostarczamy sygnał
   // `radarFocus: 'matches'`, dzięki któremu RadarHomeScreen sam podniesie
@@ -1401,6 +1414,7 @@ export default function App() {
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <I18nProvider>
+        <BonusCouponNotifyBootstrap />
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
         <NavigationContainer
           ref={navigationRef}
