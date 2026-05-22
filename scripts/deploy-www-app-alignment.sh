@@ -15,9 +15,13 @@ fi
 echo "→ Kopiowanie plików WWW na ${SSH_HOST}:${REMOTE}"
 
 FILES=(
+  "src/app/globals.css"
   "src/components/auth/RegisterForm.tsx"
+  "src/components/auth/PhoneCountryInput.tsx"
   "src/app/rejestracja/page.tsx"
   "src/app/login/page.tsx"
+  "src/components/Pricing.tsx"
+  "src/components/home/FeaturedGallery.tsx"
   "src/contracts/homeCtaContract.ts"
   "src/components/hero3d/HeroDepthEffect.tsx"
   "src/i18n/dictionaries.ts"

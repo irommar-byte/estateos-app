@@ -26,6 +26,13 @@ Strona `estateos.pl` odzwierciedla **ten sam model konta** co aplikacja:
 ./scripts/deploy-www-app-alignment.sh
 ```
 
+## Kontrast (czytelność dark / light)
+
+- Tokeny `--eos-text`, `--eos-muted`, `--eos-subtle` — podbite na ciemnym tle
+- Klasy: `.eos-field`, `.eos-auth-card`, `.eos-label`, `.eos-choice-card`
+- Auth: `RegisterForm`, `PhoneCountryInput`, `/login` — bez „czarnych na czarnym”
+- Light mode: `theme-aware-dashboard` + `pricing-dark-stage` na `/cennik`
+
 ## Test po wdrożeniu
 
 1. `/rejestracja` — tylko Osoba prywatna / Agent, link do `/cennik` dla Pro  

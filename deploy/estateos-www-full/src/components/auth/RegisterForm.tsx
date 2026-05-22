@@ -196,7 +196,7 @@ export default function RegisterForm() {
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+          <label className="eos-label mb-2 flex items-center gap-2">
             <User size={14} /> Imię
           </label>
           <input
@@ -205,12 +205,12 @@ export default function RegisterForm() {
             autoComplete="given-name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+            className="eos-field"
             placeholder="Jan"
           />
         </div>
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+          <label className="eos-label mb-2 flex items-center gap-2">
             <User size={14} /> Nazwisko
           </label>
           <input
@@ -219,14 +219,14 @@ export default function RegisterForm() {
             autoComplete="family-name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+            className="eos-field"
             placeholder="Kowalski"
           />
         </div>
       </div>
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+        <label className="eos-label mb-2 flex items-center gap-2">
           <Mail size={14} /> E-mail
         </label>
         <input
@@ -235,17 +235,17 @@ export default function RegisterForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={`w-full rounded-2xl border bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500 ${
+          className={`eos-field ${
             emailStatus === 'taken'
               ? 'border-red-500/50'
               : emailStatus === 'available'
                 ? 'border-emerald-500/50'
-                : 'border-white/10'
+                : ''
           }`}
           placeholder="jan@example.com"
         />
         {emailStatus === 'checking' && (
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/40">Sprawdzam e-mail…</p>
+          <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">Sprawdzam e-mail…</p>
         )}
         {emailStatus === 'taken' && (
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">E-mail już zarejestrowany</p>
@@ -260,7 +260,7 @@ export default function RegisterForm() {
       />
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+        <label className="eos-label mb-2 flex items-center gap-2">
           <Lock size={14} /> Hasło (min. 6 znaków)
         </label>
         <input
@@ -270,13 +270,13 @@ export default function RegisterForm() {
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+          className="eos-field"
           placeholder="••••••••"
         />
       </div>
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+        <label className="eos-label mb-2 flex items-center gap-2">
           <Lock size={14} /> Powtórz hasło
         </label>
         <input
@@ -286,13 +286,13 @@ export default function RegisterForm() {
           autoComplete="new-password"
           value={passwordConfirm}
           onChange={(e) => setPasswordConfirm(e.target.value)}
-          className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+          className="eos-field"
           placeholder="••••••••"
         />
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Typ konta (jak w aplikacji)</p>
+        <p className="eos-label">Typ konta (jak w aplikacji)</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
@@ -312,18 +312,16 @@ export default function RegisterForm() {
               key={opt.id}
               type="button"
               onClick={() => setAccountKind(opt.id)}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-                accountKind === opt.id
-                  ? 'border-emerald-500/50 bg-emerald-500/10'
-                  : 'border-white/10 bg-black/20 hover:border-white/20'
+              className={`eos-choice-card rounded-2xl px-4 py-3 text-left ${
+                accountKind === opt.id ? 'eos-choice-card--active' : ''
               }`}
             >
-              <span className="block text-sm font-black text-white">{opt.label}</span>
-              <span className="text-[10px] leading-relaxed text-white/40">{opt.desc}</span>
+              <span className="block text-sm font-black text-[var(--eos-text)]">{opt.label}</span>
+              <span className="eos-muted-copy text-[10px] leading-relaxed">{opt.desc}</span>
             </button>
           ))}
         </div>
-        <p className="text-[10px] leading-relaxed text-white/35">
+        <p className="eos-subtle-copy text-[10px] leading-relaxed">
           Pakiety <strong className="text-amber-400/90">Investor Pro</strong> i onboarding partnera — tylko w{' '}
           <Link href="/cennik" className="text-emerald-500 hover:underline">
             cenniku na stronie
@@ -334,7 +332,7 @@ export default function RegisterForm() {
 
       {accountKind === 'agent' && (
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+          <label className="eos-label mb-2 flex items-center gap-2">
             <Building2 size={14} /> Nazwa biura
           </label>
           <input
@@ -343,7 +341,7 @@ export default function RegisterForm() {
             maxLength={80}
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+            className="eos-field"
             placeholder="Nazwa agencji"
           />
         </div>
@@ -372,14 +370,14 @@ export default function RegisterForm() {
         )}
       </AnimatePresence>
 
-      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <label className="eos-choice-card flex cursor-pointer items-start gap-3 rounded-2xl p-4">
         <input
           type="checkbox"
           checked={acceptTerms}
           onChange={(e) => setAcceptTerms(e.target.checked)}
           className="mt-1 size-4 accent-emerald-500"
         />
-        <span className="text-xs leading-relaxed text-white/60">
+        <span className="eos-muted-copy text-xs leading-relaxed">
           Akceptuję{' '}
           <Link href="/regulamin" className="text-emerald-500 hover:underline" target="_blank">
             regulamin
@@ -402,7 +400,7 @@ export default function RegisterForm() {
         {loading ? 'Tworzę konto…' : 'Załóż konto'}
       </button>
 
-      <p className="text-center text-[10px] font-bold uppercase tracking-widest text-white/40">
+      <p className="eos-muted-copy text-center text-[10px] font-bold uppercase tracking-widest">
         Masz konto?{' '}
         <Link href="/login" className="text-emerald-500 hover:text-emerald-400">
           Zaloguj się
