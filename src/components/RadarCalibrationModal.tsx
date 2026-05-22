@@ -27,7 +27,7 @@ import Animated, {
 import RadarCalibrationRitualOverlay from './RadarCalibrationRitualOverlay';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import type { RadarRecentSavedArea } from '../utils/radarRecentAreas';
-import { useI18n } from '../i18n';
+import { localeToDateFormat, useI18n } from '../i18n';
 import PolandScopeNote from './PolandScopeNote';
 
 const { width, height } = Dimensions.get('window');
@@ -267,7 +267,7 @@ export default function RadarCalibrationModal({
   const systemTheme = useColorScheme();
   const isDark = systemTheme === 'dark';
   const COLORS = useMemo(() => getColors(isDark), [isDark]);
-  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const dateLocale = localeToDateFormat(locale);
   
   const [showApplyRitual, setShowApplyRitual] = useState(false);
   const [ritualMapRevealed, setRitualMapRevealed] = useState(false);

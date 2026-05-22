@@ -36,6 +36,7 @@ import {
 } from '../utils/presentationReminderNotification';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
 import ReportSheet from '../components/ReportSheet';
+import { useI18n, t } from '../i18n';
 import BlockUserSheet from '../components/BlockUserSheet';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import {
@@ -101,7 +102,7 @@ function toUniquePositiveInts(values: unknown[]): number[] {
 }
 
 function formatActorLabel(msg: any, myUserId: any) {
-  if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return 'Ty';
+  if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return t('dealroom.chat.actorYou');
   const fromPayload =
     firstDefined(
       msg?.senderName,
@@ -113,7 +114,7 @@ function formatActorLabel(msg: any, myUserId: any) {
       msg?.user?.name
     ) || '';
   const clean = String(fromPayload).trim();
-  return clean || 'Kontrahent';
+  return clean || t('dealroom.chat.actorCounterparty');
 }
 
 function normalizeMediaUrl(raw: string | null | undefined): string | null {
@@ -146,8 +147,8 @@ function ensureAttachmentFileName(name: string, mime: string) {
   const lower = name.toLowerCase();
   if (lower.includes('.')) return name;
   const m = String(mime || '').toLowerCase();
-  if (m.includes('pdf')) return `${name || 'dokument'}.pdf`;
-  if (m.startsWith('audio/')) return `${name || 'audio'}.${m.split('/')[1] || 'm4a'}`;
+  if (m.includes('pdf')) return `${name || t('dealroom.chat.defaultDocName')}.pdf`;
+  if (m.startsWith('audio/')) return `${name || t('dealroom.chat.defaultAudioName')}.${m.split('/')[1] || 'm4a'}`;
   return name || 'zalacznik.bin';
 }
 
@@ -217,7 +218,7 @@ function buildResolvedAttachment(effective: Record<string, any>, resolvedUrl: st
   const normalizedName = String(effective?.name || effective?.fileName || nameFallback || '').trim();
   const mimeType = String(effective?.mimeType || effective?.type || guessMimeFromFilename(normalizedName));
   const size = Number(effective?.size ?? effective?.sizeBytes ?? effective?.fileSize ?? 0) || 0;
-  return { url, name: ensureAttachmentFileName(normalizedName || nameFallback || 'zalacznik', mimeType), mimeType, size };
+  return { url, name: ensureAttachmentFileName(normalizedName || nameFallback || t('dealroom.chat.defaultDocName'), mimeType), mimeType, size };
 }
 
 function resolveAttachmentFromMessage(msg: any): DealroomResolvedAttachment | null {
@@ -318,11 +319,12 @@ const TypingDot = ({ delay }: { delay: number }) => {
 // ==========================================
 
 export default function DealroomChatScreen() {
+  const { t } = useI18n();
   const navigation = useNavigation();
   const route = useRoute<any>();
   const dealId = route.params?.dealId || route.params?.params?.dealId;
   const offerId = route.params?.offerId || route.params?.params?.offerId;
-  const title = route.params?.title || route.params?.params?.title || 'Transakcja';
+  const title = route.params?.title || route.params?.params?.title || t('dealroom.chat.defaultTitle');
   
   const { user, token } = useAuthStore() as any;
 
@@ -350,7 +352,7 @@ export default function DealroomChatScreen() {
   const [isListingOwner, setIsListingOwner] = useState(false);
   const [listingOwnerUserId, setListingOwnerUserId] = useState<number | null>(null);
   const [counterpartyUserId, setCounterpartyUserId] = useState<number | null>(null);
-  const [counterpartyName, setCounterpartyName] = useState<string>('Druga strona');
+  const [counterpartyName, setCounterpartyName] = useState<string>(() => t('dealroom.chat.otherParty'));
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isBlockOpen, setIsBlockOpen] = useState(false);
@@ -491,7 +493,7 @@ export default function DealroomChatScreen() {
           ? sellerName
           : '';
     setCounterpartyUserId(counterpart);
-    setCounterpartyName(counterpartLabel || 'Druga strona');
+    setCounterpartyName(counterpartLabel || t('dealroom.chat.otherParty'));
     const myRoleRaw = String(
       firstDefined(current?.myRole, current?.viewerRole, current?.roleInDeal, current?.ownerRole, '')
     ).toUpperCase();
@@ -643,7 +645,7 @@ export default function DealroomChatScreen() {
       soundRef.current = sound;
       setPlayingAudioUrl(url);
     } catch {
-      Alert.alert('Błąd', 'Nie udało się odtworzyć dźwięku.');
+      Alert.alert(t('common.error'), t('dealroom.chat.errors.audioPlay'));
       setPlayingAudioUrl(null);
     }
   };
@@ -717,7 +719,7 @@ export default function DealroomChatScreen() {
         const uploadOfferId = await resolveOfferIdForUpload();
         const uploadIdentifier = uploadOfferId || dealId;
         if (!uploadIdentifier) {
-          Alert.alert('Brak identyfikatora', 'Nie udało się ustalić identyfikatora oferty/transakcji dla uploadu.');
+          Alert.alert(t('dealroom.chat.alerts.missingId'), t('dealroom.chat.errors.missingUploadId'));
           return;
         }
 
@@ -771,7 +773,7 @@ export default function DealroomChatScreen() {
           let directErrText = '';
           for (const directField of directAttempts) {
             const msgForm = new FormData();
-            msgForm.append('content', content || `Załącznik: ${baseFile.name}`);
+            msgForm.append('content', content || t('dealroom.chat.attachmentFallback', { name: baseFile.name }));
             msgForm.append('offerId', String(uploadIdentifier));
             msgForm.append('dealId', String(dealId));
             msgForm.append(directField, baseFile);
@@ -787,7 +789,7 @@ export default function DealroomChatScreen() {
             directErrText = await directRes.text();
           }
           if (!directSuccess) {
-            Alert.alert('Błąd uploadu', directErrText || lastUploadError || 'Błąd serwera przy wysyłce załącznika.');
+            Alert.alert(t('dealroom.chat.alerts.uploadError'), directErrText || lastUploadError || t('dealroom.chat.errors.uploadFailed'));
             return;
           }
           setPendingAttachment(null);
@@ -812,7 +814,7 @@ export default function DealroomChatScreen() {
         });
         if (!sendRes.ok) {
           const errBody = await sendRes.text();
-          Alert.alert('Błąd wysyłki', errBody || 'Nie udało się wysłać wiadomości z załącznikiem.');
+          Alert.alert(t('dealroom.chat.alerts.sendError'), errBody || t('dealroom.chat.errors.sendWithAttachment'));
           return;
         }
         setPendingAttachment(null);
@@ -824,14 +826,14 @@ export default function DealroomChatScreen() {
         });
         if (!textRes.ok) {
           const errBody = await textRes.text();
-          Alert.alert('Błąd wysyłki', errBody || 'Nie udało się wysłać wiadomości.');
+          Alert.alert(t('dealroom.chat.alerts.sendError'), errBody || t('dealroom.chat.errors.sendMessage'));
           setMessage(content);
           return;
         }
       }
       fetchMessages();
     } catch (e) {
-      Alert.alert('Błąd', attachmentForSend ? 'Nie udało się wysłać załącznika.' : 'Nie udało się wysłać wiadomości.');
+      Alert.alert(t('common.error'), attachmentForSend ? t('dealroom.chat.errors.sendAttachment') : t('dealroom.chat.errors.sendMessage'));
       if (!attachmentForSend) setMessage(content);
     } finally {
       setIsUploadingAttachment(false);
@@ -846,7 +848,7 @@ export default function DealroomChatScreen() {
 
       const file = result.assets[0];
       if (roomAttachmentBytes + (file.size || 0) > DEALROOM_ATTACHMENT_LIMIT_BYTES) {
-        Alert.alert('Przekroczony limit', 'Ten dealroom osiągnął limit rozmiaru plików (50 MB).');
+        Alert.alert(t('dealroom.chat.alerts.limitTitle'), t('dealroom.chat.errors.fileLimit'));
         return;
       }
 
@@ -858,7 +860,7 @@ export default function DealroomChatScreen() {
       });
       Haptics.selectionAsync();
     } catch (e) {
-      Alert.alert('Błąd', 'Nie udało się wybrać pliku.');
+      Alert.alert(t('common.error'), t('dealroom.chat.errors.pickFile'));
     }
   };
 
@@ -1073,17 +1075,17 @@ export default function DealroomChatScreen() {
   }, [acceptedPrice, awaitingOwnerPriceFinalize, latestBid, dealStatusSnapshot, acceptedBidIdSnapshot]);
 
   const appointmentStatusText = useMemo(() => {
-    if (appointmentStatus === 'IDLE') return 'Brak ustaleń';
+    if (appointmentStatus === 'IDLE') return t('dealroom.chat.appointmentStatus.idle');
     if (appointmentStatus === 'ACCEPTED' && acceptedAppointment?.event?.proposedDate) {
-      return `Ustalono: ${new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL')}`;
+      return t('dealroom.chat.appointmentStatus.set', { date: new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL') });
     }
     const source = latestActionableAppointmentFromOther || latestAppointment;
     if (source?.event?.proposedDate) {
       const who = formatActorLabel(source.msg, user?.id);
-      return `Zaproponowano termin przez ${who}`;
+      return t('dealroom.chat.appointmentStatus.proposedBy', { who });
     }
-    return 'W trakcie negocjacji';
-  }, [acceptedAppointment, appointmentStatus, latestActionableAppointmentFromOther, latestAppointment, user?.id]);
+    return t('dealroom.chat.appointmentStatus.negotiating');
+  }, [acceptedAppointment, appointmentStatus, latestActionableAppointmentFromOther, latestAppointment, user?.id, t]);
 
   const transactionFinalized = useMemo(
     () =>
@@ -1095,25 +1097,25 @@ export default function DealroomChatScreen() {
   );
 
   const priceStatusText = useMemo(() => {
-    if (priceStatus === 'IDLE') return 'Brak ofert';
+    if (priceStatus === 'IDLE') return t('dealroom.chat.priceStatus.idle');
     if (ownerNeedsFinalDecision && !transactionFinalized) {
-      return 'Dotknij zielone okienko „Ostateczna decyzja sprzedaży” poniżej';
+      return t('dealroom.chat.priceStatus.ownerCta');
     }
     if (awaitingOwnerPriceFinalize) {
-      return 'Oczekiwanie na finalną akceptację właściciela';
+      return t('dealroom.chat.priceStatus.awaitingOwner');
     }
     if (priceStatus === 'ACCEPTED' && acceptedPrice > 0) {
-      return `Ustalona cena: ${acceptedPrice.toLocaleString('pl-PL')} PLN`;
+      return t('dealroom.chat.priceStatus.agreed', { amount: acceptedPrice.toLocaleString('pl-PL') });
     }
     if (isWaitingForOtherOnPrice && Number(latestBid?.event?.amount || 0) > 0) {
-      return `Twoja propozycja ${Number(latestBid?.event?.amount || 0).toLocaleString('pl-PL')} PLN czeka na odpowiedź drugiej strony`;
+      return t('dealroom.chat.priceStatus.waitingResponse', { amount: Number(latestBid?.event?.amount || 0).toLocaleString('pl-PL') });
     }
     const source = latestActionableBidFromOther || latestBid;
     if (source?.event?.amount) {
       const who = formatActorLabel(source.msg, user?.id);
-      return `Zaproponowano ${Number(source.event.amount).toLocaleString('pl-PL')} PLN przez ${who}`;
+      return t('dealroom.chat.priceStatus.proposedBy', { amount: Number(source.event.amount).toLocaleString('pl-PL'), who });
     }
-    return 'W trakcie negocjacji';
+    return t('dealroom.chat.priceStatus.negotiating');
   }, [
     acceptedPrice,
     awaitingOwnerPriceFinalize,
@@ -1124,6 +1126,7 @@ export default function DealroomChatScreen() {
     user?.id,
     ownerNeedsFinalDecision,
     transactionFinalized,
+    t,
   ]);
 
   useEffect(() => {
@@ -1180,7 +1183,7 @@ export default function DealroomChatScreen() {
     if (!mySubmittedReview) return null;
     return {
       ...mySubmittedReview,
-      senderName: 'Ty',
+      senderName: t('dealroom.chat.actorYou'),
       createdAt: new Date().toISOString(),
     };
   }, [finalReviews, user?.id, mySubmittedReview]);
@@ -1262,8 +1265,8 @@ export default function DealroomChatScreen() {
     lastReviewNotificationKeyRef.current = key;
     void Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Otrzymano ocenę kontrahenta',
-        body: 'Kliknij, aby przejść do dealroomu i dokończyć ocenę.',
+        title: t('dealroom.chat.review.ratingReceivedTitle'),
+        body: t('dealroom.chat.review.ratingReceivedBody'),
         data: {
           target: 'dealroom',
           targetType: 'DEAL',
@@ -1280,23 +1283,22 @@ export default function DealroomChatScreen() {
   const handlePostPresentationReserve = useCallback(async () => {
     if (!token || !dealId || !resolvedOfferId || !user?.id) return;
     Alert.alert(
-      'Rezerwacja po prezentacji',
-      'Wycofać ofertę z publikacji i ustawić status na oczekujący (PENDING), tak jak przy rezerwacji ustalonej ceny?',
+      t('dealroom.chat.reserveWithdraw.alertTitle'),
+      t('dealroom.chat.reserveWithdraw.message'),
       [
-        { text: 'Anuluj', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Wycofaj i zarezerwuj',
+          text: t('dealroom.chat.reserveWithdraw.confirmButton'),
           style: 'destructive',
           onPress: async () => {
             try {
               const msgOk = await postDealroomTextMessage({
                 dealId: Number(dealId),
                 token,
-                content:
-                  'Decyzja właściciela: oferta została wycofana z publikacji (rezerwacja uzgodnionej ceny).',
+                content: t('dealroom.chat.reserveWithdraw.chatNote'),
               });
               if (!msgOk) {
-                Alert.alert('Uwaga', 'Nie udało się dodać wpisu w czacie.');
+                Alert.alert(t('dealroom.chat.alerts.warning'), t('dealroom.chat.reserveWithdraw.chatNoteFailed'));
               }
               const pendingRes = await setOfferStatusPending({
                 offerId: Number(resolvedOfferId),
@@ -1304,12 +1306,12 @@ export default function DealroomChatScreen() {
                 token,
               });
               if (!pendingRes.ok) {
-                Alert.alert('Uwaga', pendingRes.error || 'Nie udało się zmienić statusu oferty.');
+                Alert.alert(t('dealroom.chat.alerts.warning'), pendingRes.error || t('dealroom.chat.reserveWithdraw.statusFailed'));
               }
               await fetchMessages();
               await fetchDealSnapshot();
             } catch {
-              Alert.alert('Błąd', 'Nie udało się dokończyć rezerwacji.');
+              Alert.alert(t('common.error'), t('dealroom.chat.reserveWithdraw.failed'));
             }
           },
         },
@@ -1321,11 +1323,11 @@ export default function DealroomChatScreen() {
     if (!token || !dealId || !user?.id) return;
     if (!transactionFinalized) return;
     if (!counterpartyUserId) {
-      Alert.alert('Brak danych', 'Nie udało się ustalić kontrahenta do oceny. Odśwież czat i spróbuj ponownie.');
+      Alert.alert(t('dealroom.chat.alerts.missingData'), t('dealroom.chat.review.missingCounterparty'));
       return;
     }
     if (myFinalRating < 1 || myFinalRating > 5) {
-      Alert.alert('Ocena', 'Wybierz liczbę gwiazdek od 1 do 5.');
+      Alert.alert(t('dealroom.chat.alerts.rating'), t('dealroom.chat.review.pickStars'));
       return;
     }
     setIsSubmittingFinalReview(true);
@@ -1338,7 +1340,7 @@ export default function DealroomChatScreen() {
         senderId: Number(user.id), // optional/meta, backend reviewer = auth session
       });
       if (!reviewPayload) {
-        Alert.alert('Błąd', 'Nieprawidłowe dane opinii.');
+        Alert.alert(t('common.error'), t('dealroom.chat.review.invalidPayload'));
         return;
       }
       let res = await fetch(`${API_URL}/api/reviews`, {
@@ -1394,7 +1396,7 @@ export default function DealroomChatScreen() {
           // brak alertu — formularz znika i tyle, zgodnie z UX
           return;
         }
-        Alert.alert('Błąd', errBody || 'Nie udało się zapisać opinii. Spróbuj ponownie.');
+        Alert.alert(t('common.error'), errBody || t('dealroom.chat.review.saveFailed'));
         return;
       }
       await persistLocalReview();
@@ -1419,25 +1421,27 @@ export default function DealroomChatScreen() {
     if (!token || !dealId || !user?.id) return;
     if (!transactionFinalized) return;
     if (!counterpartyUserId) {
-      Alert.alert('Brak danych', 'Nie udało się ustalić kontrahenta do oceny. Odśwież czat i spróbuj ponownie.');
+      Alert.alert(t('dealroom.chat.alerts.missingData'), t('dealroom.chat.review.missingCounterparty'));
       return;
     }
     if (myFinalRating < 1 || myFinalRating > 5) {
-      Alert.alert('Ocena', 'Wybierz liczbę gwiazdek od 1 do 5.');
+      Alert.alert(t('dealroom.chat.alerts.rating'), t('dealroom.chat.review.pickStars'));
       return;
     }
     const trimmedReview = myFinalReview.trim();
     if (trimmedReview.length > 1000) {
-      Alert.alert('Błąd', 'Opinia może mieć maksymalnie 1000 znaków.');
+      Alert.alert(t('common.error'), t('dealroom.chat.review.maxLength'));
       return;
     }
     Alert.alert(
-      'Potwierdź wysyłkę opinii',
-      `Sprawdź dane przed wysłaniem:\n• Ocena: ${myFinalRating}/5\n• Komentarz: ${trimmedReview ? 'dodany' : 'brak (opcjonalny)'}`,
-      [
-        { text: 'Wróć', style: 'cancel' },
+      t('dealroom.chat.review.confirmTitle'),
+      t('dealroom.chat.review.confirmBody', {
+        rating: myFinalRating,
+        comment: trimmedReview ? t('dealroom.chat.review.commentAdded') : t('dealroom.chat.review.commentNone'),
+      }),
+      [{ text: t('common.back'), style: 'cancel' },
         {
-          text: 'Potwierdzam i wysyłam',
+          text: t('dealroom.chat.review.confirmSend'),
           style: 'default',
           onPress: () => {
             void submitFinalReviewRequest();
@@ -1562,8 +1566,8 @@ export default function DealroomChatScreen() {
       const who = formatActorLabel(entry.msg, user?.id);
       const isPrice = entry.event?.entity === 'BID';
       const body = isPrice
-        ? `${who} zaproponował(a) ${Number(entry.event?.amount || 0).toLocaleString('pl-PL')} PLN`
-        : `${who} zaproponował(a) termin prezentacji`;
+        ? t('dealroom.chat.eventProposedPriceBy', { who, amount: Number(entry.event?.amount || 0).toLocaleString('pl-PL') })
+        : t('dealroom.chat.eventProposedAppointmentBy', { who });
 
       /** Jeden stos na iOS per klient (nadawca); fallback: jeden stos per dealroom. */
       const peerId = entry.msg?.senderId;
@@ -1574,7 +1578,7 @@ export default function DealroomChatScreen() {
 
       void Notifications.scheduleNotificationAsync({
         content: {
-          title: isPrice ? 'Zaproponowano cenę' : 'Zaproponowano termin prezentacji',
+          title: isPrice ? t('dealroom.chat.eventProposedPrice') : t('dealroom.chat.eventProposedAppointment'),
           body,
           subtitle: dealId ? `Transakcja #${dealId}` : undefined,
           threadIdentifier,
@@ -1601,11 +1605,11 @@ export default function DealroomChatScreen() {
       0
     );
     if (!token || !dealId) {
-      Alert.alert('Brak sesji', 'Odśwież czat i spróbuj ponownie.');
+      Alert.alert(t('dealroom.chat.alerts.noSession'), t('dealroom.chat.errors.noSession'));
       return;
     }
     if (!Number.isFinite(appointmentId) || appointmentId <= 0) {
-      Alert.alert('Brak identyfikatora terminu', 'Nie można zaakceptować tej propozycji. Otwórz „Zmień” i wyślij termin ponownie.');
+      Alert.alert(t('dealroom.chat.alerts.missingAppointmentId'), t('dealroom.chat.errors.missingAppointmentId'));
       return;
     }
     try {
@@ -1619,18 +1623,18 @@ export default function DealroomChatScreen() {
           type: 'APPOINTMENT_RESPOND',
           appointmentId,
           decision: 'ACCEPT',
-          message: 'Akceptuję termin',
+          message: t('dealroom.chat.acceptAppointmentMessage'),
         }),
       });
       if (!res.ok) {
         const body = await res.text();
-        Alert.alert('Błąd', body || 'Nie udało się zaakceptować terminu.');
+        Alert.alert(t('common.error'), body || t('dealroom.chat.errors.acceptAppointment'));
         return;
       }
       await fetchMessages();
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
-      Alert.alert('Błąd', 'Nie udało się zaakceptować terminu.');
+      Alert.alert(t('common.error'), t('dealroom.chat.errors.acceptAppointment'));
     }
   };
 
@@ -1654,7 +1658,7 @@ export default function DealroomChatScreen() {
           <ChevronLeft size={28} color={COLORS.textBase} />
         </Pressable>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerSubtitle}>TRANSAKCJA #{dealId}</Text>
+          <Text style={styles.headerSubtitle}>{t('dealroom.chat.transactionHeader', { id: dealId })}</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
         </View>
         {counterpartyUserId ? (
@@ -1663,7 +1667,7 @@ export default function DealroomChatScreen() {
             style={({ pressed }) => [styles.headerMenuBtn, pressed && { opacity: 0.6 }]}
             hitSlop={{ top: 16, bottom: 16, left: 12, right: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Więcej opcji"
+            accessibilityLabel={t('dealroom.chat.moreOptionsA11y')}
           >
             <MoreHorizontal size={22} color={COLORS.textBase} />
           </Pressable>
@@ -1710,7 +1714,7 @@ export default function DealroomChatScreen() {
                 />
               </Animated.View>
               <View style={styles.negotiationTextWrap}>
-                <Text style={styles.negotiationTitle}>TERMIN PREZENTACJI</Text>
+                <Text style={styles.negotiationTitle}>{t('dealroom.chat.appointmentSection')}</Text>
                 <Text style={styles.negotiationState}>{appointmentStatusText}</Text>
                 {appointmentStatus === 'ACCEPTED' &&
                   acceptedAppointment?.event?.proposedDate &&
@@ -1727,7 +1731,7 @@ export default function DealroomChatScreen() {
             {appointmentSectionExpanded && (
               <View style={styles.negotiationExpanded}>
                 {appointmentEvents.length === 0 ? (
-                  <Text style={styles.negotiationExpandedText}>Brak propozycji terminu.</Text>
+                  <Text style={styles.negotiationExpandedText}>{t('dealroom.chat.noAppointmentProposals')}</Text>
                 ) : (
                   <View style={styles.timelineWrap}>
                     {appointmentEvents.map((entry, idx) => {
@@ -1735,13 +1739,13 @@ export default function DealroomChatScreen() {
                       const actor = formatActorLabel(entry.msg, user?.id);
                       const action = String(entry.event?.action || '').toUpperCase();
                       const actionLabel =
-                        action === 'ACCEPTED' ? 'zaakceptował(a)' :
-                        action === 'COUNTERED' ? 'zaproponował(a) zmianę terminu' :
-                        action === 'REJECTED' ? 'odrzucił(a) termin' :
-                        'zaproponował(a) termin';
+                        action === 'ACCEPTED' ? t('dealroom.chat.appointmentActions.accepted') :
+                        action === 'COUNTERED' ? t('dealroom.chat.appointmentActions.countered') :
+                        action === 'REJECTED' ? t('dealroom.chat.appointmentActions.rejected') :
+                        t('dealroom.chat.appointmentActions.proposed');
                       const dateText = entry.event?.proposedDate
                         ? new Date(entry.event.proposedDate).toLocaleString('pl-PL')
-                        : 'brak daty';
+                        : t('dealroom.chat.noDate');
                       const noteText = String(firstDefined(entry.event?.note, entry.event?.message, '') || '').trim();
                       return (
                         <View key={`appt-${entry.msg?.id || idx}`} style={styles.timelineRow}>
@@ -1765,8 +1769,8 @@ export default function DealroomChatScreen() {
                   <View style={styles.royalSealWrap}>
                     <View style={styles.royalSealOuter}>
                       <Text style={styles.royalSealTop}>ESTATEOS™</Text>
-                      <Text style={styles.royalSealMain}>ZAAKCEPTOWANY</Text>
-                      <Text style={styles.royalSealBottom}>TERMIN ZAAKCEPTOWANY PRZEZ OBIE STRONY</Text>
+                      <Text style={styles.royalSealMain}>{t('dealroom.chat.seals.appointmentAccepted')}</Text>
+                      <Text style={styles.royalSealBottom}>{t('dealroom.chat.seals.appointmentAcceptedSub')}</Text>
                     </View>
                   </View>
                 )}
@@ -1779,7 +1783,7 @@ export default function DealroomChatScreen() {
                         void handleAcceptAppointment(latestActionableAppointmentFromOther.event);
                       }}
                     >
-                      <Text style={styles.actionPrimaryTxt}>Akceptuj</Text>
+                      <Text style={styles.actionPrimaryTxt}>{t('dealroom.chat.accept')}</Text>
                     </Pressable>
                     <Pressable 
                       style={[styles.actionBtn, styles.actionSecondary]} 
@@ -1792,7 +1796,7 @@ export default function DealroomChatScreen() {
                         );
                       }}
                     >
-                      <Text style={styles.actionSecondaryTxt}>Zmień</Text>
+                      <Text style={styles.actionSecondaryTxt}>{t('dealroom.chat.change')}</Text>
                     </Pressable>
                   </View>
                 )}
@@ -1820,7 +1824,7 @@ export default function DealroomChatScreen() {
                 />
               </Animated.View>
               <View style={styles.negotiationTextWrap}>
-                <Text style={styles.negotiationTitle}>USTALENIA CENOWE</Text>
+                <Text style={styles.negotiationTitle}>{t('dealroom.chat.priceSection')}</Text>
                 <Text style={styles.negotiationState}>{priceStatusText}</Text>
               </View>
               <Text style={styles.negotiationCaret}>{priceSectionExpanded ? '−' : '+'}</Text>
@@ -1829,7 +1833,7 @@ export default function DealroomChatScreen() {
             {priceSectionExpanded && (
               <View style={styles.negotiationExpanded}>
                 {bidEvents.length === 0 ? (
-                  <Text style={styles.negotiationExpandedText}>Brak propozycji cenowych.</Text>
+                  <Text style={styles.negotiationExpandedText}>{t('dealroom.chat.noPriceProposals')}</Text>
                 ) : (
                   <View style={styles.timelineWrap}>
                     {bidEvents.map((entry, idx) => {
@@ -1837,10 +1841,10 @@ export default function DealroomChatScreen() {
                       const actor = formatActorLabel(entry.msg, user?.id);
                       const action = String(entry.event?.action || '').toUpperCase();
                       const actionLabel =
-                        action === 'ACCEPTED' ? 'zaakceptował(a) cenę' :
-                        action === 'COUNTERED' ? 'złożył(a) kontrofertę' :
-                        action === 'REJECTED' ? 'odrzucił(a) ofertę' :
-                        'zaproponował(a) cenę';
+                        action === 'ACCEPTED' ? t('dealroom.chat.bidActions.accepted') :
+                        action === 'COUNTERED' ? t('dealroom.chat.bidActions.countered') :
+                        action === 'REJECTED' ? t('dealroom.chat.bidActions.rejected') :
+                        t('dealroom.chat.bidActions.proposed');
                       const amountText = Number(entry.event?.amount || 0) > 0
                         ? `${Number(entry.event.amount).toLocaleString('pl-PL')} PLN`
                         : 'brak kwoty';
@@ -1867,7 +1871,7 @@ export default function DealroomChatScreen() {
                   <View style={styles.royalSealWrap}>
                     <View style={styles.royalSealOuter}>
                       <Text style={styles.royalSealTop}>ESTATEOS™</Text>
-                      <Text style={styles.royalSealMain}>{transactionFinalized ? 'SFINALIZOWANO' : 'AKCEPTACJA CENY'}</Text>
+                      <Text style={styles.royalSealMain}>{transactionFinalized ? t('dealroom.chat.seals.priceFinalized') : t('dealroom.chat.seals.priceAccepted')}</Text>
                       <Text style={styles.royalSealBottom}>
                         CENA OSTATECZNA: {acceptedPrice.toLocaleString('pl-PL')} PLN
                       </Text>
@@ -1884,8 +1888,8 @@ export default function DealroomChatScreen() {
                 {isBuyerWaitingOnOwnerDecision && priceStatus !== 'ACCEPTED' && !transactionFinalized ? (
                   <HeartbeatWaitingPulse
                     amount={finalAcceptanceContext?.amount ?? null}
-                    headline="Twoja akceptacja dotarła do właściciela"
-                    sublabel="Ostateczne potwierdzenie sprzedaży należy teraz do właściciela. Dostaniesz powiadomienie, gdy podejmie decyzję."
+                    headline={t('dealroom.chat.heartbeat.headline')}
+                    sublabel={t('dealroom.chat.heartbeat.sublabel')}
                   />
                 ) : null}
 
@@ -1921,7 +1925,7 @@ export default function DealroomChatScreen() {
                         );
                       }}
                     >
-                      <Text style={styles.actionPrimaryTxt}>Zgoda</Text>
+                      <Text style={styles.actionPrimaryTxt}>{t('dealroom.chat.agree')}</Text>
                     </Pressable>
                     <Pressable
                       style={[styles.actionBtn, styles.actionSecondary]}
@@ -1932,7 +1936,7 @@ export default function DealroomChatScreen() {
                         );
                       }}
                     >
-                      <Text style={styles.actionSecondaryTxt}>Kontroferta</Text>
+                      <Text style={styles.actionSecondaryTxt}>{t('dealroom.chat.counter')}</Text>
                     </Pressable>
                   </View>
                 )}
@@ -1943,10 +1947,8 @@ export default function DealroomChatScreen() {
           {showPostPresentationReserve && !transactionFinalized ? (
             <View style={styles.reserveAfterPresentation}>
               <BlurView intensity={50} tint="dark" style={styles.reserveAfterPresentationInner}>
-                <Text style={styles.reserveAfterPresentationTitle}>Po prezentacji</Text>
-                <Text style={styles.reserveAfterPresentationBody}>
-                  Termin prezentacji minął. Możesz wycofać ofertę ze sprzedaży i zarezerwować ustalenia — oferta trafi do oczekujących (PENDING).
-                </Text>
+                <Text style={styles.reserveAfterPresentationTitle}>{t('dealroom.chat.postPresentation.title')}</Text>
+                <Text style={styles.reserveAfterPresentationBody}>{t('dealroom.chat.postPresentation.body')}</Text>
                 <Pressable
                   style={({ pressed }) => [styles.reserveAfterPresentationBtn, pressed && { opacity: 0.92 }]}
                   onPress={() => {
@@ -1954,7 +1956,7 @@ export default function DealroomChatScreen() {
                     void handlePostPresentationReserve();
                   }}
                 >
-                  <Text style={styles.reserveAfterPresentationBtnTxt}>Wycofaj ze sprzedaży i zarezerwuj</Text>
+                  <Text style={styles.reserveAfterPresentationBtnTxt}>{t('dealroom.chat.postPresentation.cta')}</Text>
                 </Pressable>
               </BlurView>
             </View>
@@ -1963,19 +1965,17 @@ export default function DealroomChatScreen() {
             {transactionFinalized ? (
               <View style={styles.finalizedWrap}>
                 <BlurView intensity={72} tint="dark" style={styles.finalizedInner}>
-                  <Text style={styles.finalizedTitle}>Gratulacje! Transakcja została zamknięta.</Text>
-                  <Text style={styles.finalizedSubtitle}>
-                    Oferta jest wycofana z rynku i przeniesiona do sekcji sfinalizowane / zarchiwizowane.
-                  </Text>
-                  <Text style={styles.finalizedSectionLabel}>Kogo oceniasz</Text>
+                  <Text style={styles.finalizedTitle}>{t('dealroom.chat.finalized.title')}</Text>
+                  <Text style={styles.finalizedSubtitle}>{t('dealroom.chat.finalized.subtitle')}</Text>
+                  <Text style={styles.finalizedSectionLabel}>{t('dealroom.chat.finalized.reviewTargetLabel')}</Text>
                   <Pressable style={styles.reviewTargetRow} onPress={() => void openCounterpartyReviews()}>
                     <Text style={styles.reviewTargetName}>{counterpartyName}</Text>
-                    <Text style={styles.reviewTargetHint}>Pokaż opinie i historię ocen</Text>
+                    <Text style={styles.reviewTargetHint}>{t('dealroom.chat.finalized.reviewTargetHint')}</Text>
                   </Pressable>
                   {reviewSubmitted ? (
                     <View style={styles.reviewSuccessStamp}>
                       <Text style={styles.reviewSuccessStampIcon}>✓</Text>
-                      <Text style={styles.reviewSuccessStampText}>Pomyślnie wystawiono opinię</Text>
+                      <Text style={styles.reviewSuccessStampText}>{t('dealroom.chat.finalized.reviewSuccess')}</Text>
                     </View>
                   ) : (
                     <>
@@ -1993,7 +1993,7 @@ export default function DealroomChatScreen() {
                       <TextInput
                         value={myFinalReview}
                         onChangeText={setMyFinalReview}
-                        placeholder="Krótka opinia o przebiegu transakcji (opcjonalnie)"
+                        placeholder={t('dealroom.chat.finalized.reviewPlaceholder')}
                         placeholderTextColor={COLORS.textMuted}
                         style={styles.finalizedInput}
                         multiline
@@ -2009,14 +2009,14 @@ export default function DealroomChatScreen() {
                         {isSubmittingFinalReview ? (
                           <ActivityIndicator color="#041208" />
                         ) : (
-                          <Text style={styles.finalizedBtnTxt}>Wyślij opinię</Text>
+                          <Text style={styles.finalizedBtnTxt}>{t('dealroom.chat.finalized.submitReview')}</Text>
                         )}
                       </Pressable>
                     </>
                   )}
                   {partnerFinalReviewEntry && reviewRevealUnlocked ? (
                     <View style={styles.partnerReviewCard}>
-                      <Text style={styles.partnerReviewTitle}>Ocena od drugiej strony</Text>
+                      <Text style={styles.partnerReviewTitle}>{t('dealroom.chat.finalized.partnerReviewTitle')}</Text>
                       <Text style={styles.partnerReviewStars}>{'★'.repeat(partnerFinalReviewEntry.rating)}{'☆'.repeat(5 - partnerFinalReviewEntry.rating)}</Text>
                       {partnerFinalReviewEntry.review ? (
                         <Text style={styles.partnerReviewBody}>„{partnerFinalReviewEntry.review}”</Text>
@@ -2053,7 +2053,7 @@ export default function DealroomChatScreen() {
                         style={styles.attachmentBox}
                         onPress={async () => {
                           if (kind === 'audio') return;
-                          await Linking.openURL(attachment.url).catch(() => Alert.alert('Błąd', 'Nie można otworzyć pliku.'));
+                          await Linking.openURL(attachment.url).catch(() => Alert.alert(t('common.error'), t('dealroom.chat.errors.openFile')));
                         }}
                       >
                         <View style={[styles.attachmentIconBox, kind === 'pdf' ? styles.pdfBg : styles.fileBg]}>
@@ -2116,7 +2116,7 @@ export default function DealroomChatScreen() {
             
             <TextInput
               style={styles.textInput}
-              placeholder="Napisz wiadomość..."
+              placeholder={t('dealroom.chat.messagePlaceholder')}
               placeholderTextColor={COLORS.textMuted}
               value={message}
               onChangeText={handleTyping}
@@ -2218,7 +2218,7 @@ export default function DealroomChatScreen() {
         <View style={styles.reviewModalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsCounterpartyReviewsOpen(false)} />
           <View style={styles.reviewModalCard}>
-            <Text style={styles.reviewModalTitle}>Opinie użytkownika</Text>
+            <Text style={styles.reviewModalTitle}>{t('dealroom.chat.reviewModal.title')}</Text>
             <Text style={styles.reviewModalSubtitle}>{counterpartyName}</Text>
             {counterpartyProfileLoading ? (
               <ActivityIndicator color={COLORS.primary} />
@@ -2231,20 +2231,20 @@ export default function DealroomChatScreen() {
                       style={({ pressed }) => [styles.reviewItemAuthorBtn, pressed && { opacity: 0.7 }]}
                     >
                       <Text style={styles.reviewItemAuthorText}>
-                        {r?.reviewerName || `Użytkownik #${r?.reviewerId || '-'}`}
+                        {r?.reviewerName || t('dealroom.user.numbered', { id: r?.reviewerId || '-' })}
                       </Text>
                     </Pressable>
                     <Text style={styles.reviewItemStars}>{'★'.repeat(Number(r?.rating || 0))}{'☆'.repeat(5 - Number(r?.rating || 0))}</Text>
-                    <Text style={styles.reviewItemBody}>{r?.comment || r?.review || 'Bez komentarza.'}</Text>
+                    <Text style={styles.reviewItemBody}>{r?.comment || r?.review || t('dealroom.chat.reviewModal.noComment')}</Text>
                   </View>
                 ))}
                 {(!Array.isArray(counterpartyPublicProfile?.reviews) || counterpartyPublicProfile.reviews.length === 0) ? (
-                  <Text style={styles.reviewModalEmpty}>Brak publicznych opinii.</Text>
+                  <Text style={styles.reviewModalEmpty}>{t('dealroom.chat.reviewModal.empty')}</Text>
                 ) : null}
               </ScrollView>
             )}
             <Pressable style={styles.reviewModalCloseBtn} onPress={() => setIsCounterpartyReviewsOpen(false)}>
-              <Text style={styles.reviewModalCloseTxt}>Zamknij</Text>
+              <Text style={styles.reviewModalCloseTxt}>{t('dealroom.chat.reviewModal.close')}</Text>
             </Pressable>
           </View>
         </View>
@@ -2268,7 +2268,7 @@ export default function DealroomChatScreen() {
               accessibilityRole="button"
             >
               <Flag color="#FF9F0A" size={18} />
-              <Text style={styles.moreItemText}>Zgłoś użytkownika</Text>
+              <Text style={styles.moreItemText}>{t('dealroom.chat.moreMenu.report')}</Text>
             </Pressable>
             <Pressable
               onPress={() => {
@@ -2283,7 +2283,7 @@ export default function DealroomChatScreen() {
               accessibilityRole="button"
             >
               <Ban color={COLORS.danger} size={18} />
-              <Text style={styles.moreItemText}>Zablokuj użytkownika</Text>
+              <Text style={styles.moreItemText}>{t('dealroom.chat.moreMenu.block')}</Text>
             </Pressable>
             <Pressable
               onPress={() => setIsMoreMenuOpen(false)}
@@ -2294,7 +2294,7 @@ export default function DealroomChatScreen() {
               ]}
               accessibilityRole="button"
             >
-              <Text style={styles.moreCancelText}>Anuluj</Text>
+              <Text style={styles.moreCancelText}>{t('common.cancel')}</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -2305,7 +2305,7 @@ export default function DealroomChatScreen() {
         onClose={() => setIsReportOpen(false)}
         targetType="user"
         targetId={Number(counterpartyUserId || 0)}
-        targetLabel={counterpartyName ? `Użytkownik: ${counterpartyName}` : undefined}
+        targetLabel={counterpartyName ? t('dealroom.chat.targetLabel', { name: counterpartyName }) : undefined}
         token={token}
         isDark
       />

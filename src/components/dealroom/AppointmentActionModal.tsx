@@ -3,6 +3,7 @@ import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityInd
 import { X, ChevronLeft } from 'lucide-react-native';
 import PresentationCountdown from './PresentationCountdown';
 import { API_URL } from '../../config/network';
+import { useI18n } from '../../i18n';
 
 type AppointmentMode = 'create' | 'respond';
 
@@ -70,6 +71,7 @@ export default function AppointmentActionModal({
   onDone,
   onSavedDate,
 }: AppointmentActionModalProps) {
+  const { t } = useI18n();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedHour, setSelectedHour] = useState<string | null>(null);
@@ -178,7 +180,7 @@ export default function AppointmentActionModal({
         // Backend zwraca m.in. „Ta propozycja terminu została już rozpatrzona"
         // jako 400; w tym wypadku banner `isWaitingForOther` powinien już
         // wcześniej zablokować przycisk, ale zostawiamy też fallback inline'owy.
-        setError(data?.error || 'Nie udało się zapisać terminu.');
+        setError(data?.error || t('dealroom.appointment.errors.saveFailed'));
         return;
       }
       if (proposedIso) {
@@ -187,7 +189,7 @@ export default function AppointmentActionModal({
       onDone?.();
       onClose();
     } catch {
-      setError('Błąd połączenia z serwerem.');
+      setError(t('dealroom.appointment.errors.network'));
     } finally {
       setLoading(false);
     }
@@ -200,9 +202,9 @@ export default function AppointmentActionModal({
 
   const getConfirmMessage = () => {
     if (mode === 'create') {
-      return `Czy na pewno chcesz zaproponować termin ${getSelectedDateLabel()}?`;
+      return t('dealroom.appointment.confirm.propose', { label: getSelectedDateLabel() });
     }
-    return `Czy na pewno chcesz wysłać swój termin ${getSelectedDateLabel()}?`;
+    return t('dealroom.appointment.confirm.counter', { label: getSelectedDateLabel() });
   };
 
   const handleSubmitPress = () => {
@@ -212,7 +214,7 @@ export default function AppointmentActionModal({
     // bo zachodzi on na sam modal i wygląda jak błąd techniczny zamiast
     // miękkiej podpowiedzi.
     if (isLocked) {
-      setError('Ten termin został już zaakceptowany.');
+      setError(t('dealroom.appointment.errors.alreadyAccepted'));
       return;
     }
     if (isWaitingForOther) {
@@ -222,15 +224,15 @@ export default function AppointmentActionModal({
     }
     const safeToken = normalizeToken(token);
     if (!dealId || !safeToken) {
-      setError('Brak sesji. Odśwież czat i spróbuj ponownie.');
+      setError(t('dealroom.appointment.errors.noSession'));
       return;
     }
     if (!selectedDate || !selectedHour) {
-      setError('Najpierw wybierz dzień i godzinę.');
+      setError(t('dealroom.appointment.errors.pickDateTime'));
       return;
     }
     if (!canSubmit) {
-      setError('Nie udało się przygotować terminu. Spróbuj ponownie.');
+      setError(t('dealroom.appointment.errors.prepareFailed'));
       return;
     }
 
@@ -255,7 +257,7 @@ export default function AppointmentActionModal({
               {step > 1 ? (
                 <TouchableOpacity style={styles.backBtnTop} onPress={() => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s))}>
                   <ChevronLeft size={13} color="#ddd" />
-                  <Text style={styles.backBtnText}>Wróć</Text>
+                  <Text style={styles.backBtnText}>{t('common.back')}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.headerPlaceholder} />
@@ -265,7 +267,7 @@ export default function AppointmentActionModal({
               </TouchableOpacity>
             </View>
             <Text style={styles.eyebrow}>DEALROOM</Text>
-            <Text style={styles.title}>{title || 'Negocjacja terminu'}</Text>
+            <Text style={styles.title}>{title || t('dealroom.appointment.defaultTitle')}</Text>
             <ScrollView
               style={styles.content}
               contentContainerStyle={styles.contentInner}
@@ -279,7 +281,7 @@ export default function AppointmentActionModal({
           {isLocked && (
             <View style={styles.lockedBox}>
               <Text style={styles.lockIcon}>🔒</Text>
-              <Text style={styles.lockTitle}>Termin zaakceptowany</Text>
+              <Text style={styles.lockTitle}>{t('dealroom.appointment.lockedTitle')}</Text>
               <Text style={styles.lockDate}>
                 {proposedDate ? new Date(proposedDate).toLocaleString('pl-PL') : '-'}
               </Text>
@@ -287,7 +289,7 @@ export default function AppointmentActionModal({
                 <PresentationCountdown presentationIso={proposedDate} variant="modal" />
               )}
               <View style={styles.stamp}>
-                <Text style={styles.stampText}>ZAAKCEPTOWANO</Text>
+                <Text style={styles.stampText}>{t('dealroom.appointment.acceptedStamp')}</Text>
               </View>
             </View>
           )}
@@ -295,14 +297,11 @@ export default function AppointmentActionModal({
           {isWaitingForOther && !isLocked && (
             <View style={styles.waitingBox}>
               <Text style={styles.waitingIcon}>⏳</Text>
-              <Text style={styles.waitingTitle}>Czekasz na odpowiedź drugiej strony</Text>
-              <Text style={styles.waitingSub}>
-                Twoja ostatnia propozycja terminu została wysłana — partner musi ją zaakceptować
-                lub zaproponować inny termin. Do tego czasu nie możesz wysłać kolejnej kontroferty.
-              </Text>
+              <Text style={styles.waitingTitle}>{t('dealroom.appointment.waitingTitle')}</Text>
+              <Text style={styles.waitingSub}>{t('dealroom.appointment.waitingSub')}</Text>
               {proposedDate ? (
                 <View style={styles.waitingChip}>
-                  <Text style={styles.waitingChipLabel}>OSTATNIA PROPOZYCJA</Text>
+                  <Text style={styles.waitingChipLabel}>{t('dealroom.appointment.lastProposalLabel')}</Text>
                   <Text style={styles.waitingChipValue}>
                     {new Date(proposedDate).toLocaleString('pl-PL')}
                   </Text>
@@ -313,16 +312,16 @@ export default function AppointmentActionModal({
 
           {history.length > 0 && (
             <View style={styles.timelineWrap}>
-              <Text style={styles.timelineTitle}>Historia negocjacji</Text>
+              <Text style={styles.timelineTitle}>{t('dealroom.appointment.timelineTitle')}</Text>
               {history.map((item, idx) => {
                 const label =
                   item.action === 'ACCEPTED'
-                    ? 'Zaakceptowano'
+                    ? t('dealroom.appointment.timeline.accepted')
                     : item.action === 'COUNTERED'
-                      ? 'Kontroferta'
+                      ? t('dealroom.appointment.timeline.countered')
                       : item.action === 'DECLINED'
-                        ? 'Odrzucono'
-                        : 'Propozycja';
+                        ? t('dealroom.appointment.timeline.declined')
+                        : t('dealroom.appointment.timeline.proposed');
                 return (
                   <View key={`${item.action || 'x'}-${idx}`} style={styles.timelineItem}>
                     <Text style={styles.timelineLabel}>{label}</Text>
@@ -340,15 +339,15 @@ export default function AppointmentActionModal({
               <View style={styles.stepHeader}>
                 <View style={styles.stepHeaderLeft}>
                   <Text style={styles.stepTitle}>
-                    {step === 1 ? 'Wybierz dzien' : step === 2 ? 'Wybierz godzine' : 'Potwierdz termin'}
+                    {step === 1 ? t('dealroom.appointment.steps.pickDay') : step === 2 ? t('dealroom.appointment.steps.pickHour') : t('dealroom.appointment.steps.confirm')}
                   </Text>
-                  <Text style={styles.stepSub}>Krok {step} z 3</Text>
+                  <Text style={styles.stepSub}>{t('dealroom.appointment.steps.progress', { step })}</Text>
                 </View>
               </View>
 
               {step === 1 && (
                 <>
-                  <Text style={styles.sectionLabel}>Dzien</Text>
+                  <Text style={styles.sectionLabel}>{t('dealroom.appointment.dayLabel')}</Text>
                   <View style={styles.calendarGrid}>
                     {dates.map((d) => {
                       const selected = selectedDate?.toDateString() === d.toDateString();
@@ -379,7 +378,7 @@ export default function AppointmentActionModal({
 
               {step === 2 && (
                 <>
-                  <Text style={styles.sectionLabel}>Godzina</Text>
+                  <Text style={styles.sectionLabel}>{t('dealroom.appointment.hourLabel')}</Text>
                   <View style={styles.hoursGrid}>
                     {hours.map((h) => {
                       const selected = selectedHour === h;
@@ -402,9 +401,12 @@ export default function AppointmentActionModal({
 
               {step === 3 && (
                 <View style={styles.selectedTermCard}>
-                  <Text style={styles.selectedTermLabel}>Wybrany termin</Text>
+                  <Text style={styles.selectedTermLabel}>{t('dealroom.appointment.selectedLabel')}</Text>
                   <Text style={styles.selectedTermValue}>
-                    {selectedDate?.toLocaleDateString('pl-PL')} o {selectedHour}
+                    {t('dealroom.appointment.selectedAt', {
+                      date: selectedDate?.toLocaleDateString('pl-PL') || '',
+                      hour: selectedHour || '',
+                    })}
                   </Text>
                 </View>
               )}
@@ -413,11 +415,11 @@ export default function AppointmentActionModal({
 
             {(step === 3 || !isSchedulerVisible) && (
               <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>Wiadomosc</Text>
+                <Text style={styles.sectionLabel}>{t('dealroom.appointment.messageLabel')}</Text>
                 <TextInput
                   value={note}
                   onChangeText={setNote}
-                  placeholder="Dodaj komentarz (opcjonalnie)"
+                  placeholder={t('dealroom.appointment.messagePlaceholder')}
                   placeholderTextColor="#777"
                   style={[styles.input, styles.note]}
                   multiline
@@ -431,7 +433,7 @@ export default function AppointmentActionModal({
 
             <View style={styles.footerRow}>
               <TouchableOpacity style={styles.secondaryBtn} onPress={onClose} disabled={loading}>
-                <Text style={styles.secondaryTxt}>Anuluj</Text>
+                <Text style={styles.secondaryTxt}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryBtn, !canSubmit && styles.disabled]}
@@ -442,7 +444,7 @@ export default function AppointmentActionModal({
                   <ActivityIndicator color="#000" />
                 ) : (
                   <Text style={styles.primaryTxt}>
-                    {mode === 'respond' ? 'Wyslij swoj termin' : 'Umow i wyslij'}
+                    {mode === 'respond' ? t('dealroom.appointment.sendCounter') : t('dealroom.appointment.sendCreate')}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -453,11 +455,11 @@ export default function AppointmentActionModal({
         <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
           <View style={styles.confirmBackdrop}>
             <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>Potwierdzenie</Text>
+              <Text style={styles.confirmTitle}>{t('dealroom.appointment.confirmTitle')}</Text>
               <Text style={styles.confirmText}>{getConfirmMessage()}</Text>
               <View style={styles.confirmRow}>
                 <TouchableOpacity style={styles.confirmSecondary} onPress={() => setConfirmVisible(false)}>
-                  <Text style={styles.confirmSecondaryTxt}>Nie</Text>
+                  <Text style={styles.confirmSecondaryTxt}>{t('dealroom.appointment.confirmNo')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.confirmPrimary}
@@ -466,7 +468,7 @@ export default function AppointmentActionModal({
                     await submit();
                   }}
                 >
-                  <Text style={styles.confirmPrimaryTxt}>Tak, wyślij</Text>
+                  <Text style={styles.confirmPrimaryTxt}>{t('dealroom.appointment.confirmYes')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

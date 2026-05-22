@@ -65,13 +65,14 @@ import {
   validateAgentCommissionPercent,
 } from '../lib/agentCommission';
 import { API_URL } from '../config/network';
-import { useI18n } from '../i18n';
+import { localeToDateFormat, useI18n } from '../i18n';
 import {
   extractMobileOfferJson,
   persistMobileOfferUpdate,
   readMobileOfferResponseBody,
   isExplicitMobileOfferSaveFailure,
 } from '../utils/mobileOfferUpdate';
+import { normalizeOfferConditionForEdit } from '../utils/offerFieldLabels';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
@@ -169,7 +170,7 @@ export default function EditOfferScreen({ route }: any) {
   const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
   const primaryColor = '#007AFF';
   const { t, locale } = useI18n();
-  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const dateLocale = localeToDateFormat(locale);
   const translateDirtyField = useCallback((key: string) => t(`offer.edit.dirtyFields.${key}`), [t]);
 
   const cardShadow = {
@@ -289,7 +290,7 @@ export default function EditOfferScreen({ route }: any) {
           setHeating(String(offer.heating || ''));
           setApartmentNumber(String(offer.apartmentNumber || ''));
           setLandRegistryNumber(String(offer.landRegistryNumber || ''));
-          setCondition(offer.condition || 'READY');
+          setCondition(normalizeOfferConditionForEdit(offer.condition) || 'READY');
           // Odczyt „Dokładnej lokalizacji" zunifikowany z resztą ekosystemu:
           // używamy `resolveIsExactLocation`, który traktuje wartości typu
           // `'false'`, `0`, `'0'`, `false` jako WYŁĄCZONE, a wszystko inne

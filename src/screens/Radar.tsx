@@ -12,6 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import { API_URL } from '../config/network';
+import { logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
+import { localeToDateFormat, useI18n } from '../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -38,6 +40,9 @@ const hasFiniteCoords = (lat: unknown, lng: unknown) =>
   Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
 
 export default function Radar({ theme, route }: any) {
+  const { t, locale } = useI18n();
+  const dateLocale = localeToDateFormat(locale);
+
   const playRadarSound = async () => {
     try {
       const { sound } = await Audio.Sound.createAsync(
@@ -50,7 +55,7 @@ export default function Radar({ theme, route }: any) {
   };
 
   const navigation = useNavigation<any>();
-  const { user, isRadarActive, setRadarActive } = useAuthStore() as any;
+  const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
   const colorScheme = useColorScheme();
   const isDark = theme?.glass === 'dark' || theme?.dark || colorScheme === 'dark';
 
@@ -276,6 +281,12 @@ export default function Radar({ theme, route }: any) {
     
     setRadarActive(draftFilters.pushNotifications);
     syncRadarPreferencesToBackend(draftFilters);
+    logRadarCalibrationSearch({
+      token,
+      userId: user?.id,
+      filters: draftFilters as any,
+      mapBounds: null,
+    });
 
     scale3D.setValue(3.5); 
     tilt3D.setValue(0);
@@ -415,23 +426,23 @@ export default function Radar({ theme, route }: any) {
   // 🔥 DYNAMICZNE INFO ZALEŻNE OD PROCENTÓW 🔥
   const getRadarIntelligence = (val: number) => {
     if (val === 100) return {
-        title: "🎯 Strzał w dziesiątkę",
-        desc: "Ultra-restrykcyjne filtry. Powiadomimy Cię TYLKO, gdy oferta spełni absolutnie 100% Twoich wymagań. Zero kompromisów.",
+        title: t('radar.calibration.legacy.intelligence.perfect.title'),
+        desc: t('radar.calibration.legacy.intelligence.perfect.desc'),
         color: "#34C759"
     };
     if (val >= 85) return {
-        title: "💎 Idealne trafienie",
-        desc: "Złoty standard. Otrzymasz oferty o ogromnym dopasowaniu, z marginesem na kosmetyczne braki na rynku.",
+        title: t('radar.calibration.legacy.intelligence.ideal.title'),
+        desc: t('radar.calibration.legacy.intelligence.ideal.desc'),
         color: "#0A84FF"
     };
     if (val >= 70) return {
-        title: "🔥 Świeża okazja",
-        desc: "Szybki radar. Wyłapuje świetne oferty, dając Ci szansę na szybkie negocjacje nawet przy drobnych ustępstwach.",
+        title: t('radar.calibration.legacy.intelligence.great.title'),
+        desc: t('radar.calibration.legacy.intelligence.great.desc'),
         color: "#FF9F0A"
     };
     return {
-        title: "👻 Głośne skanowanie",
-        desc: "Szeroki zasięg. Radar poinformuje Cię o każdej nowej ofercie, która choćby ociera się o Twoje ogólne parametry.",
+        title: t('radar.calibration.legacy.intelligence.wide.title'),
+        desc: t('radar.calibration.legacy.intelligence.wide.desc'),
         color: "#FF3B30"
     };
   };
@@ -485,7 +496,7 @@ export default function Radar({ theme, route }: any) {
           <View style={styles.segmentControl}>
             {(['ALL', 'FAV', 'MINE'] as const).map((tab) => {
               const isActive = activeTab === tab;
-              const labels = { ALL: 'Radar', FAV: 'Ulubione', MINE: 'Moje' };
+              const labels = { ALL: t('radar.calibration.legacy.tabRadar'), FAV: t('radar.calibration.legacy.tabFavorites'), MINE: t('radar.calibration.legacy.tabMine') };
               const tabCount = counts[tab];
               return (
                 <Pressable key={tab} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }} style={[styles.segmentBtn, isActive && { backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : '#FFFFFF' }]}>
@@ -523,20 +534,20 @@ export default function Radar({ theme, route }: any) {
                   <BlurView intensity={isDark ? 75 : 100} tint={isDark ? "dark" : "light"} style={styles.cardGlass}>
                     <View style={styles.cardImageContainer}>
                       {firstImage ? <Image source={{ uri: firstImage }} style={styles.cardImage} /> : <View style={[styles.cardImage, { backgroundColor: isDark ? '#333' : '#E5E5EA', justifyContent: 'center', alignItems: 'center' }]}><Ionicons name="home" size={24} color={BaseColors.subtitle} /></View>}
-                      <View style={[styles.typeTag, { backgroundColor: offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL }]}><Text style={styles.typeTagText}>{offer.transactionType === 'RENT' ? 'WYNAJEM' : 'SPRZEDAŻ'}</Text></View>
+                      <View style={[styles.typeTag, { backgroundColor: offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL }]}><Text style={styles.typeTagText}>{offer.transactionType === 'RENT' ? t('radar.home.transactionRent') : t('radar.home.transactionSell')}</Text></View>
                     </View>
                     <View style={styles.cardContent}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#000' }]}>{parseInt(offer.price || "0").toLocaleString("pl-PL")} PLN</Text>
-                          <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#8E8E93' }]} numberOfLines={1}>{offer.propertyType === 'FLAT' ? 'Mieszkanie' : offer.propertyType === 'HOUSE' ? 'Dom' : offer.propertyType === 'PLOT' ? 'Działka' : 'Lokal'} • {offer.district || offer.city}</Text>
+                          <Text style={[styles.cardPrice, { color: isDark ? '#FFF' : '#000' }]}>{parseInt(offer.price || "0").toLocaleString(dateLocale)} PLN</Text>
+                          <Text style={[styles.cardTitle, { color: isDark ? '#CCC' : '#8E8E93' }]} numberOfLines={1}>{offer.propertyType === 'FLAT' ? t('radar.home.propertyFlat') : offer.propertyType === 'HOUSE' ? t('radar.home.propertyHouse') : offer.propertyType === 'PLOT' ? t('radar.home.propertyPlot') : t('radar.home.propertyPremises')} • {offer.district || offer.city}</Text>
                         </View>
                         <Pressable style={styles.favButton} onPress={(e) => { e.stopPropagation(); toggleFavorite(offer.id); }}><Ionicons name={isFav ? "heart" : "heart-outline"} size={22} color={isFav ? BaseColors.danger : BaseColors.subtitle} /></Pressable>
                       </View>
                       <View style={styles.cardSpecsContainer}>
                         <View style={styles.cardSpecs}>
                           <View style={styles.specItem}><Ionicons name="resize" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.area} m²</Text></View>
-                          {offer.propertyType !== 'PLOT' && <View style={styles.specItem}><Ionicons name="bed" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} pok.</Text></View>}
+                          {offer.propertyType !== 'PLOT' && <View style={styles.specItem}><Ionicons name="bed" size={12} color={BaseColors.subtitle} /><Text style={styles.specText}>{offer.rooms || '-'} {t('radar.calibration.legacy.roomsShort')}</Text></View>}
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 6 }}>
                             {offer.hasGarden && <Ionicons name="leaf" size={14} color="#10b981" />}
                             {offer.hasParking && <Ionicons name="car-sport" size={14} color="#10b981" />}
@@ -554,8 +565,8 @@ export default function Radar({ theme, route }: any) {
         ) : (
           <View style={[styles.emptyStateGlass, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)' }]}>
             <Ionicons name="radio-outline" size={40} color={BaseColors.subtitle} />
-            <Text style={[styles.emptyStateText, { color: isDark ? '#FFF' : '#000' }]}>Brak sygnału na radarze.</Text>
-            <Text style={styles.emptyStateSub}>Zmień parametry kalibracji lub oddal mapę.</Text>
+            <Text style={[styles.emptyStateText, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.legacy.emptySignal')}</Text>
+            <Text style={styles.emptyStateSub}>{t('radar.calibration.legacy.emptySignalHint')}</Text>
           </View>
         )}
       </View>
@@ -570,21 +581,21 @@ export default function Radar({ theme, route }: any) {
             <View style={styles.modalDragHandle} />
 
             <View style={styles.premiumModalHeader}>
-              <Text style={[styles.premiumModalTitle, { color: isDark ? '#FFF' : '#000' }]}>Kalibracja Radaru</Text>
+              <Text style={[styles.premiumModalTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.legacy.title')}</Text>
               <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDraftFilters({ transactionType: 'SELL', propertyType: 'ALL', city: 'Warszawa', selectedDistricts: [], maxPrice: 5000000, minArea: 0, minYear: 1900, requireBalcony: false, requireGarden: false, requireElevator: false, requireParking: false, requireFurnished: false, pushNotifications: false, matchThreshold: 100 }); setInputMaxPrice('5000000'); setInputMinArea('0'); setInputMinYear('1900'); }} style={styles.resetBtn}>
-                <Text style={[styles.resetBtnText, { color: activeColor }]}>Wyczyść</Text>
+                <Text style={[styles.resetBtnText, { color: activeColor }]}>{t('radar.calibration.legacy.clear')}</Text>
               </Pressable>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 150 }}>
 
-              <Text style={[styles.premiumSectionTitle, styles.premiumSectionTitleFirst]}>DZIAŁANIE W TLE I PRECYZJA</Text>
+              <Text style={[styles.premiumSectionTitle, styles.premiumSectionTitleFirst]}>{t('radar.calibration.legacy.sectionBackground')}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', borderColor: currentIntelligence.color, borderWidth: draftFilters.pushNotifications ? 1 : 0 }]}>
                 <View style={styles.premiumSwitchRow}>
                   <View style={{ flex: 1, paddingRight: 10 }}>
-                    <Text style={[styles.premiumSwitchTitle, { color: draftFilters.pushNotifications ? currentIntelligence.color : (isDark ? '#FFF' : '#000'), fontWeight: '800' }]}>Aktywny Radar (Push)</Text>
+                    <Text style={[styles.premiumSwitchTitle, { color: draftFilters.pushNotifications ? currentIntelligence.color : (isDark ? '#FFF' : '#000'), fontWeight: '800' }]}>{t('radar.calibration.legacy.activeRadarPush')}</Text>
                     <Text style={{ color: BaseColors.subtitle, fontSize: 11, marginTop: 4 }}>
-                      Nasłuchuj rynku po wyjściu z aplikacji na wybranym poziomie czułości.
+                      {t('radar.calibration.legacy.activeRadarPushDesc')}
                     </Text>
                   </View>
                   <Switch
@@ -634,40 +645,46 @@ export default function Radar({ theme, route }: any) {
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
                       <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>50%</Text>
-                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>Skala Dopasowania AI</Text>
+                      <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>{t('radar.calibration.legacy.matchScaleAi')}</Text>
                       <Text style={{ fontSize: 10, color: BaseColors.subtitle, fontWeight: '700' }}>100%</Text>
                     </View>
                   </View>
                 )}
               </View>
 
-              <Text style={styles.premiumSectionTitle}>PRZEZNACZENIE I TYP</Text>
+              <Text style={styles.premiumSectionTitle}>{t('radar.calibration.legacy.purposeAndType')}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
                 <View style={styles.premiumSegmentContainer}>
-                  {(['RENT', 'SELL'] as const).map(t => {
-                    const isActive = draftFilters.transactionType === t;
+                  {(['RENT', 'SELL'] as const).map((txType) => {
+                    const isActive = draftFilters.transactionType === txType;
                     return (
-                      <Pressable key={t} onPress={() => handleFilterSelect('transactionType', t)} style={[styles.premiumSegmentBtn, isActive && { backgroundColor: ThemeColors[t], shadowColor: ThemeColors[t], shadowOpacity: 0.8, shadowRadius: 10, elevation: 5 }]}>
-                        <Text style={[styles.premiumSegmentText, isActive && styles.segmentTextActive]}>{t === 'RENT' ? 'Wynajem' : 'Kupno'}</Text>
+                      <Pressable key={txType} onPress={() => handleFilterSelect('transactionType', txType)} style={[styles.premiumSegmentBtn, isActive && { backgroundColor: ThemeColors[txType], shadowColor: ThemeColors[txType], shadowOpacity: 0.8, shadowRadius: 10, elevation: 5 }]}>
+                        <Text style={[styles.premiumSegmentText, isActive && styles.segmentTextActive]}>{txType === 'RENT' ? t('radar.calibration.rent') : t('radar.calibration.buy')}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA' }]} />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.premiumSegmentContainer}>
-                  {(['ALL', 'FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map(t => {
-                    const isActive = draftFilters.propertyType === t;
-                    const labels = { ALL: 'Wszystko', FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
+                  {(['ALL', 'FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((propType) => {
+                    const isActive = draftFilters.propertyType === propType;
+                    const labelKey = {
+                      ALL: 'radar.calibration.legacy.propertyAll',
+                      FLAT: 'radar.home.propertyFlat',
+                      HOUSE: 'radar.home.propertyHouse',
+                      PLOT: 'radar.home.propertyPlot',
+                      COMMERCIAL: 'radar.home.propertyPremises',
+                    } as const;
                     return (
-                      <Pressable key={t} onPress={() => handleFilterSelect('propertyType', t)} style={[styles.premiumSegmentBtn, { paddingHorizontal: 16 }, isActive && { backgroundColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.5, shadowRadius: 10 }]}>
-                        <Text style={[styles.premiumSegmentText, isActive && styles.segmentTextActive]}>{labels[t]}</Text>
+                      <Pressable key={propType} onPress={() => handleFilterSelect('propertyType', propType)} style={[styles.premiumSegmentBtn, { paddingHorizontal: 16 }, isActive && { backgroundColor: activeColor, shadowColor: activeColor, shadowOpacity: 0.5, shadowRadius: 10 }]}>
+                        <Text style={[styles.premiumSegmentText, isActive && styles.segmentTextActive]}>{t(labelKey[propType])}</Text>
                       </Pressable>
                     );
                   })}
                 </ScrollView>
               </View>
 
-              <Text style={styles.premiumSectionTitle}>METROPOLIA</Text>
+              <Text style={styles.premiumSectionTitle}>{t('radar.calibration.metropolis')}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
                   {CITIES.map(c => {
@@ -681,7 +698,7 @@ export default function Radar({ theme, route }: any) {
                 </ScrollView>
               </View>
 
-              <Text style={styles.premiumSectionTitle}>DZIELNICE ({draftFilters.city})</Text>
+              <Text style={styles.premiumSectionTitle}>{t('radar.calibration.districts', { city: draftFilters.city })}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 16 }]}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
                   {availableDistricts.length > 0 ? availableDistricts.map(dist => {
@@ -691,14 +708,14 @@ export default function Radar({ theme, route }: any) {
                         <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{dist}</Text>
                       </Pressable>
                     );
-                  }) : <Text style={{ color: BaseColors.subtitle, marginLeft: 16 }}>Dla tego miasta dzielnice nie są zmapowane.</Text>}
+                  }) : <Text style={{ color: BaseColors.subtitle, marginLeft: 16 }}>{t('radar.calibration.legacy.districtsUnmapped')}</Text>}
                 </ScrollView>
               </View>
 
-              <Text style={styles.premiumSectionTitle}>PRECYZYJNE WYMIARY</Text>
+              <Text style={styles.premiumSectionTitle}>{t('radar.calibration.legacy.preciseDimensions')}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF', paddingVertical: 5 }]}>
                 <View style={styles.inputRow}>
-                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Maks. Cena</Text>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.legacy.maxPrice')}</Text>
                   <View style={styles.inputContainer}>
                     <TextInput
                       style={[styles.numberInput, { color: activeColor }]}
@@ -714,7 +731,7 @@ export default function Radar({ theme, route }: any) {
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
                 
                 <View style={styles.inputRow}>
-                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Min. Metraż</Text>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.legacy.minArea')}</Text>
                   <View style={styles.inputContainer}>
                     <TextInput
                       style={[styles.numberInput, { color: activeColor }]}
@@ -730,7 +747,7 @@ export default function Radar({ theme, route }: any) {
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
 
                 <View style={styles.inputRow}>
-                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>Rok Budowy (od)</Text>
+                  <Text style={[styles.inputLabelText, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.legacy.minYear')}</Text>
                   <View style={styles.inputContainer}>
                     <TextInput
                       style={[styles.numberInput, { color: activeColor }]}
@@ -744,20 +761,20 @@ export default function Radar({ theme, route }: any) {
                 </View>
               </View>
 
-              <Text style={styles.premiumSectionTitle}>WYPOSAŻENIE (RESTRYKCYJNE)</Text>
+              <Text style={styles.premiumSectionTitle}>{t('radar.calibration.legacy.amenities')}</Text>
               <View style={[styles.premiumFilterGroup, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
-                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Wymagaj balkonu</Text><Switch value={draftFilters.requireBalcony} onValueChange={v => handleFilterSelect('requireBalcony', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
+                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.requireBalcony')}</Text><Switch value={draftFilters.requireBalcony} onValueChange={v => handleFilterSelect('requireBalcony', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
-                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Wymagaj ogródka</Text><Switch value={draftFilters.requireGarden} onValueChange={v => handleFilterSelect('requireGarden', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
+                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.requireGarden')}</Text><Switch value={draftFilters.requireGarden} onValueChange={v => handleFilterSelect('requireGarden', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
-                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Tylko z windą</Text><Switch value={draftFilters.requireElevator} onValueChange={v => handleFilterSelect('requireElevator', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
+                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.requireElevator')}</Text><Switch value={draftFilters.requireElevator} onValueChange={v => handleFilterSelect('requireElevator', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
                 <View style={[styles.premiumDivider, { backgroundColor: isDark ? '#38383A' : '#E5E5EA', marginLeft: 16 }]} />
-                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>Tylko umeblowane</Text><Switch value={draftFilters.requireFurnished} onValueChange={v => handleFilterSelect('requireFurnished', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
+                <View style={styles.premiumSwitchRow}><Text style={[styles.premiumSwitchTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('radar.calibration.requireFurnished')}</Text><Switch value={draftFilters.requireFurnished} onValueChange={v => handleFilterSelect('requireFurnished', v)} trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: activeColor }} /></View>
               </View>
 
               <View style={styles.systemDisclaimerBox}>
                 <Ionicons name="shield-checkmark" size={24} color={BaseColors.subtitle} style={{ marginBottom: 8 }} />
-                <Text style={styles.systemDisclaimerText}>Radar to integralny rdzeń ekosystemu EstateOS™. Obecnie wspieramy wybrane metropolie, a nasz zasięg nieustannie rośnie.</Text>
+                <Text style={styles.systemDisclaimerText}>{t('radar.calibration.legacy.disclaimer')}</Text>
               </View>
 
               <View style={{ height: 40 }} />
@@ -765,7 +782,7 @@ export default function Radar({ theme, route }: any) {
 
             <BlurView intensity={isDark ? 80 : 100} tint={isDark ? "dark" : "light"} style={styles.premiumModalFooter}>
               <Pressable style={({pressed}) => [styles.premiumApplyBtn, { backgroundColor: activeColor, shadowColor: activeColor }, pressed && { opacity: 0.8, transform: [{scale: 0.98}] }]} onPress={applyCalibration}>
-                <Text style={styles.premiumApplyBtnText}>Zastosuj i Skanuj</Text>
+                <Text style={styles.premiumApplyBtnText}>{t('radar.calibration.legacy.applyAndScan')}</Text>
               </Pressable>
             </BlurView>
           </View>
@@ -795,15 +812,15 @@ export default function Radar({ theme, route }: any) {
             </Animated.View>
 
             <View style={styles.cinematicTextContainer}>
-              <Text style={[styles.cinematicTextMain, { color: activeColor, textShadowColor: activeColor }]}>ANALIZA TOPOGRAFII</Text>
-              <Text style={styles.cinematicTextSub}>ESTATE OS™ KINETIC SCAN...</Text>
+              <Text style={[styles.cinematicTextMain, { color: activeColor, textShadowColor: activeColor }]}>{t('radar.calibration.legacy.scanTopography')}</Text>
+              <Text style={styles.cinematicTextSub}>{t('radar.calibration.legacy.scanKinetic')}</Text>
             </View>
           </Animated.View>
 
           <Animated.View style={[{ alignItems: 'center', justifyContent: 'center' }, { opacity: resultOpacity, transform: [{ scale: resultScale }] }, StyleSheet.absoluteFill]} pointerEvents="none">
              <Text style={[styles.resultValue, { color: activeColor, textShadowColor: activeColor }]}>{projectedCount}</Text>
-             <Text style={[styles.resultText, { color: '#FFF' }]}>DOPASOWANYCH OFERT</Text>
-             <Text style={styles.resultLuster}>ESTATE OS™ KINETIC</Text>
+             <Text style={[styles.resultText, { color: '#FFF' }]}>{t('radar.calibration.legacy.matchedOffers')}</Text>
+             <Text style={styles.resultLuster}>{t('radar.calibration.legacy.scanBrand')}</Text>
           </Animated.View>
 
           <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#FFF', opacity: flashOpacity }]} pointerEvents="none" />

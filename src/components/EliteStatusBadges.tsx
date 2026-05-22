@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Crown, Flame, ShieldCheck } from 'lucide-react-native';
+import { useI18n } from '../i18n';
 import { isAgentRoleIdentity, isInvestorProIdentity, isPartnerIdentity } from '../utils/partnerIdentity';
 
 type Props = {
@@ -38,6 +39,7 @@ function Badge({
 const ADMIN_BADGE_RED = '#DC2626';
 
 function AdminBadge({ compact }: { compact: boolean }) {
+  const { t } = useI18n();
   return (
     <View
       style={[
@@ -48,13 +50,14 @@ function AdminBadge({ compact }: { compact: boolean }) {
     >
       <Flame size={compact ? 12 : 13} color="#FFFFFF" strokeWidth={2.6} />
       <Text style={[styles.text, compact ? styles.textCompact : null, styles.adminText, { color: '#FFFFFF' }]}>
-        ADMINISTRATOR
+        {t('offer.badges.administrator')}
       </Text>
     </View>
   );
 }
 
 export default function EliteStatusBadges({ subject, isDark = false, compact = false }: Props) {
+  const { t } = useI18n();
   const role = String(subject?.role || subject?.user?.role || '').trim().toUpperCase();
   const isAdmin = role === 'ADMIN';
 
@@ -66,7 +69,7 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
 
   // Nowa rola AGENT (mobile) → plakietka „Agent EstateOS".
   // Legacy (Partner/Agency/Broker, planType=AGENCY) → „Partner EstateOS".
-  const partnerLabel = isAgentRoleIdentity(subject) ? 'Agent EstateOS' : 'Partner EstateOS';
+  const partnerLabel = isAgentRoleIdentity(subject) ? t('offer.badges.agent') : t('offer.badges.partner');
 
   const partnerColors = isDark
     ? { bg: 'rgba(255,149,0,0.2)', border: 'rgba(255,159,10,0.7)', text: '#FFB340' }
@@ -89,7 +92,7 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
       {showPro ? (
         <Badge
           compact={compact}
-          label="Investor Pro"
+          label={t('offer.badges.investorPro')}
           colors={proTitaniumColors}
           icon={<Crown size={compact ? 11 : 12} color={proTitaniumColors.text} />}
         />

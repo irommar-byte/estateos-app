@@ -33,6 +33,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Lock, Compass, ChevronLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import type { OfferLifecycleReason } from '../utils/offerLifecycle';
+import { useI18n } from '../i18n';
 
 type Props = {
   visible: boolean;
@@ -70,6 +71,7 @@ export default function ClosedOfferOverlay({
   onGoBack,
   onBrowseSimilar,
 }: Props) {
+  const { t } = useI18n();
   const fade = useRef(new Animated.Value(0)).current;
   const dotPulse = useRef(new Animated.Value(0)).current;
 
@@ -110,24 +112,32 @@ export default function ClosedOfferOverlay({
   const accent = ACCENT_BY_REASON[reason] || '#9ca3af';
   const dotOpacity = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
   const dotScale = dotPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.35] });
-  const fineprint = getFineprintCopy(reason, isOwner);
+
+  const ownerHeadline = t(`offer.closedOverlay.ownerHeadlines.${reason}`);
+  const ownerSublineKey = `offer.closedOverlay.ownerSublines.${reason}`;
+  const ownerSublineTranslated = t(ownerSublineKey);
+  const ownerSubline =
+    ownerSublineTranslated !== ownerSublineKey ? ownerSublineTranslated : subline;
+
+  const fineprintKey =
+    reason === 'SOLD' || reason === 'EXPIRED'
+      ? `offer.closedOverlay.${isOwner ? 'owner' : 'viewer'}Fineprint.${reason}`
+      : `offer.closedOverlay.${isOwner ? 'owner' : 'viewer'}Fineprint.default`;
+  const fineprint = t(fineprintKey);
+
+  const displayHeadline = isOwner ? ownerHeadline : headline;
+  const displaySubline = isOwner ? ownerSubline : subline;
 
   return (
     <Animated.View pointerEvents="auto" style={[StyleSheet.absoluteFill, styles.root, { opacity: fade }]}>
-      {/* Warstwa 1 — BlurView w `dark` tincie, intensywny żeby tło ekranu
-          straciło ostrość i nie odciągało wzroku od komunikatu. */}
       <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
 
-      {/* Warstwa 2 — gradient czarno-przezroczysty, lekko mocniejszy
-          w środku ekranu, żeby tekst miał stabilny kontrast nawet na
-          jasnych zdjęciach hero. */}
       <LinearGradient
         colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.78)', 'rgba(0,0,0,0.92)']}
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Warstwa 3 — treść. Trzymamy ją w `safe-padding`, centralnie. */}
       <View style={styles.contentWrap}>
         <View style={[styles.iconWrap, { borderColor: `${accent}55`, backgroundColor: `${accent}1A` }]}>
           <Lock color={accent} size={28} strokeWidth={2} />
@@ -140,16 +150,16 @@ export default function ClosedOfferOverlay({
               { backgroundColor: accent, shadowColor: accent, opacity: dotOpacity, transform: [{ scale: dotScale }] },
             ]}
           />
-          <Text style={[styles.eyebrowText, { color: accent }]}>STAN OFERTY</Text>
+          <Text style={[styles.eyebrowText, { color: accent }]}>{t('offer.closedOverlay.eyebrow')}</Text>
         </View>
 
         <Text style={styles.headline} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>
-          {isOwner ? formatOwnerHeadline(headline) : headline}
+          {displayHeadline}
         </Text>
 
         <View style={[styles.divider, { backgroundColor: accent, shadowColor: accent }]} />
 
-        <Text style={styles.subline}>{isOwner ? formatOwnerSubline(subline, reason) : subline}</Text>
+        <Text style={styles.subline}>{displaySubline}</Text>
 
         <View style={styles.actionsRow}>
           {onGoBack ? (
@@ -162,7 +172,7 @@ export default function ClosedOfferOverlay({
             >
               <ChevronLeft size={18} color="#0a0a0a" />
               <Text style={styles.primaryBtnText} numberOfLines={1}>
-                {isOwner ? 'Wróć do panelu' : 'Wróć do Radaru'}
+                {isOwner ? t('offer.closedOverlay.backToPanel') : t('offer.closedOverlay.backToRadar')}
               </Text>
             </Pressable>
           ) : null}
@@ -176,7 +186,7 @@ export default function ClosedOfferOverlay({
             >
               <Compass size={16} color="#ffffff" />
               <Text style={styles.secondaryBtnText} numberOfLines={1}>
-                Podobne oferty
+                {t('offer.closedOverlay.similarOffers')}
               </Text>
             </Pressable>
           ) : null}
@@ -188,44 +198,7 @@ export default function ClosedOfferOverlay({
   );
 }
 
-function formatOwnerHeadline(headline: string): string {
-  // Drobny lift tonu dla właściciela: zamiast bezosobowego komunikatu
-  // używamy „Twoja oferta jest …". Jest mniej dystansująco.
-  return headline.replace(/^Oferta /, 'Twoja oferta jest ').replace(/^Nieruchomość /, 'Twoja nieruchomość ');
-}
-
-function formatOwnerSubline(subline: string, reason: OfferLifecycleReason): string {
-  if (reason === 'SOLD') {
-    return 'Transakcja została sfinalizowana. Oferta nie jest już widoczna dla kupujących.';
-  }
-  if (reason === 'EXPIRED') {
-    return 'Minął okres publikacji. Oferta zniknęła z Radaru — możesz ją przywrócić w Moje ogłoszenia.';
-  }
-  if (reason === 'ARCHIVED' || /wycofał/i.test(subline)) {
-    return 'Wycofałeś tę ofertę z rynku. Nie przyjmuje już wiadomości ani nowych propozycji.';
-  }
-  return subline;
-}
-
-function getFineprintCopy(reason: OfferLifecycleReason, isOwner: boolean): string {
-  if (isOwner) {
-    if (reason === 'SOLD') {
-      return 'Sprzedaż została zamknięta. Oferta pozostaje w archiwum jako potwierdzenie transakcji.';
-    }
-    if (reason === 'EXPIRED') {
-      return 'Okres publikacji minął. W Moje ogłoszenia możesz przywrócić ofertę na kolejne 30 dni przez Pakiet Plus.';
-    }
-    return 'Oferta nie jest widoczna na rynku. W Moje ogłoszenia możesz ją zarządzać lub przywrócić publikację przez Pakiet Plus.';
-  }
-  if (reason === 'SOLD') {
-    return 'Ta nieruchomość została sprzedana. Nie można już wysłać wiadomości ani złożyć propozycji.';
-  }
-  return 'Ta oferta nie przyjmuje już kontaktu ani propozycji. Wróć do Radaru, aby zobaczyć aktywne ogłoszenia.';
-}
-
 const styles = StyleSheet.create({
-  /** Najwyższe `zIndex` żeby przykryć WSZYSTKO — także dolny pasek CTA,
-   *  modal map itp. */
   root: {
     zIndex: 9999,
     elevation: 30,

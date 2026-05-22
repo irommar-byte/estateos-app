@@ -22,6 +22,7 @@
         "applinks:estateos.pl"
       ],
       "infoPlist": {
+        "CFBundleLocalizations": ["pl", "en", "ru"],
         "ITSAppUsesNonExemptEncryption": false,
         "NSCalendarsUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
         "NSCalendarsFullAccessUsageDescription": "EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).",
@@ -95,7 +96,8 @@
         }
       ],
       "react-native-iap",
-      "expo-font"
+      "expo-font",
+      "expo-localization"
     ]
   }
 }

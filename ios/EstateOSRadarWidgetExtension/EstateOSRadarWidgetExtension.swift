@@ -275,18 +275,18 @@ struct EstateOSRadarLiveActivity: Widget {
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
         var body: some View {
-            ZStack {
+                ZStack {
                 Circle()
                     .stroke(accent.opacity(0.24), lineWidth: 1.0)
                     .frame(width: 16, height: 16)
 
-                Circle()
+                    Circle()
                     .stroke(accent.opacity(0.14), lineWidth: 0.9)
                     .frame(width: 10.5, height: 10.5)
 
-                Circle()
+                    Circle()
                     .trim(from: 0.04, to: 0.24)
-                    .stroke(
+                        .stroke(
                         accent.opacity(0.96),
                         style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
                     )
@@ -1089,7 +1089,7 @@ struct EstateOSRadarLiveActivity: Widget {
                             Text("™").foregroundColor(textMain)
                         }
                         .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .fontWeight(.bold)
+                    .fontWeight(.bold)
                         .lineLimit(1)
 
                         HStack(spacing: 6) {
@@ -1148,7 +1148,7 @@ struct EstateOSRadarLiveActivity: Widget {
 
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 0) {
+                    HStack(spacing: 0) {
                             Text("Estate").foregroundColor(textMain)
                             Text("OS").foregroundColor(accent)
                             Text("™").foregroundColor(textMain)
@@ -1246,6 +1246,6 @@ private extension View {
 @main
 struct EstateOSRadarWidgetBundle: WidgetBundle {
     var body: some Widget {
-        EstateOSRadarLiveActivity()
+            EstateOSRadarLiveActivity()
     }
 }

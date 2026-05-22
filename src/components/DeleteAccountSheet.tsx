@@ -15,6 +15,7 @@ import {
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useI18n } from '../i18n';
 
 type Props = {
   visible: boolean;
@@ -34,6 +35,7 @@ export default function DeleteAccountSheet({
   hasPaidIndicators = false,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
   const [ack, setAck] = useState(false);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -101,9 +103,9 @@ export default function DeleteAccountSheet({
 
               {hasPaidIndicators ? (
                 <View style={[styles.subsBtn, { borderColor: border }]}>
-                  <Text style={[styles.subsBtnText, { color: textMain }]}>Aktywne płatne funkcje</Text>
+                  <Text style={[styles.subsBtnText, { color: textMain }]}>{t('offer.investorPro.paidFeaturesTitle')}</Text>
                   <Text style={[styles.subsHint, { color: textMuted }]}>
-                    Usunięcie konta usuwa dostęp do funkcji konta w EstateOS. Pakiet Plus jest jednorazowym zakupem w aplikacji pozwalającym dodać jedną dodatkową publikację na 30 dni; Investor Pro nie jest kupowany w aplikacji.
+                    {t('offer.investorPro.deleteAccountDisclaimer')}
                   </Text>
                 </View>
               ) : null}

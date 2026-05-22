@@ -15,6 +15,7 @@ import {
   getDeviceRegionCountry,
   flagEmojiFromIso2,
 } from '../utils/phoneRegions';
+import { useI18n } from '../i18n';
 
 // --- LUKSUSOWE IKONY WALIDACJI ---
 const StatusIcon = ({ status }: { status: string }) => {
@@ -48,10 +49,14 @@ function PasswordEyeToggle({
   revealed,
   onToggle,
   iconColor,
+  a11yHide,
+  a11yShow,
 }: {
   revealed: boolean;
   onToggle: () => void;
   iconColor: string;
+  a11yHide: string;
+  a11yShow: string;
 }) {
   return (
     <Pressable
@@ -61,7 +66,7 @@ function PasswordEyeToggle({
       }}
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       accessibilityRole="button"
-      accessibilityLabel={revealed ? 'Ukryj hasło' : 'Pokaż hasło'}
+      accessibilityLabel={revealed ? a11yHide : a11yShow}
     >
       <Ionicons name={revealed ? 'eye-off-outline' : 'eye-outline'} size={22} color={iconColor} />
     </Pressable>
@@ -69,7 +74,7 @@ function PasswordEyeToggle({
 }
 
 // --- ANIMOWANY CHECKBOX Z EFEKTEM GLOW ---
-const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme }: any) => {
+const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme, t }: any) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   
   useEffect(() => {
@@ -89,11 +94,11 @@ const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme }
       </Pressable>
       <View style={styles.checkboxTextContainer}>
         <Text style={[styles.checkboxText, { color: theme.subtitle }]}>
-          Oświadczam, że zapoznałem(-am) się z{' '}
-          <Text onPress={onReadTerms} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>Regulaminem</Text>
-          {' '}oraz{' '}
-          <Text onPress={onReadPrivacy} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>Polityką prywatności</Text>
-          {' '}i akceptuję warunki Regulaminu.
+          {t('auth.termsPrefix')}
+          <Text onPress={onReadTerms} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>{t('auth.termsLink')}</Text>
+          {t('auth.termsMiddle')}
+          <Text onPress={onReadPrivacy} style={{ color: theme.text, fontWeight: '700', textDecorationLine: 'underline' }}>{t('auth.privacyLink')}</Text>
+          {t('auth.termsSuffix')}
         </Text>
       </View>
     </View>
@@ -101,7 +106,7 @@ const PremiumCheckbox = ({ checked, onPress, onReadTerms, onReadPrivacy, theme }
 };
 
 // --- MODAL: RESET HASŁA ---
-const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
+const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -124,7 +129,7 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
   }, [visible]);
 
   const handleSendEmailCode = async () => {
-    if (!email.includes('@')) return Alert.alert("Błąd", "Wpisz poprawny adres e-mail.");
+    if (!email.includes('@')) return Alert.alert(t('common.error'), t('auth.invalidEmail'));
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/auth/reset-password`, {
@@ -135,15 +140,15 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
         setStep(2);
       } else {
         const d = await res.json();
-        Alert.alert("Błąd", d.message || "Użytkownik nie istnieje.");
+        Alert.alert(t('common.error'), d.message || t('auth.userNotFound'));
       }
-    } catch { Alert.alert("Błąd", "Brak połączenia z serwerem."); }
+    } catch { Alert.alert(t('common.error'), t('common.networkError')); }
     setLoading(false);
   };
 
   const handleFinalReset = async () => {
-    if (otp.length < 4) return Alert.alert("Błąd", "Wpisz kod z e-maila.");
-    if (newPassword.length < 6) return Alert.alert("Błąd", "Nowe hasło musi mieć min. 6 znaków.");
+    if (otp.length < 4) return Alert.alert(t('common.error'), t('auth.enterOtp'));
+    if (newPassword.length < 6) return Alert.alert(t('common.error'), t('auth.passwordMin6'));
     
     setLoading(true);
     try {
@@ -153,11 +158,11 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
       });
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Sukces!", "Hasło zmienione. Możesz się zalogować.", [{ text: "Super", onPress: onClose }]);
+        Alert.alert(t('common.successTitle'), t('auth.passwordChanged'), [{ text: t('common.super'), onPress: onClose }]);
       } else {
-        Alert.alert("Błąd", "Kod jest nieprawidłowy lub wygasł.");
+        Alert.alert(t('common.error'), t('auth.invalidOtp'));
       }
-    } catch { Alert.alert("Błąd", "Problem z resetowaniem."); }
+    } catch { Alert.alert(t('common.error'), t('auth.resetFailed')); }
     setLoading(false);
   };
 
@@ -166,35 +171,35 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 }}>
         <View style={{ backgroundColor: theme.background, borderRadius: 30, padding: 25, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 20, fontWeight: '800', color: theme.text }}>{step === 1 ? 'Resetuj przez Email' : 'Ustaw nowe hasło'}</Text>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: theme.text }}>{step === 1 ? t('auth.resetTitle1') : t('auth.resetTitle2')}</Text>
             <Pressable onPress={onClose}><Ionicons name="close-circle" size={28} color={theme.subtitle} /></Pressable>
           </View>
           {step === 1 ? (
             <View>
-              <Text style={{ color: theme.subtitle, marginBottom: 20, fontSize: 14 }}>Wyślemy Ci wiadomość e-mail z jednorazowym kodem weryfikacyjnym.</Text>
+              <Text style={{ color: theme.subtitle, marginBottom: 20, fontSize: 14 }}>{t('auth.resetHint1')}</Text>
               <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
                 <View style={styles.inputRow}>
-                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Twój e-mail" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
+                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.emailPlaceholder')} autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
                 </View>
               </View>
               <Pressable onPress={handleSendEmailCode} style={[styles.mainButton, { backgroundColor: '#10b981', marginTop: 20 }]}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>Wyślij kod</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>{t('auth.sendCode')}</Text>}
               </Pressable>
             </View>
           ) : (
             <View>
-              <Text style={{ color: theme.subtitle, marginBottom: 15, fontSize: 14 }}>Wpisz kod z e-maila oraz nowe hasło.</Text>
+              <Text style={{ color: theme.subtitle, marginBottom: 15, fontSize: 14 }}>{t('auth.resetHint2')}</Text>
               <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
                 <View style={styles.inputRow}>
                   <Ionicons name="mail-open-outline" size={20} color={theme.subtitle} style={{marginRight: 10}} />
-                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Kod (np. 1234)" keyboardType="numeric" placeholderTextColor={theme.subtitle} value={otp} onChangeText={setOtp} />
+                  <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.otpPlaceholder')} keyboardType="numeric" placeholderTextColor={theme.subtitle} value={otp} onChangeText={setOtp} />
                 </View>
                 <View style={[styles.divider, { backgroundColor: cardBorder }]} />
                 <View style={styles.inputRow}>
                   <Ionicons name="key-outline" size={20} color={theme.subtitle} style={{ marginRight: 10 }} />
                   <TextInput
                     style={[styles.input, { color: theme.text, flex: 1 }]}
-                    placeholder="Nowe hasło"
+                    placeholder={t('auth.newPasswordPlaceholder')}
                     secureTextEntry={!newPasswordVisible}
                     placeholderTextColor={theme.subtitle}
                     value={newPassword}
@@ -204,11 +209,13 @@ const ForgotPasswordModal = ({ visible, onClose, theme }: any) => {
                     revealed={newPasswordVisible}
                     onToggle={() => setNewPasswordVisible((v) => !v)}
                     iconColor={theme.subtitle}
+                    a11yHide={t('auth.hidePassword')}
+                    a11yShow={t('auth.showPassword')}
                   />
                 </View>
               </View>
               <Pressable onPress={handleFinalReset} style={[styles.mainButton, { backgroundColor: '#10b981', marginTop: 20 }]}>
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>Zmień hasło</Text>}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainButtonText}>{t('auth.changePassword')}</Text>}
               </Pressable>
             </View>
           )}
@@ -227,6 +234,7 @@ export default function AuthScreen({
   /** Z nawigacji (np. gość z oferty): który formularz pokazać od razu. */
   authIntent?: 'login' | 'register';
 }) {
+  const { t } = useI18n();
   const navigation = useNavigation<any>();
   const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' ? false : true));
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
@@ -343,30 +351,27 @@ export default function AuthScreen({
         const normalizedPassword = String(password || '');
         const ok = await store.login(normalizedEmail, normalizedPassword);
         if (!ok) {
-          Alert.alert('Błąd logowania', store.error || 'Nieprawidłowy e-mail lub hasło.');
+          Alert.alert(t('auth.loginErrorTitle'), store.error || t('auth.loginFailed'));
           return;
         }
       } else {
         const regDigits = phone.replace(/\D/g, '');
         const regE164 = buildE164FromNational(phoneCountryIso, regDigits);
         if (!firstName || !lastName || !regE164 || !isValidPhoneNumber(regE164)) {
-          Alert.alert('Błąd', 'Wypełnij poprawnie wizytówkę (imię, nazwisko i pełny numer telefonu dla wybranego kraju).');
+          Alert.alert(t('common.error'), t('auth.fillBusinessCard'));
           return;
         }
         if (role === 'AGENT' && companyName.trim().length < 2) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Alert.alert(
-            'Brakuje nazwy biura',
-            'Jako agent musisz wpisać nazwę swojego biura / agencji. To pole pojawi się publicznie obok Twojego imienia w ofertach i radarze.',
-          );
+          Alert.alert(t('auth.agencyMissingTitle'), t('auth.agencyMissingBody'));
           return;
         }
-        if (emailStatus === 'taken') { Alert.alert("Błąd", "Ten adres e-mail jest już zarejestrowany."); return; }
-        if (phoneStatus === 'taken') { Alert.alert("Błąd", "Ten numer telefonu jest już używany."); return; }
+        if (emailStatus === 'taken') { Alert.alert(t('common.error'), t('auth.emailTaken')); return; }
+        if (phoneStatus === 'taken') { Alert.alert(t('common.error'), t('auth.phoneTaken')); return; }
         
         if (!termsAccepted) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          Alert.alert("Wymagany Regulamin", "Proszę zapoznać się z regulaminem i zaakceptować jego warunki przed dołączeniem do platformy.");
+          Alert.alert(t('auth.termsRequiredTitle'), t('auth.termsRequired'));
           return;
         }
 
@@ -389,20 +394,20 @@ export default function AuthScreen({
               .sendCurrentEmailVerification()
               .catch(() => ({ ok: false, error: 'Wysyłka kodu nieudana.' } as { ok: boolean; error?: string }));
             const verifiedMsg = verifySend?.ok
-              ? `Wysłaliśmy 6-cyfrowy kod weryfikacyjny na ${email}.\nOtwórz skrzynkę i potwierdź adres w „Profil → Edytuj dane”.\n\nDodatkowo zweryfikuj numer telefonu (SMS), aby odblokować wszystkie funkcje.`
-              : `Witamy w gronie EstateOS™!\n\nZweryfikuj swój numer telefonu (SMS) oraz adres e-mail w profilu, aby odblokować wszystkie funkcje.`;
+              ? t('auth.accountCreatedVerified', { email })
+              : t('auth.accountCreatedFallback');
             Alert.alert(
-              "Konto pomyślnie założone!",
+              t('auth.accountCreatedTitle'),
               verifiedMsg,
-              [{ text: "Rozumiem", style: "default" }]
+              [{ text: t('auth.understand'), style: 'default' }]
             );
           } else {
-            Alert.alert("Sukces", "Konto założone! Zaloguj się swoimi danymi.");
+            Alert.alert(t('common.success'), t('auth.accountCreated'));
             setIsLogin(true);
           }
         }
       }
-    } catch (e: any) { Alert.alert('Błąd', e.message); }
+    } catch (e: any) { Alert.alert(t('common.error'), e.message); }
   };
 
   // 🔥 MISTRZOWSKA OBSŁUGA PASSKEY Z EFEKTEM 3D 🔥
@@ -412,7 +417,7 @@ export default function AuthScreen({
     
     try { 
       // 1. Oczekujemy na weryfikację Face ID. Store obsłuży dane i token, w ciszy.
-      const success = await store.loginWithPasskey(); 
+      const success = await store.loginWithPasskey(email); 
 
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -446,10 +451,7 @@ export default function AuthScreen({
       const handledByService =
         /brak klucza|face id|touch id|brak po\u0142\u0105czenia|niezgodno\u015b\u0107|logowanie face id|chwilowy problem|nie uda\u0142o si\u0119 doda\u0107|biometri/i.test(msg);
       if (!isCancelLike && !handledByService && msg) {
-        Alert.alert(
-          'Nie udało się zalogować',
-          'Spróbuj ponownie albo zaloguj się e-mailem i hasłem.',
-        );
+        Alert.alert(t('auth.passkeyFailedTitle'), t('auth.passkeyFailedBody'));
       }
     } finally {
       setIsPasskeyLoading(false);
@@ -517,7 +519,7 @@ export default function AuthScreen({
               color={isLogin ? '#10b981' : role === 'AGENT' ? '#FF9F0A' : '#10b981'}
             />
           </View>
-          <Text style={[styles.title, { color: theme.text }]}>{isLogin ? 'Witaj ponownie' : 'Stwórz Wizytówkę'}</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{isLogin ? t('auth.welcomeBack') : t('auth.createCard')}</Text>
           
           {!isLogin && (
             <View style={{ marginBottom: 25 }}>
@@ -527,7 +529,7 @@ export default function AuthScreen({
                   style={[styles.roleButton, role === 'PRIVATE' && styles.roleButtonActivePrivate]}
                 >
                   <Text style={[styles.roleText, { color: role === 'PRIVATE' ? '#FFF' : theme.subtitle }]}>
-                    Osoba prywatna
+                    {t('auth.rolePrivate')}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -535,7 +537,7 @@ export default function AuthScreen({
                   style={[styles.roleButton, role === 'AGENT' && styles.roleButtonActiveAgent]}
                 >
                   <Text style={[styles.roleText, { color: role === 'AGENT' ? '#FFF' : theme.subtitle }]}>
-                    Agent
+                    {t('auth.roleAgent')}
                   </Text>
                 </Pressable>
               </View>
@@ -545,11 +547,11 @@ export default function AuthScreen({
           {!isLogin && (
             <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
               <View style={styles.inputRow}>
-                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Imię" placeholderTextColor={theme.subtitle} value={firstName} onChangeText={setFirstName} />
+                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.firstName')} placeholderTextColor={theme.subtitle} value={firstName} onChangeText={setFirstName} />
               </View>
               <View style={[styles.divider, { backgroundColor: dividerColor }]} />
               <View style={styles.inputRow}>
-                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Nazwisko" placeholderTextColor={theme.subtitle} value={lastName} onChangeText={setLastName} />
+                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.lastName')} placeholderTextColor={theme.subtitle} value={lastName} onChangeText={setLastName} />
               </View>
               {/*
                 Pole „Nazwa firmy" pojawia się TYLKO dla roli AGENT —
@@ -570,7 +572,7 @@ export default function AuthScreen({
                     />
                     <TextInput
                       style={[styles.input, { color: theme.text, flex: 1 }]}
-                      placeholder="Nazwa biura / agencji"
+                      placeholder={t('auth.agencyName')}
                       placeholderTextColor={theme.subtitle}
                       value={companyName}
                       onChangeText={setCompanyName}
@@ -593,7 +595,7 @@ export default function AuthScreen({
                   <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>+{dialCodeFor(phoneCountryIso)}</Text>
                   <Ionicons name="chevron-down" size={16} color={theme.subtitle} style={{ marginLeft: 4 }} />
                 </Pressable>
-                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Numer" placeholderTextColor={theme.subtitle} keyboardType="numeric" value={phone} onChangeText={handlePhoneChange} />
+                <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.phoneNumber')} placeholderTextColor={theme.subtitle} keyboardType="numeric" value={phone} onChangeText={handlePhoneChange} />
                 <StatusIcon status={phoneStatus} />
               </View>
             </View>
@@ -601,14 +603,14 @@ export default function AuthScreen({
 
           <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: isLogin ? 0 : 15 }]}>
             <View style={styles.inputRow}>
-              <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder="Email" autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
+              <TextInput style={[styles.input, { color: theme.text, flex: 1 }]} placeholder={t('auth.email')} autoCapitalize="none" keyboardType="email-address" placeholderTextColor={theme.subtitle} value={email} onChangeText={setEmail} />
               {!isLogin && <StatusIcon status={emailStatus} />}
             </View>
             <View style={[styles.divider, { backgroundColor: dividerColor }]} />
             <View style={styles.inputRow}>
               <TextInput
                 style={[styles.input, { color: theme.text, flex: 1 }]}
-                placeholder="Hasło"
+                placeholder={t('auth.password')}
                 secureTextEntry={!passwordVisible}
                 placeholderTextColor={theme.subtitle}
                 value={password}
@@ -620,13 +622,15 @@ export default function AuthScreen({
                 revealed={passwordVisible}
                 onToggle={() => setPasswordVisible((v) => !v)}
                 iconColor={theme.subtitle}
+                a11yHide={t('auth.hidePassword')}
+                a11yShow={t('auth.showPassword')}
               />
             </View>
           </View>
 
           {isLogin && (
             <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsForgotModalVisible(true); }} style={{ alignSelf: 'flex-end', marginTop: 15 }}>
-              <Text style={{ color: theme.subtitle, fontSize: 13, fontWeight: '600' }}>Nie pamiętasz hasła?</Text>
+              <Text style={{ color: theme.subtitle, fontSize: 13, fontWeight: '600' }}>{t('auth.forgotPassword')}</Text>
             </Pressable>
           )}
 
@@ -637,6 +641,7 @@ export default function AuthScreen({
               onReadTerms={() => { Haptics.selectionAsync(); navigation.navigate('Terms'); }}
               onReadPrivacy={() => { Haptics.selectionAsync(); navigation.navigate('Terms', { initialScrollTo: 'privacy' }); }}
               theme={theme}
+              t={t}
             />
           )}
 
@@ -645,14 +650,14 @@ export default function AuthScreen({
               { opacity: pressed ? 0.8 : 1, backgroundColor: isLogin ? '#10b981' : (role === 'AGENT' ? '#FF9F0A' : '#10b981') },
               !isLogin && role === 'AGENT' && { shadowColor: '#FF9F0A' }
             ]}>
-            <Text style={styles.mainButtonText}>{isLogin ? 'Zaloguj się' : 'Dołącz do ekosystemu EstateOS™'}</Text>
+            <Text style={styles.mainButtonText}>{isLogin ? t('auth.login') : t('auth.joinEcosystem')}</Text>
           </Pressable>
 
           {isLogin && (
             <View style={styles.passkeySection}>
               <View style={styles.dividerRow}>
                 <View style={[styles.line, { backgroundColor: dividerColor }]} />
-                <Text style={{ color: theme.subtitle, paddingHorizontal: 15, fontSize: 12, fontWeight: '700' }}>LUB</Text>
+                <Text style={{ color: theme.subtitle, paddingHorizontal: 15, fontSize: 12, fontWeight: '700' }}>{t('auth.orDivider')}</Text>
                 <View style={[styles.line, { backgroundColor: dividerColor }]} />
               </View>
 
@@ -660,7 +665,7 @@ export default function AuthScreen({
                 {isPasskeyLoading ? <ActivityIndicator size="small" color={theme.text} /> : (
                   <>
                     <Ionicons name="finger-print" size={24} color={theme.text} style={{ marginRight: 12 }} />
-                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>Zaloguj się z Face ID</Text>
+                    <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>{t('auth.passkeyFaceId')}</Text>
                   </>
                 )}
               </Pressable>
@@ -669,9 +674,9 @@ export default function AuthScreen({
 
           <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsLogin(!isLogin); }} style={{ marginTop: 25, alignItems: 'center' }}>
             <Text style={{ color: theme.subtitle, fontSize: 15 }}>
-              {isLogin ? 'Nie masz konta? ' : 'Masz już konto? '}
+              {isLogin ? `${t('auth.noAccount')} ` : `${t('auth.haveAccount')} `}
               <Text style={{ color: isLogin ? '#10b981' : (role === 'AGENT' ? '#FF9F0A' : '#10b981'), fontWeight: '700' }}>
-                {isLogin ? 'Zarejestruj się' : 'Zaloguj się'}
+                {isLogin ? t('auth.registerLink') : t('auth.loginLink')}
               </Text>
             </Text>
           </Pressable>
@@ -685,7 +690,7 @@ export default function AuthScreen({
         onSelect={setPhoneCountryIso}
         isDark={isDark}
       />
-      <ForgotPasswordModal visible={isForgotModalVisible} onClose={() => setIsForgotModalVisible(false)} theme={theme} />
+      <ForgotPasswordModal visible={isForgotModalVisible} onClose={() => setIsForgotModalVisible(false)} theme={theme} t={t} />
     </KeyboardAvoidingView>
   );
 }

@@ -51,6 +51,7 @@ import {
   validateAgentCommissionPercent,
 } from '../../lib/agentCommission';
 import { API_URL } from '../../config/network';
+import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
 
 const { width } = Dimensions.get('window');
 const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
@@ -94,12 +95,6 @@ function formatFloorSummary(f: unknown, translate: (key: string) => string): str
   return s;
 }
 
-function formatConditionLabel(cond: unknown, translate: (key: string) => string): string {
-  if (cond === 'READY') return translate('addOffer.step6.condition.ready');
-  if (cond === 'RENOVATION') return translate('addOffer.step6.condition.renovation');
-  if (cond === 'DEVELOPER') return translate('addOffer.step6.condition.developer');
-  return cond ? String(cond) : '';
-}
 
 const AMENITY_LABEL_KEYS: Record<
   'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isTwoLevel' | 'isFurnished',
@@ -863,7 +858,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           : draft.propertyType === 'PREMISES'
             ? t('addOffer.step6.propertyType.premises')
             : t('addOffer.step6.propertyType.fallback');
-  const conditionLabel = formatConditionLabel(draft.condition, t);
+  const conditionLabel = formatOfferConditionLabel(draft.condition, t, { empty: '' });
   const heatingSummaryLabel = t(
     HEATING_LABEL_KEYS[String(draft.heating || '')] || 'addOffer.step3.heating.none',
   );

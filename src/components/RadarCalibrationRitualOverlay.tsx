@@ -1,14 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+// @ts-nocheck
+/**
+ * EstateOS Radar — HARDWARE PERFECTION EDITION
+ * Kupno=Zielony, Wynajem=Niebieski. Twarde diody, sparkle blipy, wielkie miasto, odlot zygzakiem.
+ */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  RadialGradient,
+  LinearGradient as SvgLinearGradient,
+  Stop,
+  Path,
+  G,
+  Rect,
+} from 'react-native-svg';
 import Animated, {
   Easing,
   cancelAnimation,
   interpolate,
+  interpolateColor,
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
@@ -16,55 +30,31 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
-// === KONSTANTY BARWNE I TECHNICZNE ===
-const RR_BLACK = '#040405';
-const RR_GRAPHITE = '#101014';
-const RR_GOLD = '#c9b07d';
-const RR_GOLD_SOFT = 'rgba(201, 176, 125, 0.45)';
-const RR_IVORY = '#ebe7df';
-const STATUS_GREEN = '#32D74B'; // Apple iOS Green
+// === PALETA MATERIAŁÓW ===
+const TITANIUM_DARK = '#121216';
+const BRASS_GOLD = '#CBA135';
+const BRASS_DARK = '#8A6A1C';
+const RENT_COLOR = '#00D1FF';
+const SELL_COLOR = '#39FF14';
+const PWR_AMBER = '#FFB800';
 
-// === TIMINGI FAZ ===
-// UWAGA: skan (PHASE_SCAN_MS) i odsłonięcie liczby ofert (COUNT_SHOW_DELAY_MS)
-// pozostają bez zmian — to jest ten kluczowy „moment ofert", od którego user
-// chce dynamicznego pchnięcia tempa. Wszystkie poniższe fazy (msg → gears →
-// brand) zostały skrócone, ale ŻADNA nie została wycięta.
+// === TIMINGI FIZYKI ===
 const PHASE_SCAN_MS = 4600;
-const COUNT_SHOW_DELAY_MS = 160;
-const MESSAGE_AFTER_COUNT_MS = 950;   // 1500 → szybsze pojawienie się komunikatu kalibracji
-const GEARS_AFTER_MSG_MS = 220;       // 380 → krótsza pauza przed zębatkami
+const MAP_REVEAL_MS = 800;
+const MAP_REVEAL_DELAY_MS = 200;
+const HOLD_BEFORE_FLYAWAY_MS = 2200;
+const FLYAWAY_DURATION_MS = 1400;
+const MACHINE_BOTTOM_PAD = 28;
+const SWEEP_MS_PER_TURN = 1600;
+const BLIP_SWEEP_TAIL_DEG = 48;
 
-const GEARS_APPEAR_MS = 240;          // 400 → ostrzejszy fade-in
-const GEARS_FAST_SPIN_MS = 800;       // 1400 → znacznie szybsze rozpędzanie (same ±1440° = większa prędkość kątowa)
-const GEARS_MERGE_MS = 460;           // 1000 → dynamiczny zatrzask
-const GEARS_SLOW_SPIN_MS = 700;       // 2000 → krótkie dotoczenie po sczepieniu, brand wskakuje szybciej
-
-const BRAND_HOLD_MS = 2600;
-const CINEMATIC_OUT_MS = 720;
-
-const GEARS_PHASE_START_MS =
-  PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS + GEARS_AFTER_MSG_MS;
-
-// Brand pokazuje się 80 ms po sczepieniu (zamiast 200) — wrażenie „klik → tabliczka”.
-const BRAND_VISIBLE_AT_MS =
-  GEARS_PHASE_START_MS + GEARS_APPEAR_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS + 80;
-
-const GOLD_COG = '#F4E8CC';
-const GOLD_COG_SHADOW = '#C9A227';
-const SWEEP_MS_PER_TURN = 5200;
-const TRAIL_SECTOR_DEG = 40;
 const BLIP_COUNT = 8;
-
-const COG_SIZE = 96;
-const INITIAL_GEAR_SEP = 60;
-
-const BLIP_SCATTER: { angleDeg: number; distMul: number }[] = [
+const BLIP_SCATTER = [
   { angleDeg: 43, distMul: 0.74 },
   { angleDeg: 118, distMul: 0.66 },
   { angleDeg: 171, distMul: 0.81 },
@@ -74,27 +64,7 @@ const BLIP_SCATTER: { angleDeg: number; distMul: number }[] = [
   { angleDeg: 89, distMul: 0.84 },
   { angleDeg: 204, distMul: 0.71 },
 ];
-
 const BLIP_DETECT_ANGLES = BLIP_SCATTER.map((b) => b.angleDeg);
-const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
-
-function polarFromTop(cx: number, cy: number, r: number, deg: number) {
-  const rad = (deg * Math.PI) / 180;
-  return {
-    x: cx + r * Math.sin(rad),
-    y: cy - r * Math.cos(rad),
-  };
-}
-
-function sectorPiePath(cx: number, cy: number, r: number, degStart: number, degEnd: number): string {
-  const p1 = polarFromTop(cx, cy, r, degStart);
-  const p2 = polarFromTop(cx, cy, r, degEnd);
-  let sweep = degEnd - degStart;
-  while (sweep <= 0) sweep += 360;
-  while (sweep > 360) sweep -= 360;
-  const largeArc = sweep > 180 ? 1 : 0;
-  return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
-}
 
 type Props = {
   visible: boolean;
@@ -102,700 +72,1045 @@ type Props = {
   transactionType: 'RENT' | 'SELL';
   matchingOffersCount: number;
   onComplete: () => void;
+  onFlyAwayBegin?: () => void;
 };
 
-const STAR_SEEDS = Array.from({ length: 56 }, (_, i) => ({
-  id: i,
-  x: ((i * 9301 + 49297) % 233280) / 233280,
-  y: ((i * 7919 + 15485863) % 233280) / 233280,
-  s: 0.6 + (((i * 17) % 40) / 100),
-}));
-
-function Star({
-  x,
-  y,
-  size,
-  phase,
-  screenWidth,
-  screenHeight,
-}: {
-  x: number;
-  y: number;
-  size: number;
-  phase: SharedValue<number>;
-  screenWidth: number;
-  screenHeight: number;
-}) {
-  const style = useAnimatedStyle(() => ({
-    opacity: interpolate(phase.value, [0, 0.35, 0.7, 1], [0, 0.12 + (x + y) * 0.15, 0.45 + x * 0.2, 0.18], 'clamp'),
-  }));
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.starDot,
-        { left: x * screenWidth, top: y * screenHeight * 0.72, width: size, height: size, borderRadius: size / 2 },
-        style,
-      ]}
-    />
-  );
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = (deg * Math.PI) / 180;
+  return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
 }
 
-function RadarTicks({ radius }: { radius: number }) {
-  const tickLen = radius * 0.44;
-  const tickTop = radius * 0.06;
+function blipIsLit(mask: number, index: number) {
+  'worklet';
+  return (mask & (1 << index)) !== 0;
+}
+
+function sweepPath(cx: number, cy: number, r: number, sweepDeg: number): string {
+  const p1 = polar(cx, cy, r, -sweepDeg);
+  const p2 = polar(cx, cy, r, 0);
+  const largeArc = sweepDeg > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${largeArc} 1 ${p2.x} ${p2.y} Z`;
+}
+
+function TitaniumScrew({ size, slotAngle }: { size: number; slotAngle: string }) {
+  const r = size / 2;
+  const slotLen = size * 0.55;
+  const slotW = Math.max(1.5, size * 0.12);
+  const slotDeg = parseFloat(slotAngle) || 0;
+
   return (
-    <View style={[styles.tickLayer, { width: radius, height: radius }]} pointerEvents="none">
-      {TICK_DEGREES.map((deg) => (
-        <View key={deg} style={[styles.tickArm, { width: radius, height: radius, transform: [{ rotate: `${deg}deg` }] }]}>
-          <View style={[styles.tickMark, { height: tickLen, marginTop: tickTop }]} />
-        </View>
-      ))}
+    <View style={{ width: size + 6, height: size + 6, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          position: 'absolute',
+          width: size + 4,
+          height: size + 4,
+          borderRadius: (size + 4) / 2,
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          top: 2,
+        }}
+      />
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: r,
+          borderWidth: 1,
+          borderTopColor: '#656575',
+          borderBottomColor: '#050508',
+          borderLeftColor: '#2A2A35',
+          borderRightColor: '#2A2A35',
+          overflow: 'hidden',
+        }}
+      >
+        <LinearGradient
+          colors={['#454552', '#1A1A22', '#08080C']}
+          locations={[0, 0.5, 1]}
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              width: slotLen,
+              height: slotW,
+              backgroundColor: '#020204',
+              borderRadius: slotW / 2,
+              transform: [{ rotate: `${slotDeg}deg` }],
+              borderTopWidth: 0.5,
+              borderTopColor: 'rgba(255,255,255,0.1)',
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              width: slotLen,
+              height: slotW,
+              backgroundColor: '#020204',
+              borderRadius: slotW / 2,
+              transform: [{ rotate: `${slotDeg + 90}deg` }],
+              borderTopWidth: 0.5,
+              borderTopColor: 'rgba(255,255,255,0.1)',
+            }}
+          />
+          <View style={{ width: size * 0.2, height: size * 0.2, borderRadius: size * 0.1, backgroundColor: '#000' }} />
+        </LinearGradient>
+      </View>
+      <View
+        style={{
+          position: 'absolute',
+          top: 3,
+          left: size * 0.25,
+          width: size * 0.3,
+          height: size * 0.1,
+          borderRadius: 2,
+          backgroundColor: 'rgba(255,255,255,0.25)',
+          transform: [{ rotate: '-20deg' }],
+        }}
+        pointerEvents="none"
+      />
     </View>
   );
 }
 
-function GoldGearIcon({ size, rotation }: { size: number; rotation: SharedValue<number> }) {
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
+function HardwareLED({ color, isActive, size }: { color: string; isActive: SharedValue<number>; size: number }) {
+  const coreStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(isActive.value, [0, 1], [0.15, 1], 'clamp'),
   }));
 
   return (
-    <Animated.View style={[styles.goldCogStack, { width: size + 8, height: size + 8 }, animatedStyle]} pointerEvents="none">
-      <Ionicons name="cog" size={size} color="rgba(40,32,18,0.55)" style={[styles.goldCogLayer, { transform: [{ translateX: 2.2 }, { translateY: 2.8 }] }]} />
-      <Ionicons name="cog" size={size} color={GOLD_COG} style={[styles.goldCogLayer, { textShadowColor: GOLD_COG_SHADOW, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 20 }]} />
-    </Animated.View>
+    <View style={[styles.ledHousing, { width: size, height: size, borderRadius: size / 2 }]}>
+      <View style={[styles.ledBevel, { borderRadius: size / 2 }]} />
+      <Animated.View
+        style={[
+          styles.ledCore,
+          {
+            width: size * 0.7,
+            height: size * 0.7,
+            borderRadius: (size * 0.7) / 2,
+            backgroundColor: color,
+          },
+          coreStyle,
+        ]}
+      >
+        <View style={[styles.ledReflex, { width: size * 0.25, height: size * 0.15, top: size * 0.1, left: size * 0.2 }]} />
+      </Animated.View>
+    </View>
   );
 }
 
-function SweepTrailPie({ radarSize, accentMid, accentBright }: { radarSize: number; accentMid: string; accentBright: string }) {
-  const cx = radarSize / 2;
-  const cy = radarSize / 2;
-  const rr = radarSize / 2 - 8;
-  const d = sectorPiePath(cx, cy, rr, -TRAIL_SECTOR_DEG, 0);
+function SparkleBlip({
+  center,
+  angleDeg,
+  dist,
+  blipIndex,
+  dotMask,
+  sweepValue,
+  themeColor,
+}: {
+  center: number;
+  angleDeg: number;
+  dist: number;
+  blipIndex: number;
+  dotMask: SharedValue<number>;
+  sweepValue: SharedValue<number>;
+  themeColor: string;
+}) {
+  const pos = polar(center, center, dist, angleDeg);
+
+  const sparkleStyle = useAnimatedStyle(() => {
+    if (blipIsLit(dotMask.value, blipIndex)) {
+      return { opacity: 1, transform: [{ scale: 1 }] };
+    }
+    const ang = ((sweepValue.value % 360) + 360) % 360;
+    let diff = ang - angleDeg;
+    if (diff < 0) diff += 360;
+    const scale = diff > 30 ? 0 : interpolate(diff, [0, 10, 30], [2.5, 1, 0], 'clamp');
+    const opacity = diff > 30 ? 0 : interpolate(diff, [0, 10, 30], [1, 0.8, 0], 'clamp');
+    return { opacity, transform: [{ scale }] };
+  });
+
+  const dotStyle = useAnimatedStyle(() => {
+    if (blipIsLit(dotMask.value, blipIndex)) return { opacity: 1 };
+    const ang = ((sweepValue.value % 360) + 360) % 360;
+    let diff = ang - angleDeg;
+    if (diff < 0) diff += 360;
+    return { opacity: diff > 30 ? 0 : interpolate(diff, [0, 10, 30], [1, 0.8, 0], 'clamp') };
+  });
+
   return (
-    <Svg width={radarSize} height={radarSize} style={StyleSheet.absoluteFillObject} pointerEvents="none">
+    <View style={[styles.sparkleWrap, { left: pos.x - 6, top: pos.y - 6 }]} pointerEvents="none">
+      <Animated.View style={[styles.sparkleHalo, { backgroundColor: themeColor }, sparkleStyle]} />
+      <Animated.View style={[{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#FFF' }, dotStyle]} />
+    </View>
+  );
+}
+
+function VolumetricSweep({ size, color }: { size: number; color: string }) {
+  const cx = size / 2;
+  const r = size / 2 - 8;
+  const gradId = `sweepGrad${size}`;
+  return (
+    <Svg width={size} height={size} style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <Defs>
-        <SvgLinearGradient id="trailPieCalibGrad" x1={cx} y1={cy} x2={cx + rr * 0.85} y2={cy - rr * 0.85} gradientUnits="userSpaceOnUse">
-          <Stop offset="0" stopColor={accentBright} stopOpacity={0.95} />
-          <Stop offset="0.45" stopColor={accentMid} stopOpacity={0.5} />
-          <Stop offset="1" stopColor={accentBright} stopOpacity={0} />
-        </SvgLinearGradient>
+        <RadialGradient id={gradId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
+          <Stop offset="22%" stopColor={color} stopOpacity="0.55" />
+          <Stop offset="100%" stopColor={color} stopOpacity="0" />
+        </RadialGradient>
       </Defs>
-      <Path d={d} fill="url(#trailPieCalibGrad)" />
+      <Path d={sweepPath(cx, cx, r, 78)} fill={`url(#${gradId})`} />
+      <Path d={`M ${cx} ${cx} L ${cx} 10`} stroke="#FFFFFF" strokeWidth={1.2} strokeLinecap="round" opacity={0.85} />
+      <Path d={`M ${cx} ${cx} L ${cx} 10`} stroke={color} strokeWidth={2.5} strokeLinecap="round" opacity={0.95} />
     </Svg>
   );
 }
 
-function RadarBlip({ center, angleDeg, dist, opacitySv }: { center: number; angleDeg: number; dist: number; opacitySv: SharedValue<number> }) {
-  const rad = (angleDeg * Math.PI) / 180;
-  const left = center + dist * Math.sin(rad) - 6;
-  const top = center - dist * Math.cos(rad) - 6;
-  const style = useAnimatedStyle(() => ({
-    opacity: opacitySv.value,
-    transform: [{ scale: interpolate(opacitySv.value, [0, 1], [0.25, 1]) }],
-  }));
+/** Tylko delikatny blik u góry — bez ciemnej maski zasłaniającej siatkę i laser. */
+function SapphireDome({ size }: { size: number }) {
+  const cx = size / 2;
+  const glareId = `domeGlare${size}`;
   return (
-    <Animated.View style={[styles.blipWrap, { left, top }, style]} pointerEvents="none">
-      <View style={styles.blipGlow} />
-      <View style={styles.blipCore} />
-    </Animated.View>
+    <Svg width={size} height={size} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient id={glareId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.12" />
+          <Stop offset="35%" stopColor="#FFFFFF" stopOpacity="0.03" />
+          <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+        </SvgLinearGradient>
+      </Defs>
+      <Path
+        d={`M 0 0 L ${size} 0 L ${size} ${size * 0.32} Q ${cx} ${size * 0.5} 0 ${size * 0.32} Z`}
+        fill={`url(#${glareId})`}
+      />
+    </Svg>
   );
 }
 
-function OfferCount3D({
-  count,
-  accentHex,
-  scale,
-  opacity,
-  screenWidth,
-}: {
-  count: number;
-  accentHex: string;
-  scale: SharedValue<number>;
-  opacity: SharedValue<number>;
-  screenWidth: number;
-}) {
-  const wrapStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }],
-  }));
-  const label = String(Math.max(0, count));
-  const fs = label.length > 2 ? 96 : 124;
-  const textW = screenWidth;
-  
+function RadarGridSvg({ radarSize, cx, themeColor }: { radarSize: number; cx: number; themeColor: string }) {
+  const coreId = `radarCoreDeep${radarSize}`;
   return (
-    <Animated.View style={[styles.countStage, wrapStyle]}>
-      <Text style={[styles.countDeep, { fontSize: fs, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countShadow, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countBody, { fontSize: fs, color: accentHex, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countSheen, { fontSize: fs * 0.92, width: textW, textAlign: 'center' }]}>{label}</Text>
-      <Text style={[styles.countCaption, { width: textW, textAlign: 'center' }]}>ofert na mapie</Text>
-    </Animated.View>
+    <Svg width={radarSize} height={radarSize} style={StyleSheet.absoluteFill}>
+      <Defs>
+        <RadialGradient id={coreId} cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={themeColor} stopOpacity="0.28" />
+          <Stop offset="45%" stopColor="#0A1812" stopOpacity="0.55" />
+          <Stop offset="100%" stopColor="#000000" stopOpacity="0.92" />
+        </RadialGradient>
+      </Defs>
+      <Circle cx={cx} cy={cx} r={cx} fill={`url(#${coreId})`} />
+      <Circle cx={cx} cy={cx} r={cx - 14} stroke={BRASS_GOLD} strokeOpacity={0.45} strokeWidth={1.2} fill="none" />
+      <Circle cx={cx} cy={cx} r={cx - 15} stroke={themeColor} strokeOpacity={0.65} strokeWidth={1.8} fill="none" strokeDasharray="3 7" />
+      <Circle cx={cx} cy={cx} r={cx * 0.6} stroke={themeColor} strokeOpacity={0.45} strokeWidth={1.2} fill="none" />
+      <Circle cx={cx} cy={cx} r={cx * 0.3} stroke={themeColor} strokeOpacity={0.35} strokeWidth={1} fill="none" />
+      <Path
+        d={`M ${cx} 12 L ${cx} ${radarSize - 12} M 12 ${cx} L ${radarSize - 12} ${cx}`}
+        stroke={themeColor}
+        strokeOpacity={0.5}
+        strokeWidth={1.2}
+      />
+    </Svg>
   );
 }
 
-function CascadedMicroText({
-  text,
-  progress,
-  baseStyle,
-  charDelay = 0.042,
-  staggerDirection = 'forward',
-}: {
-  text: string;
-  progress: SharedValue<number>;
-  baseStyle: any;
-  charDelay?: number;
-  staggerDirection?: 'forward' | 'backward';
-}) {
-  const chars = useMemo(() => text.split(''), [text]);
+function MapLayer({ width, height }: { width: number; height: number }) {
+  const cx = width / 2;
+  const cy = height / 2;
+  const r = Math.max(width, height) * 0.55;
+  const streets = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < 16; i++) {
+      const t = i / 15;
+      out.push(
+        <Path
+          key={`h-${i}`}
+          d={`M ${width * 0.02} ${height * (0.05 + t * 0.9)} L ${width * 0.98} ${height * (0.08 + t * 0.88)}`}
+          stroke="rgba(200,215,225,0.15)"
+          strokeWidth={i % 4 === 0 ? 2 : 0.8}
+        />,
+      );
+      out.push(
+        <Path
+          key={`v-${i}`}
+          d={`M ${width * (0.04 + t * 0.92)} ${height * 0.04} L ${width * (0.06 + t * 0.88)} ${height * 0.96}`}
+          stroke="rgba(200,215,225,0.12)"
+          strokeWidth={0.8}
+        />,
+      );
+    }
+    return out;
+  }, [width, height]);
+
   return (
-    <View style={styles.cascadeWrap}>
-      {chars.map((ch, i) => (
-        <CascadeChar
-          key={`${ch}-${i}`}
-          ch={ch}
-          progress={progress}
-          index={staggerDirection === 'forward' ? i : chars.length - 1 - i}
-          total={chars.length}
-          baseStyle={baseStyle}
-          charDelay={charDelay}
-        />
-      ))}
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#091014' }]}>
+      <Svg width={width} height={height}>
+        <Defs>
+          <RadialGradient id="mapVigHS" cx="50%" cy="50%" r="65%">
+            <Stop offset="0%" stopColor="#1A2A33" />
+            <Stop offset="75%" stopColor="#0B131A" />
+            <Stop offset="100%" stopColor="#000000" stopOpacity="0.8" />
+          </RadialGradient>
+        </Defs>
+        <Rect x={0} y={0} width={width} height={height} fill="url(#mapVigHS)" />
+        <G>{streets}</G>
+        <Circle cx={cx * 0.75} cy={cy * 0.45} r={r * 0.25} fill="rgba(40,90,70,0.35)" />
+        <Circle cx={cx * 1.15} cy={cy * 0.65} r={r * 0.18} fill="rgba(20,60,90,0.3)" />
+      </Svg>
     </View>
   );
 }
 
-function CascadeChar({
-  ch,
-  progress,
-  index,
-  total,
-  baseStyle,
-  charDelay,
-}: {
-  ch: string;
-  progress: SharedValue<number>;
-  index: number;
-  total: number;
-  baseStyle: any;
-  charDelay: number;
-}) {
-  const unit = total > 1 ? 1 / (total - 1) : 1;
-  const charStyle = useAnimatedStyle(() => {
-    const t = Math.max(0, Math.min(1, (progress.value - index * charDelay) / Math.max(0.001, 0.28)));
-    return {
-      opacity: t,
-      transform: [{ translateY: (1 - t) * 8 }, { scale: 0.985 + t * 0.015 }],
-    };
-  });
+function GlassCrackOverlay({ size, phase }: { size: number; phase: SharedValue<number> }) {
+  const cx = size / 2;
+  const crackStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(phase.value, [0, 0.15, 0.5, 1], [0, 0.6, 0.2, 0], 'clamp'),
+  }));
+
   return (
-    <Animated.Text style={[baseStyle, charStyle, { marginRight: ch === ' ' ? 3 : 0, letterSpacing: unit < 0.05 ? 0.4 : undefined }]}>
-      {ch === ' ' ? '\u00A0' : ch}
-    </Animated.Text>
+    <Animated.View style={[StyleSheet.absoluteFill, crackStyle]} pointerEvents="none">
+      <Svg width={size} height={size}>
+        <Path d={`M ${cx} 0 L ${size} ${size} L ${cx} ${size} Z`} fill="rgba(255,255,255,0.15)" />
+        <Path d={`M 0 ${size} L ${cx} ${size} L 0 0 Z`} fill="rgba(255,255,255,0.08)" />
+      </Svg>
+    </Animated.View>
   );
 }
 
-export default function RadarCalibrationRitualOverlay({ visible, cityLabel, transactionType, matchingOffersCount, onComplete }: Props) {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+/** Ozdobne łezki / klejnoty po bokach nazwy miasta (jak grawer na ramie). */
+function RitualCityOrnamentGroup({ scale }: { scale: number }) {
+  const tearW = Math.max(2, Math.round(2.5 * scale));
+  const tearH = Math.round(14 * scale);
+  const dot = Math.max(3, Math.round(4 * scale));
+  const gap = Math.round(5 * scale);
+
+  const Tear = ({ opacity = 0.42 }: { opacity?: number }) => (
+    <View
+      style={{
+        width: tearW,
+        height: tearH,
+        borderRadius: tearW,
+        backgroundColor: '#FFFFFF',
+        opacity,
+        transform: [{ scaleX: 0.55 }],
+      }}
+    />
+  );
+
+  return (
+    <View style={styles.cityOrnamentGroup}>
+      <Tear opacity={0.28} />
+      <View style={{ width: gap }} />
+      <Tear opacity={0.5} />
+      <View style={{ width: gap }} />
+      <View
+        style={{
+          width: dot,
+          height: dot,
+          borderRadius: dot / 2,
+          backgroundColor: 'rgba(255,255,255,0.92)',
+        }}
+      />
+      <View style={{ width: gap }} />
+      <Tear opacity={0.5} />
+      <View style={{ width: gap }} />
+      <Tear opacity={0.28} />
+    </View>
+  );
+}
+
+function RitualCityLine({ city, fontSize }: { city: string; fontSize: number }) {
+  const scale = fontSize / 15;
+  return (
+    <View style={styles.cityLineRow}>
+      <RitualCityOrnamentGroup scale={scale} />
+      <Text
+        style={[styles.ritualCityLabel, { fontSize, marginHorizontal: Math.round(14 * scale) }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {city.toUpperCase()}
+      </Text>
+      <RitualCityOrnamentGroup scale={scale} />
+    </View>
+  );
+}
+
+function computeRitualLayout(screenWidth: number, screenHeight: number, insetsTop: number, insetsBottom: number) {
   const shorterSide = Math.min(screenWidth, screenHeight);
-  const isTabletLike = shorterSide >= 700;
-  const radarSize = Math.min(shorterSide * (isTabletLike ? 0.42 : 0.44), isTabletLike ? 420 : 312);
-  const cardWidth = Math.min(screenWidth - (isTabletLike ? 120 : 58), isTabletLike ? 540 : 360);
-  const countOverlayTop = Math.max(isTabletLike ? 32 : 20, Math.min(72, screenHeight * 0.072));
+  const isTabletLike = shorterSide >= 700 || screenWidth >= 768;
+  const stageHeight = screenHeight - insetsTop - insetsBottom;
+  const maxBoxW = isTabletLike ? 560 : 400;
+  const radarRatio = 0.74;
+
+  let scale = isTabletLike ? Math.min(1.14, 0.92 + shorterSide / 920) : Math.max(0.78, Math.min(1, shorterSide / 390));
+  let boxWidth = 320;
+  let boxHeight = 480;
+  let radarSize = 240;
+  let trenchPad = 32;
+  let trenchSize = 272;
+  let trenchTop = 42;
+  let cornerInset = 16;
+  let screwSize = 14;
+
+  for (let i = 0; i < 4; i++) {
+    boxWidth = Math.round(Math.min(screenWidth - 20, maxBoxW) * scale);
+    radarSize = Math.round(boxWidth * radarRatio);
+    trenchPad = Math.round(30 * scale);
+    trenchSize = radarSize + trenchPad;
+    cornerInset = Math.round(16 * scale);
+    screwSize = Math.round((isTabletLike ? 16 : 14) * scale);
+    trenchTop = Math.round(cornerInset + screwSize + 24);
+    const brandBand = Math.round((isTabletLike ? 168 : 152) * scale);
+    boxHeight = trenchTop + trenchSize + 24 + brandBand;
+    if (boxHeight <= stageHeight * 0.92) break;
+    scale *= (stageHeight * 0.92) / boxHeight;
+  }
+
+  const ui = Math.max(0.75, scale);
+  const fonts = {
+    ledCaption: Math.max(7, Math.round(6.5 * ui)),
+    countValue: Math.round((isTabletLike ? 56 : 48) * ui),
+    countLabel: Math.max(9, Math.round(10 * ui)),
+    brandEyebrow: Math.max(8, Math.round((isTabletLike ? 10 : 9) * ui)),
+    brandTitle: Math.round((isTabletLike ? 28 : 22) * ui),
+    cityLabel: Math.round((isTabletLike ? 17 : 15) * ui),
+    statusText: Math.max(9, Math.round(10 * ui)),
+  };
+
+  return {
+    isTabletLike,
+    stageHeight,
+    boxWidth,
+    boxHeight,
+    radarSize,
+    trenchPad,
+    trenchSize,
+    trenchTop,
+    trenchLeft: (boxWidth - trenchSize) / 2,
+    screwSize,
+    ledSize: Math.round((isTabletLike ? 12 : 11) * ui),
+    ledGap: Math.round(16 * ui),
+    cornerInset,
+    housingRadius: Math.round(36 * ui),
+    fonts,
+    machineBottomPad: Math.max(10, Math.round(MACHINE_BOTTOM_PAD * ui)),
+    brandInset: Math.round(20 * ui),
+  };
+}
+
+export default function RadarCalibrationRitualOverlay({
+  visible,
+  cityLabel,
+  transactionType,
+  matchingOffersCount,
+  onComplete,
+  onFlyAwayBegin,
+}: Props) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const layout = useMemo(
+    () => computeRitualLayout(screenWidth, screenHeight, insets.top, insets.bottom),
+    [screenWidth, screenHeight, insets.top, insets.bottom],
+  );
+  const {
+    boxWidth,
+    boxHeight,
+    radarSize,
+    trenchSize,
+    trenchTop,
+    trenchLeft,
+    screwSize,
+    ledSize,
+    ledGap,
+    cornerInset,
+    housingRadius,
+    fonts,
+    stageHeight,
+    isTabletLike,
+    machineBottomPad,
+    brandInset,
+  } = layout;
+
+  const cx = radarSize / 2;
+  const themeColor = transactionType === 'RENT' ? RENT_COLOR : SELL_COLOR;
+  const cityText = (cityLabel || '').trim() || 'Wybrana metropolia';
+  const brandBlockTop = trenchTop + trenchSize + 24;
+
   const completeRef = useRef(onComplete);
   completeRef.current = onComplete;
-  const radarSoundRef = useRef<Audio.Sound | null>(null);
+  const flyAwayBeginRef = useRef(onFlyAwayBegin);
+  flyAwayBeginRef.current = onFlyAwayBegin;
+  const radarSoundRef = useRef(null);
+  const glassHapticFired = useRef(false);
 
-  const sweep = useSharedValue(0);
-  const pulse = useSharedValue(0);
-  const vignette = useSharedValue(0);
-  const line1 = useSharedValue(0);
-  const line2 = useSharedValue(0);
-  const line3 = useSharedValue(0);
-  const phase = useSharedValue(0);
-  const scanActive = useSharedValue(0);
+  const powerOn = useSharedValue(0);
+  const radarSweep = useSharedValue(0);
   const dotMask = useSharedValue(0);
-  const dotOp0 = useSharedValue(0); const dotOp1 = useSharedValue(0);
-  const dotOp2 = useSharedValue(0); const dotOp3 = useSharedValue(0);
-  const dotOp4 = useSharedValue(0); const dotOp5 = useSharedValue(0);
-  const dotOp6 = useSharedValue(0); const dotOp7 = useSharedValue(0);
-  const radarGroupOpacity = useSharedValue(1);
-  const flashOpacity = useSharedValue(0);
-  const dustOpacity = useSharedValue(0);
-  const countScale = useSharedValue(0.12);
-  const countOpacity = useSharedValue(0);
-  const calibMsgOpacity = useSharedValue(0);
-  
-  const gearsOpacity = useSharedValue(0);
-  const gearRotL = useSharedValue(0);
-  const gearRotR = useSharedValue(0);
-  const gearSepL = useSharedValue(-INITIAL_GEAR_SEP); 
-  const gearSepR = useSharedValue(INITIAL_GEAR_SEP);  
-  
-  const brandOpacity = useSharedValue(0);
-  const brandMicroTextIn = useSharedValue(0);
-  const bottomMicroTextIn = useSharedValue(0);
-  const statusPulse = useSharedValue(0);
+  const mapRevealPhase = useSharedValue(0);
+  const flyAwayProgress = useSharedValue(0);
   const exitOpacity = useSharedValue(1);
-  const exitScale = useSharedValue(1);
+  const ledPwr = useSharedValue(0);
+  const ledSync = useSharedValue(0);
+  const [shouldRender, setShouldRender] = useState(visible);
 
-  const accentHex = transactionType === 'RENT' ? '#0A84FF' : '#34C759';
-  const trailB = transactionType === 'RENT' ? 'rgba(10,132,255,0.55)' : 'rgba(52,199,89,0.58)';
-  const trailC = transactionType === 'RENT' ? 'rgba(40,160,255,0.95)' : 'rgba(80,230,125,0.95)';
+  const invokeComplete = useCallback(() => {
+    completeRef.current?.();
+  }, []);
 
-  const triggerBlip = useCallback((idx: number) => {
-    Haptics.selectionAsync();
-    const ops = [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7];
-    const op = ops[idx];
-    if (op) op.value = withSpring(1, { damping: 15, stiffness: 280 });
-  }, [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7]);
+  const finishUnmount = useCallback(() => {
+    setShouldRender(false);
+  }, []);
+
+  const fireGlassHaptic = useCallback(() => {
+    if (glassHapticFired.current) return;
+    glassHapticFired.current = true;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }, []);
+
+  const triggerHapticBlip = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   useAnimatedReaction(
-    () => sweep.value,
+    () => mapRevealPhase.value,
+    (tp, prev) => {
+      if ((prev ?? 0) < 0.06 && tp >= 0.06) runOnJS(fireGlassHaptic)();
+    },
+    [fireGlassHaptic],
+  );
+
+  useAnimatedReaction(
+    () => radarSweep.value,
     (sv) => {
-      if (scanActive.value === 0) return;
+      if (mapRevealPhase.value > 0.02) return;
       const ang = ((sv % 360) + 360) % 360;
       for (let i = 0; i < BLIP_COUNT; i++) {
         const target = BLIP_DETECT_ANGLES[i];
         const diff = Math.abs(ang - target);
-        const dist = Math.min(diff, 360 - diff);
-        const bit = 1 << i;
-        if (dist < 5.5 && (dotMask.value & bit) === 0) {
-          dotMask.value |= bit;
-          runOnJS(triggerBlip)(i);
+        const distAng = Math.min(diff, 360 - diff);
+        if (distAng < 12 && !blipIsLit(dotMask.value, i)) {
+          dotMask.value |= 1 << i;
+          runOnJS(triggerHapticBlip)();
         }
       }
     },
-    [triggerBlip]
+    [triggerHapticBlip],
   );
 
   useEffect(() => {
+    if (visible) {
+      setShouldRender(true);
+      exitOpacity.value = 1;
+    } else if (shouldRender) {
+      exitOpacity.value = withTiming(0, { duration: 280, easing: Easing.out(Easing.cubic) }, (finished) => {
+        'worklet';
+        if (finished) runOnJS(finishUnmount)();
+      });
+    }
+  }, [visible, shouldRender, finishUnmount]);
+
+  useEffect(() => {
     if (!visible) {
-      sweep.value = 0; pulse.value = 0; vignette.value = 0; line1.value = 0; line2.value = 0; line3.value = 0; phase.value = 0;
-      scanActive.value = 0; dotMask.value = 0;
-      dotOp0.value = 0; dotOp1.value = 0; dotOp2.value = 0; dotOp3.value = 0; dotOp4.value = 0; dotOp5.value = 0; dotOp6.value = 0; dotOp7.value = 0;
-      radarGroupOpacity.value = 1; flashOpacity.value = 0; dustOpacity.value = 0; countScale.value = 0.12; countOpacity.value = 0; calibMsgOpacity.value = 0;
-      brandOpacity.value = 0; brandMicroTextIn.value = 0; bottomMicroTextIn.value = 0; statusPulse.value = 0; exitOpacity.value = 1; exitScale.value = 1;
-      gearsOpacity.value = 0; gearRotL.value = 0; gearRotR.value = 0;
-      gearSepL.value = -INITIAL_GEAR_SEP; gearSepR.value = INITIAL_GEAR_SEP;
-      cancelAnimation(sweep);
+      cancelAnimation(powerOn);
+      cancelAnimation(radarSweep);
+      cancelAnimation(flyAwayProgress);
+      cancelAnimation(mapRevealPhase);
+      cancelAnimation(ledPwr);
+      cancelAnimation(ledSync);
+      powerOn.value = 0;
+      radarSweep.value = 0;
+      dotMask.value = 0;
+      flyAwayProgress.value = 0;
+      mapRevealPhase.value = 0;
+      ledPwr.value = 0;
+      ledSync.value = 0;
+      glassHapticFired.current = false;
       return;
     }
 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
-    scanActive.value = 1; dotMask.value = 0;
-    
-    sweep.value = 0;
-    sweep.value = withRepeat(withTiming(360, { duration: SWEEP_MS_PER_TURN, easing: Easing.linear }), -1, false);
-    pulse.value = withRepeat(
-      withSequence(withTiming(1, { duration: 2200, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }), withTiming(0.35, { duration: 2600, easing: Easing.bezier(0.22, 0.01, 0.2, 1) })),
-      -1, true
+    glassHapticFired.current = false;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    dotMask.value = 0;
+
+    powerOn.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.exp) });
+    ledPwr.value = withRepeat(
+      withSequence(withTiming(1, { duration: 400 }), withTiming(0.1, { duration: 400 })),
+      -1,
+      true,
     );
-    vignette.value = withTiming(1, { duration: 900, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-    phase.value = withTiming(1, { duration: PHASE_SCAN_MS, easing: Easing.linear });
-    line1.value = withDelay(200, withTiming(1, { duration: 900, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
-    line2.value = withDelay(800, withTiming(1, { duration: 1000, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
-    line3.value = withDelay(1500, withTiming(1, { duration: 800, easing: Easing.bezier(0.22, 0.01, 0.2, 1) }));
+    ledSync.value = withRepeat(
+      withSequence(withTiming(1, { duration: 150 }), withTiming(0.1, { duration: 150 })),
+      -1,
+      true,
+    );
+    radarSweep.value = withRepeat(withTiming(360, { duration: SWEEP_MS_PER_TURN, easing: Easing.linear }), -1, false);
 
     const tScanEnd = setTimeout(() => {
-      scanActive.value = 0;
-      cancelAnimation(sweep);
-      radarGroupOpacity.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.cubic) });
-      flashOpacity.value = withSequence(withTiming(1, { duration: 70 }), withTiming(1, { duration: 120 }), withTiming(0.72, { duration: 280 }), withTiming(0, { duration: 420 }));
-      dustOpacity.value = withSequence(withDelay(80, withTiming(0.55, { duration: 220 })), withTiming(0.22, { duration: 380 }), withTiming(0, { duration: 420 }));
-      countOpacity.value = withDelay(160, withTiming(1, { duration: 140 }));
-      countScale.value = 0.14;
-      countScale.value = withDelay(160, withSpring(1, { damping: 13.5, stiffness: 210, mass: 0.82 }));
+      cancelAnimation(radarSweep);
+      cancelAnimation(ledSync);
+      ledSync.value = withTiming(1, { duration: 200 });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      mapRevealPhase.value = withTiming(1, { duration: MAP_REVEAL_MS, easing: Easing.inOut(Easing.cubic) });
     }, PHASE_SCAN_MS);
 
-    const tImpact = setTimeout(() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, PHASE_SCAN_MS + 520);
-
-    const tCalibMsg = setTimeout(() => {
-      calibMsgOpacity.value = withTiming(1, { duration: 360, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
-    }, PHASE_SCAN_MS + COUNT_SHOW_DELAY_MS + MESSAGE_AFTER_COUNT_MS);
-
-    const tGearsStart = setTimeout(() => {
-      gearsOpacity.value = withTiming(1, { duration: GEARS_APPEAR_MS });
-      // Bardziej agresywny rozpęd — mocniej „in", żeby ostatnie 200 ms latały już bardzo szybko.
-      gearRotL.value = withTiming(-1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.bezier(0.7, 0, 0.84, 0.2) });
-      gearRotR.value = withTiming(1440, { duration: GEARS_FAST_SPIN_MS, easing: Easing.bezier(0.7, 0, 0.84, 0.2) });
-    }, GEARS_PHASE_START_MS);
-
-    const tGearsMerge = setTimeout(() => {
-      // Sczepienie zębatek — dynamiczny zatrzask z lekkim „back" easingiem.
-      gearSepL.value = withTiming(-5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.34, 1.2, 0.4, 1) });
-      gearSepR.value = withTiming(5, { duration: GEARS_MERGE_MS, easing: Easing.bezier(0.34, 1.2, 0.4, 1) });
-
-      // Krótkie dotoczenie po sczepieniu — zachowane, ale wyraźnie skrócone (GEARS_SLOW_SPIN_MS = 700).
-      gearRotL.value = withSequence(
-        withTiming(-1500, { duration: 140, easing: Easing.out(Easing.quad) }),
-        withTiming(-1500 + 360, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 140, easing: Easing.out(Easing.quad) })
+    const tFlyAway = setTimeout(() => {
+      flyAwayBeginRef.current?.();
+      flyAwayProgress.value = withTiming(
+        1,
+        { duration: FLYAWAY_DURATION_MS, easing: Easing.in(Easing.cubic) },
+        (finished) => {
+          'worklet';
+          if (finished) runOnJS(invokeComplete)();
+        },
       );
+    }, PHASE_SCAN_MS + MAP_REVEAL_DELAY_MS + HOLD_BEFORE_FLYAWAY_MS);
 
-      gearRotR.value = withSequence(
-        withTiming(1560, { duration: 140, easing: Easing.out(Easing.quad) }),
-        withTiming(1560 - 372, { duration: GEARS_MERGE_MS + GEARS_SLOW_SPIN_MS - 140, easing: Easing.out(Easing.quad) })
-      );
-    }, GEARS_PHASE_START_MS + GEARS_FAST_SPIN_MS);
-
-    const tGearsLockHaptic = setTimeout(() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      Haptics.selectionAsync();
-    }, GEARS_PHASE_START_MS + GEARS_FAST_SPIN_MS + GEARS_MERGE_MS - 80);
-
-    const tBrand = setTimeout(() => {
-      // Tabliczka „radar aktywny" wskakuje już 80 ms po sczepieniu — czuć efekt
-      // „klik → kompletny system". Wszystkie sub-animacje też dostały krótsze duration.
-      brandOpacity.value = withTiming(1, { duration: 340, easing: Easing.bezier(0.22, 0.01, 0.2, 1) });
-      brandMicroTextIn.value = withTiming(1, { duration: 380, easing: Easing.bezier(0.2, 0.8, 0.2, 1) });
-      bottomMicroTextIn.value = withDelay(80, withTiming(1, { duration: 440, easing: Easing.bezier(0.2, 0.8, 0.2, 1) }));
-      statusPulse.value = withRepeat(
-        withSequence(withTiming(1, { duration: 720, easing: Easing.out(Easing.cubic) }), withTiming(0.2, { duration: 720, easing: Easing.inOut(Easing.cubic) })),
-        -1, true
-      );
-    }, BRAND_VISIBLE_AT_MS);
-
-    const tCurtain = setTimeout(() => {
-      exitScale.value = withTiming(1.07, { duration: CINEMATIC_OUT_MS * 0.55, easing: Easing.out(Easing.cubic) });
-      exitOpacity.value = withTiming(0, { duration: CINEMATIC_OUT_MS, easing: Easing.in(Easing.cubic) });
-    }, BRAND_VISIBLE_AT_MS + BRAND_HOLD_MS);
-
-    const tDone = setTimeout(() => { completeRef.current(); }, BRAND_VISIBLE_AT_MS + BRAND_HOLD_MS + CINEMATIC_OUT_MS);
-
-    return () => { 
-      clearTimeout(tScanEnd); clearTimeout(tImpact); clearTimeout(tCalibMsg); 
-      clearTimeout(tGearsStart); clearTimeout(tGearsMerge); clearTimeout(tGearsLockHaptic);
-      clearTimeout(tBrand); clearTimeout(tCurtain); clearTimeout(tDone); 
+    return () => {
+      clearTimeout(tScanEnd);
+      clearTimeout(tFlyAway);
     };
-  }, [visible]);
+  }, [visible, invokeComplete]);
 
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
-    const playRadarCalibrationSound = async () => {
+    (async () => {
       try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false, allowsRecordingIOS: false, shouldDuckAndroid: true });
-        const { sound } = await Audio.Sound.createAsync(require('../../assets/radar.mp3'), { shouldPlay: false, volume: 1, isLooping: false });
-        if (cancelled) { await sound.unloadAsync(); return; }
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, shouldDuckAndroid: true });
+        const { sound } = await Audio.Sound.createAsync(require('../../assets/radar.mp3'), {
+          shouldPlay: false,
+          volume: 1,
+        });
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
         radarSoundRef.current = sound;
         await sound.playAsync();
       } catch {}
-    };
-    playRadarCalibrationSound();
+    })();
     return () => {
       cancelled = true;
       const s = radarSoundRef.current;
       radarSoundRef.current = null;
-      if (s) { s.stopAsync().catch(() => {}); s.unloadAsync().catch(() => {}); }
+      if (s) {
+        s.stopAsync().catch(() => {});
+        s.unloadAsync().catch(() => {});
+      }
     };
   }, [visible]);
 
-  // === STYLE ANIMOWANE ===
-  const sweepStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${sweep.value}deg` }] }));
-  const ring1Style = useAnimatedStyle(() => ({ opacity: interpolate(pulse.value, [0.35, 1], [0.22, 0.5], 'clamp'), transform: [{ scale: interpolate(pulse.value, [0.35, 1], [0.96, 1.02], 'clamp') }] }));
-  const ring2Style = useAnimatedStyle(() => ({ opacity: interpolate(pulse.value, [0.35, 1], [0.12, 0.28], 'clamp'), transform: [{ scale: interpolate(pulse.value, [0.35, 1], [0.92, 1.05], 'clamp') }] }));
-  const lineAStyle = useAnimatedStyle(() => ({ opacity: line1.value * radarGroupOpacity.value, transform: [{ translateY: interpolate(line1.value, [0, 1], [12, 0], 'clamp') }] }));
-  const lineBStyle = useAnimatedStyle(() => ({ opacity: line2.value * radarGroupOpacity.value, transform: [{ translateY: interpolate(line2.value, [0, 1], [12, 0], 'clamp') }] }));
-  const vignetteStyle = useAnimatedStyle(() => ({ opacity: vignette.value * 0.95 }));
-  const radarFadeStyle = useAnimatedStyle(() => ({ opacity: radarGroupOpacity.value }));
-  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
-  const dustStyle = useAnimatedStyle(() => ({ opacity: dustOpacity.value }));
-  const calibMsgStyle = useAnimatedStyle(() => ({ opacity: calibMsgOpacity.value }));
-  const gearLAnim = useAnimatedStyle(() => ({ opacity: gearsOpacity.value, transform: [{ translateX: gearSepL.value }] }));
-  const gearRAnim = useAnimatedStyle(() => ({ opacity: gearsOpacity.value, transform: [{ translateX: gearSepR.value }] }));
-  const brandStyle = useAnimatedStyle(() => ({ opacity: brandOpacity.value, transform: [{ translateY: interpolate(brandOpacity.value, [0, 1], [10, 0]) }] }));
-  const statusDotStyle = useAnimatedStyle(() => ({ opacity: interpolate(statusPulse.value, [0.2, 1], [0.48, 1], 'clamp'), transform: [{ scale: interpolate(statusPulse.value, [0.2, 1], [0.82, 1.18], 'clamp') }] }));
-  const statusHaloStyle = useAnimatedStyle(() => ({ opacity: interpolate(statusPulse.value, [0.2, 1], [0.06, 0.32], 'clamp'), transform: [{ scale: interpolate(statusPulse.value, [0.2, 1], [1, 1.9], 'clamp') }] }));
-  const finaleRootStyle = useAnimatedStyle(() => ({ opacity: exitOpacity.value, transform: [{ scale: exitScale.value }] }));
+  const hardwareFlyStyle = useAnimatedStyle(() => {
+    const p = flyAwayProgress.value;
+    const enterScale = interpolate(powerOn.value, [0, 1], [0.92, 1], 'clamp');
+    const enterY = interpolate(powerOn.value, [0, 1], [70, 0], 'clamp');
 
-  const stars = useMemo(() => STAR_SEEDS, []);
-  const blipOpacityByIndex = [dotOp0, dotOp1, dotOp2, dotOp3, dotOp4, dotOp5, dotOp6, dotOp7];
+    if (p <= 0.001) {
+      return { opacity: powerOn.value, transform: [{ translateY: enterY }, { scale: enterScale }] };
+    }
 
-  if (!visible) return null;
+    const zigzagX = Math.sin(p * Math.PI * 4.5) * 280 * p;
+    const flyY = -(screenHeight + boxHeight * 1.5) * p ** 1.8;
+    const exitOpacity = interpolate(p, [0, 0.9, 1], [1, 1, 0], 'clamp');
+    const shrink = interpolate(p, [0, 1], [1, 0.25], 'clamp');
 
-  const cityText = cityLabel.trim() ? cityLabel : 'Wybrana metropolia';
-  const cx = radarSize / 2;
+    return {
+      opacity: powerOn.value * exitOpacity,
+      transform: [
+        { perspective: 1200 },
+        { translateX: zigzagX },
+        { translateY: enterY + flyY },
+        { scale: enterScale * shrink },
+        { rotateZ: `${interpolate(p, [0, 1], [0, 15], 'clamp')}deg` },
+        { rotateX: `${interpolate(p, [0, 1], [0, 30], 'clamp')}deg` },
+      ],
+    };
+  });
+
+  const coreHideStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(mapRevealPhase.value, [0, 0.4], [1, 0], 'clamp'),
+  }));
+  const mapRevealStyle = useAnimatedStyle(() => ({
+    opacity: mapRevealPhase.value,
+    transform: [{ scale: interpolate(mapRevealPhase.value, [0, 1], [1.08, 1], 'clamp') }],
+  }));
+  const sweepStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${radarSweep.value}deg` }] }));
+  const countRevealStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(mapRevealPhase.value, [0.5, 1], [0, 1], 'clamp'),
+  }));
+
+  const statusBorderLit = `${themeColor}66`;
+  const statusBgLit = `${themeColor}18`;
+  const statusPillRevealStyle = useAnimatedStyle(() => {
+    const p = mapRevealPhase.value;
+    return {
+      opacity: interpolate(p, [0.48, 0.72], [0, 1], 'clamp'),
+      transform: [{ scale: interpolate(p, [0.48, 0.72], [0.94, 1], 'clamp') }],
+      borderColor: interpolateColor(p, [0.5, 1], ['rgba(255,255,255,0.06)', statusBorderLit]),
+      backgroundColor: interpolateColor(p, [0.5, 1], ['rgba(0,0,0,0.28)', statusBgLit]),
+      shadowOpacity: interpolate(p, [0.5, 1], [0, 0.65], 'clamp'),
+      shadowRadius: interpolate(p, [0.5, 1], [0, 16], 'clamp'),
+    };
+  });
+  const statusDotRevealStyle = useAnimatedStyle(() => {
+    const p = mapRevealPhase.value;
+    return {
+      backgroundColor: interpolateColor(p, [0.5, 1], ['#3A3A40', themeColor]),
+      opacity: interpolate(p, [0.5, 1], [0.25, 1], 'clamp'),
+    };
+  });
+  const statusTextRevealStyle = useAnimatedStyle(() => {
+    const p = mapRevealPhase.value;
+    return {
+      color: interpolateColor(p, [0.5, 1], ['rgba(255,255,255,0.22)', themeColor]),
+      opacity: interpolate(p, [0.5, 1], [0.3, 1], 'clamp'),
+    };
+  });
+
+  const scrimStyle = useAnimatedStyle(() => {
+    const fly = flyAwayProgress.value;
+    const base = interpolate(mapRevealPhase.value, [0, 1], [1, 0.15], 'clamp');
+    const flyFade = interpolate(fly, [0, 0.2, 1], [1, 0.35, 0], 'clamp');
+    return { opacity: base * flyFade };
+  });
+
+  const rootFadeStyle = useAnimatedStyle(() => ({
+    opacity: exitOpacity.value,
+  }));
+
+  if (!shouldRender) return null;
 
   return (
-    <Animated.View style={[styles.fill, finaleRootStyle]} pointerEvents="auto">
-      <LinearGradient colors={[RR_BLACK, RR_GRAPHITE, '#060608', RR_BLACK]} locations={[0, 0.38, 0.72, 1]} style={StyleSheet.absoluteFill} />
-
-      {stars.map((st) => (
-        <Star key={st.id} x={st.x} y={st.y} size={st.s} phase={phase} screenWidth={screenWidth} screenHeight={screenHeight} />
-      ))}
-
-      <Animated.View style={[styles.vignette, vignetteStyle]} pointerEvents="none">
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.88)']} style={StyleSheet.absoluteFill} />
+    <Animated.View
+      style={[
+        styles.fullscreen,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+        rootFadeStyle,
+      ]}
+      pointerEvents="box-none"
+    >
+      <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]} pointerEvents="none">
+        <LinearGradient colors={['#040406', '#0E0E12', '#040406']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
       </Animated.View>
 
-      <Animated.View style={[styles.flashBurst, flashStyle]} pointerEvents="none">
-        <LinearGradient colors={['rgba(255,255,255,1)', 'rgba(250,250,252,0.96)', 'rgba(255,255,255,0.88)']} style={StyleSheet.absoluteFill} />
-      </Animated.View>
+      <View
+        style={[
+          styles.machineCenter,
+          { minHeight: stageHeight, justifyContent: isTabletLike ? 'center' : 'flex-end', paddingBottom: machineBottomPad },
+        ]}
+      >
+        <Animated.View style={[styles.hardwareHousing, { width: boxWidth, height: boxHeight, borderRadius: housingRadius }, hardwareFlyStyle]}>
+          <LinearGradient
+            colors={['#32323D', TITANIUM_DARK, '#050508']}
+            locations={[0, 0.5, 1]}
+            style={[StyleSheet.absoluteFill, { borderRadius: housingRadius }]}
+          />
+          <View style={[styles.housingRimLight, { borderRadius: housingRadius }]} pointerEvents="none" />
+          <View style={[styles.brassTrimLine, { top: cornerInset - 2, left: brandInset, right: brandInset }]} pointerEvents="none" />
 
-      <Animated.View style={[styles.dustLayer, dustStyle]} pointerEvents="none">
-        {STAR_SEEDS.slice(0, 24).map((st) => (
-          <View key={`d-${st.id}`} style={[styles.dustMote, { left: st.x * screenWidth, top: st.y * screenHeight * 0.85, width: 2 + (st.id % 4), height: 2 + (st.id % 4), opacity: 0.35 + (st.id % 7) / 30 }]} />
-        ))}
-      </Animated.View>
-
-      <View style={styles.topRule}>
-        <View style={styles.ruleGold} />
-      </View>
-
-      <View style={styles.centerBlock}>
-        <Animated.View style={[radarFadeStyle, { alignItems: 'center', marginBottom: 24 }]}>
-          <Text style={styles.brandTopTitle}>EstateOS™ Radar</Text>
-          <Text style={styles.brandTopSubtitle}>KALIBRACJA SYSTEMU</Text>
-        </Animated.View>
-
-        <Animated.View style={[radarFadeStyle, { alignItems: 'center' }]}>
-          <View style={[styles.radarPedestal, { width: radarSize + 52, height: radarSize + 52 }]}>
-            <BlurView intensity={Platform.OS === 'ios' ? 34 : 22} tint="dark" experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined} style={[styles.radarBlurUnder, { borderRadius: (radarSize + 52) / 2 }]} />
-            <LinearGradient colors={['rgba(45,42,36,0.95)', 'rgba(12,12,16,1)', 'rgba(8,8,10,1)']} style={[styles.radarBezelOuter, { width: radarSize + 44, height: radarSize + 44, borderRadius: (radarSize + 44) / 2 }]}>
-              <View style={[styles.radarWrap, { width: radarSize + 38, height: radarSize + 38 }]}>
-                <Animated.View style={[styles.ringOuter, ring2Style, { width: radarSize + 36, height: radarSize + 36, borderRadius: (radarSize + 36) / 2 }]} />
-                <Animated.View style={[styles.ringMid, ring1Style, { width: radarSize + 14, height: radarSize + 14, borderRadius: (radarSize + 14) / 2 }]} />
-
-                <LinearGradient colors={['#4a453c', '#2c2a26', '#18181c']} start={{ x: 0.2, y: 0 }} end={{ x: 0.85, y: 1 }} style={[styles.metalBezel, { width: radarSize + 10, height: radarSize + 10, borderRadius: (radarSize + 10) / 2 }]}>
-                  <View style={[styles.radarDisk, { width: radarSize, height: radarSize, borderRadius: radarSize / 2 }]}>
-                    <LinearGradient colors={['rgba(210,195,155,0.14)', 'rgba(22,22,28,0.97)', 'rgba(6,6,9,1)', RR_GRAPHITE]} locations={[0, 0.35, 0.72, 1]} start={{ x: 0.35, y: 0 }} end={{ x: 0.65, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: radarSize / 2 }]} />
-                    <LinearGradient colors={['transparent', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.62)']} locations={[0, 0.45, 1]} style={[StyleSheet.absoluteFill, { borderRadius: radarSize / 2 }]} pointerEvents="none" />
-                    <LinearGradient colors={['rgba(255,255,255,0.11)', 'transparent', 'transparent']} locations={[0, 0.35, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 0.55 }} style={[styles.rimLight, { borderRadius: radarSize / 2 }]} pointerEvents="none" />
-                    <RadarTicks radius={radarSize} />
-
-                    {BLIP_SCATTER.map((b, i) => (
-                      <RadarBlip key={`blip-${b.angleDeg}-${i}`} center={cx} angleDeg={b.angleDeg} dist={(radarSize / 2) * b.distMul} opacitySv={blipOpacityByIndex[i]} />
-                    ))}
-
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
-                      <SweepTrailPie radarSize={radarSize} accentMid={trailB} accentBright={trailC} />
-                    </Animated.View>
-
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
-                      <LinearGradient colors={['transparent', 'rgba(201,176,125,0.1)', 'rgba(201,176,125,0.04)', 'transparent']} start={{ x: 0.12, y: 1 }} end={{ x: 0.88, y: 0 }} style={{ marginTop: radarSize * 0.024, width: radarSize * 0.38, height: radarSize * 0.44, borderRadius: 8, opacity: 0.75 }} />
-                    </Animated.View>
-                    <Animated.View style={[sweepStyle, styles.sweepSpinner, { width: radarSize, height: radarSize }]}>
-                      <LinearGradient colors={['transparent', RR_GOLD_SOFT, 'rgba(255,250,240,0.55)', 'transparent']} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} style={[styles.sweepCore, { marginTop: radarSize * 0.026, width: Math.max(2.5, radarSize * 0.036), height: radarSize * 0.46 }]} />
-                    </Animated.View>
-                    <View style={[styles.centerDot, { position: 'absolute', left: radarSize / 2 - 5, top: radarSize / 2 - 5, width: 10, height: 10, borderRadius: 5 }]} />
-                    <View pointerEvents="none" style={[styles.centerDotInner, { position: 'absolute', left: radarSize / 2 - 2, top: radarSize / 2 - 2, width: 4, height: 4, borderRadius: 2 }]} />
-                  </View>
-                </LinearGradient>
-              </View>
-            </LinearGradient>
+          <View style={[styles.screwCorner, { top: cornerInset, left: cornerInset }]}>
+            <TitaniumScrew size={screwSize} slotAngle="45deg" />
           </View>
-        </Animated.View>
-
-        <Animated.View style={lineAStyle}>
-          <Text style={styles.subline}>{cityText}</Text>
-        </Animated.View>
-        <Animated.View style={lineBStyle}>
-          <Text style={styles.whisper}>Nasłuchiwanie rynku w toku...</Text>
-        </Animated.View>
-
-        <View style={[styles.countOverlay, { paddingTop: countOverlayTop, paddingHorizontal: isTabletLike ? 44 : 20 }]} pointerEvents="none">
-          <OfferCount3D count={matchingOffersCount} accentHex={accentHex} scale={countScale} opacity={countOpacity} screenWidth={screenWidth} />
-          
-          <Animated.View style={[styles.calibMsgWrap, calibMsgStyle, { maxWidth: screenWidth - (isTabletLike ? 140 : 44) }]}>
-            <Text style={styles.calibMsgTitle}>
-              Radar został poprawnie skalibrowany i jest gotowy do natychmiastowego informowania. Tryb czuwania został załączony.
-            </Text>
-          </Animated.View>
-          
-          <View style={styles.gearsRow}>
-            <Animated.View style={[styles.gearIcon, gearLAnim]}>
-              <GoldGearIcon size={COG_SIZE} rotation={gearRotL} />
-            </Animated.View>
-            <Animated.View style={[styles.gearIcon, gearRAnim]}>
-              <GoldGearIcon size={COG_SIZE} rotation={gearRotR} />
-            </Animated.View>
+          <View style={[styles.screwCorner, { top: cornerInset, right: cornerInset }]}>
+            <TitaniumScrew size={screwSize} slotAngle="-22deg" />
+          </View>
+          <View style={[styles.screwCorner, { bottom: cornerInset, left: cornerInset }]}>
+            <TitaniumScrew size={screwSize} slotAngle="88deg" />
+          </View>
+          <View style={[styles.screwCorner, { bottom: cornerInset, right: cornerInset }]}>
+            <TitaniumScrew size={screwSize} slotAngle="-12deg" />
           </View>
 
-          <Animated.View style={[styles.brandBlock, brandStyle, { marginTop: isTabletLike ? 40 : 32 }]}>
-            <View style={[styles.brandCard, { width: cardWidth, borderRadius: isTabletLike ? 28 : 24, paddingVertical: isTabletLike ? 28 : 24, paddingHorizontal: isTabletLike ? 28 : 22 }]}>
-              <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-              <LinearGradient colors={['rgba(212,175,55,0.15)', 'rgba(0,0,0,0.8)']} style={StyleSheet.absoluteFill} />
-              
-              <View style={[styles.brandBorder, { borderRadius: isTabletLike ? 28 : 24 }]} />
-              <View style={styles.brandTopRule} />
-              
-              <CascadedMicroText text="INTELLIGENCE CORE" progress={brandMicroTextIn} baseStyle={[styles.brandEyebrow, isTabletLike && { fontSize: 11.5, letterSpacing: 4.2 }]} />
-              <Text style={[styles.brandTitle, isTabletLike && { fontSize: 44 }]}>EstateOS™ Radar</Text>
-              
-              <View style={styles.brandDivider} />
-              <View style={styles.statusRow}>
-                <View style={styles.statusSignalWrap}>
-                  <Animated.View style={[styles.statusSignalHalo, statusHaloStyle]} />
-                  <Animated.View style={[styles.statusSignalDot, statusDotStyle]} />
-                </View>
-                <Text style={styles.brandStatus}>STATUS: AKTYWNY</Text>
-              </View>
+          <View
+            style={[
+              styles.ledRow,
+              {
+                top: cornerInset + screwSize / 2 - ledSize / 2,
+                left: cornerInset + screwSize + 18,
+              },
+            ]}
+          >
+            <View style={[styles.ledSlot, { marginRight: ledGap }]}>
+              <HardwareLED color={PWR_AMBER} isActive={ledPwr} size={ledSize} />
+              <Text style={[styles.ledCaption, { fontSize: fonts.ledCaption, marginTop: Math.round(5 * (ledSize / 11)) }]}>PWR</Text>
             </View>
-          </Animated.View>
-        </View>
-      </View>
+            <View style={styles.ledSlot}>
+              <HardwareLED color={themeColor} isActive={ledSync} size={ledSize} />
+              <Text style={[styles.ledCaption, { fontSize: fonts.ledCaption, marginTop: Math.round(5 * (ledSize / 11)) }]}>SYNC</Text>
+            </View>
+          </View>
 
-      <View style={styles.bottomMark} pointerEvents="none">
-        <CascadedMicroText
-          text="PRECYZJA W CISZY · RADAR ESTATEOS"
-          progress={bottomMicroTextIn}
-          baseStyle={[styles.bottomText, isTabletLike && { fontSize: 10.5, letterSpacing: 3.3 }]}
-          charDelay={0.028}
-          staggerDirection="backward"
-        />
+          <View style={[styles.trenchHousing, { width: trenchSize, height: trenchSize, top: trenchTop, left: trenchLeft }]}>
+            <Svg width={trenchSize} height={trenchSize} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <RadialGradient id="trenchShadow" cx="50%" cy="40%" r="60%">
+                  <Stop offset="75%" stopColor="#000" stopOpacity="0" />
+                  <Stop offset="95%" stopColor="#000" stopOpacity="0.8" />
+                  <Stop offset="100%" stopColor="#000" stopOpacity="1" />
+                </RadialGradient>
+                <RadialGradient id="trenchGoldRim" cx="50%" cy="50%" r="50%">
+                  <Stop offset="88%" stopColor={BRASS_DARK} stopOpacity="0" />
+                  <Stop offset="98%" stopColor={BRASS_GOLD} stopOpacity="0.5" />
+                  <Stop offset="100%" stopColor={BRASS_DARK} stopOpacity="0.8" />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={trenchSize / 2} cy={trenchSize / 2} r={trenchSize / 2} fill="#050508" />
+              <Circle cx={trenchSize / 2} cy={trenchSize / 2} r={trenchSize / 2} fill="url(#trenchGoldRim)" />
+              <Circle cx={trenchSize / 2} cy={trenchSize / 2} r={trenchSize / 2} fill="url(#trenchShadow)" />
+            </Svg>
+
+            <View
+              style={[
+                styles.glassCore,
+                {
+                  width: radarSize,
+                  height: radarSize,
+                  borderRadius: radarSize / 2,
+                  borderTopColor: 'rgba(203,161,53,0.45)',
+                  borderBottomColor: 'rgba(203,161,53,0.08)',
+                  borderLeftColor: `${themeColor}44`,
+                  borderRightColor: `${themeColor}44`,
+                },
+              ]}
+            >
+              <Animated.View style={[StyleSheet.absoluteFill, mapRevealStyle]} pointerEvents="none">
+                <MapLayer width={radarSize} height={radarSize} />
+              </Animated.View>
+
+              <Animated.View style={[styles.radarScanLayer, coreHideStyle]} pointerEvents="none">
+                <RadarGridSvg radarSize={radarSize} cx={cx} themeColor={themeColor} />
+
+                <Animated.View style={[styles.radarSweepLayer, sweepStyle]}>
+                  <VolumetricSweep size={radarSize} color={themeColor} />
+                </Animated.View>
+
+                {BLIP_SCATTER.map((b, i) => (
+                  <SparkleBlip
+                    key={`blip-${i}`}
+                    center={cx}
+                    angleDeg={b.angleDeg}
+                    dist={cx * b.distMul}
+                    blipIndex={i}
+                    dotMask={dotMask}
+                    sweepValue={radarSweep}
+                    themeColor={themeColor}
+                  />
+                ))}
+              </Animated.View>
+
+              <View style={styles.domeGlareLayer} pointerEvents="none">
+                <SapphireDome size={radarSize} />
+              </View>
+
+              <GlassCrackOverlay size={radarSize} phase={mapRevealPhase} />
+
+              <Animated.View style={[styles.countOverlay, countRevealStyle]} pointerEvents="none">
+                <Text
+                  style={[
+                    styles.countValue,
+                    {
+                      fontSize: fonts.countValue,
+                      color: BRASS_GOLD,
+                      textShadowColor: 'rgba(0,0,0,0.75)',
+                      textShadowRadius: Math.max(4, fonts.countValue * 0.1),
+                    },
+                  ]}
+                >
+                  {Math.max(0, matchingOffersCount)}
+                </Text>
+                <Text
+                  style={[
+                    styles.countLabel,
+                    { fontSize: fonts.countLabel, marginTop: Math.round(4 * (fonts.countLabel / 10)) },
+                  ]}
+                >
+                  DOPASOWAŃ
+                </Text>
+              </Animated.View>
+            </View>
+          </View>
+
+          <View style={[styles.brandBlock, { top: brandBlockTop, left: brandInset, right: brandInset }]}>
+            <Text style={[styles.brandEyebrow, { fontSize: fonts.brandEyebrow, letterSpacing: fonts.brandEyebrow * 0.38 }]}>
+              INTELLIGENCE CORE
+            </Text>
+            <Text
+              style={[styles.brandTitle, { fontSize: fonts.brandTitle }]}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+              numberOfLines={1}
+            >
+              EstateOS™ Radar
+            </Text>
+            <View style={styles.divider} />
+            <Animated.View
+              style={[
+                styles.statusRow,
+                { shadowColor: themeColor },
+                statusPillRevealStyle,
+              ]}
+            >
+              <Animated.View style={[styles.statusDot, statusDotRevealStyle]} />
+              <Animated.Text
+                style={[styles.statusText, { fontSize: fonts.statusText }, statusTextRevealStyle]}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                numberOfLines={1}
+              >
+                MAPOWANIE ZAKOŃCZONE
+              </Animated.Text>
+            </Animated.View>
+            <RitualCityLine city={cityText} fontSize={fonts.cityLabel} />
+          </View>
+        </Animated.View>
       </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { ...StyleSheet.absoluteFillObject, zIndex: 1000, backgroundColor: RR_BLACK },
-  flashBurst: { ...StyleSheet.absoluteFillObject, zIndex: 1500 },
-  dustLayer: { ...StyleSheet.absoluteFillObject, zIndex: 1510 },
-  dustMote: { position: 'absolute', borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.95)' },
-  vignette: { ...StyleSheet.absoluteFillObject },
-  starDot: { position: 'absolute', backgroundColor: GOLD_COG, shadowColor: GOLD_COG_SHADOW, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.85, shadowRadius: 5 },
-  topRule: { paddingTop: Platform.OS === 'ios' ? 64 : 40, alignItems: 'center' },
-  ruleGold: { width: 56, height: 1, backgroundColor: RR_GOLD, opacity: 0.85 },
-  
-  brandTopTitle: { 
-    color: RR_IVORY, 
-    fontSize: 24, 
-    fontWeight: '800', 
-    letterSpacing: 0.5, 
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif-condensed',
-    textShadowColor: 'rgba(0,0,0,0.8)', 
-    textShadowOffset: { width: 0, height: 2 }, 
-    textShadowRadius: 6 
+  fullscreen: { ...StyleSheet.absoluteFillObject, zIndex: 1000, backgroundColor: 'transparent', overflow: 'visible' },
+  machineCenter: { flex: 1, alignItems: 'center', overflow: 'visible' },
+  hardwareHousing: {
+    borderRadius: 36,
+    overflow: 'visible',
+    borderWidth: 1,
+    borderColor: 'rgba(20,20,25,1)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 45 },
+    shadowOpacity: 0.95,
+    shadowRadius: 55,
+    elevation: 35,
   },
-  brandTopSubtitle: { 
-    color: RR_GOLD, 
-    fontSize: 10, 
-    fontWeight: '800', 
-    letterSpacing: 6, 
-    marginTop: 4, 
-    opacity: 0.85, 
-    fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif-medium' 
+  housingRimLight: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1.5,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+    borderLeftColor: 'rgba(255,255,255,0.06)',
+    borderRightColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: 'rgba(0,0,0,0.85)',
   },
-
-  centerBlock: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28, marginTop: -14 },
-  
-  countOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, justifyContent: 'flex-start', alignItems: 'center', zIndex: 1600 },
-  calibMsgWrap: { marginTop: 14 },
-  calibMsgTitle: { color: RR_IVORY, fontSize: 14, lineHeight: 21, textAlign: 'center', fontWeight: '500' },
-  
-  gearsRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginTop: 28, 
-    gap: 0, 
-    height: COG_SIZE + 10, 
-    width: COG_SIZE * 2 + 20, 
+  brassTrimLine: { position: 'absolute', height: 1, backgroundColor: 'rgba(203,161,53,0.35)' },
+  screwCorner: { position: 'absolute', zIndex: 20 },
+  ledRow: { position: 'absolute', flexDirection: 'row', zIndex: 18, alignItems: 'center' },
+  ledSlot: { alignItems: 'center', overflow: 'visible' },
+  ledCaption: {
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    color: 'rgba(255,255,255,0.55)',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
   },
-  gearIcon: { position: 'absolute' },
-  goldCogStack: { alignItems: 'center', justifyContent: 'center' },
-  goldCogLayer: { position: 'absolute' },
-  
-  brandBlock: { marginTop: 32, width: '100%', paddingHorizontal: 10 },
-  brandCard: { 
-    borderRadius: 24, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: 'rgba(212,175,55,0.36)', 
-    paddingVertical: 24, 
-    paddingHorizontal: 22, 
-    alignItems: 'center', 
-    shadowColor: '#D4AF37', 
-    shadowOffset: { width: 0, height: 12 }, 
-    shadowOpacity: 0.35, 
-    shadowRadius: 28, 
-    elevation: 20 
+  ledHousing: {
+    backgroundColor: '#050508',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#000',
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
   },
-  brandBorder: { ...StyleSheet.absoluteFillObject, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)' },
-  brandTopRule: { 
-    width: 50, 
-    height: 2, 
-    backgroundColor: RR_GOLD, 
-    opacity: 0.8, 
-    marginBottom: 16, 
-    shadowColor: RR_GOLD, 
-    shadowOpacity: 1, 
-    shadowRadius: 6, 
-    shadowOffset: {width: 0, height: 0} 
+  ledBevel: { ...StyleSheet.absoluteFillObject, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.8)' },
+  ledCore: { alignItems: 'center', justifyContent: 'center' },
+  ledReflex: { position: 'absolute', borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.6)' },
+  trenchHousing: { position: 'absolute', alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+  glassCore: {
+    overflow: 'hidden',
+    backgroundColor: '#05080A',
+    borderWidth: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.95,
+    shadowRadius: 28,
   },
-  brandEyebrow: { 
-    color: 'rgba(244,232,204,0.65)', 
-    fontSize: 10, 
-    fontWeight: '800', 
-    letterSpacing: 3.4, 
-    marginBottom: 10, 
-    textAlign: 'center' 
+  radarScanLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 6,
   },
-  brandTitle: { 
-    color: '#F4E8CC', 
-    fontSize: 36, 
-    fontWeight: '900', 
-    letterSpacing: -0.5, 
-    textAlign: 'center', 
-    textShadowColor: 'rgba(212,175,55,0.8)', 
-    textShadowOffset: { width: 0, height: 0 }, 
-    textShadowRadius: 18 
+  radarSweepLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 8,
   },
-  brandDivider: { width: '50%', height: 1, backgroundColor: RR_GOLD_SOFT, marginTop: 18, marginBottom: 18 },
-  
-  statusRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 10, 
-    backgroundColor: 'rgba(0,0,0,0.5)', 
+  domeGlareLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9,
+  },
+  sparkleWrap: { position: 'absolute', width: 12, height: 12, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+  sparkleHalo: { position: 'absolute', width: 14, height: 14, borderRadius: 7, opacity: 0.55 },
+  countOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 14 },
+  countValue: {
+    fontWeight: '900',
+    letterSpacing: -1.5,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
+  },
+  countLabel: {
+    fontWeight: '800',
+    letterSpacing: 3,
+    color: 'rgba(244,232,204,0.88)',
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  brandBlock: { position: 'absolute', width: '100%', alignItems: 'center', zIndex: 12 },
+  brandEyebrow: {
+    color: 'rgba(244,232,204,0.55)',
+    fontWeight: '800',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  brandTitle: {
+    color: '#F4E8CC',
+    fontWeight: '900',
+    letterSpacing: -0.3,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  divider: { width: '45%', height: 1, backgroundColor: 'rgba(203,161,53,0.3)', marginVertical: 12 },
+  cityLineRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingHorizontal: 4,
+  },
+  cityOrnamentGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ritualCityLabel: {
+    flexShrink: 1,
+    color: '#FFFFFF',
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)'
+    shadowOffset: { width: 0, height: 0 },
   },
-  statusSignalWrap: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  statusSignalHalo: { position: 'absolute', width: 16, height: 16, borderRadius: 8, backgroundColor: STATUS_GREEN },
-  statusSignalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: STATUS_GREEN, shadowColor: STATUS_GREEN, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 10, elevation: 10 },
-  brandStatus: { color: STATUS_GREEN, fontSize: 12, fontWeight: '800', letterSpacing: 1.5, textAlign: 'center' },
-  
-  countStage: { alignItems: 'center', justifyContent: 'center', minHeight: 230 },
-  countDeep: { position: 'absolute', fontWeight: '900', color: 'rgba(0,0,0,0.45)', letterSpacing: -3, transform: [{ translateX: 5 }, { translateY: 7 }] },
-  countShadow: { position: 'absolute', fontWeight: '900', letterSpacing: -3, opacity: 0.35, transform: [{ translateX: 3 }, { translateY: 4 }] },
-  countBody: { position: 'absolute', fontWeight: '900', letterSpacing: -4, textShadowColor: 'rgba(0,0,0,0.55)', textShadowOffset: { width: 0, height: 6 }, textShadowRadius: 18 },
-  countSheen: { position: 'absolute', fontWeight: '900', color: 'rgba(255,255,255,0.38)', letterSpacing: -3, transform: [{ translateX: -1.5 }, { translateY: -2 }] },
-  countCaption: { marginTop: 120, fontSize: 13, fontWeight: '700', letterSpacing: 3, color: 'rgba(235,231,223,0.55)', textTransform: 'uppercase' },
-  
-  mark: { display: 'none' }, 
-  
-  radarPedestal: { alignItems: 'center', justifyContent: 'center', marginBottom: 36, position: 'relative' },
-  radarBlurUnder: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
-  radarBezelOuter: { alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.58, shadowRadius: 32, elevation: 24 },
-  metalBezel: { padding: 5, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 12, elevation: 14 },
-  radarWrap: { alignItems: 'center', justifyContent: 'center' },
-  rimLight: { position: 'absolute', left: 0, right: 0, top: 0, height: '56%' },
-  sweepSpinner: { position: 'absolute', left: 0, top: 0, justifyContent: 'flex-start', alignItems: 'center' },
-  sweepCore: { borderRadius: 2, shadowColor: RR_GOLD, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.85, shadowRadius: 6, elevation: 8 },
-  tickLayer: { position: 'absolute', left: 0, top: 0 },
-  tickArm: { position: 'absolute', left: 0, top: 0, justifyContent: 'flex-start', alignItems: 'center' },
-  tickMark: { width: 1.5, backgroundColor: 'rgba(201,176,125,0.28)', borderRadius: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.65, shadowRadius: 2 },
-  blipWrap: { position: 'absolute', width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
-  blipGlow: { position: 'absolute', width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,59,48,0.35)' },
-  blipCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#FF3B30', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,220,218,0.95)', shadowColor: '#FF3B30', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.95, shadowRadius: 6, elevation: 6 },
-  centerDotInner: { backgroundColor: 'rgba(255,252,245,0.95)', shadowColor: '#fff', shadowOpacity: 0.35, shadowRadius: 4 },
-  ringOuter: { position: 'absolute', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(201,176,125,0.2)' },
-  ringMid: { position: 'absolute', borderWidth: 1, borderColor: 'rgba(201,176,125,0.35)' },
-  radarDisk: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(235,231,223,0.22)', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.55, shadowRadius: 18, elevation: 16 },
-  centerDot: { backgroundColor: RR_GOLD, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,250,240,0.35)', shadowColor: RR_GOLD, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.75, shadowRadius: 12, elevation: 10 },
-  subline: { marginTop: 12, color: RR_GOLD, fontSize: 14, fontWeight: '600', letterSpacing: 3, textAlign: 'center', textTransform: 'uppercase', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
-  whisper: { marginTop: 18, color: 'rgba(235,231,223,0.42)', fontSize: 12, fontWeight: '500', letterSpacing: 2, textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
-  bottomMark: { paddingBottom: Platform.OS === 'ios' ? 48 : 32, alignItems: 'center' },
-  bottomText: { color: 'rgba(235,231,223,0.22)', fontSize: 9, letterSpacing: 2.8, fontWeight: '600' },
-  cascadeWrap: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  statusText: {
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    flexShrink: 1,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 1,
+  },
 });

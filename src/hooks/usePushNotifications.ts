@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Alert, AppState, Linking, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -117,149 +117,174 @@ export async function syncPushDevicePreferences(params: {
   }
 }
 
+function normalizeAuthToken(authToken: string | null): string | null {
+  if (!authToken?.trim()) return null;
+  const trimmed = authToken.trim();
+  return trimmed.startsWith('Bearer ') ? trimmed.slice('Bearer '.length).trim() : trimmed;
+}
+
+/**
+ * Rejestracja tokenu push + opcjonalny systemowy prompt zgody.
+ * `showPrompt: false` — tylko gdy uprawnienie już `granted` (np. start aplikacji).
+ */
+export async function registerPushNotifications(
+  authToken: string | null,
+  options?: { showPrompt?: boolean },
+): Promise<boolean> {
+  const normalizedAuthToken = normalizeAuthToken(authToken);
+  if (!Device.isDevice || !normalizedAuthToken) return false;
+
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    const showPrompt = options?.showPrompt === true;
+
+    if (existingStatus !== 'granted' && showPrompt) {
+      // Po odmowie iOS nie pokaże ponownie systemowego promptu — bez własnego Alertu (App Review).
+      if (existingStatus === 'denied') return false;
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+        },
+      });
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') return false;
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10b981',
+      });
+    }
+
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.error('❌ Push: brak extra.eas.projectId w app.json');
+      return false;
+    }
+
+    let pushToken: string;
+    try {
+      pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    } catch (e) {
+      console.error(
+        '❌ Push: getExpoPushTokenAsync (Expo / sieć do usługi tokenu). Sprawdź internet i projectId EAS.',
+        e,
+      );
+      return false;
+    }
+    if (!pushToken) return false;
+
+    const favorites = buildFavoritesPayload(null);
+    const payload = {
+      expoPushToken: pushToken,
+      platform: Platform.OS.toUpperCase(),
+      deviceModel: Device.modelName ?? 'Unknown',
+      appVersion: Constants.expoConfig?.version ?? '1.0',
+      favorites,
+      devicePreferences: {
+        favorites,
+      },
+    };
+
+    let registerPostOk = false;
+    let lastPostNetworkError: unknown;
+
+    for (let attempt = 1; attempt <= POST_REGISTER_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch(PUSH_REGISTER_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${normalizedAuthToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) {
+          registerPostOk = true;
+          break;
+        }
+        const body = await response.text().catch(() => '');
+        console.warn('⚠️ Push: backend odrzucił token', response.status, body?.slice(0, 200));
+        break;
+      } catch (e) {
+        lastPostNetworkError = e;
+        if (attempt < POST_REGISTER_ATTEMPTS) {
+          await sleep(POST_RETRY_DELAY_MS);
+        }
+      }
+    }
+
+    if (!registerPostOk) {
+      if (lastPostNetworkError != null) {
+        console.error(
+          [
+            `❌ Push: po ${POST_REGISTER_ATTEMPTS} próbach POST ${PUSH_REGISTER_URL}`,
+            'TypeError „Network request failed” = brak odpowiedzi sieciowej (DNS, TLS, zerwane Wi‑Fi/5G, timeout), zwykle nie 401/500 z samego API.',
+            `Test na iPhonie (Safari): otwórz GET ${PUSH_REGISTER_URL} — po deployu Next oczekuj JSON z ok.`,
+            `SSH: curl -sS ${PUSH_REGISTER_URL}`,
+          ].join(' '),
+          lastPostNetworkError,
+        );
+      }
+      return false;
+    }
+
+    await AsyncStorage.setItem('pushToken', pushToken);
+    return true;
+  } catch (e) {
+    console.error('❌ Push setup error:', e);
+    return false;
+  }
+}
+
+let messagesTabPushPromptInFlight = false;
+
+/**
+ * Wejście w zakładkę „Wiadomości”: od razu systemowy prompt (bez własnego Alertu — App Store).
+ */
+export async function promptPushNotificationsForMessagesTab(authToken: string | null): Promise<void> {
+  if (!authToken || !Device.isDevice || messagesTabPushPromptInFlight) return;
+
+  const { status } = await Notifications.getPermissionsAsync();
+
+  if (status === 'granted') {
+    await registerPushNotifications(authToken, { showPrompt: false });
+    return;
+  }
+
+  if (status === 'denied') return;
+
+  messagesTabPushPromptInFlight = true;
+  try {
+    await registerPushNotifications(authToken, { showPrompt: true });
+  } finally {
+    messagesTabPushPromptInFlight = false;
+  }
+}
+
 /** Named const export — unika edge-case’ów bundlera z `export function` przy cyklicznych importach. */
 export const usePushNotifications = function usePushNotifications(authToken: string | null) {
   const isRegisteredRef = useRef(false);
 
-  const normalizedAuthToken =
-    authToken && authToken.trim()
-      ? authToken.trim().startsWith('Bearer ')
-        ? authToken.trim().slice('Bearer '.length).trim()
-        : authToken.trim()
-      : null;
+  const normalizedAuthToken = normalizeAuthToken(authToken);
 
   useEffect(() => {
     isRegisteredRef.current = false;
   }, [normalizedAuthToken]);
 
   const registerToken = useCallback(async (showPrompt = false) => {
-    if (isRegisteredRef.current || !Device.isDevice || !normalizedAuthToken) return false;
+    if ((isRegisteredRef.current && !showPrompt) || !Device.isDevice || !normalizedAuthToken) return false;
 
-    try {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted' && showPrompt) {
-        if (existingStatus === 'denied') {
-          // iOS nie pokaże ponownie systemowego promptu — tylko Ustawienia.
-          await new Promise<void>((resolve) => {
-            Alert.alert(
-              'Powiadomienia wyłączone',
-              'Aby włączyć alerty EstateOS™, otwórz Ustawienia → Powiadomienia → EstateOS™ i włącz powiadomienia.',
-              [
-                { text: 'Anuluj', style: 'cancel', onPress: () => resolve() },
-                { text: 'Otwórz Ustawienia', onPress: () => { void Linking.openSettings(); resolve(); } },
-              ]
-            );
-          });
-          return false;
-        }
-        // Explicit prośba o alert + dźwięk + BADGE.
-        // Bez `allowsBadge: true` iOS nie pozwoli `setBadgeCountAsync` ustawić
-        // czerwonego „1" na ikonie aplikacji — domyślne flagi czasem nie
-        // obejmują tej kategorii (zwłaszcza po starszych zezwoleniach).
-        const { status } = await Notifications.requestPermissionsAsync({
-          ios: {
-            allowAlert: true,
-            allowBadge: true,
-            allowSound: true,
-          },
-        });
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') return false;
-
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#10b981',
-        });
-      }
-
-      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-      if (!projectId) {
-        console.error('❌ Push: brak extra.eas.projectId w app.json');
-        return false;
-      }
-
-      let pushToken: string;
-      try {
-        pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      } catch (e) {
-        console.error(
-          '❌ Push: getExpoPushTokenAsync (Expo / sieć do usługi tokenu). Sprawdź internet i projectId EAS.',
-          e
-        );
-        return false;
-      }
-      if (!pushToken) return false;
-
-      const favorites = buildFavoritesPayload(null);
-      const payload = {
-        expoPushToken: pushToken,
-        platform: Platform.OS.toUpperCase(),
-        deviceModel: Device.modelName ?? 'Unknown',
-        appVersion: Constants.expoConfig?.version ?? '1.0',
-        // Backend wymaga root `favorites` z boolean `enabled`.
-        favorites,
-        devicePreferences: {
-          favorites,
-        },
-      };
-
-      let registerPostOk = false;
-      let lastPostNetworkError: unknown;
-
-      for (let attempt = 1; attempt <= POST_REGISTER_ATTEMPTS; attempt++) {
-        try {
-          const response = await fetch(PUSH_REGISTER_URL, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${normalizedAuthToken}`,
-            },
-            body: JSON.stringify(payload),
-          });
-          if (response.ok) {
-            registerPostOk = true;
-            break;
-          }
-          const body = await response.text().catch(() => '');
-          console.warn('⚠️ Push: backend odrzucił token', response.status, body?.slice(0, 200));
-          break;
-        } catch (e) {
-          lastPostNetworkError = e;
-          if (attempt < POST_REGISTER_ATTEMPTS) {
-            await sleep(POST_RETRY_DELAY_MS);
-          }
-        }
-      }
-
-      if (!registerPostOk) {
-        if (lastPostNetworkError != null) {
-          console.error(
-            [
-              `❌ Push: po ${POST_REGISTER_ATTEMPTS} próbach POST ${PUSH_REGISTER_URL}`,
-              'TypeError „Network request failed” = brak odpowiedzi sieciowej (DNS, TLS, zerwane Wi‑Fi/5G, timeout), zwykle nie 401/500 z samego API.',
-              `Test na iPhonie (Safari): otwórz GET ${PUSH_REGISTER_URL} — po deployu Next oczekuj JSON z ok.`,
-              `SSH: curl -sS ${PUSH_REGISTER_URL}`,
-            ].join(' '),
-            lastPostNetworkError
-          );
-        }
-        return false;
-      }
-
-      await AsyncStorage.setItem('pushToken', pushToken);
-      isRegisteredRef.current = true;
-      return true;
-    } catch (e) {
-      console.error('❌ Push setup error:', e);
-      return false;
-    }
+    const ok = await registerPushNotifications(normalizedAuthToken, { showPrompt });
+    if (ok) isRegisteredRef.current = true;
+    return ok;
   }, [normalizedAuthToken]);
 
   useEffect(() => {

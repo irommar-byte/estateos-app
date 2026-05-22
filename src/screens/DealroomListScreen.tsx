@@ -21,6 +21,7 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { promptPushNotificationsForMessagesTab } from '../hooks/usePushNotifications';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
@@ -35,6 +36,7 @@ import { isDealTransactionFinalized } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { formatLocationLabel } from '../constants/locationEcosystem';
+import { useI18n, t } from '../i18n';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
@@ -295,7 +297,7 @@ function buildOfferSummaryLine(deal: any): string {
   ]
     .filter(Boolean)
     .join(' • ');
-  return [left, right].filter(Boolean).join('  |  ') || 'Brak opisu lokalizacji';
+  return [left, right].filter(Boolean).join('  |  ') || t('dealroom.location.noDescription');
 }
 
 function getStackContactMeta(deal: any, dealMessagesById: Record<number, any[]>) {
@@ -316,14 +318,14 @@ function getStackContactMeta(deal: any, dealMessagesById: Record<number, any[]>)
     if (entity === 'APPOINTMENT') {
       return {
         kind: 'appointment' as const,
-        text: 'Negocjacja terminu',
+        text: t('dealroom.activity.appointmentNegotiation'),
         atText,
       };
     }
     if (entity === 'BID') {
       return {
         kind: 'price' as const,
-        text: amount > 0 ? `Oferta: ${amount.toLocaleString('pl-PL')} PLN` : 'Negocjacja ceny',
+        text: amount > 0 ? t('dealroom.activity.offerAmount', { amount: amount.toLocaleString('pl-PL') }) : t('dealroom.activity.priceNegotiation'),
         atText,
       };
     }
@@ -331,14 +333,14 @@ function getStackContactMeta(deal: any, dealMessagesById: Record<number, any[]>)
   const fallbackAt = new Date(firstDefined(deal?.updatedAt, deal?.lastMessageAt, Date.now()) as any);
   return {
     kind: 'other' as const,
-    text: 'Kontakt w transakcji',
+    text: t('dealroom.activity.contactInDeal'),
     atText: Number.isFinite(fallbackAt.getTime())
       ? fallbackAt.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
       : '-',
   };
 }
 
-function getTransactionBadge(deal: any): { label: 'Sprzedaż' | 'Najem'; color: string } {
+function getTransactionBadge(deal: any): { label: string; color: string } {
   const tx = String(
     firstDefined(
       deal?.offer?.transactionType,
@@ -347,8 +349,8 @@ function getTransactionBadge(deal: any): { label: 'Sprzedaż' | 'Najem'; color: 
       deal?.transactionType
     ) || ''
   ).toUpperCase();
-  if (tx === 'RENT') return { label: 'Najem', color: '#0A84FF' };
-  return { label: 'Sprzedaż', color: '#10B981' };
+  if (tx === 'RENT') return { label: t('dealroom.transactionType.rent'), color: '#0A84FF' };
+  return { label: t('dealroom.transactionType.sale'), color: '#10B981' };
 }
 
 /** Pierwsze zdjęcie z obiektu oferty / listingu – jak w OfferDetail / Radar (images jako JSON lub tablica stringów). */
@@ -437,12 +439,12 @@ function resolveDealCounterparty(
   if (me && buyerId && me === buyerId) {
     const id = sellerId ?? participantId ?? explicitOtherId;
     const name = sellerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
-    return { sideLabel: 'Sprzedający', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
+    return { sideRole: 'seller' as const, sideLabel: t('dealroom.roles.seller'), id: id || null, name: name || (id ? t('dealroom.user.numbered', { id }) : t('dealroom.user.noData')) };
   }
   if (me && sellerId && me === sellerId) {
     const id = buyerId ?? participantId ?? explicitOtherId;
     const name = buyerName ?? participantName ?? explicitOtherName ?? (id ? counterpartyNameById[id] : null);
-    return { sideLabel: 'Kupujący', id: id || null, name: name || (id ? `Użytkownik #${id}` : 'Brak danych') };
+    return { sideRole: 'buyer' as const, sideLabel: t('dealroom.roles.buyer'), id: id || null, name: name || (id ? t('dealroom.user.numbered', { id }) : t('dealroom.user.noData')) };
   }
 
   const guessedId = participantId ?? explicitOtherId ?? (me === buyerId ? sellerId : buyerId) ?? sellerId ?? buyerId;
@@ -454,15 +456,17 @@ function resolveDealCounterparty(
     (guessedId ? counterpartyNameById[guessedId] : null);
 
   return {
-    sideLabel: 'Kontrahent',
+    sideRole: 'counterparty' as const,
+    sideLabel: t('dealroom.roles.counterparty'),
     id: guessedId || null,
-    name: guessedName || (guessedId ? `Użytkownik #${guessedId}` : 'Brak danych'),
+    name: guessedName || (guessedId ? t('dealroom.user.numbered', { id: guessedId }) : t('dealroom.user.noData')),
   };
 }
 
 // === KOMPONENTY ===
 /** Zgodnie z działem listy: żółty Start | zielony Aktywne | fioletowy Finalizowanie (mocny „oddech”). */
 function DealPhasePill({ phase, colors }: { phase: DealPhase; colors: ReturnType<typeof getColors> }) {
+  const { t } = useI18n();
   const opacity = useSharedValue(1);
   const scale = useSharedValue(1);
 
@@ -506,7 +510,7 @@ function DealPhasePill({ phase, colors }: { phase: DealPhase; colors: ReturnType
   }));
 
   const label =
-    phase === 'started' ? 'Start negocjacji' : phase === 'active' ? 'Negocjacje aktywne' : 'Finalizowanie';
+    phase === 'started' ? t('dealroom.phase.started') : phase === 'active' ? t('dealroom.phase.active') : t('dealroom.phase.finalized');
 
   const shell =
     phase === 'started'
@@ -603,7 +607,7 @@ function UnreadBadge({ count, colors }: { count: number; colors: ReturnType<type
 function AttentionBadge({
   colors,
   compact = false,
-  text = 'REAKCJA',
+  text,
 }: {
   colors: ReturnType<typeof getColors>;
   compact?: boolean;
@@ -630,7 +634,7 @@ function AttentionBadge({
 
   return (
     <Animated.View style={[{ borderRadius: 999, backgroundColor: colors.red, paddingHorizontal: 8, paddingVertical: 4 }, blink]}>
-      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>{text}</Text>
+      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 }}>{text ?? t('dealroom.badges.reaction')}</Text>
     </Animated.View>
   );
 }
@@ -842,21 +846,22 @@ function DealroomsEmptyState({
   colors: ReturnType<typeof getColors>;
   onOpenRadar: () => void;
 }) {
+  const { t } = useI18n();
   const steps = [
     {
       icon: Star,
-      title: 'Znajdź ofertę w Radarze',
-      desc: 'Otwórz zakładkę Radar, przejrzyj mapę i listę nieruchomości pasujących do Twoich kryteriów.',
+      title: t('dealroom.empty.steps.findOffer.title'),
+      desc: t('dealroom.empty.steps.findOffer.desc'),
     },
     {
       icon: HandCoins,
-      title: 'Wyślij propozycję transakcji',
-      desc: 'W szczegółach oferty stuknij „Zaproponuj transakcję" i wprowadź cenę oraz warunki.',
+      title: t('dealroom.empty.steps.sendProposal.title'),
+      desc: t('dealroom.empty.steps.sendProposal.desc'),
     },
     {
       icon: ShieldCheck,
-      title: 'Negocjuj i finalizuj bezpiecznie',
-      desc: 'Po akceptacji drugiej strony pojawi się tu Dealroom z czatem, propozycjami cen i finalizacją.',
+      title: t('dealroom.empty.steps.negotiate.title'),
+      desc: t('dealroom.empty.steps.negotiate.desc'),
     },
   ];
 
@@ -883,9 +888,9 @@ function DealroomsEmptyState({
 
         {/* HEADER TEXT */}
         <Animated.View entering={FadeInDown.delay(100).duration(420)} style={emptyStateStyles.headerBlock}>
-          <Text style={[emptyStateStyles.eyebrow, { color: colors.gold }]}>WITAJ W DEALROOMS</Text>
+          <Text style={[emptyStateStyles.eyebrow, { color: colors.gold }]}>{t('dealroom.empty.eyebrow')}</Text>
           <Text style={[emptyStateStyles.title, { color: colors.textMain }]}>
-            Tu pojawią się{'\n'}Twoje transakcje
+            {t('dealroom.empty.titleLine1')}{'\n'}{t('dealroom.empty.titleLine2')}
           </Text>
           <Text style={[emptyStateStyles.subtitle, { color: colors.textMuted }]}>
             EstateOS™ Dealroom to bezpieczny pokój negocjacyjny — czat, propozycje cenowe,
@@ -931,12 +936,12 @@ function DealroomsEmptyState({
               { backgroundColor: colors.gold, opacity: pressed ? 0.88 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
             ]}
           >
-            <Text style={emptyStateStyles.ctaPrimaryText}>Otwórz Radar i znajdź ofertę</Text>
+            <Text style={emptyStateStyles.ctaPrimaryText}>{t('dealroom.empty.cta')}</Text>
             <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.5} />
           </Pressable>
 
           <Text style={[emptyStateStyles.ctaFootnote, { color: colors.textMuted }]}>
-            Dealroom utworzymy automatycznie po wzajemnej akceptacji.
+            {t('dealroom.empty.footnote')}
           </Text>
         </Animated.View>
       </ScrollView>
@@ -1093,6 +1098,7 @@ const emptyStateStyles = StyleSheet.create({
 
 // === GŁÓWNY EKRAN ===
 export default function DealroomListScreen() {
+  const { t } = useI18n();
   const navigation = useNavigation<any>();
   const { token, user } = useAuthStore() as any; 
   
@@ -1259,6 +1265,8 @@ export default function DealroomListScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void promptPushNotificationsForMessagesTab(token);
+
       setPhaseRefreshTick((t) => t + 1);
 
       // Premium reveal: każde wejście w „Wiadomości" zaczyna od delikatnego
@@ -1280,7 +1288,7 @@ export default function DealroomListScreen() {
           sectionsReadyTimerRef.current = null;
         }
       };
-    }, [])
+    }, [token])
   );
 
   useEffect(() => {
@@ -1625,50 +1633,50 @@ export default function DealroomListScreen() {
     const customTitle = deal?.offer?.title || deal?.title;
     if (customTitle) return customTitle;
     const offerId = extractOfferIdFromDeal(deal);
-    if (offerId) return `Oferta #${offerId}`;
-    return 'Negocjacja oferty';
+    if (offerId) return t('dealroom.activity.offerNumbered', { id: offerId });
+    return t('dealroom.activity.offerNegotiation');
   };
 
   /** Krótki opis z pól listy API, zanim wczyta się pełny wątek wiadomości. */
-  const getCurrentDealActivity = (deal: any, counterpartyHint?: { sideLabel: string; name: string }) => {
+  const getCurrentDealActivity = (deal: any, counterpartyHint?: { sideRole?: string; sideLabel: string; name: string }) => {
     const status = String(deal?.status || '').toUpperCase();
     const raw = String(deal?.lastMessage || '');
     const msg = raw.toLowerCase();
     const unread = Number(deal?.unread || 0);
     const peer = counterpartyHint?.name ? String(counterpartyHint.name).split(/\s+/)[0] : null;
-    const side = counterpartyHint?.sideLabel;
+    const sideRole = counterpartyHint?.sideRole;
 
-    if (status === 'ACCEPTED') return 'Etap: warunki transakcji uzgodnione';
-    if (status === 'REJECTED') return 'Etap: negocjacja przerwana — szczegóły w czacie';
+    if (status === 'ACCEPTED') return t('dealroom.activity.stageAccepted');
+    if (status === 'REJECTED') return t('dealroom.activity.stageRejected');
     if (status === 'INITIATED') {
-      if (side === 'Sprzedający' && peer) {
-        return `Etap: start — możesz wysłać ${peer} pierwszą propozycję ceny lub terminu prezentacji`;
+      if (sideRole === 'seller' && peer) {
+        return t('dealroom.activity.stageStartSeller', { peer });
       }
-      if (side === 'Kupujący' && peer) {
-        return `Etap: start — czekasz na pierwszy ruch od ${peer}`;
+      if (sideRole === 'buyer' && peer) {
+        return t('dealroom.activity.stageStartBuyer', { peer });
       }
-      return 'Etap: start negocjacji — wyślij propozycję ceny lub terminu';
+      return t('dealroom.activity.stageStartGeneric');
     }
 
     if (raw.startsWith('[[DEAL_ATTACHMENT]]') || raw.startsWith('[[deal_attachment]]')) {
-      return peer ? `Nowy dokument od ${peer} — zobacz w czacie` : 'Nowy dokument w wątku — zobacz w czacie';
+      return peer ? t('dealroom.activity.newDocFromPeer', { peer }) : t('dealroom.activity.newDocInThread');
     }
 
     if (msg.includes('"appointment"')) {
       return peer
-        ? `Termin prezentacji w toku — ostatnia zmiana w czacie (partner: ${peer})`
-        : 'Termin prezentacji w toku — zajrzyj do czatu';
+        ? t('dealroom.activity.appointmentInProgressPeer', { peer })
+        : t('dealroom.activity.appointmentInProgress');
     }
     if (msg.includes('"bid"') || msg.includes('"BID"')) {
       return peer
-        ? `Negocjacja ceny w toku — ostatnia zmiana w czacie (partner: ${peer})`
-        : 'Negocjacja ceny w toku — zajrzyj do czatu';
+        ? t('dealroom.activity.priceInProgressPeer', { peer })
+        : t('dealroom.activity.priceInProgress');
     }
 
     if (unread > 0) {
-      return peer ? `Nowa wiadomość od ${peer}` : 'Masz nieprzeczytaną wiadomość w wątku';
+      return peer ? t('dealroom.activity.newMessageFromPeer', { peer }) : t('dealroom.activity.unreadInThread');
     }
-    return peer ? `Aktywny wątek z ${peer}` : 'Aktywny wątek — zajrzyj do czatu';
+    return peer ? t('dealroom.activity.activeThreadWithPeer', { peer }) : t('dealroom.activity.activeThread');
   };
 
   const getCounterparty = useCallback(
@@ -1684,7 +1692,8 @@ export default function DealroomListScreen() {
     for (const deal of deals) {
       const c = getCounterparty(deal);
       if (!c.id) continue;
-      const hasConcreteName = c.name && c.name !== 'Brak danych' && !String(c.name).startsWith('Użytkownik #');
+      const numberedPrefix = t('dealroom.user.numbered', { id: '' }).replace(/\d+$/, '');
+      const hasConcreteName = c.name && c.name !== t('dealroom.user.noData') && !String(c.name).startsWith(numberedPrefix);
       if (!hasConcreteName && !counterpartyNameById[c.id]) idsToResolve.add(c.id);
     }
 
@@ -1726,10 +1735,10 @@ export default function DealroomListScreen() {
 
   const formatLastMessage = (msg?: string) => {
     const raw = String(msg || '').trim();
-    if (!raw) return 'Brak wpisów w wątku.';
+    if (!raw) return t('dealroom.lastMessage.empty');
     const lower = raw.toLowerCase();
     if (lower.startsWith('[[deal_attachment]]') || raw.startsWith('[[DEAL_ATTACHMENT]]')) {
-      return 'Ostatnia aktywność: załącznik — dokument w czacie';
+      return t('dealroom.lastMessage.attachment');
     }
     const parsed = tryParseDealEventPayload(raw);
     if (parsed) {
@@ -1737,24 +1746,24 @@ export default function DealroomListScreen() {
       const action = String(parsed.action || '').toUpperCase();
       const amt = Number(parsed.amount || 0);
       if (entity === 'APPOINTMENT') {
-        if (action === 'ACCEPTED') return 'Ostatnio w czacie: termin prezentacji zaakceptowany';
-        if (action === 'COUNTERED') return 'Ostatnio w czacie: kontroferta terminu — wymaga Twojej reakcji';
-        return 'Ostatnio w czacie: propozycja terminu prezentacji';
+        if (action === 'ACCEPTED') return t('dealroom.lastMessage.appointmentAccepted');
+        if (action === 'COUNTERED') return t('dealroom.lastMessage.appointmentCountered');
+        return t('dealroom.lastMessage.appointmentProposed');
       }
       if (entity === 'BID') {
         if (action === 'ACCEPTED' && amt > 0) {
-          return `Ostatnio w czacie: uzgodniona cena ${amt.toLocaleString('pl-PL')} PLN`;
+          return t('dealroom.lastMessage.priceAccepted', { amount: amt.toLocaleString('pl-PL') });
         }
-        if (amt > 0) return `Ostatnio w czacie: propozycja ceny ${amt.toLocaleString('pl-PL')} PLN`;
-        return 'Ostatnio w czacie: zmiana w negocjacji ceny';
+        if (amt > 0) return t('dealroom.lastMessage.priceProposed', { amount: amt.toLocaleString('pl-PL') });
+        return t('dealroom.lastMessage.priceChange');
       }
     }
     if (lower.startsWith('[[deal_event]]') || raw.startsWith('[[DEAL_EVENT]]')) {
-      return 'Ostatnio w czacie: aktualizacja negocjacji';
+      return t('dealroom.lastMessage.negotiationUpdate');
     }
     if (raw.startsWith('📅')) return raw;
     const preview = raw.replace(/\s+/g, ' ').slice(0, 52);
-    return `Ostatnio: „${preview}${raw.length > 52 ? '…' : ''}”`;
+    return t('dealroom.lastMessage.preview', { preview: `${preview}${raw.length > 52 ? '…' : ''}` });
   };
 
   const togglePinForDeal = useCallback((dealId: number) => {
@@ -1786,18 +1795,18 @@ export default function DealroomListScreen() {
       const id = Number(deal?.id);
       if (!id || !token) return;
       Alert.alert(
-        'Usunąć transakcję?',
-        'Tej operacji nie cofniesz — transakcja zniknie z Dealroom bezpowrotnie.',
+        t('dealroom.list.deleteConfirm.title'),
+        t('dealroom.list.deleteConfirm.message'),
         [
-          { text: 'Anuluj', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: 'Usuń',
+            text: t('common.delete'),
             style: 'destructive',
             onPress: async () => {
               try {
                 const result = await requestMobileDealDeletion(id, token);
                 if (!result.ok) {
-                  Alert.alert('Nie udało się usunąć', result.message);
+                  Alert.alert(t('dealroom.list.deleteConfirm.failed'), result.message);
                   return;
                 }
                 setDeals((prev) => prev.filter((d) => Number(d.id) !== id));
@@ -1818,7 +1827,7 @@ export default function DealroomListScreen() {
                 });
                 void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               } catch {
-                Alert.alert('Błąd', 'Sprawdź połączenie i spróbuj ponownie.');
+                Alert.alert(t('common.error'), t('dealroom.list.deleteConfirm.connectionError'));
               }
             },
           },
@@ -1928,7 +1937,7 @@ export default function DealroomListScreen() {
                 }}
               >
                 <Pin size={22} color="#fff" fill={isPinned ? '#fff' : 'transparent'} strokeWidth={2.2} />
-                <Text style={styles.swipeActionCaption}>{isPinned ? 'Odepnij' : 'Przypnij'}</Text>
+                <Text style={styles.swipeActionCaption}>{isPinned ? t('dealroom.list.unpin') : t('dealroom.list.pin')}</Text>
               </RectButton>
             </View>
           )}
@@ -1944,7 +1953,7 @@ export default function DealroomListScreen() {
                       }}
                     >
                       <Trash2 size={22} color="#fff" strokeWidth={2.2} />
-                      <Text style={styles.swipeActionCaption}>Usuń</Text>
+                      <Text style={styles.swipeActionCaption}>{t('dealroom.list.delete')}</Text>
                     </RectButton>
                   </View>
                 )
@@ -2011,7 +2020,7 @@ export default function DealroomListScreen() {
                     allowFontScaling={false}
                   >
                     {openingOfferId === Number(extractOfferIdFromDeal(deal) || 0)
-                      ? 'Otwieranie...'
+                      ? t('dealroom.list.opening')
                       : getReadableDealTitle(deal)}
                   </Text>
                 </Pressable>
@@ -2157,7 +2166,7 @@ export default function DealroomListScreen() {
                     }}
                   >
                     <Pin size={22} color="#fff" fill={isPinnedStack ? '#fff' : 'transparent'} strokeWidth={2.2} />
-                    <Text style={styles.swipeActionCaption}>{isPinnedStack ? 'Odepnij' : 'Przypnij'}</Text>
+                    <Text style={styles.swipeActionCaption}>{isPinnedStack ? t('dealroom.list.unpin') : t('dealroom.list.pin')}</Text>
                   </RectButton>
                 </View>
               )}
@@ -2192,7 +2201,7 @@ export default function DealroomListScreen() {
                       <View key={`hole-${i}`} style={styles.walletNotebookHole} />
                     ))}
                   </View>
-                  <Text style={styles.walletStackEyebrow}>STOS TRANSAKCJI OFERTY #{offerId || '-'}</Text>
+                  <Text style={styles.walletStackEyebrow}>{t('dealroom.list.stackEyebrow', { id: offerId || '-' })}</Text>
                   <View style={styles.walletPreviewWrap}>
                     <DealOfferThumb uri={summaryThumb} colors={COLORS} />
                     <View style={[styles.walletTxBadgeOnImage, { backgroundColor: txBadge.color }]}>
@@ -2256,7 +2265,7 @@ export default function DealroomListScreen() {
                       })()
                     ))}
                   </View>
-                  <Text style={styles.walletStackHint}>Przesuń w prawo, aby przypiąć. Dotknij, aby rozłożyć stos.</Text>
+                  <Text style={styles.walletStackHint}>{t('dealroom.list.stackHint')}</Text>
                   {/* Pinezka jest renderowana POZA tym kafelkiem (na zewnątrz Swipeable),
                       aby nie zakrywała zawartości stosu. */}
                 </View>
@@ -2273,7 +2282,7 @@ export default function DealroomListScreen() {
         <View key={`stack-${groupKey}`} style={styles.walletExpandedWrap}>
           <View style={styles.walletExpandedHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.walletStackEyebrow}>ROZŁOŻONE KARTY OFERTY #{offerId || '-'}</Text>
+              <Text style={styles.walletStackEyebrow}>{t('dealroom.list.expandedEyebrow', { id: offerId || '-' })}</Text>
               <Text
                 style={styles.walletExpandedTitle}
                 numberOfLines={1}
@@ -2294,13 +2303,13 @@ export default function DealroomListScreen() {
               </Text>
             </View>
             <Pressable onPress={() => toggleOfferStack(phase, offerId)} style={styles.walletCollapseBtn}>
-              <Text style={styles.walletCollapseBtnTxt}>Zwiń</Text>
+              <Text style={styles.walletCollapseBtnTxt}>{t('dealroom.list.collapse')}</Text>
             </Pressable>
           </View>
           {isPinnedStack ? (
             <View style={styles.pinInlineRow}>
               <Pin size={12} color="#fff" fill="#FF3B30" />
-              <Text style={styles.pinInlineText}>Przypięty stos</Text>
+              <Text style={styles.pinInlineText}>{t('dealroom.list.pinnedStack')}</Text>
             </View>
           ) : null}
           {dealsInGroup.map((deal) => {
@@ -2366,8 +2375,8 @@ export default function DealroomListScreen() {
           <ChevronLeft size={30} color={COLORS.textMain} strokeWidth={2.5} />
         </Pressable>
         <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerSubtitle}>TWOJE PORTFOLIO</Text>
-          <Text style={styles.headerTitle}>EstateOS™ Dealrooms</Text>
+          <Text style={styles.headerSubtitle}>{t('dealroom.list.headerSubtitle')}</Text>
+          <Text style={styles.headerTitle}>{t('dealroom.list.headerTitle')}</Text>
         </View>
       </BlurView>
 
@@ -2375,7 +2384,7 @@ export default function DealroomListScreen() {
         <Animated.View entering={FadeIn.duration(220)} style={styles.loaderCenter}>
           <ActivityIndicator size="large" color={COLORS.gold} />
           <Text style={styles.loaderText}>
-            {loading ? 'Wczytywanie transakcji…' : 'Przygotowywanie portfolio…'}
+            {loading ? t('dealroom.list.loadingDeals') : t('dealroom.list.preparingPortfolio')}
           </Text>
         </Animated.View>
       ) : visibleDeals.length === 0 ? (
@@ -2401,7 +2410,7 @@ export default function DealroomListScreen() {
           {!phasesReady && visibleDeals.length > 0 ? (
             <View style={styles.phaseBanner}>
               <ActivityIndicator size="small" color={COLORS.gold} />
-              <Text style={styles.phaseBannerText}>Układanie według etapów…</Text>
+              <Text style={styles.phaseBannerText}>{t('dealroom.list.arrangingPhases')}</Text>
             </View>
           ) : null}
 
@@ -2421,10 +2430,10 @@ export default function DealroomListScreen() {
                         <CalendarClock size={20} color={COLORS.green} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
-                        <Text style={styles.phaseEyebrow}>Prezentacja</Text>
-                        <Text style={styles.phaseTitle}>Nadchodzące prezentacje</Text>
+                        <Text style={styles.phaseEyebrow}>{t('dealroom.list.sections.presentation.eyebrow')}</Text>
+                        <Text style={styles.phaseTitle}>{t('dealroom.list.sections.presentation.title')}</Text>
                         <Text style={styles.phaseHint}>
-                          Uzgodniony termin w czacie — na górze od najbliższej daty, z odliczaniem jak w wątku.
+                          {t('dealroom.list.sections.presentation.hint')}
                         </Text>
                       </View>
                     </View>
@@ -2454,14 +2463,14 @@ export default function DealroomListScreen() {
                         <PlayCircle size={20} color={COLORS.gold} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
-                        <Text style={styles.phaseEyebrow}>Negocjacje</Text>
-                        <Text style={styles.phaseTitle}>Rozpoczęte ({groupedDeals.started.length})</Text>
+                        <Text style={styles.phaseEyebrow}>{t('dealroom.list.sections.started.eyebrow')}</Text>
+                        <Text style={styles.phaseTitle}>{t('dealroom.list.sections.started.title', { count: groupedDeals.started.length })}</Text>
                         <Text style={styles.phaseHint}>
-                          Jeszcze bez potwierdzonej ceny i bez potwierdzonego terminu prezentacji — pierwsze propozycje wysyłasz w czacie.
+                          {t('dealroom.list.sections.started.hint')}
                         </Text>
                       </View>
                       <View style={styles.phaseHeaderMeta}>
-                        {sectionNeedsAttention.started ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {sectionNeedsAttention.started ? <AttentionBadge colors={COLORS} text={t('dealroom.badges.attention')} /> : null}
                         {collapsedSections.started ? (
                           <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
                         ) : (
@@ -2495,14 +2504,14 @@ export default function DealroomListScreen() {
                         <Zap size={20} color={COLORS.green} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
-                        <Text style={styles.phaseEyebrow}>W toku</Text>
-                        <Text style={styles.phaseTitle}>Aktywne ({groupedDeals.active.length})</Text>
+                        <Text style={styles.phaseEyebrow}>{t('dealroom.list.sections.active.eyebrow')}</Text>
+                        <Text style={styles.phaseTitle}>{t('dealroom.list.sections.active.title', { count: groupedDeals.active.length })}</Text>
                         <Text style={styles.phaseHint}>
-                          Cena i/lub termin prezentacji już uzgodnione — kolejne ustalenia prowadzicie w czacie.
+                          {t('dealroom.list.sections.active.hint')}
                         </Text>
                       </View>
                       <View style={styles.phaseHeaderMeta}>
-                        {sectionNeedsAttention.active ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {sectionNeedsAttention.active ? <AttentionBadge colors={COLORS} text={t('dealroom.badges.attention')} /> : null}
                         {collapsedSections.active ? (
                           <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
                         ) : (
@@ -2536,14 +2545,14 @@ export default function DealroomListScreen() {
                         <CheckCircle2 size={20} color={COLORS.purple} strokeWidth={2.2} />
                       </View>
                       <View style={styles.phaseSectionTitles}>
-                        <Text style={styles.phaseEyebrow}>Domknięcie</Text>
-                        <Text style={styles.phaseTitle}>Sfinalizowane ({groupedDeals.finalized.length})</Text>
+                        <Text style={styles.phaseEyebrow}>{t('dealroom.list.sections.finalized.eyebrow')}</Text>
+                        <Text style={styles.phaseTitle}>{t('dealroom.list.sections.finalized.title', { count: groupedDeals.finalized.length })}</Text>
                         <Text style={styles.phaseHint}>
-                          Transakcja zamknięta przez właściciela — oferta przeniesiona do archiwum.
+                          {t('dealroom.list.sections.finalized.hint')}
                         </Text>
                       </View>
                       <View style={styles.phaseHeaderMeta}>
-                        {sectionNeedsAttention.finalized ? <AttentionBadge colors={COLORS} text="UWAGA" /> : null}
+                        {sectionNeedsAttention.finalized ? <AttentionBadge colors={COLORS} text={t('dealroom.badges.attention')} /> : null}
                         {collapsedSections.finalized ? (
                           <ChevronRight size={20} color={COLORS.textMuted} strokeWidth={2.6} />
                         ) : (
@@ -2581,7 +2590,7 @@ export default function DealroomListScreen() {
           />
           <Animated.View entering={FadeInDown.springify().damping(15)} style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Wizytówka Partnera</Text>
+              <Text style={styles.modalTitle}>{t('dealroom.list.partnerCard.title')}</Text>
               <Pressable
                 onPress={() => {
                   Haptics.selectionAsync();
@@ -2622,9 +2631,9 @@ export default function DealroomListScreen() {
                       />
                     </View>
                   </View>
-                  <Text style={styles.profileName}>{selectedProfile?.user?.name || `Użytkownik #${selectedProfileId}`}</Text>
+                  <Text style={styles.profileName}>{selectedProfile?.user?.name || t('dealroom.user.numbered', { id: selectedProfileId })}</Text>
                   <EliteStatusBadges subject={selectedProfile?.user || selectedProfile} isDark={isDark} compact />
-                  <Text style={styles.profileIdText}>ID w systemie: {selectedProfile?.user?.id || selectedProfileId}</Text>
+                  <Text style={styles.profileIdText}>{t('dealroom.list.partnerCard.systemId', { id: selectedProfile?.user?.id || selectedProfileId })}</Text>
                   
                   {(() => {
                     const reviews = Array.isArray(selectedProfile?.reviews) ? selectedProfile.reviews : [];
@@ -2641,9 +2650,9 @@ export default function DealroomListScreen() {
                 </View>
 
                 <RNScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                  <Text style={styles.sectionHeader}>OSTATNIE OPINIE</Text>
+                  <Text style={styles.sectionHeader}>{t('dealroom.list.partnerCard.recentReviews')}</Text>
                   {!Array.isArray(selectedProfile?.reviews) || selectedProfile.reviews.length === 0 ? (
-                    <Text style={styles.emptyText}>Brak zweryfikowanych opinii.</Text>
+                    <Text style={styles.emptyText}>{t('dealroom.list.partnerCard.noReviews')}</Text>
                   ) : selectedProfile.reviews.slice(0, 5).map((r: any) => (
                     <View key={r.id} style={styles.reviewCard}>
                       <View style={styles.reviewTop}>
@@ -2656,7 +2665,7 @@ export default function DealroomListScreen() {
                           style={({ pressed }) => [{ opacity: pressed ? 0.72 : 1 }]}
                         >
                           <Text style={styles.reviewAuthorName}>
-                            {r?.reviewerName || `Użytkownik #${r?.reviewerId || '-'}`}
+                            {r?.reviewerName || t('dealroom.user.numbered', { id: r?.reviewerId || '-' })}
                           </Text>
                         </Pressable>
                         <View style={{flexDirection: 'row', gap: 2}}>
@@ -2666,13 +2675,13 @@ export default function DealroomListScreen() {
                         </View>
                         <Text style={styles.reviewDate}>{r?.createdAt ? new Date(r.createdAt).toLocaleDateString('pl-PL') : ''}</Text>
                       </View>
-                      <Text style={styles.reviewBody}>{r?.comment || 'Bez komentarza.'}</Text>
+                      <Text style={styles.reviewBody}>{r?.comment || t('dealroom.list.partnerCard.noComment')}</Text>
                     </View>
                   ))}
 
-                  <Text style={[styles.sectionHeader, { marginTop: 24 }]}>PORTFOLIO OFERT</Text>
+                  <Text style={[styles.sectionHeader, { marginTop: 24 }]}>{t('dealroom.list.partnerCard.portfolio')}</Text>
                   {!Array.isArray(selectedProfile?.offers || selectedProfile?.user?.offers) || (selectedProfile?.offers || selectedProfile?.user?.offers).length === 0 ? (
-                    <Text style={styles.emptyText}>Brak aktywnych ofert publicznych.</Text>
+                    <Text style={styles.emptyText}>{t('dealroom.list.partnerCard.noOffers')}</Text>
                   ) : (selectedProfile?.offers || selectedProfile?.user?.offers).slice(0, 6).map((o: any) => (
                     <Pressable
                       key={o.id}
@@ -2690,7 +2699,7 @@ export default function DealroomListScreen() {
                         minimumFontScale={0.8}
                         allowFontScaling={false}
                       >
-                        {o?.title || `Oferta #${o?.id || '-'}`}
+                        {o?.title || t('dealroom.activity.offerNumbered', { id: o?.id || '-' })}
                       </Text>
                       <ChevronRight size={16} color={COLORS.textMuted} />
                     </Pressable>

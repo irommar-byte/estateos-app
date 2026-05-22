@@ -27,10 +27,16 @@ import EditPhoneSheet from '../components/profile/EditPhoneSheet';
 import EditEmailSheet from '../components/profile/EditEmailSheet';
 import BlockedUsersModal from '../components/BlockedUsersModal';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
+import { useProfileTabBadgeStore } from '../store/useProfileTabBadgeStore';
 import AdminLegalVerificationModal from '../components/AdminLegalVerificationModal';
 import AdminContentReportsModal from '../components/AdminContentReportsModal';
 import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCenterModal';
 import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
+import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
+import PromoCardStack from '../components/profile/PromoCardStack';
+import { fetchUserProfilePromoCards } from '../services/profilePromoService';
+import { buildProfilePromoStack } from '../utils/buildProfilePromoStack';
+import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
 import {
   coalesceRadarPreferenceFromPayload,
   fetchAdminUserRadarPreference,
@@ -38,8 +44,9 @@ import {
   mergeRadarPreferenceForAdminUser,
 } from '../services/adminUserRadarService';
 import { useDisplayCurrencyStore } from '../store/useDisplayCurrencyStore';
-import { DISPLAY_CURRENCY_LABELS } from '../money/constants';
-import type { DisplayCurrencyPreference } from '../money/types';
+import DisplayCurrencySelector from '../components/DisplayCurrencySelector';
+import LanguageSelector from '../components/LanguageSelector';
+import { getDeviceAppLocale, useAppLocaleStore } from '../store/useAppLocaleStore';
 import { fetchAdminLegalVerificationQueue } from '../services/legalVerificationService';
 import { fetchAdminContentReports } from '../services/adminReportsService';
 import { userAfterPakietPlusPurchase } from '../utils/listingQuota';
@@ -55,8 +62,9 @@ import {
   activateOfferPublication,
   decideReactivationFromQuote,
   fetchPublicationQuote,
-  PUBLICATION_COPY,
+  getPublicationCopy,
 } from '../services/offerPublicationService';
+import { localeToDateFormat, useI18n } from '../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -121,6 +129,7 @@ const AnimatedStatusDot = ({ status }) => {
 
 /** Delikatna pigułka „Synchronizacja” — iOS-style po reaktywacji oferty (status stabilizuje się z serwerem). */
 const OfferStatusSyncPill = ({ isDark }: { isDark: boolean }) => {
+  const { t } = useI18n();
   const spin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0.55)).current;
 
@@ -163,12 +172,13 @@ const OfferStatusSyncPill = ({ isDark }: { isDark: boolean }) => {
       <Animated.View style={{ transform: [{ rotate }] }}>
         <Ionicons name="sync" size={12} color="#0A84FF" />
       </Animated.View>
-      <Text style={styles.syncPillText}>Synchronizacja</Text>
+      <Text style={styles.syncPillText}>{t('profile.sync.label')}</Text>
     </Animated.View>
   );
 };
 
 const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
+  const { t } = useI18n();
   const isDark = theme.glass === 'dark';
   const [pushPermissionStatus, setPushPermissionStatus] = useState(null);
 
@@ -207,11 +217,11 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
     const { status } = await Notifications.getPermissionsAsync();
     if (status === 'denied') {
       Alert.alert(
-        'Powiadomienia systemowe',
-        'System nie pozwoli ponownie wyświetlić okna zgody. Otwórz Ustawienia → Powiadomienia → EstateOS™ i włącz powiadomienia.',
+        t('profile.notifications.systemAlertTitle'),
+        t('profile.notifications.systemAlertBody'),
         [
-          { text: 'Anuluj', style: 'cancel' },
-          { text: 'Ustawienia', onPress: () => void Linking.openSettings() },
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('profile.notifications.settings'), onPress: () => void Linking.openSettings() },
         ]
       );
       return;
@@ -222,29 +232,29 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
 
   const pushStatusLabel =
     pushPermissionStatus === 'granted'
-      ? 'Włączone'
+      ? t('profile.notifications.enabled')
       : pushPermissionStatus === 'denied'
-        ? 'Wyłączone (ustawienia systemowe)'
+        ? t('profile.notifications.disabledSystem')
         : pushPermissionStatus === 'undetermined'
-          ? 'Nie ustawiono'
+          ? t('profile.notifications.notSet')
           : '—';
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: theme.text }]}>Powiadomienia</Text>
+          <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.notifications.title')}</Text>
           <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
-          <Text style={styles.sectionTitle}>Powiadomienia na urządzeniu</Text>
+          <Text style={styles.sectionTitle}>{t('profile.notifications.deviceSection')}</Text>
           <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', marginBottom: 12 }]}>
             <View style={[styles.listItem, { paddingVertical: 14 }]}>
               <View style={[styles.listIconBox, { backgroundColor: pushPermissionStatus === 'granted' ? '#34C759' : '#FF9500' }]}>
                 <Ionicons name="phone-portrait-outline" size={20} color="#FFF" />
               </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>Status systemowy</Text>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('profile.notifications.systemStatus')}</Text>
                 <Text style={styles.listSubtitle}>{pushStatusLabel}</Text>
               </View>
               <Pressable
@@ -252,13 +262,13 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
                 style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
               >
                 <Text style={{ color: '#007AFF', fontWeight: '700', fontSize: 15 }}>
-                  {pushPermissionStatus === 'denied' ? 'Ustawienia' : 'Dalej'}
+                  {pushPermissionStatus === 'denied' ? t('profile.notifications.settings') : t('profile.notifications.continue')}
                 </Text>
               </Pressable>
             </View>
           </View>
           <Text style={styles.sectionFooter}>
-            Bez zgody systemowej iOS/Android nie wyśle alertów na ekran blokady. Po włączeniu otrzymasz powiadomienia Radaru i wiadomości Dealroom, które przeniosą Cię do odpowiedniego widoku w aplikacji.
+            {t('profile.notifications.footer')}
           </Text>
         </ScrollView>
       </View>
@@ -518,6 +528,8 @@ const getBestUserAvatarUrl = (userLike: any): string | null => {
 };
 
 const MyOffersModal = ({ visible, onClose, theme }) => {
+  const { t, locale } = useI18n();
+  const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const navigation = useNavigation();
   const { formatOffer } = useMoneyContext();
   const [offers, setOffers] = useState([]);
@@ -624,7 +636,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         throw new Error(
           res.body?.message ||
             res.body?.error ||
-            `Serwer odrzucił aktywację ogłoszenia (HTTP ${res.status}).`,
+            t('profile.myOffers.alerts.activationRejected', { status: res.status }),
         );
       }
 
@@ -648,12 +660,15 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       await refreshUser?.();
       await fetchMyOffers();
       Alert.alert(
-        'Ogłoszenie na rynku',
-        `„${offerTitle}" jest ponownie publicznie wystawione na 30 dni.`,
+        t('profile.myOffers.alerts.onMarketTitle'),
+        t('profile.myOffers.alerts.onMarketBody', { title: offerTitle }),
       );
     } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Nie udało się wystawić', e?.message || 'Spróbuj ponownie za chwilę.');
+      Alert.alert(
+        t('profile.myOffers.alerts.publishFailedTitle'),
+        e?.message || t('profile.myOffers.alerts.publishFailedBody'),
+      );
     } finally {
       setReactivating(false);
     }
@@ -674,27 +689,27 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
        * artefaktu modala na ekranie EditOffer.
        */
       if (!selectedOffer?.id) {
-        Alert.alert('Edycja', 'Nie udało się otworzyć tej oferty do edycji.');
+        Alert.alert(t('profile.myOffers.alerts.editTitle'), t('profile.myOffers.alerts.editFailed'));
         return;
       }
       onClose();
       setTimeout(() => navigation.navigate('EditOffer', { offerId: selectedOffer.id }), 200);
     } else if (actionType === 'BUMP') {
       Alert.alert(
-        'Pakiet Plus',
-        'Pakiet Plus opłaca publiczne wystawienie konkretnego ogłoszenia na rynek (30 dni). Nie podbija ani nie przedłuża już aktywnego ogłoszenia.',
-        [{ text: 'OK' }]
+        t('profile.myOffers.alerts.plusPackageTitle'),
+        t('profile.myOffers.alerts.plusPackageBump'),
+        [{ text: t('common.ok') }]
       );
     } else if (actionType === 'ARCHIVE') {
       if (!selectedOffer?.id || !token || archiving) return;
       const offerId = Number(selectedOffer.id);
-      const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
+      const offerTitle = String(selectedOffer.title || t('profile.myOffers.defaultOfferTitle'));
       Alert.alert(
-        "Zakończ ogłoszenie",
-        PUBLICATION_COPY.archiveWarning,
+        t('profile.myOffers.alerts.endListingTitle'),
+        publicationCopy.archiveWarning,
         [
-        { text: "Anuluj", style: "cancel" },
-        { text: "Wycofaj", style: "destructive", onPress: async () => {
+        { text: t('common.cancel'), style: "cancel" },
+        { text: t('profile.myOffers.alerts.withdrawAction'), style: "destructive", onPress: async () => {
           setArchiving(true);
           try {
             const payload = {
@@ -716,7 +731,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
                 body?.message ||
                 body?.error ||
                 (typeof body?._raw === 'string' ? body._raw.slice(0, 240) : null) ||
-                `Serwer odrzucił wycofanie oferty (HTTP ${res.status}).`
+                t('profile.myOffers.alerts.withdrawRejected', { status: res.status })
               );
             }
 
@@ -733,10 +748,16 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             setSelectedOffer(null);
             setActiveTab('ARCHIVED');
             await fetchMyOffers();
-            Alert.alert('Oferta wycofana', `„${offerTitle}" została przeniesiona do zakończonych ogłoszeń.`);
+            Alert.alert(
+              t('profile.myOffers.alerts.withdrawnTitle'),
+              t('profile.myOffers.alerts.withdrawnBody', { title: offerTitle }),
+            );
           } catch(e) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            Alert.alert("Nie udało się wycofać", e?.message || "Spróbuj ponownie za chwilę.");
+            Alert.alert(
+              t('profile.myOffers.alerts.withdrawFailedTitle'),
+              e?.message || t('profile.myOffers.alerts.withdrawFailedBody'),
+            );
           } finally {
             setArchiving(false);
           }
@@ -746,11 +767,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } else if (actionType === 'REACTIVATE_30D') {
       if (!selectedOffer?.id || !token || reactivating) return;
       const offerId = Number(selectedOffer.id);
-      const offerTitle = String(selectedOffer.title || 'to ogłoszenie');
-      Alert.alert(PUBLICATION_COPY.reactivateTitle, PUBLICATION_COPY.reactivateBody, [
-        { text: 'Anuluj', style: 'cancel' },
+      const offerTitle = String(selectedOffer.title || t('profile.myOffers.defaultOfferTitle'));
+      Alert.alert(publicationCopy.reactivateTitle, publicationCopy.reactivateBody, [
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: `Opłać wystawienie (~${PAKIET_PLUS_PRICE_LABEL})`,
+          text: t('profile.myOffers.alerts.payListing', { price: PAKIET_PLUS_PRICE_LABEL }),
           onPress: async () => {
             const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
             const decision = decideReactivationFromQuote(quoteRes);
@@ -769,12 +790,12 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             });
             if (r.cancelled) return;
             if (!r.ok) {
-              if (r.message) Alert.alert('Sklep', r.message);
+              if (r.message) Alert.alert(t('profile.myOffers.alerts.storeTitle'), r.message);
               return;
             }
             const tx = r.transactionId ?? '';
             if (!tx) {
-              Alert.alert('Pakiet Plus', PUBLICATION_COPY.restoreHint);
+              Alert.alert(t('profile.myOffers.alerts.plusTitle'), publicationCopy.restoreHint);
               return;
             }
             await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, tx);
@@ -815,7 +836,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           <View style={styles.syncPillRow}>
             <OfferStatusSyncPill isDark={isDark} />
             <Text style={[styles.syncPillHint, { color: theme.subtitle }]}>
-              Status potwierdza się z serwerem
+              {t('profile.sync.statusConfirming')}
             </Text>
           </View>
         ) : null}
@@ -824,11 +845,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <AnimatedStatusDot status={item.status} />
             <Text style={{ fontSize: 12, fontWeight: '700', marginLeft: 8, color: rowStatus === 'ACTIVE' ? '#34C759' : rowStatus === 'PENDING' ? '#FF9F0A' : '#FF3B30' }}>
-              {rowStatus === 'ACTIVE' ? 'AKTYWNE' : rowStatus === 'PENDING' ? 'OCZEKUJĄCE' : 'ZAKOŃCZONE'}
+              {rowStatus === 'ACTIVE' ? t('profile.myOffers.status.active') : rowStatus === 'PENDING' ? t('profile.myOffers.status.pending') : t('profile.myOffers.status.archived')}
             </Text>
           </View>
           <Pressable onPress={() => handleOpenManagement(item)} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', borderRadius: 12 }}>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>Zarządzaj</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.text }}>{t('profile.myOffers.manage')}</Text>
           </Pressable>
         </View>
       </View>
@@ -864,20 +885,20 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           <View style={[styles.mgtStatBox, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
             <Ionicons name="eye" size={24} color="#007AFF" />
             <Text style={[styles.mgtStatValue, { color: theme.text }]}>{realViews}</Text>
-            <Text style={styles.mgtStatLabel}>Wyświetleń</Text>
+            <Text style={styles.mgtStatLabel}>{t('profile.myOffers.views')}</Text>
           </View>
           <View style={[styles.mgtStatBox, { backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF' }]}>
             <Ionicons name="time" size={24} color={daysLeft < 5 ? '#FF3B30' : '#34C759'} />
             <Text style={[styles.mgtStatValue, { color: theme.text }]}>{daysLeft}</Text>
-            <Text style={styles.mgtStatLabel}>Dni do końca</Text>
+            <Text style={styles.mgtStatLabel}>{t('profile.myOffers.daysLeft')}</Text>
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle, { marginLeft: 0, marginBottom: 15 }]}>Dostępne akcje</Text>
+        <Text style={[styles.sectionTitle, { marginLeft: 0, marginBottom: 15 }]}>{t('profile.myOffers.actionsTitle')}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
-          <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title="Podgląd" subtitle="Z perspektywy klienta" theme={theme} isDark={isDark} />
-          <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title="Edytuj" subtitle="Zmień parametry" theme={theme} isDark={isDark} />
-          <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? 'Wycofywanie...' : 'Wycofaj'} subtitle="Zakończ ofertę" theme={theme} isDark={isDark} />
+          <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
+          <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
+          <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? t('profile.myOffers.withdrawing') : t('profile.myOffers.withdraw')} subtitle={t('profile.myOffers.withdrawSubtitle')} theme={theme} isDark={isDark} />
           {selSt === 'ARCHIVED' && (
             <PremiumActionButton
               isPrimary
@@ -885,8 +906,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
               onPress={() => handleAction('REACTIVATE_30D')}
               icon="refresh-circle"
               color={{ bg: 'rgba(52,199,89,0.14)', icon: '#34C759' }}
-              title={reactivating ? 'Wystawianie…' : 'Wystaw ponownie na rynek'}
-              subtitle={`Pakiet Plus — 30 dni publicznie (~${PAKIET_PLUS_PRICE_LABEL})`}
+              title={reactivating ? t('profile.myOffers.republishing') : t('profile.myOffers.republish')}
+              subtitle={t('profile.myOffers.republishSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
               theme={theme}
               isDark={isDark}
             />
@@ -904,14 +925,14 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           {selectedOffer ? (
             <Pressable onPress={handleGoBack} style={{ width: 80, flexDirection: 'row', alignItems: 'center' }}>
               <Ionicons name="chevron-back" size={24} color="#007AFF" />
-              <Text style={{ fontSize: 17, color: '#007AFF', fontWeight: '500', marginLeft: -4 }}>Wróć</Text>
+              <Text style={{ fontSize: 17, color: '#007AFF', fontWeight: '500', marginLeft: -4 }}>{t('profile.myOffers.back')}</Text>
             </Pressable>
           ) : (
             <View style={{ width: 80 }} />
           )}
 
           <Text style={[styles.modalTitle, { color: theme.text, flex: 1, textAlign: 'center', fontSize: 18 }]}>
-            {selectedOffer ? 'Zarządzanie' : 'Moje Ogłoszenia'}
+            {selectedOffer ? t('profile.myOffers.management') : t('profile.myOffers.title')}
           </Text>
 
           <Pressable onPress={onClose} style={{ width: 80, alignItems: 'flex-end' }}>
@@ -923,16 +944,16 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
 
         {!selectedOffer && (
           <View style={styles.tabsContainer}>
-            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ACTIVE'); }} style={[styles.tab, activeTab === 'ACTIVE' && { backgroundColor: '#34C759' }]}><Text style={[styles.tabText, { color: activeTab === 'ACTIVE' ? '#fff' : theme.subtitle }]}>Aktywne</Text></Pressable>
-            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('PENDING'); }} style={[styles.tab, activeTab === 'PENDING' && { backgroundColor: '#FF9F0A' }]}><Text style={[styles.tabText, { color: activeTab === 'PENDING' ? '#fff' : theme.subtitle }]}>Oczekujące</Text></Pressable>
-            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ARCHIVED'); }} style={[styles.tab, activeTab === 'ARCHIVED' && { backgroundColor: '#FF3B30' }]}><Text style={[styles.tabText, { color: activeTab === 'ARCHIVED' ? '#fff' : theme.subtitle }]}>Zakończone</Text></Pressable>
+            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ACTIVE'); }} style={[styles.tab, activeTab === 'ACTIVE' && { backgroundColor: '#34C759' }]}><Text style={[styles.tabText, { color: activeTab === 'ACTIVE' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.active')}</Text></Pressable>
+            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('PENDING'); }} style={[styles.tab, activeTab === 'PENDING' && { backgroundColor: '#FF9F0A' }]}><Text style={[styles.tabText, { color: activeTab === 'PENDING' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.pending')}</Text></Pressable>
+            <Pressable onPress={() => { Haptics.selectionAsync(); setActiveTab('ARCHIVED'); }} style={[styles.tab, activeTab === 'ARCHIVED' && { backgroundColor: '#FF3B30' }]}><Text style={[styles.tabText, { color: activeTab === 'ARCHIVED' ? '#fff' : theme.subtitle }]}>{t('profile.myOffers.tabs.archived')}</Text></Pressable>
           </View>
         )}
 
         {loading ? (
            <ActivityIndicator size="large" color="#007AFF" style={{ marginTop: 50 }} />
         ) : (
-           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>Brak ofert w tej sekcji.</Text>} />
+           selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>{t('profile.myOffers.emptySection')}</Text>} />
         )}
       </View>
     </Modal>
@@ -1016,9 +1037,13 @@ const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, 
   </Pressable>
 );
 
-const modes = [ { label: 'Jasny', value: 'light' }, { label: 'Auto', value: 'auto' }, { label: 'Ciemny', value: 'dark' } ];
-
 function AnimatedSegmentedControl({ themeMode, setThemeMode, isDark }) {
+  const { t } = useI18n();
+  const modes = [
+    { label: t('profile.appearance.light'), value: 'light' },
+    { label: t('profile.appearance.auto'), value: 'auto' },
+    { label: t('profile.appearance.dark'), value: 'dark' },
+  ];
   const [containerWidth, setContainerWidth] = useState(0);
   const segmentWidth = containerWidth > 0 ? containerWidth / 3 : 0;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -2519,6 +2544,8 @@ export default function ProfileScreen({
   theme: any;
   tabRouteParams?: { authIntent?: 'login' | 'register' };
 }) {
+  const { t, locale } = useI18n();
+  const dateLocale = localeToDateFormat(locale);
   const navigation = useNavigation();
   const route = useRoute<any>();
   const authIntent = (tabRouteParams?.authIntent ?? route.params?.authIntent) as 'login' | 'register' | undefined;
@@ -2528,7 +2555,19 @@ export default function ProfileScreen({
   const displayCurrency = useDisplayCurrencyStore((s) => s.preference);
   const setDisplayCurrency = useDisplayCurrencyStore((s) => s.setPreference);
   const hydrateDisplayCurrency = useDisplayCurrencyStore((s) => s.hydrate);
+  const localePreference = useAppLocaleStore((s) => s.preference);
+  const setLocalePreference = useAppLocaleStore((s) => s.setPreference);
   const isDark = theme.glass === 'dark';
+
+  const languageActiveHint = useMemo(() => {
+    if (localePreference === 'system') {
+      const device = getDeviceAppLocale();
+      return t('profile.language.systemHint', {
+        language: t(`profile.language.labels.${device}`),
+      });
+    }
+    return t(`profile.language.labels.${localePreference}`);
+  }, [localePreference, locale, t]);
 
   useEffect(() => {
     void hydrateDisplayCurrency();
@@ -2543,6 +2582,8 @@ export default function ProfileScreen({
   const [isAdminLegalVerifyVisible, setIsAdminLegalVerifyVisible] = useState(false);
   const [isAdminCoreVisible, setIsAdminCoreVisible] = useState(false);
   const [isAdminReportsVisible, setIsAdminReportsVisible] = useState(false);
+  const [isAdminPromoWindowsVisible, setIsAdminPromoWindowsVisible] = useState(false);
+  const [userPromoCards, setUserPromoCards] = useState<ProfilePromoCardRecord[]>([]);
   const [adminPendingLegalCount, setAdminPendingLegalCount] = useState(0);
   const [adminPendingReportsCount, setAdminPendingReportsCount] = useState(0);
   const [adminSelectedUser, setAdminSelectedUser] = useState(null);
@@ -2696,6 +2737,14 @@ export default function ProfileScreen({
     return () => sub.remove();
   }, [isZarzad, token]);
 
+  const adminProfileTabBadgeTotal = isZarzad
+    ? adminPendingOffersCount + adminPendingReportsCount + adminPendingLegalCount
+    : 0;
+
+  useEffect(() => {
+    useProfileTabBadgeStore.getState().setProfilePendingCount(adminProfileTabBadgeTotal);
+  }, [adminProfileTabBadgeTotal]);
+
   const togglePasskey = async (value) => {
     if (value) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -2716,25 +2765,26 @@ export default function ProfileScreen({
         setIsPasskeyActive(true);
         setTimeout(() => setIsPasskeyActive(false), 50);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Przerwano', error.message || 'Konfiguracja FaceID/TouchID nie powiodła się.');
+        Alert.alert(
+          t('profile.security.alerts.cancelledTitle'),
+          error.message || t('profile.security.alerts.setupFailed'),
+        );
       }
     } else {
-      Alert.alert('Usuń klucz', 'Czy na pewno chcesz wyłączyć logowanie biometryczne? Usuniemy powiązanie Passkey z serwera dla Twojego konta.', [
-        { text: 'Anuluj', style: 'cancel', onPress: () => {
+      Alert.alert(t('profile.security.alerts.removeKeyTitle'), t('profile.security.alerts.removeKeyBody'), [
+        { text: t('common.cancel'), style: 'cancel', onPress: () => {
             setIsPasskeyActive(false);
             setTimeout(() => setIsPasskeyActive(true), 50);
         }},
         { 
-          text: 'Wyłącz', 
+          text: t('profile.security.alerts.disable'), 
           style: 'destructive', 
           onPress: async () => {
             try {
               await PasskeyService.revoke(token, String(user.id));
               const outcome = await PasskeyService.confirmPasskeyRemoved(token, String(user.id));
               if (outcome === 'still') {
-                throw new Error(
-                  'Serwer nadal zgłasza aktywny Passkey. Spróbuj ponownie za chwilę — dopóki usunięcie nie zostanie potwierdzone, logowanie Face ID może działać.',
-                );
+                throw new Error(t('profile.security.alerts.stillActive'));
               }
               if (outcome === 'unknown') {
                 if (__DEV__) console.warn('[Passkey] Nie udało się odczytać statusu po revoke — zakładam sukces operacji.');
@@ -2746,9 +2796,9 @@ export default function ProfileScreen({
             } catch (err: any) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
               Alert.alert(
-                'Nie udało się wyłączyć Passkey',
+                t('profile.security.alerts.disableFailedTitle'),
                 String(err?.message || '').trim() ||
-                  'Serwer nie potwierdził usunięcia klucza. Sprawdź połączenie i spróbuj ponownie.',
+                  t('profile.security.alerts.disableFailedBody'),
               );
             }
           }
@@ -2828,6 +2878,26 @@ export default function ProfileScreen({
     };
   }, [token, user?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadPromos = async () => {
+      if (!token || !user?.id) {
+        if (!cancelled) setUserPromoCards([]);
+        return;
+      }
+      const cards = await fetchUserProfilePromoCards(token, user.id);
+      if (!cancelled) setUserPromoCards(cards);
+    };
+    void loadPromos();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadPromos();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [token, user?.id]);
+
   const toggleSms = async (value) => {
     setIsSmsEnabled(value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2858,9 +2928,9 @@ export default function ProfileScreen({
         const data = await res.json().catch(() => ({} as any));
         if (!res.ok) {
           Alert.alert(
-            'Błąd',
+            t('common.error'),
             [data?.message, data?.error].find((x) => typeof x === 'string' && String(x).trim()) ||
-              `Nie udało się wgrać zdjęcia (HTTP ${res.status}).`,
+              t('profile.session.alerts.avatarUploadFailed', { status: res.status }),
           );
           return;
         }
@@ -2873,7 +2943,7 @@ export default function ProfileScreen({
           '';
         const explicitFail = data?.success === false || data?.ok === false;
         if (explicitFail || !rel) {
-          Alert.alert('Błąd', 'Serwer nie potwierdził zapisania awatara. Spróbuj ponownie.');
+          Alert.alert(t('common.error'), t('profile.session.alerts.avatarNotSaved'));
           return;
         }
         const finalUrl = /^https?:\/\//i.test(rel) ? rel : rel.startsWith('/') ? `${API_URL}${rel}` : `${API_URL}/${rel}`;
@@ -2881,7 +2951,7 @@ export default function ProfileScreen({
         await refreshUser?.();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (e) {
-        Alert.alert('Błąd', 'Problem z awatarem.');
+        Alert.alert(t('common.error'), t('profile.session.alerts.avatarProblem'));
       }
     }
   };
@@ -2901,18 +2971,20 @@ export default function ProfileScreen({
       if (result.ok) {
         if (result.restored > 0) {
           Alert.alert(
-            'Przywrócono zakupy',
-            `Przetworzono ${result.restored} transakcj${result.restored === 1 ? 'ę' : 'e'}. Jeśli któraś płatność nie aktywowała publikacji, status zaktualizuje się po chwili.`,
+            t('profile.shop.alerts.restoreTitle'),
+            result.restored === 1
+              ? t('profile.shop.alerts.restoreBodyOne')
+              : t('profile.shop.alerts.restoreBodyMany', { count: result.restored }),
           );
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } else {
           Alert.alert(
-            'Brak zakupów do przywrócenia',
-            'Nie znaleziono żadnych historycznych zakupów na tym koncie Apple ID / Google. Jeśli ostatnio kupiłeś Pakiet Plus i jeszcze się nie zaksięgował — odczekaj minutę i spróbuj ponownie.',
+            t('profile.shop.alerts.nothingToRestoreTitle'),
+            t('profile.shop.alerts.nothingToRestoreBody'),
           );
         }
       } else {
-        Alert.alert('Przywracanie zakupów', result.message || 'Nie udało się połączyć ze sklepem.');
+        Alert.alert(t('profile.shop.alerts.restoreFailedTitle'), result.message || t('profile.shop.alerts.restoreFailedBody'));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } finally {
@@ -2927,7 +2999,7 @@ export default function ProfileScreen({
   const handleBuyPakietPlus = async () => {
     if (isBuyingPakietPlus) return;
     if (!token) {
-      Alert.alert('Wymagane logowanie', 'Zaloguj się ponownie, aby kupić Pakiet Plus.');
+      Alert.alert(t('profile.shop.alerts.loginRequiredTitle'), t('profile.shop.alerts.loginRequiredBody'));
       return;
     }
 
@@ -2937,7 +3009,7 @@ export default function ProfileScreen({
       const result = await purchasePakietPlusConsumable(API_URL, token);
       if (result.cancelled) return;
       if (!result.ok) {
-        Alert.alert('Zakup Pakietu Plus', result.message || 'Nie udało się rozpocząć zakupu.');
+        Alert.alert(t('profile.shop.alerts.purchaseTitle'), result.message || t('profile.shop.alerts.purchaseFailed'));
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
@@ -2954,10 +3026,12 @@ export default function ProfileScreen({
       const slotsAfter = Math.max(0, Number((patched as any)?.extraListings ?? 0));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        'Pakiet Plus aktywny',
+        t('profile.shop.alerts.plusActiveTitle'),
         slotsAfter > 0
-          ? `Masz ${slotsAfter} ${slotsAfter === 1 ? 'publikację' : 'publikacje'} Plus do wykorzystania przy publikacji ogłoszenia.`
-          : 'Płatność została przyjęta. Księgowanie trwa — odśwież Profil za chwilę.',
+          ? slotsAfter === 1
+            ? t('profile.shop.alerts.plusActiveSlotsOne')
+            : t('profile.shop.alerts.plusActiveSlotsMany', { count: slotsAfter })
+          : t('profile.shop.alerts.plusActivePending'),
       );
     } finally {
       setIsBuyingPakietPlus(false);
@@ -2965,9 +3039,9 @@ export default function ProfileScreen({
   };
 
   const handleLogout = () => {
-    Alert.alert("Wyloguj się", "Czy na pewno chcesz wylogować się?", [
-      { text: "Anuluj", style: "cancel" },
-      { text: "Wyloguj", style: "destructive", onPress: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); logout(); } }
+    Alert.alert(t('profile.session.logoutConfirmTitle'), t('profile.session.logoutConfirmBody'), [
+      { text: t('common.cancel'), style: "cancel" },
+      { text: t('profile.session.logoutAction'), style: "destructive", onPress: () => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); logout(); } }
     ]);
   };
 
@@ -3008,9 +3082,9 @@ export default function ProfileScreen({
     (plusExpiresAtMs ?? 0) > Date.now();
   const plusCounterLabel = hasPlusPublicationAvailable
     ? plusSlots === 1
-      ? '1 publikacja Plus do wykorzystania'
-      : `${plusSlots} publikacji Plus do wykorzystania`
-    : 'Brak pakietów — kup przed kolejną płatną publikacją';
+      ? t('profile.shop.plusSlotOne')
+      : t('profile.shop.plusSlotsMany', { count: plusSlots })
+    : t('profile.shop.noPackages');
   const firstFreePublicationUsedRaw =
     backendFirstFreePublicationUsed ??
     (user as any)?.firstFreePublicationUsed ??
@@ -3019,39 +3093,41 @@ export default function ProfileScreen({
     (user as any)?.freeFirstPublicationUsed;
   const firstFreePublicationUsed =
     typeof firstFreePublicationUsedRaw === 'boolean' ? firstFreePublicationUsedRaw : null;
-  const firstFreePillLabel =
-    firstFreePublicationUsed == null
-      ? 'Sprawdzanie'
-      : firstFreePublicationUsed
-        ? 'Wykorzystane'
-        : 'Niewykorzystane';
-  const firstFreePillColor =
-    firstFreePublicationUsed == null
-      ? '#0A84FF'
-      : firstFreePublicationUsed
-        ? '#FF9F0A'
-        : '#34C759';
-  const firstFreePillBg =
-    firstFreePublicationUsed == null
-      ? 'rgba(10,132,255,0.14)'
-      : firstFreePublicationUsed
-        ? 'rgba(255,159,10,0.14)'
-        : 'rgba(52,199,89,0.14)';
-  const firstFreePillBorder =
-    firstFreePublicationUsed == null
-      ? 'rgba(10,132,255,0.32)'
-      : firstFreePublicationUsed
-        ? 'rgba(255,159,10,0.38)'
-        : 'rgba(52,199,89,0.38)';
   const plusExpiryLabel = plusHasValidExpiry
-    ? new Date(plusExpiresAtMs!).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    ? new Date(plusExpiresAtMs!).toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit', year: 'numeric' })
     : null;
   const plusDaysLabel =
     plusDaysLeft == null
-      ? 'Dodatkowa oferta będzie ważna 30 dni od publikacji'
+      ? t('profile.shop.plusDaysDefault')
       : plusDaysLeft === 0
-        ? 'Ostatnia dodatkowa publikacja kończy się dzisiaj'
-        : `Ostatnia dodatkowa publikacja: ${plusDaysLeft} ${plusDaysLeft === 1 ? 'dzień' : 'dni'} do końca`;
+        ? t('profile.shop.plusDaysToday')
+        : t('profile.shop.plusDaysLeft', {
+            days: plusDaysLeft,
+            daysLabel: plusDaysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
+          });
+
+  const profilePromoStackCards = useMemo(
+    () =>
+      buildProfilePromoStack({
+        t,
+        firstFreeUsed: firstFreePublicationUsed,
+        plusSlots,
+        hasPlusAvailable: hasPlusPublicationAvailable,
+        plusCounterLabel,
+        plusExpiryLabel,
+        plusBuyHint: t('profile.shop.plusBuyHint'),
+        adminPromos: userPromoCards,
+      }),
+    [
+      t,
+      firstFreePublicationUsed,
+      plusSlots,
+      hasPlusPublicationAvailable,
+      plusCounterLabel,
+      plusExpiryLabel,
+      userPromoCards,
+    ],
+  );
 
   const profileScreenBg = isDark ? '#000' : '#F2F2F7';
 
@@ -3071,7 +3147,7 @@ export default function ProfileScreen({
               const finalAvatar = rawAvatar ? (rawAvatar.startsWith('/') ? `${API_URL}${rawAvatar}` : rawAvatar) : null;
               return finalAvatar ? <Image source={{ uri: finalAvatar }} style={styles.avatarImage} /> : <View style={styles.avatarPlaceholder}><Ionicons name="person" size={36} color="#fff" /></View>;
             })()}
-            <View style={styles.editBadge}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>EDIT</Text></View>
+            <View style={styles.editBadge}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '700' }}>{t('profile.header.editAvatar')}</Text></View>
             <View style={styles.avatarRegionFlag} pointerEvents="none">
               <UserRegionFlag phone={user?.phone} fallbackIso={getDeviceRegionCountry()} size={30} />
             </View>
@@ -3096,7 +3172,7 @@ export default function ProfileScreen({
                   pressed && { opacity: 0.88 },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={profileNameLocked ? 'Imię i nazwisko zablokowane' : 'Zmień imię i nazwisko'}
+                accessibilityLabel={profileNameLocked ? t('profile.header.nameLockedA11y') : t('profile.header.editNameA11y')}
               >
                 <View style={styles.headerNameEditBtn}>
                   <Ionicons
@@ -3132,7 +3208,12 @@ export default function ProfileScreen({
                 minimumFontScale={0.85}
                 allowFontScaling={false}
               >
-                {ownPublicProfileLoading ? 'Ładowanie opinii...' : `${ownAverageRating.toFixed(1)} (${ownReviews.length} komentarzy)`}
+                {ownPublicProfileLoading
+                  ? t('profile.header.reviewsLoading')
+                  : t('profile.header.reviewsMeta', {
+                      rating: ownAverageRating.toFixed(1),
+                      count: ownReviews.length,
+                    })}
               </Text>
               <Ionicons name="chevron-forward" size={12} color="#8E8E93" />
             </Pressable>
@@ -3146,8 +3227,8 @@ export default function ProfileScreen({
               {isZarzad
                 ? 'Zarząd EstateOS™'
                 : String(user?.role || '').trim().toUpperCase() === 'AGENT'
-                  ? 'Agent EstateOS™'
-                  : 'Osoba Prywatna'}
+                  ? t('profile.header.roleAgent')
+                  : t('profile.header.rolePrivate')}
             </Text>
             <Text
               style={styles.headerId}
@@ -3156,7 +3237,7 @@ export default function ProfileScreen({
               minimumFontScale={0.85}
               allowFontScaling={false}
             >
-              ID Użytkownika: {user?.id}
+              {t('profile.header.userId', { id: user?.id })}
             </Text>
             <VerificationBadge
               phoneVerified={Boolean(user?.isVerifiedPhone)}
@@ -3177,14 +3258,14 @@ export default function ProfileScreen({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dane kontaktowe</Text>
+          <Text style={styles.sectionTitle}>{t('profile.contact.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
             <ListItem
               icon="call"
               color="#34C759"
-              title="Telefon"
-              value={user?.phone || 'Brak'}
-              subtitle={user?.isVerifiedPhone ? 'Potwierdzony' : undefined}
+              title={t('profile.contact.phone')}
+              value={user?.phone || t('profile.contact.none')}
+              subtitle={user?.isVerifiedPhone ? t('profile.contact.confirmed') : undefined}
               subtitleNode={
                 user?.isVerifiedPhone ? undefined : hasPhoneForSms ? (
                   <Text
@@ -3194,8 +3275,8 @@ export default function ProfileScreen({
                     minimumFontScale={0.85}
                     allowFontScaling={false}
                   >
-                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Niepotwierdzony</Text>
-                    {' — dotknij, aby zweryfikować'}
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>{t('profile.contact.unconfirmed')}</Text>
+                    {t('profile.contact.tapVerifyPhone')}
                   </Text>
                 ) : (
                   <Text
@@ -3205,8 +3286,8 @@ export default function ProfileScreen({
                     minimumFontScale={0.85}
                     allowFontScaling={false}
                   >
-                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Brak numeru</Text>
-                    {' — dotknij, aby uzupełnić i zweryfikować'}
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>{t('profile.contact.noNumber')}</Text>
+                    {t('profile.contact.tapAddPhone')}
                   </Text>
                 )
               }
@@ -3223,9 +3304,9 @@ export default function ProfileScreen({
             <ListItem
               icon="mail"
               color="#007AFF"
-              title="Email"
+              title={t('profile.contact.email')}
               value={user?.email || '—'}
-              subtitle={user?.isEmailVerified && !hasPendingEmailChange ? 'Potwierdzony' : undefined}
+              subtitle={user?.isEmailVerified && !hasPendingEmailChange ? t('profile.contact.confirmed') : undefined}
               subtitleNode={
                 user?.isEmailVerified && !hasPendingEmailChange ? undefined : hasPendingEmailChange ? (
                   <Text
@@ -3235,8 +3316,8 @@ export default function ProfileScreen({
                     minimumFontScale={0.85}
                     allowFontScaling={false}
                   >
-                    <Text style={{ color: '#FF9500', fontWeight: '700' }}>Oczekuje na kod</Text>
-                    {' — dotknij, aby dokończyć weryfikację'}
+                    <Text style={{ color: '#FF9500', fontWeight: '700' }}>{t('profile.contact.pendingCode')}</Text>
+                    {t('profile.contact.tapFinishEmail')}
                   </Text>
                 ) : (
                   <Text
@@ -3246,8 +3327,8 @@ export default function ProfileScreen({
                     minimumFontScale={0.85}
                     allowFontScaling={false}
                   >
-                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>Niepotwierdzony</Text>
-                    {' — dotknij, aby wysłać kod i potwierdzić'}
+                    <Text style={{ color: '#FF3B30', fontWeight: '700' }}>{t('profile.contact.unconfirmed')}</Text>
+                    {t('profile.contact.tapConfirmEmail')}
                   </Text>
                 )
               }
@@ -3266,33 +3347,33 @@ export default function ProfileScreen({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Twoje Nieruchomości</Text>
+          <Text style={styles.sectionTitle}>{t('profile.properties.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
-            <ListItem icon="home" color="#007AFF" title="Zarządzaj ogłoszeniami" subtitle="Podgląd, edycja i wycofanie" onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
+            <ListItem icon="home" color="#007AFF" title={t('profile.properties.manageListings')} subtitle={t('profile.properties.manageSubtitle')} onPress={() => setIsMyOffersVisible(true)} isLast={true} isDark={isDark} />
           </ListGroup>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Powiadomienia</Text>
+          <Text style={styles.sectionTitle}>{t('profile.notifications.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
             <ListItem
               icon="notifications"
               color="#FF2D55"
-              title="Powiadomienia systemowe"
-              subtitle="Status zgody i alerty Radaru"
+              title={t('profile.notifications.listTitle')}
+              subtitle={t('profile.notifications.listSubtitle')}
               onPress={() => setIsNotificationsVisible(true)}
               isLast={true}
               isDark={isDark}
             />
           </ListGroup>
           <Text style={styles.sectionFooter}>
-            Wejdź tutaj, żeby dobrowolnie włączyć alerty systemowe dla Radaru i wiadomości.
+            {t('profile.notifications.sectionFooter')}
           </Text>
         </View>
 
         {/* --- SEKCJA BEZPIECZEŃSTWA PASSKEY --- */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bezpieczeństwo</Text>
+          <Text style={styles.sectionTitle}>{t('profile.security.sectionTitle')}</Text>
           <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>
             <View style={[styles.listItem, { paddingVertical: 12 }]}>
               
@@ -3301,8 +3382,8 @@ export default function ProfileScreen({
               </View>
               
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>Klucz Passkey</Text>
-                <Text style={styles.listSubtitle}>{isPasskeyActive ? 'Aktywny (FaceID / TouchID)' : 'Logowanie biometryczne'}</Text>
+                <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('profile.security.passkeyTitle')}</Text>
+                <Text style={styles.listSubtitle}>{isPasskeyActive ? t('profile.security.passkeyActive') : t('profile.security.passkeyInactive')}</Text>
               </View>
               
               <Switch 
@@ -3315,8 +3396,8 @@ export default function ProfileScreen({
           
           <Text style={styles.sectionFooter}>
             {isPasskeyActive 
-              ? 'Twój klucz sprzętowy zabezpiecza to urządzenie. Możesz logować się natychmiastowo.' 
-              : 'Zabezpiecz to urządzenie i loguj się błyskawicznie używając FaceID lub TouchID.'}
+              ? t('profile.security.footerActive')
+              : t('profile.security.footerInactive')}
           </Text>
         </View>
 
@@ -3335,105 +3416,12 @@ export default function ProfileScreen({
           z idempotencją po `transactionId`.
         */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Zakupy i sklep</Text>
-          <View
-            style={[
-              styles.plusStatusCard,
-              {
-                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                borderColor: hasPlusPublicationAvailable
-                  ? 'rgba(16,185,129,0.42)'
-                  : isDark
-                    ? 'rgba(255,255,255,0.06)'
-                    : 'rgba(0,0,0,0.04)',
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.plusStatusIcon,
-                { backgroundColor: hasPlusPublicationAvailable ? '#10B981' : '#0A84FF' },
-              ]}
-            >
-              <Ionicons name={hasPlusPublicationAvailable ? 'checkmark-circle' : 'bag-add'} size={22} color="#FFFFFF" />
-            </View>
-            <View style={styles.plusStatusBody}>
-              <View style={styles.plusStatusHeaderRow}>
-                <Text style={[styles.plusStatusTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  Pakiet Plus
-                </Text>
-                <View
-                  style={[
-                    styles.plusStatusPill,
-                    {
-                      backgroundColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.14)' : 'rgba(10,132,255,0.14)',
-                      borderColor: hasPlusPublicationAvailable ? 'rgba(16,185,129,0.42)' : 'rgba(10,132,255,0.32)',
-                    },
-                  ]}
-                >
-                  <Text style={[styles.plusStatusPillText, { color: hasPlusPublicationAvailable ? '#10B981' : '#0A84FF' }]}>
-                    {hasPlusPublicationAvailable ? String(plusSlots) : '0'}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.plusStatusSubtitle}>
-                {plusCounterLabel}
-              </Text>
-              <Text style={styles.plusStatusMeta}>
-                {hasPlusPublicationAvailable
-                  ? `Ważne do ${plusExpiryLabel || '—'}. Publikacja zdejmie 1 pakiet z licznika.`
-                  : 'Kup Pakiet Plus poniżej — potem opublikuj ogłoszenie bez drugiej płatności.'}
-              </Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.plusStatusCard,
-              {
-                marginTop: 10,
-                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                borderColor: firstFreePillBorder,
-              },
-            ]}
-          >
-            <View style={[styles.plusStatusIcon, { backgroundColor: firstFreePillColor }]}>
-              <Ionicons
-                name={firstFreePublicationUsed ? 'checkmark-done-circle' : 'gift'}
-                size={22}
-                color="#FFFFFF"
-              />
-            </View>
-            <View style={styles.plusStatusBody}>
-              <View style={styles.plusStatusHeaderRow}>
-                <Text style={[styles.plusStatusTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  Darmowe Ogłoszenie
-                </Text>
-                <View
-                  style={[
-                    styles.plusStatusPill,
-                    {
-                      backgroundColor: firstFreePillBg,
-                      borderColor: firstFreePillBorder,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.plusStatusPillText, { color: firstFreePillColor }]}>
-                    {firstFreePillLabel}
-                  </Text>
-                </View>
-              </View>
-              <Text style={styles.plusStatusSubtitle}>
-                Pierwsze publiczne wystawienie oferty na koncie jest bezpłatne.
-              </Text>
-              <Text style={styles.plusStatusMeta}>
-                {firstFreePublicationUsed == null
-                  ? 'Sprawdzamy status na serwerze.'
-                  : firstFreePublicationUsed
-                    ? 'Darmowe wystawienie zostało już wykorzystane.'
-                    : 'Darmowe wystawienie jest gotowe do użycia.'}
-              </Text>
-            </View>
-          </View>
+          <Text style={styles.sectionTitle}>{t('profile.shop.sectionTitle')}</Text>
+          <PromoCardStack
+            cards={profilePromoStackCards}
+            isDark={isDark}
+            swipeHint={t('profile.shop.promoSwipeHint')}
+          />
           <ListGroup isDark={isDark}>
             <Pressable
               onPress={handleBuyPakietPlus}
@@ -3453,10 +3441,10 @@ export default function ProfileScreen({
               </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
-                  Kup Pakiet Plus
+                  {t('profile.shop.buyPlus')}
                 </Text>
                 <Text style={styles.listSubtitle}>
-                  Otwórz App Store i opłać 1 dodatkowe wystawienie (~{PAKIET_PLUS_PRICE_LABEL})
+                  {t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
                 </Text>
               </View>
               {!isBuyingPakietPlus && (
@@ -3481,14 +3469,14 @@ export default function ProfileScreen({
               </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>
-                  Przywróć zakupy
+                  {t('profile.shop.restorePurchases')}
                 </Text>
                 <Text style={styles.listSubtitle}>
                   {isRestoringPurchases
-                    ? 'Łączę ze sklepem…'
+                    ? t('profile.shop.restoring')
                     : Platform.OS === 'ios'
-                      ? 'Odzyskaj zakupy z Apple ID na tym urządzeniu'
-                      : 'Odzyskaj zakupy z konta Google Play'}
+                      ? t('profile.shop.restoreIos')
+                      : t('profile.shop.restoreAndroid')}
                 </Text>
               </View>
               {!isRestoringPurchases && (
@@ -3498,8 +3486,8 @@ export default function ProfileScreen({
           </ListGroup>
           <Text style={styles.sectionFooter}>
             {Platform.OS === 'ios'
-              ? `Pakiet Plus (~${PAKIET_PLUS_PRICE_LABEL}) opłaca publiczne wystawienie wybranego ogłoszenia na rynek na 30 dni. Nie jest to abonament ani „slot” na koncie. Pierwsze publiczne wystawienie pierwszej oferty na koncie było bezpłatne. Jeśli płatność nie zaksięgowała wystawienia, użyj Przywróć zakupy.`
-              : `Pakiet Plus opłaca publiczne wystawienie wybranego ogłoszenia na 30 dni. Pierwsze publiczne wystawienie pierwszej oferty na koncie było bezpłatne.`}
+              ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
+              : t('profile.shop.footerAndroid')}
           </Text>
         </View>
 
@@ -3521,6 +3509,17 @@ export default function ProfileScreen({
                 ) : undefined}
               />
               <ListItem icon="people" color="#32ADE6" title="Użytkownicy" onPress={() => setIsAdminUsersVisible(true)} isDark={isDark} />
+              <ListItem
+                icon="sparkles"
+                color="#AF52DE"
+                title="Promocyjne okienka"
+                subtitle="Wyślij kartę promocyjną do slota w Profilu użytkownika"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsAdminPromoWindowsVisible(true);
+                }}
+                isDark={isDark}
+              />
               <ListItem
                 icon="flag"
                 color="#FF453A"
@@ -3581,13 +3580,13 @@ export default function ProfileScreen({
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Pomoc i regulamin</Text>
+          <Text style={styles.sectionTitle}>{t('profile.help.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
             <ListItem
               icon="document-text"
               color="#5856D6"
-              title="Regulamin"
-              subtitle="Warunki korzystania z aplikacji"
+              title={t('profile.help.terms')}
+              subtitle={t('profile.help.termsSubtitle')}
               onPress={() => {
                 Haptics.selectionAsync();
                 navigation.navigate('Terms' as never);
@@ -3597,8 +3596,8 @@ export default function ProfileScreen({
             <ListItem
               icon="shield-checkmark"
               color="#34C759"
-              title="Polityka prywatności"
-              subtitle="Pełna treść w aplikacji (RODO). Link do wersji WWW także w Regulaminie."
+              title={t('profile.help.privacy')}
+              subtitle={t('profile.help.privacySubtitle')}
               onPress={() => {
                 Haptics.selectionAsync();
                 navigation.navigate('Terms' as never, { initialScrollTo: 'privacy' } as never);
@@ -3608,14 +3607,14 @@ export default function ProfileScreen({
             <ListItem
               icon="mail"
               color="#0A84FF"
-              title="Pomoc i kontakt"
-              subtitle={`Napisz do nas: ${ESTATEOS_CONTACT_EMAIL}`}
+              title={t('profile.help.contact')}
+              subtitle={t('profile.help.contactSubtitle', { email: ESTATEOS_CONTACT_EMAIL })}
               onPress={() => {
                 Haptics.selectionAsync();
-                Linking.openURL(mailtoEstateosSubject('EstateOS — pomoc')).catch(() => {
+                Linking.openURL(mailtoEstateosSubject(t('profile.help.mailSubject'))).catch(() => {
                   Alert.alert(
-                    'Brak klienta poczty',
-                    `Skopiuj adres ${ESTATEOS_CONTACT_EMAIL} i napisz z dowolnej skrzynki.`
+                    t('profile.help.noMailClientTitle'),
+                    t('profile.help.noMailClientBody', { email: ESTATEOS_CONTACT_EMAIL }),
                   );
                 });
               }}
@@ -3624,11 +3623,13 @@ export default function ProfileScreen({
             <ListItem
               icon="ban"
               color="#FF453A"
-              title="Zablokowani użytkownicy"
+              title={t('profile.blocked.listTitle')}
               subtitle={
                 blockedUsersCount > 0
-                  ? `${blockedUsersCount} ${blockedUsersCount === 1 ? 'osoba' : 'osób'} na liście`
-                  : 'Lista pusta'
+                  ? blockedUsersCount === 1
+                    ? t('profile.blocked.listOne')
+                    : t('profile.blocked.listMany', { count: blockedUsersCount })
+                  : t('profile.blocked.listEmpty')
               }
               onPress={() => {
                 Haptics.selectionAsync();
@@ -3641,7 +3642,7 @@ export default function ProfileScreen({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Wygląd i ekran</Text>
+          <Text style={styles.sectionTitle}>{t('profile.appearance.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
             <View style={styles.segmentWrapper}>
               <AnimatedSegmentedControl themeMode={themeMode} setThemeMode={setThemeMode} isDark={isDark} />
@@ -3650,38 +3651,62 @@ export default function ProfileScreen({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ceny w aplikacji</Text>
+          <Text style={styles.sectionTitle}>{t('profile.language.sectionTitle')}</Text>
           <ListGroup isDark={isDark}>
-            {(['PLN', 'EUR', 'LISTING'] as DisplayCurrencyPreference[]).map((code, idx, arr) => (
-              <ListItem
-                key={code}
-                icon={code === 'EUR' ? 'logo-euro' : code === 'PLN' ? 'cash' : 'pricetag'}
-                color={code === 'EUR' ? '#007AFF' : '#34C759'}
-                title={DISPLAY_CURRENCY_LABELS[code]}
-                subtitle={code === displayCurrency ? 'Aktywne' : undefined}
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  void setDisplayCurrency(code);
-                }}
-                isLast={idx === arr.length - 1}
+            <View style={styles.segmentWrapper}>
+              <LanguageSelector
+                value={localePreference}
+                onChange={(code) => void setLocalePreference(code)}
                 isDark={isDark}
               />
-            ))}
+              <Text
+                style={[
+                  styles.currencyActiveHint,
+                  { color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.55)' },
+                ]}
+                numberOfLines={2}
+              >
+                {languageActiveHint}
+              </Text>
+            </View>
+          </ListGroup>
+          <Text style={styles.sectionFooter}>{t('profile.language.footer')}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.currency.sectionTitle')}</Text>
+          <ListGroup isDark={isDark}>
+            <View style={styles.segmentWrapper}>
+              <DisplayCurrencySelector
+                value={displayCurrency}
+                onChange={(code) => void setDisplayCurrency(code)}
+                isDark={isDark}
+              />
+              <Text
+                style={[
+                  styles.currencyActiveHint,
+                  { color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.55)' },
+                ]}
+                numberOfLines={2}
+              >
+                {t(`profile.currency.labels.${displayCurrency}`)}
+              </Text>
+            </View>
           </ListGroup>
           <Text style={styles.sectionFooter}>
-            Oferty w euro zobaczysz z przeliczeniem na zł (i odwrotnie) po bieżącym kursie NBP.
+            {t('profile.currency.footer')}
           </Text>
         </View>
 
         <View style={[styles.section, { marginTop: 10 }]}>
           <ListGroup isDark={isDark}>
             <Pressable onPress={handleLogout} style={({ pressed }) => [styles.logoutBtn, pressed && { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
-              <Text style={styles.logoutText}>Wyloguj się</Text>
+              <Text style={styles.logoutText}>{t('profile.session.logout')}</Text>
             </Pressable>
           </ListGroup>
         </View>
 
-        <Text style={styles.versionText}>EstateOS™ v1.0.0</Text>
+        <Text style={styles.versionText}>{t('profile.session.version')}</Text>
         <Pressable
           onPress={() => {
             Haptics.selectionAsync();
@@ -3690,10 +3715,10 @@ export default function ProfileScreen({
           hitSlop={{ top: 16, bottom: 16, left: 24, right: 24 }}
           style={styles.deleteAccountMicroWrap}
           accessibilityRole="button"
-          accessibilityLabel="Usuń konto"
+          accessibilityLabel={t('profile.session.deleteAccountA11y')}
         >
           <Text style={[styles.deleteAccountMicro, { color: isDark ? 'rgba(235,235,245,0.35)' : 'rgba(60,60,67,0.38)' }]}>
-            usuń konto
+            {t('profile.session.deleteAccount')}
           </Text>
         </Pressable>
       </ScrollView>
@@ -3767,6 +3792,16 @@ export default function ProfileScreen({
         theme={theme}
         onQueueChange={setAdminPendingReportsCount}
       />
+      <AdminPromoWindowsModal
+        visible={isAdminPromoWindowsVisible}
+        onClose={() => setIsAdminPromoWindowsVisible(false)}
+        theme={theme}
+        onSent={() => {
+          if (token && user?.id) {
+            void fetchUserProfilePromoCards(token, user.id).then(setUserPromoCards);
+          }
+        }}
+      />
 
       <EditNameSheet
         visible={isEditNameVisible}
@@ -3797,11 +3832,11 @@ export default function ProfileScreen({
         onConfirmDelete={async (password) => {
           const r = await deleteAccount(password);
           if (!r.ok) {
-            Alert.alert('Nie można usunąć konta', r.error || 'Spróbuj ponownie później.');
+            Alert.alert(t('profile.session.alerts.deleteFailedTitle'), r.error || t('profile.session.alerts.deleteFailedBody'));
             return r;
           }
           setIsDeleteAccountVisible(false);
-          Alert.alert('Konto usunięto', 'Dziękujemy za korzystanie z EstateOS™. Sesja została zakończona.');
+          Alert.alert(t('profile.session.alerts.deleteSuccessTitle'), t('profile.session.alerts.deleteSuccessBody'));
           return r;
         }}
       />
@@ -3817,7 +3852,7 @@ export default function ProfileScreen({
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOwnPublicProfileOpen(false)} />
           <View style={styles.profileCard}>
             <View style={styles.profileHeaderRow}>
-              <Text style={styles.profileTitle}>Twój profil publiczny</Text>
+              <Text style={styles.profileTitle}>{t('profile.publicProfile.title')}</Text>
               <Pressable onPress={() => setIsOwnPublicProfileOpen(false)} style={styles.profileCloseBtn}>
                 <Ionicons name="close" size={18} color="#fff" />
               </Pressable>
@@ -3826,7 +3861,7 @@ export default function ProfileScreen({
             {ownPublicProfileLoading ? (
               <View style={styles.profileLoaderWrap}>
                 <ActivityIndicator color="#f59e0b" />
-                <Text style={styles.profileMuted}>Ładowanie profilu...</Text>
+                <Text style={styles.profileMuted}>{t('profile.publicProfile.loading')}</Text>
               </View>
             ) : (
               <>
@@ -3837,9 +3872,9 @@ export default function ProfileScreen({
                     size={44}
                   />
                 </View>
-                <Text style={styles.profileName}>{ownPublicProfile?.user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Użytkownik'}</Text>
+                <Text style={styles.profileName}>{ownPublicProfile?.user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || t('profile.publicProfile.userFallback')}</Text>
                 <EliteStatusBadges subject={ownPublicProfile?.user || user} isDark compact />
-                <Text style={styles.profileMeta}>ID: {user?.id || '-'}</Text>
+                <Text style={styles.profileMeta}>{t('profile.publicProfile.id', { id: user?.id || '-' })}</Text>
                 <View style={styles.profileRatingBox}>
                   <Text style={styles.profileRatingValue}>{ownAverageRating.toFixed(1)}</Text>
                   <View style={styles.profileStarsRow}>
@@ -3852,17 +3887,17 @@ export default function ProfileScreen({
                       />
                     ))}
                   </View>
-                  <Text style={styles.profileMuted}>{ownReviews.length} opinii</Text>
+                  <Text style={styles.profileMuted}>{t('profile.publicProfile.reviewsCount', { count: ownReviews.length })}</Text>
                 </View>
 
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
                   {ownReviews.length === 0 ? (
-                    <Text style={styles.profileMuted}>Brak opinii dla tego użytkownika.</Text>
+                    <Text style={styles.profileMuted}>{t('profile.publicProfile.noReviews')}</Text>
                   ) : ownReviews.slice(0, 12).map((r: any) => (
                     <View key={r.id} style={styles.reviewItem}>
                       <View style={styles.reviewTop}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.reviewAuthorText}>{r?.reviewerName || `Użytkownik #${r?.reviewerId || '-'}`}</Text>
+                          <Text style={styles.reviewAuthorText}>{r?.reviewerName || t('profile.publicProfile.reviewerFallback', { id: r?.reviewerId || '-' })}</Text>
                           <View style={styles.reviewStars}>
                             {[1, 2, 3, 4, 5].map((s) => (
                               <Ionicons
@@ -3874,9 +3909,9 @@ export default function ProfileScreen({
                             ))}
                           </View>
                         </View>
-                        <Text style={styles.reviewDate}>{new Date(r.createdAt).toLocaleDateString('pl-PL')}</Text>
+                        <Text style={styles.reviewDate}>{new Date(r.createdAt).toLocaleDateString(dateLocale)}</Text>
                       </View>
-                      <Text style={styles.reviewText}>{r.comment || 'Bez komentarza.'}</Text>
+                      <Text style={styles.reviewText}>{r.comment || t('profile.publicProfile.noComment')}</Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -3968,6 +4003,13 @@ const styles = StyleSheet.create({
   listSubtitle: { fontSize: 12, color: '#8E8E93', marginTop: 2, paddingRight: 10 },
   listValue: { fontSize: 16, color: '#8E8E93' },
   segmentWrapper: { padding: 12 },
+  currencyActiveHint: {
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    letterSpacing: -0.15,
+  },
   segmentContainer: { width: '100%', height: 36, borderRadius: 8, flexDirection: 'row', position: 'relative', padding: 2 },
   segmentActive: { position: 'absolute', height: '100%', top: 2, left: 2, borderRadius: 6 },
   segmentButton: { flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: 1 },

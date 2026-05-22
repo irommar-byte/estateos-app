@@ -65,7 +65,7 @@ import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmou
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import type { ListingCurrency } from '../money/types';
 import { useMoneyContext } from '../money/useMoneyContext';
-import { useI18n } from '../i18n';
+import { localeToDateFormat, useI18n } from '../i18n';
 import { t as translate } from '../i18n/translate';
 import {
   isFavoriteId,
@@ -428,7 +428,7 @@ function offerMarkerAccent(raw: any): string {
   return tx === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 }
 
-const formatOfferPublishDate = (raw: any, locale: 'pl' | 'en') => {
+const formatOfferPublishDate = (raw: any, locale: import('../i18n').AppLocale) => {
   const value =
     raw?.publishedAt ||
     raw?.published_at ||
@@ -438,7 +438,7 @@ const formatOfferPublishDate = (raw: any, locale: 'pl' | 'en') => {
   if (!value) return translate('radar.home.publishDateEmpty');
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return translate('radar.home.publishDateEmpty');
-  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const dateLocale = localeToDateFormat(locale);
   return translate('radar.home.publishDate', { date: date.toLocaleDateString(dateLocale) });
 };
 
@@ -891,7 +891,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
   const { formatOffer, preference, rate } = useMoneyContext();
   const { t, locale } = useI18n();
-  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const dateLocale = localeToDateFormat(locale);
 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);

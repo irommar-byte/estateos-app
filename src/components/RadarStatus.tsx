@@ -5,19 +5,20 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
+import { useI18n } from '../i18n';
+
 export default function RadarStatus({ isDark }: { isDark: boolean }) {
+  const { t } = useI18n();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-20)).current;
 
-  // Sprawdzanie uprawnień
   const checkPermissions = async () => {
     const { status } = await Notifications.getPermissionsAsync();
     const isGranted = status === 'granted';
     setHasPermission(isGranted);
 
     if (isGranted) {
-      // Pigułka Sukcesu (pojawia się i znika)
       Animated.sequence([
         Animated.parallel([
           Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
@@ -30,7 +31,6 @@ export default function RadarStatus({ isDark }: { isDark: boolean }) {
         ]),
       ]).start();
     } else {
-      // Pigułka Alarmu (zostaje na ekranie)
       Animated.parallel([
         Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
         Animated.spring(translateY, { toValue: 0, friction: 6, tension: 40, useNativeDriver: true }),
@@ -38,7 +38,6 @@ export default function RadarStatus({ isDark }: { isDark: boolean }) {
     }
   };
 
-  // Nasłuchiwanie na powrót do aplikacji (np. po zmianie ustawień)
   useEffect(() => {
     checkPermissions();
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
@@ -56,7 +55,6 @@ export default function RadarStatus({ isDark }: { isDark: boolean }) {
     }
   };
 
-  // Zabezpieczenie przed miganiem podczas sprawdzania
   if (hasPermission === null) return null;
 
   return (
@@ -70,12 +68,12 @@ export default function RadarStatus({ isDark }: { isDark: boolean }) {
           {hasPermission ? (
             <>
               <View style={[styles.dot, { backgroundColor: '#34C759' }]} />
-              <Text style={[styles.text, { color: isDark ? '#FFFFFF' : '#1C1C1E' }]}>Radar aktywny: Śledzę rynek</Text>
+              <Text style={[styles.text, { color: isDark ? '#FFFFFF' : '#1C1C1E' }]}>{t('radar.status.active')}</Text>
             </>
           ) : (
             <>
               <Ionicons name="notifications-off-outline" size={14} color="#FF453A" style={{ marginRight: 6 }} />
-              <Text style={[styles.text, { color: '#FF453A' }]}>Radar uśpiony: Brak powiadomień</Text>
+              <Text style={[styles.text, { color: '#FF453A' }]}>{t('radar.status.asleep')}</Text>
               <Ionicons name="chevron-forward" size={12} color="#FF453A" style={{ marginLeft: 4 }} />
             </>
           )}
@@ -88,7 +86,7 @@ export default function RadarStatus({ isDark }: { isDark: boolean }) {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginTop: 10, // Odstęp od głównego paska nawigacji
+    marginTop: 10,
     zIndex: 20,
   },
   pill: {

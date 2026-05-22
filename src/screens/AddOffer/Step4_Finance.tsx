@@ -20,6 +20,11 @@ import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 import NumericKeyboardAccessory, {
   ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID,
 } from '../../components/NumericKeyboardAccessory';
+import CurrencySegmentControl from '../../components/CurrencySegmentControl';
+import { convertBetweenCurrencies, normalizeListingCurrency } from '../../money/convert';
+import { formatApproxLine } from '../../money/format';
+import { getEurPlnRate } from '../../money/fxRateService';
+import type { ListingCurrency } from '../../money/types';
 import {
   AGENT_COMMISSION_MAX_PERCENT,
   AGENT_COMMISSION_MIN_PERCENT,
@@ -34,6 +39,7 @@ import {
   parseAgentCommissionPercent,
   roundToQuarter,
 } from '../../lib/agentCommission';
+import { useI18n } from '../../i18n';
 
 const Colors = { primary: '#10b981', danger: '#ef4444', warning: '#f59e0b' };
 
@@ -44,14 +50,31 @@ const formatNumber = (val: any) => {
 };
 
 export default function Step4_Finance({ theme }: { theme: any }) {
+  const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const user = useAuthStore((s) => s.user);
   const isAgent = isAgentCommissionAccount(user);
   const navigation = useNavigation<any>();
   const scrollRef = useRef<ScrollView>(null);
   const [bottomPad, setBottomPad] = useState(220);
+  const [fxRate, setFxRate] = useState(4.32);
+  const [fxDate, setFxDate] = useState('');
+
+  const listingCurrency = normalizeListingCurrency(draft.priceCurrency);
 
   useFocusEffect(useCallback(() => { setCurrentStep(4); }, []));
+
+  useEffect(() => {
+    let cancelled = false;
+    void getEurPlnRate().then((snap) => {
+      if (cancelled) return;
+      setFxRate(snap.rate);
+      setFxDate(snap.date);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -85,7 +108,6 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
   const priceNum = parseFloat((draft.price || "").replace(/\s/g, '')) || 0;
   const areaNum = parseFloat((draft.area || "").replace(/\s/g, '').replace(',', '.')) || 0;
-  
   // W przypadku Sprzedaży (isRent === false) draft.rent przechowuje wpisany "Czynsz Admin."
   const adminFeeNum = !isRent ? (parseFloat((draft.rent || "").replace(/\s/g, '')) || 0) : 0;
   
@@ -94,10 +116,23 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const diff = pricePerSqm - avgPrice;
   const diffPercent = avgPrice > 0 ? Math.round((diff / avgPrice) * 100) : 0;
   
-  let statusText = 'W RYNKU'; let statusColor = Colors.warning; let statusIcon = 'swap-vertical-outline'; let sign = '';
-  if (diffPercent <= -5) { statusText = 'OKAZJA'; statusColor = Colors.primary; statusIcon = 'trending-down-outline'; sign = ''; } 
-  else if (diffPercent >= 5) { statusText = 'ZAWYŻONA'; statusColor = Colors.danger; statusIcon = 'trending-up-outline'; sign = '+'; } 
-  else { sign = diffPercent > 0 ? '+' : ''; }
+  let statusText = t('addOffer.step4.analytics.marketStatus.market');
+  let statusColor = Colors.warning;
+  let statusIcon = 'swap-vertical-outline';
+  let sign = '';
+  if (diffPercent <= -5) {
+    statusText = t('addOffer.step4.analytics.marketStatus.bargain');
+    statusColor = Colors.primary;
+    statusIcon = 'trending-down-outline';
+    sign = '';
+  } else if (diffPercent >= 5) {
+    statusText = t('addOffer.step4.analytics.marketStatus.overpriced');
+    statusColor = Colors.danger;
+    statusIcon = 'trending-up-outline';
+    sign = '+';
+  } else {
+    sign = diffPercent > 0 ? '+' : '';
+  }
   
   // LOGIKA ROI (Szacowanie przychodów)
   let estimatedRentPerSqm = 60;
@@ -209,13 +244,24 @@ export default function Step4_Finance({ theme }: { theme: any }) {
         
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={4} draft={draft} theme={theme} navigation={navigation} />
-        <Text style={[styles.header, { color: theme.text }]}>Finanse</Text>
+        <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step4.header')}</Text>
 
-        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{isRent ? 'Czynsz Najmu (zł)' : 'Cena Całkowita (zł)'}</Text>
+        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>
+          {isRent ? t('addOffer.step4.sections.priceRent') : t('addOffer.step4.sections.priceSell')}
+        </Text>
+        <CurrencySegmentControl
+          value={listingCurrency}
+          isDark={isDark}
+          onChange={(next: ListingCurrency) => {
+            if (next === listingCurrency) return;
+            const converted = convertBetweenCurrencies(priceNum, listingCurrency, next, fxRate);
+            updateDraft({ priceCurrency: next, price: converted > 0 ? String(converted) : draft.price });
+          }}
+        />
         <View style={[styles.mainInputBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 2 }]}>
           <TextInput
             style={[styles.mainInput, { color: theme.text }]}
-            placeholder="0"
+            placeholder={t('addOffer.step4.placeholders.amount')}
             placeholderTextColor={theme.subtitle}
             value={formatNumber(draft.price)}
             onChangeText={(t) => updateDraft({ price: t.replace(/\s/g, '') })}
@@ -226,6 +272,12 @@ export default function Step4_Finance({ theme }: { theme: any }) {
             {...numericInputProps}
           />
         </View>
+        {priceNum > 0 && (
+          <Text style={[styles.fxHint, { color: theme.subtitle }]}>
+            {formatApproxLine(priceNum, listingCurrency, fxRate)}
+            {fxDate ? ` · ${fxDate}` : ''}
+          </Text>
+        )}
 
         {!isRent && (
           <View style={styles.analyticsWrapper}>
@@ -234,10 +286,12 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                 <View style={styles.analyticsRow}>
                   <Ionicons name="cash-outline" size={24} color={theme.text} />
                   <View style={{ marginLeft: 12 }}>
-                    <Text style={[styles.analyticsLabel, { color: theme.subtitle }]}>Cena za m²</Text>
+                    <Text style={[styles.analyticsLabel, { color: theme.subtitle }]}>{t('addOffer.step4.analytics.pricePerSqm')}</Text>
                     <View style={styles.sqmController}>
                       <Pressable onPress={handleDecreaseSqm} style={[styles.sqmBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}><Ionicons name="remove" size={14} color={theme.text} /></Pressable>
-                      <Text style={[styles.analyticsValue, { color: theme.text, marginHorizontal: 8 }]}>{formatNumber(pricePerSqm.toString())} zł</Text>
+                      <Text style={[styles.analyticsValue, { color: theme.text, marginHorizontal: 8 }]}>
+                        {formatNumber(pricePerSqm.toString())} {listingCurrency}
+                      </Text>
                       <Pressable onPress={handleIncreaseSqm} style={[styles.sqmBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}><Ionicons name="add" size={14} color={theme.text} /></Pressable>
                     </View>
                   </View>
@@ -246,14 +300,16 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                   <Text style={[styles.statusTitle, { color: statusColor }]}>{statusText}</Text>
                   <View style={[styles.badge, { backgroundColor: `${statusColor}20` }]}>
                     <Ionicons name={statusIcon as any} size={14} color={statusColor} />
-                    <Text style={[styles.badgeText, { color: statusColor }]}>{sign}{diffPercent}% od średniej</Text>
+                    <Text style={[styles.badgeText, { color: statusColor }]}>
+                      {t('addOffer.step4.analytics.diffFromAverage', { sign, percent: diffPercent })}
+                    </Text>
                   </View>
                 </View>
               </View>
             ) : (
               <View style={[styles.analyticsCard, { backgroundColor: cardBg, borderColor: cardBorder, borderStyle: 'dashed' }]}>
                 <Ionicons name="information-circle-outline" size={24} color={theme.subtitle} />
-                <Text style={{ flex: 1, marginLeft: 10, color: theme.subtitle, fontSize: 13 }}>Wpisz metraż w Kroku 3 oraz cenę, aby zobaczyć i regulować analizę rynkową.</Text>
+                <Text style={{ flex: 1, marginLeft: 10, color: theme.subtitle, fontSize: 13 }}>{t('addOffer.step4.analytics.emptyHint')}</Text>
               </View>
             )}
           </View>
@@ -261,11 +317,13 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
         <View style={styles.splitInputs}>
           <View style={styles.halfCol}>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{isRent ? 'Kaucja' : 'Czynsz Admin.'}</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>
+              {isRent ? t('addOffer.step4.sections.deposit') : t('addOffer.step4.sections.adminFee')}
+            </Text>
             <View style={[styles.smallInputBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
               <TextInput
                 style={[styles.smallInput, { color: theme.text }]}
-                placeholder="0"
+                placeholder={t('addOffer.step4.placeholders.amount')}
                 placeholderTextColor={theme.subtitle}
                 value={formatNumber(isRent ? draft.deposit : (draft.adminFee || draft.rent))}
                 onChangeText={handleSecondaryAmountChange}
@@ -280,7 +338,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
           <View style={styles.halfCol}>
             {roi !== 0 && !isRent && (
               <View style={[styles.roiBox, { backgroundColor: isDark ? 'rgba(59,130,246,0.1)' : 'rgba(59,130,246,0.08)', borderColor: '#3b82f6' }]}>
-                <Text style={[styles.analyticsLabel, { color: '#3b82f6' }]}>Szacowane ROI</Text>
+                <Text style={[styles.analyticsLabel, { color: '#3b82f6' }]}>{t('addOffer.step4.analytics.estimatedRoi')}</Text>
                 <Text style={[styles.analyticsValue, { color: '#3b82f6', fontSize: 22 }]}>{roi}%</Text>
               </View>
             )}
@@ -302,7 +360,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                   color={commissionAccent}
                 />
                 <Text style={[styles.commissionHeaderBadgeText, { color: commissionAccent }]}>
-                  EstateOS™ Agent
+                  {t('addOffer.step4.commission.badge')}
                 </Text>
               </View>
               {hasCommissionSlot ? (
@@ -312,19 +370,19 @@ export default function Step4_Finance({ theme }: { theme: any }) {
               ) : null}
             </View>
             <Text style={[styles.commissionTitle, { color: theme.text }]}>
-              {isZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+              {isZeroCommission ? t('addOffer.step4.commission.titleZero') : t('addOffer.step4.commission.titleDefault')}
             </Text>
             <Text style={[styles.commissionSubtitle, { color: theme.subtitle }]}>
               {isZeroCommission ? (
-                <>Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.</>
+                <>{t('addOffer.step4.commission.subtitleZero')}</>
               ) : (
                 <>
-                  Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny
-                  <Text style={{ fontWeight: '800' }}> {hasCommissionSlot ? formatPercentLabel(commissionPercent!) : 'X%'} </Text>
-                  stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.{' '}
+                  {t('addOffer.step4.commission.subtitleDefaultPrefix')}{' '}
                   <Text style={{ fontWeight: '800' }}>
-                    Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.
-                  </Text>
+                    {hasCommissionSlot ? formatPercentLabel(commissionPercent!) : 'X%'}
+                  </Text>{' '}
+                  {t('addOffer.step4.commission.subtitleDefaultSuffix')}{' '}
+                  <Text style={{ fontWeight: '800' }}>{t('addOffer.step4.commission.subtitleVatNote')}</Text>
                 </>
               )}
             </Text>
@@ -345,7 +403,9 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                 >
                   <Ionicons name="add-circle-outline" size={20} color="#FF9F0A" />
                   <Text style={[styles.commissionAddCtaText, { color: '#FF9F0A' }]} numberOfLines={1}>
-                    Prowizja {formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT)}
+                    {t('addOffer.step4.commission.addDefault', {
+                      percent: formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT),
+                    })}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -362,7 +422,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                 >
                   <Ionicons name="gift-outline" size={20} color="#10b981" />
                   <Text style={[styles.commissionAddCtaText, { color: '#10b981' }]} numberOfLines={1}>
-                    Bez prowizji
+                    {t('addOffer.step4.commission.addZero')}
                   </Text>
                 </Pressable>
               </View>
@@ -383,7 +443,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
               >
                 <View style={styles.commissionRow}>
                   <View style={styles.commissionInputCol}>
-                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]}>Prowizja</Text>
+                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]}>{t('addOffer.step4.commission.label')}</Text>
                     <View
                       style={[
                         styles.commissionInputBox,
@@ -418,14 +478,18 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                         <Ionicons name="add" size={16} color={theme.text} />
                       </Pressable>
                       <Text style={[styles.commissionStepHint, { color: theme.subtitle }]}>
-                        krok {formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT)}
+                        {t('addOffer.step4.commission.stepHint', {
+                          step: formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT),
+                        })}
                       </Text>
                     </View>
                   </View>
 
                   <View style={styles.commissionAmountCol}>
                     <Text style={[styles.commissionLabel, { color: theme.subtitle }]} numberOfLines={1}>
-                      {isZeroCommission ? 'dla kupującego' : 'z ceny ofertowej'}
+                      {isZeroCommission
+                        ? t('addOffer.step4.commission.amountLabelBuyer')
+                        : t('addOffer.step4.commission.amountLabelFromPrice')}
                     </Text>
                     <Text
                       style={[styles.commissionAmountValue, { color: commissionAccent }]}
@@ -434,13 +498,15 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                       minimumFontScale={0.5}
                     >
                       {isZeroCommission
-                        ? 'BEZ PROWIZJI'
+                        ? t('addOffer.step4.commission.amountZero')
                         : commissionAmount > 0
                           ? formatPlnAmount(commissionAmount)
-                          : '— PLN'}
+                          : t('addOffer.step4.commission.amountEmpty')}
                     </Text>
                     <Text style={[styles.commissionAmountHint, { color: theme.subtitle }]} numberOfLines={2}>
-                      {isZeroCommission ? 'Kupujący nie płaci prowizji.' : 'To Twoje wynagrodzenie z transakcji.'}
+                      {isZeroCommission
+                        ? t('addOffer.step4.commission.amountHintZero')
+                        : t('addOffer.step4.commission.amountHintDefault')}
                     </Text>
                   </View>
                 </View>
@@ -449,8 +515,10 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                   <View style={styles.commissionWarn}>
                     <Ionicons name="warning-outline" size={14} color={Colors.danger} />
                     <Text style={[styles.commissionWarnText, { color: Colors.danger }]}>
-                      Prowizja musi być równa 0% (bez prowizji) lub w zakresie {formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT)}–
-                      {formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)}.
+                      {t('addOffer.step4.commission.warnRange', {
+                        min: formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT),
+                        max: formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT),
+                      })}
                     </Text>
                   </View>
                 ) : null}
@@ -462,7 +530,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
         <AddOfferStepFooterHint
           theme={theme}
           icon="wallet-outline"
-          text="Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku."
+          text={t('addOffer.step4.footerHint')}
         />
       </ScrollView>
       <NumericKeyboardAccessory isDark={isDark} />
@@ -472,7 +540,9 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, content: { padding: 20 },
-  header: { fontSize: 40, fontWeight: '800', marginBottom: 30, letterSpacing: -1.2 }, sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 4 },
+  header: { fontSize: 40, fontWeight: '800', marginBottom: 30, letterSpacing: -1.2 },
+  sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 4 },
+  fxHint: { fontSize: 13, fontWeight: '600', marginTop: 8, marginBottom: 16, marginLeft: 4, lineHeight: 18 },
   mainInputBox: { height: 100, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 28, borderWidth: 1 }, mainInput: { fontSize: 40, fontWeight: '800', textAlign: 'left' },
   splitInputs: { flexDirection: 'row', gap: 15, marginTop: 30 }, halfCol: { flex: 1 }, smallInputBox: { height: 70, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 24, borderWidth: 1 }, smallInput: { fontSize: 24, fontWeight: '700' },
   analyticsWrapper: { marginTop: 15 },

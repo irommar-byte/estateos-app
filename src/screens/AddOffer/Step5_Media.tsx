@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Image, TextInput, KeyboardAvoidingView, Platform, ScrollView, Animated, Alert, PanResponder, ActivityIndicator, useWindowDimensions, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,13 @@ import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import { AddOfferFieldHint } from '../../components/AddOfferValidation';
+import {
+  ADD_OFFER_DESC_MAX,
+  ADD_OFFER_DESC_MIN,
+  ADD_OFFER_TITLE_MAX,
+  ADD_OFFER_TITLE_MIN,
+} from './validation';
 import {
   OFFER_MEDIA_MAX_IMAGES,
   OFFER_MEDIA_UPLOAD_CAP_BYTES,
@@ -18,8 +25,26 @@ import {
   canAcceptDraftImage,
   formatMediaCapacityAlert,
 } from '../../utils/offerMediaCapacity';
+import { REST_OF_COUNTRY_CITY } from '../../constants/locationEcosystem';
+import { getAppLocale, t, useI18n } from '../../i18n';
+import { pl } from '../../i18n/locales/pl';
+import { en } from '../../i18n/locales/en';
 
 const Colors = { primary: '#10b981', aiGlow: '#8b5cf6', danger: '#ef4444', premiumDark: '#1C1C1E', premiumBorder: 'rgba(255,255,255,0.08)' };
+
+function getAddOfferAiCopy() {
+  return getAppLocale() === 'en' ? en.addOffer.step5.ai : pl.addOffer.step5.ai;
+}
+
+const HEATING_LABEL_KEYS: Record<string, string> = {
+  '': 'addOffer.step3.heating.none',
+  Miejskie: 'addOffer.step3.heating.district',
+  Gazowe: 'addOffer.step3.heating.gas',
+  Elektryczne: 'addOffer.step3.heating.electric',
+  'Pompa Ciepła': 'addOffer.step3.heating.heatPump',
+  'Węglowe/Pellet': 'addOffer.step3.heating.coalPellet',
+  Inne: 'addOffer.step3.heating.other',
+};
 const MAX_TITLE_LENGTH = 70;
 const MAX_IMAGES = OFFER_MEDIA_MAX_IMAGES;
 const MAX_MB = OFFER_MEDIA_UPLOAD_CAP_MB;
@@ -41,18 +66,43 @@ function uniqueImages(uris: string[]): string[] {
   return out;
 }
 
-// --- MATEMATYKA SIATKI ---
-const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_PADDING = 20;
 const GRID_GAP = 12;
 const COLUMNS = 3;
-const SQUARE_SIZE = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (COLUMNS - 1))) / COLUMNS;
 
-// Funkcja zwracająca absolutną pozycję (x, y) na podstawie indeksu
-const getPosition = (index: number) => ({
-  x: (index % COLUMNS) * (SQUARE_SIZE + GRID_GAP),
-  y: Math.floor(index / COLUMNS) * (SQUARE_SIZE + GRID_GAP),
+const squareSizeForWidth = (screenWidth: number) =>
+  (screenWidth - GRID_PADDING * 2 - GRID_GAP * (COLUMNS - 1)) / COLUMNS;
+
+const getPositionForSize = (index: number, squareSize: number) => ({
+  x: (index % COLUMNS) * (squareSize + GRID_GAP),
+  y: Math.floor(index / COLUMNS) * (squareSize + GRID_GAP),
 });
+
+async function ensureMediaLibraryPermission(): Promise<boolean> {
+  const read = await ImagePicker.getMediaLibraryPermissionsAsync();
+  const hasAccess =
+    read.granted ||
+    read.accessPrivileges === 'all' ||
+    read.accessPrivileges === 'limited';
+  if (hasAccess) return true;
+
+  const requested = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const ok =
+    requested.granted ||
+    requested.accessPrivileges === 'all' ||
+    requested.accessPrivileges === 'limited';
+  if (ok) return true;
+
+  Alert.alert(
+    t('addOffer.step5.alerts.photoAccess.title'),
+    t('addOffer.step5.alerts.photoAccess.message'),
+    [
+      { text: t('addOffer.common.cancel'), style: 'cancel' },
+      { text: t('addOffer.common.settings'), onPress: () => Linking.openSettings() },
+    ],
+  );
+  return false;
+}
 
 // --- EKSKLUZYWNY PASEK LIMITÓW ---
 const CapacityBar = ({ label, current, max, suffix, theme }: any) => {
@@ -84,8 +134,9 @@ const DraggableSquare = ({
   onRemove,
   theme,
   progress = 100,
+  squareSize,
 }: any) => {
-  const pos = useRef(new Animated.ValueXY(getPosition(index))).current;
+  const pos = useRef(new Animated.ValueXY(getPositionForSize(index, squareSize))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const [isActive, setIsActive] = useState(false);
@@ -110,20 +161,20 @@ const DraggableSquare = ({
   useEffect(() => {
     if (!isDragging.current) {
       Animated.spring(pos, {
-        toValue: getPosition(index),
+        toValue: getPositionForSize(index, squareSize),
         useNativeDriver: true,
         friction: 9,
         tension: 68,
       }).start();
     }
-  }, [index, pos]);
+  }, [index, pos, squareSize]);
 
   const finishDrag = useCallback(() => {
     setIsActive(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Animated.parallel([
       Animated.spring(pos, {
-        toValue: getPosition(indexRef.current),
+        toValue: getPositionForSize(indexRef.current, squareSize),
         useNativeDriver: true,
         friction: 9,
         tension: 85,
@@ -133,7 +184,7 @@ const DraggableSquare = ({
       onDragEndRef.current();
     });
     isDragging.current = false;
-  }, [pos, scaleAnim]);
+  }, [pos, scaleAnim, squareSize]);
 
   const finishDragRef = useRef(finishDrag);
   finishDragRef.current = finishDrag;
@@ -161,15 +212,15 @@ const DraggableSquare = ({
           Animated.spring(scaleAnim, { toValue: 1.08, friction: 6, useNativeDriver: true }).start();
         },
         onPanResponderMove: (_e, gestureState) => {
-          const startPos = getPosition(initialIndex.current);
+          const startPos = getPositionForSize(initialIndex.current, squareSize);
           const currentX = startPos.x + gestureState.dx;
           const currentY = startPos.y + gestureState.dy;
 
           pos.setValue({ x: currentX, y: currentY });
 
-          const cellStride = SQUARE_SIZE + GRID_GAP;
-          const centerX = currentX + SQUARE_SIZE / 2;
-          const centerY = currentY + SQUARE_SIZE / 2;
+          const cellStride = squareSize + GRID_GAP;
+          const centerX = currentX + squareSize / 2;
+          const centerY = currentY + squareSize / 2;
           const n = totalRef.current;
 
           const targetCol = Math.max(0, Math.min(COLUMNS - 1, Math.floor(centerX / cellStride)));
@@ -189,7 +240,7 @@ const DraggableSquare = ({
         onPanResponderRelease: () => finishDragRef.current(),
         onPanResponderTerminate: () => finishDragRef.current(),
       }),
-    [pos, scaleAnim]
+    [pos, scaleAnim, squareSize]
   );
 
   // Unikalny stos przy nakładaniu się kafelków w trakcie animacji (równy zIndex = losowa kolejność malowania).
@@ -201,6 +252,8 @@ const DraggableSquare = ({
       style={[
         styles.squareContainer,
         {
+          width: squareSize,
+          height: squareSize,
           transform: [{ translateX: pos.x }, { translateY: pos.y }, { scale: scaleAnim }],
           zIndex: stackOrder,
           // Zielony "glow" i mocny cień przy uchwyceniu
@@ -222,7 +275,7 @@ const DraggableSquare = ({
 
       {index === 0 && (
         <View style={styles.coverBadge}>
-          <Text style={styles.coverBadgeText}>OKŁADKA</Text>
+          <Text style={styles.coverBadgeText}>{t('addOffer.step5.coverBadge')}</Text>
         </View>
       )}
 
@@ -243,34 +296,17 @@ const DraggableSquare = ({
   );
 };
 
-const aiVocabulary = {
-  intros: ["Przekrocz próg przestrzeni, która redefiniuje pojęcie luksusu i komfortu.", "Rzadka okazja na rynku. Nieruchomość, która natychmiast przykuwa uwagę.", "Oto miejsce stworzone z myślą o osobach ceniących miejski styl życia.", "Harmonia, spokój i doskonały design. Ta propozycja zadowoli najbardziej wymagających."],
-  poi: ["W promieniu 500 metrów znajdziesz renomowane szkoły i nowoczesny kompleks.", "Zaledwie 3 minuty spacerem do głównych węzłów komunikacyjnych.", "Otoczenie to kwintesencja wielkomiejskiego życia: kawiarnie i restauracje.", "Dla aktywnych: ścieżki rowerowe, kluby fitness i bliskość rzeki."],
-  marketOccasion: [
-    "To propozycja o charakterze okazji rynkowej — relacja ceny do metrażu wypada bardzo konkurencyjnie.",
-    "Analiza porównawcza wskazuje na atrakcyjną wycenę względem podobnych ofert w najbliższej okolicy.",
-    "W tym segmencie lokalnym to jedna z ciekawszych ofert cenowych dostępnych obecnie na rynku."
-  ],
-  marketFair: [
-    "Cena pozostaje na poziomie rynkowym, spójnym z aktualnymi transakcjami dla podobnych nieruchomości.",
-    "Wycena jest wyważona i dobrze wpisuje się w lokalne widełki cenowe.",
-    "To stabilna, rynkowa propozycja — bez sztucznego zawyżenia, z zachowaniem jakości oferty."
-  ],
-  marketPremium: [
-    "Oferta pozycjonowana jest jako ekskluzywna — wyższa cena odzwierciedla standard, lokalizację i potencjał.",
-    "To segment premium: wycena ponad średnią rynkową wynika z jakości i profilu nieruchomości.",
-    "Nieruchomość celuje w klienta premium, który szuka jakości ponad przeciętność rynkową."
-  ],
-};
-
 const formatNumber = (value: number | string): string =>
   String(value || '')
     .replace(/\D/g, '')
     .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 export default function Step5_Media({ theme }: { theme: any }) {
+  const { t: translate } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
+  const { width: screenWidth } = useWindowDimensions();
+  const squareSize = useMemo(() => squareSizeForWidth(screenWidth), [screenWidth]);
   useFocusEffect(
     useCallback(() => {
       const id = setTimeout(() => {
@@ -304,20 +340,15 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const [dragSnapshot, setDragSnapshot] = useState<string[] | null>(null);
   const dragSnapshotRef = useRef<string[] | null>(null);
 
-  const displayImages = dragSnapshot ?? draft.images;
+  const draftImages = Array.isArray(draft.images) ? draft.images : [];
+  const displayImages = dragSnapshot ?? draftImages;
   const imageSizes: Record<string, number> = draft.imageByteSizes || {};
   const usedMB =
     sumEstimatedUploadBytes(displayImages, imageSizes) / (1024 * 1024);
   const estimatedCount = countUnknownImageSizes(displayImages, imageSizes);
 
-  const isTitleValid = (draft.title?.length || 0) >= 10;
-  const isDescValid = (draft.description?.length || 0) >= 10;
-
-  const mediaAnim = useRef(new Animated.Value(isTitleValid ? 1 : 0.3)).current;
-  useEffect(() => {
-    Animated.timing(mediaAnim, { toValue: isTitleValid ? 1 : 0.3, duration: 400, useNativeDriver: true }).start();
-  }, [isTitleValid]);
-
+  const titleLength = (draft.title || '').trim().length;
+  const descLength = (draft.description || '').trim().length;
   const handleTitleChange = (text: string) => { if (text.length <= MAX_TITLE_LENGTH) updateDraft({ title: text }); };
 
   const startFakeUploadProgress = (uri: string) => {
@@ -335,22 +366,29 @@ export default function Step5_Media({ theme }: { theme: any }) {
 
   const pickGallery = async () => {
     if (sizingGallery) return;
-    if (draft.images.length >= MAX_IMAGES) {
-      return Alert.alert('Limit zdjęć', 'Osiągnięto maksymalny limit 20 zdjęć.');
+    if (draftImages.length >= MAX_IMAGES) {
+      return Alert.alert(
+        translate('addOffer.step5.alerts.photoLimit.title'),
+        translate('addOffer.step5.alerts.photoLimit.message'),
+      );
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-    if (result.canceled) return;
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     try {
+      const permitted = await ensureMediaLibraryPermission();
+      if (!permitted) return;
+
+      const slotsLeft = Math.max(1, MAX_IMAGES - draftImages.length);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: slotsLeft,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setSizingGallery(true);
-      let nextImages = uniqueImages([...draft.images]);
+      let nextImages = uniqueImages([...draftImages]);
       /** Zawsze start od oczyszczonej mapy — usuwa zombie wpisy blokujące miejsce. */
       let nextSizes = pruneImageByteSizes(nextImages, { ...(draft.imageByteSizes || {}) });
       updateDraft({ imageByteSizes: nextSizes });
@@ -370,7 +408,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
           newUri: asset.uri,
         });
         if (!accept.ok) {
-          Alert.alert('Limit miejsca', formatMediaCapacityAlert(accept.reason));
+          Alert.alert(translate('addOffer.step5.alerts.storageLimit.title'), formatMediaCapacityAlert(accept.reason));
           break;
         }
 
@@ -382,9 +420,14 @@ export default function Step5_Media({ theme }: { theme: any }) {
         startFakeUploadProgress(asset.uri);
       }
 
-      if (nextImages.length > draft.images.length) {
+      if (nextImages.length > draftImages.length) {
         updateDraft({ images: uniqueImages(nextImages), imageByteSizes: nextSizes });
       }
+    } catch (err: any) {
+      Alert.alert(
+        translate('addOffer.step5.alerts.addPhotosFailed.title'),
+        String(err?.message || '').trim() || translate('addOffer.step5.alerts.addPhotosFailed.message'),
+      );
     } finally {
       setSizingGallery(false);
     }
@@ -441,8 +484,24 @@ export default function Step5_Media({ theme }: { theme: any }) {
   );
 
   const pickFloorPlan = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 0.8 });
-    if (!result.canceled) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); updateDraft({ floorPlan: result.assets[0].uri }); }
+    try {
+      const permitted = await ensureMediaLibraryPermission();
+      if (!permitted) return;
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        updateDraft({ floorPlan: result.assets[0].uri });
+      }
+    } catch (err: any) {
+      Alert.alert(
+        translate('addOffer.step5.alerts.floorPlanFailed.title'),
+        String(err?.message || '').trim() || translate('addOffer.step5.alerts.floorPlanFailed.message'),
+      );
+    }
   };
   const removeFloorPlan = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); updateDraft({ floorPlan: null }); };
 
@@ -452,18 +511,33 @@ export default function Step5_Media({ theme }: { theme: any }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     Animated.loop(Animated.sequence([ Animated.timing(glowAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }), Animated.timing(glowAnim, { toValue: 0.1, duration: 800, useNativeDriver: true }) ])).start();
 
-    const randomIntro = aiVocabulary.intros[Math.floor(Math.random() * aiVocabulary.intros.length)];
-    const randomPoi = aiVocabulary.poi[Math.floor(Math.random() * aiVocabulary.poi.length)];
-    const propType = draft.propertyType === 'HOUSE' ? 'dom' : draft.propertyType === 'PLOT' ? 'działkę' : 'apartament';
-    const condition = draft.condition === 'READY' ? 'gotowy do wprowadzenia' : draft.condition === 'RENOVATION' ? 'z potencjałem do remontu' : 'w stanie deweloperskim';
-    const transactionType = draft.transactionType === 'RENT' ? 'wynajem' : 'sprzedaż';
-    const isRestOfCountry = String(draft.city || '').trim() === 'Reszta kraju';
+    const ai = getAddOfferAiCopy();
+    const randomIntro = ai.intros[Math.floor(Math.random() * ai.intros.length)];
+    const randomPoi = ai.poi[Math.floor(Math.random() * ai.poi.length)];
+    const propType =
+      draft.propertyType === 'HOUSE'
+        ? ai.propertyType.house
+        : draft.propertyType === 'PLOT'
+          ? ai.propertyType.plot
+          : ai.propertyType.flat;
+    const condition =
+      draft.condition === 'READY'
+        ? ai.condition.ready
+        : draft.condition === 'RENOVATION'
+          ? ai.condition.renovation
+          : ai.condition.developer;
+    const transactionType = draft.transactionType === 'RENT' ? ai.transaction.rent : ai.transaction.sell;
+    const isRestOfCountry = String(draft.city || '').trim() === REST_OF_COUNTRY_CITY;
     const district = String(draft.district || '').trim();
     const city = String(draft.city || '').trim();
     const locationName =
       isRestOfCountry
-        ? (district && district.toLowerCase() !== 'ogólna' ? district : 'wybranej miejscowości')
-        : (district && district.toLowerCase() !== 'ogólna' ? `${city}, ${district}` : (city || 'wybranej miejscowości'));
+        ? district && district.toLowerCase() !== 'ogólna'
+          ? district
+          : ai.locationFallback
+        : district && district.toLowerCase() !== 'ogólna'
+          ? `${city}, ${district}`
+          : city || ai.locationFallback;
 
     const areaNum = Number(String(draft.area || '').replace(/\s/g, '').replace(',', '.')) || 0;
     const priceNum = Number(String(draft.price || '').replace(/\s/g, '')) || 0;
@@ -481,95 +555,114 @@ export default function Step5_Media({ theme }: { theme: any }) {
     const diffPercent = avgPrice > 0 && pricePerSqm > 0 ? Math.round(((pricePerSqm - avgPrice) / avgPrice) * 100) : 0;
 
     const marketHeader =
-      diffPercent <= -5
-        ? 'OKAZJA'
-        : diffPercent >= 5
-          ? 'EKSKLUZYWNA'
-          : 'CENA RYNKOWA';
+      diffPercent <= -5 ? ai.marketHeader.bargain : diffPercent >= 5 ? ai.marketHeader.premium : ai.marketHeader.fair;
     const marketNarrativePool =
-      diffPercent <= -5
-        ? aiVocabulary.marketOccasion
-        : diffPercent >= 5
-          ? aiVocabulary.marketPremium
-          : aiVocabulary.marketFair;
+      diffPercent <= -5 ? ai.marketOccasion : diffPercent >= 5 ? ai.marketPremium : ai.marketFair;
     const marketNarrative = marketNarrativePool[Math.floor(Math.random() * marketNarrativePool.length)];
 
-    const heatingLabel = draft.heating ? String(draft.heating) : 'Nie podano';
+    const heatingKey = String(draft.heating || '');
+    const heatingLabel = translate(HEATING_LABEL_KEYS[heatingKey] || 'addOffer.step3.heating.none');
     const amenities: string[] = [];
-    if (draft.hasBalcony) amenities.push('Balkon / taras');
-    if (draft.hasParking) amenities.push('Garaż / parking');
-    if (draft.hasStorage) amenities.push('Piwnica / komórka lokatorska');
-    if (draft.hasElevator) amenities.push('Winda');
-    if (draft.hasGarden) amenities.push('Ogródek');
-    if (draft.isFurnished) amenities.push('Umeblowane wnętrze');
+    if (draft.hasBalcony) amenities.push(ai.amenities.balcony);
+    if (draft.hasParking) amenities.push(ai.amenities.parking);
+    if (draft.hasStorage) amenities.push(ai.amenities.storage);
+    if (draft.hasElevator) amenities.push(ai.amenities.elevator);
+    if (draft.hasGarden) amenities.push(ai.amenities.garden);
+    if (draft.isFurnished) amenities.push(ai.amenities.furnished);
 
-    const poiCandidates = [
-      "🚇 Komunikacja miejska w wygodnym zasięgu (autobus/tramwaj) — codzienne dojazdy są szybkie i przewidywalne.",
-      "🛍 W pobliżu dostępne są punkty usługowe: sklepy, piekarnie, apteki i strefa gastronomiczna.",
-      "🌿 W otoczeniu znajdziesz tereny rekreacyjne idealne na spacer, bieganie lub rower po pracy.",
-      "☕ Lokalizacja wspiera wygodny styl życia — kawiarnie, restauracje i codzienna infrastruktura są pod ręką.",
-      "🚗 Dogodny wyjazd na główne trasy ułatwia poruszanie się po mieście i poza nim.",
-      "🏫 Rodzinna infrastruktura (szkoły/przedszkola) jest osiągalna w krótkim czasie."
-    ];
+    const poiCandidates = [...ai.poiCandidates];
     if (city === 'Warszawa') {
-      poiCandidates.push("Ⓜ️ W zależności od dzielnicy stacje metra pozostają w praktycznym zasięgu komunikacji miejskiej.");
-      poiCandidates.push("🍔 W okolicy nie brakuje rozpoznawalnych marek gastronomicznych oraz punktów typu drive.");
+      poiCandidates.push(...ai.poiWarsaw);
     }
     if (draft.lat && draft.lng) {
-      poiCandidates.push("📍 Adres został wskazany pinezką na mapie, co zwiększa precyzję dopasowania względem lokalnych potrzeb klienta.");
+      poiCandidates.push(ai.poiPin);
     }
     const shuffledPoi = [...poiCandidates].sort(() => Math.random() - 0.5);
     const enrichedPoi = shuffledPoi.slice(0, 3).join('\n');
 
-    let bullets = "";
-    if (draft.transactionType) bullets += `\n🔁 Typ transakcji: ${transactionType === 'sprzedaż' ? 'Sprzedaż' : 'Wynajem'}`;
+    let bullets = '';
+    if (draft.transactionType) {
+      bullets += `\n${ai.bullets.transaction} ${
+        draft.transactionType === 'SELL' ? ai.transactionLabels.sell : ai.transactionLabels.rent
+      }`;
+    }
     if (draft.propertyType) {
       const propertyTypeLabel =
         draft.propertyType === 'HOUSE'
-          ? 'Dom'
+          ? ai.propertyTypeLabels.house
           : draft.propertyType === 'PLOT'
-            ? 'Działka'
+            ? ai.propertyTypeLabels.plot
             : draft.propertyType === 'PREMISES'
-              ? 'Lokal'
-              : 'Mieszkanie';
-      bullets += `\n🏷 Typ nieruchomości: ${propertyTypeLabel}`;
+              ? ai.propertyTypeLabels.premises
+              : ai.propertyTypeLabels.flat;
+      bullets += `\n${ai.bullets.propertyType} ${propertyTypeLabel}`;
     }
-    if (draft.area) bullets += `\n📐 Powierzchnia: ${draft.area} m²`;
-    if (draft.plotArea) bullets += `\n🌿 Powierzchnia działki: ${draft.plotArea} m²`;
-    if (draft.rooms) bullets += `\n🛏 Pokoje: ${draft.rooms}`;
-    if (draft.floor) bullets += `\n🏢 Piętro: ${draft.floor}`;
-    if (draft.totalFloors) bullets += `\n🏙 Liczba pięter w budynku: ${draft.totalFloors}`;
-    if (draft.yearBuilt || draft.buildYear) bullets += `\n🗓 Rok budowy: ${draft.yearBuilt || draft.buildYear}`;
-    if (draft.price) bullets += `\n💰 Cena: ${formatNumber(draft.price)} PLN`;
-    if (pricePerSqm > 0) bullets += `\n📊 Cena za m²: ${formatNumber(pricePerSqm)} PLN`;
-    if (adminFeeNum > 0 && transactionType === 'sprzedaż') bullets += `\n💶 Czynsz adm.: ${formatNumber(adminFeeNum)} PLN`;
-    if (depositNum > 0 && transactionType === 'wynajem') bullets += `\n🔐 Kaucja: ${formatNumber(depositNum)} PLN`;
+    if (draft.area) bullets += `\n${ai.bullets.area} ${draft.area} m²`;
+    if (draft.plotArea) bullets += `\n${ai.bullets.plotArea} ${draft.plotArea} m²`;
+    if (draft.rooms) bullets += `\n${ai.bullets.rooms} ${draft.rooms}`;
+    if (draft.floor) bullets += `\n${ai.bullets.floor} ${draft.floor}`;
+    if (draft.totalFloors) bullets += `\n${ai.bullets.totalFloors} ${draft.totalFloors}`;
+    if (draft.yearBuilt || draft.buildYear) {
+      bullets += `\n${ai.bullets.yearBuilt} ${draft.yearBuilt || draft.buildYear}`;
+    }
+    if (draft.price) bullets += `\n${ai.bullets.price} ${formatNumber(draft.price)} PLN`;
+    if (pricePerSqm > 0) bullets += `\n${ai.bullets.pricePerSqm} ${formatNumber(pricePerSqm)} PLN`;
+    if (adminFeeNum > 0 && draft.transactionType === 'SELL') {
+      bullets += `\n${ai.bullets.adminFee} ${formatNumber(adminFeeNum)} PLN`;
+    }
+    if (depositNum > 0 && draft.transactionType === 'RENT') {
+      bullets += `\n${ai.bullets.deposit} ${formatNumber(depositNum)} PLN`;
+    }
     if (draft.condition && draft.propertyType !== 'PLOT') {
       const conditionLabel =
         draft.condition === 'READY'
-          ? 'Gotowe do wprowadzenia'
+          ? ai.conditionLabels.ready
           : draft.condition === 'RENOVATION'
-            ? 'Do remontu'
-            : 'Stan deweloperski';
-      bullets += `\n🧱 Stan: ${conditionLabel}`;
+            ? ai.conditionLabels.renovation
+            : ai.conditionLabels.developer;
+      bullets += `\n${ai.bullets.condition} ${conditionLabel}`;
     }
-    bullets += `\n🔥 Ogrzewanie: ${heatingLabel}`;
-    if (draft.city || draft.district) bullets += `\n📍 Lokalizacja: ${locationName}`;
-    if (draft.street) bullets += `\n🧭 Adres: ${draft.street}`;
-    if (draft.apartmentNumber) bullets += `\n🔢 Numer lokalu: ${draft.apartmentNumber}`;
+    bullets += `\n${ai.bullets.heating} ${heatingLabel}`;
+    if (draft.city || draft.district) bullets += `\n${ai.bullets.location} ${locationName}`;
+    if (draft.street) bullets += `\n${ai.bullets.address} ${draft.street}`;
+    if (draft.apartmentNumber) bullets += `\n${ai.bullets.apartmentNumber} ${draft.apartmentNumber}`;
     if (draft.isExactLocation !== undefined) {
-      bullets += `\n🛰 Tryb lokalizacji: ${draft.isExactLocation ? 'Dokładna (pin precyzyjny)' : 'Przybliżona (obszar prywatności)'}`;
+      bullets += `\n${ai.bullets.locationMode} ${
+        draft.isExactLocation ? ai.locationMode.exact : ai.locationMode.approximate
+      }`;
     }
 
-    const amenitiesText = amenities.length > 0
-      ? amenities.map((item) => `✓ ${item}`).join('\n')
-      : '✓ Brak dodatkowych udogodnień zaznaczonych na tym etapie.';
+    const amenitiesText =
+      amenities.length > 0 ? amenities.map((item) => `✓ ${item}`).join('\n') : ai.amenities.none;
 
-    const marketSpread = pricePerSqm > 0
-      ? `\n📌 Cena ofertowa / średnia lokalna: ${formatNumber(pricePerSqm)} vs ${formatNumber(avgPrice)} PLN/m² (${diffPercent > 0 ? '+' : ''}${diffPercent}%)`
-      : '';
+    const marketSpread =
+      pricePerSqm > 0
+        ? `\n${translate('addOffer.step5.ai.marketSpread', {
+            offerPrice: formatNumber(pricePerSqm),
+            avgPrice: formatNumber(avgPrice),
+            sign: diffPercent > 0 ? '+' : '',
+            percent: diffPercent,
+          })}`
+        : '';
 
-    const fullText = `${randomIntro}\n\nPrezentujemy wyjątkowy ${propType} na ${transactionType}, zlokalizowany w sercu: ${locationName}. Nieruchomość jest ${condition}, co czyni ją niezwykle atrakcyjną ofertą.\n\n✧ ANALIZA OKOLICY ✧\n${randomPoi}\n${enrichedPoi}\n\n✧ ANALIZA RYNKU ✧\n${marketHeader}\n${marketNarrative}${marketSpread}\n\n✧ UDOGODNIENIA ✧\n${amenitiesText}\n\n✧ KLUCZOWE PARAMETRY ✧${bullets}\n\nZapraszamy do kontaktu w celu umówienia prywatnej prezentacji.`;
+    const fullText = translate('addOffer.step5.ai.bodyTemplate', {
+      intro: randomIntro,
+      propertyType: propType,
+      transaction: transactionType,
+      location: locationName,
+      condition,
+      neighborhoodSection: ai.sections.neighborhood,
+      randomPoi,
+      enrichedPoi,
+      marketSection: ai.sections.market,
+      marketHeader,
+      marketNarrative,
+      marketSpread,
+      amenitiesSection: ai.sections.amenities,
+      amenitiesText,
+      parametersSection: ai.sections.parameters,
+      bullets,
+    });
     
     updateDraft({ description: '' });
     const words = fullText.split(' ');
@@ -594,7 +687,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
   const isDark = theme.glass === 'dark';
   // Obliczamy dynamiczną wysokość kontenera, aby absolutnie ułożone kwadraty nie obcięły się u dołu
   const gridHeight =
-    Math.ceil((displayImages.length || 1) / COLUMNS) * (SQUARE_SIZE + GRID_GAP);
+    Math.ceil((displayImages.length || 1) / COLUMNS) * (squareSize + GRID_GAP);
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
@@ -602,35 +695,25 @@ export default function Step5_Media({ theme }: { theme: any }) {
         
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={5} draft={draft} theme={theme} navigation={navigation} />
-        <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>Media i Opis</Text>
+        <Text style={{ fontSize: 34, fontWeight: '800', marginBottom: 30, color: theme.text }}>{translate('addOffer.step5.header')}</Text>
         
-        <View style={styles.titleSection}>
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10 }}>Tytuł Oferty</Text>
-          <View style={[styles.titleInputBox, { backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)' }]}>
-            <TextInput 
-              style={[styles.titleInput, { color: theme.text }]} 
-              placeholder="np. Luksusowy apartament z widokiem na skyline" 
-              placeholderTextColor={theme.subtitle} 
-              value={draft.title} 
-              onChangeText={handleTitleChange} 
-              maxLength={MAX_TITLE_LENGTH}
-            />
-          </View>
-        </View>
-
-        <Animated.View style={{ opacity: mediaAnim, transform: [{ translateY: mediaAnim.interpolate({ inputRange: [0.3, 1], outputRange: [15, 0] }) }] }} pointerEvents={isTitleValid ? 'auto' : 'none'}>
-          
-          <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
-            <CapacityBar label="Wgrane Zdjęcia" current={displayImages.length} max={MAX_IMAGES} suffix="Szt." theme={theme} />
-            <CapacityBar label="Przestrzeń Dysku" current={usedMB} max={MAX_MB} suffix="MB" theme={theme} />
+        <View style={[styles.limitsDashboard, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)' }]}>
+            <CapacityBar label={translate('addOffer.step5.capacity.photos')} current={displayImages.length} max={MAX_IMAGES} suffix={translate('addOffer.step5.capacity.suffixPhotos')} theme={theme} />
+            <CapacityBar label={translate('addOffer.step5.capacity.diskSpace')} current={usedMB} max={MAX_MB} suffix={translate('addOffer.step5.capacity.suffixMb')} theme={theme} />
             {estimatedCount > 0 && (
               <Text style={[styles.capacityHint, { color: theme.subtitle }]}>
-                {estimatedCount} {estimatedCount === 1 ? 'plik ma' : 'pliki mają'} rozmiar szacunkowy do czasu pełnego pomiaru.
+                {translate('addOffer.step5.capacity.estimatedSizeHint', {
+                  count: estimatedCount,
+                  filesLabel:
+                    estimatedCount === 1
+                      ? translate('addOffer.step5.capacity.estimatedSizeFileOne')
+                      : translate('addOffer.step5.capacity.estimatedSizeFileMany'),
+                })}
               </Text>
             )}
           </View>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>Siatka Zdjęć</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 5 }}>{translate('addOffer.step5.sections.photoGrid')}</Text>
           
           {/* NOWY, ABSOLUTNIE POZYCJONOWANY GRID (APPLE-STYLE) */}
           {displayImages.length > 0 && (
@@ -647,6 +730,7 @@ export default function Step5_Media({ theme }: { theme: any }) {
                   onRemove={removeImage}
                   theme={theme}
                   progress={uploadProgress[uri] ?? 100}
+                  squareSize={squareSize}
                 />
               ))}
             </View>
@@ -660,12 +744,44 @@ export default function Step5_Media({ theme }: { theme: any }) {
                   <Ionicons name="camera" size={24} color={theme.text} style={{ marginRight: 10 }} />
                 )}
                 <Text style={{ fontSize: 16, fontWeight: '700', color: theme.text }}>
-                  {sizingGallery ? 'Liczenie miejsca (konwersja podglądowa)...' : displayImages.length > 0 ? 'Dodaj kolejne zdjęcia' : 'Otwórz galerię'}
+                  {sizingGallery
+                    ? translate('addOffer.step5.gallery.sizing')
+                    : displayImages.length > 0
+                      ? translate('addOffer.step5.gallery.addMore')
+                      : translate('addOffer.step5.gallery.open')}
                 </Text>
              </View>
           </AppleHover>
+        <View style={styles.titleSection}>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 8 }}>
+            {translate('addOffer.step5.sections.title')}
+          </Text>
+          <View
+            style={[
+              styles.titleInputBox,
+              {
+                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)',
+              },
+            ]}
+          >
+            <TextInput
+              style={[styles.titleInput, { color: theme.text }]}
+              placeholder={translate('addOffer.step5.titlePlaceholder')}
+              placeholderTextColor={theme.subtitle}
+              value={draft.title}
+              onChangeText={handleTitleChange}
+              maxLength={MAX_TITLE_LENGTH}
+            />
+          </View>
+          <AddOfferFieldHint
+            current={titleLength}
+            min={ADD_OFFER_TITLE_MIN}
+            max={ADD_OFFER_TITLE_MAX}
+          />
+        </View>
 
-          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>Plan Nieruchomości</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle, marginBottom: 10, marginTop: 15 }}>{translate('addOffer.step5.sections.floorPlan')}</Text>
           <AppleHover onPress={pickFloorPlan} scaleTo={0.98}>
             <View style={[styles.floorPlanContainer, { borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.1)', height: draft.floorPlan ? 220 : 70 }]}>
               {draft.floorPlan ? (
@@ -678,46 +794,62 @@ export default function Step5_Media({ theme }: { theme: any }) {
               ) : (
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   <Ionicons name="map-outline" size={24} color={theme.text} style={{ marginRight: 10 }} />
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>Wgraj rzut poziomy</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: theme.text }}>{translate('addOffer.step5.floorPlan.upload')}</Text>
                 </View>
               )}
             </View>
           </AppleHover>
 
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 15 }}>
-            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-               <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>Opis Oferty</Text>
-               {!isDescValid && <Text style={{ fontSize: 11, color: Colors.danger, marginLeft: 8 }}>* (min. 10 znaków)</Text>}
-            </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', textTransform: 'uppercase', color: theme.subtitle }}>
+              {translate('addOffer.step5.sections.description')}
+            </Text>
             <AppleHover onPress={generateAI} scaleTo={1.05}>
               <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.aiGlow, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 }}>
                 <Ionicons name="sparkles" size={16} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, marginLeft: 6 }}>{isGenerating ? 'Analizuję...' : 'Wygeneruj AI'}</Text>
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13, marginLeft: 6 }}>
+                  {isGenerating ? translate('addOffer.step5.ai.generating') : translate('addOffer.step5.ai.generate')}
+                </Text>
               </View>
             </AppleHover>
           </View>
           
           <View style={{ position: 'relative' }}>
             <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: Colors.aiGlow, borderRadius: 24, opacity: glowAnim, transform: [{ scale: glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.98, 1.02] }) }] }]} />
-            <View style={{ backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF', borderRadius: 24, borderWidth: 1, borderColor: isDark ? Colors.premiumBorder : (isDescValid ? Colors.primary : 'rgba(0,0,0,0.05)'), padding: 20, minHeight: 280, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10 }}>
-              <TextInput 
-                multiline 
-                style={{ fontSize: 15, fontWeight: '500', lineHeight: 24, color: theme.text, textAlignVertical: 'top' }} 
-                placeholder="Pozwól AI przeanalizować Twoją nieruchomość i stworzyć idealny opis, lub wpisz go ręcznie..." 
-                placeholderTextColor={theme.subtitle} 
-                value={draft.description} 
-                onChangeText={(t) => updateDraft({ description: t })} 
-                editable={!isGenerating} 
+            <View
+              style={{
+                backgroundColor: isDark ? Colors.premiumDark : '#FFFFFF',
+                borderRadius: 24,
+                borderWidth: 1,
+                borderColor: isDark ? Colors.premiumBorder : 'rgba(0,0,0,0.05)',
+                padding: 20,
+                minHeight: 280,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.05,
+                shadowRadius: 10,
+              }}
+            >
+              <TextInput
+                multiline
+                style={{ fontSize: 15, fontWeight: '500', lineHeight: 24, color: theme.text, textAlignVertical: 'top' }}
+                placeholder={translate('addOffer.step5.ai.descriptionPlaceholder')}
+                placeholderTextColor={theme.subtitle}
+                value={draft.description}
+                onChangeText={(text) => updateDraft({ description: text })}
+                editable={!isGenerating}
+                maxLength={ADD_OFFER_DESC_MAX}
               />
             </View>
           </View>
-
-        </Animated.View>
+          {descLength > 0 && descLength < ADD_OFFER_DESC_MIN ? (
+            <AddOfferFieldHint current={descLength} min={ADD_OFFER_DESC_MIN} max={ADD_OFFER_DESC_MAX} />
+          ) : null}
 
         <AddOfferStepFooterHint
           theme={theme}
           icon="images-outline"
-          text="Pierwsze zdjęcie jest okładką na listach — kolejność zmienisz, przeciągając miniatury. Staraj się o dobre światło i czytelne kadry; plan rzutu zwiększa zaufanie do układu lokalu. Opis uzupełnia dane z formularza i powinien odzwierciedlać rzeczywisty stan nieruchomości (także gdy korzystasz z podpowiedzi AI)."
+          text={translate('addOffer.step5.footerHint')}
         />
         <View style={{ height: 48 }} />
       </ScrollView>
@@ -740,7 +872,7 @@ const styles = StyleSheet.create({
   capacityHint: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 
   gridContainer: { position: 'relative', width: '100%', marginBottom: 20 },
-  squareContainer: { position: 'absolute', width: SQUARE_SIZE, height: SQUARE_SIZE, borderRadius: 16, backgroundColor: '#e5e5ea' },
+  squareContainer: { position: 'absolute', borderRadius: 16, backgroundColor: '#e5e5ea' },
   squareImage: { width: '100%', height: '100%', borderRadius: 16 },
   
   matrixOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.1)', borderRadius: 16 },

@@ -1,6 +1,13 @@
-import { Passkey } from 'react-native-passkey';
-import { Alert } from 'react-native';
+import { Passkey, type PasskeyGetRequest } from 'react-native-passkey';
+import { Alert, Platform } from 'react-native';
 import { API_URL as API_ORIGIN } from '../config/network';
+
+const PASSKEY_RP_ID = 'estateos.pl';
+
+const trimmedEmailHint = (email?: string | null) => {
+  const e = String(email || '').trim();
+  return e ? `E-mail: ${e}. ` : '';
+};
 
 const API_URL = `${API_ORIGIN.replace(/\/$/, '')}/api/passkey`;
 const API_URL_MOBILE = `${API_ORIGIN.replace(/\/$/, '')}/api/mobile/v1/passkeys`;
@@ -60,6 +67,24 @@ const isNetworkError = (error: any) => {
 const isServerError = (error: any) => {
   const msg = String(error?.message || '');
   return /\b5\d{2}\b|\[api\].*(failed|error)/i.test(msg);
+};
+
+const isApiClientError = (error: any) => {
+  const msg = String(error?.message || '');
+  return /\[api\].*(failed|error).*\(4\d{2}\)/i.test(msg);
+};
+
+const isAuthSessionError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    /\[api\].*\(401\)/i.test(String(error?.message || '')) ||
+    /brak tokena|unauthorized|unauthenticated|sesja|token.*wygas|zaloguj.*ponownie/i.test(msg)
+  );
+};
+
+const isPasskeyAlreadyRegisteredError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase();
+  return /passkey_already_registered|already registered|już zarejestrowany|409/i.test(msg);
 };
 
 // Częsty iOS-owy fallback z natywnego Passkey API (bez szczegółów).
@@ -145,24 +170,104 @@ const postJson = async (url: string, payload?: Record<string, any>, headers?: Re
   return { response, data };
 };
 
-const tryLoginStartEndpoints = async () => {
-  const candidates = [
-    { url: `${API_URL}/login/start`, payload: undefined as any },
-    { url: `${API_URL_MOBILE}/auth-options`, payload: undefined as any },
-    { url: `${API_URL_MOBILE}/auth-options`, payload: { email: null } },
-  ];
+const isPasskeyNotRegisteredResponse = (response: Response, data: any) => {
+  if (response.status !== 404) return false;
+  const blob = `${data?.error_code || ''} ${data?.error || ''} ${data?.message || ''}`.toLowerCase();
+  return /passkey_not_registered|brak klucz|not_registered|nie\s+ma.*passkey/i.test(blob);
+};
+
+/** Backend mobile czasem zwraca challenge/rpId „płasko”, bez opakowania `publicKey`. */
+const normalizeLoginStartPayload = (
+  data: any,
+): { publicKey: Record<string, any>; sessionId: string } | null => {
+  if (!data || typeof data !== 'object') return null;
+  const sessionId = String(data.sessionId || '').trim();
+  if (!sessionId) return null;
+
+  let publicKey = data.publicKey;
+  if (!publicKey && (data.challenge || data.rpId)) {
+    const { sessionId: _sid, error, error_code, message, user_message, success, ok, ...rest } = data;
+    publicKey = rest;
+  }
+  if (!publicKey || !publicKey.challenge) return null;
+  return { publicKey, sessionId };
+};
+
+/** iOS wymaga `rpId` + opcjonalnie `allowCredentials` z serwera (klucz nie-discoverable). */
+const normalizePublicKeyForGet = (publicKey: Record<string, any>) => {
+  const pk: Record<string, any> = { ...publicKey };
+  pk.rpId = String(pk.rpId || pk.rp?.id || PASSKEY_RP_ID).trim().toLowerCase();
+  delete pk.rp;
+  if (Array.isArray(pk.allowCredentials)) {
+    pk.allowCredentials = pk.allowCredentials
+      .map((cred: any) => ({
+        type: cred?.type || 'public-key',
+        id: cred?.id,
+        transports: cred?.transports,
+      }))
+      .filter((cred: any) => cred.id);
+    if (pk.allowCredentials.length === 0) delete pk.allowCredentials;
+  }
+  return pk;
+};
+
+const passkeyGetAssertion = async (publicKey: Record<string, any>) => {
+  const request = normalizePublicKeyForGet(publicKey) as PasskeyGetRequest;
+  if (Platform.OS === 'ios') {
+    try {
+      return await Passkey.getPlatformKey(request);
+    } catch (platformErr: any) {
+      if (!isNoCredentialsError(platformErr) && !isUserCancel(platformErr)) {
+        console.warn('[Passkey] getPlatformKey failed, fallback to get:', platformErr?.message);
+      } else {
+        throw platformErr;
+      }
+    }
+  }
+  return Passkey.get(request);
+};
+
+const tryLoginStartEndpoints = async (email?: string | null) => {
+  const trimmedEmail = String(email || '').trim().toLowerCase();
+  const candidates: { url: string; payload?: Record<string, any> }[] = [];
+
+  if (trimmedEmail) {
+    candidates.push(
+      { url: `${API_URL_MOBILE}/auth-options`, payload: { email: trimmedEmail } },
+      { url: `${API_URL}/login/start`, payload: { email: trimmedEmail } },
+    );
+  }
+  candidates.push(
+    { url: `${API_URL}/login/start`, payload: undefined },
+    { url: `${API_URL_MOBILE}/auth-options`, payload: undefined },
+  );
 
   let lastError: Error | null = null;
+  let sawServerNoPasskeyForEmail = false;
+
   for (const candidate of candidates) {
     try {
       const { response, data } = await postJson(candidate.url, candidate.payload);
-      if (response.ok && data?.publicKey && data?.sessionId) {
-        return { publicKey: data.publicKey, sessionId: data.sessionId };
+      const normalized = normalizeLoginStartPayload(data);
+      if (response.ok && normalized) {
+        return normalized;
       }
-      lastError = new Error(data?.error || `[API] Login start failed (${response.status})`);
+      if (trimmedEmail && candidate.payload?.email === trimmedEmail && isPasskeyNotRegisteredResponse(response, data)) {
+        sawServerNoPasskeyForEmail = true;
+      }
+      const apiMsg =
+        (typeof data?.user_message === 'string' && data.user_message) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (typeof data?.error === 'string' && data.error) ||
+        '';
+      lastError = new Error(apiMsg || `[API] Login start failed (${response.status})`);
     } catch (e: any) {
       lastError = e;
     }
+  }
+
+  if (sawServerNoPasskeyForEmail) {
+    throw new Error('PASSKEY_NOT_ON_SERVER');
   }
   throw lastError || new Error('[API] Login start failed');
 };
@@ -197,7 +302,15 @@ const tryRegisterStartEndpoints = async (token: string, userId: string, email: s
         Authorization: `Bearer ${normalizeAuthToken(token)}`,
       });
       if (response.ok && data?.publicKey) return data.publicKey;
-      lastError = new Error(data?.error || `[API] Register start failed (${response.status})`);
+      const apiMsg =
+        (typeof data?.user_message === 'string' && data.user_message) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (typeof data?.error === 'string' && data.error) ||
+        '';
+      const code = String(data?.error_code || data?.errorCode || '').trim();
+      lastError = new Error(
+        apiMsg || (code ? `[${code}]` : '') || `[API] Register start failed (${response.status})`,
+      );
     } catch (e: any) {
       lastError = e;
     }
@@ -222,7 +335,15 @@ const tryRegisterFinishEndpoints = async (
     try {
       const { response, data } = await postJson(candidate.url, candidate.payload, authHeaders);
       if (response.ok && data?.success !== false) return true;
-      lastError = new Error(data?.error || `[API] Register finish failed (${response.status})`);
+      const apiMsg =
+        (typeof data?.user_message === 'string' && data.user_message) ||
+        (typeof data?.message === 'string' && data.message) ||
+        (typeof data?.error === 'string' && data.error) ||
+        '';
+      const code = String(data?.error_code || data?.errorCode || '').trim();
+      lastError = new Error(
+        apiMsg || (code ? `[${code}]` : '') || `[API] Register finish failed (${response.status})`,
+      );
     } catch (e: any) {
       lastError = e;
     }
@@ -245,10 +366,23 @@ export const PasskeyService = {
         throw new Error('PASSKEY_RPID_MISSING');
       }
       // EstateOS produkcyjnie działa na estateos.pl (i subdomenach).
-      if (!(rpId === 'estateos.pl' || rpId.endsWith('.estateos.pl'))) {
+      if (!(rpId === PASSKEY_RP_ID || rpId.endsWith(`.${PASSKEY_RP_ID}`))) {
         throw new Error(`PASSKEY_RPID_INVALID:${rpId}`);
       }
-      const credential = await Passkey.create(publicKey);
+      const creationOptions = {
+        ...publicKey,
+        authenticatorSelection: {
+          ...(publicKey.authenticatorSelection || {}),
+          authenticatorAttachment: 'platform' as const,
+          residentKey: 'required' as const,
+          requireResidentKey: true,
+          userVerification: 'required' as const,
+        },
+      };
+      const credential =
+        Platform.OS === 'ios'
+          ? await Passkey.createPlatformKey(creationOptions)
+          : await Passkey.create(creationOptions);
       await tryRegisterFinishEndpoints(token, userId, credential as Record<string, any>);
 
       return true;
@@ -288,6 +422,22 @@ export const PasskeyService = {
           "Brak połączenia",
           "Nie udało się skontaktować z serwerem EstateOS™. Sprawdź internet i spróbuj ponownie.",
         );
+      } else if (isPasskeyAlreadyRegisteredError(e)) {
+        Alert.alert(
+          "Passkey już aktywny",
+          "Na tym koncie jest już zarejestrowany klucz Passkey. Wyłącz przełącznik i włącz ponownie, albo zaloguj się Face ID na ekranie logowania.",
+        );
+      } else if (isAuthSessionError(e)) {
+        Alert.alert(
+          "Sesja wygasła",
+          "Zaloguj się ponownie e-mailem i hasłem, a potem włącz Passkey w Profil → Bezpieczeństwo.",
+        );
+      } else if (isApiClientError(e)) {
+        Alert.alert(
+          "Nie udało się dodać klucza",
+          String(e?.message || '').trim() ||
+            "Serwer odrzucił rejestrację Passkey. Wyloguj się, zaloguj hasłem i spróbuj ponownie.",
+        );
       } else if (isServerError(e)) {
         Alert.alert(
           "Chwilowy problem serwera",
@@ -296,14 +446,14 @@ export const PasskeyService = {
       } else {
         Alert.alert(
           "Nie udało się dodać klucza",
-          "Spróbuj ponownie. Jeśli problem się powtarza, zaloguj się hasłem i włącz Passkey w profilu.",
+          "TestFlight nie blokuje Passkey — sprawdź: włączony kod urządzenia, Face ID/Touch ID oraz synchronizacja iCloud (Ustawienia → [Twoje imię] → iCloud → Hasła i Keychain). Następnie wyloguj się, zaloguj hasłem i spróbuj ponownie. Jeśli nadal nie działa, napisz do pomocy EstateOS™ — w logach zapisujemy szczegóły błędu.",
         );
       }
       return false;
     }
   },
 
-  login: async () => {
+  login: async (email?: string | null) => {
     try {
       const supported = await Passkey.isSupported();
       if (!supported) {
@@ -311,18 +461,26 @@ export const PasskeyService = {
         return null;
       }
 
-      const start = await tryLoginStartEndpoints();
-      const assertion = await Passkey.get(start.publicKey);
+      const trimmedEmail = String(email || '').trim();
+      const start = await tryLoginStartEndpoints(trimmedEmail || null);
+      const assertion = await passkeyGetAssertion(start.publicKey);
       return await tryLoginFinishEndpoints({ ...assertion, sessionId: start.sessionId });
 
     } catch (e: any) {
       if (isUserCancel(e)) return null;
       // console.warn (nie console.error) — by nie pokazywać czerwonego dev-bannera dla znanych przypadków.
-      console.warn("[Passkey] Login failed:", e?.message);
-      if (isNoCredentialsError(e)) {
+      console.warn("[Passkey] Login failed:", e?.message, stringifyErrorMeta(e));
+      if (String(e?.message || '') === 'PASSKEY_NOT_ON_SERVER') {
         Alert.alert(
-          "Brak zapisanego klucza",
-          'Na tym urządzeniu nie znaleziono klucza Passkey dla Twojego konta. Zaloguj się e-mailem i hasłem, a następnie w „Profil → Bezpieczeństwo” włącz Passkey, by od razu logować się Face ID.',
+          "Brak Passkey na koncie",
+          trimmedEmailHint(email) +
+            'Na tym koncie serwer nie ma zapisanego klucza. Zaloguj się hasłem i włącz Passkey w Profil → Bezpieczeństwo.',
+        );
+      } else if (isNoCredentialsError(e)) {
+        Alert.alert(
+          "Brak klucza na tym iPhone",
+          trimmedEmailHint(email) +
+            'Serwer może widzieć Passkey jako aktywny, ale w Pęku kluczy iOS (estateos.pl) nie ma dopasowania na tym urządzeniu. Wpisz e-mail powyżej, zaloguj się hasłem, w Profil → Bezpieczeństwo wyłącz Passkey i włącz ponownie — dokończ Face ID. Jeśli klucz był na innym telefonie, dodaj go tutaj od nowa.',
         );
       } else if (isBiometryNotEnrolledError(e)) {
         Alert.alert(

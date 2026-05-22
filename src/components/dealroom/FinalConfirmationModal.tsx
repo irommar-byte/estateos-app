@@ -51,6 +51,7 @@ import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
 import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
 import { postDealroomTextMessage } from '../../utils/dealroomOfferReserve';
+import { useI18n } from '../../i18n';
 
 type Props = {
   visible: boolean;
@@ -104,6 +105,7 @@ export default function FinalConfirmationModal({
   onClose,
   onDone,
 }: Props) {
+  const { t } = useI18n();
   const [stage, setStage] = useState<'idle' | 'confirming' | 'rejecting'>('idle');
   const [ackConfirmed, setAckConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -152,13 +154,13 @@ export default function FinalConfirmationModal({
 
   const buyerNameLabel = useMemo(() => {
     const s = String(buyerLabel || '').trim();
-    return s.length > 0 ? s : 'kupującego';
-  }, [buyerLabel]);
+    return s.length > 0 ? s : t('dealroom.finalConfirm.buyerFallback');
+  }, [buyerLabel, t]);
 
   const sendDecision = async (decision: 'ACCEPT' | 'REJECT') => {
     const safeToken = normalizeToken(token);
     if (!dealId || !bidId || !safeToken) {
-      setError('Brak danych do potwierdzenia (deal/bid/token).');
+      setError(t('dealroom.finalConfirm.errors.missingData'));
       return;
     }
     setLoading(true);
@@ -172,8 +174,8 @@ export default function FinalConfirmationModal({
         bidId: Number(bidId),
         decision,
         message: decision === 'ACCEPT'
-          ? `Decyzja właściciela: ostatecznie akceptuję cenę ${formatPLN(amount)} i zamykam sprzedaż.`
-          : 'Decyzja właściciela: nie potwierdzam tej ceny. Otwieram dalsze negocjacje.',
+          ? t('dealroom.finalConfirm.acceptMessage', { amount: formatPLN(amount) })
+          : t('dealroom.finalConfirm.rejectMessage'),
       };
       payload.note = payload.message;
 
@@ -187,7 +189,7 @@ export default function FinalConfirmationModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error || 'Nie udało się zapisać decyzji.');
+        setError(data?.error || t('dealroom.finalConfirm.errors.saveFailed'));
         setLoading(false);
         return;
       }
@@ -201,9 +203,7 @@ export default function FinalConfirmationModal({
           await postDealroomTextMessage({
             dealId: Number(dealId),
             token: safeToken,
-            content:
-              `Decyzja właściciela: ostatecznie akceptuję cenę ${formatPLN(amount)} ` +
-              `i zamykam sprzedaż. Oferta została wycofana z rynku.`,
+            content: t('dealroom.finalConfirm.acceptChatNote', { amount: formatPLN(amount) }),
           });
         } catch {
           // wpis w czacie to UX/audit — pomijamy przy błędzie
@@ -220,7 +220,7 @@ export default function FinalConfirmationModal({
       onDone?.();
       onClose();
     } catch (_e) {
-      setError('Błąd połączenia z serwerem.');
+      setError(t('dealroom.finalConfirm.errors.network'));
     } finally {
       setLoading(false);
     }
@@ -232,7 +232,7 @@ export default function FinalConfirmationModal({
         <View style={styles.card}>
           {/* Górny pasek z X-em (bez tytułu — eyebrow niżej robi rolę nagłówka). */}
           <View style={styles.topRow}>
-            <Text style={styles.eyebrow}>OSTATECZNA DECYZJA SPRZEDAŻY</Text>
+            <Text style={styles.eyebrow}>{t('dealroom.finalConfirm.eyebrow')}</Text>
             <Pressable onPress={onClose} hitSlop={10} disabled={loading} style={styles.closeBtn}>
               <Text style={styles.closeTxt}>×</Text>
             </Pressable>
@@ -247,18 +247,16 @@ export default function FinalConfirmationModal({
                 { opacity: haloOpacity, transform: [{ scale: haloScale }] },
               ]}
             />
-            <Text style={styles.priceLabel}>Cena uzgodniona z {buyerNameLabel}</Text>
+            <Text style={styles.priceLabel}>{t('dealroom.finalConfirm.priceLabel', { name: buyerNameLabel })}</Text>
             <Text style={styles.priceValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
               {formatPLN(amount)}
             </Text>
             <View style={styles.priceUnderline} />
-            <Text style={styles.priceSub}>
-              Kupujący zaakceptował tę cenę i czeka na Twoje ostateczne potwierdzenie.
-            </Text>
+            <Text style={styles.priceSub}>{t('dealroom.finalConfirm.priceSub')}</Text>
           </View>
 
           {/* Tekst pytania — krótki, „magiczny", jednoznaczny. */}
-          <Text style={styles.question}>Czy potwierdzasz tę cenę jako ostateczną?</Text>
+          <Text style={styles.question}>{t('dealroom.finalConfirm.question')}</Text>
 
           {/* Stan IDLE: dwa wielkie przyciski. */}
           {stage === 'idle' ? (
@@ -271,7 +269,7 @@ export default function FinalConfirmationModal({
                 style={({ pressed }) => [styles.rejectBtn, pressed && { opacity: 0.85 }]}
                 disabled={loading}
               >
-                <Text style={styles.rejectTxt}>NIE POTWIERDZAM</Text>
+                <Text style={styles.rejectTxt}>{t('dealroom.finalConfirm.reject')}</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -281,7 +279,7 @@ export default function FinalConfirmationModal({
                 style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.85 }]}
                 disabled={loading}
               >
-                <Text style={styles.confirmTxt}>POTWIERDZAM</Text>
+                <Text style={styles.confirmTxt}>{t('dealroom.finalConfirm.confirm')}</Text>
               </Pressable>
             </View>
           ) : null}
@@ -290,10 +288,10 @@ export default function FinalConfirmationModal({
           {stage === 'confirming' ? (
             <View>
               <View style={styles.consequenceBox}>
-                <Text style={styles.consequenceTitle}>Co się stanie, gdy potwierdzisz:</Text>
-                <Text style={styles.consequenceLine}>• Sprzedaż zostanie ostatecznie zakończona.</Text>
-                <Text style={styles.consequenceLine}>• Oferta zostanie wycofana z rynku i przeniesiona do „Sfinalizowane”.</Text>
-                <Text style={styles.consequenceLine}>• Ponowne przywrócenie oferty wymagać będzie nowej publikacji Pakiet Plus.</Text>
+                <Text style={styles.consequenceTitle}>{t('dealroom.finalConfirm.consequenceTitle')}</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.finalConfirm.consequences.line1')}</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.finalConfirm.consequences.line2')}</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.finalConfirm.consequences.line3')}</Text>
               </View>
 
               <Pressable
@@ -303,10 +301,7 @@ export default function FinalConfirmationModal({
                 <View style={[styles.ackBox, ackConfirmed && styles.ackBoxOn]}>
                   <Text style={styles.ackTick}>{ackConfirmed ? '✓' : ''}</Text>
                 </View>
-                <Text style={styles.ackTxt}>
-                  Jestem świadomy/-a, że potwierdzenie kończy transakcję i wycofuje ofertę z rynku.
-                  Rozumiem, że ewentualne przywrócenie będzie wymagało nowej publikacji Pakiet Plus.
-                </Text>
+                <Text style={styles.ackTxt}>{t('dealroom.finalConfirm.ack')}</Text>
               </Pressable>
 
               {!!error && <Text style={styles.error}>{error}</Text>}
@@ -317,7 +312,7 @@ export default function FinalConfirmationModal({
                   disabled={loading}
                   style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
                 >
-                  <Text style={styles.backTxt}>Wróć</Text>
+                  <Text style={styles.backTxt}>{t('common.back')}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => sendDecision('ACCEPT')}
@@ -330,7 +325,7 @@ export default function FinalConfirmationModal({
                   {loading ? (
                     <ActivityIndicator color="#04120d" />
                   ) : (
-                    <Text style={styles.finalConfirmTxt}>ZAMYKAM SPRZEDAŻ</Text>
+                    <Text style={styles.finalConfirmTxt}>{t('dealroom.finalConfirm.closeSale')}</Text>
                   )}
                 </Pressable>
               </View>
@@ -341,10 +336,9 @@ export default function FinalConfirmationModal({
           {stage === 'rejecting' ? (
             <View>
               <View style={styles.rejectInfoBox}>
-                <Text style={styles.rejectInfoTitle}>Negocjacje pozostają otwarte</Text>
+                <Text style={styles.rejectInfoTitle}>{t('dealroom.finalConfirm.rejectInfoTitle')}</Text>
                 <Text style={styles.rejectInfoBody}>
-                  Wysyłamy do {buyerNameLabel} informację, że ta cena nie jest dla Ciebie ostateczna.
-                  Możecie kontynuować rozmowę o kwocie, terminie lub warunkach.
+                  {t('dealroom.finalConfirm.rejectInfoBody', { name: buyerNameLabel })}
                 </Text>
               </View>
 
@@ -356,7 +350,7 @@ export default function FinalConfirmationModal({
                   disabled={loading}
                   style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.85 }]}
                 >
-                  <Text style={styles.backTxt}>Wróć</Text>
+                  <Text style={styles.backTxt}>{t('common.back')}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => sendDecision('REJECT')}
@@ -369,7 +363,7 @@ export default function FinalConfirmationModal({
                   {loading ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.finalRejectTxt}>WRACAM DO NEGOCJACJI</Text>
+                    <Text style={styles.finalRejectTxt}>{t('dealroom.finalConfirm.backToNegotiation')}</Text>
                   )}
                 </Pressable>
               </View>

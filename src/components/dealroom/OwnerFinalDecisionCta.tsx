@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useI18n } from '../../i18n';
 
 type Props = {
   amount: number;
@@ -22,6 +23,7 @@ type Props = {
 };
 
 export default function OwnerFinalDecisionCta({ amount, onPress }: Props) {
+  const { t } = useI18n();
   const glow = useSharedValue(0);
 
   useEffect(() => {
@@ -52,28 +54,25 @@ export default function OwnerFinalDecisionCta({ amount, onPress }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.hintBanner}>
-        <Text style={styles.hintTitle}>Twoja kolej — ostatni krok</Text>
-        <Text style={styles.hintBody}>
-          Kupujący zaakceptował cenę. Aby zamknąć sprzedaż i wycofać ofertę z rynku, dotknij
-          zielonego okienka poniżej — nie używaj już przycisków „Zgoda” ani „Kontroferta”.
-        </Text>
+        <Text style={styles.hintTitle}>{t('dealroom.ownerCta.hintTitle')}</Text>
+        <Text style={styles.hintBody}>{t('dealroom.ownerCta.hintBody')}</Text>
       </View>
 
       <Animated.View style={[styles.cardOuter, cardAnim]}>
         <Pressable
           onPress={handlePress}
           accessibilityRole="button"
-          accessibilityLabel={`Ostateczna decyzja sprzedaży za ${amountLabel}`}
-          accessibilityHint="Otwiera potwierdzenie lub odrzucenie finalnej ceny"
+          accessibilityLabel={t('dealroom.ownerCta.a11yLabel', { amount: amountLabel })}
+          accessibilityHint={t('dealroom.ownerCta.a11yHint')}
           style={({ pressed }) => [styles.cardPressable, pressed && { opacity: 0.9 }]}
         >
-          <Text style={styles.eyebrow}>OSTATECZNA DECYZJA SPRZEDAŻY</Text>
+          <Text style={styles.eyebrow}>{t('dealroom.ownerCta.eyebrow')}</Text>
           <Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit>
             {amountLabel}
           </Text>
-          <Text style={styles.sub}>Kupujący zaakceptował — Twoje słowo zamyka transakcję</Text>
+          <Text style={styles.sub}>{t('dealroom.ownerCta.sub')}</Text>
           <View style={styles.tapRow}>
-            <Text style={styles.tapLabel}>Dotknij tego okienka</Text>
+            <Text style={styles.tapLabel}>{t('dealroom.ownerCta.tap')}</Text>
             <ChevronRight size={18} color="#F5C56A" strokeWidth={2.5} />
           </View>
         </Pressable>

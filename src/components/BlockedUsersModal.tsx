@@ -13,6 +13,7 @@ import * as Haptics from 'expo-haptics';
 import { X, Ban, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useI18n } from '../i18n';
 import { useAuthStore } from '../store/useAuthStore';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 
@@ -35,6 +36,7 @@ type Props = {
 };
 
 export default function BlockedUsersModal({ visible, onClose, isDark = true }: Props) {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const token = useAuthStore((s) => (s as any).token);
   const userId = useAuthStore((s) => (s as any).user?.id);
@@ -110,12 +112,14 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.title, { color: textMain }]}>
-                  Zablokowani użytkownicy
+                  {t('profile.blocked.title')}
                 </Text>
                 <Text style={[styles.subtitle, { color: textMuted }]}>
                   {idsArr.length === 0
-                    ? 'Lista jest pusta — nikogo nie blokujesz.'
-                    : `${idsArr.length} ${idsArr.length === 1 ? 'osoba zablokowana' : 'osób zablokowanych'}`}
+                    ? t('profile.blocked.subtitleEmpty')
+                    : idsArr.length === 1
+                      ? t('profile.blocked.subtitleOne')
+                      : t('profile.blocked.subtitleMany', { count: idsArr.length })}
                 </Text>
               </View>
               <Pressable
@@ -126,7 +130,7 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                   { backgroundColor: cardBg, opacity: pressed ? 0.7 : 1 },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel="Zamknij"
+                accessibilityLabel={t('profile.blocked.close')}
               >
                 <X color={textMain} size={18} />
               </Pressable>
@@ -143,11 +147,10 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                   <Ban color={isDark ? '#30D158' : '#34C759'} size={28} strokeWidth={2.4} />
                 </View>
                 <Text style={[styles.emptyTitle, { color: textMain }]}>
-                  Nikogo nie blokujesz
+                  {t('profile.blocked.emptyTitle')}
                 </Text>
                 <Text style={[styles.emptyText, { color: textMuted }]}>
-                  Jeśli ktoś zachowa się niewłaściwie, możesz go zablokować z poziomu
-                  oferty lub czatu w Dealroom — wróci tutaj.
+                  {t('profile.blocked.emptyBody')}
                 </Text>
               </View>
             ) : (
@@ -162,7 +165,7 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                   const subtitle = shape?.companyName
                     ? shape.companyName
                     : shape?.role && shape.role.toUpperCase() === 'AGENT'
-                      ? 'Agent EstateOS™'
+                      ? t('profile.blocked.agentRole')
                       : undefined;
                   return (
                     <View
@@ -173,7 +176,7 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.rowTitle, { color: textMain }]}>
-                          {shape?.name || `Użytkownik #${id}`}
+                          {shape?.name || t('profile.blocked.userFallback', { id })}
                         </Text>
                         {subtitle ? (
                           <Text style={[styles.rowSubtitle, { color: textMuted }]}>
@@ -192,7 +195,7 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                           },
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel="Odblokuj"
+                        accessibilityLabel={t('profile.blocked.unblock')}
                       >
                         {isBusy ? (
                           <ActivityIndicator
@@ -212,7 +215,7 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
                                 { color: isDark ? '#30D158' : '#34C759' },
                               ]}
                             >
-                              Odblokuj
+                              {t('profile.blocked.unblock')}
                             </Text>
                           </>
                         )}

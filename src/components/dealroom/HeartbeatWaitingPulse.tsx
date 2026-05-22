@@ -20,6 +20,7 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { useI18n } from '../../i18n';
 
 type Props = {
   /**
@@ -34,6 +35,7 @@ type Props = {
 };
 
 export default function HeartbeatWaitingPulse({ amount, headline, sublabel }: Props) {
+  const { t } = useI18n();
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export default function HeartbeatWaitingPulse({ amount, headline, sublabel }: Pr
   }, [amount]);
 
   return (
-    <View style={styles.wrap} accessibilityRole="alert" accessibilityLabel="Czekamy na ostateczną decyzję właściciela">
+    <View style={styles.wrap} accessibilityRole="alert" accessibilityLabel={t('dealroom.heartbeat.a11y')}>
       {/* Halo — szeroki rozproszony blask „pod" pigułką. */}
       <Animated.View
         pointerEvents="none"
@@ -121,12 +123,12 @@ export default function HeartbeatWaitingPulse({ amount, headline, sublabel }: Pr
         <View style={styles.heartDotRow}>
           <View style={styles.heartDot} />
           <Animated.Text style={[styles.eyebrow, { opacity: textOpacity }]}>
-            CZEKAMY NA DECYZJĘ
+            {t('dealroom.heartbeat.eyebrow')}
           </Animated.Text>
           <View style={styles.heartDot} />
         </View>
         <Animated.Text style={[styles.headline, { opacity: textOpacity }]} numberOfLines={2}>
-          {headline || 'Twoja akceptacja dotarła do właściciela'}
+          {headline || t('dealroom.heartbeat.defaultHeadline')}
         </Animated.Text>
         {amountLabel ? (
           <Animated.Text style={[styles.amount, { opacity: textOpacity }]} numberOfLines={1}>
@@ -134,7 +136,7 @@ export default function HeartbeatWaitingPulse({ amount, headline, sublabel }: Pr
           </Animated.Text>
         ) : null}
         <Animated.Text style={[styles.sub, { opacity: textOpacity }]} numberOfLines={3}>
-          {sublabel || 'Ostateczne potwierdzenie sprzedaży należy teraz do właściciela. Dostaniesz powiadomienie, gdy podejmie decyzję.'}
+          {sublabel || t('dealroom.heartbeat.defaultSublabel')}
         </Animated.Text>
       </Animated.View>
     </View>

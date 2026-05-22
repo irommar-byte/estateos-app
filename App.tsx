@@ -34,11 +34,14 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { I18nProvider, useI18n } from './src/i18n';
 import { useThemeStore, ThemeMode } from './src/store/useThemeStore';
 import { useOfferStore } from './src/store/useOfferStore';
 import { useAuthStore } from './src/store/useAuthStore';
 import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
+import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
+import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import AppleHover from './src/components/AppleHover';
 
 import Radar from './src/screens/Radar';
@@ -774,6 +777,7 @@ function LuxuryTabBarButton(props: any) {
 }
 
 function MainTabs({ splashDone }: { splashDone: boolean }) {
+  const { t } = useI18n();
   const restoreSession = useAuthStore(state => state.restoreSession);
   const token = useAuthStore((state: any) => state.token);
   const systemColorScheme = useColorScheme();
@@ -789,8 +793,15 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
    * odzwierciedlamy jego liczbę na tabBarBadge i na ikonie aplikacji.
    */
   const unreadDealCount = useUnreadBadgeStore((state) => state.unreadDealCount);
+  const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
 
   useEffect(() => { restoreSession(); }, []);
+
+  useEffect(() => {
+    if (!token) {
+      useProfileTabBadgeStore.getState().setProfilePendingCount(0);
+    }
+  }, [token]);
 
   // ──────────────────────────────────────────────────────────────────────
   // IAP BOOTSTRAP (App Store / Google Play)
@@ -929,13 +940,16 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       },
     }}
     >
-      <Tab.Screen name="Radar" options={{ tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}>
+      <Tab.Screen
+        name="Radar"
+        options={{ tabBarLabel: t('tabs.radar'), tabBarIcon: ({color}) => <Ionicons name="map" size={26} color={color} /> }}
+      >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>
       <Tab.Screen
         name="Ulubione"
         initialParams={{ favoritesOnly: true, favoritesScope: 'FAVORITES' }}
-        options={{ tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
+        options={{ tabBarLabel: t('tabs.favorites'), tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
       >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
       </Tab.Screen>
@@ -945,6 +959,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       <Tab.Screen
         name="Wiadomości"
         options={{
+          tabBarLabel: t('tabs.messages'),
           tabBarIcon: ({ color }) => (
             <Ionicons name="chatbubble-ellipses" size={23} color={color} />
           ),
@@ -967,7 +982,30 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       >
         {() => <DealroomListScreen />}
       </Tab.Screen>
-      <Tab.Screen name="Profil" options={{ tabBarIcon: ({color}) => <Ionicons name="person-circle" size={28} color={color} /> }}>
+      <Tab.Screen
+        name="Profil"
+        options={{
+          tabBarLabel: t('tabs.profile'),
+          tabBarIcon: ({ color }) => <Ionicons name="person-circle" size={28} color={color} />,
+          tabBarBadge:
+            profilePendingCount > 0
+              ? profilePendingCount > 99
+                ? '99+'
+                : profilePendingCount
+              : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#FF3B30',
+            color: '#FFFFFF',
+            fontSize: 11,
+            fontWeight: '700',
+            minWidth: 18,
+            height: 18,
+            lineHeight: 14,
+            borderRadius: 9,
+            paddingHorizontal: 5,
+          },
+        }}
+      >
         {(props) => (
           <ProfileScreen theme={currentColors} tabRouteParams={props.route.params as { authIntent?: 'login' | 'register' } | undefined} />
         )}
@@ -1221,6 +1259,11 @@ export default function App() {
   usePushNotifications(token);
   const systemColorScheme = useColorScheme();
 
+  /** Kurs EUR/PLN (NBP): odświeżanie codziennie od 08:00 Europe/Warsaw + przy wejściu w aplikację. */
+  useEffect(() => {
+    bootstrapFxRateRefresh();
+  }, []);
+
   /** Live Activity: gasimy, gdy w store radar jest wyłączony. Z dysku NIGDY nie wyłączamy radaru w store (tylko użytkownik w kalibracji) — na `active` ewentualnie tylko „podciągamy” włączenie, gdy na dysku jest `1`, a store jeszcze `false` (race po hydratacji). */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
@@ -1357,6 +1400,7 @@ export default function App() {
   return (
     <>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        <I18nProvider>
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
         <NavigationContainer
           ref={navigationRef}
@@ -1401,6 +1445,7 @@ export default function App() {
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
           </AppStack.Navigator>
         </NavigationContainer>
+        </I18nProvider>
       </GestureHandlerRootView>
 
     </>

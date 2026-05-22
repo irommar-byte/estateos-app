@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
 import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
 import { postDealroomTextMessage } from '../../utils/dealroomOfferReserve';
+import { useI18n } from '../../i18n';
 
 const QUICK_BID_STEPS = [-5000, 5000] as const;
 
@@ -72,6 +73,7 @@ export default function BidActionModal({
   isListingOwner = false,
   listingOwnerUserId = null,
 }: BidActionModalProps) {
+  const { t } = useI18n();
   const [amount, setAmount] = useState(initialAmount ? String(Math.round(initialAmount)) : '');
   const [note, setNote] = useState('');
   const [financing, setFinancing] = useState<'CASH' | 'CREDIT'>('CASH');
@@ -205,7 +207,7 @@ export default function BidActionModal({
           const userNote = String(note || '').trim();
           payload.message =
             userNote ||
-            'Akceptuję Twoją cenę. Proszę o ostateczne potwierdzenie sprzedaży.';
+            t('dealroom.bid.buyerAcceptNote');
           payload.note = payload.message;
         } else {
           payload.decision = decision === 'REJECT' ? 'REJECT' : decision;
@@ -227,7 +229,7 @@ export default function BidActionModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.error || 'Nie udalo sie zapisac akcji.');
+        setError(data?.error || t('dealroom.bid.errors.saveFailed'));
         return;
       }
 
@@ -252,9 +254,7 @@ export default function BidActionModal({
           await postDealroomTextMessage({
             dealId: Number(dealId),
             token: safeToken,
-            content:
-              `Decyzja właściciela: ostatecznie akceptuję cenę ${formatCurrency(acceptedAmount)} ` +
-              `i zamykam sprzedaż. Oferta została wycofana z rynku.`,
+            content: t('dealroom.bid.ownerAcceptChat', { amount: formatCurrency(acceptedAmount) }),
           });
         } catch {
           // wpis w czacie to UX/audit — pomijamy przy błędzie
@@ -269,7 +269,7 @@ export default function BidActionModal({
       onDone?.();
       onClose();
     } catch (_e) {
-      setError('Blad polaczenia z serwerem.');
+      setError(t('dealroom.bid.errors.network'));
     } finally {
       setLoading(false);
     }
@@ -282,24 +282,18 @@ export default function BidActionModal({
 
   const getConfirmMessage = () => {
     if (mode === 'create') {
-      return `Czy na pewno chcesz zaproponować cenę ${formatCurrency(Number(amount || 0))}?`;
+      return t('dealroom.bid.confirm.propose', { amount: formatCurrency(Number(amount || 0)) });
     }
     if (decision === 'ACCEPT') {
       if (effectiveIsListingOwner) {
-        return 'Czy na pewno chcesz finalnie zaakceptować tę cenę jako właściciel? Ta akcja kończy transakcję i wycofuje ofertę z rynku.';
+        return t('dealroom.bid.confirm.ownerFinal');
       }
-      // Kupujący akceptuje cenę właściciela — to NIE finalizuje deala.
-      // Wysyłamy do właściciela do ostatecznego potwierdzenia.
-      return (
-        `Wysyłamy do właściciela: „Akceptuję cenę ${formatCurrency(Number(initialAmount || 0))}".\n\n` +
-        'Transakcja NIE zostanie zamknięta od razu — właściciel musi ostatecznie potwierdzić sprzedaż. ' +
-        'Dopiero wtedy oferta zostanie wycofana z rynku.'
-      );
+      return t('dealroom.bid.confirm.buyerHandoff', { amount: formatCurrency(Number(initialAmount || 0)) });
     }
     if (decision === 'REJECT') {
-      return 'Czy na pewno chcesz odrzucić tę propozycję ceny?';
+      return t('dealroom.bid.confirm.reject');
     }
-    return `Czy na pewno chcesz wysłać kontrofertę ${formatCurrency(Number(amount || 0))}?`;
+    return t('dealroom.bid.confirm.counter', { amount: formatCurrency(Number(amount || 0)) });
   };
 
   const handleSubmitPress = () => {
@@ -323,7 +317,7 @@ export default function BidActionModal({
               </TouchableOpacity>
             </View>
             <Text style={styles.eyebrow}>DEALROOM</Text>
-            <Text style={styles.title}>{title || 'Negocjacja ceny'}</Text>
+            <Text style={styles.title}>{title || t('dealroom.bid.defaultTitle')}</Text>
 
             <ScrollView
               style={styles.content}
@@ -337,9 +331,9 @@ export default function BidActionModal({
             {isLocked && (
               <View style={styles.lockedBox}>
                 <Text style={styles.lockIcon}>🔒</Text>
-                <Text style={styles.lockTitle}>Cena zaakceptowana</Text>
+                <Text style={styles.lockTitle}>{t('dealroom.bid.lockedTitle')}</Text>
                 <View style={styles.stamp}>
-                  <Text style={styles.stampText}>DEAL SEALED</Text>
+                  <Text style={styles.stampText}>{t('dealroom.bid.dealSealed')}</Text>
                 </View>
               </View>
             )}
@@ -347,14 +341,11 @@ export default function BidActionModal({
             {isWaitingForOther && !isLocked && (
               <View style={styles.waitingBox}>
                 <Text style={styles.waitingIcon}>⏳</Text>
-                <Text style={styles.waitingTitle}>Czekasz na odpowiedź drugiej strony</Text>
-                <Text style={styles.waitingSub}>
-                  Twoja ostatnia kontroferta cenowa została wysłana — partner musi ją zaakceptować,
-                  odrzucić lub zaproponować inną kwotę. Do tego czasu nie możesz wysłać kolejnej.
-                </Text>
+                <Text style={styles.waitingTitle}>{t('dealroom.bid.waitingTitle')}</Text>
+                <Text style={styles.waitingSub}>{t('dealroom.bid.waitingSub')}</Text>
                 {history.length > 0 && Number(history[history.length - 1]?.amount || 0) > 0 ? (
                   <View style={styles.waitingChip}>
-                    <Text style={styles.waitingChipLabel}>TWOJA OSTATNIA OFERTA</Text>
+                    <Text style={styles.waitingChipLabel}>{t('dealroom.bid.lastOfferLabel')}</Text>
                     <Text style={styles.waitingChipValue}>
                       {formatCurrency(history[history.length - 1]?.amount)}
                     </Text>
@@ -375,27 +366,23 @@ export default function BidActionModal({
               Number(initialAmount || 0) > 0 && (
                 <View style={styles.handoffBox}>
                   <Text style={styles.handoffIcon}>🤝</Text>
-                  <Text style={styles.handoffTitle}>Akceptujesz cenę {formatCurrency(initialAmount)}</Text>
-                  <Text style={styles.handoffSub}>
-                    Twoja akceptacja zostanie wysłana do właściciela.{'\n'}
-                    Transakcja zostanie sfinalizowana dopiero, gdy{' '}
-                    <Text style={styles.handoffStrong}>właściciel ostatecznie potwierdzi sprzedaż</Text>.
-                  </Text>
+                  <Text style={styles.handoffTitle}>{t('dealroom.bid.handoffTitle', { amount: formatCurrency(initialAmount) })}</Text>
+                  <Text style={styles.handoffSub}>{t('dealroom.bid.handoffSub')}</Text>
                 </View>
               )}
 
             {history.length > 0 && (
               <View style={styles.timelineWrap}>
-                <Text style={styles.timelineTitle}>Historia negocjacji</Text>
+                <Text style={styles.timelineTitle}>{t('dealroom.bid.timelineTitle')}</Text>
                 {history.map((item, idx) => {
                   const label =
                     item.action === 'ACCEPTED'
-                      ? 'Zaakceptowano'
+                      ? t('dealroom.bid.timeline.accepted')
                       : item.action === 'REJECTED'
-                        ? 'Odrzucono'
+                        ? t('dealroom.bid.timeline.rejected')
                         : item.action === 'COUNTERED'
-                          ? 'Kontroferta'
-                          : 'Propozycja';
+                          ? t('dealroom.bid.timeline.countered')
+                          : t('dealroom.bid.timeline.proposed');
                   return (
                     <View key={`${item.action || 'x'}-${idx}`} style={styles.timelineItem}>
                       <Text style={styles.timelineLabel}>{label}</Text>
@@ -408,12 +395,12 @@ export default function BidActionModal({
 
             {(mode === 'create' || decision === 'COUNTER') && !isWaitingForOther && (
               <View style={styles.sectionCard}>
-                <Text style={styles.sectionLabel}>Twoja propozycja</Text>
+                <Text style={styles.sectionLabel}>{t('dealroom.bid.yourProposal')}</Text>
                 <TextInput
                   value={amount}
                   onChangeText={(v) => setAmount(v.replace(/[^\d]/g, ''))}
                   keyboardType="numeric"
-                  placeholder="Kwota PLN"
+                  placeholder={t('dealroom.bid.amountPlaceholder')}
                   placeholderTextColor="#777"
                   style={styles.input}
                   editable={!isLocked && !loading}
@@ -431,7 +418,9 @@ export default function BidActionModal({
                         disabled={disabled}
                         activeOpacity={0.85}
                         accessibilityRole="button"
-                        accessibilityLabel={`${isPositive ? 'Zwieksz' : 'Zmniejsz'} kwote o ${Math.abs(delta).toLocaleString('pl-PL')} zlotych`}
+                        accessibilityLabel={t(isPositive ? 'dealroom.bid.increaseA11y' : 'dealroom.bid.decreaseA11y', {
+                          amount: Math.abs(delta).toLocaleString('pl-PL'),
+                        })}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
                         {isPositive ? (
@@ -449,10 +438,10 @@ export default function BidActionModal({
                 {mode === 'create' && (
                   <View style={styles.segment}>
                     <TouchableOpacity style={[styles.segmentBtn, financing === 'CASH' && styles.segmentBtnActive]} onPress={() => setFinancing('CASH')}>
-                      <Text style={[styles.segmentTxt, financing === 'CASH' && styles.segmentTxtActive]}>Gotowka</Text>
+                      <Text style={[styles.segmentTxt, financing === 'CASH' && styles.segmentTxtActive]}>{t('dealroom.bid.financing.cash')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.segmentBtn, financing === 'CREDIT' && styles.segmentBtnActive]} onPress={() => setFinancing('CREDIT')}>
-                      <Text style={[styles.segmentTxt, financing === 'CREDIT' && styles.segmentTxtActive]}>Kredyt</Text>
+                      <Text style={[styles.segmentTxt, financing === 'CREDIT' && styles.segmentTxtActive]}>{t('dealroom.bid.financing.credit')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -460,11 +449,11 @@ export default function BidActionModal({
             )}
 
             <View style={styles.sectionCard}>
-              <Text style={styles.sectionLabel}>Wiadomosc</Text>
+              <Text style={styles.sectionLabel}>{t('dealroom.bid.messageLabel')}</Text>
               <TextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder="Dodaj komentarz (opcjonalnie)"
+                placeholder={t('dealroom.bid.messagePlaceholder')}
                 placeholderTextColor="#777"
                 style={[styles.input, styles.note]}
                 multiline
@@ -478,10 +467,10 @@ export default function BidActionModal({
 
             <View style={styles.footerRow}>
               <TouchableOpacity style={styles.secondaryBtn} onPress={onClose} disabled={loading}>
-                <Text style={styles.secondaryTxt}>Anuluj</Text>
+                <Text style={styles.secondaryTxt}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.primaryBtn, !canSubmit && styles.disabled]} onPress={handleSubmitPress} disabled={!canSubmit || loading}>
-                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryTxt}>Wyslij</Text>}
+                {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.primaryTxt}>{t('dealroom.bid.send')}</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -490,11 +479,11 @@ export default function BidActionModal({
         <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => setConfirmVisible(false)}>
           <View style={styles.confirmBackdrop}>
             <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>Potwierdzenie</Text>
+              <Text style={styles.confirmTitle}>{t('dealroom.bid.confirmTitle')}</Text>
               <Text style={styles.confirmText}>{getConfirmMessage()}</Text>
               <View style={styles.confirmRow}>
                 <TouchableOpacity style={styles.confirmSecondary} onPress={() => setConfirmVisible(false)}>
-                  <Text style={styles.confirmSecondaryTxt}>Nie</Text>
+                  <Text style={styles.confirmSecondaryTxt}>{t('dealroom.bid.confirmNo')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.confirmPrimary}
@@ -512,7 +501,7 @@ export default function BidActionModal({
                     await submitInner();
                   }}
                 >
-                  <Text style={styles.confirmPrimaryTxt}>Tak, wyślij</Text>
+                  <Text style={styles.confirmPrimaryTxt}>{t('dealroom.bid.confirmYes')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -522,14 +511,12 @@ export default function BidActionModal({
         <Modal visible={withdrawPromptVisible} transparent animationType="fade" onRequestClose={() => setWithdrawPromptVisible(false)}>
           <View style={styles.confirmBackdrop}>
             <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>Finalizacja transakcji</Text>
-              <Text style={styles.confirmText}>
-                Jako właściciel finalnie akceptujesz sprzedaż tej nieruchomości za uzgodnioną cenę dla kupującego.
-              </Text>
+              <Text style={styles.confirmTitle}>{t('dealroom.bid.finalizeTitle')}</Text>
+              <Text style={styles.confirmText}>{t('dealroom.bid.finalizeBody')}</Text>
               <View style={styles.consequenceList}>
-                <Text style={styles.consequenceLine}>• Sprzedaż zostanie zakończona.</Text>
-                <Text style={styles.consequenceLine}>• Oferta trafi do archiwalnych / sfinalizowanych.</Text>
-                <Text style={styles.consequenceLine}>• Przywrócenie oferty będzie wymagało nowej publikacji Pakiet Plus.</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.bid.finalizeConsequences.line1')}</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.bid.finalizeConsequences.line2')}</Text>
+                <Text style={styles.consequenceLine}>{t('dealroom.bid.finalizeConsequences.line3')}</Text>
               </View>
               <TouchableOpacity
                 style={styles.ackRow}
@@ -539,10 +526,7 @@ export default function BidActionModal({
                 <View style={[styles.ackBox, ownerFinalConsent && styles.ackBoxOn]}>
                   <Text style={styles.ackBoxTick}>{ownerFinalConsent ? '✓' : ''}</Text>
                 </View>
-                <Text style={styles.ackText}>
-                  Akceptuję sprzedaż za tę cenę oraz wycofanie oferty z rynku (status zakończona/sfinalizowana).
-                  Rozumiem, że ewentualne przywrócenie oferty będzie wymagało nowej publikacji Pakiet Plus.
-                </Text>
+                <Text style={styles.ackText}>{t('dealroom.bid.finalizeAck')}</Text>
               </TouchableOpacity>
               <View style={styles.confirmRow}>
                 <TouchableOpacity
@@ -550,14 +534,14 @@ export default function BidActionModal({
                   onPress={() => setWithdrawPromptVisible(false)}
                   disabled={loading}
                 >
-                  <Text style={styles.confirmSecondaryTxt}>Wróć</Text>
+                  <Text style={styles.confirmSecondaryTxt}>{t('common.back')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.confirmPrimary, (!ownerFinalConsent || loading) && styles.disabled]}
                   onPress={() => finishReserveChoice()}
                   disabled={!ownerFinalConsent || loading}
                 >
-                  <Text style={styles.confirmPrimaryTxt}>Akceptuję i finalizuję</Text>
+                  <Text style={styles.confirmPrimaryTxt}>{t('dealroom.bid.finalizeConfirm')}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -565,7 +549,7 @@ export default function BidActionModal({
                 onPress={() => setWithdrawPromptVisible(false)}
                 disabled={loading}
               >
-                <Text style={styles.stayPublicTxt}>Anuluj finalizację</Text>
+                <Text style={styles.stayPublicTxt}>{t('dealroom.bid.cancelFinalize')}</Text>
               </TouchableOpacity>
             </View>
           </View>

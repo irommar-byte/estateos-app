@@ -31,6 +31,12 @@ import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
 import { getOfferLifecycleState } from '../utils/offerLifecycle';
 import {
+  formatOfferConditionLabel,
+  formatOfferHeatingLabel,
+  formatOfferPropertyTypeLabel,
+  formatOfferTransactionTypeLabel,
+} from '../utils/offerFieldLabels';
+import {
   formatLocationLabel,
   formatOfferLocationLine,
   formatPublicAddress,
@@ -57,7 +63,7 @@ import {
 import { formatAmountWithCurrency, resolveOfferDisplayAmount } from '../money/format';
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
-import { useI18n } from '../i18n';
+import { localeToDateFormat, useI18n } from '../i18n';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
@@ -94,22 +100,6 @@ function formatFloorStat(f: unknown, translate: (key: string) => string): string
   return s ? s : '-';
 }
 
-const HEATING_VALUE_TO_KEY: Record<string, string> = {
-  Miejskie: 'offer.shared.heating.district',
-  Gazowe: 'offer.shared.heating.gas',
-  Elektryczne: 'offer.shared.heating.electric',
-  'Pompa Ciepła': 'offer.shared.heating.heatPump',
-  'Węglowe/Pellet': 'offer.shared.heating.coalPellet',
-  Inne: 'offer.shared.heating.other',
-};
-
-function resolveHeatingLabel(raw: unknown, translate: (key: string) => string): string {
-  const value = String(raw || '').trim();
-  if (!value) return '';
-  const key = HEATING_VALUE_TO_KEY[value];
-  return key ? translate(key) : value;
-}
-
 function sanitizeOfferDescription(input: unknown): string {
   const raw = String(input ?? '');
   if (!raw) return '';
@@ -139,7 +129,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const offer = hydratedOffer || offerFromParams || (idFromParams ? { id: idFromParams } : null);
   const { formatOffer, preference, rate } = useMoneyContext();
   const { t, locale } = useI18n();
-  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const dateLocale = localeToDateFormat(locale);
   const offerPriceDisplay = useMemo(() => formatOffer(offer), [offer, formatOffer]);
   // KLUCZOWE: theme musi pochodzić z globalnego store'a (useThemeStore),
   // a NIE z `route.params.theme` — bo żadne miejsce nawigacji nie przekazuje
@@ -591,7 +581,7 @@ export default function OfferDetail({ route, navigation }: any) {
   if (isTrue(offer?.isTwoLevel)) activeAmenities.push(t('offer.shared.amenities.twoLevel'));
   if (isTrue(offer?.petsAllowed)) activeAmenities.push(t('offer.shared.amenities.petsAllowed'));
   if (isTrue(offer?.airConditioning)) activeAmenities.push(t('offer.shared.amenities.airConditioning'));
-  const heatingLabel = resolveHeatingLabel(offer?.heating, t);
+  const heatingLabel = formatOfferHeatingLabel(offer?.heating, t);
   const furnishedLabel = isTrue(offer?.isFurnished) ? t('offer.shared.furnished.yes') : t('offer.shared.furnished.no');
   const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
   const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
@@ -660,23 +650,8 @@ export default function OfferDetail({ route, navigation }: any) {
     () => describeOfferAgentCommission(offer, offer?.price),
     [offer],
   );
-  const txTypeLabel =
-    String(offer?.transactionType || '').toUpperCase() === 'RENT'
-      ? t('offer.shared.transactionTypes.rent')
-      : t('offer.shared.transactionTypes.sale');
-  const propTypeRaw = String(offer?.propertyType || '').toUpperCase();
-  const propTypeLabel =
-    propTypeRaw === 'FLAT' || propTypeRaw === 'APARTMENT'
-      ? t('offer.shared.propertyTypes.flat')
-      : propTypeRaw === 'HOUSE'
-        ? t('offer.shared.propertyTypes.house')
-        : propTypeRaw === 'PLOT'
-          ? t('offer.shared.propertyTypes.plot')
-          : propTypeRaw === 'PREMISES'
-            ? t('offer.shared.propertyTypes.premises')
-            : offer?.propertyType
-              ? String(offer.propertyType)
-              : t('offer.shared.emDash');
+  const txTypeLabel = formatOfferTransactionTypeLabel(offer?.transactionType, t);
+  const propTypeLabel = formatOfferPropertyTypeLabel(offer?.propertyType, t);
   const areaNumForStats = parseOfferNumeric(offer?.area);
   const offerPricePerSqm =
     Number.isFinite(priceNumForStats) && priceNumForStats > 0 &&
@@ -750,12 +725,6 @@ export default function OfferDetail({ route, navigation }: any) {
           amount: agentCommissionInfo.amountLabel,
         })
     : t('offer.detail.commission.undisclosed');
-  const formatCondition = (cond: string) => {
-    const key = `offer.shared.conditions.${cond}` as const;
-    const translated = t(key);
-    if (translated !== key) return translated;
-    return cond || t('offer.shared.noData');
-  };
   const formatDate = (dateString: string) => {
     if (!dateString) return t('offer.shared.noData');
     const d = new Date(dateString);
@@ -1388,7 +1357,7 @@ export default function OfferDetail({ route, navigation }: any) {
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.details')}</Text>
           <View style={[styles.detailsContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f5f6f8', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.05)', borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
             <View style={[styles.detailsContainerInnerGlow, isDark && { borderColor: 'rgba(255,255,255,0.1)' }]} pointerEvents="none" />
-            <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.condition')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatCondition(offer?.condition)}</Text></View>
+            <View style={[styles.detailRow, { borderTopWidth: 0, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.condition')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatOfferConditionLabel(offer?.condition, t)}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.adminFee')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{adminFeeLabel}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.heating')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{heatingLabel || t('offer.shared.notProvided')}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.furnished')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{furnishedLabel}</Text></View>

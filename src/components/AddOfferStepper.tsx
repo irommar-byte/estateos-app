@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { ADD_OFFER_TOTAL_STEPS, getStepBlockMessage, isStepValid } from '../screens/AddOffer/flow';
 import { useOfferStore } from '../store/useOfferStore';
+import { useI18n } from '../i18n';
 
 type AddOfferStepperProps = {
   currentStep: number;
@@ -13,6 +14,7 @@ type AddOfferStepperProps = {
 };
 
 export default function AddOfferStepper({ currentStep, draft, theme, navigation, onBeforeStepChange }: AddOfferStepperProps) {
+  const { t } = useI18n();
   const navigationGate = useOfferStore((s) => s.navigationGate);
   const canMoveForward = isStepValid(currentStep, draft);
   const completedStep = currentStep > 1 && isStepValid(currentStep - 1, draft);
@@ -31,12 +33,15 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation,
     }
 
     if (targetStep > currentStep + 1) {
-      Alert.alert('Przejdź krok po kroku', 'Możesz przejść tylko do kolejnego kroku.');
+      Alert.alert(
+        t('addOffer.stepper.alerts.stepByStep.title'),
+        t('addOffer.stepper.alerts.stepByStep.message'),
+      );
       return;
     }
 
     if (!canMoveForward) {
-      Alert.alert('Uzupełnij dane', getStepBlockMessage(currentStep, draft));
+      Alert.alert(t('addOffer.stepper.alerts.completeData.title'), getStepBlockMessage(currentStep, draft));
       return;
     }
 
@@ -51,9 +56,11 @@ export default function AddOfferStepper({ currentStep, draft, theme, navigation,
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={[styles.title, { color: theme.subtitle }]}>KROK {currentStep} Z {ADD_OFFER_TOTAL_STEPS}</Text>
+        <Text style={[styles.title, { color: theme.subtitle }]}>
+          {t('addOffer.stepper.title', { current: currentStep, total: ADD_OFFER_TOTAL_STEPS })}
+        </Text>
         <Text style={[styles.hint, { color: canMoveForward ? '#34C759' : '#FF9F0A' }]}>
-          {canMoveForward ? 'Możesz iść dalej' : 'Uzupełnij ten krok'}
+          {canMoveForward ? t('addOffer.stepper.canProceed') : t('addOffer.stepper.completeStep')}
         </Text>
       </View>
 

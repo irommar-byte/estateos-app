@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL } from '../constants/appContact';
+import { useI18n } from '../i18n';
 
 /**
  * Uniwersalny arkusz „Zgłoś" — używany do obraźliwych OFERT i USERÓW.
@@ -82,65 +83,14 @@ type ReportCategory =
   | 'MISLEADING_OFFER'
   | 'OTHER';
 
-const REASONS: { id: ReportCategory; label: string; subtitle: string }[] = [
-  {
-    id: 'SPAM',
-    label: 'Spam lub reklama',
-    subtitle: 'Treść reklamowa, fałszywe ogłoszenie, generyczny content.',
-  },
-  {
-    id: 'SCAM',
-    label: 'Oszustwo lub przekręt',
-    subtitle: 'Wyłudzenie, fałszywa cena, prośby o przedpłatę poza aplikacją.',
-  },
-  {
-    id: 'HARASSMENT',
-    label: 'Nękanie lub treści obraźliwe',
-    subtitle: 'Agresja, wulgaryzmy, groźby, uporczywe wiadomości.',
-  },
-  {
-    id: 'ILLEGAL_CONTENT',
-    label: 'Treści niezgodne z prawem',
-    subtitle: 'Naruszenie prawa, zakazane treści, nienawiść, dyskryminacja.',
-  },
-  {
-    id: 'MISLEADING_OFFER',
-    label: 'Myląca lub fałszywa oferta',
-    subtitle: 'Nieprawdziwy opis, zdjęcia, cena lub lokalizacja.',
-  },
-  {
-    id: 'OTHER',
-    label: 'Inne naruszenie regulaminu',
-    subtitle: 'Coś innego — opisz krótko w polu poniżej.',
-  },
+const REPORT_CATEGORIES: ReportCategory[] = [
+  'SPAM',
+  'SCAM',
+  'HARASSMENT',
+  'ILLEGAL_CONTENT',
+  'MISLEADING_OFFER',
+  'OTHER',
 ];
-
-const ERROR_MESSAGES: Record<string, { title: string; message: string }> = {
-  CANNOT_REPORT_SELF: {
-    title: 'Nie można zgłosić siebie',
-    message: 'Nie można zgłosić własnego konta. Jeśli chcesz coś poprawić, zrób to w Profilu.',
-  },
-  CANNOT_REPORT_OWN_OFFER: {
-    title: 'Nie można zgłosić swojej oferty',
-    message: 'To Twoja oferta. Możesz ją edytować lub usunąć w sekcji „Zarządzaj ogłoszeniami".',
-  },
-  RATE_LIMITED: {
-    title: 'Zbyt wiele zgłoszeń',
-    message: 'Wysłałeś już sporo zgłoszeń w krótkim czasie. Spróbuj ponownie za chwilę.',
-  },
-  TARGET_NOT_FOUND: {
-    title: 'Nie znaleziono treści',
-    message: 'Zgłaszany element został już usunięty lub jest niedostępny.',
-  },
-  INVALID_CATEGORY: {
-    title: 'Niepoprawna kategoria',
-    message: 'Wybierz powód z listy.',
-  },
-  MISSING_AUTH: {
-    title: 'Wymagane zalogowanie',
-    message: 'Aby zgłosić, zaloguj się ponownie.',
-  },
-};
 
 const MAX_DETAILS_LENGTH = 500;
 
@@ -153,6 +103,7 @@ export default function ReportSheet({
   token,
   isDark = true,
 }: Props) {
+  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState<ReportCategory | null>(null);
   const [details, setDetails] = useState('');
@@ -167,10 +118,50 @@ export default function ReportSheet({
     setSubmitted(false);
   }, [visible]);
 
+  const reasons = useMemo(
+    () =>
+      REPORT_CATEGORIES.map((id) => ({
+        id,
+        label: t(`report.reasons.${id}.label`),
+        subtitle: t(`report.reasons.${id}.subtitle`),
+      })),
+    [t],
+  );
+
+  const errorMessages = useMemo(
+    () => ({
+      CANNOT_REPORT_SELF: {
+        title: t('report.errors.CANNOT_REPORT_SELF.title'),
+        message: t('report.errors.CANNOT_REPORT_SELF.message'),
+      },
+      CANNOT_REPORT_OWN_OFFER: {
+        title: t('report.errors.CANNOT_REPORT_OWN_OFFER.title'),
+        message: t('report.errors.CANNOT_REPORT_OWN_OFFER.message'),
+      },
+      RATE_LIMITED: {
+        title: t('report.errors.RATE_LIMITED.title'),
+        message: t('report.errors.RATE_LIMITED.message'),
+      },
+      TARGET_NOT_FOUND: {
+        title: t('report.errors.TARGET_NOT_FOUND.title'),
+        message: t('report.errors.TARGET_NOT_FOUND.message'),
+      },
+      INVALID_CATEGORY: {
+        title: t('report.errors.INVALID_CATEGORY.title'),
+        message: t('report.errors.INVALID_CATEGORY.message'),
+      },
+      MISSING_AUTH: {
+        title: t('report.errors.MISSING_AUTH.title'),
+        message: t('report.errors.MISSING_AUTH.message'),
+      },
+    }),
+    [t],
+  );
+
   const headlineTarget = useMemo(() => {
-    if (targetType === 'offer') return 'Zgłoś ofertę';
-    return 'Zgłoś użytkownika';
-  }, [targetType]);
+    if (targetType === 'offer') return t('report.headlineOffer');
+    return t('report.headlineUser');
+  }, [targetType, t]);
 
   const handleSubmit = useCallback(async () => {
     if (!reason || busy) return;
@@ -180,7 +171,7 @@ export default function ReportSheet({
     const targetIdNum = Number(targetId);
     if (!Number.isFinite(targetIdNum) || targetIdNum <= 0) {
       setBusy(false);
-      Alert.alert('Brak danych', 'Nie udało się ustalić, co zgłaszasz. Spróbuj ponownie.');
+      Alert.alert(t('report.missingTarget.title'), t('report.missingTarget.message'));
       return;
     }
 
@@ -231,7 +222,7 @@ export default function ReportSheet({
         return;
       }
 
-      const mapped = ERROR_MESSAGES[code];
+      const mapped = errorMessages[code as keyof typeof errorMessages];
       if (mapped) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert(mapped.title, mapped.message);
@@ -240,14 +231,14 @@ export default function ReportSheet({
 
       if (serverMessage) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Nie udało się wysłać zgłoszenia', serverMessage);
+        Alert.alert(t('report.submitFailed'), serverMessage);
         return;
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
-        'Nie udało się wysłać zgłoszenia',
-        `Spróbuj ponownie za chwilę. Jeśli problem się powtarza, napisz na ${ESTATEOS_CONTACT_EMAIL}.`
+        t('report.submitFailed'),
+        t('report.errors.default.message', { email: ESTATEOS_CONTACT_EMAIL }),
       );
     } catch (err) {
       // Brak sieci → traktujemy jak sukces (zgłoszenie idempotentne; user
@@ -258,7 +249,7 @@ export default function ReportSheet({
     } finally {
       setBusy(false);
     }
-  }, [busy, details, reason, targetId, targetType, token]);
+  }, [busy, details, errorMessages, reason, targetId, targetType, t, token]);
 
   const surface = isDark ? 'rgba(28,28,30,0.94)' : 'rgba(255,255,255,0.97)';
   const textMain = isDark ? '#FFFFFF' : '#111827';
@@ -316,13 +307,10 @@ export default function ReportSheet({
                   <Check size={32} color={isDark ? '#30D158' : '#34C759'} strokeWidth={2.6} />
                 </View>
                 <Text style={[styles.successTitle, { color: textMain }]}>
-                  Dziękujemy za zgłoszenie
+                  {t('report.successTitle')}
                 </Text>
                 <Text style={[styles.successText, { color: textMuted }]}>
-                  Zgłoszenie trafiło do zespołu moderacji EstateOS — nie do Twojej
-                  skrzynki w aplikacji. Sprawdzimy je w ciągu 24 godzin; przy
-                  naruszeniu regulaminu ukryjemy ofertę lub zablokujemy konto autora.
-                  Napiszemy tylko wtedy, gdy będziemy potrzebować dodatkowych informacji.
+                  {t('report.successBody')}
                 </Text>
                 <Pressable
                   onPress={onClose}
@@ -331,9 +319,9 @@ export default function ReportSheet({
                     { backgroundColor: '#0A84FF', opacity: pressed ? 0.7 : 1 },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Zamknij"
+                  accessibilityLabel={t('report.closeA11y')}
                 >
-                  <Text style={styles.successCtaText}>OK</Text>
+                  <Text style={styles.successCtaText}>{t('common.ok')}</Text>
                 </Pressable>
               </View>
             ) : (
@@ -370,10 +358,10 @@ export default function ReportSheet({
                   showsVerticalScrollIndicator={false}
                 >
                   <Text style={[styles.sectionLabel, { color: textMuted }]}>
-                    Wybierz powód
+                    {t('report.pickReason')}
                   </Text>
 
-                  {REASONS.map((r) => {
+                  {reasons.map((r) => {
                     const selected = reason === r.id;
                     return (
                       <Pressable
@@ -427,12 +415,12 @@ export default function ReportSheet({
                   <Text
                     style={[styles.sectionLabel, { color: textMuted, marginTop: 12 }]}
                   >
-                    Dodatkowy opis (opcjonalnie)
+                    {t('report.detailsLabel')}
                   </Text>
                   <TextInput
                     value={details}
-                    onChangeText={(t) => setDetails(t.slice(0, MAX_DETAILS_LENGTH))}
-                    placeholder="Np. cena zaniżona o 70%, prośby o przedpłatę poza aplikacją…"
+                    onChangeText={(text) => setDetails(text.slice(0, MAX_DETAILS_LENGTH))}
+                    placeholder={t('report.detailsPlaceholder')}
                     placeholderTextColor={textMuted}
                     multiline
                     style={[
@@ -459,7 +447,7 @@ export default function ReportSheet({
                     accessibilityRole="button"
                   >
                     <Text style={[styles.secondaryCtaText, { color: textMain }]}>
-                      Anuluj
+                      {t('common.cancel')}
                     </Text>
                   </Pressable>
                   <Pressable
@@ -473,12 +461,12 @@ export default function ReportSheet({
                       },
                     ]}
                     accessibilityRole="button"
-                    accessibilityLabel="Wyślij zgłoszenie"
+                    accessibilityLabel={t('report.submit')}
                   >
                     {busy ? (
                       <ActivityIndicator color="#fff" />
                     ) : (
-                      <Text style={styles.primaryCtaText}>Zgłoś</Text>
+                      <Text style={styles.primaryCtaText}>{t('report.title')}</Text>
                     )}
                   </Pressable>
                 </View>

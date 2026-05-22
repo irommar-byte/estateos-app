@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { useI18n } from '../../i18n';
 import { useThemeStore } from '../../store/useThemeStore';
 
 type Props = {
@@ -178,9 +179,11 @@ function Sep({ isDark, accent }: { isDark: boolean; accent: string }) {
 
 export default function PresentationCountdown({
   presentationIso,
-  label = 'DO PREZENTACJI POZOSTAŁO',
+  label,
   variant = 'panel',
 }: Props) {
+  const { t } = useI18n();
+  const countdownLabel = label ?? t('dealroom.countdown.label');
   const targetMs = useMemo(() => new Date(presentationIso).getTime(), [presentationIso]);
   const [tick, setTick] = useState(0);
 
@@ -253,17 +256,17 @@ export default function PresentationCountdown({
       <View style={styles.labelRow}>
         <View style={[styles.labelDot, { backgroundColor: glowAccent }]} />
         <Text style={[styles.labelText, { color: labelColor }]} allowFontScaling={false}>
-          {label}
+          {countdownLabel}
         </Text>
       </View>
       <View style={styles.row}>
-        <CountdownUnit value={String(parts.days)} label="DNI" isDark={isDark} accent={accent} glowAccent={glowAccent} />
+        <CountdownUnit value={String(parts.days)} label={t('dealroom.countdown.days')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
         <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.hours)} label="GODZ" isDark={isDark} accent={accent} glowAccent={glowAccent} />
+        <CountdownUnit value={pad2(parts.hours)} label={t('dealroom.countdown.hours')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
         <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.minutes)} label="MIN" isDark={isDark} accent={accent} glowAccent={glowAccent} />
+        <CountdownUnit value={pad2(parts.minutes)} label={t('dealroom.countdown.minutes')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
         <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.seconds)} label="SEK" isDark={isDark} accent={accent} glowAccent={glowAccent} pulsing />
+        <CountdownUnit value={pad2(parts.seconds)} label={t('dealroom.countdown.seconds')} isDark={isDark} accent={accent} glowAccent={glowAccent} pulsing />
       </View>
     </View>
   );

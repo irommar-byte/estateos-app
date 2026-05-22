@@ -2,6 +2,7 @@
 
 # dependencies
 node_modules/
+.venv-i18n/
 
 # Expo
 .expo/
@@ -45,6 +46,10 @@ ios/Pods
 
 # 🚫 backupy
 *.bak
+*.backup.tsx
+*.tsx.zip
+struktura_mac.txt
+.venv-i18n/
 
 # 🚫 env
 .env
@@ -60,3 +65,4 @@ tmp-*
 
 # Osobna kopia serwera w tym repo — nie mieszaj z appką w statusie (commituj tylko celowo)
 estateos-server/
+*.ts.new

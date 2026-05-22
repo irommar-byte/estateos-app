@@ -20,6 +20,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { isOfferClosed } from '../utils/offerLifecycle';
+import { useMoneyContext } from '../money/useMoneyContext';
+import { resolveOfferListingPrice } from '../money/offerPrice';
 import {
   buildDiscoveryEventPayload,
   parseDiscoveryFeedItems,
@@ -240,6 +242,7 @@ const PriceHistoryChart = ({ data, width }: { data: number[], width: number }) =
 export default function EstateDiscoveryMode({ navigation }: any) {
   const { width, height } = useWindowDimensions();
   const token = useAuthStore((s: any) => s.token);
+  const { formatOffer } = useMoneyContext();
   const isTablet = width >= 768;
   
   // Responsywne wyliczanie wielkości karty
@@ -266,9 +269,17 @@ export default function EstateDiscoveryMode({ navigation }: any) {
   const mapRawOffersToDiscovery = useCallback((list: any[]): DiscoveryOffer[] => {
     return list
       .map((raw: any): DiscoveryOffer | null => {
-        const priceNow = parsePriceNumber(raw?.price);
-        if (!priceNow) return null;
+        const listing = resolveOfferListingPrice(raw);
+        if (listing.amount <= 0) return null;
         const previousPrice = parsePriceNumber(raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart);
+        const prevPln =
+          previousPrice > 0
+            ? resolveOfferListingPrice({
+                priceAmount: previousPrice,
+                price: previousPrice,
+                priceCurrency: listing.currency,
+              }).plnAmount
+            : listing.plnAmount;
         const city = String(raw?.city ?? '').trim();
         const district = String(raw?.district ?? '').trim();
         const title = String(raw?.title ?? raw?.name ?? '').trim() || 'Oferta premium';
@@ -281,17 +292,22 @@ export default function EstateDiscoveryMode({ navigation }: any) {
           id: String(raw?.id ?? `${title}-${city}-${Math.random()}`),
           title,
           location,
-          price: formatPln(priceNow),
-          originalPrice: formatPln(previousPrice || priceNow),
+          price: formatOffer(raw).primary,
+          originalPrice: formatOffer({
+            ...raw,
+            priceAmount: previousPrice || listing.amount,
+            price: previousPrice || listing.amount,
+            priceCurrency: listing.currency,
+          }).primary,
           area: `${Math.max(0, Math.round(areaValue || 0))} m²`,
           daysOnMarket,
-          priceHistory: buildPriceHistory(priceNow, previousPrice),
+          priceHistory: buildPriceHistory(listing.plnAmount, prevPln),
           images,
           image: images[0] || extractImageFromOffer(raw),
         };
       })
       .filter(Boolean) as DiscoveryOffer[];
-  }, []);
+  }, [formatOffer]);
 
   const sendDiscoveryEvent = useCallback(
     async (
