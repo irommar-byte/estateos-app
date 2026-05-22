@@ -30,11 +30,12 @@ import {
 } from '../../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../../services/iapPakietPlus';
 import {
-  PUBLICATION_COPY,
+  getPublicationCopy,
   buildCreatePublicationPayload,
   fetchPublicationQuote,
   isPublicationRequiresPlusError,
 } from '../../services/offerPublicationService';
+import { useI18n } from '../../i18n';
 import { archiveOwnOfferViaMobileAdmin } from '../../utils/mobileOfferArchive';
 import { buildOfferPricePayload } from '../../money/offerPrice';
 import { getEurPlnRate } from '../../money/fxRateService';
@@ -86,19 +87,42 @@ function parseLocaleNumber(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatFloorSummary(f: unknown): string {
+function formatFloorSummary(f: unknown, translate: (key: string) => string): string {
   if (f === null || f === undefined || f === '') return '';
   const s = String(f).trim();
-  if (s.toLowerCase() === 'parter') return 'Parter';
+  if (s.toLowerCase() === 'parter') return translate('addOffer.common.groundFloor');
   return s;
 }
 
-function formatConditionLabel(cond: unknown): string {
-  if (cond === 'READY') return 'Gotowe';
-  if (cond === 'RENOVATION') return 'Do remontu';
-  if (cond === 'DEVELOPER') return 'Deweloperski';
+function formatConditionLabel(cond: unknown, translate: (key: string) => string): string {
+  if (cond === 'READY') return translate('addOffer.step6.condition.ready');
+  if (cond === 'RENOVATION') return translate('addOffer.step6.condition.renovation');
+  if (cond === 'DEVELOPER') return translate('addOffer.step6.condition.developer');
   return cond ? String(cond) : '';
 }
+
+const AMENITY_LABEL_KEYS: Record<
+  'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isTwoLevel' | 'isFurnished',
+  string
+> = {
+  hasBalcony: 'addOffer.step6.amenities.balcony',
+  hasParking: 'addOffer.step6.amenities.parking',
+  hasStorage: 'addOffer.step6.amenities.storage',
+  hasElevator: 'addOffer.step6.amenities.elevator',
+  hasGarden: 'addOffer.step6.amenities.garden',
+  isTwoLevel: 'addOffer.step6.amenities.twoLevel',
+  isFurnished: 'addOffer.step6.amenities.furnished',
+};
+
+const HEATING_LABEL_KEYS: Record<string, string> = {
+  '': 'addOffer.step3.heating.none',
+  Miejskie: 'addOffer.step3.heating.district',
+  Gazowe: 'addOffer.step3.heating.gas',
+  Elektryczne: 'addOffer.step3.heating.electric',
+  'Pompa Ciepła': 'addOffer.step3.heating.heatPump',
+  'Węglowe/Pellet': 'addOffer.step3.heating.coalPellet',
+  Inne: 'addOffer.step3.heating.other',
+};
 
 /** Kąt i przybliżenie jak przy „locie” kamery w kroku 2 — budynki 3D przy wyższym pitch. */
 function buildPreviewCamera(lat: number, lng: number, isExact: boolean): Camera {
@@ -120,6 +144,7 @@ function SummaryLocationMap({
   cardBorderColor,
   cardBgColor,
   draftSalt,
+  translate,
 }: {
   latitude: number;
   longitude: number;
@@ -134,6 +159,7 @@ function SummaryLocationMap({
    * wejściu w podgląd pokazywać dokładnie ten sam zjitterowany punkt.
    */
   draftSalt?: string | null;
+  translate: (key: string, params?: Record<string, string | number>) => string;
 }) {
   // PODGLĄD W SUMMARY = TO, CO ZOBACZY PUBLICZNOŚĆ.
   // Owner sam jest autorem, więc jeśli wyłącza „Dokładną lokalizację", powinien
@@ -162,7 +188,7 @@ function SummaryLocationMap({
 
   return (
     <View style={{ marginTop: 6 }}>
-      <Text style={[styles.sectionTitle, { marginBottom: 10, color: subtitleColor }]}>PODGLĄD MAPY</Text>
+      <Text style={[styles.sectionTitle, { marginBottom: 10, color: subtitleColor }]}>{translate('addOffer.step6.mapPreview.title')}</Text>
       <View style={[styles.mapPreviewOuter, { borderColor: cardBorderColor, backgroundColor: cardBgColor }]}>
         <MapView
           style={styles.mapPreview}
@@ -180,7 +206,7 @@ function SummaryLocationMap({
           userInterfaceStyle={isDark ? 'dark' : 'light'}
         >
           {publicPresentation.mode === 'pin' ? (
-            <Marker coordinate={coordinate} title="Lokalizacja oferty" pinColor="#ef4444" />
+            <Marker coordinate={coordinate} title={translate('addOffer.step6.mapPreview.markerTitle')} pinColor="#ef4444" />
           ) : (
             <Circle
               center={coordinate}
@@ -194,23 +220,28 @@ function SummaryLocationMap({
       </View>
       <Text style={[styles.mapPreviewCaption, { color: subtitleColor }]}>
         {publicPresentation.mode === 'pin'
-          ? 'Dokładny punkt — widok z perspektywy (budynki 3D)'
-          : `Obszar ~${publicPresentation.circleRadiusM} m · środek przesunięty losowo (budynek leży gdzieś wewnątrz okręgu)`}
+          ? translate('addOffer.step6.mapPreview.exactCaption')
+          : translate('addOffer.step6.mapPreview.approximateCaption', {
+              radius: publicPresentation.circleRadiusM,
+            })}
       </Text>
     </View>
   );
 }
 
-const AMENITY_META: { key: 'hasBalcony' | 'hasParking' | 'hasStorage' | 'hasElevator' | 'hasGarden' | 'isFurnished'; label: string }[] = [
-  { key: 'hasBalcony', label: 'Balkon / taras' },
-  { key: 'hasParking', label: 'Parking' },
-  { key: 'hasStorage', label: 'Komórka / piwnica' },
-  { key: 'hasElevator', label: 'Winda' },
-  { key: 'hasGarden', label: 'Ogródek' },
-  { key: 'isFurnished', label: 'Umeblowane' },
+const AMENITY_META: Array<keyof typeof AMENITY_LABEL_KEYS> = [
+  'hasBalcony',
+  'hasParking',
+  'hasStorage',
+  'hasElevator',
+  'hasGarden',
+  'isTwoLevel',
+  'isFurnished',
 ];
 
 export default function Step6_Summary({ theme }: { theme: any }) {
+  const { locale, t } = useI18n();
+  const publicationCopy = useMemo(() => getPublicationCopy(), [locale]);
   const { draft, resetDraft, setCurrentStep } = useOfferStore();
   const { user, token, refreshUser } = useAuthStore();
   const navigation = useNavigation<any>();
@@ -274,7 +305,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     const r = await purchasePakietPlusConsumable(API_URL, token);
     if (!r.ok) {
       if (!r.cancelled && r.message) {
-        Alert.alert('Sklep', r.message);
+        Alert.alert(t('addOffer.common.alerts.store.title'), r.message);
       }
       return;
     }
@@ -289,15 +320,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setUploadProgressText(PUBLICATION_COPY.publishAfterPurchase);
+    setUploadProgressText(publicationCopy.publishAfterPurchase);
     await handlePublish(true);
   };
 
   const promptPaidPublication = () => {
-    Alert.alert(PUBLICATION_COPY.paywallTitle, PUBLICATION_COPY.paywallBody, [
-      { text: 'Anuluj', style: 'cancel' },
+    Alert.alert(publicationCopy.paywallTitle, publicationCopy.paywallBody, [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: `${PUBLICATION_COPY.paywallCta} (~${PAKIET_PLUS_PRICE_LABEL})`,
+        text: `${publicationCopy.paywallCta} (~${PAKIET_PLUS_PRICE_LABEL})`,
         onPress: () => {
           void runPakietPlusPurchaseAndPublish();
         },
@@ -311,9 +342,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     if (!isFinalDraftValid) {
       const firstInvalidStep = [1, 2, 3, 4, 5].find((step) => !isStepValid(step, draft)) || 1;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert('Uzupełnij ofertę', getStepBlockMessage(firstInvalidStep, draft), [
+      Alert.alert(t('addOffer.common.alerts.completeOffer.title'), getStepBlockMessage(firstInvalidStep, draft), [
         {
-          text: 'Popraw dane',
+          text: t('addOffer.common.alerts.completeOffer.fixData'),
           onPress: () => navigation.navigate(`Step${firstInvalidStep}` as never),
         },
       ]);
@@ -321,7 +352,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     }
     
     if (!user || !user.id || !token) {
-      Alert.alert("Błąd autoryzacji", "Zaloguj się ponownie, aby opublikować ofertę.");
+      Alert.alert(t('addOffer.common.alerts.authError.title'), t('addOffer.common.alerts.authError.message'));
       return;
     }
 
@@ -338,15 +369,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     if (!phoneVerified || !emailVerified) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       const missing: string[] = [];
-      if (!phoneVerified) missing.push('numer telefonu');
-      if (!emailVerified) missing.push('adres e-mail');
+      if (!phoneVerified) missing.push(t('addOffer.common.alerts.verificationRequired.missingPhone'));
+      if (!emailVerified) missing.push(t('addOffer.common.alerts.verificationRequired.missingEmail'));
       Alert.alert(
-        'Weryfikacja wymagana',
-        `Aby opublikować ofertę musisz najpierw potwierdzić: ${missing.join(' oraz ')}.\n\nPrzejdź do Profilu → Edytuj dane i dokończ weryfikację SMS-em oraz kodem z e-maila.`,
+        t('addOffer.common.alerts.verificationRequired.title'),
+        t('addOffer.common.alerts.verificationRequired.message', { missing: missing.join(` ${locale === 'en' ? 'and' : 'oraz'} `) }),
         [
-          { text: 'Anuluj', style: 'cancel' },
+          { text: t('addOffer.common.cancel'), style: 'cancel' },
           {
-            text: 'Przejdź do profilu',
+            text: t('addOffer.common.alerts.verificationRequired.goToProfile'),
             onPress: () => {
               const rootNav = navigation.getParent?.();
               if (rootNav) rootNav.navigate('Profil');
@@ -384,7 +415,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     const isPolandOffer = isPolandLocationDraft(draft);
     const landRegistryRaw = String(draft.landRegistryNumber || '').trim();
     if (isPolandOffer && landRegistryRaw && !isValidLandRegistryNumber(landRegistryRaw)) {
-      Alert.alert('Walidacja', 'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6');
+      Alert.alert(t('addOffer.common.alerts.validation.title'), t('addOffer.common.alerts.validation.landRegistryFormat'));
       return;
     }
 
@@ -398,7 +429,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       if (rawCommission) {
         const validation = validateAgentCommissionPercent(rawCommission);
         if (!validation.ok) {
-          Alert.alert('Prowizja agenta', validation.message);
+          Alert.alert(t('addOffer.step6.alerts.agentCommission.title'), validation.message);
           return;
         }
         agentCommissionPercentForApi = validation.percent;
@@ -406,7 +437,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     }
 
     setLoading(true);
-    setUploadProgressText('Tworzenie oferty w bazie...');
+    setUploadProgressText(t('addOffer.step6.publish.creating'));
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
     const publication = buildCreatePublicationPayload({
@@ -431,14 +462,18 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       title:
         draft.title ||
         (draft.city === REST_OF_COUNTRY_CITY
-          ? `${draft.propertyType === 'FLAT' ? 'Mieszkanie' : 'Nieruchomość'} — ${draft.district || 'Polska'}`
-          : `${draft.propertyType === 'FLAT' ? 'Mieszkanie' : 'Nieruchomość'} w ${draft.city || 'Warszawie'}`),
+          ? (draft.propertyType === 'FLAT'
+              ? t('addOffer.step6.defaultTitle.flatRest', { locality: draft.district || t('addOffer.step6.defaultTitle.defaultCountry') })
+              : t('addOffer.step6.defaultTitle.propertyRest', { locality: draft.district || t('addOffer.step6.defaultTitle.defaultCountry') }))
+          : (draft.propertyType === 'FLAT'
+              ? t('addOffer.step6.defaultTitle.flatCity', { city: draft.city || t('addOffer.step6.defaultTitle.defaultCity') })
+              : t('addOffer.step6.defaultTitle.propertyCity', { city: draft.city || t('addOffer.step6.defaultTitle.defaultCity') }))),
       propertyType: draft.propertyType,
       transactionType: draft.transactionType,
       condition: draft.condition || 'READY',
-      city: draft.city || 'Warszawa',
-      district: draft.district || 'Śródmieście',
-      localityCountry: draft.localityCountry || 'Polska',
+      city: draft.city || t('addOffer.step6.defaultTitle.defaultCity'),
+      district: draft.district || t('addOffer.step6.defaultTitle.defaultDistrict'),
+      localityCountry: draft.localityCountry || t('addOffer.step6.defaultTitle.defaultCountry'),
       localityCountryCode: draft.localityCountryCode || 'PL',
       street: draft.street || '',
       buildingNumber: draft.buildingNumber || '',
@@ -464,6 +499,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       hasStorage: draft.hasStorage || false,
       hasParking: draft.hasParking || false,
       hasGarden: draft.hasGarden || false,
+      isTwoLevel: draft.isTwoLevel || false,
       isFurnished: draft.isFurnished || false,
       heating: String(draft.heating || '').trim() || null,
       ...(isPolandOffer
@@ -509,7 +545,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         throw new Error(
           (errData as { message?: string }).message ||
             (errData as { error?: string }).error ||
-            'Błąd serwera przy wystawianiu ogłoszenia na rynek',
+            t('addOffer.step6.alerts.publishError.serverError'),
         );
       }
 
@@ -524,7 +560,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           let type = 'image/jpeg';
 
           if (localUri.toLowerCase().endsWith('.heic') || localUri.toLowerCase().endsWith('.heif')) {
-            setUploadProgressText(`Konwersja zdjęcia ${i + 1} (HEIC ➜ JPG)...`);
+            setUploadProgressText(t('addOffer.step6.publish.convertingPhoto', { current: i + 1 }));
             const manipResult = await ImageManipulator.manipulateAsync(
               localUri, [], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
             );
@@ -532,7 +568,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
           }
 
-          setUploadProgressText(`Wysyłanie zdjęcia ${i + 1} z ${draft.images.length}...`);
+          setUploadProgressText(t('addOffer.step6.publish.uploadingPhoto', { current: i + 1, total: draft.images.length }));
 
           const formData = new FormData();
           formData.append('offerId', String(createdOfferId));
@@ -545,8 +581,13 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           });
 
           if (!uploadRes.ok) {
-            const errText = await uploadRes.json().catch(() => ({ error: 'Nieznany błąd uploadu' }));
-            throw new Error(`Zdjęcie ${i + 1}: ${errText.error || 'Odrzucone przez serwer'}`);
+            const errText = await uploadRes.json().catch(() => ({ error: t('addOffer.step6.alerts.publishError.uploadUnknown') }));
+            throw new Error(
+              t('addOffer.step6.alerts.publishError.photoError', {
+                index: i + 1,
+                message: errText.error || t('addOffer.step6.alerts.publishError.uploadRejected'),
+              }),
+            );
           }
         }
       }
@@ -557,7 +598,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           let fpName = fpUri.split('/').pop() || 'floorplan.jpg';
           
           if (fpUri.toLowerCase().endsWith('.heic') || fpUri.toLowerCase().endsWith('.heif')) {
-              setUploadProgressText('Konwersja rzutu (HEIC ➜ JPG)...');
+              setUploadProgressText(t('addOffer.step6.publish.convertingFloorPlan'));
               const manip = await ImageManipulator.manipulateAsync(
                   fpUri, [], { format: ImageManipulator.SaveFormat.JPEG, compress: 0.8 }
               );
@@ -565,7 +606,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               fpName = fpName.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
           }
 
-          setUploadProgressText('Wysyłanie rzutu nieruchomości...');
+          setUploadProgressText(t('addOffer.step6.publish.uploadingFloorPlan'));
           const fpFormData = new FormData();
           fpFormData.append('offerId', String(createdOfferId));
           fpFormData.append('file', { uri: fpUri, name: fpName, type: 'image/jpeg' } as any);
@@ -578,8 +619,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           });
 
           if (!fpUploadRes.ok) {
-            const errText = await fpUploadRes.json().catch(() => ({ error: 'Nieznany błąd rzutu' }));
-            throw new Error(`Rzut: ${errText.error || 'Odrzucony przez serwer'}`);
+            const errText = await fpUploadRes.json().catch(() => ({ error: t('addOffer.step6.alerts.publishError.floorPlanUnknown') }));
+            throw new Error(
+              t('addOffer.step6.alerts.publishError.floorPlanError', {
+                message: errText.error || t('addOffer.step6.alerts.publishError.uploadRejected'),
+              }),
+            );
           }
       }
 
@@ -609,11 +654,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        'Gratulacje! 🎉',
+        t('addOffer.step6.alerts.congratulations.title'),
         legalQueueSubmitted
-          ? 'Oferta została pomyślnie dodana, a numer KW wraz z lokalem został wysłany do weryfikacji administratora. Ogłoszenie po moderacji będzie widoczne na radarze.'
-          : 'Oferta została pomyślnie dodana. Po szybkiej weryfikacji będzie widoczna na radarze.',
-        [{ text: "Super", onPress: () => {
+          ? t('addOffer.step6.alerts.congratulations.messageWithLegal')
+          : t('addOffer.step6.alerts.congratulations.messageDefault'),
+        [{ text: t('addOffer.common.super'), onPress: () => {
             /* 1) Wyczyść draft NATYCHMIAST — w razie powrotu do taba "Dodaj"
                   user widzi czysty Step1, nie poprzednią ofertę.
                2) `popToTop()` — natywna metoda native-stack-navigator, zwija
@@ -649,17 +694,19 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       let detail = '';
       if (plusConsume?.transactionId) {
         pendingPlusCreditRef.current = plusConsume;
-        detail +=
-          '\n\nOpłata za wystawienie została przyjęta, ale ogłoszenie nie trafiło na rynek — naciśnij „Opublikuj w Ekosystemie” ponownie (bez drugiej opłaty).';
+        detail += t('addOffer.step6.alerts.publishError.plusPaidRetry');
       }
       if (createdOfferId != null && token) {
         const archived = await archiveOwnOfferViaMobileAdmin(API_URL, token, createdOfferId);
         detail += archived
-          ? '\n\nNieukończoną ofertę wycofaliśmy automatycznie — możesz bezpiecznie spróbować ponownie.'
-          : `\n\nNie udało się automatycznie wycofać oferty z błędem publikacji (ID: ${createdOfferId}). Napisz do pomocy, żeby usunęli duplikat.`;
+          ? t('addOffer.step6.alerts.publishError.archived')
+          : t('addOffer.step6.alerts.publishError.archiveFailed', { id: createdOfferId });
       }
 
-      Alert.alert('Błąd', `${error.message || 'Wystąpił problem z połączeniem.'}${detail}`);
+      Alert.alert(
+        t('addOffer.common.alerts.error.title'),
+        `${error.message || t('addOffer.step6.alerts.publishError.connectionFallback')}${detail}`,
+      );
     } finally {
       setLoading(false);
       setUploadProgressText('');
@@ -728,9 +775,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       if (draft.street) {
         return mapExact
           ? String(draft.street)
-          : `${stripHouseNumber(draft.street) || draft.street} · numer ukryty (obszar ~200 m)`;
+          : t('addOffer.step6.location.hiddenWithArea', {
+              street: stripHouseNumber(draft.street) || draft.street,
+            });
       }
-      return !mapExact ? 'Ukryty (obszar ~200 m)' : '';
+      return !mapExact ? t('addOffer.step6.location.hiddenApprox') : '';
     })();
     const publicAddressIcon: React.ComponentProps<typeof Ionicons>['name'] = mapExact ? 'map' : 'shield-checkmark-outline';
 
@@ -761,7 +810,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     return (
       <View style={styles.locationStack}>
         {locationText ? (
-          <StackItem icon="location" label="Lokalizacja">
+          <StackItem icon="location" label={t('addOffer.step6.location.label')}>
             <Text style={styles.locationFlag} accessibilityLabel={countryLabelPl}>
               {locationFlag}
             </Text>
@@ -769,7 +818,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           </StackItem>
         ) : null}
         {publicAddress ? (
-          <StackItem icon={publicAddressIcon} label="Adres publiczny">
+          <StackItem icon={publicAddressIcon} label={t('addOffer.step6.location.publicAddress')}>
             <Text style={[styles.locationStackValue, { color: colors.text }]}>{publicAddress}</Text>
           </StackItem>
         ) : null}
@@ -796,20 +845,28 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     (summaryIsZeroCommission || priceNum > 0);
   const summaryCommissionAmountLabel =
     summaryIsZeroCommission
-      ? 'BEZ PROWIZJI'
+      ? t('addOffer.step4.commission.amountZero')
       : priceNum > 0 && summaryCommissionAmount < 1
-        ? '< 1 PLN'
+        ? t('addOffer.step6.commissionSummary.amountUnderOne')
         : formatPlnAmount(summaryCommissionAmount);
   const summaryAccent = summaryIsZeroCommission ? '#10b981' : '#FF9F0A';
   const summaryAccentBorder = summaryIsZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.45)';
   const summaryAccentBadgeBg = summaryIsZeroCommission ? 'rgba(16,185,129,0.18)' : 'rgba(255,159,10,0.14)';
-  const activeAmenities = AMENITY_META.filter((a) => draft[a.key]);
+  const activeAmenities = AMENITY_META.filter((key) => draft[key]);
   const propertyTypeLabel =
-    draft.propertyType === 'FLAT' || draft.propertyType === 'APARTMENT' ? 'Mieszkanie' :
-    draft.propertyType === 'HOUSE' ? 'Dom' :
-    draft.propertyType === 'PLOT' ? 'Działka' :
-    draft.propertyType === 'PREMISES' ? 'Lokal' : String(draft.propertyType || '');
-  const conditionLabel = formatConditionLabel(draft.condition);
+    draft.propertyType === 'FLAT' || draft.propertyType === 'APARTMENT'
+      ? t('addOffer.step6.propertyType.flat')
+      : draft.propertyType === 'HOUSE'
+        ? t('addOffer.step6.propertyType.house')
+        : draft.propertyType === 'PLOT'
+          ? t('addOffer.step6.propertyType.plot')
+          : draft.propertyType === 'PREMISES'
+            ? t('addOffer.step6.propertyType.premises')
+            : t('addOffer.step6.propertyType.fallback');
+  const conditionLabel = formatConditionLabel(draft.condition, t);
+  const heatingSummaryLabel = t(
+    HEATING_LABEL_KEYS[String(draft.heating || '')] || 'addOffer.step3.heating.none',
+  );
   const propertyTypeIcon: React.ComponentProps<typeof Ionicons>['name'] =
     draft.propertyType === 'HOUSE' ? 'home-outline' :
     draft.propertyType === 'PLOT' ? 'map-outline' :
@@ -858,7 +915,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           ) : (
             <View style={[styles.carouselImage, { backgroundColor: isDark ? '#111' : '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginLeft: 20, borderWidth: 1, borderColor: isDark ? '#333' : '#D1D5DB' }]}>
               <Ionicons name="images-outline" size={50} color={colors.subtitle} />
-              <Text style={{ marginTop: 10, color: colors.subtitle, fontWeight: '600' }}>Brak zdjęć w ofercie</Text>
+              <Text style={{ marginTop: 10, color: colors.subtitle, fontWeight: '600' }}>{t('addOffer.step6.noPhotos')}</Text>
             </View>
           )}
         </View>
@@ -877,7 +934,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                   </Text>
                 ) : null}
                 {draft.transactionType === 'RENT' ? (
-                  <Text style={[styles.priceSubLabel, { marginTop: 4, color: colors.subtitle }]}>Czynsz najmu (całkowity)</Text>
+                  <Text style={[styles.priceSubLabel, { marginTop: 4, color: colors.subtitle }]}>{t('addOffer.step6.rentLabel')}</Text>
                 ) : null}
                 {pricePerSqm != null ? (
                   <Text style={[styles.pricePerSqmText, { color: colors.subtitle }]}>
@@ -885,17 +942,21 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                   </Text>
                 ) : null}
                 {draft.transactionType === 'RENT' && depositNum > 0 ? (
-                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Kaucja {Math.round(depositNum).toLocaleString('pl-PL')} PLN</Text>
+                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
+                    {t('addOffer.step6.depositLabel', { amount: Math.round(depositNum).toLocaleString('pl-PL') })}
+                  </Text>
                 ) : null}
                 {draft.transactionType === 'SALE' && adminFeeValue > 0 ? (
-                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>Czynsz administracyjny ~ {Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN</Text>
+                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
+                    {t('addOffer.step6.adminFeeLabel', { amount: Math.round(adminFeeValue).toLocaleString('pl-PL') })}
+                  </Text>
                 ) : null}
                 {showSummaryCommission ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle, marginTop: 6, fontWeight: '600' }]}>
-                    Prowizja:{' '}
+                    {t('addOffer.step6.commissionSummary.label')}{' '}
                     <Text style={{ color: colors.text, fontWeight: '700' }}>
                       {summaryIsZeroCommission
-                        ? 'bez prowizji (0%)'
+                        ? t('addOffer.step6.commissionSummary.zero')
                         : `${formatPercentLabel(summaryCommissionPercent!)} · ${summaryCommissionAmountLabel}`}
                     </Text>
                   </Text>
@@ -903,7 +964,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               </View>
               <View style={[styles.typePill, { backgroundColor: draft.transactionType === 'RENT' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(16, 185, 129, 0.15)' }]}>
                 <Text style={[styles.typePillText, { color: draft.transactionType === 'RENT' ? '#60a5fa' : '#34d399' }]}>
-                  {draft.transactionType === 'RENT' ? 'WYNAJEM' : 'SPRZEDAŻ'}
+                  {draft.transactionType === 'RENT' ? t('addOffer.step6.transactionPill.rent') : t('addOffer.step6.transactionPill.sell')}
                 </Text>
               </View>
             </View>
@@ -918,6 +979,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               cardBorderColor={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.12)'}
               cardBgColor={isDark ? '#141416' : '#E5E7EB'}
               draftSalt={`${draft.city || ''}|${draft.district || ''}|${draft.street || ''}|${mapLat.toFixed(5)}:${mapLng.toFixed(5)}`}
+              translate={t}
             />
           </View>
 
@@ -931,7 +993,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                     color={summaryAccent}
                   />
                   <Text style={[styles.commissionSummaryBadgeText, { color: summaryAccent }]}>
-                    EstateOS™ Agent
+                    {t('addOffer.step6.commission.badge')}
                   </Text>
                 </View>
                 <Text style={[styles.commissionSummaryPercent, { color: summaryAccent }]}>
@@ -939,7 +1001,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 </Text>
               </View>
               <Text style={[styles.commissionSummaryTitle, { color: colors.text }]}>
-                {summaryIsZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+                {summaryIsZeroCommission ? t('addOffer.step6.commission.titleZero') : t('addOffer.step6.commission.titleDefault')}
               </Text>
               <Text style={[styles.commissionSummaryAmount, { color: colors.text }]}>
                 {summaryCommissionAmountLabel}
@@ -947,15 +1009,21 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               <Text style={[styles.commissionSummaryDesc, { color: colors.subtitle }]}>
                 {summaryIsZeroCommission ? (
                   <>
-                    Kupujący <Text style={{ fontWeight: '800', color: summaryAccent }}>nie płaci prowizji</Text> na tej ofercie. Adnotacja „Bez prowizji” pojawi się przy ogłoszeniu — buduje zaufanie i przyciąga uwagę.
+                    {t('addOffer.step6.commission.subtitleZeroPrefix')}{' '}
+                    <Text style={{ fontWeight: '800', color: summaryAccent }}>
+                      {t('addOffer.step6.commission.subtitleZeroHighlight')}
+                    </Text>{' '}
+                    {t('addOffer.step6.commission.subtitleZeroSuffix')}
                   </>
                 ) : (
                   <>
-                    Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny{' '}
-                    <Text style={{ fontWeight: '800', color: summaryAccent }}>{formatPercentLabel(summaryCommissionPercent!)}</Text>{' '}
-                    stanowi Twoją prowizję — opłacaną bezpośrednio agentowi po sfinalizowaniu transakcji.{' '}
+                    {t('addOffer.step6.commission.subtitleDefaultPrefix')}{' '}
+                    <Text style={{ fontWeight: '800', color: summaryAccent }}>
+                      {formatPercentLabel(summaryCommissionPercent!)}
+                    </Text>{' '}
+                    {t('addOffer.step6.commission.subtitleDefaultSuffix')}{' '}
                     <Text style={{ fontWeight: '800', color: colors.text }}>
-                      Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.
+                      {t('addOffer.step6.commission.subtitleVatNote')}
                     </Text>
                   </>
                 )}
@@ -972,33 +1040,41 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           ) : null}
 
           <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)', shadowColor: isDark ? '#000' : '#9CA3AF' }]}>
-            <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>PARAMETRY NIERUCHOMOŚCI</Text>
+            <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>{t('addOffer.step6.sections.parameters')}</Text>
             <View style={styles.gridBox}>
-              <InfoBadge label="Typ" value={propertyTypeLabel} icon={propertyTypeIcon} />
-              <InfoBadge label="Powierzchnia" value={draft.area ? `${draft.area} m²` : ''} icon="resize-outline" />
-              <InfoBadge label="Pokoje" value={draft.rooms ? `${draft.rooms} pok.` : ''} icon="bed-outline" />
-              <InfoBadge label="Piętro" value={formatFloorSummary(draft.floor)} icon="layers-outline" />
-              <InfoBadge label="Rok budowy" value={yearLabel} icon="calendar-outline" />
-              <InfoBadge label="Czynsz admin." value={adminFeeValue > 0 ? `${Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN` : ''} icon="wallet-outline" />
-              <InfoBadge label="Ogrzewanie" value={String(draft.heating || '').trim()} icon="flame-outline" />
-              <InfoBadge label="Umeblowanie" value={draft.isFurnished ? 'Tak' : 'Nie'} icon="bed-outline" />
-              <InfoBadge label="Kondygnacje w bud." value={draft.totalFloors ? String(draft.totalFloors) : ''} icon="albums-outline" />
-              <InfoBadge label="Działka" value={draft.plotArea ? `${draft.plotArea} m²` : ''} icon="trail-sign-outline" />
-              <InfoBadge label="Stan" value={draft.propertyType !== 'PLOT' ? conditionLabel : ''} icon={conditionIcon} />
+              <InfoBadge label={t('addOffer.step6.badges.type')} value={propertyTypeLabel} icon={propertyTypeIcon} />
+              <InfoBadge label={t('addOffer.step6.badges.area')} value={draft.area ? `${draft.area} m²` : ''} icon="resize-outline" />
+              <InfoBadge
+                label={t('addOffer.step6.badges.rooms')}
+                value={draft.rooms ? t('addOffer.step6.badges.roomsValue', { count: draft.rooms }) : ''}
+                icon="bed-outline"
+              />
+              <InfoBadge label={t('addOffer.step6.badges.floor')} value={formatFloorSummary(draft.floor, t)} icon="layers-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.yearBuilt')} value={yearLabel} icon="calendar-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.adminFee')} value={adminFeeValue > 0 ? `${Math.round(adminFeeValue).toLocaleString('pl-PL')} PLN` : ''} icon="wallet-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.heating')} value={heatingSummaryLabel} icon="flame-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.furnished')} value={draft.isFurnished ? t('addOffer.common.yes') : t('addOffer.common.no')} icon="bed-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.totalFloors')} value={draft.totalFloors ? String(draft.totalFloors) : ''} icon="albums-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.plot')} value={draft.plotArea ? `${draft.plotArea} m²` : ''} icon="trail-sign-outline" />
+              <InfoBadge label={t('addOffer.step6.badges.condition')} value={draft.propertyType !== 'PLOT' ? conditionLabel : ''} icon={conditionIcon} />
             </View>
-            <Text style={[styles.sectionTitle, { marginTop: 18, color: colors.subtitle }]}>MEDIA I MATERIAŁY</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 18, color: colors.subtitle }]}>{t('addOffer.step6.sections.media')}</Text>
             <Text style={[styles.mediaSummaryText, { color: colors.subtitle }]}>
-              Zdjęcia: {draft.images?.length || 0} · Plan rzutu: {draft.floorPlan ? 'tak' : 'nie'} · Wideo: {draft.videoUrl?.trim() ? 'tak' : 'nie'}
+              {t('addOffer.step6.mediaSummary', {
+                photos: draft.images?.length || 0,
+                floorPlan: draft.floorPlan ? t('addOffer.step6.mediaYes') : t('addOffer.step6.mediaNo'),
+                video: draft.videoUrl?.trim() ? t('addOffer.step6.mediaYes') : t('addOffer.step6.mediaNo'),
+              })}
             </Text>
           </View>
 
           {activeAmenities.length > 0 ? (
             <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)', shadowColor: isDark ? '#000' : '#9CA3AF' }]}>
-              <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>UDOGODNIENIA</Text>
+              <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>{t('addOffer.step6.sections.amenities')}</Text>
               <View style={styles.amenitiesWrap}>
-                {activeAmenities.map((a) => (
-                  <View key={a.key} style={[styles.amenityPill, { backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.1)' }]}>
-                    <Text style={[styles.amenityPillText, { color: colors.text }]}>{a.label}</Text>
+                {activeAmenities.map((key) => (
+                  <View key={key} style={[styles.amenityPill, { backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,24,39,0.1)' }]}>
+                    <Text style={[styles.amenityPillText, { color: colors.text }]}>{t(AMENITY_LABEL_KEYS[key])}</Text>
                   </View>
                 ))}
               </View>
@@ -1007,7 +1083,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
           {draft.description ? (
             <View style={[styles.premiumCard, { backgroundColor: colors.card, borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.08)', shadowColor: isDark ? '#000' : '#9CA3AF' }]}>
-              <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>OPIS AI / WŁASNY</Text>
+              <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>{t('addOffer.step6.sections.description')}</Text>
               <Text style={[styles.descriptionText, { color: colors.text }]}>{draft.description}</Text>
             </View>
           ) : null}
@@ -1018,12 +1094,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.blurWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.1)' }]}>
           {!isFinalDraftValid && invalidSteps.length > 0 ? (
             <Text style={[styles.validationHint, { color: colors.subtitle }]}>
-              Brakuje danych w kroku {invalidSteps.join(', ')} — dotknij przucisku, aby przejść do uzupełnienia.
+              {t('addOffer.step6.validationHint', { steps: invalidSteps.join(', ') })}
             </Text>
           ) : null}
           {isFinalDraftValid && hasAdditionalPlusPublication(user) ? (
             <Text style={[styles.validationHint, { color: '#10B981' }]}>
-              Masz Pakiet Plus na koncie — publikacja zużyje 1 kredyt (bez drugiej opłaty w sklepie).
+              {t('addOffer.step6.plusCreditHint')}
             </Text>
           ) : null}
           <Pressable
@@ -1039,11 +1115,15 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           >
             {loading ? <ActivityIndicator color="#FFF" style={{ marginRight: 10 }} /> : <Ionicons name="rocket" size={20} color="#fff" style={{ marginRight: 10 }} />}
             <Text style={styles.publishButtonText}>
-              {loading ? (uploadProgressText || 'Publikowanie...') : isFinalDraftValid ? 'Opublikuj w Ekosystemie' : 'Uzupełnij dane oferty'}
+              {loading
+                ? uploadProgressText || t('addOffer.step6.publish.publishing')
+                : isFinalDraftValid
+                  ? t('addOffer.step6.publish.publish')
+                  : t('addOffer.step6.publish.completeData')}
             </Text>
           </Pressable>
           <Pressable onPress={handleGoBack} disabled={loading} style={({ pressed }) => [styles.editButton, { opacity: pressed ? 0.5 : 1 }]}>
-            <Text style={[styles.editButtonText, { color: colors.subtitle }]}>Wróć i popraw dane</Text>
+            <Text style={[styles.editButtonText, { color: colors.subtitle }]}>{t('addOffer.step6.publish.editData')}</Text>
           </Pressable>
         </BlurView>
       </View>

@@ -44,6 +44,7 @@ import {
 } from '../utils/radarRecentAreas';
 import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
+import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import {
   STRICT_CITIES,
   STRICT_CITY_DISTRICTS,
@@ -51,11 +52,27 @@ import {
   resolveLocalityCountryFromPlace,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
-import { isOfferClosed } from '../utils/offerLifecycle';
+import { getOfferLifecycleState, isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
+import CurrencySegmentControl from '../components/CurrencySegmentControl';
+import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
+import PolandScopeNote from '../components/PolandScopeNote';
+import { advancedPriceBoundsToPln, convertBetweenCurrencies } from '../money/convert';
+import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../money/format';
+import { resolveOfferListingPrice } from '../money/offerPrice';
+import type { ListingCurrency } from '../money/types';
+import { useMoneyContext } from '../money/useMoneyContext';
+import { useI18n } from '../i18n';
+import { t as translate } from '../i18n/translate';
+import {
+  isFavoriteId,
+  loadFavoriteIds,
+  normalizeFavoriteIds,
+  toggleFavoriteId,
+} from '../utils/favoritesStorage';
 
 // --- LUKSUSOWA SOCZEWKA KALIBRACJI (APPLE-STYLE) ---
 const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, isDark: boolean, diameter: number }) => {
@@ -234,11 +251,15 @@ function normalizeSearchText(s: string) {
 
 function pluralOffers(n: number) {
   const abs = Math.abs(n);
-  if (abs === 1) return 'oferta';
+  if (abs === 1) return translate('radar.plural.offerOne');
   const mod10 = abs % 10;
   const mod100 = abs % 100;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return 'oferty';
-  return 'ofert';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return translate('radar.plural.offerFew');
+  return translate('radar.plural.offerMany');
+}
+
+function radarMatchesVerb(n: number) {
+  return Math.abs(n) === 1 ? translate('radar.plural.matchesVerbOne') : translate('radar.plural.matchesVerbMany');
 }
 
 type RankedSuggestion = {
@@ -290,6 +311,11 @@ function isBlockedMapOffer(offer: MapOffer, blockedIds: Set<number>): boolean {
   return extractOfferOwnerCandidateIds(offer).some((id) => blockedIds.has(id));
 }
 
+function isMapOfferOwnedByUser(offer: MapOffer, userId: number): boolean {
+  if (!userId) return false;
+  return extractOfferOwnerCandidateIds(offer).includes(userId);
+}
+
 type AdvancedLocationMode = 'CITY' | 'MAP';
 type AdvancedMapBounds = {
   centerLat: number;
@@ -298,16 +324,36 @@ type AdvancedMapBounds = {
 };
 type AdvancedFilters = {
   transactionType: 'SELL' | 'RENT';
+  priceCurrency: ListingCurrency;
   minPrice: number | null;
   maxPrice: number | null;
   minArea: number | null;
   maxArea: number | null;
+  minPlotArea: number | null;
+  maxPlotArea: number | null;
   minRooms: number | null;
   city: string;
   districts: string[];
   locationMode: AdvancedLocationMode;
   mapBounds: AdvancedMapBounds | null;
   propertyType: 'ALL' | 'FLAT' | 'HOUSE' | 'PLOT' | 'COMMERCIAL';
+};
+
+const DEFAULT_ADVANCED_FILTERS: AdvancedFilters = {
+  transactionType: 'SELL',
+  priceCurrency: 'PLN',
+  minPrice: null,
+  maxPrice: null,
+  minArea: null,
+  maxArea: null,
+  minPlotArea: null,
+  maxPlotArea: null,
+  minRooms: null,
+  city: '',
+  districts: [],
+  locationMode: 'CITY',
+  mapBounds: null,
+  propertyType: 'ALL',
 };
 type RadarAreaDraft = {
   center: { latitude: number; longitude: number };
@@ -322,19 +368,12 @@ const toAbsoluteImage = (img: string | null | undefined) => {
   return img;
 };
 
-const formatMarkerPrice = (price: string) => {
-  const raw = Number(String(price).replace(/[^\d]/g, ''));
-  if (!Number.isFinite(raw) || raw <= 0) return '---';
-  if (raw >= 1000000) return `${(raw / 1000000).toFixed(1)}M`;
-  return `${Math.round(raw / 1000)}k`;
-};
-
 const getTransactionBadge = (rawTransactionType: unknown) => {
   const normalized = String(rawTransactionType || '').toUpperCase();
   if (normalized === 'RENT') {
-    return { label: 'WYNAJEM', color: RENT_MARKER_COLOR };
+    return { label: translate('radar.home.transactionRent'), color: RENT_MARKER_COLOR };
   }
-  return { label: 'SPRZEDAŻ', color: SELL_MARKER_COLOR };
+  return { label: translate('radar.home.transactionSell'), color: SELL_MARKER_COLOR };
 };
 
 /**
@@ -389,17 +428,18 @@ function offerMarkerAccent(raw: any): string {
   return tx === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 }
 
-const formatOfferPublishDate = (raw: any) => {
+const formatOfferPublishDate = (raw: any, locale: 'pl' | 'en') => {
   const value =
     raw?.publishedAt ||
     raw?.published_at ||
     raw?.publicationDate ||
     raw?.createdAt ||
     raw?.created_at;
-  if (!value) return 'Publikacja: -';
+  if (!value) return translate('radar.home.publishDateEmpty');
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Publikacja: -';
-  return `Publikacja: ${date.toLocaleDateString('pl-PL')}`;
+  if (Number.isNaN(date.getTime())) return translate('radar.home.publishDateEmpty');
+  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  return translate('radar.home.publishDate', { date: date.toLocaleDateString(dateLocale) });
 };
 
 const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
@@ -413,6 +453,28 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
   const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
   return R * c;
 };
+
+/** Promień trybu „Oferty w Twojej okolicy" na Radarze (bez filtrów / wyszukiwania). */
+const NEARBY_RADIUS_KM = 25;
+
+/** Backend używa `PREMISES`, UI wyszukiwania rozszerzonego — `COMMERCIAL`. */
+function propertyTypeMatchesFilter(rawType: string, filterType: AdvancedFilters['propertyType']): boolean {
+  if (filterType === 'ALL') return true;
+  const raw = String(rawType || '').toUpperCase();
+  if (filterType === 'COMMERCIAL') return raw === 'PREMISES' || raw === 'COMMERCIAL';
+  return raw === filterType;
+}
+
+function regionForMapBounds(bounds: { centerLat: number; centerLng: number; radiusKm: number }): Region {
+  const latDelta = Math.max(0.025, (bounds.radiusKm / 111) * 2.6);
+  const lngDelta = Math.max(0.02, latDelta * 1.15);
+  return {
+    latitude: bounds.centerLat,
+    longitude: bounds.centerLng,
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
+  };
+}
 
 /** Max price: przy 100% sztywny limit kalibracji; przy niższej skali do +10% tolerancji (liniowo). */
 function radarPriceCap(maxPrice: number, matchThreshold: number): number {
@@ -502,10 +564,36 @@ function amenityScore(raw: any, rf: RadarFilters) {
     rf.requireElevator ? !!raw.hasElevator : null,
     rf.requireParking ? !!raw.hasParking : null,
     rf.requireFurnished ? !!raw.isFurnished : null,
+    rf.requireTwoLevel ? !!raw.isTwoLevel : null,
   ].filter((v) => v !== null) as boolean[];
   if (required.length === 0) return 100;
   const present = required.filter(Boolean).length;
   return clampScore((present / required.length) * 100);
+}
+
+/** Twarda bramka geograficzna — bez tego oferta spoza obszaru może wejść samą „punktacją” ceny/metrażu. */
+function passesRadarLocationGate(
+  offer: MapOffer,
+  rf: RadarFilters,
+  bounds: RadarMapBounds | null,
+): boolean {
+  const raw = offer.raw;
+  const lat = Number(offer.lat);
+  const lng = Number(offer.lng);
+
+  if (rf.calibrationMode === 'CITY') {
+    const rawCity = normalizeSearchText(String(raw.city || '').trim());
+    const selCity = normalizeSearchText(rf.city.trim());
+    if (selCity && !radarCityMatches(rawCity, selCity)) return false;
+    if (rf.selectedDistricts.length === 0) return true;
+    const rawDistrict = normalizeSearchText(String(raw.district || '').trim());
+    return rf.selectedDistricts.some((d) => normalizeSearchText(String(d).trim()) === rawDistrict);
+  }
+
+  if (!bounds || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  const limitKm = radarGeoRadiusLimitKm(bounds.radiusKm, rf.matchThreshold);
+  const dKm = distanceKm(bounds.centerLat, bounds.centerLng, lat, lng);
+  return dKm <= limitKm;
 }
 
 function locationScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds | null) {
@@ -522,7 +610,7 @@ function locationScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds
     return districtMatch ? 100 : 50;
   }
 
-  if (!bounds) return 100;
+  if (!bounds) return 0;
   const baseRadius = Math.max(0.1, bounds.radiusKm);
   const dKm = distanceKm(bounds.centerLat, bounds.centerLng, offer.lat, offer.lng);
   if (dKm <= baseRadius) return 100;
@@ -564,6 +652,7 @@ function matchesRadarCalibration(
   rf: RadarFilters,
   bounds: RadarMapBounds | null
 ): boolean {
+  if (!passesRadarLocationGate(offer, rf, bounds)) return false;
   return radarMatchScore(offer, rf, bounds) >= Math.max(50, Math.min(100, rf.matchThreshold));
 }
 
@@ -595,6 +684,7 @@ const RadarAuthGateModal = ({
   onLoginPress: () => void;
   onRegisterPress: () => void;
 }) => {
+  const { t } = useI18n();
   const fade = useRef(new Animated.Value(0)).current;
   const lift = useRef(new Animated.Value(40)).current;
   const scale = useRef(new Animated.Value(0.94)).current;
@@ -614,10 +704,8 @@ const RadarAuthGateModal = ({
   }, [visible, fade, lift, scale]);
 
   const isFavorites = context === 'favorites';
-  const title = isFavorites ? 'Zaloguj się, by zarządzać Ulubionymi' : 'Zaloguj się, by aktywować Radar';
-  const subtitle = isFavorites
-    ? 'Powiadomienia o zmianach cen, propozycjach od kupujących i nowych podobnych ofertach wymagają konta — dzięki temu wiemy, do kogo wysłać alert.'
-    : 'Radar EstateOS™ wysyła powiadomienia push o ofertach pasujących do Twoich kryteriów. Bez konta nie ma do kogo przypisać preferencji ani komu wysłać alertu.';
+  const title = isFavorites ? t('radar.authGate.titleFavorites') : t('radar.authGate.titleRadar');
+  const subtitle = isFavorites ? t('radar.authGate.subtitleFavorites') : t('radar.authGate.subtitleRadar');
 
   const accent = '#10b981';
   const cardBg = isDark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.96)';
@@ -647,15 +735,15 @@ const RadarAuthGateModal = ({
           <View style={[authGateStyles.bulletList, { borderColor }]}>
             <View style={authGateStyles.bulletRow}>
               <Ionicons name="notifications-outline" size={16} color={accent} />
-              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Powiadomienia push o nowych dopasowaniach</Text>
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>{t('radar.authGate.bulletPush')}</Text>
             </View>
             <View style={authGateStyles.bulletRow}>
               <Ionicons name="sync-outline" size={16} color={accent} />
-              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Synchronizacja filtrów między urządzeniami</Text>
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>{t('radar.authGate.bulletSync')}</Text>
             </View>
             <View style={authGateStyles.bulletRow}>
               <Ionicons name="lock-closed-outline" size={16} color={accent} />
-              <Text style={[authGateStyles.bulletText, { color: textColor }]}>Bezpieczne zapisanie Twoich preferencji</Text>
+              <Text style={[authGateStyles.bulletText, { color: textColor }]}>{t('radar.authGate.bulletSecure')}</Text>
             </View>
           </View>
 
@@ -669,7 +757,7 @@ const RadarAuthGateModal = ({
               onLoginPress();
             }}
           >
-            <Text style={authGateStyles.primaryBtnText}>Zaloguj się</Text>
+            <Text style={authGateStyles.primaryBtnText}>{t('radar.authGate.login')}</Text>
           </Pressable>
 
           <Pressable
@@ -679,14 +767,14 @@ const RadarAuthGateModal = ({
               onRegisterPress();
             }}
           >
-            <Text style={[authGateStyles.secondaryBtnText, { color: accent }]}>Załóż konto</Text>
+            <Text style={[authGateStyles.secondaryBtnText, { color: accent }]}>{t('radar.authGate.register')}</Text>
           </Pressable>
 
           <Pressable
             style={({ pressed }) => [authGateStyles.ghostBtn, { opacity: pressed ? 0.6 : 1 }]}
             onPress={onCancel}
           >
-            <Text style={[authGateStyles.ghostBtnText, { color: subtitleColor }]}>Może później</Text>
+            <Text style={[authGateStyles.ghostBtnText, { color: subtitleColor }]}>{t('radar.authGate.later')}</Text>
           </Pressable>
         </Animated.View>
       </Animated.View>
@@ -801,6 +889,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const systemScheme = useColorScheme();
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
+  const { formatOffer, preference, rate } = useMoneyContext();
+  const { t, locale } = useI18n();
+  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
@@ -808,7 +899,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [offers, setOffers] = useState<MapOffer[]>([]);
+  /** Własne ogłoszenia z `includeAll` — mogą być ACTIVE w profilu, ale poza publicznym feedem Radaru. */
+  const [ownerMapOffers, setOwnerMapOffers] = useState<MapOffer[]>([]);
+  const [ownerActiveAccountCount, setOwnerActiveAccountCount] = useState(0);
   const [ownerLegalByOfferId, setOwnerLegalByOfferId] = useState<Record<number, boolean>>({});
+  /** Ulubione zapisane serduszkiem, ale poza aktualnym feedem mapy — dociągane po ID. */
+  const [favoriteHydratedOffers, setFavoriteHydratedOffers] = useState<MapOffer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -864,32 +960,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   
   const [isMapMoving, setIsMapMoving] = useState(false);
 
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
-    transactionType: 'SELL',
-    minPrice: null,
-    maxPrice: null,
-    minArea: null,
-    maxArea: null,
-    minRooms: null,
-    city: '',
-    districts: [],
-    locationMode: 'CITY',
-    mapBounds: null,
-    propertyType: 'ALL',
-  });
-  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<AdvancedFilters>({
-    transactionType: 'SELL',
-    minPrice: null,
-    maxPrice: null,
-    minArea: null,
-    maxArea: null,
-    minRooms: null,
-    city: '',
-    districts: [],
-    locationMode: 'CITY',
-    mapBounds: null,
-    propertyType: 'ALL',
-  });
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = useState<AdvancedFilters>(DEFAULT_ADVANCED_FILTERS);
   const [draftOfferIdInput, setDraftOfferIdInput] = useState('');
   const [advancedOfferIdBusy, setAdvancedOfferIdBusy] = useState(false);
   /** Bez KeyboardAvoidingView w modalu — tylko padding od klawiatury, żeby sheet się nie „wystrzeliwał” w górę. */
@@ -911,6 +983,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     requireElevator: false,
     requireParking: false,
     requireFurnished: false,
+    requireTwoLevel: false,
     pushNotifications: !!isRadarActive,
     matchThreshold: 100,
     favoritesNotifyPriceChange: true,
@@ -1244,6 +1317,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return t.split(/\s+/).filter(Boolean);
   }, [searchQuery]);
 
+  const myOffersForMap = useMemo(() => {
+    const myId = Number(user?.id || 0);
+    if (!myId) return [] as MapOffer[];
+    const myFromPublic = offers.filter((o) => isMapOfferOwnedByUser(o, myId));
+    const myPublicIds = new Set(myFromPublic.map((o) => Number(o.id)));
+    const myFromAccount = ownerMapOffers.filter((o) => !myPublicIds.has(Number(o.id)));
+    return [...myFromPublic, ...myFromAccount];
+  }, [offers, ownerMapOffers, user?.id]);
+
   const rankedPlaceSuggestions = useMemo((): RankedSuggestion[] => {
     const rawQ = searchQuery.trim();
     if (rawQ.length < 2) return [];
@@ -1272,18 +1354,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
     };
 
+    const myId = Number(user?.id || 0);
+    const browseOffers =
+      myId > 0 ? offers.filter((o) => !isMapOfferOwnedByUser(o, myId)) : offers;
     const sourceOffers = showOnlyFavorites
-      ? offers.filter((o) => favorites.includes(Number(o.id)))
-      : offers;
+      ? favoritesMapScope === 'MINE'
+        ? myOffersForMap
+        : browseOffers.filter((o) => favorites.includes(Number(o.id)))
+      : browseOffers;
 
     sourceOffers.forEach((o) => {
-      bump(o.raw?.city, 'Miasto');
-      bump(o.raw?.district, 'Dzielnica');
-      bump(o.raw?.street, 'Ulica');
-      bump(o.raw?.address, 'Adres');
+      bump(o.raw?.city, t('radar.home.searchCategoryCity'));
+      bump(o.raw?.district, t('radar.home.searchCategoryDistrict'));
+      bump(o.raw?.street, t('radar.home.searchCategoryStreet'));
+      bump(o.raw?.address, t('radar.home.searchCategoryAddress'));
       const title = String(o.raw?.title ?? '').trim();
       if (title && normalizeSearchText(title).includes(qFold)) {
-        const key = `Tytuł|${title}`;
+        const key = `${t('radar.home.searchCategoryTitle')}|${title}`;
         const vFold = normalizeSearchText(title);
         const vStarts = vFold.startsWith(qFold) ? 12 : 0;
         const cur = map.get(key);
@@ -1292,13 +1379,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           cur.count += 1;
           cur.score = Math.max(cur.score, sc);
         } else {
-          map.set(key, { value: title, category: 'Oferta', count: 1, score: sc });
+          map.set(key, { value: title, category: t('radar.home.searchCategoryOffer'), count: 1, score: sc });
         }
       }
     });
 
     return Array.from(map.values())
-      .sort((a, b) => b.score - a.score || b.count - a.count || a.value.localeCompare(b.value, 'pl'))
+      .sort((a, b) => b.score - a.score || b.count - a.count || a.value.localeCompare(b.value, locale === 'pl' ? 'pl' : 'en'))
       .slice(0, 14)
       .map((x, i) => ({
         key: `${x.category}-${x.value}-${i}`,
@@ -1306,7 +1393,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         category: x.category,
         count: x.count,
       }));
-  }, [offers, favorites, showOnlyFavorites, searchQuery]);
+  }, [offers, favorites, showOnlyFavorites, favoritesMapScope, searchQuery, myOffersForMap, user?.id, t, locale]);
 
   const backendCities = useMemo(() => {
     return [...STRICT_CITIES].sort((a, b) => a.localeCompare(b, 'pl'));
@@ -1321,37 +1408,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const searchOnlyMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) {
       if (showOnlyFavorites) {
-        const scopedBaseIds =
-          favoritesMapScope === 'MINE'
-            ? offers
-                .filter((o) => {
-                  const myId = Number(user?.id || 0);
-                  if (!myId) return false;
-                  const ownerCandidateIds = [
-                    o.raw?.userId,
-                    o.raw?.ownerId,
-                    o.raw?.sellerId,
-                    o.raw?.authorId,
-                    o.raw?.createdById,
-                    o.raw?.user?.id,
-                    o.raw?.owner?.id,
-                    o.raw?.seller?.id,
-                    o.raw?.createdBy?.id,
-                  ]
-                    .map((v) => Number(v || 0))
-                    .filter((v) => Number.isFinite(v) && v > 0);
-                  return ownerCandidateIds.includes(myId);
-                })
-                .map((o) => Number(o.id))
-            : favorites;
-        return offers.filter((o) => scopedBaseIds.includes(Number(o.id))).length;
+        if (favoritesMapScope === 'MINE') return myOffersForMap.length;
+        return normalizeFavoriteIds(favorites).length;
       }
-      return offers.length;
+      const myId = Number(user?.id || 0);
+      return myId > 0 ? offers.filter((o) => !isMapOfferOwnedByUser(o, myId)).length : offers.length;
     }
 
+    const myId = Number(user?.id || 0);
+    const browseOffers =
+      myId > 0 ? offers.filter((o) => !isMapOfferOwnedByUser(o, myId)) : offers;
     const sourceOffers = showOnlyFavorites
-      ? offers.filter((o) => favorites.includes(Number(o.id)))
-      : offers;
+      ? favoritesMapScope === 'MINE'
+        ? myOffersForMap
+        : browseOffers.filter((o) => favorites.includes(Number(o.id)))
+      : browseOffers;
 
     return sourceOffers.filter((o) =>
       normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok))
@@ -1364,6 +1435,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     user?.id,
     normalizedSearchTokens,
     haystackForOffer,
+    myOffersForMap,
   ]);
 
   const hasAdvancedFiltersActive = useMemo(() => {
@@ -1373,6 +1445,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       advancedFilters.maxPrice !== null ||
       advancedFilters.minArea !== null ||
       advancedFilters.maxArea !== null ||
+      advancedFilters.minPlotArea !== null ||
+      advancedFilters.maxPlotArea !== null ||
       advancedFilters.minRooms !== null ||
       advancedFilters.locationMode !== 'CITY' ||
       advancedFilters.mapBounds !== null ||
@@ -1517,24 +1591,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       firstImage = null;
     }
     const propertyLabel = o.propertyType === 'FLAT'
-      ? 'Mieszkanie'
+      ? t('radar.home.propertyFlat')
       : o.propertyType === 'HOUSE'
-        ? 'Dom'
+        ? t('radar.home.propertyHouse')
         : o.propertyType === 'PLOT'
-          ? 'Działka'
-          : 'Lokal';
+          ? t('radar.home.propertyPlot')
+          : t('radar.home.propertyPremises');
     return {
       id: o.id,
-      price: `${Number(o.price || 0).toLocaleString('pl-PL')} PLN`,
-      type: `${propertyLabel} • ${o.district || o.city || 'Lokalizacja'}`,
+      price: '',
+      type: `${propertyLabel} • ${o.district || o.city || t('radar.home.locationFallback')}`,
       area: `${o.area || 0} m²`,
-      rooms: `${o.rooms || '-'} pok.`,
+      rooms: `${o.rooms || '-'} ${t('radar.plural.roomsSuffix')}`,
       lat: Number(o.lat),
       lng: Number(o.lng),
       image: firstImage,
       raw: o,
     };
-  }, []);
+  }, [t]);
 
   /**
    * Pobranie ofert z backendu. `showSpinner=false` używamy w tle (Radar pollujący)
@@ -1637,20 +1711,56 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     useCallback(() => {
       let mounted = true;
       const loadFavorites = async () => {
-        try {
-          const raw = await AsyncStorage.getItem('@estateos_favorites');
-          if (!mounted) return;
-          setFavorites(raw ? JSON.parse(raw) : []);
-        } catch {
-          if (mounted) setFavorites([]);
-        }
+        const ids = await loadFavoriteIds();
+        if (!mounted) return;
+        setFavorites(ids);
       };
       loadFavorites();
       return () => {
         mounted = false;
       };
-    }, [])
+    }, [showOnlyFavorites])
   );
+
+  useEffect(() => {
+    const userId = Number(user?.id || 0);
+    const mineScope = showOnlyFavorites && favoritesMapScope === 'MINE';
+    if (!userId || !token || !mineScope) {
+      setOwnerMapOffers([]);
+      setOwnerActiveAccountCount(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${encodeURIComponent(String(userId))}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data?.offers) ? data.offers : [];
+        if (!res.ok || cancelled) return;
+        const accountActive = list.filter((o: any) => {
+          const life = getOfferLifecycleState(o);
+          return !life.isClosed && !life.isPending;
+        });
+        const mapped = accountActive
+          .map((o: any) => mapRawOffer(o))
+          .filter((m: MapOffer | null): m is MapOffer => m !== null);
+        if (cancelled) return;
+        setOwnerActiveAccountCount(accountActive.length);
+        setOwnerMapOffers(mapped);
+      } catch {
+        if (!cancelled) {
+          setOwnerActiveAccountCount(0);
+          setOwnerMapOffers([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, token, mapRawOffer, showOnlyFavorites, favoritesMapScope]);
 
   // Apple Guideline 1.2 — UGC: pomijamy oferty użytkowników zablokowanych
   // przez aktualnego usera. Filtr żyje TUTAJ (a nie w `setOffers`), żeby
@@ -1658,18 +1768,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const blockedIds = useBlockedUsersStore((s) => s.blockedIds);
 
   const filteredOffers = useMemo(() => {
-    const isMyOffer = (offer: MapOffer) => {
-      const myId = Number(user?.id || 0);
-      if (!myId) return false;
-      return extractOfferOwnerCandidateIds(offer).includes(myId);
-    };
+    const myId = Number(user?.id || 0);
 
     // Bazowa lista po wycięciu blokad — wszystkie poniższe gałęzie
     // (radar matches, search, advanced filters) operują na tym samym zbiorze.
     const offersAfterBlocks = blockedIds.size > 0 ? offers.filter((o) => !isBlockedMapOffer(o, blockedIds)) : offers;
+    // Własne ogłoszenia tylko w Ulubione → Moje (zielona zakładka), nie na Radarze rynku.
+    const offersForRadarBrowse =
+      myId > 0 ? offersAfterBlocks.filter((o) => !isMapOfferOwnedByUser(o, myId)) : offersAfterBlocks;
 
     const matchesAdvancedFilters = (offer: MapOffer) => {
-      const rawPrice = Number(String(offer.raw?.price ?? '').replace(/[^\d]/g, '')) || 0;
+      const listing = resolveOfferListingPrice(offer.raw, rate);
+      const rawPrice = listing.plnAmount > 0 ? listing.plnAmount : listing.amount;
       const rawArea = Number(String(offer.raw?.area ?? '').replace(',', '.')) || 0;
       const rawRooms = Number(String(offer.raw?.rooms ?? '').replace(/[^\d]/g, '')) || 0;
       const rawCity = normalizeSearchText(String(offer.raw?.city || '').trim());
@@ -1677,10 +1787,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const rawPropertyType = String(offer.raw?.propertyType || '').toUpperCase();
       const rawTransactionType = String(offer.raw?.transactionType || '').toUpperCase();
       if (rawTransactionType !== advancedFilters.transactionType) return false;
-      if (advancedFilters.minPrice !== null && rawPrice < advancedFilters.minPrice) return false;
-      if (advancedFilters.maxPrice !== null && rawPrice > advancedFilters.maxPrice) return false;
+      const { minPln, maxPln } = advancedPriceBoundsToPln(
+        advancedFilters.minPrice,
+        advancedFilters.maxPrice,
+        advancedFilters.priceCurrency,
+        rate,
+      );
+      if (minPln !== null && rawPrice < minPln) return false;
+      if (maxPln !== null && rawPrice > maxPln) return false;
       if (advancedFilters.minArea !== null && rawArea < advancedFilters.minArea) return false;
       if (advancedFilters.maxArea !== null && rawArea > advancedFilters.maxArea) return false;
+      const plotFilterActive =
+        advancedFilters.minPlotArea !== null || advancedFilters.maxPlotArea !== null;
+      if (plotFilterActive) {
+        if (rawPropertyType !== 'HOUSE') return false;
+        const rawPlot = Number(String(offer.raw?.plotArea ?? '').replace(',', '.')) || 0;
+        if (advancedFilters.minPlotArea !== null && rawPlot < advancedFilters.minPlotArea) return false;
+        if (advancedFilters.maxPlotArea !== null && rawPlot > advancedFilters.maxPlotArea) return false;
+      }
       if (advancedFilters.minRooms !== null && rawRooms < advancedFilters.minRooms) return false;
 
       if (advancedFilters.locationMode === 'CITY') {
@@ -1690,7 +1814,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           advancedFilters.districts.length > 0 &&
           !advancedFilters.districts.some((d) => normalizeSearchText(d.trim()) === rawDistrict)
         ) return false;
-      } else if (advancedFilters.mapBounds) {
+      } else {
+        if (!advancedFilters.mapBounds) return false;
         const distance = distanceKm(
           advancedFilters.mapBounds.centerLat,
           advancedFilters.mapBounds.centerLng,
@@ -1700,11 +1825,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         if (!Number.isFinite(distance) || distance > advancedFilters.mapBounds.radiusKm) return false;
       }
 
-      if (advancedFilters.propertyType !== 'ALL' && rawPropertyType !== advancedFilters.propertyType) return false;
+      if (!propertyTypeMatchesFilter(rawPropertyType, advancedFilters.propertyType)) return false;
       return true;
     };
-    const favoriteOffers = offersAfterBlocks.filter((o) => favorites.includes(Number(o.id)));
-    const myOffers = offersAfterBlocks.filter(isMyOffer);
+    const favoriteIdSet = new Set(normalizeFavoriteIds(favorites));
+    const favoriteFromFeed = offersAfterBlocks.filter((o) => favoriteIdSet.has(Number(o.id)));
+    const favoriteOffers: MapOffer[] = [];
+    const seenFavoriteIds = new Set<number>();
+    for (const o of [...favoriteFromFeed, ...favoriteHydratedOffers]) {
+      const id = Number(o.id);
+      if (!favoriteIdSet.has(id) || seenFavoriteIds.has(id)) continue;
+      seenFavoriteIds.add(id);
+      favoriteOffers.push(o);
+    }
+    const myOffers = myOffersForMap.filter((o) => !isBlockedMapOffer(o, blockedIds));
 
     /**
      * Najwyższy priorytet: tryb „Dopasowania Radaru".
@@ -1717,7 +1851,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
      * dopasowania były pierwsze.
      */
     if (showRadarMatchesOnly && isRadarActive) {
-      const radarHits = offersAfterBlocks.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
+      const radarHits = offersForRadarBrowse.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
       if (!userLocation) return radarHits;
       return radarHits
         .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
@@ -1727,8 +1861,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
     const queryFiltered =
       normalizedSearchTokens.length === 0
-        ? offersAfterBlocks
-        : offersAfterBlocks.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)));
+        ? offersForRadarBrowse
+        : offersForRadarBrowse.filter((o) => normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)));
     const advancedFiltered = queryFiltered.filter(matchesAdvancedFilters);
 
     // Radar LIVE działa niezależnie od listy/mapy wyników:
@@ -1744,7 +1878,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
     if (showOnlyFavorites) {
       const scopedBase = favoritesMapScope === 'MINE' ? myOffers : favoriteOffers;
-      const scopedAndAdvanced = applyFavoritesRadar(applyRadar(scopedBase.filter(matchesAdvancedFilters)));
+      // Serduszko = zawsze widać w Ulubionych; filtr Favor dotyczy tylko pushy, nie listy.
+      const scopedAndAdvanced = applyRadar(scopedBase.filter(matchesAdvancedFilters));
       if (!userLocation) return scopedAndAdvanced;
       const sortedScoped = scopedAndAdvanced
         .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
@@ -1765,14 +1900,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const withDistance = radarFiltered
       .map((o) => ({ offer: o, distance: distanceKm(userLocation.latitude, userLocation.longitude, o.lat, o.lng) }))
       .sort((a, b) => a.distance - b.distance);
-    const nearby = withDistance.filter((x) => x.distance <= 25).map((x) => x.offer);
-    const baseList = nearby.length > 0 ? nearby : withDistance.map((x) => x.offer);
-    if (hasAdvancedFiltersActive) return baseList;
-    const pinned = [...baseList];
-    favoriteOffers.forEach((fav) => {
-      if (!pinned.some((o) => Number(o.id) === Number(fav.id))) pinned.push(fav);
-    });
-    return pinned;
+    const nearby = withDistance
+      .filter((x) => x.distance <= NEARBY_RADIUS_KM)
+      .map((x) => x.offer);
+    // Wyszukiwanie tekstowe i filtry rozszerzone = cała baza (sortowana wg odległości od GPS).
+    // Sam tryb „okolica" zostaje ograniczony do 25 km.
+    if (hasAdvancedFiltersActive || normalizedSearchTokens.length > 0) {
+      return withDistance.map((x) => x.offer);
+    }
+    return nearby;
   }, [
     offers,
     blockedIds,
@@ -1792,9 +1928,39 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     radarMapBounds,
     showRadarMatchesOnly,
     isRadarActive,
+    ownerMapOffers,
+    myOffersForMap,
+    rate,
+    favoriteHydratedOffers,
   ]);
 
   const activeOffers = filteredOffers;
+
+  const searchFooterMatchCount = useMemo(() => {
+    if (normalizedSearchTokens.length === 0) return searchOnlyMatchCount;
+    return activeOffers.length;
+  }, [normalizedSearchTokens.length, searchOnlyMatchCount, activeOffers.length]);
+
+  const activeAdvancedMapBounds = useMemo(() => {
+    if (!hasAdvancedFiltersActive) return null;
+    if (advancedFilters.locationMode !== 'MAP' || !advancedFilters.mapBounds) return null;
+    return advancedFilters.mapBounds;
+  }, [hasAdvancedFiltersActive, advancedFilters.locationMode, advancedFilters.mapBounds]);
+
+  const radarMatchingOffers = useMemo(() => {
+    if (!isRadarActive) return [] as MapOffer[];
+    const base =
+      blockedIds.size > 0 ? offers.filter((o) => !isBlockedMapOffer(o, blockedIds)) : offers;
+    const myId = Number(user?.id || 0);
+    const browseOffers =
+      myId > 0 ? base.filter((o) => !isMapOfferOwnedByUser(o, myId)) : base;
+    return browseOffers.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
+  }, [offers, radarFilters, radarMapBounds, isRadarActive, user?.id, blockedIds]);
+
+  const visibleRadarMatchingOffers = useMemo(() => {
+    if (blockedIds.size === 0) return radarMatchingOffers;
+    return radarMatchingOffers.filter((o) => !isBlockedMapOffer(o, blockedIds));
+  }, [radarMatchingOffers, blockedIds]);
 
   useEffect(() => {
     const viewerId = Number(user?.id || 0);
@@ -1850,7 +2016,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
    *  2. Tryb „Ulubione"        — Ulubione + scope=FAVORITES.
    *  3. Tryb „Rozszerzone"     — aktywne `advancedFilters` (cena, dzielnica, typ…).
    *  4. Tryb „Wyszukiwanie"    — wpisana fraza w pasku wyszukiwania.
-   *  5. Tryb „Okolica"         — masz GPS, brak innych filtrów → oferty do 25 km.
+   *  5. Tryb „Okolica"         — masz GPS, brak innych filtrów → wyłącznie oferty ≤25 km (bez ulubionych spoza zasięgu).
    *  6. Tryb „Wszystkie"       — brak filtrów, brak lokalizacji → cała baza.
    *
    * Każdy tryb dostaje krótki tytuł („Wyszukiwanie rozszerzone"),
@@ -1867,17 +2033,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const fmtThousands = (v: number) => {
       if (v >= 1_000_000) {
         const mln = v / 1_000_000;
-        return `${mln >= 10 ? mln.toFixed(0) : mln.toFixed(1)} mln`;
+        return t('radar.home.fmtMillion', { value: mln >= 10 ? mln.toFixed(0) : mln.toFixed(1) });
       }
-      if (v >= 1_000) return `${Math.round(v / 1000)} tys.`;
+      if (v >= 1_000) return t('radar.home.fmtThousand', { value: String(Math.round(v / 1000)) });
       return `${v}`;
     };
     const propertyTypeShortLabel = (raw: string) => {
       switch ((raw || '').toUpperCase()) {
-        case 'FLAT': return 'Mieszkanie';
-        case 'HOUSE': return 'Dom';
-        case 'PLOT': return 'Działka';
-        case 'PREMISES': return 'Lokal';
+        case 'FLAT': return t('radar.home.propertyFlat');
+        case 'HOUSE': return t('radar.home.propertyHouse');
+        case 'PLOT': return t('radar.home.propertyPlot');
+        case 'PREMISES': return t('radar.home.propertyPremises');
         default: return '';
       }
     };
@@ -1904,43 +2070,62 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       for (const o of activeOffers) {
         if (!seenRadarOfferIds.has(Number(o.id))) newCount += 1;
       }
-      const newSuffix = newCount > 0 ? ` · ${newCount} ${newCount === 1 ? 'nowa' : 'nowych'}` : '';
+      const newSuffix = newCount > 0
+        ? ` · ${newCount} ${newCount === 1 ? t('radar.plural.newOne') : t('radar.plural.newMany')}`
+        : '';
       const r: Reason = isEmpty
         ? {
             icon: 'radio-outline',
-            title: 'Dopasowania Radaru',
-            subtitle:
-              'Aktualnie żadna oferta nie pasuje do Twojej kalibracji. Rozszerz kryteria — Radar nadal czuwa w tle.',
+            title: t('radar.home.reason.radarMatchesTitle'),
+            subtitle: t('radar.home.reason.radarMatchesEmpty'),
             accent: '#10b981',
             severity: 'empty',
-            action: { label: 'Kalibruj', onPress: () => setShowCalibration(true) },
+            action: { label: t('radar.home.reason.calibrate'), onPress: () => setShowCalibration(true) },
           }
         : {
             icon: 'radio',
-            title: 'Dopasowania Radaru',
-            subtitle: `${count} ${pluralOffers(count)} pasuje do Twojej kalibracji${newSuffix}`,
+            title: t('radar.home.reason.radarMatchesTitle'),
+            subtitle: t('radar.home.reason.radarMatchesSubtitle', {
+              count: String(count),
+              offers: pluralOffers(count),
+              verb: radarMatchesVerb(count),
+              newSuffix,
+            }),
             accent: '#10b981',
             severity: 'normal',
-            action: { label: 'Wszystkie', onPress: () => setShowRadarMatchesOnly(false) },
+            action: { label: t('radar.home.reason.all'), onPress: () => setShowRadarMatchesOnly(false) },
           };
       return r;
     }
 
     // Tryb 1 — Moje oferty
     if (showOnlyFavorites && favoritesMapScope === 'MINE') {
+      let mineEmptySubtitle = t('radar.home.reason.mineEmptyDefault');
+      if (isEmpty && ownerActiveAccountCount > 0) {
+        if (ownerMapOffers.length === 0) {
+          mineEmptySubtitle = t('radar.home.reason.mineEmptyNoLocation');
+        } else if (hasAdvancedFiltersActive) {
+          mineEmptySubtitle = t('radar.home.reason.mineEmptyFiltered');
+        } else {
+          mineEmptySubtitle = t('radar.home.reason.mineEmptyNotOnMap');
+        }
+      }
       const r: Reason = isEmpty
         ? {
             icon: 'briefcase-outline',
-            title: 'Moje oferty',
-            subtitle: 'Nie masz aktywnych ogłoszeń. Dodaj pierwsze, aby pojawiło się tutaj.',
+            title: t('radar.home.reason.mineTitle'),
+            subtitle: mineEmptySubtitle,
             accent: mineUiAccent,
             severity: 'empty',
-            action: { label: 'Dodaj', onPress: () => navigation.navigate('Dodaj') },
+            action:
+              ownerActiveAccountCount > 0
+                ? { label: t('radar.home.reason.profile'), onPress: () => navigation.navigate('Profil') }
+                : { label: t('radar.home.reason.add'), onPress: () => navigation.navigate('Dodaj') },
           }
         : {
             icon: 'briefcase-outline',
-            title: 'Moje oferty',
-            subtitle: `${count} ${pluralOffers(count)} · tylko Twoje aktywne ogłoszenia`,
+            title: t('radar.home.reason.mineTitle'),
+            subtitle: t('radar.home.reason.mineSubtitle', { count: String(count), offers: pluralOffers(count) }),
             accent: mineUiAccent,
             severity: 'normal',
             action: null,
@@ -1950,19 +2135,26 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
     // Tryb 2 — Ulubione (polubione)
     if (showOnlyFavorites) {
+      const savedFavCount = normalizeFavoriteIds(favorites).length;
+      let favEmptySubtitle = t('radar.home.reason.favoritesEmptyDefault');
+      if (isEmpty && savedFavCount > 0) {
+        favEmptySubtitle = hasAdvancedFiltersActive
+          ? t('radar.home.reason.favoritesEmptyFiltered', { count: String(savedFavCount) })
+          : t('radar.home.reason.favoritesEmptyLoading', { count: String(savedFavCount) });
+      }
       const r: Reason = isEmpty
         ? {
             icon: 'heart-outline',
-            title: 'Twoje ulubione',
-            subtitle: 'Nie masz jeszcze ulubionych. Stuknij serce na karcie oferty, aby ją zapisać.',
+            title: t('radar.home.reason.favoritesTitle'),
+            subtitle: favEmptySubtitle,
             accent: favoritesUiAccent,
             severity: 'empty',
             action: null,
           }
         : {
             icon: 'heart',
-            title: 'Twoje ulubione',
-            subtitle: `${count} ${pluralOffers(count)} · oznaczone sercem`,
+            title: t('radar.home.reason.favoritesTitle'),
+            subtitle: t('radar.home.reason.favoritesSubtitle', { count: String(count), offers: pluralOffers(count) }),
             accent: favoritesUiAccent,
             severity: 'normal',
             action: null,
@@ -1972,25 +2164,34 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
     // Tryb 3 — Wyszukiwanie rozszerzone
     if (hasAdvancedFiltersActive) {
-      const txLabel = advancedFilters.transactionType === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+      const txLabel = advancedFilters.transactionType === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
       const propLabel = advancedFilters.propertyType !== 'ALL'
         ? propertyTypeShortLabel(advancedFilters.propertyType)
         : null;
       let locLabel: string | null = null;
       if (advancedFilters.locationMode === 'MAP' && advancedFilters.mapBounds) {
-        locLabel = `Obszar ${advancedFilters.mapBounds.radiusKm.toFixed(1)} km`;
+        const place = advancedFilters.city.trim() || t('radar.home.selectedArea');
+        locLabel = t('radar.home.fmtMapSearchArea', {
+          place,
+          radius: advancedFilters.mapBounds.radiusKm.toFixed(1),
+        });
       } else if (advancedFilters.city.trim()) {
         const districtSuffix = advancedFilters.districts.length > 0
           ? ` · ${advancedFilters.districts[0]}${advancedFilters.districts.length > 1 ? ` +${advancedFilters.districts.length - 1}` : ''}`
           : '';
         locLabel = `${advancedFilters.city.trim()}${districtSuffix}`;
       }
+      const priceSuffix = formatCurrencySuffix(advancedFilters.priceCurrency);
       const priceParts: string[] = [];
-      if (advancedFilters.minPrice != null) priceParts.push(`od ${fmtThousands(advancedFilters.minPrice)} zł`);
-      if (advancedFilters.maxPrice != null) priceParts.push(`do ${fmtThousands(advancedFilters.maxPrice)} zł`);
+      if (advancedFilters.minPrice != null) {
+        priceParts.push(t('radar.home.fmtFromPrice', { value: fmtThousands(advancedFilters.minPrice), currency: priceSuffix }));
+      }
+      if (advancedFilters.maxPrice != null) {
+        priceParts.push(t('radar.home.fmtToPrice', { value: fmtThousands(advancedFilters.maxPrice), currency: priceSuffix }));
+      }
       const priceLabel = priceParts.length > 0 ? priceParts.join(' ') : null;
-      const areaLabel = advancedFilters.minArea != null ? `od ${advancedFilters.minArea} m²` : null;
-      const roomsLabel = advancedFilters.minRooms != null ? `od ${advancedFilters.minRooms} pok.` : null;
+      const areaLabel = advancedFilters.minArea != null ? t('radar.home.fmtFromArea', { value: String(advancedFilters.minArea) }) : null;
+      const roomsLabel = advancedFilters.minRooms != null ? t('radar.home.fmtFromRooms', { count: String(advancedFilters.minRooms) }) : null;
 
       const details = joinNonEmpty([txLabel, propLabel, locLabel, priceLabel, areaLabel, roomsLabel]);
       const accent = advancedFilters.transactionType === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
@@ -1998,19 +2199,19 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const r: Reason = isEmpty
         ? {
             icon: 'options-outline',
-            title: 'Brak ofert dla filtrów',
-            subtitle: `Żadna oferta nie pasuje do: ${details}. Spróbuj rozszerzyć kryteria.`,
+            title: t('radar.home.reason.filtersEmptyTitle'),
+            subtitle: t('radar.home.reason.filtersEmptySubtitle', { details }),
             accent,
             severity: 'empty',
-            action: { label: 'Resetuj', onPress: () => resetAdvancedFilters() },
+            action: { label: t('radar.home.reason.reset'), onPress: () => resetAdvancedFilters() },
           }
         : {
             icon: 'options-outline',
-            title: 'Wyszukiwanie rozszerzone',
-            subtitle: `${count} ${pluralOffers(count)} · ${details}`,
+            title: t('radar.home.reason.filtersActiveTitle'),
+            subtitle: t('radar.home.reason.filtersActiveSubtitle', { count: String(count), offers: pluralOffers(count), details }),
             accent,
             severity: 'normal',
-            action: { label: 'Zmień', onPress: () => setShowAdvancedSearch(true) },
+            action: { label: t('radar.home.reason.change'), onPress: () => setShowAdvancedSearch(true) },
           };
       return r;
     }
@@ -2020,19 +2221,19 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const r: Reason = isEmpty
         ? {
             icon: 'search-outline',
-            title: 'Brak wyników wyszukiwania',
-            subtitle: `Żadna oferta nie pasuje do frazy „${trimmedQuery}". Sprawdź pisownię lub zmień zapytanie.`,
+            title: t('radar.home.reason.searchEmptyTitle'),
+            subtitle: t('radar.home.reason.searchEmptySubtitle', { query: trimmedQuery }),
             accent: '#10B981',
             severity: 'empty',
-            action: { label: 'Wyczyść', onPress: () => setSearchQuery('') },
+            action: { label: t('radar.home.reason.clear'), onPress: () => setSearchQuery('') },
           }
         : {
             icon: 'search-outline',
-            title: 'Wyszukiwanie',
-            subtitle: `${count} ${pluralOffers(count)} dla frazy „${trimmedQuery}"`,
+            title: t('radar.home.reason.searchActiveTitle'),
+            subtitle: t('radar.home.reason.searchActiveSubtitle', { count: String(count), offers: pluralOffers(count), query: trimmedQuery }),
             accent: '#10B981',
             severity: 'normal',
-            action: { label: 'Wyczyść', onPress: () => setSearchQuery('') },
+            action: { label: t('radar.home.reason.clear'), onPress: () => setSearchQuery('') },
           };
       return r;
     }
@@ -2042,19 +2243,19 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const r: Reason = isEmpty
         ? {
             icon: 'location-outline',
-            title: 'Brak ofert w okolicy',
-            subtitle: 'W promieniu 25 km od Twojej lokalizacji nie ma jeszcze ofert. Spróbuj wyszukiwania rozszerzonego.',
+            title: t('radar.home.reason.nearbyEmptyTitle'),
+            subtitle: t('radar.home.reason.nearbyEmptySubtitle'),
             accent: '#10B981',
             severity: 'empty',
-            action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+            action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
           }
         : {
             icon: 'location-outline',
-            title: 'Oferty w Twojej okolicy',
-            subtitle: `${count} ${pluralOffers(count)} · do 25 km od Twojej lokalizacji`,
+            title: t('radar.home.reason.nearbyActiveTitle'),
+            subtitle: t('radar.home.reason.nearbyActiveSubtitle', { count: String(count), offers: pluralOffers(count) }),
             accent: '#10B981',
             severity: 'normal',
-            action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+            action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
           };
       return r;
     }
@@ -2063,19 +2264,19 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const r: Reason = isEmpty
       ? {
           icon: 'apps-outline',
-          title: 'Brak ofert w bazie',
-          subtitle: 'Aktualnie nie ma żadnych ogłoszeń do wyświetlenia. Zajrzyj później lub dodaj swoje.',
+          title: t('radar.home.reason.databaseEmptyTitle'),
+          subtitle: t('radar.home.reason.databaseEmptySubtitle'),
           accent: isDark ? '#94A3B8' : '#64748B',
           severity: 'empty',
-          action: { label: 'Dodaj', onPress: () => navigation.navigate('Dodaj') },
+          action: { label: t('radar.home.reason.add'), onPress: () => navigation.navigate('Dodaj') },
         }
       : {
           icon: 'apps-outline',
-          title: 'Wszystkie oferty',
-          subtitle: `${count} ${pluralOffers(count)} · brak aktywnych filtrów`,
+          title: t('radar.home.reason.allOffersTitle'),
+          subtitle: t('radar.home.reason.allOffersSubtitle', { count: String(count), offers: pluralOffers(count) }),
           accent: isDark ? '#94A3B8' : '#64748B',
           severity: 'normal',
-          action: { label: 'Filtruj', onPress: () => setShowAdvancedSearch(true) },
+          action: { label: t('radar.home.reason.filter'), onPress: () => setShowAdvancedSearch(true) },
         };
     return r;
   }, [
@@ -2094,6 +2295,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     showRadarMatchesOnly,
     isRadarActive,
     seenRadarOfferIds,
+    ownerActiveAccountCount,
+    ownerMapOffers.length,
+    visibleRadarMatchingOffers.length,
+    t,
+    locale,
   ]);
 
   /**
@@ -2213,23 +2419,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     };
   }, [token]);
 
-  /**
-   * Rzeczywiste dopasowania konfiguracji radaru, nie lista wyświetlana na mapie.
-   * Wcześniej `activeMatchesCount` brał `activeOffers.length`, ale ta lista
-   * z premedytacją IGNORUJE filtry radaru (komentarz w `filteredOffers`).
-   * Tu liczymy „co radar realnie monitoruje" przez ten sam predykat,
-   * którego używa preview kalibracji.
-   */
-  const radarMatchingOffers = useMemo(() => {
-    if (!isRadarActive) return [] as MapOffer[];
-    return offers.filter((o) => matchesRadarCalibration(o, radarFilters, radarMapBounds));
-  }, [offers, radarFilters, radarMapBounds, isRadarActive]);
-
-  const visibleRadarMatchingOffers = useMemo(() => {
-    if (blockedIds.size === 0) return radarMatchingOffers;
-    return radarMatchingOffers.filter((o) => !isBlockedMapOffer(o, blockedIds));
-  }, [radarMatchingOffers, blockedIds]);
-
   const newRadarMatchesCount = useMemo(() => {
     let count = 0;
     for (const o of visibleRadarMatchingOffers) {
@@ -2302,6 +2491,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       requireElevator: !!radarFilters.requireElevator,
       requireParking: !!radarFilters.requireParking,
       requireFurnished: !!radarFilters.requireFurnished,
+      requireTwoLevel: !!radarFilters.requireTwoLevel,
     } as const;
     liveActivitySnapshotRef.current = snapshot;
     const fingerprint = JSON.stringify(snapshot);
@@ -2325,6 +2515,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     radarFilters.requireElevator,
     radarFilters.requireParking,
     radarFilters.requireFurnished,
+    radarFilters.requireTwoLevel,
     radarMapBounds?.radiusKm,
     visibleRadarMatchingOffers.length,
     newRadarMatchesCount,
@@ -2347,8 +2538,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return () => clearInterval(interval);
   }, [isRadarActive]);
 
+  const focusMapToBounds = useCallback((bounds: { centerLat: number; centerLng: number; radiusKm: number }) => {
+    if (!mapRef.current) return;
+    mapRef.current.animateToRegion(regionForMapBounds(bounds), 650);
+  }, []);
+
   const focusMapToOffers = useCallback((items: MapOffer[]) => {
-    if (!mapRef.current || items.length === 0) return;
+    if (!mapRef.current) return;
+    if (items.length === 0) return;
     if (items.length === 1) {
       mapRef.current.animateToRegion(
         {
@@ -2370,6 +2567,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       animated: true,
     });
   }, []);
+
+  const focusMapToActiveSearch = useCallback(() => {
+    if (activeOffers.length > 0) {
+      focusMapToOffers(activeOffers);
+      return;
+    }
+    if (
+      advancedFilters.locationMode === 'MAP' &&
+      advancedFilters.mapBounds &&
+      hasAdvancedFiltersActive
+    ) {
+      focusMapToBounds(advancedFilters.mapBounds);
+    }
+  }, [activeOffers, advancedFilters, hasAdvancedFiltersActive, focusMapToOffers, focusMapToBounds]);
 
   /**
    * Gdy wchodzimy w tryb „Dopasowania Radaru" (z pusha, deep-linku albo z
@@ -2407,8 +2618,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (cancelled) return;
       setTimeout(() => {
         if (cancelled) return;
-        if (activeOffers.length === 0) return;
-        focusMapToOffers(activeOffers);
+        focusMapToActiveSearch();
         setActiveIndex(0);
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
       }, Platform.OS === 'ios' ? 120 : 80);
@@ -2416,7 +2626,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return () => {
       cancelled = true;
     };
-  }, [searchQuery, activeOffers, focusMapToOffers]);
+  }, [searchQuery, activeOffers, focusMapToActiveSearch]);
 
   /**
    * Auto-fokus mapy po wejściu w „Ulubione" / „Moje" (lub po przełączeniu między
@@ -2566,6 +2776,40 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return candidate;
   }, [token]);
 
+  useEffect(() => {
+    if (!showOnlyFavorites || favoritesMapScope !== 'FAVORITES' || favorites.length === 0) {
+      setFavoriteHydratedOffers([]);
+      return;
+    }
+    const feedIds = new Set(offers.map((o) => Number(o.id)).filter((id) => id > 0));
+    const missing = favorites.filter((id) => !feedIds.has(id));
+    if (missing.length === 0) {
+      setFavoriteHydratedOffers([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const hydrated: MapOffer[] = [];
+      for (const id of missing.slice(0, 50)) {
+        const raw = await resolveOfferById(id);
+        if (cancelled || !raw || isOfferClosed(raw)) continue;
+        const mapped = mapRawOffer(raw);
+        if (mapped) hydrated.push(mapped);
+      }
+      if (!cancelled) setFavoriteHydratedOffers(hydrated);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    favorites,
+    offers,
+    showOnlyFavorites,
+    favoritesMapScope,
+    resolveOfferById,
+    mapRawOffer,
+  ]);
+
   const applyAdvancedFilters = async () => {
     const digitsOnly = draftOfferIdInput.replace(/\D/g, '');
     if (digitsOnly) {
@@ -2583,7 +2827,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             return;
           }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          Alert.alert('EstateOS', 'Nie znaleziono oferty o podanym numerze.');
+          Alert.alert('EstateOS', t('radar.home.alertOfferNotFound'));
           return;
         } finally {
           setAdvancedOfferIdBusy(false);
@@ -2592,30 +2836,36 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
 
     if (draftAdvancedFilters.locationMode === 'MAP' && !draftAdvancedFilters.mapBounds) {
-      Alert.alert('EstateOS', 'Wybierz obszar na mapie dla trybu „Według obszaru mapy”.');
+      Alert.alert('EstateOS', t('radar.home.alertSelectMapArea'));
       return;
     }
 
     setAdvancedFilters(draftAdvancedFilters);
+    logAdvancedMapSearch({
+      token,
+      userId: user?.id,
+      payload: {
+        transactionType: draftAdvancedFilters.transactionType,
+        city: draftAdvancedFilters.city,
+        districts: draftAdvancedFilters.districts,
+        priceCurrency: draftAdvancedFilters.priceCurrency,
+        minPrice: draftAdvancedFilters.minPrice,
+        maxPrice: draftAdvancedFilters.maxPrice,
+        minArea: draftAdvancedFilters.minArea,
+        maxArea: draftAdvancedFilters.maxArea,
+        minRooms: draftAdvancedFilters.minRooms,
+        propertyType: draftAdvancedFilters.propertyType,
+        locationMode: draftAdvancedFilters.locationMode,
+        mapBounds: draftAdvancedFilters.mapBounds,
+      },
+    });
     setPendingMapFocusAfterApply(true);
     setShowAdvancedSearch(false);
     Haptics.selectionAsync();
   };
 
   const resetAdvancedFilters = () => {
-    const reset: AdvancedFilters = {
-      transactionType: 'SELL',
-      minPrice: null,
-      maxPrice: null,
-      minArea: null,
-      maxArea: null,
-      minRooms: null,
-      city: '',
-      districts: [],
-      locationMode: 'CITY',
-      mapBounds: null,
-      propertyType: 'ALL',
-    };
+    const reset: AdvancedFilters = { ...DEFAULT_ADVANCED_FILTERS };
     setDraftAdvancedFilters(reset);
     setAdvancedFilters(reset);
     setDraftOfferIdInput('');
@@ -2626,18 +2876,28 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   useFocusEffect(
     useCallback(() => {
       if (!pendingMapFocusAfterApply) return;
-      if (activeOffers.length === 0) {
+      const hasMapArea =
+        advancedFilters.locationMode === 'MAP' &&
+        advancedFilters.mapBounds &&
+        hasAdvancedFiltersActive;
+      if (activeOffers.length === 0 && !hasMapArea) {
         setPendingMapFocusAfterApply(false);
         return;
       }
-      const t = setTimeout(() => {
-        focusMapToOffers(activeOffers);
+      const timerId = setTimeout(() => {
+        focusMapToActiveSearch();
         setActiveIndex(0);
         listRef.current?.scrollToOffset({ offset: 0, animated: true });
         setPendingMapFocusAfterApply(false);
       }, 120);
-      return () => clearTimeout(t);
-    }, [pendingMapFocusAfterApply, activeOffers, focusMapToOffers])
+      return () => clearTimeout(timerId);
+    }, [
+      pendingMapFocusAfterApply,
+      activeOffers.length,
+      advancedFilters,
+      hasAdvancedFiltersActive,
+      focusMapToActiveSearch,
+    ])
   );
 
   /**
@@ -2687,27 +2947,51 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     }
   };
 
-  const applyRadarCalibration = async (filtersToApply: RadarFilters) => {
+  const commitRadarCalibrationState = useCallback(
+    async (filtersToApply: RadarFilters, mapSnap: typeof radarMapBounds, summarySnap: string) => {
+      setRadarFilters(filtersToApply);
+      if (isRadarFactoryDefaults(filtersToApply)) {
+        setMapUsesRadarFilters(false);
+        setRadarMapBounds(null);
+        setAreaSummary('');
+      } else {
+        setMapUsesRadarFilters(true);
+      }
+      await setRadarActive(filtersToApply.pushNotifications);
+      await syncRadarPreferencesToBackend(filtersToApply);
+      logRadarCalibrationSearch({
+        token,
+        userId: user?.id,
+        filters: filtersToApply,
+        mapBounds: mapSnap,
+      });
+      void pushRadarRecentArea({
+        filters: filtersToApply,
+        mapBounds: mapSnap,
+        areaSummaryLine: summarySnap,
+      });
+    },
+    [token, user?.id, setRadarActive],
+  );
+
+  const applyRadarCalibration = async (
+    filtersToApply: RadarFilters,
+    options?: { keepCalibrationModalOpen?: boolean },
+  ) => {
     const mapSnap = radarMapBounds ? { ...radarMapBounds } : null;
     const summarySnap = areaSummary;
     pendingRadarCalibrationFiltersRef.current = null;
-    setRadarFilters(filtersToApply);
-    if (isRadarFactoryDefaults(filtersToApply)) {
-      setMapUsesRadarFilters(false);
-      setRadarMapBounds(null);
-      setAreaSummary('');
+    if (options?.keepCalibrationModalOpen) {
+      InteractionManager.runAfterInteractions(() => {
+        void commitRadarCalibrationState(filtersToApply, mapSnap, summarySnap);
+      });
     } else {
-      setMapUsesRadarFilters(true);
+      await commitRadarCalibrationState(filtersToApply, mapSnap, summarySnap);
     }
-    await setRadarActive(filtersToApply.pushNotifications);
-    await syncRadarPreferencesToBackend(filtersToApply);
-    void pushRadarRecentArea({
-      filters: filtersToApply,
-      mapBounds: mapSnap,
-      areaSummaryLine: summarySnap,
-    });
-    setShowCalibration(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!options?.keepCalibrationModalOpen) {
+      setShowCalibration(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
   };
 
   const applyFavoritesCalibration = async (filtersToApply: RadarFilters) => {
@@ -2747,7 +3031,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             enabled: filtersToApply.pushNotifications !== false,
             notifyPriceChange: !!filtersToApply.favoritesNotifyPriceChange,
             notifyDealProposals: !!filtersToApply.favoritesNotifyDealProposals,
-            notifyIncludeAmounts: !!filtersToApply.favoritesNotifyIncludeAmounts,
+            notifyIncludeAmounts: false,
             notifyStatusChange: !!filtersToApply.favoritesNotifyStatusChange,
             notifyNewSimilar: !!filtersToApply.favoritesNotifyNewSimilar,
           },
@@ -2757,8 +3041,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setShowFavoritesCalibration(false);
     if (!pushPrefsSynced) {
       Alert.alert(
-        'Nie udało się zapisać ustawień push',
-        'Sprawdź, czy powiadomienia systemowe dla EstateOS są włączone i ponów zapis ustawień.'
+        t('radar.home.alertPushSaveFailed'),
+        t('radar.home.alertPushSaveFailedBody')
       );
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2770,15 +3054,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (filters.calibrationMode === 'CITY') {
         const districtLabel =
           filters.selectedDistricts.length > 0
-            ? `${filters.selectedDistricts.length} dzielnic`
-            : 'wszystkie dzielnice';
+            ? t('radar.home.areaSummaryDistrictCount', { count: String(filters.selectedDistricts.length) })
+            : t('radar.home.areaSummaryAllDistricts');
         return `${filters.city} • ${districtLabel} • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
       }
       if (!radarMapBounds) return areaSummary || undefined;
       const radiusKm = radarGeoRadiusLimitKm(radarMapBounds.radiusKm, filters.matchThreshold);
       return `${filters.city} • ${radiusKm.toFixed(1)} km • ${offersInPreview.length} ${pluralOffers(offersInPreview.length)}`;
     },
-    [radarMapBounds, areaSummary, offers]
+    [radarMapBounds, areaSummary, offers, t],
   );
 
   const getMatchingOffersCountPreview = useCallback(
@@ -2951,7 +3235,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       (normalizeSearchText(String(radarFilters.city || '').trim()) === normalizeSearchText('Reszta kraju')
         ? ''
         : String(radarFilters.city || '').trim()) ||
-      'Wybrany obszar';
+      t('radar.home.selectedArea');
     const baseRadarFilters = pendingRadarCalibrationFiltersRef.current || radarFilters;
     const updated: RadarFilters = {
       ...baseRadarFilters,
@@ -2970,12 +3254,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     });
     setMapUsesRadarFilters(true);
     setAreaSummary(
-      `${cityForFilters} • ${radius.toFixed(1)} km • ${offersInArea.length} ofert`
+      `${cityForFilters} • ${radius.toFixed(1)} km • ${offersInArea.length} ${pluralOffers(offersInArea.length)}`
     );
     if (areaPickerReturnTo === 'ADVANCED') {
       pendingRadarCalibrationFiltersRef.current = null;
-      setDraftAdvancedFilters((prev) => ({
-        ...prev,
+      const nextAdvanced: AdvancedFilters = {
+        ...draftAdvancedFilters,
         locationMode: 'MAP',
         mapBounds: {
           centerLat: center.latitude,
@@ -2984,9 +3268,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         },
         city: cityForFilters,
         districts: [],
-      }));
+      };
+      setDraftAdvancedFilters(nextAdvanced);
+      setAdvancedFilters(nextAdvanced);
+      logAdvancedMapSearch({
+        token,
+        userId: user?.id,
+        payload: {
+          transactionType: nextAdvanced.transactionType,
+          city: nextAdvanced.city,
+          districts: nextAdvanced.districts,
+          priceCurrency: nextAdvanced.priceCurrency,
+          minPrice: nextAdvanced.minPrice,
+          maxPrice: nextAdvanced.maxPrice,
+          minArea: nextAdvanced.minArea,
+          maxArea: nextAdvanced.maxArea,
+          minRooms: nextAdvanced.minRooms,
+          propertyType: nextAdvanced.propertyType,
+          locationMode: nextAdvanced.locationMode,
+          mapBounds: nextAdvanced.mapBounds,
+        },
+      });
+      setPendingMapFocusAfterApply(true);
       setShowAreaPicker(false);
-      setShowAdvancedSearch(true);
+      setShowAdvancedSearch(false);
       void pulseHaptic('success');
       return;
     }
@@ -3019,8 +3324,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       localityCount.size > 0
         ? Array.from(localityCount.entries()).sort((a, b) => b[1] - a[1])[0][0]
         : (normalizeSearchText(String(radarFilters.city || '').trim()) === normalizeSearchText('Reszta kraju')
-            ? 'Wybrany obszar'
-            : String(radarFilters.city || '').trim()) || 'Wybrany obszar';
+            ? t('radar.home.selectedArea')
+            : String(radarFilters.city || '').trim()) || t('radar.home.selectedArea');
     const topLocality = areaPickerResolvedLocality || topLocalityFromOffers;
     const areaKm2 = Math.PI * radiusKm * radiusKm;
 
@@ -3078,15 +3383,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const toggleFavorite = async (offerId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = favorites.includes(offerId)
-      ? favorites.filter((id) => id !== offerId)
-      : [...favorites, offerId];
-    setFavorites(next);
-    try {
-      await AsyncStorage.setItem('@estateos_favorites', JSON.stringify(next));
-    } catch {
-      // noop
-    }
+    const { ids } = await toggleFavoriteId(offerId, favorites);
+    setFavorites(ids);
   };
 
   const focusOffer = (index: number) => {
@@ -3104,6 +3402,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const renderOfferCard = ({ item, index }: any) => {
     const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(item?.id || 0)] === true;
     const isLegallyVerified = isOfferLegallyVerified(item?.raw, ownVerifiedFromEndpoint);
+    const priceLabel = formatOffer(item.raw).primary;
 
     return (
     <Pressable
@@ -3141,7 +3440,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <Text style={styles.transactionBadgeText}>{getTransactionBadge(item.raw?.transactionType).label}</Text>
         </View>
         {isLegallyVerified ? (
-          <View style={[styles.legalSealFloating, isDark && styles.legalSealFloatingDark]} accessibilityLabel="Nieruchomość zweryfikowana prawnie">
+          <View style={[styles.legalSealFloating, isDark && styles.legalSealFloatingDark]} accessibilityLabel={t('radar.home.legallyVerified')}>
             <Ionicons name="shield-checkmark" size={15} color={isDark ? '#34d399' : '#059669'} />
           </View>
         ) : null}
@@ -3161,16 +3460,16 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             ]}
             numberOfLines={1}
           >
-            {item.price}
+            {priceLabel}
           </Text>
           <Pressable
             onPress={() => toggleFavorite(Number(item.id))}
             hitSlop={10}
           >
             <Ionicons
-              name={favorites.includes(Number(item.id)) ? 'heart' : 'heart-outline'}
+              name={isFavoriteId(item.id, favorites) ? 'heart' : 'heart-outline'}
               size={22}
-              color={favorites.includes(Number(item.id)) ? '#FF3B30' : '#8E8E93'}
+              color={isFavoriteId(item.id, favorites) ? '#FF3B30' : '#8E8E93'}
             />
           </Pressable>
         </View>
@@ -3204,7 +3503,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 ))}
             </View>
           </View>
-          <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw)}</Text>
+          <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw, locale)}</Text>
         </View>
       </View>
     </Pressable>
@@ -3286,6 +3585,36 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
             })}
       >
+        {activeAdvancedMapBounds ? (
+          <Circle
+            center={{
+              latitude: activeAdvancedMapBounds.centerLat,
+              longitude: activeAdvancedMapBounds.centerLng,
+            }}
+            radius={Math.max(200, activeAdvancedMapBounds.radiusKm * 1000)}
+            strokeColor={modeAccentColor}
+            fillColor={
+              advancedFilters.transactionType === 'RENT'
+                ? 'rgba(10,132,255,0.14)'
+                : 'rgba(16,185,129,0.14)'
+            }
+            strokeWidth={2.5}
+            zIndex={0}
+          />
+        ) : null}
+        {activeAdvancedMapBounds ? (
+          <Marker
+            coordinate={{
+              latitude: activeAdvancedMapBounds.centerLat,
+              longitude: activeAdvancedMapBounds.centerLng,
+            }}
+            tracksViewChanges={false}
+            zIndex={1}
+            anchor={{ x: 0.5, y: 0.5 }}
+          >
+            <View style={[styles.searchAreaCenterDot, { borderColor: modeAccentColor, backgroundColor: `${modeAccentColor}33` }]} />
+          </Marker>
+        ) : null}
         {activeOffers.map((offer, idx) => {
           const isSelected = activeIndex === idx;
           const markerAccent = offerMarkerAccent(offer.raw);
@@ -3303,6 +3632,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           // Helper `getPublicMapPresentation` jest deterministyczny względem `offer.id`,
           // więc te same coords są zwracane przy każdym renderze (nie da się ich uśrednić
           // do prawdziwego punktu).
+          const listing = resolveOfferListingPrice(offer.raw, rate);
+          const disp = resolveOfferDisplayAmount({
+            amount: listing.amount,
+            listingCurrency: listing.currency,
+            pricePln: listing.plnAmount,
+            displayPreference: preference,
+            rate,
+          });
+          const markerPriceLabel = formatMarkerPriceCompact(disp.displayAmount, disp.displayCurrency);
           const isExact = resolveIsExactLocation(offer.raw?.isExactLocation);
           const presentation = getPublicMapPresentation({
             lat,
@@ -3351,7 +3689,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       style={styles.markerHighlight}
                       pointerEvents="none"
                     />
-                    <Text style={styles.mapMarkerText}>{formatMarkerPrice(offer.price)}</Text>
+                    <Text style={styles.mapMarkerText}>{markerPriceLabel}</Text>
                   </LinearGradient>
                   <View style={[styles.markerPinTail, { borderTopColor: luxColors[2] }]} />
                 </View>
@@ -3400,7 +3738,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             setIsSearchFocused(false);
           }}
           accessibilityRole="button"
-          accessibilityLabel="Zamknij pole wyszukiwania"
+          accessibilityLabel={t('radar.home.closeSearch')}
         />
       )}
 
@@ -3435,7 +3773,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       : '#1C1C1E',
                 },
               ]}
-              placeholder="Miasto, dzielnica, ulica…"
+              placeholder={t('radar.home.searchPlaceholder')}
               placeholderTextColor={showOnlyFavorites ? (isMineScope ? 'rgba(16,185,129,0.9)' : 'rgba(247,119,178,0.9)') : searchPanelText.tertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -3455,7 +3793,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 }}
                 hitSlop={10}
                 style={styles.searchClearBtn}
-                accessibilityLabel="Wyczyść wyszukiwanie"
+                accessibilityLabel={t('radar.home.clearSearch')}
               >
                 <Ionicons name="close-circle" size={22} color="#8E8E93" />
               </Pressable>
@@ -3485,7 +3823,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             setDraftAdvancedFilters(advancedFilters);
             setShowAdvancedSearch(true);
           }}
-          accessibilityLabel="Wyszukiwanie rozszerzone"
+          accessibilityLabel={t('radar.home.advancedSearch')}
         >
           <BlurView
             intensity={isDark ? 80 : 90}
@@ -3554,7 +3892,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     ]}
                     numberOfLines={1}
                   >
-                    Ulubione
+                    {t('radar.home.favoritesTab')}
                   </Text>
                 </Pressable>
                 <View style={[styles.favoritesScopeDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
@@ -3584,7 +3922,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     ]}
                     numberOfLines={1}
                   >
-                    Moje
+                    {t('radar.home.mineTab')}
                   </Text>
                 </Pressable>
               </View>
@@ -3651,8 +3989,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                 </Animated.View>
                 <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>EstateOS™ Favor</Text>
-                  <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? 'Status: LOVE LIVE' : 'Status: NIEAKTYWNY'}</Text>
+                  <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>{t('radar.home.favorBrand')}</Text>
+                  <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}</Text>
                 </View>
               </BlurView>
             </Pressable>
@@ -3678,10 +4016,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             >
               {searchQuery.trim().length === 0 && (
                 <>
-                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>Ostatnie wyszukiwania</Text>
+                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>{t('radar.home.recentSearches')}</Text>
                   {recentSearches.length === 0 ? (
                     <Text style={[styles.smartHint, { color: searchPanelText.secondary }]}>
-                      Zapisujemy tu miasta i adresy, które wybierzesz z listy poniżej.
+                      {t('radar.home.recentSearchesHint')}
                     </Text>
                   ) : (
                     recentSearches.map((s) => (
@@ -3705,7 +4043,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       </TouchableOpacity>
                     ))
                   )}
-                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section, marginTop: 6 }]}>Szybki wybór miasta</Text>
+                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section, marginTop: 6 }]}>{t('radar.home.quickCityPick')}</Text>
+                  <Text style={[styles.smartHint, { color: searchPanelText.secondary, marginBottom: 8 }]}>
+                    {t('radar.home.quickCityPolandOnly')}
+                  </Text>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator
@@ -3740,14 +4081,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     ))}
                   </ScrollView>
                   <Text style={[styles.smartFootnote, { color: searchPanelText.secondary }]}>
-                    Zacznij wpisywać — pokażemy dopasowania z ofert (ulica, dzielnica, tytuł) oraz liczbę pasujących ogłoszeń.
+                    {t('radar.home.searchFootnote')}
                   </Text>
                 </>
               )}
 
               {searchQuery.trim().length === 1 && (
                 <Text style={[styles.smartHint, { color: searchPanelText.secondary, paddingVertical: 8 }]}>
-                  Wpisz jeszcze jedną literę, aby pojawiły się inteligentne podpowiedzi z aktualnych ofert.
+                  {t('radar.home.searchMinChars')}
                 </Text>
               )}
 
@@ -3757,15 +4098,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     <View style={styles.smartEmptyBlock}>
                       <Ionicons name="search-outline" size={28} color={searchPanelText.icon} />
                       <Text style={[styles.smartEmptyTitle, { color: searchPanelText.body }]}>
-                        Brak dopasowań w tekstach ofert
+                        {t('radar.home.searchNoMatchesTitle')}
                       </Text>
                       <Text style={[styles.smartHint, { color: searchPanelText.secondary, textAlign: 'center' }]}>
-                        Spróbuj innej frazy albo użyj filtrów (ikonka opcji). Możesz podać kilka słów naraz, np. „mokotów 3 pok”.
+                        {t('radar.home.searchNoMatchesHint')}
                       </Text>
                     </View>
                   ) : (
                     <>
-                      <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>Podpowiedzi z ofert</Text>
+                      <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>{t('radar.home.searchSuggestions')}</Text>
                       {rankedPlaceSuggestions.map((item) => (
                         <TouchableOpacity
                           key={item.key}
@@ -3825,11 +4166,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 >
                   <Ionicons name="map-outline" size={16} color={modeAccentColor} />
                   <Text style={[styles.smartFooterText, { color: searchPanelText.secondary }]}>
-                    W bazie ogłoszeń:{' '}
+                    {t('radar.home.searchFooterPrefix')}{' '}
                     <Text style={{ fontWeight: '700', color: searchPanelText.body }}>
-                      {searchOnlyMatchCount} {pluralOffers(searchOnlyMatchCount)}
+                      {searchFooterMatchCount} {pluralOffers(searchFooterMatchCount)}
                     </Text>{' '}
-                    pasuje do wpisanego tekstu
+                    {hasAdvancedFiltersActive
+                      ? t('radar.home.searchFooterWithFilters')
+                      : t('radar.home.searchFooterSuffix')}
                   </Text>
                 </View>
               )}
@@ -3874,7 +4217,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 />
               </View>
             )}
-            <Pressable onPress={openRadarCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
+            <Pressable
+              onPress={() => {
+                if (isRadarActive && visibleRadarMatchingOffers.length > 0 && !showOnlyFavorites) {
+                  Haptics.selectionAsync();
+                  setShowRadarMatchesOnly(true);
+                  return;
+                }
+                openRadarCalibration();
+              }}
+              onLongPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                openRadarCalibration();
+              }}
+              style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}
+            >
               <BlurView
                 intensity={95}
                 tint={isDark ? 'dark' : 'light'}
@@ -3885,8 +4242,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               >
                 <Ionicons name={isRadarActive ? 'radio' : 'radio-outline'} size={18} color={isRadarActive ? '#10b981' : '#FF3B30'} />
                 <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>EstateOS™ Radar</Text>
-                  <Text style={styles.radarStatus}>{isRadarActive ? 'Status: LIVE' : 'Status: NIEAKTYWNY'}</Text>
+                  <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>{t('radar.home.radarBrand')}</Text>
+                  <Text style={styles.radarStatus}>{isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}</Text>
                   {isRadarActive && radarActiveScopeLine ? (
                     <Text
                       numberOfLines={2}
@@ -3916,13 +4273,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             myślał, że appka się zawiesiła. */}
         {!loading && (() => {
           const isEmpty = offerDisplayReason.severity === 'empty';
-          const showRadarMatchesAction = isRadarActive && !showRadarMatchesOnly && visibleRadarMatchingOffers.length > 0;
-          // W pustym stanie nakładamy delikatny amber halo na akcent trybu —
-          // info wizualne, że to nie awaria, tylko brak wyników dla filtrów.
+          // Mini-CTA „Pokaż N" dotyczy głównego Radaru — nie pokazuj na zakładce Ulubione
+          // (inaczej przy pustych ulubionych widać „nie masz jeszcze…" + „Pokaż 2" z radaru).
+          const radarMatchCount = visibleRadarMatchingOffers.length;
+          const showRadarMatchesAction =
+            isRadarActive &&
+            !showRadarMatchesOnly &&
+            !showOnlyFavorites &&
+            radarMatchCount > 0;
           const reasonAccent = isEmpty ? '#F59E0B' : offerDisplayReason.accent;
           const reasonIcon = isEmpty ? 'alert-circle' : offerDisplayReason.icon;
+          const canRefocusSearchArea = !!activeAdvancedMapBounds;
           return (
             <View style={styles.offerReasonRow} pointerEvents="box-none">
+              <Pressable
+                disabled={!canRefocusSearchArea}
+                onPress={() => {
+                  if (!canRefocusSearchArea) return;
+                  Haptics.selectionAsync();
+                  focusMapToActiveSearch();
+                }}
+                style={({ pressed }) => [pressed && canRefocusSearchArea && { opacity: 0.92 }]}
+                accessibilityRole={canRefocusSearchArea ? 'button' : undefined}
+                accessibilityLabel={canRefocusSearchArea ? t('radar.home.refocusSearchAreaA11y') : undefined}
+              >
               <BlurView
                 intensity={isDark ? 60 : 80}
                 tint={isDark ? 'dark' : 'light'}
@@ -3949,7 +4323,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     color={reasonAccent}
                   />
                 </View>
-                <View style={{ flex: 1, paddingHorizontal: 10 }}>
+                <View style={styles.offerReasonCopy}>
                   <Text
                     numberOfLines={1}
                     style={[
@@ -3984,15 +4358,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                           pressed && { transform: [{ scale: 0.96 }] },
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel={`Pokaż ${visibleRadarMatchingOffers.length} dopasowań Radaru`}
+                        accessibilityLabel={t('radar.home.showRadarMatchesA11y', { count: String(radarMatchCount) })}
                       >
                         <View style={styles.offerReasonRadarDot} />
                         <Text style={styles.offerReasonRadarActionText}>
-                          Pokaż {visibleRadarMatchingOffers.length}
+                          {t('radar.home.showRadarMatches', { count: String(radarMatchCount) })}
                         </Text>
                       </Pressable>
                     )}
-                    {offerDisplayReason.action && (
+                    {offerDisplayReason.action && !showRadarMatchesAction && (
                       <Pressable
                         onPress={() => {
                           Haptics.selectionAsync();
@@ -4012,6 +4386,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   </View>
                 )}
               </BlurView>
+              </Pressable>
             </View>
           );
         })()}
@@ -4155,9 +4530,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           {/* GÓRA */}
           <View style={styles.areaPickerTop} pointerEvents="box-none">
             <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
-              <Text style={styles.areaPickerTitle}>Zaznacz obszar radaru</Text>
+              <Text style={styles.areaPickerTitle}>{t('radar.home.areaPickerTitle')}</Text>
               <Text style={styles.areaPickerSubtitle}>
-                Promień liczony jest na podstawie rzeczywistego widoku mapy.
+                {t('radar.home.areaPickerSubtitle')}
               </Text>
             </BlurView>
           </View>
@@ -4165,24 +4540,27 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={styles.areaPickerBottom} pointerEvents="box-none">
             <BlurView intensity={92} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
               <View style={styles.areaRadiusHeader}>
-                <Text style={styles.areaRadiusLabel}>Promień</Text>
+                <Text style={styles.areaRadiusLabel}>{t('radar.home.radius')}</Text>
                 <Text style={styles.areaRadiusValue}>
                   {formatRadiusLabel(areaPickerDraft.radiusKm)}
                 </Text>
               </View>
               <View style={styles.areaInsightsCard}>
                 <View style={styles.areaInsightRow}>
-                  <Text style={styles.areaInsightLabel}>Miejscowość</Text>
+                  <Text style={styles.areaInsightLabel}>{t('radar.home.locality')}</Text>
                   <Text style={styles.areaInsightValue}>{areaPickerLiveStats.locality}</Text>
                 </View>
                 <View style={styles.areaInsightRow}>
-                  <Text style={styles.areaInsightLabel}>Obszar</Text>
+                  <Text style={styles.areaInsightLabel}>{t('radar.home.area')}</Text>
                   <Text style={styles.areaInsightValue}>
-                    {areaPickerLiveStats.areaKm2.toFixed(1)} km² ({areaPickerLiveStats.radiusKm.toFixed(1)} km)
+                    {t('radar.home.areaKm2', {
+                      area: areaPickerLiveStats.areaKm2.toFixed(1),
+                      radius: areaPickerLiveStats.radiusKm.toFixed(1),
+                    })}
                   </Text>
                 </View>
                 <View style={styles.areaInsightRow}>
-                  <Text style={styles.areaInsightLabel}>Oferty w obszarze</Text>
+                  <Text style={styles.areaInsightLabel}>{t('radar.home.offersInArea')}</Text>
                   <Text style={styles.areaInsightValue}>
                     {areaPickerLiveStats.offersCount} {pluralOffers(areaPickerLiveStats.offersCount)}
                   </Text>
@@ -4200,10 +4578,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     }
                   }}
                 >
-                  <Text style={styles.areaGhostText}>Wróć</Text>
+                  <Text style={styles.areaGhostText}>{t('radar.home.areaBack')}</Text>
                 </Pressable>
                 <Pressable style={styles.areaApplyBtn} onPress={() => applyAreaSelectionToRadar()}>
-                  <Text style={styles.areaApplyText}>Zastosuj</Text>
+                  <Text style={styles.areaApplyText}>{t('radar.home.areaApply')}</Text>
                 </Pressable>
               </View>
             </BlurView>
@@ -4225,9 +4603,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             >
               <View style={styles.modalDragHandle} />
               <View style={styles.advancedHeader}>
-                <Text style={[styles.advancedTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>Wyszukiwanie rozszerzone</Text>
+                <Text style={[styles.advancedTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>{t('radar.advancedSearch.title')}</Text>
                 <Pressable onPress={resetAdvancedFilters}>
-                  <Text style={styles.advancedReset}>Reset</Text>
+                  <Text style={styles.advancedReset}>{t('radar.advancedSearch.reset')}</Text>
                 </Pressable>
               </View>
               <ScrollView
@@ -4237,13 +4615,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                 contentContainerStyle={{ paddingBottom: 16, flexGrow: 1 }}
               >
-                <Text style={styles.advancedSection}>ID oferty</Text>
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.offerIdSection')}</Text>
                 <TextInput
                   style={[
                     styles.advancedInput,
                     { flexGrow: 0, alignSelf: 'stretch', width: '100%', color: isDark ? '#FFF' : '#1C1C1E', marginBottom: 12 },
                   ]}
-                  placeholder="Numer oferty"
+                  placeholder={t('radar.advancedSearch.offerIdPlaceholder')}
                   placeholderTextColor="#8E8E93"
                   keyboardType="number-pad"
                   value={draftOfferIdInput}
@@ -4252,79 +4630,71 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   editable={!advancedOfferIdBusy}
                 />
 
-                <Text style={styles.advancedSection}>Tryb</Text>
-                <View style={styles.advancedRow}>
-                  {([
-                    { key: 'SELL', label: 'Kupno' },
-                    { key: 'RENT', label: 'Najem' },
-                  ] as const).map((item) => {
-                    const active = draftAdvancedFilters.transactionType === item.key;
-                    return (
-                      <Pressable key={item.key} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, transactionType: item.key }))}>
-                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{item.label}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.modeSection')}</Text>
+                <AdvancedFilterSegment
+                  size="large"
+                  options={[
+                    { key: 'SELL', label: t('radar.advancedSearch.buy') },
+                    { key: 'RENT', label: t('radar.advancedSearch.rent') },
+                  ]}
+                  value={draftAdvancedFilters.transactionType}
+                  onChange={(key) =>
+                    setDraftAdvancedFilters((p) => ({ ...p, transactionType: key }))
+                  }
+                  accentColor={draftModeAccentColor}
+                  isDark={isDark}
+                />
 
-                <Text style={styles.advancedSection}>Lokalizacja</Text>
-                <View style={styles.advancedRow}>
-                  {([
-                    { key: 'CITY', label: 'Według miast' },
-                    { key: 'MAP', label: 'Według obszaru mapy' },
-                  ] as const).map((item) => {
-                    const active = draftAdvancedFilters.locationMode === item.key;
-                    return (
-                      <Pressable
-                        key={item.key}
-                        style={[
-                          styles.advancedChip,
-                          active && styles.advancedChipActive,
-                          active && {
-                            borderColor: draftModeAccentColor,
-                            backgroundColor:
-                              draftAdvancedFilters.transactionType === 'RENT'
-                                ? 'rgba(10,132,255,0.18)'
-                                : 'rgba(16,185,129,0.18)',
-                          },
-                        ]}
-                        onPress={() =>
-                          setDraftAdvancedFilters((p) => ({
-                            ...p,
-                            locationMode: item.key,
-                            ...(item.key === 'CITY' ? { mapBounds: null } : {}),
-                          }))
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.advancedChipText,
-                            active && styles.advancedChipTextActive,
-                            active && { color: draftModeAccentColor },
-                          ]}
-                        >
-                          {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.locationSection')}</Text>
+                <Text
+                  style={[
+                    styles.advancedHint,
+                    { color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)' },
+                  ]}
+                >
+                  {t('radar.advancedSearch.locationHint')}
+                </Text>
+                <AdvancedFilterSegment
+                  options={[
+                    { key: 'CITY', label: t('radar.advancedSearch.byCity') },
+                    { key: 'MAP', label: t('radar.advancedSearch.byMapArea') },
+                  ]}
+                  value={draftAdvancedFilters.locationMode}
+                  onChange={(key) =>
+                    setDraftAdvancedFilters((p) => ({
+                      ...p,
+                      locationMode: key,
+                      ...(key === 'CITY' ? { mapBounds: null } : {}),
+                    }))
+                  }
+                  accentColor={draftModeAccentColor}
+                  isDark={isDark}
+                />
 
                 {draftAdvancedFilters.locationMode === 'CITY' ? (
-                  <>
-                    <Text style={styles.advancedSection}>Miasto</Text>
+                  <View
+                    style={[
+                      styles.advancedSubPanel,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                      },
+                    ]}
+                  >
+                    <PolandScopeNote isDark={isDark} />
+                    <Text style={styles.advancedSection}>{t('radar.advancedSearch.citySection')}</Text>
                     <View style={styles.advancedRow}>
                       {['', ...backendCities].map((city) => {
                         const active = draftAdvancedFilters.city === city;
                         return (
                           <Pressable key={city || 'all'} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, city, districts: [], mapBounds: null }))}>
-                            <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{city || 'Wszystkie'}</Text>
+                            <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{city || t('radar.advancedSearch.allCities')}</Text>
                           </Pressable>
                         );
                       })}
                     </View>
 
-                    <Text style={styles.advancedSection}>Dzielnica</Text>
+                    <Text style={styles.advancedSection}>{t('radar.advancedSearch.districtSection')}</Text>
                     <View style={styles.advancedRow}>
                       {(() => {
                         const selectedCity = draftAdvancedFilters.city.trim();
@@ -4364,25 +4734,36 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     {draftAdvancedFilters.districts.length > 0 && (
                       <Pressable
                         onPress={() => setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))}
-                        style={{ alignSelf: 'flex-start', marginBottom: 8 }}
+                        style={{ alignSelf: 'flex-start', marginBottom: 4 }}
                       >
-                        <Text style={{ color: '#8E8E93', fontWeight: '700' }}>Wyczyść dzielnice</Text>
+                        <Text style={{ color: '#8E8E93', fontWeight: '700' }}>{t('radar.advancedSearch.clearDistricts')}</Text>
                       </Pressable>
                     )}
-                  </>
+                  </View>
                 ) : (
                   <View style={{ marginBottom: 12 }}>
-                    <Pressable
+                    <Text
                       style={[
-                        styles.advancedChip,
-                        styles.advancedChipActive,
+                        styles.advancedHint,
+                        { color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)', marginTop: 0 },
+                      ]}
+                    >
+                      {t('radar.advancedSearch.mapAreaGlobalHint')}
+                    </Text>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.advancedMapCard,
                         {
-                          alignSelf: 'flex-start',
                           borderColor: draftModeAccentColor,
                           backgroundColor:
                             draftAdvancedFilters.transactionType === 'RENT'
-                              ? 'rgba(10,132,255,0.18)'
-                              : 'rgba(16,185,129,0.18)',
+                              ? isDark
+                                ? 'rgba(10,132,255,0.14)'
+                                : 'rgba(10,132,255,0.1)'
+                              : isDark
+                                ? 'rgba(16,185,129,0.14)'
+                                : 'rgba(16,185,129,0.1)',
+                          opacity: pressed ? 0.88 : 1,
                         },
                       ]}
                       onPress={() => {
@@ -4408,36 +4789,80 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                         void pulseHaptic(Haptics.ImpactFeedbackStyle.Medium);
                       }}
                     >
-                      <Text style={[styles.advancedChipText, { color: draftModeAccentColor, fontWeight: '800' }]}>
-                        Zaznacz obszar na mapie
-                      </Text>
+                      <View
+                        style={[
+                          styles.advancedMapCardIcon,
+                          { backgroundColor: `${draftModeAccentColor}28` },
+                        ]}
+                      >
+                        <Ionicons name="map" size={22} color={draftModeAccentColor} />
+                      </View>
+                      <View style={styles.advancedMapCardCopy}>
+                        <Text style={[styles.advancedMapCardTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                          {t('radar.advancedSearch.pickMapArea')}
+                        </Text>
+                        <Text style={[styles.advancedMapCardSub, { color: '#8E8E93' }]}>
+                          {draftAdvancedFilters.mapBounds
+                            ? t('radar.advancedSearch.mapAreaSelected', {
+                                radius: draftAdvancedFilters.mapBounds.radiusKm.toFixed(1),
+                              })
+                            : t('radar.advancedSearch.mapAreaNotSelected')}
+                        </Text>
+                        <Text style={[styles.advancedMapCardSub, { color: '#8E8E93', marginTop: 2 }]}>
+                          {t('radar.advancedSearch.pickMapAreaSub')}
+                        </Text>
+                      </View>
                     </Pressable>
-                    <Text style={{ marginTop: 8, color: '#8E8E93', fontWeight: '600' }}>
-                      {draftAdvancedFilters.mapBounds
-                        ? `Obszar: ${draftAdvancedFilters.mapBounds.radiusKm.toFixed(1)} km`
-                        : 'Nie wybrano obszaru — stuknij i zaznacz na mapie.'}
-                    </Text>
                   </View>
                 )}
 
-                <Text style={styles.advancedSection}>Typ nieruchomości</Text>
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.propertyTypeSection')}</Text>
                 <View style={styles.advancedRow}>
                   {(['ALL', 'FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((type) => {
-                    const labels = { ALL: 'Wszystkie', FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
+                    const labelKey = {
+                      ALL: 'radar.home.propertyAll',
+                      FLAT: 'radar.home.propertyFlat',
+                      HOUSE: 'radar.home.propertyHouse',
+                      PLOT: 'radar.home.propertyPlot',
+                      COMMERCIAL: 'radar.home.propertyPremises',
+                    } as const;
                     const active = draftAdvancedFilters.propertyType === type;
                     return (
                       <Pressable key={type} style={[styles.advancedChip, active && styles.advancedChipActive, active && { borderColor: draftModeAccentColor, backgroundColor: draftAdvancedFilters.transactionType === 'RENT' ? 'rgba(10,132,255,0.18)' : 'rgba(16,185,129,0.18)' }]} onPress={() => setDraftAdvancedFilters((p) => ({ ...p, propertyType: type }))}>
-                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{labels[type]}</Text>
+                        <Text style={[styles.advancedChipText, active && styles.advancedChipTextActive, active && { color: draftModeAccentColor }]}>{t(labelKey[type])}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
 
-                <Text style={styles.advancedSection}>Cena (PLN)</Text>
+                <Text style={styles.advancedSection}>
+                  {t('radar.advancedSearch.priceSection', { currency: draftAdvancedFilters.priceCurrency === 'EUR' ? '€' : 'zł' })}
+                </Text>
+                <CurrencySegmentControl
+                  value={draftAdvancedFilters.priceCurrency}
+                  onChange={(next) =>
+                    setDraftAdvancedFilters((p) => ({
+                      ...p,
+                      priceCurrency: next,
+                      minPrice:
+                        p.minPrice != null
+                          ? convertBetweenCurrencies(p.minPrice, p.priceCurrency, next, rate)
+                          : null,
+                      maxPrice:
+                        p.maxPrice != null
+                          ? convertBetweenCurrencies(p.maxPrice, p.priceCurrency, next, rate)
+                          : null,
+                    }))
+                  }
+                  isDark={isDark}
+                />
+                <Text style={[styles.advancedPriceHint, { color: isDark ? '#8E8E93' : '#6B7280' }]}>
+                  {t('radar.advancedSearch.priceHint')}
+                </Text>
                 <View style={styles.advancedInputRow}>
                   <TextInput
                     style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Od"
+                    placeholder={t('radar.advancedSearch.priceFrom', { currency: draftAdvancedFilters.priceCurrency })}
                     placeholderTextColor="#8E8E93"
                     keyboardType="numeric"
                     value={draftAdvancedFilters.minPrice === null ? '' : String(draftAdvancedFilters.minPrice)}
@@ -4445,7 +4870,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                   <TextInput
                     style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Do"
+                    placeholder={t('radar.advancedSearch.priceTo', { currency: draftAdvancedFilters.priceCurrency })}
                     placeholderTextColor="#8E8E93"
                     keyboardType="numeric"
                     value={draftAdvancedFilters.maxPrice === null ? '' : String(draftAdvancedFilters.maxPrice)}
@@ -4453,11 +4878,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                 </View>
 
-                <Text style={styles.advancedSection}>Metraż (m²)</Text>
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.areaSection')}</Text>
                 <View style={styles.advancedInputRow}>
                   <TextInput
                     style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Od"
+                    placeholder={t('radar.advancedSearch.from')}
                     placeholderTextColor="#8E8E93"
                     keyboardType="numeric"
                     value={draftAdvancedFilters.minArea === null ? '' : String(draftAdvancedFilters.minArea)}
@@ -4465,7 +4890,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                   <TextInput
                     style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
-                    placeholder="Do"
+                    placeholder={t('radar.advancedSearch.to')}
                     placeholderTextColor="#8E8E93"
                     keyboardType="numeric"
                     value={draftAdvancedFilters.maxArea === null ? '' : String(draftAdvancedFilters.maxArea)}
@@ -4473,10 +4898,53 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   />
                 </View>
 
-                <Text style={styles.advancedSection}>Pokoje (min.)</Text>
+                {(draftAdvancedFilters.propertyType === 'HOUSE' ||
+                  draftAdvancedFilters.propertyType === 'ALL') && (
+                  <>
+                    <Text style={styles.advancedSection}>{t('radar.advancedSearch.plotAreaSection')}</Text>
+                    <View style={styles.advancedInputRow}>
+                      <TextInput
+                        style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                        placeholder={t('radar.advancedSearch.from')}
+                        placeholderTextColor="#8E8E93"
+                        keyboardType="numeric"
+                        value={
+                          draftAdvancedFilters.minPlotArea === null
+                            ? ''
+                            : String(draftAdvancedFilters.minPlotArea)
+                        }
+                        onChangeText={(v) =>
+                          setDraftAdvancedFilters((p) => ({
+                            ...p,
+                            minPlotArea: v ? Number(v.replace(/\D/g, '')) : null,
+                          }))
+                        }
+                      />
+                      <TextInput
+                        style={[styles.advancedInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                        placeholder={t('radar.advancedSearch.to')}
+                        placeholderTextColor="#8E8E93"
+                        keyboardType="numeric"
+                        value={
+                          draftAdvancedFilters.maxPlotArea === null
+                            ? ''
+                            : String(draftAdvancedFilters.maxPlotArea)
+                        }
+                        onChangeText={(v) =>
+                          setDraftAdvancedFilters((p) => ({
+                            ...p,
+                            maxPlotArea: v ? Number(v.replace(/\D/g, '')) : null,
+                          }))
+                        }
+                      />
+                    </View>
+                  </>
+                )}
+
+                <Text style={styles.advancedSection}>{t('radar.advancedSearch.roomsSection')}</Text>
                 <View style={styles.advancedRow}>
                   {([
-                    { value: null, label: 'Dowolnie' },
+                    { value: null, label: t('radar.advancedSearch.roomsAny') },
                     { value: 1, label: '1+' },
                     { value: 2, label: '2+' },
                     { value: 3, label: '3+' },
@@ -4531,7 +4999,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 {advancedOfferIdBusy ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.advancedApplyText}>Zastosuj filtry</Text>
+                  <Text style={styles.advancedApplyText}>{t('radar.advancedSearch.apply')}</Text>
                 )}
               </Pressable>
             </View>
@@ -4907,6 +5375,12 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  searchAreaCenterDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2.5,
+  },
   clusterOuter: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -5043,7 +5517,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
+  },
+  offerReasonCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 10,
   },
   offerReasonIconBubble: {
     width: 26,
@@ -5072,6 +5550,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
+    marginLeft: 4,
   },
   offerReasonActionText: {
     fontSize: 11,
@@ -5424,6 +5904,54 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  advancedHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  advancedSubPanel: {
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+    marginBottom: 12,
+  },
+  advancedMapCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginTop: 8,
+  },
+  advancedMapCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  advancedMapCardCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  advancedMapCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  advancedMapCardSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  advancedPriceHint: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 10,
+    lineHeight: 16,
   },
   advancedRow: {
     flexDirection: 'row',

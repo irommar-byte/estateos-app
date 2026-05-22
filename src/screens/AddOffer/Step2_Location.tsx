@@ -9,6 +9,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import { AddOfferFieldHint } from '../../components/AddOfferValidation';
+import { ADD_OFFER_STREET_MIN } from './validation';
 import {
   STRICT_CITIES,
   STRICT_CITY_DISTRICTS,
@@ -19,11 +21,15 @@ import {
   resolveLocalityCountryFromPlace,
   localityCountryIso,
   normalizeLocalityCountryLabel,
+  defaultExactLocationForPropertyType,
   getLocationDraftRepairPatch,
+  resolveIsExactLocation,
+  stripHouseNumber,
   streetLineFromGeocodedPlace,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { coordKeyForCityDistrict } from './districtCoordKeys';
+import { useI18n } from '../../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -364,7 +370,15 @@ const BreathingCircle = () => {
  *     wskazywać dokładny adres nieruchomości."
  *   • Glassmorphic BlurView + delikatny czerwony halo (zgodny z kolorem pinezki)
  */
-const MapInteractionTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: boolean }) => {
+const MapInteractionTip = ({
+  isDark,
+  dismissed,
+  t,
+}: {
+  isDark: boolean;
+  dismissed: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) => {
   const fingerX = useRef(new Animated.Value(0)).current;
   const fingerOpacity = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -440,10 +454,10 @@ const MapInteractionTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: 
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.mapTipTitle, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-            Przesuń mapę, by ustawić pinezkę
+            {t('addOffer.step2.mapTip.title')}
           </Text>
           <Text style={[styles.mapTipSubtitle, { color: isDark ? 'rgba(235,235,245,0.74)' : 'rgba(60,60,67,0.7)' }]}>
-            Szczypcami przybliżysz. Pinezka musi wskazywać dokładny punkt nieruchomości.
+            {t('addOffer.step2.mapTip.subtitle')}
           </Text>
         </View>
       </BlurView>
@@ -723,6 +737,7 @@ const normalizeStrictLocation = (
 };
 
 export default function Step2_Location({ theme }: { theme: any }) {
+  const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep, setNavigationGate } = useOfferStore();
   const [streetInput, setStreetInput] = useState(draft.street || '');
   const [showLocationConfirm, setShowLocationConfirm] = useState(false);
@@ -795,6 +810,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const isPolandLocation = safeDraftLocalityCountryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
   const hasCoords =
     Number.isFinite(Number(draft.lat)) && Number.isFinite(Number(draft.lng));
+  const streetTrim = String(streetInput || '').trim();
+  const streetLen = streetTrim.length;
+  const streetHasDigit = /\d/.test(streetTrim);
+  const currentIsExact = resolveIsExactLocation(
+    draft.isExactLocation ?? defaultExactLocationForPropertyType(draft.propertyType),
+  );
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
@@ -909,7 +930,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
   const handleAddressSearch = async () => {
     if (streetInput.length < 3) return;
-    if (!/\d/.test(streetInput)) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); Alert.alert("Brak numeru", "Proszę podać dokładny adres z numerem, np. 'Wolska 56'."); return; }
+    if (currentIsExact && !/\d/.test(streetInput)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        t('addOffer.step2.alerts.missingNumber.title'),
+        t('addOffer.step2.alerts.missingNumber.message'),
+      );
+      return;
+    }
     try {
       const countryLabel = String(draft.localityCountry || DEFAULT_LOCALITY_COUNTRY).trim();
       const result = await Location.geocodeAsync(buildGeocodeQuery(streetInput, countryLabel));
@@ -943,8 +971,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
           finalCountryCode = normalized.localityCountryCode;
           newStreet = streetLineFromGeocodedPlace(place, streetInput);
         }
-        
-        setStreetInput(newStreet);
+        const storedStreet = currentIsExact ? newStreet : stripHouseNumber(newStreet) || newStreet;
+
+        setStreetInput(storedStreet);
         updateDraft({
           city: finalCity,
           district: finalDistrict,
@@ -952,13 +981,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
           localityCountryCode: finalCountryCode,
           lat: latitude,
           lng: longitude,
-          isExactLocation: true,
-          street: newStreet,
+          street: storedStreet,
         });
-        flyTo(latitude, longitude, true);
+        flyTo(latitude, longitude, currentIsExact);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Nie znaleziono", "System nie mógł odnaleźć tego adresu na mapie.");
+        Alert.alert(
+          t('addOffer.step2.alerts.addressNotFound.title'),
+          t('addOffer.step2.alerts.addressNotFound.message'),
+        );
       }
     } catch (e) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
   };
@@ -997,7 +1028,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
       if (reverse.length > 0) {
         const place = reverse[0];
         
-        const newStreet = streetLineFromGeocodedPlace(place, streetInput);
+        const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
+        const newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
 
         const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
         const normalized = strictCity
@@ -1071,7 +1103,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
       updateDraft({ lat: coords.lat, lng: coords.lng });
       flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
     } else {
-      Alert.alert('Nie znaleziono dzielnicy', `Nie udało się zlokalizować: ${normalized.district}, ${normalized.city}.`);
+      Alert.alert(
+        t('addOffer.step2.alerts.districtNotFound.title'),
+        t('addOffer.step2.alerts.districtNotFound.message', {
+          district: normalized.district,
+          city: normalized.city,
+        }),
+      );
     }
   };
 
@@ -1101,17 +1139,25 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const locationCityDistrict = (() => {
     const districtTrim = String(safeDraftDistrict || '').trim();
     if (isRestOfCountry) {
-      return districtTrim || 'Miejscowość nieustalona';
+      return districtTrim || t('addOffer.step2.confirm.fallbacks.localityUnknown');
     }
     if (!districtTrim || districtTrim.toLowerCase() === 'ogólna') {
       return safeDraftCity;
     }
     return `${safeDraftCity}, ${districtTrim}`;
   })();
-  const locationStreet = streetInput?.trim() || draft.street || 'Brak dokładnego adresu';
+  const locationStreetRaw = streetInput?.trim() || draft.street || '';
+  const locationStreet = locationStreetRaw
+    ? currentIsExact
+      ? locationStreetRaw
+      : stripHouseNumber(locationStreetRaw) || locationStreetRaw
+    : t('addOffer.step2.confirm.fallbacks.noExactAddress');
 
   const confirmAndGoNext = () => {
-    if (streetInput?.trim()) updateDraft({ street: streetInput.trim() });
+    if (streetInput?.trim()) {
+      const trimmed = streetInput.trim();
+      updateDraft({ street: currentIsExact ? trimmed : stripHouseNumber(trimmed) || trimmed });
+    }
     const action = pendingNavActionRef.current;
     pendingNavActionRef.current = null;
     setShowLocationConfirm(false);
@@ -1123,8 +1169,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
       }, 0);
     }
   };
-
-  const currentIsExact = draft.isExactLocation !== undefined ? draft.isExactLocation : true;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
@@ -1144,29 +1188,46 @@ export default function Step2_Location({ theme }: { theme: any }) {
         {/* Floating-tip nad dolną krawędzią mapy — wyjaśnia że mapę
             trzeba przesuwać palcem i zoomować szczypcami. Znika po pierwszym
             gestem usera (handleRegionChangeComplete → userInteractedWithMap). */}
-        <MapInteractionTip isDark={isDark} dismissed={userInteractedWithMap} />
+        <MapInteractionTip isDark={isDark} dismissed={userInteractedWithMap} t={t} />
       </View>
 
       <ScrollView style={styles.controlsContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <AddOfferStepper currentStep={2} draft={draft} theme={theme} navigation={navigation} onBeforeStepChange={handleBeforeStepChange} />
         
-        <Text style={[styles.header, { color: theme.text }]}>Lokalizacja</Text>
+        <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step2.header')}</Text>
         
-        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Wyszukaj adres</Text>
+        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.searchAddress')}</Text>
         <View style={[styles.insetSlot, { backgroundColor: inputBg, borderColor }, shadow]}>
-          <TextInput style={[styles.input, { color: theme.text }]} placeholder="np. Wolska 56" placeholderTextColor={theme.subtitle} value={streetInput} onChangeText={setStreetInput} onSubmitEditing={handleAddressSearch} returnKeyType="search" selectionColor="#dc2626" />
+          <TextInput
+            style={[styles.input, { color: theme.text }]}
+            placeholder={t('addOffer.step2.placeholders.street')}
+            placeholderTextColor={theme.subtitle}
+            value={streetInput}
+            onChangeText={setStreetInput}
+            onSubmitEditing={handleAddressSearch}
+            returnKeyType="search"
+            selectionColor="#dc2626"
+          />
         </View>
+        {isPolandLocation ? (
+          <AddOfferFieldHint current={streetLen} min={ADD_OFFER_STREET_MIN} />
+        ) : null}
+        {isPolandLocation && currentIsExact && streetLen >= ADD_OFFER_STREET_MIN && !streetHasDigit ? (
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FF3B30', marginTop: 6, marginLeft: 4 }}>
+            {t('addOffer.step2.streetBuildingHint')}
+          </Text>
+        ) : null}
 
         {showGeocodedLocality ? (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIEJSCEWOŚĆ</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.locality')}</Text>
             <View style={[styles.restLocalityCard, { backgroundColor: cardBg, borderColor }, shadow]}>
               <Text style={[styles.restLocalityName, { color: theme.text }]}>{safeDraftDistrict}</Text>
               <Text style={[styles.restLocalityHint, { color: theme.subtitle }]}>
-                Ustalana z mapy i adresu (geokodowanie). Przesuń pinezkę lub wpisz adres z numerem, aby zmienić nazwę.
+                {t('addOffer.step2.localityHint')}
               </Text>
             </View>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>PAŃSTWO</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.country')}</Text>
             <View style={[styles.restLocalityCard, { backgroundColor: cardBg, borderColor }, shadow]}>
               <View style={styles.countryRow}>
                 <Text style={styles.countryFlag} accessibilityLabel={safeDraftLocalityCountry}>
@@ -1177,7 +1238,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
                 </Text>
               </View>
               <Text style={[styles.restLocalityHint, { color: theme.subtitle }]}>
-                Wykrywane z mapy (np. Polska, Ukraina). Przesuń pinezkę na właściwy kraj, jeśli nazwa jest niepoprawna.
+                {t('addOffer.step2.countryHint')}
               </Text>
             </View>
           </>
@@ -1185,7 +1246,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         {showPolishCityPicker ? (
           <View pointerEvents="auto">
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>MIASTO</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.city')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
               {STRICT_CITIES.filter((c) => c !== REST_OF_COUNTRY_CITY).map((c) => (
                 <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
@@ -1194,7 +1255,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
               ))}
             </ScrollView>
 
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>DZIELNICA</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.district')}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 30 }}>
               {(DISTRICTS_DATA[safeDraftCity as keyof typeof DISTRICTS_DATA] || []).map((d) => (
                 <Pressable key={d} onPress={() => handleDistrictChange(d)} style={[styles.pillBtn, safeDraftDistrict === d && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
@@ -1210,8 +1271,8 @@ export default function Step2_Location({ theme }: { theme: any }) {
           icon="map-outline"
           text={
             isPolandLocation
-              ? 'Najważniejsza jest zgodność pinezki na mapie z faktycznym miejscem nieruchomości. W Polsce możesz doprecyzować miasto i dzielnicę z listy — adres powinien odpowiadać pinezce. Poza głównymi aglomeracjami nazwa miejscowości pochodzi z geokodowania.'
-              : 'Lokalizacja poza Polską: miasto i miejscowość wynikają wyłącznie z mapy i adresu (geokodowanie). Lista polskich miast nie dotyczy tej oferty — ustaw pinezkę i podaj dokładny adres z numerem.'
+              ? t('addOffer.step2.footerHint.poland')
+              : t('addOffer.step2.footerHint.international')
           }
         />
 
@@ -1219,14 +1280,29 @@ export default function Step2_Location({ theme }: { theme: any }) {
           <View style={[styles.glassCard, { backgroundColor: cardBg, borderColor }, shadow]}>
             <View style={styles.switchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.label, { color: theme.text }]}>Dokładna lokalizacja</Text>
+                <Text style={[styles.label, { color: theme.text }]}>{t('addOffer.step2.exactLocation.label')}</Text>
                 <Text style={[styles.subLabel, { color: theme.subtitle }]}>
                   {currentIsExact
-                    ? 'WŁ.: kupujący widzi nazwę ulicy + numer (np. „Reymonta 12") oraz precyzyjny pin na mapie.'
-                    : 'WYŁ.: kupujący widzi tylko nazwę ulicy (np. „Reymonta", bez numeru) i przybliżony obszar ~200 m.'}
+                    ? t('addOffer.step2.exactLocation.on')
+                    : t('addOffer.step2.exactLocation.off')}
                 </Text>
               </View>
-              <Switch value={currentIsExact} onValueChange={(val) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ isExactLocation: val }); if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val); }} trackColor={{ false: '#D1D1D6', true: '#10b981' }} />
+              <Switch
+                value={currentIsExact}
+                onValueChange={(val) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  const trimmed = String(streetInput || draft.street || '').trim();
+                  const nextStreet = trimmed
+                    ? val
+                      ? trimmed
+                      : stripHouseNumber(trimmed) || trimmed
+                    : trimmed;
+                  if (nextStreet !== streetInput) setStreetInput(nextStreet);
+                  updateDraft({ isExactLocation: val, ...(nextStreet ? { street: nextStreet } : {}) });
+                  if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val);
+                }}
+                trackColor={{ false: '#D1D1D6', true: '#10b981' }}
+              />
             </View>
           </View>
         </View>
@@ -1246,18 +1322,18 @@ export default function Step2_Location({ theme }: { theme: any }) {
         <View style={styles.confirmOverlay}>
           <BlurView intensity={36} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
           <View style={[styles.confirmCard, { backgroundColor: isDark ? 'rgba(28,28,30,0.96)' : 'rgba(255,255,255,0.96)' }]}>
-            <Text style={[styles.confirmTitle, { color: theme.text }]}>Potwierdź lokalizację</Text>
+            <Text style={[styles.confirmTitle, { color: theme.text }]}>{t('addOffer.step2.confirm.title')}</Text>
             <Text style={[styles.confirmSubtitle, { color: theme.subtitle }]}>
-              Upewnij się, że pinezka wskazuje właściwe miejsce oferty.
+              {t('addOffer.step2.confirm.subtitle')}
             </Text>
 
             <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Miasto i dzielnica</Text>
-              <Text style={[styles.confirmValue, { color: theme.text }]}>{locationCityDistrict || 'Brak'}</Text>
+              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>{t('addOffer.step2.confirm.labels.cityDistrict')}</Text>
+              <Text style={[styles.confirmValue, { color: theme.text }]}>{locationCityDistrict || t('addOffer.common.none')}</Text>
             </View>
             {showGeocodedLocality ? (
               <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-                <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Państwo</Text>
+                <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>{t('addOffer.step2.confirm.labels.country')}</Text>
                 <View style={styles.confirmCountryValue}>
                   <Text style={styles.confirmCountryFlag}>{localityCountryFlag}</Text>
                   <Text style={[styles.confirmValue, { color: theme.text }]}>{safeDraftLocalityCountry}</Text>
@@ -1265,7 +1341,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
               </View>
             ) : null}
             <View style={[styles.confirmRow, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>Adres</Text>
+              <Text style={[styles.confirmLabel, { color: theme.subtitle }]}>{t('addOffer.step2.confirm.labels.address')}</Text>
               <Text style={[styles.confirmValue, { color: theme.text }]}>{locationStreet}</Text>
             </View>
 
@@ -1277,10 +1353,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
                   pendingNavActionRef.current = null;
                 }}
               >
-                <Text style={styles.confirmSecondaryText}>Popraw</Text>
+                <Text style={styles.confirmSecondaryText}>{t('addOffer.step2.confirm.buttons.edit')}</Text>
               </Pressable>
               <Pressable style={[styles.confirmBtn, styles.confirmPrimary]} onPress={confirmAndGoNext}>
-                <Text style={styles.confirmPrimaryText}>Zatwierdź</Text>
+                <Text style={styles.confirmPrimaryText}>{t('addOffer.step2.confirm.buttons.confirm')}</Text>
               </Pressable>
             </View>
           </View>

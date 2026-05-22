@@ -1,0 +1,641 @@
+export const addOffer = {
+  stepBlockDefault: 'Uzupełnij wymagane pola w bieżącym kroku.',
+  stepBlockPrefix: 'Uzupełnij: {{fields}}.',
+
+  meter: {
+    ofMax: '{{current}} / {{max}} {{unit}}',
+    ofMin: '{{current}} / {{min}} min. {{unit}}',
+    count: '{{current}} {{unit}}',
+  },
+
+  validation: {
+    step1: {
+      transaction: { label: 'Cel ogłoszenia', action: 'Wybierz Sprzedaż lub Wynajem.' },
+      propertyType: { label: 'Typ nieruchomości', action: 'Wybierz mieszkanie, dom, działkę lub lokal.' },
+      condition: { label: 'Stan wykończenia', action: 'Wybierz stan: gotowe, do remontu lub deweloperski.' },
+    },
+    step2: {
+      map: { label: 'Pinezka na mapie', action: 'Przesuń mapę lub wyszukaj adres — pinezka musi wskazać lokalizację.' },
+      locality: {
+        label: 'Miejscowość',
+        actionPl: 'Poczekaj na geokodowanie lub wybierz miasto i dzielnicę.',
+        actionIntl: 'Ustaw pinezkę — nazwa miejscowości uzupełni się z mapy.',
+      },
+      street: { label: 'Ulica z numerem budynku', action: 'Wpisz ulicę z numerem (min. {{min}} znaki, np. Wolska 56).' },
+      streetApprox: {
+        label: 'Nazwa ulicy (lokalizacja przybliżona)',
+        action: 'Wpisz nazwę ulicy bez numeru (min. {{min}} znaki).',
+      },
+      streetIntl: { label: 'Adres lub pinezka', action: 'Wpisz ulicę albo zostaw samą pinezkę z ustaloną miejscowością.' },
+    },
+    step3: {
+      plotArea: { label: 'Powierzchnia działki', action: 'Podaj metraż działki w m² (wartość większa od 0).' },
+      housePlotArea: {
+        label: 'Metraż działki (dom)',
+        action: 'Opcjonalnie — wpisz metraż działki w m² lub zostaw puste.',
+      },
+      area: { label: 'Metraż', action: 'Wpisz powierzchnię użytkową w m².' },
+      rooms: { label: 'Liczba pokoi', action: 'Wybierz liczbę pokoi.', actionNeedArea: 'Najpierw uzupełnij metraż.' },
+      floor: {
+        label: 'Piętro',
+        actionNeedArea: 'Najpierw uzupełnij metraż.',
+        actionNeedRooms: 'Najpierw wybierz liczbę pokoi.',
+        action: 'Wybierz piętro (np. Parter lub 3).',
+      },
+      year: { label: 'Rok budowy', action: 'Wybierz rok budowy z listy.' },
+    },
+    step4: {
+      priceSell: { label: 'Cena całkowita', action: 'Wpisz cenę sprzedaży (większą od 0).' },
+      priceRent: { label: 'Czynsz najmu', action: 'Wpisz miesięczny czynsz (większy od 0).' },
+    },
+    step5: {
+      photos: { label: 'Zdjęcia oferty', action: 'Dodaj minimum {{min}} zdjęcie — użyj „Otwórz galerię”.' },
+      title: {
+        label: 'Tytuł oferty',
+        actionShort: 'Wpisz jeszcze {{count}} {{unit}}.',
+        actionLong: 'Skróć tytuł do {{max}} znaków.',
+      },
+      description: {
+        label: 'Opis (zalecany)',
+        action: 'Dodaj opis — minimum {{min}} znaków (możesz użyć „Wygeneruj AI”).',
+      },
+    },
+  },
+
+  fieldHint: {
+    shortenBy: 'Skróć o {{count}} {{unit}}',
+    missingChars: 'Brakuje {{count}} {{unit}} (min. {{min}})',
+  },
+
+  stepper: {
+    title: 'KROK {{current}} Z {{total}}',
+    canProceed: 'Możesz iść dalej',
+    completeStep: 'Uzupełnij ten krok',
+    alerts: {
+      stepByStep: {
+        title: 'Przejdź krok po kroku',
+        message: 'Możesz przejść tylko do kolejnego kroku.',
+      },
+      completeData: {
+        title: 'Uzupełnij dane',
+      },
+    },
+  },
+
+  common: {
+    yes: 'Tak',
+    no: 'Nie',
+    none: 'Brak',
+    groundFloor: 'Parter',
+    notSpecified: 'Nie podano',
+    pickerEmpty: '-',
+    cancel: 'Anuluj',
+    settings: 'Ustawienia',
+    super: 'Super',
+    alerts: {
+      authError: {
+        title: 'Błąd autoryzacji',
+        message: 'Zaloguj się ponownie, aby opublikować ofertę.',
+      },
+      completeOffer: {
+        title: 'Uzupełnij ofertę',
+        fixData: 'Popraw dane',
+      },
+      validation: {
+        title: 'Walidacja',
+        landRegistryFormat: 'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6',
+      },
+      store: {
+        title: 'Sklep',
+      },
+      error: {
+        title: 'Błąd',
+      },
+      verificationRequired: {
+        title: 'Weryfikacja wymagana',
+        message:
+          'Aby opublikować ofertę musisz najpierw potwierdzić: {{missing}}.\n\nPrzejdź do Profilu → Edytuj dane i dokończ weryfikację SMS-em oraz kodem z e-maila.',
+        missingPhone: 'numer telefonu',
+        missingEmail: 'adres e-mail',
+        goToProfile: 'Przejdź do profilu',
+      },
+    },
+  },
+
+  step1: {
+    headerPrefix: 'Dodaj ',
+    headerSuffix: 'ofertę',
+    sections: {
+      transaction: 'Od czego zaczynamy?',
+      propertyType: 'Co oferujesz?',
+      condition: 'W jakim jest stanie?',
+    },
+    tapTip: {
+      title: 'Dotknij kafelka, aby wybrać',
+      subtitle: 'Zaznacz „Sprzedaż” lub „Wynajem” — kolejne pola pojawią się automatycznie.',
+    },
+    optionTapHint: 'Dotknij, aby wybrać',
+    transaction: {
+      sell: 'Sprzedaż',
+      rent: 'Wynajem',
+    },
+    propertyType: {
+      flat: 'Mieszkanie',
+      house: 'Dom',
+      plot: 'Działka',
+      premises: 'Lokal',
+    },
+    condition: {
+      ready: 'Gotowe',
+      renovation: 'Do remontu',
+      developer: 'Deweloperski',
+    },
+    footerHint:
+      'Transakcja, typ nieruchomości i stan techniczny wpływają na prezentację oferty oraz dopasowanie w radarach i filtrach. Wybierz wartości zgodne ze stanem faktycznym — zminimalizujesz ryzyko nieporozumień już przy pierwszym kontakcie zainteresowanych.',
+  },
+
+  step2: {
+    header: 'Lokalizacja',
+    sections: {
+      searchAddress: 'Wyszukaj adres',
+      locality: 'MIEJSCEWOŚĆ',
+      country: 'PAŃSTWO',
+      city: 'MIASTO',
+      district: 'DZIELNICA',
+    },
+    placeholders: {
+      street: 'np. Wolska 56',
+    },
+    streetBuildingHint: 'Dodaj numer budynku (np. Wolska 56)',
+    localityHint:
+      'Ustalana z mapy i adresu (geokodowanie). Przesuń pinezkę lub wpisz adres z numerem, aby zmienić nazwę.',
+    countryHint:
+      'Wykrywane z mapy (np. Polska, Ukraina). Przesuń pinezkę na właściwy kraj, jeśli nazwa jest niepoprawna.',
+    exactLocation: {
+      label: 'Dokładna lokalizacja',
+      on: 'WŁ.: kupujący widzi nazwę ulicy + numer (np. „Reymonta 12") oraz precyzyjny pin na mapie.',
+      off: 'WYŁ.: kupujący widzi tylko nazwę ulicy (np. „Reymonta", bez numeru) i przybliżony obszar ~200 m.',
+    },
+    mapTip: {
+      title: 'Przesuń mapę, by ustawić pinezkę',
+      subtitle: 'Szczypcami przybliżysz. Pinezka musi wskazywać dokładny punkt nieruchomości.',
+    },
+    footerHint: {
+      poland:
+        'Najważniejsza jest zgodność pinezki na mapie z faktycznym miejscem nieruchomości. W Polsce możesz doprecyzować miasto i dzielnicę z listy — adres powinien odpowiadać pinezce. Poza głównymi aglomeracjami nazwa miejscowości pochodzi z geokodowania.',
+      international:
+        'Lokalizacja poza Polską: miasto i miejscowość wynikają wyłącznie z mapy i adresu (geokodowanie). Lista polskich miast nie dotyczy tej oferty — ustaw pinezkę i podaj dokładny adres z numerem.',
+    },
+    confirm: {
+      title: 'Potwierdź lokalizację',
+      subtitle: 'Upewnij się, że pinezka wskazuje właściwe miejsce oferty.',
+      labels: {
+        cityDistrict: 'Miasto i dzielnica',
+        country: 'Państwo',
+        address: 'Adres',
+      },
+      buttons: {
+        edit: 'Popraw',
+        confirm: 'Zatwierdź',
+      },
+      fallbacks: {
+        localityUnknown: 'Miejscowość nieustalona',
+        noExactAddress: 'Brak dokładnego adresu',
+      },
+    },
+    alerts: {
+      missingNumber: {
+        title: 'Brak numeru',
+        message: "Proszę podać dokładny adres z numerem, np. 'Wolska 56'.",
+      },
+      addressNotFound: {
+        title: 'Nie znaleziono',
+        message: 'System nie mógł odnaleźć tego adresu na mapie.',
+      },
+      districtNotFound: {
+        title: 'Nie znaleziono dzielnicy',
+        message: 'Nie udało się zlokalizować: {{district}}, {{city}}.',
+      },
+    },
+  },
+
+  step3: {
+    header: 'Parametry',
+    sections: {
+      area: 'Metraż',
+      housePlotArea: 'Metraż działki (opcjonalnie)',
+      details: 'Szczegóły',
+      amenities: 'Udogodnienia (Opcjonalne)',
+      heating: 'Ogrzewanie',
+      landRegistry: 'Weryfikacja dokumentów (opcjonalnie)',
+    },
+    placeholders: {
+      area: '0',
+      housePlotArea: 'np. 850',
+      apartmentNumber: 'Numer mieszkania',
+      landRegistryNumber: 'Numer księgi wieczystej (np. WA4N/00012345/6)',
+    },
+    pickers: {
+      rooms: 'POKOJE',
+      floor: 'PIĘTRO',
+      year: 'ROK',
+    },
+    heating: {
+      none: 'Nie podano',
+      district: 'Miejskie',
+      gas: 'Gazowe',
+      electric: 'Elektryczne',
+      heatPump: 'Pompa Ciepła',
+      coalPellet: 'Węglowe / Pellet',
+      other: 'Inne',
+    },
+    furnished: 'Umeblowane',
+    amenities: {
+      balcony: 'Balkon / Taras',
+      parking: 'Garaż / Parking',
+      storage: 'Piwnica / Komórka',
+      elevator: 'Winda',
+      garden: 'Ogródek',
+      twoLevel: 'Dwupoziomowe',
+    },
+    landRegistry: {
+      courtPrefix: 'Właściwy sąd:',
+      validFormat: 'Format KW poprawny. Dane trafiają wyłącznie do procesu weryfikacji.',
+      invalidFormat: 'Nieprawidłowy format KW. Użyj wzoru: WA4N/00012345/6',
+      privacy:
+        'Dane dokumentowe są prywatne i służą wyłącznie do weryfikacji stanu prawnego nieruchomości (np. potwierdzenie: nieruchomość sprawdzona, bez zadłużeń), co zwiększa wiarygodność oferty i szansę na zainteresowanie klientów. Te dane nie są publikowane i nigdy nie zostaną ujawnione bez Twojej wyraźnej zgody.',
+    },
+    footerHint: {
+      withLandRegistry:
+        'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami oraz na szacunki finansowe w następnym kroku. Uzupełniaj pola po kolei — kolejne sekcje odblokują się, gdy poprzednie są spójne. Dla działki wystarczy powierzchnia (bez udogodnień typowych dla lokalu).',
+      withoutLandRegistry:
+        'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami. Dla nieruchomości poza Polską nie stosujemy weryfikacji księgi wieczystej (KW) — dotyczy wyłącznie polskiego rejestru.',
+    },
+  },
+
+  step4: {
+    header: 'Finanse',
+    sections: {
+      priceRent: 'Czynsz najmu — waluta oferty',
+      priceSell: 'Cena całkowita — waluta oferty',
+      deposit: 'Kaucja',
+      adminFee: 'Czynsz Admin.',
+    },
+    placeholders: {
+      amount: '0',
+    },
+    analytics: {
+      pricePerSqm: 'Cena za m²',
+      marketStatus: {
+        bargain: 'OKAZJA',
+        market: 'W RYNKU',
+        overpriced: 'ZAWYŻONA',
+      },
+      diffFromAverage: '{{sign}}{{percent}}% od średniej',
+      emptyHint: 'Wpisz metraż w Kroku 3 oraz cenę, aby zobaczyć i regulować analizę rynkową.',
+      estimatedRoi: 'Szacowane ROI',
+    },
+    commission: {
+      badge: 'EstateOS™ Agent',
+      titleDefault: 'Twoja prowizja',
+      titleZero: 'Oferta bez prowizji',
+      subtitleZero:
+        'Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.',
+      subtitleDefaultPrefix: 'Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny',
+      subtitleDefaultSuffix:
+        'stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.',
+      subtitleVatNote:
+        'Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.',
+      addDefault: 'Prowizja {{percent}}',
+      addZero: 'Bez prowizji',
+      label: 'Prowizja',
+      stepHint: 'krok {{step}}',
+      amountLabelBuyer: 'dla kupującego',
+      amountLabelFromPrice: 'z ceny ofertowej',
+      amountZero: 'BEZ PROWIZJI',
+      amountEmpty: '— PLN',
+      amountHintZero: 'Kupujący nie płaci prowizji.',
+      amountHintDefault: 'To Twoje wynagrodzenie z transakcji.',
+      warnRange:
+        'Prowizja musi być równa 0% (bez prowizji) lub w zakresie {{min}}–{{max}}.',
+    },
+    footerHint:
+      'Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku.',
+  },
+
+  step5: {
+    header: 'Media i Opis',
+    capacity: {
+      photos: 'Wgrane Zdjęcia',
+      diskSpace: 'Przestrzeń Dysku',
+      suffixPhotos: 'Szt.',
+      suffixMb: 'MB',
+      estimatedSizeHint: '{{count}} {{filesLabel}} rozmiar szacunkowy do czasu pełnego pomiaru.',
+      estimatedSizeFileOne: 'plik ma',
+      estimatedSizeFileMany: 'pliki mają',
+    },
+    sections: {
+      photoGrid: 'Siatka Zdjęć',
+      title: 'Tytuł oferty',
+      floorPlan: 'Plan Nieruchomości',
+      description: 'Opis oferty',
+    },
+    coverBadge: 'OKŁADKA',
+    gallery: {
+      open: 'Otwórz galerię',
+      addMore: 'Dodaj kolejne zdjęcia',
+      sizing: 'Liczenie miejsca (konwersja podglądowa)...',
+    },
+    titlePlaceholder: 'np. Luksusowy apartament z widokiem na skyline',
+    floorPlan: {
+      upload: 'Wgraj rzut poziomy',
+    },
+    ai: {
+      generate: 'Wygeneruj AI',
+      generating: 'Analizuję...',
+      descriptionPlaceholder:
+        'Pozwól AI przeanalizować Twoją nieruchomość i stworzyć idealny opis, lub wpisz go ręcznie...',
+      intros: [
+        'Przekrocz próg przestrzeni, która redefiniuje pojęcie luksusu i komfortu.',
+        'Rzadka okazja na rynku. Nieruchomość, która natychmiast przykuwa uwagę.',
+        'Oto miejsce stworzone z myślą o osobach ceniących miejski styl życia.',
+        'Harmonia, spokój i doskonały design. Ta propozycja zadowoli najbardziej wymagających.',
+      ],
+      poi: [
+        'W promieniu 500 metrów znajdziesz renomowane szkoły i nowoczesny kompleks.',
+        'Zaledwie 3 minuty spacerem do głównych węzłów komunikacyjnych.',
+        'Otoczenie to kwintesencja wielkomiejskiego życia: kawiarnie i restauracje.',
+        'Dla aktywnych: ścieżki rowerowe, kluby fitness i bliskość rzeki.',
+      ],
+      marketOccasion: [
+        'To propozycja o charakterze okazji rynkowej — relacja ceny do metrażu wypada bardzo konkurencyjnie.',
+        'Analiza porównawcza wskazuje na atrakcyjną wycenę względem podobnych ofert w najbliższej okolicy.',
+        'W tym segmencie lokalnym to jedna z ciekawszych ofert cenowych dostępnych obecnie na rynku.',
+      ],
+      marketFair: [
+        'Cena pozostaje na poziomie rynkowym, spójnym z aktualnymi transakcjami dla podobnych nieruchomości.',
+        'Wycena jest wyważona i dobrze wpisuje się w lokalne widełki cenowe.',
+        'To stabilna, rynkowa propozycja — bez sztucznego zawyżenia, z zachowaniem jakości oferty.',
+      ],
+      marketPremium: [
+        'Oferta pozycjonowana jest jako ekskluzywna — wyższa cena odzwierciedla standard, lokalizację i potencjał.',
+        'To segment premium: wycena ponad średnią rynkową wynika z jakości i profilu nieruchomości.',
+        'Nieruchomość celuje w klienta premium, który szuka jakości ponad przeciętność rynkową.',
+      ],
+      marketHeader: {
+        bargain: 'OKAZJA',
+        premium: 'EKSKLUZYWNA',
+        fair: 'CENA RYNKOWA',
+      },
+      poiCandidates: [
+        '🚇 Komunikacja miejska w wygodnym zasięgu (autobus/tramwaj) — codzienne dojazdy są szybkie i przewidywalne.',
+        '🛍 W pobliżu dostępne są punkty usługowe: sklepy, piekarnie, apteki i strefa gastronomiczna.',
+        '🌿 W otoczeniu znajdziesz tereny rekreacyjne idealne na spacer, bieganie lub rower po pracy.',
+        '☕ Lokalizacja wspiera wygodny styl życia — kawiarnie, restauracje i codzienna infrastruktura są pod ręką.',
+        '🚗 Dogodny wyjazd na główne trasy ułatwia poruszanie się po mieście i poza nim.',
+        '🏫 Rodzinna infrastruktura (szkoły/przedszkola) jest osiągalna w krótkim czasie.',
+      ],
+      poiWarsaw: [
+        'Ⓜ️ W zależności od dzielnicy stacje metra pozostają w praktycznym zasięgu komunikacji miejskiej.',
+        '🍔 W okolicy nie brakuje rozpoznawalnych marek gastronomicznych oraz punktów typu drive.',
+      ],
+      poiPin: '📍 Adres został wskazany pinezką na mapie, co zwiększa precyzję dopasowania względem lokalnych potrzeb klienta.',
+      propertyType: {
+        house: 'dom',
+        plot: 'działkę',
+        flat: 'apartament',
+      },
+      condition: {
+        ready: 'gotowy do wprowadzenia',
+        renovation: 'z potencjałem do remontu',
+        developer: 'w stanie deweloperskim',
+      },
+      transaction: {
+        rent: 'wynajem',
+        sell: 'sprzedaż',
+      },
+      locationFallback: 'wybranej miejscowości',
+      amenities: {
+        balcony: 'Balkon / taras',
+        parking: 'Garaż / parking',
+        storage: 'Piwnica / komórka lokatorska',
+        elevator: 'Winda',
+        garden: 'Ogródek',
+        furnished: 'Umeblowane wnętrze',
+        none: 'Brak dodatkowych udogodnień zaznaczonych na tym etapie.',
+      },
+      sections: {
+        neighborhood: '✧ ANALIZA OKOLICY ✧',
+        market: '✧ ANALIZA RYNKU ✧',
+        amenities: '✧ UDOGODNIENIA ✧',
+        parameters: '✧ KLUCZOWE PARAMETRY ✧',
+      },
+      bullets: {
+        transaction: '🔁 Typ transakcji:',
+        propertyType: '🏷 Typ nieruchomości:',
+        area: '📐 Powierzchnia:',
+        plotArea: '🌿 Powierzchnia działki:',
+        rooms: '🛏 Pokoje:',
+        floor: '🏢 Piętro:',
+        totalFloors: '🏙 Liczba pięter w budynku:',
+        yearBuilt: '🗓 Rok budowy:',
+        price: '💰 Cena:',
+        pricePerSqm: '📊 Cena za m²:',
+        adminFee: '💶 Czynsz adm.:',
+        deposit: '🔐 Kaucja:',
+        condition: '🧱 Stan:',
+        heating: '🔥 Ogrzewanie:',
+        location: '📍 Lokalizacja:',
+        address: '🧭 Adres:',
+        apartmentNumber: '🔢 Numer lokalu:',
+        locationMode: '🛰 Tryb lokalizacji:',
+      },
+      locationMode: {
+        exact: 'Dokładna (pin precyzyjny)',
+        approximate: 'Przybliżona (obszar prywatności)',
+      },
+      conditionLabels: {
+        ready: 'Gotowe do wprowadzenia',
+        renovation: 'Do remontu',
+        developer: 'Stan deweloperski',
+      },
+      propertyTypeLabels: {
+        house: 'Dom',
+        plot: 'Działka',
+        premises: 'Lokal',
+        flat: 'Mieszkanie',
+      },
+      transactionLabels: {
+        sell: 'Sprzedaż',
+        rent: 'Wynajem',
+      },
+      marketSpread: '📌 Cena ofertowa / średnia lokalna: {{offerPrice}} vs {{avgPrice}} PLN/m² ({{sign}}{{percent}}%)',
+      bodyTemplate:
+        '{{intro}}\n\nPrezentujemy wyjątkowy {{propertyType}} na {{transaction}}, zlokalizowany w sercu: {{location}}. Nieruchomość jest {{condition}}, co czyni ją niezwykle atrakcyjną ofertą.\n\n{{neighborhoodSection}}\n{{randomPoi}}\n{{enrichedPoi}}\n\n{{marketSection}}\n{{marketHeader}}\n{{marketNarrative}}{{marketSpread}}\n\n{{amenitiesSection}}\n{{amenitiesText}}\n\n{{parametersSection}}{{bullets}}\n\nZapraszamy do kontaktu w celu umówienia prywatnej prezentacji.',
+    },
+    footerHint:
+      'Pierwsze zdjęcie jest okładką na listach — kolejność zmienisz, przeciągając miniatury. Staraj się o dobre światło i czytelne kadry; plan rzutu zwiększa zaufanie do układu lokalu. Opis uzupełnia dane z formularza i powinien odzwierciedlać rzeczywisty stan nieruchomości (także gdy korzystasz z podpowiedzi AI).',
+    alerts: {
+      photoAccess: {
+        title: 'Dostęp do zdjęć',
+        message:
+          'Aby dodać zdjęcia do oferty, zezwól EstateOS na dostęp do biblioteki zdjęć (Ustawienia → EstateOS → Zdjęcia).',
+      },
+      photoLimit: {
+        title: 'Limit zdjęć',
+        message: 'Osiągnięto maksymalny limit 20 zdjęć.',
+      },
+      storageLimit: {
+        title: 'Limit miejsca',
+      },
+      storagePickerBudget:
+        'Zestaw zdjęć jest zbyt duży na tym etapie (limit wysyłki {{uploadMb}} MB).\nDuże pliki HEIC są najpierw konwertowane na urządzeniu — usuń kilka zdjęć z listy lub dodawaj je pojedynczo.\n(Rezerwa {{reserveMb}} MB służy tylko konwersji, nie zwiększa limitu na serwerze.)',
+      storageUploadCap:
+        'Po konwersji (np. HEIC→JPEG) zestaw przekracza limit wysyłki {{uploadMb}} MB.\nUsuń część zdjęć z listy lub wybierz mniejsze pliki.',
+      addPhotosFailed: {
+        title: 'Nie udało się dodać zdjęć',
+        message: 'Sprawdź dostęp do biblioteki zdjęć i spróbuj ponownie.',
+      },
+      floorPlanFailed: {
+        title: 'Nie udało się wgrać planu',
+        message: 'Sprawdź dostęp do zdjęć i spróbuj ponownie.',
+      },
+    },
+  },
+
+  step6: {
+    noPhotos: 'Brak zdjęć w ofercie',
+    rentLabel: 'Czynsz najmu (całkowity)',
+    depositLabel: 'Kaucja {{amount}} PLN',
+    adminFeeLabel: 'Czynsz administracyjny ~ {{amount}} PLN',
+    commissionSummary: {
+      label: 'Prowizja:',
+      zero: 'bez prowizji (0%)',
+      amountUnderOne: '< 1 PLN',
+    },
+    transactionPill: {
+      rent: 'WYNAJEM',
+      sell: 'SPRZEDAŻ',
+    },
+    location: {
+      label: 'Lokalizacja',
+      publicAddress: 'Adres publiczny',
+      hiddenApprox: 'Ukryty (obszar ~200 m)',
+      hiddenWithArea: '{{street}} · numer ukryty (obszar ~200 m)',
+    },
+    mapPreview: {
+      title: 'PODGLĄD MAPY',
+      markerTitle: 'Lokalizacja oferty',
+      exactCaption: 'Dokładny punkt — widok z perspektywy (budynki 3D)',
+      approximateCaption:
+        'Obszar ~{{radius}} m · środek przesunięty losowo (budynek leży gdzieś wewnątrz okręgu)',
+    },
+    commission: {
+      badge: 'EstateOS™ Agent',
+      titleDefault: 'Twoja prowizja',
+      titleZero: 'Oferta bez prowizji',
+      subtitleZeroPrefix: 'Kupujący',
+      subtitleZeroHighlight: 'nie płaci prowizji',
+      subtitleZeroSuffix:
+        'na tej ofercie. Adnotacja „Bez prowizji” pojawi się przy ogłoszeniu — buduje zaufanie i przyciąga uwagę.',
+      subtitleDefaultPrefix: 'Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny',
+      subtitleDefaultSuffix:
+        'stanowi Twoją prowizję — opłacaną bezpośrednio agentowi po sfinalizowaniu transakcji.',
+      subtitleVatNote:
+        'Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.',
+    },
+    sections: {
+      parameters: 'PARAMETRY NIERUCHOMOŚCI',
+      media: 'MEDIA I MATERIAŁY',
+      amenities: 'UDOGODNIENIA',
+      description: 'OPIS AI / WŁASNY',
+    },
+    badges: {
+      type: 'Typ',
+      area: 'Powierzchnia',
+      rooms: 'Pokoje',
+      roomsValue: '{{count}} pok.',
+      floor: 'Piętro',
+      yearBuilt: 'Rok budowy',
+      adminFee: 'Czynsz admin.',
+      heating: 'Ogrzewanie',
+      furnished: 'Umeblowanie',
+      totalFloors: 'Kondygnacje w bud.',
+      plot: 'Działka',
+      condition: 'Stan',
+    },
+    propertyType: {
+      flat: 'Mieszkanie',
+      house: 'Dom',
+      plot: 'Działka',
+      premises: 'Lokal',
+      fallback: 'Nieruchomość',
+    },
+    condition: {
+      ready: 'Gotowe',
+      renovation: 'Do remontu',
+      developer: 'Deweloperski',
+    },
+    amenities: {
+      balcony: 'Balkon / taras',
+      parking: 'Parking',
+      storage: 'Komórka / piwnica',
+      elevator: 'Winda',
+      garden: 'Ogródek',
+      twoLevel: 'Dwupoziomowe',
+      furnished: 'Umeblowane',
+    },
+    mediaSummary: 'Zdjęcia: {{photos}} · Plan rzutu: {{floorPlan}} · Wideo: {{video}}',
+    mediaYes: 'tak',
+    mediaNo: 'nie',
+    validationHint: 'Brakuje danych w kroku {{steps}} — dotknij przycisku, aby przejść do uzupełnienia.',
+    plusCreditHint: 'Masz Pakiet Plus na koncie — publikacja zużyje 1 kredyt (bez drugiej opłaty w sklepie).',
+    publish: {
+      publishing: 'Publikowanie...',
+      publish: 'Opublikuj w Ekosystemie',
+      completeData: 'Uzupełnij dane oferty',
+      editData: 'Wróć i popraw dane',
+      creating: 'Tworzenie oferty w bazie...',
+      convertingPhoto: 'Konwersja zdjęcia {{current}} (HEIC ➜ JPG)...',
+      uploadingPhoto: 'Wysyłanie zdjęcia {{current}} z {{total}}...',
+      convertingFloorPlan: 'Konwersja rzutu (HEIC ➜ JPG)...',
+      uploadingFloorPlan: 'Wysyłanie rzutu nieruchomości...',
+    },
+    defaultTitle: {
+      flatRest: 'Mieszkanie — {{locality}}',
+      propertyRest: 'Nieruchomość — {{locality}}',
+      flatCity: 'Mieszkanie w {{city}}',
+      propertyCity: 'Nieruchomość w {{city}}',
+      defaultCity: 'Warszawie',
+      defaultCountry: 'Polska',
+      defaultDistrict: 'Śródmieście',
+    },
+    alerts: {
+      agentCommission: {
+        title: 'Prowizja agenta',
+      },
+      congratulations: {
+        title: 'Gratulacje! 🎉',
+        messageDefault:
+          'Oferta została pomyślnie dodana. Po szybkiej weryfikacji będzie widoczna na radarze.',
+        messageWithLegal:
+          'Oferta została pomyślnie dodana, a numer KW wraz z lokalem został wysłany do weryfikacji administratora. Ogłoszenie po moderacji będzie widoczne na radarze.',
+      },
+      publishError: {
+        plusPaidRetry:
+          '\n\nOpłata za wystawienie została przyjęta, ale ogłoszenie nie trafiło na rynek — naciśnij „Opublikuj w Ekosystemie” ponownie (bez drugiej opłaty).',
+        archived:
+          '\n\nNieukończoną ofertę wycofaliśmy automatycznie — możesz bezpiecznie spróbować ponownie.',
+        archiveFailed:
+          '\n\nNie udało się automatycznie wycofać oferty z błędem publikacji (ID: {{id}}). Napisz do pomocy, żeby usunęli duplikat.',
+        connectionFallback: 'Wystąpił problem z połączeniem.',
+        serverError: 'Błąd serwera przy wystawianiu ogłoszenia na rynek',
+        uploadRejected: 'Odrzucone przez serwer',
+        uploadUnknown: 'Nieznany błąd uploadu',
+        floorPlanUnknown: 'Nieznany błąd rzutu',
+        photoError: 'Zdjęcie {{index}}: {{message}}',
+        floorPlanError: 'Rzut: {{message}}',
+      },
+    },
+  },
+};

@@ -7,6 +7,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
+import { useI18n } from '../../i18n';
+import { defaultExactLocationForPropertyType } from '../../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -31,7 +33,15 @@ const Colors = { primary: '#10b981' };
  * z `MapInteractionTip` z Kroku 2: ta sama gramatyka wizualna w całym kreatorze
  * (glassmorphic pill + accent halo).
  */
-const SelectionTapTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: boolean }) => {
+const SelectionTapTip = ({
+  isDark,
+  dismissed,
+  t,
+}: {
+  isDark: boolean;
+  dismissed: boolean;
+  t: (key: string, params?: Record<string, string | number>) => string;
+}) => {
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardLift = useRef(new Animated.Value(20)).current;
   const ringA = useRef(new Animated.Value(0)).current;
@@ -131,10 +141,10 @@ const SelectionTapTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: bo
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[tipStyles.title, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-            Dotknij kafelka, aby wybrać
+            {t('addOffer.step1.tapTip.title')}
           </Text>
           <Text style={[tipStyles.subtitle, { color: isDark ? 'rgba(235,235,245,0.74)' : 'rgba(60,60,67,0.7)' }]}>
-            Zaznacz „Sprzedaż” lub „Wynajem” — kolejne pola pojawią się automatycznie.
+            {t('addOffer.step1.tapTip.subtitle')}
           </Text>
         </View>
       </BlurView>
@@ -143,6 +153,7 @@ const SelectionTapTip = ({ isDark, dismissed }: { isDark: boolean; dismissed: bo
 };
 
 export default function Step1_Type({ theme }: { theme: any }) {
+  const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
   const isDark = theme.glass === 'dark';
@@ -193,7 +204,14 @@ export default function Step1_Type({ theme }: { theme: any }) {
   const handleSelect = (key: string, value: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    updateDraft({ [key]: value });
+    if (key === 'propertyType') {
+      updateDraft({
+        [key]: value,
+        isExactLocation: defaultExactLocationForPropertyType(value),
+      });
+    } else {
+      updateDraft({ [key]: value });
+    }
 
     if (key === 'transactionType') {
       pendingScrollRef.current = 'section2';
@@ -284,7 +302,7 @@ export default function Step1_Type({ theme }: { theme: any }) {
       <Text style={[styles.optionText, { color: selected ? '#ffffff' : theme.text }]}>{label}</Text>
       {!selected && (
         <Text style={[styles.optionTapHint, { color: isDark ? 'rgba(235,235,245,0.58)' : 'rgba(15,23,42,0.5)' }]}>
-          Dotknij, aby wybrać
+          {t('addOffer.step1.optionTapHint')}
         </Text>
       )}
     </Pressable>
@@ -302,18 +320,18 @@ export default function Step1_Type({ theme }: { theme: any }) {
         <AddOfferStepper currentStep={1} draft={draft} theme={theme} navigation={navigation} />
         
         <Text style={styles.header}>
-          <Text style={{ color: Colors.primary }}>Dodaj </Text>
-          <Text style={{ color: theme.text }}>ofertę</Text>
+          <Text style={{ color: Colors.primary }}>{t('addOffer.step1.headerPrefix')}</Text>
+          <Text style={{ color: theme.text }}>{t('addOffer.step1.headerSuffix')}</Text>
         </Text>
         
         {/* SEKCJA 1: CEL OGŁOSZENIA (Zawsze aktywny) */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Od czego zaczynamy?</Text>
-          <SelectionTapTip isDark={isDark} dismissed={isStep2Unlocked} />
+          <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step1.sections.transaction')}</Text>
+          <SelectionTapTip isDark={isDark} dismissed={isStep2Unlocked} t={t} />
 
           <View style={styles.row}>
-            <OptionCard icon="key-outline" label="Sprzedaż" selected={draft.transactionType === 'SELL'} onPress={() => handleSelect('transactionType', 'SELL')} />
-            <OptionCard icon="home-outline" label="Wynajem" selected={draft.transactionType === 'RENT'} onPress={() => handleSelect('transactionType', 'RENT')} />
+            <OptionCard icon="key-outline" label={t('addOffer.step1.transaction.sell')} selected={draft.transactionType === 'SELL'} onPress={() => handleSelect('transactionType', 'SELL')} />
+            <OptionCard icon="home-outline" label={t('addOffer.step1.transaction.rent')} selected={draft.transactionType === 'RENT'} onPress={() => handleSelect('transactionType', 'RENT')} />
           </View>
         </View>
 
@@ -332,14 +350,14 @@ export default function Step1_Type({ theme }: { theme: any }) {
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Co oferujesz?</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step1.sections.propertyType')}</Text>
             <View style={styles.row}>
-              <OptionCard icon="business-outline" label="Mieszkanie" selected={draft.propertyType === 'FLAT'} onPress={() => handleSelect('propertyType', 'FLAT')} />
-              <OptionCard icon="home" label="Dom" selected={draft.propertyType === 'HOUSE'} onPress={() => handleSelect('propertyType', 'HOUSE')} />
+              <OptionCard icon="business-outline" label={t('addOffer.step1.propertyType.flat')} selected={draft.propertyType === 'FLAT'} onPress={() => handleSelect('propertyType', 'FLAT')} />
+              <OptionCard icon="home" label={t('addOffer.step1.propertyType.house')} selected={draft.propertyType === 'HOUSE'} onPress={() => handleSelect('propertyType', 'HOUSE')} />
             </View>
             <View style={[styles.row, { marginTop: 12 }]}>
-              <OptionCard icon="map-outline" label="Działka" selected={draft.propertyType === 'PLOT'} onPress={() => handleSelect('propertyType', 'PLOT')} />
-              <OptionCard icon="cafe-outline" label="Lokal" selected={draft.propertyType === 'PREMISES'} onPress={() => handleSelect('propertyType', 'PREMISES')} />
+              <OptionCard icon="map-outline" label={t('addOffer.step1.propertyType.plot')} selected={draft.propertyType === 'PLOT'} onPress={() => handleSelect('propertyType', 'PLOT')} />
+              <OptionCard icon="cafe-outline" label={t('addOffer.step1.propertyType.premises')} selected={draft.propertyType === 'PREMISES'} onPress={() => handleSelect('propertyType', 'PREMISES')} />
             </View>
           </Animated.View>
         )}
@@ -359,13 +377,13 @@ export default function Step1_Type({ theme }: { theme: any }) {
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>W jakim jest stanie?</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step1.sections.condition')}</Text>
             <View style={styles.row}>
-              <OptionCard icon="sparkles-outline" label="Gotowe" selected={draft.condition === 'READY'} onPress={() => handleSelect('condition', 'READY')} />
-              <OptionCard icon="construct-outline" label="Do remontu" selected={draft.condition === 'RENOVATION'} onPress={() => handleSelect('condition', 'RENOVATION')} />
+              <OptionCard icon="sparkles-outline" label={t('addOffer.step1.condition.ready')} selected={draft.condition === 'READY'} onPress={() => handleSelect('condition', 'READY')} />
+              <OptionCard icon="construct-outline" label={t('addOffer.step1.condition.renovation')} selected={draft.condition === 'RENOVATION'} onPress={() => handleSelect('condition', 'RENOVATION')} />
             </View>
             <View style={[styles.row, { marginTop: 12 }]}>
-              <OptionCard icon="hammer-outline" label="Deweloperski" selected={draft.condition === 'DEVELOPER'} onPress={() => handleSelect('condition', 'DEVELOPER')} />
+              <OptionCard icon="hammer-outline" label={t('addOffer.step1.condition.developer')} selected={draft.condition === 'DEVELOPER'} onPress={() => handleSelect('condition', 'DEVELOPER')} />
               <View style={{ flex: 1 }} />
             </View>
           </Animated.View>
@@ -374,7 +392,7 @@ export default function Step1_Type({ theme }: { theme: any }) {
         <AddOfferStepFooterHint
           theme={theme}
           icon="reader-outline"
-          text="Transakcja, typ nieruchomości i stan techniczny wpływają na prezentację oferty oraz dopasowanie w radarach i filtrach. Wybierz wartości zgodne ze stanem faktycznym — zminimalizujesz ryzyko nieporozumień już przy pierwszym kontakcie zainteresowanych."
+          text={t('addOffer.step1.footerHint')}
         />
         <View style={{ height: 48 }} />
       </ScrollView>

@@ -28,6 +28,12 @@ import { Picker } from '@react-native-picker/picker';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
+import CurrencySegmentControl from '../components/CurrencySegmentControl';
+import { buildOfferPricePayload } from '../money/offerPrice';
+import { getEurPlnRate } from '../money/fxRateService';
+import { convertBetweenCurrencies, normalizeListingCurrency } from '../money/convert';
+import { formatAmountWithCurrency, formatApproxLine } from '../money/format';
+import type { ListingCurrency } from '../money/types';
 import {
   applyLandRegistryPrefix,
   getCourtByLandRegistryPrefix,
@@ -59,6 +65,7 @@ import {
   validateAgentCommissionPercent,
 } from '../lib/agentCommission';
 import { API_URL } from '../config/network';
+import { useI18n } from '../i18n';
 import {
   extractMobileOfferJson,
   persistMobileOfferUpdate,
@@ -68,7 +75,15 @@ import {
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
-const HEATING_OPTIONS = ['', 'Miejskie', 'Gazowe', 'Elektryczne', 'Pompa Ciepła', 'Węglowe/Pellet', 'Inne'];
+const HEATING_OPTIONS = [
+  { key: '', labelKey: 'offer.shared.heating.none' },
+  { key: 'Miejskie', labelKey: 'offer.shared.heating.district' },
+  { key: 'Gazowe', labelKey: 'offer.shared.heating.gas' },
+  { key: 'Elektryczne', labelKey: 'offer.shared.heating.electric' },
+  { key: 'Pompa Ciepła', labelKey: 'offer.shared.heating.heatPump' },
+  { key: 'Węglowe/Pellet', labelKey: 'offer.shared.heating.coalPellet' },
+  { key: 'Inne', labelKey: 'offer.shared.heating.other' },
+] as const;
 
 /** Wyciąga ukryte tokeny weryfikacyjne `<!-- ESTATEOS_VERIFY:... -->` z opisu.
  *  Są one wstawiane przez system i NIE powinny być widoczne właścicielowi w edytorze.
@@ -153,6 +168,9 @@ export default function EditOfferScreen({ route }: any) {
   const subColor = '#8E8E93';
   const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
   const primaryColor = '#007AFF';
+  const { t, locale } = useI18n();
+  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
+  const translateDirtyField = useCallback((key: string) => t(`offer.edit.dirtyFields.${key}`), [t]);
 
   const cardShadow = {
     shadowColor: isDark ? '#000000' : '#334155',
@@ -180,6 +198,7 @@ export default function EditOfferScreen({ route }: any) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
+  const [plotArea, setPlotArea] = useState('');
   const [rooms, setRooms] = useState('');
   const [floor, setFloor] = useState('');
   const [yearBuilt, setYearBuilt] = useState('');
@@ -188,6 +207,8 @@ export default function EditOfferScreen({ route }: any) {
   const [apartmentNumber, setApartmentNumber] = useState('');
   const [landRegistryNumber, setLandRegistryNumber] = useState('');
   const [price, setPrice] = useState('');
+  const [priceCurrency, setPriceCurrency] = useState<ListingCurrency>('PLN');
+  const [editFxRate, setEditFxRate] = useState(4.32);
   const [adminFee, setAdminFee] = useState('');
   /**
    * Procent prowizji agenta (string z TextInput — akceptuje `.` i `,`).
@@ -204,6 +225,7 @@ export default function EditOfferScreen({ route }: any) {
     hasStorage: false,
     hasElevator: false,
     hasGarden: false,
+    isTwoLevel: false,
     isFurnished: false,
   });
 
@@ -246,7 +268,8 @@ export default function EditOfferScreen({ route }: any) {
           const { clean: cleanDesc, tokens } = extractVerifyTokens(offer.description || '');
           setDescription(cleanDesc);
           setVerifyTokens(tokens);
-          setPrice(offer.price?.toString() || '');
+          setPrice(String(offer.priceAmount ?? offer.price ?? '') || '');
+          setPriceCurrency(normalizeListingCurrency(offer.priceCurrency ?? offer.price_currency));
           setAdminFee(offer.adminFee?.toString() || '');
           // Prowizja agenta — backend zwraca `agentCommissionPercent` (number | null).
           // 0 → '0' (świadome „BEZ PROWIZJI"), null/undefined → '' (brak).
@@ -259,6 +282,7 @@ export default function EditOfferScreen({ route }: any) {
             setAgentCommissionPercent(String(cp).replace('.', ','));
           }
           setArea(offer.area?.toString() || '');
+          setPlotArea(offer.plotArea?.toString() || '');
           setRooms(offer.rooms?.toString() || '');
           setFloor(offer.floor?.toString() || '');
           setYearBuilt(offer.yearBuilt?.toString() || offer.buildYear?.toString() || '');
@@ -298,13 +322,14 @@ export default function EditOfferScreen({ route }: any) {
             hasStorage: isTrue(offer.hasStorage),
             hasElevator: isTrue(offer.hasElevator),
             hasGarden: isTrue(offer.hasGarden),
+            isTwoLevel: isTrue(offer.isTwoLevel),
             isFurnished: isTrue(offer.isFurnished),
           });
       } else {
-        Alert.alert('Błąd', 'Nie znaleziono oferty do edycji lub brak uprawnień.');
+        Alert.alert(t('offer.edit.alerts.errorTitle'), t('offer.edit.alerts.loadNotFound'));
       }
     } catch (error) {
-      Alert.alert('Błąd', 'Nie udało się pobrać oferty do edycji.');
+      Alert.alert(t('offer.edit.alerts.errorTitle'), t('offer.edit.alerts.loadFailed'));
     }
     setLoading(false);
   }, [offerId, token, user?.id]);
@@ -312,6 +337,10 @@ export default function EditOfferScreen({ route }: any) {
   useEffect(() => {
     fetchOffer();
   }, [fetchOffer]);
+
+  useEffect(() => {
+    void getEurPlnRate().then((s) => setEditFxRate(s.rate));
+  }, []);
 
   // -------- ANIMOWANY HERO --------
   // Delikatne, zapętlone „dychnięcie" ikony pióra w bocie powitalnym. Trwa
@@ -356,10 +385,10 @@ export default function EditOfferScreen({ route }: any) {
     const sameText = (a: any, b: any) => normalizeTextForDirty(a) === normalizeTextForDirty(b);
     const sameNumber = (a: any, b: any) => normalizeNumberForDirty(a) === normalizeNumberForDirty(b);
     const originalCleanDescription = extractVerifyTokens(originalData.description || '').clean;
-    if (!sameText(title, originalData.title)) diffs.push('tytuł');
-    if (!sameText(description, originalCleanDescription)) diffs.push('opis');
-    if (!sameNumber(price, originalData.price)) diffs.push('cena');
-    if (!sameNumber(adminFee, originalData.adminFee)) diffs.push('czynsz');
+    if (!sameText(title, originalData.title)) diffs.push('title');
+    if (!sameText(description, originalCleanDescription)) diffs.push('description');
+    if (!sameNumber(price, originalData.price)) diffs.push('price');
+    if (!sameNumber(adminFee, originalData.adminFee)) diffs.push('adminFee');
     // Prowizja — porównujemy SPARSOWANE liczby, żeby '2,5' vs '2.5' vs 2.5 dawały
     // ten sam diff (bez fałszywych „dirty"). null vs null = brak zmian.
     {
@@ -367,19 +396,20 @@ export default function EditOfferScreen({ route }: any) {
       const currentCp = parseAgentCommissionPercent(agentCommissionPercent);
       const a = originalCp === null ? 'NULL' : String(roundToQuarter(originalCp));
       const b = currentCp === null ? 'NULL' : String(roundToQuarter(currentCp));
-      if (a !== b) diffs.push('prowizja');
+      if (a !== b) diffs.push('commission');
     }
-    if (!sameNumber(area, originalData.area)) diffs.push('powierzchnia');
-    if (!sameNumber(rooms, originalData.rooms)) diffs.push('pokoje');
-    if (!sameNumber(floor, originalData.floor)) diffs.push('piętro');
-    if (!sameNumber(yearBuilt, originalData.yearBuilt ?? originalData.buildYear)) diffs.push('rok budowy');
-    if (!sameText(heating, originalData.heating)) diffs.push('ogrzewanie');
-    if (!sameText(apartmentNumber, originalData.apartmentNumber)) diffs.push('nr mieszkania');
-    if (!sameText(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('KW');
-    if (!sameText(condition, originalData.condition || 'READY')) diffs.push('stan');
-    if (Boolean(isExactLocation) !== resolveIsExactLocation(originalData.isExactLocation)) diffs.push('lokalizacja');
+    if (!sameNumber(area, originalData.area)) diffs.push('area');
+    if (!sameNumber(plotArea, originalData.plotArea)) diffs.push('plotArea');
+    if (!sameNumber(rooms, originalData.rooms)) diffs.push('rooms');
+    if (!sameNumber(floor, originalData.floor)) diffs.push('floor');
+    if (!sameNumber(yearBuilt, originalData.yearBuilt ?? originalData.buildYear)) diffs.push('yearBuilt');
+    if (!sameText(heating, originalData.heating)) diffs.push('heating');
+    if (!sameText(apartmentNumber, originalData.apartmentNumber)) diffs.push('apartmentNumber');
+    if (!sameText(landRegistryNumber, originalData.landRegistryNumber)) diffs.push('landRegistry');
+    if (!sameText(condition, originalData.condition || 'READY')) diffs.push('condition');
+    if (Boolean(isExactLocation) !== resolveIsExactLocation(originalData.isExactLocation)) diffs.push('location');
     (
-      ['hasBalcony', 'hasParking', 'hasStorage', 'hasElevator', 'hasGarden', 'isFurnished'] as const
+      ['hasBalcony', 'hasParking', 'hasStorage', 'hasElevator', 'hasGarden', 'isTwoLevel', 'isFurnished'] as const
     ).forEach((k) => {
       if (Boolean((amenities as any)[k]) !== isTrue(originalData[k])) diffs.push(k);
     });
@@ -389,11 +419,12 @@ export default function EditOfferScreen({ route }: any) {
       currentKeys.length === originalKeys.length &&
       currentKeys.every((k, i) => k === originalKeys[i]) &&
       images.every((i) => i.isRemote);
-    if (!sameImages) diffs.push('zdjęcia');
+    if (!sameImages) diffs.push('images');
+    const dirtySummaryLabels = diffs.map((key) => translateDirtyField(key));
     const dirtySummary =
-      diffs.length <= 3
-        ? diffs.join(', ')
-        : `${diffs.slice(0, 3).join(', ')} +${diffs.length - 3}`;
+      dirtySummaryLabels.length <= 3
+        ? dirtySummaryLabels.join(', ')
+        : `${dirtySummaryLabels.slice(0, 3).join(', ')} +${dirtySummaryLabels.length - 3}`;
     return { isDirty: diffs.length > 0, dirtyCount: diffs.length, dirtyLabels: diffs, dirtySummary };
   }, [
     originalData,
@@ -413,7 +444,7 @@ export default function EditOfferScreen({ route }: any) {
     isExactLocation,
     amenities,
     images,
-    originalImageKeys,
+    translateDirtyField,
   ]);
 
   // -------- BLOK „BACK" GDY SĄ NIEZAPISANE --------
@@ -428,12 +459,12 @@ export default function EditOfferScreen({ route }: any) {
       if (!isDirty || saving) return;
       e.preventDefault();
       Alert.alert(
-        'Niezapisane zmiany',
-        `Masz niezapisane zmiany: ${dirtySummary || 'formularz'}. Czy na pewno chcesz wyjść?`,
+        t('offer.edit.alerts.unsavedTitle'),
+        t('offer.edit.alerts.unsavedBody', { summary: dirtySummary || t('offer.edit.dirty.formFallback') }),
         [
-          { text: 'Wróć do edycji', style: 'cancel' },
+          { text: t('offer.edit.alerts.stayEditing'), style: 'cancel' },
           {
-            text: 'Wyjdź bez zapisu',
+            text: t('offer.edit.alerts.leaveWithoutSave'),
             style: 'destructive',
             onPress: () => navigation.dispatch(e.data.action),
           },
@@ -448,7 +479,7 @@ export default function EditOfferScreen({ route }: any) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const currentCount = images.length;
     if (currentCount >= MAX_IMAGES) {
-      Alert.alert('Limit zdjęć', `Możesz dodać maksymalnie ${MAX_IMAGES} zdjęć.`);
+      Alert.alert(t('offer.edit.alerts.photoLimitTitle'), t('offer.edit.alerts.photoLimitMax', { max: MAX_IMAGES }));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -465,7 +496,7 @@ export default function EditOfferScreen({ route }: any) {
       enqueueLayoutSpring();
       setImages((prev) => [...prev, ...newItems]);
       if (result.assets.length > slotsLeft) {
-        Alert.alert('Limit zdjęć', `Dodano tylko ${slotsLeft} zdjęć (maksymalnie ${MAX_IMAGES}).`);
+        Alert.alert(t('offer.edit.alerts.photoLimitTitle'), t('offer.edit.alerts.photoLimitPartial', { count: slotsLeft, max: MAX_IMAGES }));
       }
     }
   };
@@ -530,6 +561,7 @@ export default function EditOfferScreen({ route }: any) {
       else setAgentCommissionPercent(String(cp).replace('.', ','));
     }
     setArea(originalData.area?.toString() || '');
+    setPlotArea(originalData.plotArea?.toString() || '');
     setRooms(originalData.rooms?.toString() || '');
     setFloor(originalData.floor?.toString() || '');
     setYearBuilt(originalData.yearBuilt?.toString() || originalData.buildYear?.toString() || '');
@@ -544,6 +576,7 @@ export default function EditOfferScreen({ route }: any) {
       hasStorage: isTrue(originalData.hasStorage),
       hasElevator: isTrue(originalData.hasElevator),
       hasGarden: isTrue(originalData.hasGarden),
+      isTwoLevel: isTrue(originalData.isTwoLevel),
       isFurnished: isTrue(originalData.isFurnished),
     });
     // Przywracamy oryginalną kolejność zdjęć z serwera (bez lokalnych draftów).
@@ -562,12 +595,12 @@ export default function EditOfferScreen({ route }: any) {
     setSaving(true);
 
     if (!token?.trim()) {
-      Alert.alert('Sesja', 'Zaloguj się ponownie, aby zapisać zmiany.');
+      Alert.alert(t('offer.edit.alerts.sessionTitle'), t('offer.edit.alerts.sessionLogin'));
       setSaving(false);
       return;
     }
     if (!user?.id) {
-      Alert.alert('Sesja', 'Brak identyfikatora użytkownika — nie można zapisać oferty.');
+      Alert.alert(t('offer.edit.alerts.sessionTitle'), t('offer.edit.alerts.sessionUserId'));
       setSaving(false);
       return;
     }
@@ -578,19 +611,19 @@ export default function EditOfferScreen({ route }: any) {
     const localImages = images.filter((img) => !img.isRemote && isLocalUri(img.uri));
 
     if (!title.trim()) {
-      Alert.alert('Walidacja', 'Tytuł oferty nie może być pusty.');
+      Alert.alert(t('offer.edit.alerts.validationTitle'), t('offer.edit.alerts.validationTitleEmpty'));
       setSaving(false);
       return;
     }
     if (!price || Number(price) <= 0) {
-      Alert.alert('Walidacja', 'Podaj poprawną cenę oferty.');
+      Alert.alert(t('offer.edit.alerts.validationTitle'), t('offer.edit.alerts.validationPrice'));
       setSaving(false);
       return;
     }
     if (showLandRegistryVerification && landRegistryRaw && !isLandRegistryValid) {
       Alert.alert(
-        'Walidacja',
-        'Numer księgi wieczystej ma niepoprawny format. Użyj wzoru: WA4N/00012345/6'
+        t('offer.edit.alerts.validationTitle'),
+        t('offer.edit.alerts.validationKw')
       );
       setSaving(false);
       return;
@@ -616,7 +649,7 @@ export default function EditOfferScreen({ route }: any) {
       } else {
         const validation = validateAgentCommissionPercent(rawCommission);
         if (!validation.ok) {
-          Alert.alert('Prowizja agenta', validation.message);
+          Alert.alert(t('offer.edit.alerts.commissionTitle'), validation.message);
           setSaving(false);
           return;
         }
@@ -631,16 +664,27 @@ export default function EditOfferScreen({ route }: any) {
     // To jest belt-and-suspenders dla bardzo konkretnego bug-reportu:
     // „klikam wyłączenie i nie zapisuje się dokładna lokalizacja".
     const isExactLocationBool = Boolean(isExactLocation);
+    const fxSnap = await getEurPlnRate();
+    const priceFields = buildOfferPricePayload({
+      priceString: price,
+      priceCurrency,
+      rate: fxSnap.rate,
+    });
+
     const updatePayload: Record<string, any> = {
       id: offerId,
       userId: user.id,
       title: title.trim(),
       description: [description?.trim() || '', ...verifyTokens].filter(Boolean).join('\n\n'),
       area: area ? Number(area) : 0,
+      plotArea: plotArea.trim() ? Number(String(plotArea).replace(',', '.')) : null,
       rooms: rooms ? Number(rooms) : null,
       floor: floor !== '' ? Number(floor) : null,
       yearBuilt: yearBuilt ? Number(yearBuilt) : null,
-      price: Number(price),
+      price: priceFields.priceAmount,
+      priceAmount: priceFields.priceAmount,
+      priceCurrency: priceFields.priceCurrency,
+      pricePln: priceFields.pricePln,
       adminFee: adminFee ? Number(adminFee) : null,
       condition,
       isExactLocation: isExactLocationBool,
@@ -847,11 +891,11 @@ export default function EditOfferScreen({ route }: any) {
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             Alert.alert(
-              'Częściowo zapisano',
+              t('offer.edit.alerts.partialSaveTitle'),
               isExactLocationBool
-                ? 'Zmiany zostały zapisane, ale serwer nie odebrał włączenia „Dokładnej lokalizacji". Spróbuj jeszcze raz lub skontaktuj się z pomocą.'
-                : 'Zmiany zostały zapisane, ale serwer nie odebrał wyłączenia „Dokładnej lokalizacji" — adres może być nadal widoczny publicznie. Spróbuj jeszcze raz lub skontaktuj się z pomocą.',
-              [{ text: 'OK', onPress: () => navigation.goBack() }]
+                ? t('offer.edit.alerts.partialExactOn')
+                : t('offer.edit.alerts.partialExactOff'),
+              [{ text: t('common.ok'), onPress: () => navigation.goBack() }]
             );
             setSaving(false);
             return;
@@ -864,16 +908,16 @@ export default function EditOfferScreen({ route }: any) {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        usedLegacyKwFallback ? 'Częściowo zapisano' : 'Zapisano',
+        usedLegacyKwFallback ? t('offer.edit.alerts.partialSaveTitle') : t('offer.edit.alerts.savedTitle'),
         usedLegacyKwFallback
-          ? 'Zapisano zmiany oferty, ale numer KW i numer mieszkania nie zostały wysłane (backend produkcyjny wymaga migracji bazy). Możesz kontynuować pracę, a sekcję KW zapisać po aktualizacji serwera.'
-          : 'Zmiany zostały pomyślnie zapisane.',
+          ? t('offer.edit.alerts.savedKwFallback')
+          : t('offer.edit.alerts.savedSuccess'),
         [
-        { text: 'Super', onPress: () => navigation.goBack() },
+        { text: t('offer.edit.alerts.savedOk'), onPress: () => navigation.goBack() },
         ]
       );
     } catch (e: any) {
-      Alert.alert('Błąd', e?.message || 'Wystąpił problem podczas zapisywania na serwerze.');
+      Alert.alert(t('offer.edit.alerts.errorTitle'), e?.message || t('offer.edit.alerts.saveError'));
     }
     setSaving(false);
   };
@@ -974,13 +1018,13 @@ export default function EditOfferScreen({ route }: any) {
             onPress={() => navigation.goBack()}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Text style={[styles.headerBtnText, { color: primaryColor, fontWeight: '400' }]}>Anuluj</Text>
+            <Text style={[styles.headerBtnText, { color: primaryColor, fontWeight: '400' }]}>{t('offer.edit.header.cancel')}</Text>
           </Pressable>
           <View style={{ alignItems: 'center', flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: txtColor }]}>Edycja oferty</Text>
+            <Text style={[styles.headerTitle, { color: txtColor }]}>{t('offer.edit.header.title')}</Text>
             {isDirty && (
               <Text style={styles.headerSubtitle}>
-                {dirtyCount} {dirtyCount === 1 ? 'zmiana' : dirtyCount < 5 ? 'zmiany' : 'zmian'} do zapisania
+                {dirtyCount === 1 ? t('offer.edit.header.dirtyCountOne', { count: dirtyCount }) : dirtyCount < 5 ? t('offer.edit.header.dirtyCountFew', { count: dirtyCount }) : t('offer.edit.header.dirtyCountMany', { count: dirtyCount })}
               </Text>
             )}
           </View>
@@ -1001,7 +1045,7 @@ export default function EditOfferScreen({ route }: any) {
                   },
                 ]}
               >
-                Zapisz
+                {t('offer.edit.header.save')}
               </Text>
             )}
           </Pressable>
@@ -1056,11 +1100,10 @@ export default function EditOfferScreen({ route }: any) {
               </Animated.View>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.heroEyebrow}>TWOJE OKNO EDYCJI</Text>
-              <Text style={[styles.heroTitle, { color: txtColor }]}>Doszlifuj swoje ogłoszenie</Text>
+              <Text style={styles.heroEyebrow}>{t('offer.edit.hero.eyebrow')}</Text>
+              <Text style={[styles.heroTitle, { color: txtColor }]}>{t('offer.edit.hero.title')}</Text>
               <Text style={[styles.heroSubtitle, { color: subColor }]}>
-                Zmiany zapisują się natychmiast i pojawiają w Radarze, na liście ofert i w karcie publicznej.
-                Możesz wracać tu kiedy chcesz.
+                {t('offer.edit.hero.subtitle')}
               </Text>
             </View>
           </View>
@@ -1071,35 +1114,35 @@ export default function EditOfferScreen({ route }: any) {
               <View style={styles.dirtyDot} />
               <View style={styles.dirtyTextWrap}>
                 <Text style={styles.dirtyText}>
-                  Niezapisane zmiany ({dirtyCount})
+                  {t('offer.edit.dirty.title', { count: dirtyCount })}
                 </Text>
                 <Text style={styles.dirtySubText} numberOfLines={1}>
-                  Zmieniono: {dirtySummary || dirtyLabels.join(', ')}
+                  {t('offer.edit.dirty.changed', { summary: dirtySummary || dirtyLabels.map((key) => translateDirtyField(key)).join(', ') })}
                 </Text>
               </View>
               <Pressable
                 onPress={() => {
                   Alert.alert(
-                    'Cofnij wszystkie zmiany?',
-                    'Wrócisz do wersji oferty zapisanej na serwerze. Tego nie da się cofnąć.',
+                    t('offer.edit.alerts.resetTitle'),
+                    t('offer.edit.alerts.resetBody'),
                     [
-                      { text: 'Anuluj', style: 'cancel' },
-                      { text: 'Cofnij', style: 'destructive', onPress: resetForm },
+                      { text: t('offer.edit.alerts.resetCancel'), style: 'cancel' },
+                      { text: t('offer.edit.alerts.resetConfirm'), style: 'destructive', onPress: resetForm },
                     ]
                   );
                 }}
                 style={styles.dirtyResetBtn}
               >
-                <Text style={styles.dirtyResetText}>Cofnij</Text>
+                <Text style={styles.dirtyResetText}>{t('offer.edit.dirty.reset')}</Text>
               </Pressable>
             </View>
           )}
 
           {/* ====== GALERIA ZDJĘĆ ====== */}
           <View style={styles.sectionHeaderContainer}>
-            <Text style={styles.sectionTitle}>GALERIA ZDJĘĆ</Text>
+            <Text style={styles.sectionTitle}>{t('offer.edit.gallery.sectionTitle')}</Text>
             <Text style={styles.sectionSubtitle}>
-              {images.length} / {MAX_IMAGES}
+              {t('offer.edit.gallery.counter', { current: images.length, max: MAX_IMAGES })}
             </Text>
           </View>
 
@@ -1108,8 +1151,7 @@ export default function EditOfferScreen({ route }: any) {
             <View style={styles.galleryHint}>
               <Ionicons name="bulb" size={14} color="#10B981" />
               <Text style={styles.galleryHintText}>
-                Pierwsze zdjęcie to okładka. Użyj strzałek ← → aby przestawić, albo gwiazdki, aby ustawić jako
-                główne.
+                {t('offer.edit.gallery.hint')}
               </Text>
               <Pressable
                 hitSlop={10}
@@ -1133,7 +1175,7 @@ export default function EditOfferScreen({ route }: any) {
                 onPress={pickImage}
               >
                 <Ionicons name="camera" size={26} color={primaryColor} />
-                <Text style={[styles.addImageText, { color: primaryColor }]}>Dodaj</Text>
+                <Text style={[styles.addImageText, { color: primaryColor }]}>{t('offer.edit.gallery.add')}</Text>
               </Pressable>
 
               {images.map((img, index) => {
@@ -1161,7 +1203,7 @@ export default function EditOfferScreen({ route }: any) {
                     {isFirst ? (
                       <View style={styles.mainPhotoBadge}>
                         <Ionicons name="star" size={9} color="#FFD60A" />
-                        <Text style={styles.mainPhotoText}>Główne</Text>
+                        <Text style={styles.mainPhotoText}>{t('offer.edit.gallery.cover')}</Text>
                       </View>
                     ) : null}
 
@@ -1203,21 +1245,20 @@ export default function EditOfferScreen({ route }: any) {
             </View>
           </View>
           <Text style={styles.sectionFooter}>
-            Pierwsze zdjęcie pokazujemy w wynikach Radaru i jako okładkę oferty publicznej. Zmieniaj kolejność,
-            aż dopasujesz idealny pierwszy kadr.
+            {t('offer.edit.gallery.footer')}
           </Text>
 
           {/* ====== INFORMACJE GŁÓWNE ====== */}
-          <Text style={styles.sectionTitle}>INFORMACJE GŁÓWNE</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.mainInfo.sectionTitle')}</Text>
           <View style={[styles.fieldCard, { backgroundColor: cardBg, borderColor, ...cardShadow }]}>
             <View style={styles.fieldHeaderRow}>
               <View style={[styles.fieldIconBadge, { backgroundColor: isDark ? '#10243D' : '#E8F2FF' }]}>
                 <Ionicons name="text" size={17} color={primaryColor} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldTitle, { color: txtColor }]}>Tytuł oferty</Text>
+                <Text style={[styles.fieldTitle, { color: txtColor }]}>{t('offer.edit.mainInfo.titleLabel')}</Text>
                 <Text style={[styles.fieldHint, { color: subColor }]}>
-                  Krótki, konkretny nagłówek widoczny w Radarze i na liście.
+                  {t('offer.edit.mainInfo.titleHint')}
                 </Text>
               </View>
             </View>
@@ -1232,7 +1273,7 @@ export default function EditOfferScreen({ route }: any) {
               ]}
               value={title}
               onChangeText={setTitle}
-              placeholder="Tytuł ogłoszenia"
+              placeholder={t('offer.edit.mainInfo.titlePlaceholder')}
               placeholderTextColor={subColor}
             />
           </View>
@@ -1243,9 +1284,9 @@ export default function EditOfferScreen({ route }: any) {
                 <Ionicons name="document-text" size={17} color="#AF52DE" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.fieldTitle, { color: txtColor }]}>Opis publiczny</Text>
+                <Text style={[styles.fieldTitle, { color: txtColor }]}>{t('offer.edit.mainInfo.descriptionLabel')}</Text>
                 <Text style={[styles.fieldHint, { color: subColor }]}>
-                  Tekst widoczny dla kupujących. Dane techniczne i weryfikacyjne są niżej, oddzielnie.
+                  {t('offer.edit.mainInfo.descriptionHint')}
                 </Text>
               </View>
             </View>
@@ -1260,18 +1301,18 @@ export default function EditOfferScreen({ route }: any) {
               ]}
               value={description}
               onChangeText={setDescription}
-              placeholder="Opis nieruchomości…"
+              placeholder={t('offer.edit.mainInfo.descriptionPlaceholder')}
               placeholderTextColor={subColor}
               multiline
             />
           </View>
 
           {/* ====== PARAMETRY ====== */}
-          <Text style={styles.sectionTitle}>PARAMETRY NIERUCHOMOŚCI</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.parameters.sectionTitle')}</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             {/* Powierzchnia — TextInput bo zakres jest szeroki */}
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Powierzchnia</Text>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.area')}</Text>
               <TextInput
                 style={[styles.inputRightPremium, { color: txtColor }]}
                 value={area}
@@ -1284,9 +1325,29 @@ export default function EditOfferScreen({ route }: any) {
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
 
+            {String(originalData?.propertyType || '').toUpperCase() === 'HOUSE' ? (
+              <>
+                <View style={styles.inputRowPremium}>
+                  <Text style={[styles.inputLabelPremium, { color: txtColor }]}>
+                    {t('offer.edit.parameters.plotArea')}
+                  </Text>
+                  <TextInput
+                    style={[styles.inputRightPremium, { color: txtColor }]}
+                    value={plotArea}
+                    onChangeText={(v) => setPlotArea(v.replace(/[^0-9.,]/g, ''))}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    placeholderTextColor={subColor}
+                  />
+                  <Text style={styles.inputSuffix}>m²</Text>
+                </View>
+                <View style={[styles.divider, { backgroundColor: borderColor }]} />
+              </>
+            ) : null}
+
             {/* Liczba pokoi — stepper */}
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Liczba pokoi</Text>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.rooms')}</Text>
               <View style={styles.stepperInline}>
                 <Pressable
                   hitSlop={8}
@@ -1338,9 +1399,9 @@ export default function EditOfferScreen({ route }: any) {
             {/* Piętro — stepper (może być 0) */}
             <View style={styles.inputRowPremium}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Piętro</Text>
+                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.floor')}</Text>
                 {floor === '0' && (
-                  <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>Parter</Text>
+                  <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>{t('offer.shared.floorGroundLabel')}</Text>
                 )}
               </View>
               <View style={styles.stepperInline}>
@@ -1393,13 +1454,13 @@ export default function EditOfferScreen({ route }: any) {
 
             {/* Rok budowy — TextInput (zakres 1900-2099) */}
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Rok budowy</Text>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.yearBuilt')}</Text>
               <TextInput
                 style={[styles.inputRightPremium, { color: txtColor }]}
                 value={yearBuilt}
                 onChangeText={(t) => setYearBuilt(t.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
-                placeholder="np. 2009"
+                placeholder={t('offer.edit.parameters.yearPlaceholder')}
                 placeholderTextColor={subColor}
                 maxLength={4}
               />
@@ -1407,19 +1468,33 @@ export default function EditOfferScreen({ route }: any) {
           </View>
 
           {/* ====== CENA ====== */}
-          <Text style={styles.sectionTitle}>CENA I KOSZTY</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.price.sectionTitle')}</Text>
+          <CurrencySegmentControl
+            value={priceCurrency}
+            isDark={isDark}
+            onChange={(next: ListingCurrency) => {
+              const n = Number(price || 0);
+              if (n > 0) {
+                setPrice(String(convertBetweenCurrencies(n, priceCurrency, next, editFxRate)));
+              }
+              setPriceCurrency(next);
+            }}
+          />
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
-            {/* Podgląd ceny sformatowanej + input inline */}
             <View style={styles.priceHeaderRow}>
               <View>
-                <Text style={[styles.priceLabel, { color: subColor }]}>Cena ofertowa</Text>
+                <Text style={[styles.priceLabel, { color: subColor }]}>{t('offer.edit.price.offerPrice', { currency: priceCurrency })}</Text>
                 <Text style={[styles.priceFormatted, { color: txtColor }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-                  {fmtPLN(price) || '—'}{' '}
-                  <Text style={[styles.priceCurrency, { color: subColor }]}>PLN</Text>
+                  {Number(price) > 0 ? formatAmountWithCurrency(Number(price), priceCurrency) : '—'}
                 </Text>
+                {Number(price) > 0 ? (
+                  <Text style={[styles.priceSqm, { color: subColor }]}>
+                    {formatApproxLine(Number(price), priceCurrency, editFxRate)}
+                  </Text>
+                ) : null}
                 {Number(area) > 0 && Number(price) > 0 ? (
                   <Text style={[styles.priceSqm, { color: subColor }]}>
-                    {Math.round(Number(price) / Number(area)).toLocaleString('pl-PL')} PLN/m²
+                    {Math.round(Number(price) / Number(area)).toLocaleString(dateLocale)} {priceCurrency}/m²
                   </Text>
                 ) : null}
               </View>
@@ -1467,7 +1542,7 @@ export default function EditOfferScreen({ route }: any) {
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Czynsz admin.</Text>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.price.adminFee')}</Text>
               <TextInput
                 style={[styles.inputRightPremium, { color: txtColor }]}
                 value={adminFee}
@@ -1476,10 +1551,10 @@ export default function EditOfferScreen({ route }: any) {
                 placeholder="0"
                 placeholderTextColor={subColor}
               />
-              <Text style={styles.inputSuffix}>PLN / mc</Text>
+              <Text style={styles.inputSuffix}>{t('offer.edit.price.adminFeeSuffix')}</Text>
             </View>
           </View>
-          <Text style={styles.sectionFooter}>Sama zmiana ceny nie ukrywa oferty z Radaru.</Text>
+          <Text style={styles.sectionFooter}>{t('offer.edit.price.footer')}</Text>
 
           {/*
             ====== PROWIZJA AGENTA ======
@@ -1492,7 +1567,7 @@ export default function EditOfferScreen({ route }: any) {
           */}
           {isAgentUserUI ? (
             <>
-              <Text style={[styles.sectionTitle, { marginTop: 14 }]}>PROWIZJA AGENTA</Text>
+              <Text style={[styles.sectionTitle, { marginTop: 14 }]}>{t('offer.edit.commission.sectionTitle')}</Text>
               <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
                 <View style={styles.commissionHeader}>
                   <View
@@ -1507,7 +1582,7 @@ export default function EditOfferScreen({ route }: any) {
                       color={commissionAccent}
                     />
                     <Text style={[styles.commissionHeaderBadgeText, { color: commissionAccent }]}>
-                      EstateOS™ Agent
+                      {t('offer.edit.commission.badge')}
                     </Text>
                   </View>
                   {hasCommissionSlot ? (
@@ -1517,29 +1592,27 @@ export default function EditOfferScreen({ route }: any) {
                   ) : null}
                 </View>
                 <Text style={[styles.commissionTitle, { color: txtColor }]}>
-                  {isZeroCommission ? 'Oferta bez prowizji' : 'Twoja prowizja'}
+                  {isZeroCommission ? t('offer.edit.commission.titleZero') : t('offer.edit.commission.titleDefault')}
                 </Text>
                 <Text style={[styles.commissionSubtitle, { color: subColor }]}>
                   {isZeroCommission ? (
-                    <>
-                      Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.
-                    </>
+                    <>{t('offer.edit.commission.subtitleZero')}</>
                   ) : hasCommissionSlot ? (
                     <>
-                      Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny{' '}
+                      {t('offer.edit.commission.subtitleWithSlotPrefix')}{' '}
                       <Text style={{ fontWeight: '800', color: txtColor }}>
                         {formatPercentLabel(commissionPercentParsed!)}
                       </Text>{' '}
-                      stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.{' '}
+                      {t('offer.edit.commission.subtitleWithSlotSuffix')}{' '}
                       <Text style={{ fontWeight: '800', color: txtColor }}>
-                        Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku.
+                        {t('offer.edit.commission.subtitleWithSlotVat')}
                       </Text>
                     </>
                   ) : (
                     <>
-                      Wybierz prowizję 0,5%–10% lub tryb „Bez prowizji” (0%). Cena oferty się NIE zmieni — kupujący zobaczy tylko adnotację o prowizji.{' '}
+                      {t('offer.edit.commission.subtitleEmpty')}{' '}
                       <Text style={{ fontWeight: '800', color: txtColor }}>
-                        Wpisana kwota jest BRUTTO — zawiera VAT, bez dodatkowego podatku.
+                        {t('offer.edit.commission.subtitleEmptyVat')}
                       </Text>
                     </>
                   )}
@@ -1561,7 +1634,7 @@ export default function EditOfferScreen({ route }: any) {
                     >
                       <Ionicons name="add-circle-outline" size={20} color="#FF9F0A" />
                       <Text style={[styles.commissionAddCtaText, { color: '#FF9F0A' }]} numberOfLines={1}>
-                        Prowizja {formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT)}
+                        {t('offer.edit.commission.addDefault', { percent: formatPercentLabel(AGENT_COMMISSION_DEFAULT_PERCENT) })}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -1578,7 +1651,7 @@ export default function EditOfferScreen({ route }: any) {
                     >
                       <Ionicons name="gift-outline" size={20} color="#10b981" />
                       <Text style={[styles.commissionAddCtaText, { color: '#10b981' }]} numberOfLines={1}>
-                        Bez prowizji
+                        {t('offer.edit.commission.addZero')}
                       </Text>
                     </Pressable>
                   </View>
@@ -1599,7 +1672,7 @@ export default function EditOfferScreen({ route }: any) {
                   >
                     <View style={styles.commissionRow}>
                       <View style={styles.commissionInputCol}>
-                        <Text style={[styles.commissionLabel, { color: subColor }]}>Prowizja</Text>
+                        <Text style={[styles.commissionLabel, { color: subColor }]}>{t('offer.edit.commission.label')}</Text>
                         <View
                           style={[
                             styles.commissionInputBox,
@@ -1637,13 +1710,13 @@ export default function EditOfferScreen({ route }: any) {
                             <Ionicons name="add" size={16} color={txtColor} />
                           </Pressable>
                           <Text style={[styles.commissionStepHint, { color: subColor }]}>
-                            krok {formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT)}
+                            {t('offer.edit.commission.stepHint', { step: formatPercentLabel(AGENT_COMMISSION_STEP_PERCENT) })}
                           </Text>
                         </View>
                       </View>
                       <View style={styles.commissionAmountCol}>
                         <Text style={[styles.commissionLabel, { color: subColor }]} numberOfLines={1}>
-                          {isZeroCommission ? 'dla kupującego' : 'z ceny ofertowej'}
+                          {isZeroCommission ? t('offer.edit.commission.amountColBuyer') : t('offer.edit.commission.amountColOffer')}
                         </Text>
                         <Text
                           style={[styles.commissionAmountValue, { color: commissionAccent }]}
@@ -1652,15 +1725,15 @@ export default function EditOfferScreen({ route }: any) {
                           minimumFontScale={0.5}
                         >
                           {isZeroCommission
-                            ? 'BEZ PROWIZJI'
+                            ? t('offer.edit.commission.amountZero')
                             : commissionAmount > 0
                               ? formatPlnAmount(commissionAmount)
-                              : '— PLN'}
+                              : t('offer.edit.commission.amountEmpty')}
                         </Text>
                         <Text style={[styles.commissionAmountHint, { color: subColor }]} numberOfLines={2}>
                           {isZeroCommission
-                            ? 'Kupujący nie płaci prowizji.'
-                            : 'To Twoje wynagrodzenie z transakcji.'}
+                            ? t('offer.edit.commission.amountHintZero')
+                            : t('offer.edit.commission.amountHintDefault')}
                         </Text>
                       </View>
                     </View>
@@ -1669,9 +1742,10 @@ export default function EditOfferScreen({ route }: any) {
                       <View style={styles.commissionWarn}>
                         <Ionicons name="warning-outline" size={14} color="#FF3B30" />
                         <Text style={[styles.commissionWarnText, { color: '#FF3B30' }]}>
-                          Prowizja musi być równa 0% (bez prowizji) lub w zakresie{' '}
-                          {formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT)}–
-                          {formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)}.
+                          {t('offer.edit.commission.rangeWarning', {
+                            min: formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT),
+                            max: formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT),
+                          })}
                         </Text>
                       </View>
                     ) : null}
@@ -1679,24 +1753,23 @@ export default function EditOfferScreen({ route }: any) {
                 )}
               </View>
               <Text style={styles.sectionFooter}>
-                Cena oferty NIE jest podnoszona. Klient widzi tylko adnotację o prowizji.
+                {t('offer.edit.commission.footer')}
               </Text>
             </>
           ) : null}
 
           {/* ====== STAN ====== */}
-          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>STAN WYKOŃCZENIA</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 14 }]}>{t('offer.edit.condition.sectionTitle')}</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             <View style={styles.segmentContainer}>
-              {(['READY', 'DEVELOPER', 'TO_RENOVATION'] as const).map((t) => {
-                const isActive = condition === t;
-                const labels = { READY: 'Gotowe', DEVELOPER: 'Deweloperski', TO_RENOVATION: 'Do remontu' };
+              {(['READY', 'DEVELOPER', 'TO_RENOVATION'] as const).map((condKey) => {
+                const isActive = condition === condKey;
                 return (
                   <Pressable
-                    key={t}
+                    key={condKey}
                     onPress={() => {
                       Haptics.selectionAsync();
-                      setCondition(t);
+                      setCondition(condKey);
                     }}
                     style={[
                       styles.segmentBtn,
@@ -1710,7 +1783,7 @@ export default function EditOfferScreen({ route }: any) {
                     ]}
                   >
                     <Text style={[styles.segmentText, isActive && { color: txtColor, fontWeight: '700' }]}>
-                      {labels[t]}
+                      {t(`offer.shared.conditionSegments.${condKey}`)}
                     </Text>
                   </Pressable>
                 );
@@ -1719,12 +1792,12 @@ export default function EditOfferScreen({ route }: any) {
           </View>
 
           {/* ====== UDOGODNIENIA ====== */}
-          <Text style={styles.sectionTitle}>WYPOSAŻENIE I CECHY</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.amenities.sectionTitle')}</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             <AmenityRow
               icon="leaf"
               tint="#34C759"
-              label="Balkon / Taras"
+              label={t('offer.shared.amenitiesEdit.balcony')}
               value={amenities.hasBalcony}
               onChange={(v) => setAmenities({ ...amenities, hasBalcony: v })}
               borderColor={borderColor}
@@ -1735,7 +1808,7 @@ export default function EditOfferScreen({ route }: any) {
             <AmenityRow
               icon="flower"
               tint="#FF2D55"
-              label="Prywatny ogródek"
+              label={t('offer.shared.amenitiesEdit.garden')}
               value={amenities.hasGarden}
               onChange={(v) => setAmenities({ ...amenities, hasGarden: v })}
               borderColor={borderColor}
@@ -1744,9 +1817,20 @@ export default function EditOfferScreen({ route }: any) {
             />
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <AmenityRow
+              icon="layers"
+              tint="#AF52DE"
+              label={t('offer.shared.amenitiesEdit.twoLevel')}
+              value={amenities.isTwoLevel}
+              onChange={(v) => setAmenities({ ...amenities, isTwoLevel: v })}
+              borderColor={borderColor}
+              txtColor={txtColor}
+              isDark={isDark}
+            />
+            <View style={[styles.divider, { backgroundColor: borderColor }]} />
+            <AmenityRow
               icon="car"
               tint="#5856D6"
-              label="Miejsce parkingowe"
+              label={t('offer.shared.amenitiesEdit.parking')}
               value={amenities.hasParking}
               onChange={(v) => setAmenities({ ...amenities, hasParking: v })}
               borderColor={borderColor}
@@ -1757,7 +1841,7 @@ export default function EditOfferScreen({ route }: any) {
             <AmenityRow
               icon="swap-vertical"
               tint="#007AFF"
-              label="Winda w budynku"
+              label={t('offer.shared.amenitiesEdit.elevator')}
               value={amenities.hasElevator}
               onChange={(v) => setAmenities({ ...amenities, hasElevator: v })}
               borderColor={borderColor}
@@ -1768,7 +1852,7 @@ export default function EditOfferScreen({ route }: any) {
             <AmenityRow
               icon="cube"
               tint="#FF9500"
-              label="Piwnica / Komórka"
+              label={t('offer.shared.amenitiesEdit.storage')}
               value={amenities.hasStorage}
               onChange={(v) => setAmenities({ ...amenities, hasStorage: v })}
               borderColor={borderColor}
@@ -1779,7 +1863,7 @@ export default function EditOfferScreen({ route }: any) {
             <AmenityRow
               icon="bed"
               tint="#AF52DE"
-              label="Pełne umeblowanie"
+              label={t('offer.shared.amenitiesEdit.furnished')}
               value={amenities.isFurnished}
               onChange={(v) => setAmenities({ ...amenities, isFurnished: v })}
               borderColor={borderColor}
@@ -1788,7 +1872,7 @@ export default function EditOfferScreen({ route }: any) {
             />
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
-              <Text style={[styles.switchSubtitle, { marginTop: 0, marginBottom: 6 }]}>Ogrzewanie</Text>
+              <Text style={[styles.switchSubtitle, { marginTop: 0, marginBottom: 6 }]}>{t('offer.edit.amenities.heating')}</Text>
               <View
                 style={[
                   styles.heatingPickerWrap,
@@ -1806,7 +1890,7 @@ export default function EditOfferScreen({ route }: any) {
                   style={{ color: txtColor }}
                 >
                   {HEATING_OPTIONS.map((opt) => (
-                    <Picker.Item key={opt || 'none'} label={opt || 'Nie podano'} value={opt} />
+                    <Picker.Item key={opt.key || 'none'} label={t(opt.labelKey)} value={opt.key} />
                   ))}
                 </Picker>
               </View>
@@ -1816,7 +1900,7 @@ export default function EditOfferScreen({ route }: any) {
           {showLandRegistryVerification ? (
           <>
           {/* ====== WERYFIKACJA NIERUCHOMOŚCI — TARCZA BEZPIECZEŃSTWA (tylko PL) ====== */}
-          <Text style={styles.sectionTitle}>TARCZA BEZPIECZEŃSTWA</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.kw.sectionTitle')}</Text>
 
           {/* Karta wyjaśniająca — co zyskujesz */}
           <View
@@ -1874,19 +1958,19 @@ export default function EditOfferScreen({ route }: any) {
                         { color: isLandRegistryValid ? '#34C759' : subColor },
                       ]}
                     >
-                      {isLandRegistryValid ? '✓  ZWERYFIKOWANA' : 'NIEZWERYFIKOWANA'}
+                      {isLandRegistryValid ? t('offer.edit.kw.verifiedBadge') : t('offer.edit.kw.unverifiedBadge')}
                     </Text>
                   </View>
                 </View>
                 <Text style={[styles.shieldTitle, { color: txtColor }]}>
                   {isLandRegistryValid
-                    ? 'Nieruchomość zweryfikowana'
-                    : 'Dodaj numer KW — zwiększ zaufanie'}
+                    ? t('offer.edit.kw.verifiedTitle')
+                    : t('offer.edit.kw.unverifiedTitle')}
                 </Text>
                 <Text style={[styles.shieldSub, { color: subColor }]}>
                   {isLandRegistryValid
-                    ? 'Twoja oferta wyświetla zielony znaczek dla kupujących.'
-                    : 'Nieruchomości z weryfikacją KW wzbudzają o 3× więcej zainteresowania.'}
+                    ? t('offer.edit.kw.verifiedSub')
+                    : t('offer.edit.kw.unverifiedSub')}
                 </Text>
               </View>
             </View>
@@ -1894,10 +1978,10 @@ export default function EditOfferScreen({ route }: any) {
             {/* Lista korzyści */}
             <View style={[styles.shieldBenefits, { borderTopColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }]}>
               {[
-                { icon: 'checkmark-circle', text: 'Brak hipotek i obciążeń — potwierdzamy to my' },
-                { icon: 'checkmark-circle', text: 'Czysta księga wieczysta, status na bieżąco' },
-                { icon: 'checkmark-circle', text: 'Zielony badge „Bezpieczna nieruchomość" na karcie oferty' },
-                { icon: 'lock-closed', text: 'Numer KW chroniony — używamy go wyłącznie do weryfikacji, nigdy nie pokazujemy go publicznie' },
+                { icon: 'checkmark-circle', text: t('offer.edit.kw.benefit1') },
+                { icon: 'checkmark-circle', text: t('offer.edit.kw.benefit2') },
+                { icon: 'checkmark-circle', text: t('offer.edit.kw.benefit3') },
+                { icon: 'lock-closed', text: t('offer.edit.kw.benefit4') },
               ].map((item, i) => (
                 <View key={i} style={styles.shieldBenefitRow}>
                   <Ionicons
@@ -1916,14 +2000,14 @@ export default function EditOfferScreen({ route }: any) {
             {/* Numer mieszkania */}
             <View style={styles.inputRowPremium}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>Nr mieszkania</Text>
-                <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>Opcjonalnie</Text>
+                <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.kw.apartmentNumber')}</Text>
+                <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>{t('offer.edit.kw.apartmentOptional')}</Text>
               </View>
               <TextInput
                 style={[styles.inputRightPremium, { color: txtColor, maxWidth: 120 }]}
                 value={apartmentNumber}
                 onChangeText={setApartmentNumber}
-                placeholder="np. 14B"
+                placeholder={t('offer.edit.kw.apartmentPlaceholder')}
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
               />
@@ -1935,15 +2019,15 @@ export default function EditOfferScreen({ route }: any) {
               <View style={styles.kwLabelRow}>
                 <View style={styles.kwLockBadge}>
                   <Ionicons name="lock-closed" size={10} color="#34C759" />
-                  <Text style={styles.kwLockText}>SZYFROWANE</Text>
+                  <Text style={styles.kwLockText}>{t('offer.edit.kw.encrypted')}</Text>
                 </View>
                 <Text style={[styles.inputLabelPremium, { color: txtColor, flex: 1, marginLeft: 8 }]}>
-                  Numer Księgi Wieczystej
+                  {t('offer.edit.kw.landRegistryLabel')}
                 </Text>
               </View>
               <Text style={[styles.kwFormatHint, { color: subColor }]}>
-                Format: <Text style={{ fontWeight: '800', color: txtColor, letterSpacing: 1 }}>XXXX / XXXXXXXX / X</Text>
-                {'  '}np. <Text style={{ fontWeight: '700' }}>WA4N/00012345/6</Text>
+                {t('offer.edit.kw.formatHint')} <Text style={{ fontWeight: '800', color: txtColor, letterSpacing: 1 }}>XXXX / XXXXXXXX / X</Text>
+                {'  '}{t('offer.edit.kw.formatExample')} <Text style={{ fontWeight: '700' }}>WA4N/00012345/6</Text>
               </Text>
               <TextInput
                 style={[
@@ -1963,7 +2047,7 @@ export default function EditOfferScreen({ route }: any) {
                 onFocus={() => {
                   setTimeout(() => mainScrollRef.current?.scrollToEnd({ animated: true }), 320);
                 }}
-                placeholder="WA4N/00012345/6"
+                placeholder={t('offer.edit.kw.placeholder')}
                 placeholderTextColor={subColor}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -2002,8 +2086,8 @@ export default function EditOfferScreen({ route }: any) {
                   />
                   <Text style={[styles.kwValidText, { color: isLandRegistryValid ? '#34C759' : '#FF3B30' }]}>
                     {isLandRegistryValid
-                      ? `Format poprawny${selectedCourt ? ` · ${selectedCourt.courtName}` : ''}`
-                      : 'Nieprawidłowy format. Wzór: WA4N/00012345/6'}
+                      ? t('offer.edit.kw.validFormat', { courtSuffix: selectedCourt ? t('offer.edit.kw.courtSuffix', { court: selectedCourt.courtName }) : '' })
+                      : t('offer.edit.kw.invalidFormat')}
                   </Text>
                 </View>
               ) : null}
@@ -2013,14 +2097,25 @@ export default function EditOfferScreen({ route }: any) {
           ) : null}
 
           {/* ====== LOKALIZACJA — Z ŻYWYM PODGLĄDEM ====== */}
-          <Text style={styles.sectionTitle}>MAPA I WIDOCZNOŚĆ</Text>
+          <Text style={styles.sectionTitle}>{t('offer.edit.location.sectionTitle')}</Text>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             <View style={[styles.switchRow, { alignItems: 'flex-start' }]}>
               <View style={styles.switchTextGroup}>
-                <Text style={[styles.switchTitle, { color: txtColor }]}>Dokładna lokalizacja</Text>
+                <Text style={[styles.switchTitle, { color: txtColor }]}>{t('offer.edit.location.exactTitle')}</Text>
                 <Text style={styles.switchSubtitle}>
-                  Włączone: na publicznej karcie oferty widać <Text style={{ fontWeight: '700' }}>ulicę i numer</Text> + dokładny pin.
-                  {'\n'}Wyłączone: widzimy <Text style={{ fontWeight: '700' }}>tylko nazwę ulicy</Text> (bez numeru) + przybliżony obszar.
+                  {isExactLocation ? (
+                    <>
+                      {t('offer.edit.location.exactOnPrefix')}
+                      <Text style={{ fontWeight: '700' }}>{t('offer.edit.location.exactSubtitleBoldStreet')}</Text>
+                      {t('offer.edit.location.exactOnSuffix')}
+                    </>
+                  ) : (
+                    <>
+                      {t('offer.edit.location.exactOffPrefix')}
+                      <Text style={{ fontWeight: '700' }}>{t('offer.edit.location.exactSubtitleBoldStreetOnly')}</Text>
+                      {t('offer.edit.location.exactOffSuffix')}
+                    </>
+                  )}
                 </Text>
               </View>
               <Switch
@@ -2046,8 +2141,7 @@ export default function EditOfferScreen({ route }: any) {
             />
           </View>
           <Text style={styles.sectionFooter}>
-            To ustawienie wpływa wyłącznie na publiczną kartę oferty. W panelu zarządzania zawsze widzisz pełen
-            adres i precyzyjny pin — kupujący tylko to, co masz powyżej.
+            {t('offer.edit.location.footer')}
           </Text>
 
           {/* Bufor pod sticky save */}
@@ -2091,8 +2185,8 @@ export default function EditOfferScreen({ route }: any) {
                 ]}
               >
                 {!isDirty
-                  ? 'Wszystko zapisane'
-                  : `Zapisz zmiany${dirtyCount > 0 ? ` (${dirtyCount})` : ''}`}
+                  ? t('offer.edit.sticky.allSaved')
+                  : `${t('offer.edit.sticky.saveChanges', { suffix: dirtyCount > 0 ? t('offer.edit.sticky.saveSuffix', { count: dirtyCount }) : '' })}`}
               </Text>
             </>
           )}
@@ -2167,6 +2261,7 @@ function LocationPreview({
   localityCountry?: string;
   localityCountryCode?: string;
 }) {
+  const { t } = useI18n();
   const pulse = useRef(new Animated.Value(0)).current;
   // Animujemy fade na samym TEKŚCIE adresu, żeby zmiana była natychmiast czytelna.
   const addressFade = useRef(new Animated.Value(1)).current;
@@ -2243,10 +2338,10 @@ function LocationPreview({
                 { color: isExactLocation ? '#007AFF' : '#34C759' },
               ]}
             >
-              {isExactLocation ? 'PEŁNY ADRES' : 'TYLKO ULICA'}
+              {isExactLocation ? t('offer.edit.location.badgeFull') : t('offer.edit.location.badgeStreet')}
             </Text>
           </View>
-          <Text style={styles.locAddressEyebrow}>TAK WIDZĄ KUPUJĄCY</Text>
+          <Text style={styles.locAddressEyebrow}>{t('offer.edit.location.previewEyebrow')}</Text>
         </View>
 
         <Animated.View style={{ opacity: addressFade }}>
@@ -2258,19 +2353,19 @@ function LocationPreview({
           {hasStreet ? (
             isExactLocation ? (
               <Text style={styles.locAddressHint}>
-                Numer „{(streetRaw.match(/\d+[A-Za-z]?(?:[\/\-]\d+[A-Za-z]?)?\s*$/u) || [''])[0].trim() || '—'}”
-                jest widoczny w ogłoszeniu.
+                {t('offer.edit.location.numberVisible', {
+                  number: (streetRaw.match(/\d+[A-Za-z]?(?:[\/\-]\d+[A-Za-z]?)?\s*$/u) || [''])[0].trim() || '—',
+                })}
               </Text>
             ) : (
               <Text style={styles.locAddressHint}>
-                Numer budynku <Text style={{ fontWeight: '700', color: '#FF9500' }}>ukryty</Text>. Widoczna tylko
-                nazwa ulicy „{visibleStreet || streetRaw}”.
+                {t('offer.edit.location.numberHiddenPrefix')}{' '}
+                <Text style={{ fontWeight: '700', color: '#FF9500' }}>{t('offer.edit.location.numberHiddenBold')}</Text>
+                . {t('offer.edit.location.numberHiddenSuffix', { street: visibleStreet || streetRaw })}
               </Text>
             )
           ) : (
-            <Text style={styles.locAddressHint}>
-              Ta oferta nie ma jeszcze ulicy w bazie — kupujący widzi tylko miasto i dzielnicę.
-            </Text>
+            <Text style={styles.locAddressHint}>{t('offer.edit.location.noStreet')}</Text>
           )}
         </Animated.View>
       </View>
@@ -2345,12 +2440,10 @@ function LocationPreview({
 
         <View style={styles.locLegend}>
           <Text style={[styles.locLegendTitle, { color: txtColor }]}>
-            {isExactLocation ? 'Pin precyzyjny' : 'Obszar ~250 m'}
+            {isExactLocation ? t('offer.edit.location.mapPinExact') : t('offer.edit.location.mapAreaApprox')}
           </Text>
           <Text style={styles.locLegendSub}>
-            {isExactLocation
-              ? 'Pinezka pokazuje dokładny budynek.'
-              : 'Zielony krąg ukrywa budynek — a środek tarczy jest celowo przesunięty, więc nie pokazuje też położenia domu.'}
+            {isExactLocation ? t('offer.edit.location.mapHintExact') : t('offer.edit.location.mapHintCircle')}
           </Text>
         </View>
       </View>

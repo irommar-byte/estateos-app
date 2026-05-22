@@ -280,6 +280,13 @@ export function stripHouseNumber(streetInput: unknown): string {
  *
  * Jeśli ulicy nie znamy lub jest pusta — zwracamy `baseLabel` jak dotąd.
  */
+/** Dom i działka domyślnie w trybie przybliżonym (bez numeru budynku na mapie / w adresie). */
+export function defaultExactLocationForPropertyType(propertyType: unknown): boolean {
+  const t = String(propertyType || '').toUpperCase();
+  if (t === 'HOUSE' || t === 'PLOT') return false;
+  return true;
+}
+
 export function formatPublicAddress(
   cityInput: unknown,
   districtInput: unknown,

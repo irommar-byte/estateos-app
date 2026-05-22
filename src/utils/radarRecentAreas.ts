@@ -5,6 +5,7 @@ import {
   normalizeLocalityCountryLabel,
   REST_OF_COUNTRY_CITY,
 } from '../constants/locationEcosystem';
+import { t } from '../i18n/translate';
 import { flagEmojiFromIso2 } from './phoneRegions';
 
 const STORAGE_KEY = '@estateos_radar_recent_areas_v1';
@@ -38,6 +39,7 @@ export function isRadarFactoryDefaults(f: RadarFilters): boolean {
     f.minYear === 1900 &&
     !f.requireBalcony &&
     !f.requireGarden &&
+    !f.requireTwoLevel &&
     !f.requireElevator &&
     !f.requireParking &&
     !f.requireFurnished &&
@@ -48,28 +50,28 @@ export function isRadarFactoryDefaults(f: RadarFilters): boolean {
 function propertyTypeLabel(code: string): string {
   switch (String(code || '').toUpperCase()) {
     case 'FLAT':
-      return 'Mieszkanie';
+      return t('radar.home.propertyFlat');
     case 'HOUSE':
-      return 'Dom';
+      return t('radar.home.propertyHouse');
     case 'PLOT':
-      return 'Działka';
+      return t('radar.home.propertyPlot');
     case 'PREMISES':
-      return 'Lokal';
+      return t('radar.home.propertyPremises');
     case 'ALL':
     default:
-      return 'Dowolny typ';
+      return t('radar.home.propertyAny');
   }
 }
 
 function formatPriceShort(n: number, transactionType: 'RENT' | 'SELL'): string {
   const cap = transactionType === 'RENT' ? 50000 : 5_000_000;
-  if (n >= cap) return 'bez limitu ceny';
+  if (n >= cap) return t('radar.home.scope.noPriceLimit');
   if (n >= 1_000_000) {
     const m = n / 1_000_000;
-    return `do ${m >= 10 ? m.toFixed(0) : m.toFixed(1).replace(/\.0$/, '')} mln`;
+    return t('radar.home.scope.priceToMillion', { value: m >= 10 ? m.toFixed(0) : m.toFixed(1).replace(/\.0$/, '') });
   }
-  if (n >= 1000) return `do ${Math.round(n / 1000)} tys.`;
-  return `do ${n} PLN`;
+  if (n >= 1000) return t('radar.home.scope.priceToThousand', { value: String(Math.round(n / 1000)) });
+  return t('radar.home.scope.priceToPln', { value: String(n) });
 }
 
 function effectiveMapRadiusKm(baseRadiusKm: number, matchThreshold: number): number {
@@ -96,41 +98,41 @@ export function buildRadarActiveScopeLine(
     const km = effectiveMapRadiusKm(mapBounds.radiusKm, filters.matchThreshold)
       .toFixed(1)
       .replace('.', ',');
-    where = `${cityLabel} ${flag} · obszar ${km} km`;
+    where = t('radar.home.scope.areaKm', { city: cityLabel, flag, km });
   } else if (filters.selectedDistricts.length === 1) {
-    where = `${cityLabel} ${flag} · ${filters.selectedDistricts[0]}`;
+    where = t('radar.home.scope.singleDistrict', { city: cityLabel, flag, district: filters.selectedDistricts[0] });
   } else if (filters.selectedDistricts.length > 1) {
-    where = `${cityLabel} ${flag} · ${filters.selectedDistricts.length} dzielnice`;
+    where = t('radar.home.scope.multiDistrict', { city: cityLabel, flag, count: String(filters.selectedDistricts.length) });
   } else {
-    where = `${cityLabel} ${flag} · całe miasto`;
+    where = t('radar.home.scope.wholeCity', { city: cityLabel, flag });
   }
 
-  const trans = filters.transactionType === 'RENT' ? 'Wynajem' : 'Sprzedaż';
-  return `${where} · ${trans} · ${propertyTypeLabel(filters.propertyType)}`;
+  const trans = filters.transactionType === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
+  return t('radar.home.scope.line', { where, transaction: trans, propertyType: propertyTypeLabel(filters.propertyType) });
 }
 
 export function buildRadarRecentLabels(
   filters: RadarFilters,
   mapBounds: RadarRecentMapBounds | null
 ): { title: string; subtitle: string } {
-  const trans = filters.transactionType === 'RENT' ? 'Wynajem' : 'Sprzedaż';
+  const trans = filters.transactionType === 'RENT' ? t('radar.home.transactionRentShort') : t('radar.home.transactionSellShort');
   let title: string;
   if (filters.calibrationMode === 'MAP' && mapBounds) {
-    title = `${filters.city} · obszar ${mapBounds.radiusKm.toFixed(1)} km`;
+    title = t('radar.home.scope.recentMapTitle', { city: filters.city, radius: mapBounds.radiusKm.toFixed(1) });
   } else if (filters.selectedDistricts.length > 0) {
-    title = `${filters.city} · ${filters.selectedDistricts.length} dziel.`;
+    title = t('radar.home.scope.recentCityDistricts', { city: filters.city, count: String(filters.selectedDistricts.length) });
   } else {
-    title = `${filters.city} · całe miasto`;
+    title = t('radar.home.scope.recentWholeCity', { city: filters.city });
   }
 
   const parts: string[] = [
     trans,
     formatPriceShort(filters.maxPrice, filters.transactionType),
-    `próg ${filters.matchThreshold}%`,
+    t('radar.home.scope.threshold', { value: String(filters.matchThreshold) }),
     propertyTypeLabel(filters.propertyType),
   ];
-  if (filters.minArea > 0) parts.push(`min. ${filters.minArea} m²`);
-  if (filters.minYear > 1900) parts.push(`od ${filters.minYear} r.`);
+  if (filters.minArea > 0) parts.push(t('radar.home.scope.minArea', { value: String(filters.minArea) }));
+  if (filters.minYear > 1900) parts.push(t('radar.home.scope.minYear', { value: String(filters.minYear) }));
 
   return { title, subtitle: parts.join(' · ') };
 }
@@ -149,6 +151,7 @@ function fingerprint(filters: RadarFilters, mapBounds: RadarRecentMapBounds | nu
     req: [
       filters.requireBalcony,
       filters.requireGarden,
+      filters.requireTwoLevel,
       filters.requireElevator,
       filters.requireParking,
       filters.requireFurnished,

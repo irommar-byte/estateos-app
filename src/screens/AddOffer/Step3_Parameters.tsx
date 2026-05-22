@@ -16,6 +16,7 @@ import {
   normalizeLandRegistryNumber,
 } from '../../utils/landRegistry';
 import { isPolandLocationDraft } from '../../constants/locationEcosystem';
+import { useI18n } from '../../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -23,20 +24,21 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const Colors = { primary: '#10b981' };
 const HEATING_OPTIONS = [
-  { key: '', label: 'Nie podano' },
-  { key: 'Miejskie', label: 'Miejskie' },
-  { key: 'Gazowe', label: 'Gazowe' },
-  { key: 'Elektryczne', label: 'Elektryczne' },
-  { key: 'Pompa Ciepła', label: 'Pompa Ciepła' },
-  { key: 'Węglowe/Pellet', label: 'Węglowe / Pellet' },
-  { key: 'Inne', label: 'Inne' },
-];
+  { key: '', labelKey: 'addOffer.step3.heating.none' },
+  { key: 'Miejskie', labelKey: 'addOffer.step3.heating.district' },
+  { key: 'Gazowe', labelKey: 'addOffer.step3.heating.gas' },
+  { key: 'Elektryczne', labelKey: 'addOffer.step3.heating.electric' },
+  { key: 'Pompa Ciepła', labelKey: 'addOffer.step3.heating.heatPump' },
+  { key: 'Węglowe/Pellet', labelKey: 'addOffer.step3.heating.coalPellet' },
+  { key: 'Inne', labelKey: 'addOffer.step3.heating.other' },
+] as const;
 
 const ROOMS = ['', ...Array.from({length: 10}, (_, i) => (i + 1).toString())];
 const FLOORS = ['', 'Parter', ...Array.from({length: 30}, (_, i) => (i + 1).toString())];
 const YEARS = ['', ...Array.from({length: 100}, (_, i) => (new Date().getFullYear() - i).toString())];
 
 export default function Step3_Parameters({ theme }: { theme: any }) {
+  const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
   const navigation = useNavigation<any>();
   useFocusEffect(useCallback(() => { setCurrentStep(3); }, []));
@@ -55,6 +57,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
   // --- LOGIKA KASKADY ---
   const isPlot = draft.propertyType === 'PLOT';
+  const isHouse = draft.propertyType === 'HOUSE';
 
   // Krok po kroku odblokowujemy sekcje:
   const isAreaFilled = !!draft.area && parseFloat(draft.area.replace(',', '.')) > 0;
@@ -68,7 +71,6 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const isLandRegistryValid = isValidLandRegistryNumber(landRegistryRaw);
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
   const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
-
   // Sekcja „Szczegóły” jako całość — pojawia się dopiero gdy user wpisał metraż.
   const detailsAnim = useRef(new Animated.Value(isAreaFilled ? 1 : 0)).current;
   const roomsAnim = useRef(new Animated.Value(isRoomsUnlocked ? 1 : 0.3)).current;
@@ -145,13 +147,13 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={3} draft={draft} theme={theme} navigation={navigation} />
         
-        <Text style={[styles.header, { color: theme.text }]}>Parametry</Text>
+        <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step3.header')}</Text>
         
-        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>Metraż</Text>
+        <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step3.sections.area')}</Text>
         <View style={[styles.areaBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 2 }]}>
           <TextInput 
             style={[styles.areaInput, { color: theme.text }]} 
-            placeholder="0" 
+            placeholder={t('addOffer.step3.placeholders.area')} 
             placeholderTextColor={theme.subtitle} 
             value={draft.area} 
             onChangeText={(text) => { const formatted = text.replace(/[^0-9.,]/g, ''); updateDraft({ area: formatted }); }} 
@@ -160,7 +162,28 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           />
           <Text style={[styles.areaUnit, { color: draft.area ? theme.text : theme.subtitle }]}>m²</Text>
         </View>
-
+        {isHouse && isAreaFilled && (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 24 }]}>
+              {t('addOffer.step3.sections.housePlotArea')}
+            </Text>
+            <View style={[styles.areaBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 2 }]}>
+              <TextInput
+                style={[styles.areaInput, { color: theme.text }]}
+                placeholder={t('addOffer.step3.placeholders.housePlotArea')}
+                placeholderTextColor={theme.subtitle}
+                value={draft.plotArea}
+                onChangeText={(text) => {
+                  const formatted = text.replace(/[^0-9.,]/g, '');
+                  updateDraft({ plotArea: formatted });
+                }}
+                keyboardType="decimal-pad"
+                maxLength={6}
+              />
+              <Text style={[styles.areaUnit, { color: draft.plotArea ? theme.text : theme.subtitle }]}>m²</Text>
+            </View>
+          </>
+        )}
         {!isPlot && isAreaFilled && (
           <Animated.View
             onLayout={(e) => { detailsYRef.current = e.nativeEvent.layout.y; }}
@@ -169,32 +192,32 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               transform: [{ translateY: detailsAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
             }}
           >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Szczegóły</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.details')}</Text>
             <View style={styles.triplePickerWrapper}>
               
               <Animated.View style={[styles.pickerColumn, { opacity: roomsAnim }]} pointerEvents={isRoomsUnlocked ? 'auto' : 'none'}>
-                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>POKOJE</Text>
+                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>{t('addOffer.step3.pickers.rooms')}</Text>
                 <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
                   <Picker selectedValue={draft.rooms || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({rooms: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}>
-                    {ROOMS.map(r => <Picker.Item key={r} label={r === '' ? '-' : r} value={r} />)}
+                    {ROOMS.map(r => <Picker.Item key={r} label={r === '' ? t('addOffer.common.pickerEmpty') : r} value={r} />)}
                   </Picker>
                 </View>
               </Animated.View>
 
               <Animated.View style={[styles.pickerColumn, { opacity: floorAnim }]} pointerEvents={isFloorUnlocked ? 'auto' : 'none'}>
-                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>PIĘTRO</Text>
+                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>{t('addOffer.step3.pickers.floor')}</Text>
                 <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
                   <Picker selectedValue={draft.floor || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({floor: v}); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
-                    {FLOORS.map(f => <Picker.Item key={f} label={f === '' ? '-' : f} value={f} />)}
+                    {FLOORS.map(f => <Picker.Item key={f} label={f === '' ? t('addOffer.common.pickerEmpty') : f.toLowerCase() === 'parter' ? t('addOffer.common.groundFloor') : f} value={f} />)}
                   </Picker>
                 </View>
               </Animated.View>
 
               <Animated.View style={[styles.pickerColumn, { opacity: yearAnim }]} pointerEvents={isYearUnlocked ? 'auto' : 'none'}>
-                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>ROK</Text>
+                <Text style={[styles.pickerTitle, { color: theme.subtitle }]}>{t('addOffer.step3.pickers.year')}</Text>
                 <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 }]}>
                   <Picker selectedValue={draft.yearBuilt || draft.buildYear || ''} onValueChange={(v) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); updateDraft({ buildYear: v, yearBuilt: v }); }} mode="dialog" dropdownIconColor={theme.text} style={[styles.pickerNative, { color: theme.text }]} itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}>
-                    {YEARS.map(y => <Picker.Item key={y} label={y === '' ? '-' : y} value={y} />)}
+                    {YEARS.map(y => <Picker.Item key={y} label={y === '' ? t('addOffer.common.pickerEmpty') : y} value={y} />)}
                   </Picker>
                 </View>
               </Animated.View>
@@ -209,8 +232,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
             style={{ opacity: amenitiesAnim, transform: [{ translateY: amenitiesAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}
             pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
           >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>Udogodnienia (Opcjonalne)</Text>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 16 }]}>Ogrzewanie</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.amenities')}</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 16 }]}>{t('addOffer.step3.sections.heating')}</Text>
             <View style={[styles.pickerBox, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2, marginBottom: 16 }]}>
               <Picker
                 selectedValue={draft.heating || ''}
@@ -224,7 +247,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
                 itemStyle={{ color: theme.text, height: 160, fontSize: 16, fontWeight: '700' }}
               >
                 {HEATING_OPTIONS.map((opt) => (
-                  <Picker.Item key={opt.key || 'none'} label={opt.label} value={opt.key} />
+                  <Picker.Item key={opt.key || 'none'} label={t(opt.labelKey)} value={opt.key} />
                 ))}
               </Picker>
             </View>
@@ -237,14 +260,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               style={[styles.premiumRow, { backgroundColor: cardBg, borderColor: cardBorder, shadowColor: '#000', shadowOpacity, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 1 }]}
             >
               <View>
-                <Text style={[styles.premiumRowTitle, { color: theme.text }]}>Umeblowane</Text>
+                <Text style={[styles.premiumRowTitle, { color: theme.text }]}>{t('addOffer.step3.furnished')}</Text>
                 <Text style={[styles.premiumRowSubtitle, { color: theme.subtitle }]}>
-                  {draft.isFurnished ? 'Tak' : 'Nie'}
+                  {draft.isFurnished ? t('addOffer.common.yes') : t('addOffer.common.no')}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Text style={[styles.booleanLabel, { color: draft.isFurnished ? Colors.primary : theme.subtitle }]}>
-                  {draft.isFurnished ? 'Tak' : 'Nie'}
+                  {draft.isFurnished ? t('addOffer.common.yes') : t('addOffer.common.no')}
                 </Text>
                 <View pointerEvents="none">
                   <Ionicons name={draft.isFurnished ? 'checkmark-circle' : 'close-circle-outline'} size={18} color={draft.isFurnished ? Colors.primary : theme.subtitle} />
@@ -253,27 +276,28 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
             </AppleHover>
 
             <View style={styles.pillsContainer}>
-              <TogglePill label="Balkon / Taras" icon="sunny-outline" field="hasBalcony" />
-              <TogglePill label="Garaż / Parking" icon="car-sport-outline" field="hasParking" />
-              <TogglePill label="Piwnica / Komórka" icon="cube-outline" field="hasStorage" />
-              <TogglePill label="Winda" icon="arrow-up-circle-outline" field="hasElevator" />
-              <TogglePill label="Ogródek" icon="leaf-outline" field="hasGarden" />
+              <TogglePill label={t('addOffer.step3.amenities.balcony')} icon="sunny-outline" field="hasBalcony" />
+              <TogglePill label={t('addOffer.step3.amenities.parking')} icon="car-sport-outline" field="hasParking" />
+              <TogglePill label={t('addOffer.step3.amenities.storage')} icon="cube-outline" field="hasStorage" />
+              <TogglePill label={t('addOffer.step3.amenities.elevator')} icon="arrow-up-circle-outline" field="hasElevator" />
+              <TogglePill label={t('addOffer.step3.amenities.garden')} icon="leaf-outline" field="hasGarden" />
+              <TogglePill label={t('addOffer.step3.amenities.twoLevel')} icon="layers-outline" field="isTwoLevel" />
             </View>
 
             {showLandRegistryVerification ? (
             <>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 20 }]}>Weryfikacja dokumentów (opcjonalnie)</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 20 }]}>{t('addOffer.step3.sections.landRegistry')}</Text>
             <View style={[styles.docsCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
               <TextInput
                 style={[styles.docsInput, { color: theme.text, borderBottomColor: cardBorder }]}
-                placeholder="Numer mieszkania"
+                placeholder={t('addOffer.step3.placeholders.apartmentNumber')}
                 placeholderTextColor={theme.subtitle}
                 value={draft.apartmentNumber || ''}
                 onChangeText={(t) => updateDraft({ apartmentNumber: t })}
               />
               <TextInput
                 style={[styles.docsInput, { color: theme.text }]}
-                placeholder="Numer księgi wieczystej (np. WA4N/00012345/6)"
+                placeholder={t('addOffer.step3.placeholders.landRegistryNumber')}
                 placeholderTextColor={theme.subtitle}
                 value={draft.landRegistryNumber || ''}
                 onChangeText={(t) => updateDraft({ landRegistryNumber: normalizeLandRegistryNumber(t) })}
@@ -305,21 +329,18 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               ) : null}
               {selectedCourt ? (
                 <Text style={[styles.docsCourtText, { color: theme.subtitle }]}>
-                  Właściwy sąd: {selectedCourt.courtName}
+                  {t('addOffer.step3.landRegistry.courtPrefix')} {selectedCourt.courtName}
                 </Text>
               ) : null}
               {landRegistryRaw ? (
                 <Text style={[styles.docsValidationText, { color: isLandRegistryValid ? '#34C759' : '#FF3B30' }]}>
                   {isLandRegistryValid
-                    ? 'Format KW poprawny. Dane trafiają wyłącznie do procesu weryfikacji.'
-                    : 'Nieprawidłowy format KW. Użyj wzoru: WA4N/00012345/6'}
+                    ? t('addOffer.step3.landRegistry.validFormat')
+                    : t('addOffer.step3.landRegistry.invalidFormat')}
                 </Text>
               ) : null}
               <Text style={[styles.docsPrivacyText, { color: theme.subtitle }]}>
-                Dane dokumentowe są prywatne i służą wyłącznie do weryfikacji stanu prawnego nieruchomości (np.
-                potwierdzenie: nieruchomość sprawdzona, bez zadłużeń), co zwiększa wiarygodność oferty i szansę na
-                zainteresowanie klientów. Te dane nie są publikowane i nigdy nie zostaną ujawnione bez Twojej wyraźnej
-                zgody.
+                {t('addOffer.step3.landRegistry.privacy')}
               </Text>
             </View>
             </>
@@ -332,8 +353,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           icon="options-outline"
           text={
             showLandRegistryVerification
-              ? 'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami oraz na szacunki finansowe w następnym kroku. Uzupełniaj pola po kolei — kolejne sekcje odblokują się, gdy poprzednie są spójne. Dla działki wystarczy powierzchnia (bez udogodnień typowych dla lokalu).'
-              : 'Metraż i dane techniczne wpływają na porównywalność z innymi ogłoszeniami. Dla nieruchomości poza Polską nie stosujemy weryfikacji księgi wieczystej (KW) — dotyczy wyłącznie polskiego rejestru.'
+              ? t('addOffer.step3.footerHint.withLandRegistry')
+              : t('addOffer.step3.footerHint.withoutLandRegistry')
           }
         />
         <View style={{ height: 200 }} />

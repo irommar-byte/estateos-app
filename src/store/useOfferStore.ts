@@ -45,6 +45,8 @@ const initialDraft = {
   isExactLocation: true,
 
   // Krok 3: Finanse i Wymiary
+  /** Waluta wpisywanej ceny oferty (PLN | EUR). */
+  priceCurrency: 'PLN',
   price: '',
   adminFee: '',
   /**
@@ -69,6 +71,7 @@ const initialDraft = {
   hasStorage: false,
   hasParking: false,
   hasGarden: false,
+  isTwoLevel: false,
   isFurnished: false,
   apartmentNumber: '',
   landRegistryNumber: '',

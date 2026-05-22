@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { 
-  Modal, View, Text, StyleSheet, Pressable, ScrollView, Switch, 
-  Dimensions, PanResponder, Platform, UIManager, KeyboardAvoidingView, Keyboard,
-  useColorScheme
+import {
+  Modal,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  Switch,
+  Dimensions,
+  PanResponder,
+  Platform,
+  UIManager,
+  KeyboardAvoidingView,
+  Keyboard,
+  useColorScheme,
+  InteractionManager,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +27,8 @@ import Animated, {
 import RadarCalibrationRitualOverlay from './RadarCalibrationRitualOverlay';
 import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import type { RadarRecentSavedArea } from '../utils/radarRecentAreas';
+import { useI18n } from '../i18n';
+import PolandScopeNote from './PolandScopeNote';
 
 const { width, height } = Dimensions.get('window');
 
@@ -68,6 +82,7 @@ export type RadarFilters = {
   requireElevator: boolean;
   requireParking: boolean;
   requireFurnished: boolean;
+  requireTwoLevel: boolean;
   pushNotifications: boolean;
   matchThreshold: number;
   /** Ulubione: powiadom o zmianie ceny obserwowanej oferty. */
@@ -93,7 +108,7 @@ type Props = {
   getAreaSummaryPreview?: (filters: RadarFilters) => string | undefined;
   getMatchingOffersCountPreview?: (filters: RadarFilters) => number;
   onClose: () => void;
-  onApply: (filters: RadarFilters) => Promise<void> | void;
+  onApply: (filters: RadarFilters, options?: { keepCalibrationModalOpen?: boolean }) => Promise<void> | void;
   onOpenAreaPicker: (currentFilters: RadarFilters) => void;
   /** Ostatnie zapisane obszary radaru (max. 3) — tylko `variant="radar"`. */
   recentRadarAreas?: RadarRecentSavedArea[];
@@ -248,12 +263,16 @@ export default function RadarCalibrationModal({
   onClose, onApply, onOpenAreaPicker, recentRadarAreas, onPickRecentRadarArea,
 }: Props) {
   
+  const { t, locale } = useI18n();
   const systemTheme = useColorScheme();
   const isDark = systemTheme === 'dark';
   const COLORS = useMemo(() => getColors(isDark), [isDark]);
+  const dateLocale = locale === 'pl' ? 'pl-PL' : 'en-US';
   
   const [showApplyRitual, setShowApplyRitual] = useState(false);
+  const [ritualMapRevealed, setRitualMapRevealed] = useState(false);
   const pendingFiltersRef = useRef<RadarFilters | null>(null);
+  const ritualAppliedRef = useRef(false);
   const [ritualMatchingOffersCount, setRitualMatchingOffersCount] = useState(matchingOffersCount);
 
   const [draftFilters, setDraftFilters] = useState<RadarFilters>(initialFilters);
@@ -263,8 +282,8 @@ export default function RadarCalibrationModal({
   const [scrubberBootPulse, setScrubberBootPulse] = useState(0);
   const isFavoritesVariant = variant === 'favorites';
   const accentMetal = isFavoritesVariant ? '#E7A7C8' : LiveRadarGold;
-  const radarLabel = isFavoritesVariant ? 'EstateOS™ Favor' : 'EstateOS™ Live Radar';
-  const modalTitle = isFavoritesVariant ? 'Kalibracja Ulubionych' : 'Kalibracja Radaru';
+  const radarLabel = isFavoritesVariant ? t('radar.calibration.favorLabel') : t('radar.calibration.radarLabel');
+  const modalTitle = isFavoritesVariant ? t('radar.calibration.titleFavorites') : t('radar.calibration.titleRadar');
   
   const modePillProgress = useSharedValue(initialFilters.calibrationMode === 'MAP' ? 0 : 1);
   const thresholdReveal = useSharedValue(initialFilters.pushNotifications ? 1 : 0);
@@ -282,6 +301,8 @@ export default function RadarCalibrationModal({
   useEffect(() => {
     if (!visible) {
       setShowApplyRitual(false);
+      setRitualMapRevealed(false);
+      ritualAppliedRef.current = false;
       pendingFiltersRef.current = null;
       setKeyboardHeight(0);
       setIsGestureLocked(false);
@@ -325,12 +346,12 @@ export default function RadarCalibrationModal({
   }, [radarAwake, sectionWake, thresholdReveal]);
 
   // TWOJA ORYGINALNA LOGIKA RADARU
-  const getRadarIntelligence = (val: number) => {
-    if (val === 100) return { title: '🎯 Strzał w dziesiątkę', desc: 'Tylko oferty idealne: obszar lub dzielnica, cena, metraż, rok i wymagane cechy muszą pasować.', color: '#34C759' };
-    if (val >= 90) return { title: '💎 Idealne trafienie', desc: 'Bardzo blisko ideału: minimalna tolerancja ceny, granicy obszaru i parametrów technicznych.', color: '#0A84FF' };
-    if (val >= 75) return { title: '🔥 Świetna okazja', desc: 'Radar łapie oferty z wysokim wynikiem dopasowania, nawet jeśli jedna cecha jest słabsza.', color: '#FF9F0A' };
-    return { title: '👻 Szerokie skanowanie', desc: 'Więcej kandydatów: poza obszarem, trochę ponad budżetem lub z brakującą cechą, ale nadal punktowane według oczekiwań.', color: '#FF3B30' };
-  };
+  const getRadarIntelligence = useCallback((val: number) => {
+    if (val === 100) return { title: t('radar.calibration.intelligence.perfect.title'), desc: t('radar.calibration.intelligence.perfect.desc'), color: '#34C759' };
+    if (val >= 90) return { title: t('radar.calibration.intelligence.ideal.title'), desc: t('radar.calibration.intelligence.ideal.desc'), color: '#0A84FF' };
+    if (val >= 75) return { title: t('radar.calibration.intelligence.great.title'), desc: t('radar.calibration.intelligence.great.desc'), color: '#FF9F0A' };
+    return { title: t('radar.calibration.intelligence.wide.title'), desc: t('radar.calibration.intelligence.wide.desc'), color: '#FF3B30' };
+  }, [t]);
   const currentIntelligence = useMemo(() => getRadarIntelligence(draftFilters.matchThreshold), [draftFilters.matchThreshold]);
   const displayedAreaSummary = useMemo(() => (getAreaSummaryPreview ? getAreaSummaryPreview(draftFilters) : areaSummary), [getAreaSummaryPreview, draftFilters, areaSummary]);
 
@@ -363,12 +384,38 @@ export default function RadarCalibrationModal({
     });
   };
 
+  const revealAppMapFromRitual = useCallback(() => {
+    const filters = pendingFiltersRef.current;
+    setRitualMapRevealed(true);
+    if (!filters || ritualAppliedRef.current) return;
+    ritualAppliedRef.current = true;
+    // Odłóż ciężki update mapy na klatkę po starcie odlotu — mniej szarpnięcia na końcu.
+    InteractionManager.runAfterInteractions(() => {
+      void Promise.resolve(onApply(filters, { keepCalibrationModalOpen: true })).catch(() => {
+        ritualAppliedRef.current = false;
+      });
+    });
+  }, [onApply]);
+
   const finalizeApplyFromRitual = useCallback(async () => {
     const filters = pendingFiltersRef.current;
     pendingFiltersRef.current = null;
-    if (!filters) { setShowApplyRitual(false); return; }
-    try { await onApply(filters); } finally { setShowApplyRitual(false); }
-  }, [onApply]);
+    const appliedDuringFlyaway = ritualAppliedRef.current;
+    ritualAppliedRef.current = false;
+    // Nie wyłączaj showApplyRitual przed zamknięciem modala — inaczej na moment
+    // wraca formularz kalibracji (mrugnięcie). Cały modal znika jednym onClose.
+    if (!filters) {
+      onClose();
+      return;
+    }
+    try {
+      if (!appliedDuringFlyaway) await onApply(filters);
+    } catch {
+      // noop — i tak zamykamy modal
+    } finally {
+      onClose();
+    }
+  }, [onApply, onClose]);
 
   const handleApply = () => {
     pendingFiltersRef.current = draftFilters;
@@ -450,13 +497,29 @@ export default function RadarCalibrationModal({
     transform: [{ scale: 0.97 + sectionWake.value * 0.03 }],
   }));
 
-  return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
-          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-        </Pressable>
+  const ritualFullscreen = showApplyRitual && !isFavoritesVariant;
 
+  return (
+    <Modal
+      visible={visible}
+      animationType={ritualFullscreen ? 'none' : 'slide'}
+      transparent
+      onRequestClose={ritualFullscreen ? undefined : onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          justifyContent: ritualFullscreen ? 'center' : 'flex-end',
+          backgroundColor: ritualFullscreen && ritualMapRevealed ? 'transparent' : undefined,
+        }}
+      >
+        {!ritualFullscreen && (
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+            <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+        )}
+
+        {!ritualFullscreen && (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
           <BlurView intensity={isDark ? 60 : 90} tint={isDark ? 'dark' : 'light'} style={[styles.modalContent, { backgroundColor: COLORS.glassBg }]}>
             <View style={styles.dragHandle} />
@@ -494,13 +557,13 @@ export default function RadarCalibrationModal({
                 }}
                 style={styles.resetBtn}
               >
-                <Text style={[styles.resetBtnText, { color: activeColor }]}>Wyczyść</Text>
+                <Text style={[styles.resetBtnText, { color: activeColor }]}>{t('radar.calibration.clear')}</Text>
               </Pressable>
             </View>
 
             {!isFavoritesVariant && (recentRadarAreas?.length ?? 0) > 0 && onPickRecentRadarArea ? (
               <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-                <Text style={[styles.sectionTitle, { color: COLORS.textMuted, marginBottom: 10 }]}>OSTATNIE ZAPISANE OBSZARY</Text>
+                <Text style={[styles.sectionTitle, { color: COLORS.textMuted, marginBottom: 10 }]}>{t('radar.calibration.recentAreas')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingRight: 8 }}>
                   {(recentRadarAreas ?? []).map((item) => (
                     <Pressable
@@ -542,7 +605,7 @@ export default function RadarCalibrationModal({
               
               {/* === SEKCJA: AKTYWNY RADAR / ULUBIONE === */}
               <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
-                {isFavoritesVariant ? 'ULUBIONE — POWIADOMIENIA' : 'AKTYWNY RADAR I OBSZAR'}
+                {isFavoritesVariant ? t('radar.calibration.sectionFavoritesNotify') : t('radar.calibration.sectionActiveRadar')}
               </Text>
               <View style={[styles.glassCard, { backgroundColor: COLORS.glassCardSolid, borderColor: draftFilters.pushNotifications ? accentMetal : COLORS.border }]}>
                 {isFavoritesVariant && (
@@ -581,8 +644,8 @@ export default function RadarCalibrationModal({
                     </Text>
                     <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4 }}>
                       {isFavoritesVariant
-                        ? 'Nasłuchuj ulubionych ofert i nowych sygnałów dopasowanych do Twojego serca.'
-                        : 'Nasłuchuj rynku po wyjściu z aplikacji na wybranym poziomie czułości.'}
+                        ? t('radar.calibration.listenFavorites')
+                        : t('radar.calibration.listenMarket')}
                     </Text>
                   </View>
                   <Switch
@@ -644,7 +707,7 @@ export default function RadarCalibrationModal({
 
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
                           <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>50%</Text>
-                          <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>Skala dopasowania (mapa + cena)</Text>
+                          <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>{t('radar.calibration.matchScale')}</Text>
                           <Text style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: '700' }}>100%</Text>
                         </View>
                       </View>
@@ -660,8 +723,8 @@ export default function RadarCalibrationModal({
                         <Animated.View style={[styles.modePillActive, modePillStyle]} />
                         {(
                           [
-                            { key: 'MAP', label: 'Obszar mapy', icon: 'scan-circle-outline' },
-                            { key: 'CITY', label: 'Miasto + dzielnice', icon: 'business-outline' },
+                            { key: 'MAP', label: t('radar.calibration.modeMapArea'), icon: 'scan-circle-outline' },
+                            { key: 'CITY', label: t('radar.calibration.modeCityDistricts'), icon: 'business-outline' },
                           ] as const
                         ).map((mode) => {
                           const isActive = draftFilters.calibrationMode === mode.key;
@@ -706,23 +769,25 @@ export default function RadarCalibrationModal({
                                 <Ionicons name="scan-circle-outline" size={20} color={activeColor} />
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={[styles.areaTitle, { color: COLORS.textMain }]}>Zaznacz obszar na mapie</Text>
+                                <Text style={[styles.areaTitle, { color: COLORS.textMain }]}>{t('radar.calibration.pickMapArea')}</Text>
                                 <Text style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 15 }}>
-                                  Przesuń mapę, ustaw promień i automatycznie uzupełnij miasto + dzielnice.
+                                  {t('radar.calibration.pickMapAreaHint')}
                                 </Text>
                               </View>
                             </View>
-                            <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
                           </Pressable>
                           {!!displayedAreaSummary && (
                             <Text style={{ fontSize: 12, color: COLORS.textMuted, paddingHorizontal: 16, paddingBottom: 16, marginTop: -4 }}>
-                              Obecnie: {displayedAreaSummary}
+                              {t('radar.calibration.currently', { summary: displayedAreaSummary })}
                             </Text>
                           )}
                         </Animated.View>
                       ) : (
                         <Animated.View layout={Layout.springify().damping(16)} style={{ paddingBottom: 16 }}>
-                          <Text style={[styles.sectionTitle, { marginTop: 12, marginBottom: 8 }]}>METROPOLIA</Text>
+                          <View style={{ paddingHorizontal: 16, marginBottom: 4 }}>
+                            <PolandScopeNote isDark={isDark} variant="compact" />
+                          </View>
+                          <Text style={[styles.sectionTitle, { marginTop: 4, marginBottom: 8 }]}>{t('radar.calibration.metropolis')}</Text>
                           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
                             {CITIES.map((c) => {
                               const isActive = draftFilters.city === c;
@@ -749,7 +814,7 @@ export default function RadarCalibrationModal({
                             })}
                           </ScrollView>
 
-                          <Text style={[styles.sectionTitle, { marginTop: 16, marginBottom: 8 }]}>DZIELNICE ({draftFilters.city})</Text>
+                          <Text style={[styles.sectionTitle, { marginTop: 16, marginBottom: 8 }]}>{t('radar.calibration.districts', { city: draftFilters.city })}</Text>
                           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
                             {availableDistricts.map((dist) => {
                               const isActive = draftFilters.selectedDistricts.includes(dist);
@@ -784,32 +849,32 @@ export default function RadarCalibrationModal({
                       <View style={[styles.divider, { backgroundColor: COLORS.border, marginBottom: 14 }]} />
 
                       <Text style={{ fontSize: 13, fontWeight: '800', color: accentMetal, marginBottom: 10 }}>
-                        Powiadomienia dla Ulubionych
+                        {t('radar.calibration.favoritesNotifyTitle')}
                       </Text>
 
                       {[
                         {
                           key: 'favoritesNotifyPriceChange',
-                          label: 'Zmiana ceny',
-                          desc: 'Gdy ulubiona oferta zmieni cenę.',
+                          label: t('radar.calibration.notifyPriceChange'),
+                          desc: t('radar.calibration.notifyPriceChangeDesc'),
                           icon: 'cash-outline',
                         },
                         {
                           key: 'favoritesNotifyDealProposals',
-                          label: 'Propozycje / negocjacje',
-                          desc: 'Gdy pojawi się propozycja terminu lub ceny w Dealroom dla ulubionej.',
+                          label: t('radar.calibration.notifyDealProposals'),
+                          desc: t('radar.calibration.notifyDealProposalsDesc'),
                           icon: 'chatbubble-ellipses-outline',
                         },
                         {
                           key: 'favoritesNotifyStatusChange',
-                          label: 'Zmiana statusu',
-                          desc: 'Wycofana, sprzedana lub zarchiwizowana.',
+                          label: t('radar.calibration.notifyStatusChange'),
+                          desc: t('radar.calibration.notifyStatusChangeDesc'),
                           icon: 'shield-checkmark-outline',
                         },
                         {
                           key: 'favoritesNotifyNewSimilar',
-                          label: 'Nowe podobne oferty',
-                          desc: 'Nietuzinkowe rekomendacje oparte o Twoje Ulubione.',
+                          label: t('radar.calibration.notifyNewSimilar'),
+                          desc: t('radar.calibration.notifyNewSimilarDesc'),
                           icon: 'sparkles-outline',
                         },
                       ].map((item, idx) => (
@@ -837,31 +902,6 @@ export default function RadarCalibrationModal({
                           {idx < 3 && <View style={[styles.divider, { backgroundColor: COLORS.border, marginLeft: 44 }]} />}
                         </View>
                       ))}
-
-                      <View style={[styles.divider, { backgroundColor: COLORS.border, marginTop: 12, marginBottom: 10 }]} />
-
-                      <View style={styles.switchRow}>
-                        <View style={{ flex: 1, paddingRight: 12 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                            <Ionicons name="eye-off-outline" size={18} color={COLORS.textSec} />
-                            <Text style={[styles.switchTitle, { color: COLORS.textMain }]}>Prywatność kwot</Text>
-                          </View>
-                          <Text style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 4, lineHeight: 15 }}>
-                            Włączone: ukrywamy konkretne kwoty w treści powiadomień (bezpieczniej na ekranie blokady).
-                            Wyłączone: push może zawierać pełne kwoty.
-                          </Text>
-                        </View>
-                        <Switch
-                          accessibilityLabel="Prywatność kwot w powiadomieniach"
-                          value={!draftFilters.favoritesNotifyIncludeAmounts}
-                          onValueChange={(privacyOn) => {
-                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            handleFilterSelect('favoritesNotifyIncludeAmounts', !privacyOn);
-                          }}
-                          trackColor={{ false: COLORS.trackBg, true: accentMetal }}
-                          thumbColor="#FFF"
-                        />
-                      </View>
                     </View>
                   </Animated.View>
                 )}
@@ -874,26 +914,31 @@ export default function RadarCalibrationModal({
                 style={sleepingSectionStyle}
               >
               {/* === TWOJA ORYGINALNA SEKCJA: PRZEZNACZENIE I TYP === */}
-              <Text style={styles.sectionTitle}>PRZEZNACZENIE I TYP</Text>
+              <Text style={styles.sectionTitle}>{t('radar.calibration.purposeAndType')}</Text>
               <View style={[styles.glassCard, { backgroundColor: COLORS.glassCardSolid, borderColor: COLORS.border }]}>
                 <View style={[styles.segmentContainer, { backgroundColor: COLORS.trackBg, marginHorizontal: 12, marginTop: 12 }]}>
-                  {(['RENT', 'SELL'] as const).map((t) => {
-                    const isActive = draftFilters.transactionType === t;
+                  {(['RENT', 'SELL'] as const).map((txType) => {
+                    const isActive = draftFilters.transactionType === txType;
                     return (
-                      <Pressable key={t} onPress={() => handleFilterSelect('transactionType', t)} style={[styles.segmentBtn, isActive && { backgroundColor: ThemeColors[t] }]}>
-                        <Text style={[styles.segmentTxt, isActive && { color: '#FFF', fontWeight: '800' }, !isActive && { color: COLORS.textSec }]}>{t === 'RENT' ? 'Wynajem' : 'Kupno'}</Text>
+                      <Pressable key={txType} onPress={() => handleFilterSelect('transactionType', txType)} style={[styles.segmentBtn, isActive && { backgroundColor: ThemeColors[txType] }]}>
+                        <Text style={[styles.segmentTxt, isActive && { color: '#FFF', fontWeight: '800' }, !isActive && { color: COLORS.textSec }]}>{txType === 'RENT' ? t('radar.calibration.rent') : t('radar.calibration.buy')}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
                 <View style={[styles.divider, { backgroundColor: COLORS.border, marginVertical: 12 }]} />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.segmentContainer, { backgroundColor: 'transparent', marginHorizontal: 12, marginBottom: 12, padding: 0, gap: 8 }]}>
-                  {(['FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((t) => {
-                    const isActive = draftFilters.propertyType === t;
-                    const labels = { FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' } as const;
+                  {(['FLAT', 'HOUSE', 'PLOT', 'COMMERCIAL'] as const).map((propType) => {
+                    const isActive = draftFilters.propertyType === propType;
+                    const labelKey = {
+                      FLAT: 'radar.home.propertyFlat',
+                      HOUSE: 'radar.home.propertyHouse',
+                      PLOT: 'radar.home.propertyPlot',
+                      COMMERCIAL: 'radar.home.propertyPremises',
+                    } as const;
                     return (
-                      <Pressable key={t} onPress={() => handleFilterSelect('propertyType', t)} style={[styles.pillBtn, { borderColor: COLORS.border }, isActive && { backgroundColor: activeColor, borderColor: activeColor }]}>
-                        <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '800' }]}>{labels[t]}</Text>
+                      <Pressable key={propType} onPress={() => handleFilterSelect('propertyType', propType)} style={[styles.pillBtn, { borderColor: COLORS.border }, isActive && { backgroundColor: activeColor, borderColor: activeColor }]}>
+                        <Text style={[styles.pillTxt, { color: COLORS.textSec }, isActive && { color: '#FFF', fontWeight: '800' }]}>{t(labelKey[propType])}</Text>
                       </Pressable>
                     );
                   })}
@@ -901,15 +946,15 @@ export default function RadarCalibrationModal({
               </View>
 
               {/* === NOWE, GŁADKIE SUWAKI WARTOŚCI === */}
-              <Text style={styles.sectionTitle}>PRECYZYJNE WYMIARY</Text>
+              <Text style={styles.sectionTitle}>{t('radar.calibration.preciseDimensions')}</Text>
               <View style={[styles.glassCard, { backgroundColor: COLORS.glassCardSolid, borderColor: COLORS.border, paddingVertical: 24 }]}>
                 
-                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>Maksymalna Cena</Text>
+                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>{t('radar.calibration.maxPrice')}</Text>
                 <PremiumScrubber 
                   key={`price-${draftFilters.transactionType}`}
                   min={priceRange.min} max={priceRange.max} step={priceRange.step} hapticStep={draftFilters.transactionType === 'RENT' ? 8 : 5}
                   value={Math.max(priceRange.min, Math.min(priceRange.max, draftFilters.maxPrice))} activeColor={activeColor} colors={COLORS}
-                  formatValue={(v: number) => `${Math.round(v).toLocaleString('pl-PL')} PLN`}
+                  formatValue={(v: number) => `${Math.round(v).toLocaleString(dateLocale)} PLN`}
                   onChange={(v: number) => setDraftFilters(p => ({ ...p, maxPrice: v }))}
                   onScrubStateChange={setIsGestureLocked}
                   bootPulse={scrubberBootPulse}
@@ -918,7 +963,7 @@ export default function RadarCalibrationModal({
 
                 <View style={[styles.divider, { backgroundColor: COLORS.border, marginVertical: 28 }]} />
                 
-                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>Minimalny Metraż</Text>
+                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>{t('radar.calibration.minArea')}</Text>
                 <PremiumScrubber 
                   min={MIN_AREA_LIMIT} max={MAX_AREA_LIMIT} step={1} hapticStep={5}
                   value={draftFilters.minArea} activeColor={activeColor} colors={COLORS}
@@ -931,7 +976,7 @@ export default function RadarCalibrationModal({
 
                 <View style={[styles.divider, { backgroundColor: COLORS.border, marginVertical: 28 }]} />
 
-                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>Rok budowy (od)</Text>
+                <Text style={[styles.sliderLabel, { color: COLORS.textSec }]}>{t('radar.calibration.minYear')}</Text>
                 <PremiumScrubber 
                   min={MIN_YEAR_LIMIT} max={MAX_YEAR_LIMIT} step={1} hapticStep={5}
                   value={draftFilters.minYear} activeColor={activeColor} colors={COLORS}
@@ -944,13 +989,14 @@ export default function RadarCalibrationModal({
               </View>
 
               {/* === TWOJA ORYGINALNA SEKCJA: WYPOSAŻENIE === */}
-              <Text style={styles.sectionTitle}>WYPOSAŻENIE (RESTRYKCYJNE)</Text>
+              <Text style={styles.sectionTitle}>{t('radar.calibration.amenities')}</Text>
               <View style={[styles.glassCard, { backgroundColor: COLORS.glassCardSolid, borderColor: COLORS.border }]}>
                 {[
-                  { key: 'requireBalcony', label: 'Wymagaj balkonu', icon: 'stop-outline' },
-                  { key: 'requireGarden', label: 'Wymagaj ogródka', icon: 'leaf-outline' },
-                  { key: 'requireElevator', label: 'Tylko z windą', icon: 'arrow-up-outline' },
-                  { key: 'requireFurnished', label: 'Tylko umeblowane', icon: 'bed-outline' },
+                  { key: 'requireBalcony', label: t('radar.calibration.requireBalcony'), icon: 'stop-outline' },
+                  { key: 'requireGarden', label: t('radar.calibration.requireGarden'), icon: 'leaf-outline' },
+                  { key: 'requireTwoLevel', label: t('radar.calibration.requireTwoLevel'), icon: 'layers-outline' },
+                  { key: 'requireElevator', label: t('radar.calibration.requireElevator'), icon: 'arrow-up-outline' },
+                  { key: 'requireFurnished', label: t('radar.calibration.requireFurnished'), icon: 'bed-outline' },
                 ].map((item, idx) => (
                   <View key={item.key}>
                     <View style={styles.switchRow}>
@@ -965,7 +1011,7 @@ export default function RadarCalibrationModal({
                         thumbColor="#FFF" 
                       />
                     </View>
-                    {idx < 3 && <View style={[styles.divider, { backgroundColor: COLORS.border, marginLeft: 44 }]} />}
+                    {idx < 4 && <View style={[styles.divider, { backgroundColor: COLORS.border, marginLeft: 44 }]} />}
                   </View>
                 ))}
               </View>
@@ -974,7 +1020,7 @@ export default function RadarCalibrationModal({
               <View style={[styles.disclaimerBox, { backgroundColor: COLORS.trackBg, borderColor: COLORS.border }]}>
                 <Ionicons name="shield-checkmark" size={24} color={COLORS.textMuted} style={{ marginBottom: 8 }} />
                 <Text style={[styles.disclaimerText, { color: COLORS.textMuted }]}>
-                  Radar to integralny rdzeń ekosystemu EstateOS. Obecnie wspieramy wybrane metropolie, a nasz zasięg stale rośnie.
+                  {t('radar.calibration.disclaimer')}
                 </Text>
               </View>
               </Animated.View>
@@ -1008,11 +1054,11 @@ export default function RadarCalibrationModal({
                   <Text style={styles.applyBtnTxt}>
                     {isFavoritesVariant
                       ? draftFilters.pushNotifications
-                        ? 'Zapisz ustawienia'
-                        : 'Wyłącz Favor'
+                        ? t('radar.calibration.saveSettings')
+                        : t('radar.calibration.disableFavor')
                       : draftFilters.pushNotifications
-                        ? 'Zastosuj i Skanuj'
-                        : 'Wyłącz radar'}
+                        ? t('radar.calibration.applyAndScan')
+                        : t('radar.calibration.disableRadar')}
                   </Text>
                   <Ionicons
                     name={draftFilters.pushNotifications ? 'scan-outline' : 'power-outline'}
@@ -1026,15 +1072,19 @@ export default function RadarCalibrationModal({
 
           </BlurView>
         </KeyboardAvoidingView>
+        )}
 
         {showApplyRitual && !isFavoritesVariant && (
-          <RadarCalibrationRitualOverlay
-            visible={showApplyRitual}
-            cityLabel={draftFilters.city}
-            transactionType={draftFilters.transactionType}
-            matchingOffersCount={ritualMatchingOffersCount}
-            onComplete={finalizeApplyFromRitual}
-          />
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none" collapsable={false}>
+            <RadarCalibrationRitualOverlay
+              visible={showApplyRitual}
+              cityLabel={draftFilters.city}
+              transactionType={draftFilters.transactionType}
+              matchingOffersCount={ritualMatchingOffersCount}
+              onFlyAwayBegin={revealAppMapFromRitual}
+              onComplete={finalizeApplyFromRitual}
+            />
+          </View>
         )}
       </View>
     </Modal>

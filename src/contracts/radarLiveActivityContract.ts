@@ -53,6 +53,7 @@ export interface RadarLiveActivitySnapshot {
   requireElevator: boolean;
   requireParking: boolean;
   requireFurnished: boolean;
+  requireTwoLevel: boolean;
   updatedAtIso: string;
 }
 
@@ -127,6 +128,7 @@ export const buildRadarLiveActivitySnapshot = (input: Partial<RadarLiveActivityS
   requireElevator: normalizeBool(input.requireElevator),
   requireParking: normalizeBool(input.requireParking),
   requireFurnished: normalizeBool(input.requireFurnished),
+  requireTwoLevel: normalizeBool(input.requireTwoLevel),
   updatedAtIso: typeof input.updatedAtIso === 'string' && input.updatedAtIso.trim().length > 0
     ? input.updatedAtIso
     : new Date().toISOString(),
@@ -255,6 +257,7 @@ export const formatRadarLiveActivityLines = (snapshot: RadarLiveActivitySnapshot
   if (snapshot.requireElevator) requirements.push('winda');
   if (snapshot.requireParking) requirements.push('parking');
   if (snapshot.requireFurnished) requirements.push('umeblowane');
+  if (snapshot.requireTwoLevel) requirements.push('dwupoziomowe');
   if (requirements.length > 0) {
     lines.push(`Wymagania: ${requirements.join(', ')}`);
   }

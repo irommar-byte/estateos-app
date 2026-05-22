@@ -293,6 +293,7 @@ export type CanonicalRadarPreferencesDto = {
   requireElevator?: boolean;
   requireParking?: boolean;
   requireFurnished?: boolean;
+  requireTwoLevel?: boolean;
   pushNotifications: boolean;
   minMatchThreshold?: number;
   lat?: number | null;
@@ -323,6 +324,7 @@ export function buildCanonicalRadarPreferencesDto(params: {
     requireElevator: !!filters.requireElevator,
     requireParking: !!filters.requireParking,
     requireFurnished: !!filters.requireFurnished,
+    requireTwoLevel: !!filters.requireTwoLevel,
     pushNotifications: filters.pushNotifications !== false,
     minMatchThreshold: filters.matchThreshold,
     lat: Number.isFinite(lat) ? lat : null,
