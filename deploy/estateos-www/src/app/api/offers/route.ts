@@ -1,0 +1,221 @@
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { resolveEliteBadges } from '@/lib/eliteStatus';
+import { createOffer } from '@/lib/services/offer.service';
+import { cookies } from 'next/headers';
+import { decryptSession } from '@/lib/sessionUtils';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { extractVerificationMeta } from '@/lib/offerVerification';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
+import {
+  applyLegalStatusOverride,
+  legalStatusOverridesForOffers,
+} from '@/lib/offerLegalStatusOverlay';
+import {
+  getOfferSchemaCompatibilityMessage,
+  isOfferSchemaCompatibilityError,
+} from '@/lib/offerSchemaErrors';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
+
+export const dynamic = 'force-dynamic';
+
+// =======================
+// GET
+// =======================
+export async function GET() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS OfferViewLog (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        offerId INT NOT NULL,
+        visitorKey VARCHAR(128) NOT NULL,
+        source VARCHAR(16) NOT NULL DEFAULT 'web',
+        ip VARCHAR(64) NULL,
+        userAgent VARCHAR(255) NULL,
+        hits INT NOT NULL DEFAULT 1,
+        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        lastSeenAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (id),
+        UNIQUE KEY OfferViewLog_offerId_visitorKey_key (offerId, visitorKey),
+        KEY OfferViewLog_offerId_lastSeenAt_idx (offerId, lastSeenAt)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    const offers = await prisma.offer.findMany({
+      where: { status: { in: ["ACTIVE"] } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        transactionType: true,
+        propertyType: true,
+        condition: true,
+        price: true,
+        priceCurrency: true,
+        pricePln: true,
+        exchangeRateUsed: true,
+        exchangeRateDate: true,
+        pricePerSqm: true,
+        adminFee: true,
+        agentCommissionPercent: true,
+        deposit: true,
+        area: true,
+        plotArea: true,
+        rooms: true,
+        floor: true,
+        totalFloors: true,
+        yearBuilt: true,
+        hasBalcony: true,
+        hasElevator: true,
+        hasStorage: true,
+        hasParking: true,
+        hasGarden: true,
+        isFurnished: true,
+        heating: true,
+        city: true,
+        district: true,
+        street: true,
+        buildingNumber: true,
+        lat: true,
+        lng: true,
+        isExactLocation: true,
+        images: true,
+        videoUrl: true,
+        floorPlanUrl: true,
+        status: true,
+        expiresAt: true,
+        promotedUntil: true,
+        createdAt: true,
+        updatedAt: true,
+        userId: true,
+        user: { select: { role: true, planType: true, isPro: true } },
+      },
+    });
+
+    const activeIds = await activePublicationOfferIds(
+      offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id))
+    );
+    const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
+
+    const toPublicOffer = (offer: any, viewsCount: number) => {
+      const { user, ...rest } = offer;
+      const badges = resolveEliteBadges({ user });
+      const { cleanDescription, verification } = extractVerificationMeta(rest.description);
+      const legal = computePublicLegalFields({
+        description: rest.description,
+        legalCheckStatus: rest.legalCheckStatus,
+        isLegalSafeVerified: rest.isLegalSafeVerified,
+      });
+      return enrichOfferMoneyFields({
+        ...rest,
+        imageUrl: resolveOfferPrimaryImage(rest),
+        description: cleanDescription,
+        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
+        landRegistryNumber: verification.landRegistryNumber || '',
+        ...legal,
+        badges,
+        views: viewsCount,
+        viewsCount,
+      });
+    };
+
+    const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    if (!offerIds.length) {
+      return NextResponse.json(visibleOffers.map((o) => toPublicOffer(o, 0)));
+    }
+
+    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
+      `
+        SELECT offerId, COUNT(*) AS total
+        FROM OfferViewLog
+        WHERE offerId IN (${offerIds.join(',')})
+        GROUP BY offerId
+      `
+    );
+
+    const viewsMap = new Map<number, number>(
+      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
+    );
+    const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
+
+    return NextResponse.json(
+      visibleOffers.map((offer: any) => {
+        const viewsCount = viewsMap.get(Number(offer.id)) || 0;
+        return toPublicOffer(applyLegalStatusOverride(offer, legalOverrides), viewsCount);
+      })
+    );
+
+  } catch (error) {
+    if (isOfferSchemaCompatibilityError(error)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
+      );
+    }
+    console.error('OFFERS ERROR:', error);
+    return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });
+  }
+}
+
+// =======================
+// POST
+// =======================
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    let resolvedUserId: number | null = Number(body?.userId) || null;
+
+    if (!resolvedUserId) {
+      const cookieStore = await cookies();
+      const nextAuthSession = await getServerSession(authOptions);
+      const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
+
+      let email = nextAuthSession?.user?.email || null;
+      let sessionUserId: number | null = null;
+
+      if (!email && sessionCookie?.value) {
+        try {
+          const sessionData = decryptSession(sessionCookie.value);
+          email = sessionData?.email || null;
+          sessionUserId = Number(sessionData?.id) || null;
+        } catch {
+          email = null;
+          sessionUserId = null;
+        }
+      }
+
+      if (sessionUserId) {
+        resolvedUserId = sessionUserId;
+      } else if (email) {
+        const user = await prisma.user.findUnique({
+          where: { email: String(email) },
+          select: { id: true }
+        });
+        resolvedUserId = user?.id ?? null;
+      }
+    }
+
+    if (!resolvedUserId) {
+      return NextResponse.json({ error: 'Brak ID użytkownika' }, { status: 401 });
+    }
+
+    const offer = await createOffer({ ...body, userId: resolvedUserId });
+
+    return NextResponse.json({ success: true, offer });
+
+  } catch (e: unknown) {
+    if (isOfferSchemaCompatibilityError(e)) {
+      return NextResponse.json(
+        { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },
+        { status: 409 }
+      );
+    }
+    const message = e instanceof Error ? e.message : 'Błąd serwera';
+    console.error('POST ERROR:', e);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
