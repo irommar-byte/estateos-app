@@ -1,6 +1,7 @@
 import {
   defaultExactLocationForPropertyType,
   getDraftLocationPresentation,
+  hasValidMapCoordinates,
   isLocationStepComplete,
   resolveIsExactLocation,
 } from '../../constants/locationEcosystem';
@@ -35,15 +36,6 @@ export type AddOfferRequirement = {
 const isTruthyNumber = (value: unknown) => {
   const num = Number(String(value ?? '').replace(/\s/g, '').replace(',', '.'));
   return Number.isFinite(num) && num > 0;
-};
-
-/** Pinezka na mapie — dopuszcza ujemne lng (USA, UK itd.), odrzuca (0,0). */
-const hasValidMapCoordinates = (lat: unknown, lng: unknown) => {
-  const latN = Number(String(lat ?? '').replace(/\s/g, '').replace(',', '.'));
-  const lngN = Number(String(lng ?? '').replace(/\s/g, '').replace(',', '.'));
-  if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return false;
-  if (latN === 0 && lngN === 0) return false;
-  return Math.abs(latN) <= 90 && Math.abs(lngN) <= 180;
 };
 
 const trimLen = (value: unknown) => String(value ?? '').trim().length;

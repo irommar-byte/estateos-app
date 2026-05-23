@@ -21,6 +21,31 @@ const ENGLISH_COUNTRY_TO_PL: Record<string, string> = {
   'united states': 'Stany Zjednoczone',
   'united states of america': 'Stany Zjednoczone',
   usa: 'Stany Zjednoczone',
+  australia: 'Australia',
+  'united kingdom': 'Wielka Brytania',
+  'great britain': 'Wielka Brytania',
+  england: 'Wielka Brytania',
+  canada: 'Kanada',
+  france: 'Francja',
+  spain: 'Hiszpania',
+  italy: 'Włochy',
+  netherlands: 'Holandia',
+  belgium: 'Belgia',
+  switzerland: 'Szwajcaria',
+  sweden: 'Szwecja',
+  norway: 'Norwegia',
+  denmark: 'Dania',
+  ireland: 'Irlandia',
+  portugal: 'Portugalia',
+  greece: 'Grecja',
+  turkey: 'Turcja',
+  japan: 'Japonia',
+  china: 'Chiny',
+  india: 'Indie',
+  brazil: 'Brazylia',
+  mexico: 'Meksyk',
+  'new zealand': 'Nowa Zelandia',
+  singapore: 'Singapur',
 };
 
 const PL_COUNTRY_TO_ISO: Record<string, string> = {
@@ -32,9 +57,41 @@ const PL_COUNTRY_TO_ISO: Record<string, string> = {
   Białoruś: 'BY',
   Litwa: 'LT',
   'Stany Zjednoczone': 'US',
+  Australia: 'AU',
+  'Wielka Brytania': 'GB',
+  Kanada: 'CA',
+  Francja: 'FR',
+  Hiszpania: 'ES',
+  Włochy: 'IT',
+  Holandia: 'NL',
+  Belgia: 'BE',
+  Szwajcaria: 'CH',
+  Szwecja: 'SE',
+  Norwegia: 'NO',
+  Dania: 'DK',
+  Irlandia: 'IE',
+  Portugalia: 'PT',
+  Grecja: 'GR',
+  Turcja: 'TR',
+  Japonia: 'JP',
+  Chiny: 'CN',
+  Indie: 'IN',
+  Brazylia: 'BR',
+  Meksyk: 'MX',
+  'Nowa Zelandia': 'NZ',
+  Singapur: 'SG',
 };
 
 const KNOWN_COUNTRY_ISO_CODES = new Set(Object.values(PL_COUNTRY_TO_ISO));
+
+/** Współrzędne mapy — dowolny kwadrant (ujemne lat/lng: AU, US, UK…). */
+export function hasValidMapCoordinates(lat: unknown, lng: unknown): boolean {
+  const latN = Number(String(lat ?? '').replace(/\s/g, '').replace(',', '.'));
+  const lngN = Number(String(lng ?? '').replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return false;
+  if (latN === 0 && lngN === 0) return false;
+  return Math.abs(latN) <= 90 && Math.abs(lngN) <= 180;
+}
 
 /** Dwuliterowy kod kraju (PL, US…) — nie skrót stanu USA (TX, CA…). */
 export function isKnownCountryIso(code: string): boolean {
@@ -106,6 +163,13 @@ export function localityCountryIso(code?: string | null, labelPl?: string | null
     return iso;
   }
   if (labelIso) return labelIso;
+  if (label) {
+    const fromEn = ENGLISH_COUNTRY_TO_PL[label.toLowerCase()];
+    if (fromEn) {
+      const fromEnIso = PL_COUNTRY_TO_ISO[fromEn];
+      if (fromEnIso) return fromEnIso;
+    }
+  }
   return DEFAULT_LOCALITY_COUNTRY_CODE;
 }
 
@@ -126,7 +190,8 @@ export function localityNameFromGeocodedPlace(place: {
     if (/^[A-Za-z]{2}$/i.test(token)) {
       const upper = token.toUpperCase();
       if (isKnownCountryIso(upper)) continue;
-      if (country.code === 'US') continue;
+      // Skróty regionów (TX, VIC, ON…) — bierz pełną nazwę z city/name.
+      continue;
     }
     return token;
   }
@@ -143,12 +208,19 @@ export function countryFieldsFromGeocodedPlace(
     };
   }
   const geocoded = resolveLocalityCountryFromPlace(place);
-  const code =
+  const placeIso = String(place.isoCountryCode || '').trim().toUpperCase();
+  let code =
     (geocoded.code && /^[A-Z]{2}$/.test(geocoded.code) ? geocoded.code : '') ||
+    (/^[A-Z]{2}$/.test(placeIso) ? placeIso : '') ||
     PL_COUNTRY_TO_ISO[geocoded.labelPl] ||
-    DEFAULT_LOCALITY_COUNTRY_CODE;
+    '';
+  if (!/^[A-Z]{2}$/.test(code)) {
+    code = DEFAULT_LOCALITY_COUNTRY_CODE;
+  }
   return {
-    localityCountry: normalizeLocalityCountryLabel(geocoded.labelPl),
+    localityCountry: normalizeLocalityCountryLabel(
+      geocoded.labelPl || countryLabelPlFromIso(code),
+    ),
     localityCountryCode: code,
   };
 }
@@ -446,9 +518,7 @@ export function isLocationStepComplete(draft: {
   localityCountryCode?: unknown;
 } | null | undefined): boolean {
   if (!draft) return false;
-  const lat = Number(draft.lat);
-  const lng = Number(draft.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (!hasValidMapCoordinates(draft.lat, draft.lng)) return false;
 
   const pres = getDraftLocationPresentation({
     city: String(draft.city ?? ''),
@@ -460,12 +530,11 @@ export function isLocationStepComplete(draft: {
   const hasLocality = locality.length > 0 && locality !== 'Ogólna';
   const isPoland = pres.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
   const street = String(draft.street || '').trim();
-  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
   if (isPoland) {
     return hasLocality && street.length > 2 && /\d/.test(street);
   }
-  return hasCoords && (hasLocality || street.length >= 3);
+  return hasLocality || street.length >= 3;
 }
 
 export function formatOfferLocationLine(

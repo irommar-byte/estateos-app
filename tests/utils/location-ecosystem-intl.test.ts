@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  countryFieldsFromGeocodedPlace,
   getDraftLocationPresentation,
+  hasValidMapCoordinates,
   isLocationStepComplete,
   localityNameFromGeocodedPlace,
   localityCountryIso,
@@ -46,12 +48,43 @@ describe('locationEcosystem international', () => {
   });
 
   it('map coordinates valid with negative longitude (Houston)', () => {
-    const lat = 29.76;
-    const lng = -95.37;
-    assert.ok(Number.isFinite(lat) && Number.isFinite(lng));
-    assert.ok(Math.abs(lat) <= 90 && Math.abs(lng) <= 180);
-    assert.ok(!(lat === 0 && lng === 0));
-    assert.ok(!(lng > 0));
+    assert.equal(hasValidMapCoordinates(29.76, -95.37), true);
+  });
+
+  it('map coordinates valid with negative latitude (Wheelers Hill, AU)', () => {
+    assert.equal(hasValidMapCoordinates(-37.89, 145.07), true);
+  });
+
+  it('map coordinates valid in UK (London)', () => {
+    assert.equal(hasValidMapCoordinates(51.507, -0.128), true);
+  });
+
+  it('countryFieldsFromGeocodedPlace uses isoCountryCode for Australia', () => {
+    const fields = countryFieldsFromGeocodedPlace({
+      isoCountryCode: 'AU',
+      country: 'Australia',
+    });
+    assert.equal(fields.localityCountryCode, 'AU');
+    assert.equal(fields.localityCountry, 'Australia');
+  });
+
+  it('localityCountryIso does not force PL when label is Australia', () => {
+    assert.equal(localityCountryIso('PL', 'Australia'), 'AU');
+  });
+
+  it('step2 complete for Wheelers Hill with AU coords and street', () => {
+    assert.equal(
+      isLocationStepComplete({
+        lat: -37.89,
+        lng: 145.07,
+        city: REST_OF_COUNTRY_CITY,
+        district: 'Wheelers Hill',
+        localityCountry: 'Australia',
+        localityCountryCode: 'AU',
+        street: '14 Ronston Ct',
+      }),
+      true,
+    );
   });
 
   it('allows intl step with coords and street when locality is Ogólna', () => {
