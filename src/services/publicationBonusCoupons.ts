@@ -1,4 +1,5 @@
 import type { PublicationQuote } from '../contracts/offerPublicationContract';
+import type { TranslateFn } from '../i18n/types';
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
 import { fetchUserProfilePromoCards } from './profilePromoService';
 import { fetchPublicationQuote } from './offerPublicationService';
@@ -60,7 +61,7 @@ export async function gatherPublicationBonusCoupons(opts: {
   userId: string | number;
   email?: string | null;
   firstFreePublicationUsed?: boolean | null;
-  t: (key: string, vars?: Record<string, unknown>) => string;
+  t: TranslateFn;
 }): Promise<{
   coupons: PublicationBonusCouponOption[];
   quote: PublicationQuote;

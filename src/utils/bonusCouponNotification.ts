@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
+import type { TranslateFn } from '../i18n/types';
 
 const NOTIFY_KIND = 'bonus_coupon_received';
 const DEEPLINK = 'estateos://profil/kupony-bonusowe';
@@ -20,10 +21,7 @@ export type BonusCouponNotifyCopy = {
   subtitle: string;
 };
 
-export function buildBonusCouponNotifyCopy(
-  card: ProfilePromoCardRecord,
-  t: (key: string, vars?: Record<string, unknown>) => string,
-): BonusCouponNotifyCopy {
+export function buildBonusCouponNotifyCopy(card: ProfilePromoCardRecord, t: TranslateFn): BonusCouponNotifyCopy {
   const isBirthday =
     card.templateId === 'birthday_free_listing' || card.kind === 'birthday_coupon';
   if (isBirthday) {
@@ -124,7 +122,7 @@ async function saveSeenCouponIds(userId: string | number, seen: Set<string>): Pr
 async function detectAndNotifyNewBonusCouponsInner(
   userId: string | number,
   cards: ProfilePromoCardRecord[],
-  t: (key: string, vars?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): Promise<void> {
   const candidates = cards.filter(
     (c) => isAdminIssuedBonusCoupon(c) && c.couponUsed !== true,
@@ -150,7 +148,7 @@ async function detectAndNotifyNewBonusCouponsInner(
 export async function detectAndNotifyNewBonusCoupons(
   userId: string | number,
   cards: ProfilePromoCardRecord[],
-  t: (key: string, vars?: Record<string, unknown>) => string,
+  t: TranslateFn,
 ): Promise<void> {
   const uid = String(userId);
   const prev = notifyRunByUser.get(uid) ?? Promise.resolve();

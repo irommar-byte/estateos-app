@@ -23,6 +23,9 @@ import {
   normalizeLocalityCountryLabel,
   defaultExactLocationForPropertyType,
   getLocationDraftRepairPatch,
+  getDraftLocationPresentation,
+  localityNameFromGeocodedPlace,
+  countryFieldsFromGeocodedPlace,
   resolveIsExactLocation,
   stripHouseNumber,
   streetLineFromGeocodedPlace,
@@ -691,11 +694,8 @@ const detectCityFromText = (raw: string) => {
   return null;
 };
 
-const localityFromPlace = (place: Location.LocationGeocodedAddress) => {
-  const raw = place.city || place.subregion || place.name || place.region || '';
-  const t = String(raw).trim();
-  return t || 'Ogólna';
-};
+const localityFromPlace = (place: Location.LocationGeocodedAddress) =>
+  localityNameFromGeocodedPlace(place);
 
 const POLAND_LOCATION = {
   localityCountry: DEFAULT_LOCALITY_COUNTRY,
@@ -708,15 +708,14 @@ const normalizeStrictLocation = (
   restLocality?: string | null,
   place?: Location.LocationGeocodedAddress | null,
 ) => {
-  const geocodedCountry = place ? resolveLocalityCountryFromPlace(place) : null;
+  const countryFields = countryFieldsFromGeocodedPlace(place);
   const cand = String(cityCandidate || '').trim();
   if (!STRICT_CITY_SET.has(cand)) {
     const locality = (restLocality || '').trim() || 'Ogólna';
     return {
       city: REST_OF_COUNTRY_CITY,
       district: locality,
-      localityCountry: normalizeLocalityCountryLabel(geocodedCountry?.labelPl),
-      localityCountryCode: geocodedCountry?.code || DEFAULT_LOCALITY_COUNTRY_CODE,
+      ...countryFields,
     };
   }
   if (cand === REST_OF_COUNTRY_CITY) {
@@ -724,8 +723,7 @@ const normalizeStrictLocation = (
     return {
       city: REST_OF_COUNTRY_CITY,
       district: d,
-      localityCountry: normalizeLocalityCountryLabel(geocodedCountry?.labelPl),
-      localityCountryCode: geocodedCountry?.code || DEFAULT_LOCALITY_COUNTRY_CODE,
+      ...countryFields,
     };
   }
   const city = cand;
@@ -848,15 +846,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const showGeocodedLocality = !isPolandLocation || isRestOfCountry;
   const showPolishCityPicker = hasAddress && isPolandLocation && !isRestOfCountry;
   const safeDraftDistricts = DISTRICTS_DATA[safeDraftCity] || [];
+  const locationPresentation = getDraftLocationPresentation({
+    city: draft.city,
+    district: draft.district,
+    localityCountry: draft.localityCountry,
+    localityCountryCode: draft.localityCountryCode,
+  });
   const safeDraftDistrict = isRestOfCountry
-    ? (() => {
-        if (rawDraftCity && rawDraftCity !== REST_OF_COUNTRY_CITY && !STRICT_CITY_SET.has(rawDraftCity)) {
-          return rawDraftCity;
-        }
-        const d = String(draft.district || '').trim();
-        if (/^[A-Za-z]{2}$/i.test(d)) return 'Ogólna';
-        return d || 'Ogólna';
-      })()
+    ? locationPresentation.district
     : safeDraftDistricts.includes(String(draft.district || ''))
       ? String(draft.district)
       : (safeDraftDistricts[0] || '');
@@ -868,6 +865,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
       updateDraft({ street: trimmedStreet });
     }
   }, [streetInput, draft.street, updateDraft]);
+
+  useEffect(() => {
+    syncStreetToDraft();
+  }, [syncStreetToDraft]);
 
   const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
     isProgrammaticMove.current = true;

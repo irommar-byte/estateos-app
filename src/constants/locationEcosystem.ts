@@ -34,6 +34,13 @@ const PL_COUNTRY_TO_ISO: Record<string, string> = {
   'Stany Zjednoczone': 'US',
 };
 
+const KNOWN_COUNTRY_ISO_CODES = new Set(Object.values(PL_COUNTRY_TO_ISO));
+
+/** Dwuliterowy kod kraju (PL, US…) — nie skrót stanu USA (TX, CA…). */
+export function isKnownCountryIso(code: string): boolean {
+  return KNOWN_COUNTRY_ISO_CODES.has(String(code || '').trim().toUpperCase());
+}
+
 export function countryLabelPlFromIso(iso: string): string {
   const code = String(iso || '').trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return '';
@@ -88,9 +95,62 @@ export function normalizeLocalityCountryLabel(labelOrCode?: unknown): string {
 /** Kod ISO (PL, UA…) z draftu lub polskiej nazwy kraju. */
 export function localityCountryIso(code?: string | null, labelPl?: string | null): string {
   const iso = String(code || '').trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(iso)) return iso;
   const label = String(labelPl || '').trim();
-  return PL_COUNTRY_TO_ISO[label] || DEFAULT_LOCALITY_COUNTRY_CODE;
+  const labelIso = label ? PL_COUNTRY_TO_ISO[label] : undefined;
+
+  if (/^[A-Z]{2}$/.test(iso)) {
+    // Domyślne PL z geokodera, gdy etykieta wskazuje inny kraj (np. Stany Zjednoczone).
+    if (iso === DEFAULT_LOCALITY_COUNTRY_CODE && labelIso && labelIso !== DEFAULT_LOCALITY_COUNTRY_CODE) {
+      return labelIso;
+    }
+    return iso;
+  }
+  if (labelIso) return labelIso;
+  return DEFAULT_LOCALITY_COUNTRY_CODE;
+}
+
+/** Miejscowość z wyniku reverse-geocode — pomija kody kraju i skróty stanów USA w polu locality. */
+export function localityNameFromGeocodedPlace(place: {
+  city?: string | null;
+  subregion?: string | null;
+  name?: string | null;
+  region?: string | null;
+  isoCountryCode?: string | null;
+  country?: string | null;
+}): string {
+  const country = resolveLocalityCountryFromPlace(place);
+  const candidates = [place.city, place.name, place.subregion, place.region];
+  for (const raw of candidates) {
+    const token = String(raw || '').trim();
+    if (!token) continue;
+    if (/^[A-Za-z]{2}$/i.test(token)) {
+      const upper = token.toUpperCase();
+      if (isKnownCountryIso(upper)) continue;
+      if (country.code === 'US') continue;
+    }
+    return token;
+  }
+  return 'Ogólna';
+}
+
+export function countryFieldsFromGeocodedPlace(
+  place: { country?: string | null; isoCountryCode?: string | null } | null | undefined,
+): { localityCountry: string; localityCountryCode: string } {
+  if (!place) {
+    return {
+      localityCountry: DEFAULT_LOCALITY_COUNTRY,
+      localityCountryCode: DEFAULT_LOCALITY_COUNTRY_CODE,
+    };
+  }
+  const geocoded = resolveLocalityCountryFromPlace(place);
+  const code =
+    (geocoded.code && /^[A-Z]{2}$/.test(geocoded.code) ? geocoded.code : '') ||
+    PL_COUNTRY_TO_ISO[geocoded.labelPl] ||
+    DEFAULT_LOCALITY_COUNTRY_CODE;
+  return {
+    localityCountry: normalizeLocalityCountryLabel(geocoded.labelPl),
+    localityCountryCode: code,
+  };
 }
 
 export function buildGeocodeQuery(addressPart: string, countryLabelPl: string): string {
@@ -136,19 +196,23 @@ export function getDraftLocationPresentation(draft: {
   let countryIso = localityCountryIso(draft.localityCountryCode, countryLabelPl);
 
   if (!isStrictCityName(city) && city && city !== REST_OF_COUNTRY_CITY) {
-    if (/^[A-Za-z]{2}$/i.test(district)) {
+    if (/^[A-Za-z]{2}$/i.test(district) && isKnownCountryIso(district)) {
       countryIso = district.toUpperCase();
       countryLabelPl = countryLabelPlFromIso(countryIso) || countryLabelPl;
     }
     district = city;
     city = REST_OF_COUNTRY_CITY;
-  } else if (city === REST_OF_COUNTRY_CITY && /^[A-Za-z]{2}$/i.test(district)) {
+  } else if (
+    city === REST_OF_COUNTRY_CITY &&
+    /^[A-Za-z]{2}$/i.test(district) &&
+    isKnownCountryIso(district)
+  ) {
     const isoFromDistrict = district.toUpperCase();
     const codeFromDraft = String(draft.localityCountryCode ?? '').trim().toUpperCase();
     countryIso = /^[A-Z]{2}$/.test(codeFromDraft) ? codeFromDraft : isoFromDistrict;
     countryLabelPl =
       countryLabelPlFromIso(countryIso) || normalizeLocalityCountryLabel(draft.localityCountry) || countryLabelPl;
-    // Kod kraju (np. „US”) trafił do district — nie zamieniaj miejscowości na „Ogólna”.
+    // Kod kraju (np. „US”) trafił do district — wyczyść slot miejscowości.
     district = '';
   }
 
@@ -396,11 +460,12 @@ export function isLocationStepComplete(draft: {
   const hasLocality = locality.length > 0 && locality !== 'Ogólna';
   const isPoland = pres.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
   const street = String(draft.street || '').trim();
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
 
   if (isPoland) {
     return hasLocality && street.length > 2 && /\d/.test(street);
   }
-  return hasLocality && (street.length > 2 || hasLocality);
+  return hasCoords && (hasLocality || street.length >= 3);
 }
 
 export function formatOfferLocationLine(

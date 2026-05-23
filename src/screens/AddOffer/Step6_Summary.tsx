@@ -40,6 +40,7 @@ import {
 } from '../../services/offerPublicationService';
 import type { CreatePublicationRedemption } from '../../contracts/offerPublicationContract';
 import { gatherPublicationBonusCoupons } from '../../services/publicationBonusCoupons';
+import { readUserFirstFreePublicationUsed } from '../../utils/userPublicationFlags';
 import { markProfilePromoCouponUsed } from '../../services/profilePromoService';
 import PublicationChoiceModal, {
   type PublicationChoiceConfirm,
@@ -81,13 +82,6 @@ function normalizeFloorForCreate(f: unknown): number {
   if (s === 'parter') return 0;
   const n = parseInt(String(f).replace(/\D/g, ''), 10);
   return Number.isFinite(n) ? n : 0;
-}
-
-function readFirstFreePublicationUsed(user: Record<string, unknown> | null | undefined): boolean | null {
-  if (!user) return null;
-  if (user.firstFreePublicationUsed === true || user.first_free_publication_used === true) return true;
-  if (user.firstFreePublicationUsed === false || user.first_free_publication_used === false) return false;
-  return null;
 }
 
 /** Krok 3 zapisuje rok w buildYear — scalamy z yearBuilt przed POST. */
@@ -318,7 +312,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           token,
           userId: user.id,
           email: user.email,
-          firstFreePublicationUsed: readFirstFreePublicationUsed(user as Record<string, unknown>),
+          firstFreePublicationUsed: readUserFirstFreePublicationUsed(user),
           t,
         }).then((gathered) => {
           setPrefetchedPublicationCoupons(gathered.coupons);
@@ -343,8 +337,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       backendRegistered: Boolean(r.backendRegistered),
       extraListings: r.extraListings,
     });
-    if (patched) {
-      useAuthStore.setState({ user: { ...useAuthStore.getState().user, ...patched } });
+    const currentUser = useAuthStore.getState().user;
+    if (patched && currentUser) {
+      useAuthStore.setState({ user: { ...currentUser, ...patched } });
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -429,7 +424,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       token,
       userId: user.id,
       email: latestUser?.email,
-      firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
+      firstFreePublicationUsed: readUserFirstFreePublicationUsed(latestUser),
       t,
     });
     setPrefetchedPublicationCoupons(gathered.coupons);
@@ -629,7 +624,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             token,
             userId: user.id,
             email: u?.email,
-            firstFreePublicationUsed: readFirstFreePublicationUsed(u as Record<string, unknown>),
+            firstFreePublicationUsed: readUserFirstFreePublicationUsed(u),
             t,
           });
           setPublicationChoiceCoupons(gathered.coupons);

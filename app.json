@@ -14,8 +14,9 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false,
-      "buildNumber": "25",
+      "supportsTablet": true,
+      "requireFullScreen": false,
+      "buildNumber": "35",
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
         "webcredentials:estateos.pl",
@@ -34,7 +35,16 @@
         "NSFaceIDUsageDescription": "EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).",
         "NSLocationWhenInUseUsageDescription": "EstateOS używa Twojej lokalizacji tylko podczas korzystania z aplikacji, aby pokazywać oferty nieruchomości w okolicy, mierzyć odległość do prezentacji i ustawiać radar na Twoją lokalizację.",
         "NSSupportsLiveActivities": true,
-        "NSSupportsLiveActivitiesFrequentUpdates": true
+        "NSSupportsLiveActivitiesFrequentUpdates": true,
+        "UISupportedInterfaceOrientations": [
+          "UIInterfaceOrientationPortrait"
+        ],
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationPortrait",
+          "UIInterfaceOrientationPortraitUpsideDown",
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ]
       }
     },
     "android": {

@@ -39,6 +39,15 @@ const isTruthyNumber = (value: unknown) => {
 
 const trimLen = (value: unknown) => String(value ?? '').trim().length;
 
+function requirementMeter(
+  current: number,
+  min: number,
+  unit: MeterUnitKey,
+  max?: number,
+): NonNullable<AddOfferRequirement['meter']> {
+  return max !== undefined ? { current, min, max, unit } : { current, min, unit };
+}
+
 export function getStepRequirements(step: number, draft: any): AddOfferRequirement[] {
   switch (step) {
     case 1:
@@ -95,6 +104,8 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
   const hasLocality = locality.length > 0 && locality !== 'Ogólna';
   const street = String(draft?.street || '').trim();
   const hasCoords = isTruthyNumber(draft?.lat) && isTruthyNumber(draft?.lng);
+  const hasIntlLocation =
+    hasLocality || (hasCoords && street.length >= ADD_OFFER_STREET_MIN);
 
   const items: AddOfferRequirement[] = [
     {
@@ -106,7 +117,7 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
     {
       id: 'locality',
       label: t('addOffer.validation.step2.locality.label'),
-      ok: hasLocality,
+      ok: isPoland ? hasLocality : hasIntlLocation,
       action: isPoland
         ? t('addOffer.validation.step2.locality.actionPl')
         : t('addOffer.validation.step2.locality.actionIntl'),
@@ -126,15 +137,15 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
       action: needsStreetNumber
         ? t('addOffer.validation.step2.street.action', { min: ADD_OFFER_STREET_MIN })
         : t('addOffer.validation.step2.streetApprox.action', { min: ADD_OFFER_STREET_MIN }),
-      meter: { current: street.length, min: ADD_OFFER_STREET_MIN, unit: 'chars' },
+      meter: requirementMeter(street.length, ADD_OFFER_STREET_MIN, 'chars'),
     });
   } else {
     items.push({
       id: 'street',
       label: t('addOffer.validation.step2.streetIntl.label'),
-      ok: street.length >= ADD_OFFER_STREET_MIN || hasLocality,
+      ok: hasIntlLocation,
       action: t('addOffer.validation.step2.streetIntl.action'),
-      meter: street.length > 0 ? { current: street.length, min: ADD_OFFER_STREET_MIN, unit: 'chars' } : undefined,
+      meter: street.length > 0 ? requirementMeter(street.length, ADD_OFFER_STREET_MIN, 'chars') : undefined,
     });
   }
 
@@ -153,7 +164,7 @@ function getStep3Requirements(draft: any): AddOfferRequirement[] {
         label: t('addOffer.validation.step3.plotArea.label'),
         ok: hasArea,
         action: t('addOffer.validation.step3.plotArea.action'),
-        meter: { current: hasArea ? Math.round(areaNum) : 0, min: 1, unit: 'sqm' },
+        meter: requirementMeter(hasArea ? Math.round(areaNum) : 0, 1, 'sqm'),
       },
     ];
   }
@@ -173,7 +184,7 @@ function getStep3Requirements(draft: any): AddOfferRequirement[] {
       label: t('addOffer.validation.step3.area.label'),
       ok: hasArea,
       action: t('addOffer.validation.step3.area.action'),
-      meter: { current: hasArea ? Math.round(areaNum) : 0, min: 1, unit: 'sqm' },
+      meter: requirementMeter(hasArea ? Math.round(areaNum) : 0, 1, 'sqm'),
     },
     {
       id: 'rooms',
@@ -232,7 +243,7 @@ function getStep4Requirements(draft: any): AddOfferRequirement[] {
       action: isRent
         ? t('addOffer.validation.step4.priceRent.action')
         : t('addOffer.validation.step4.priceSell.action'),
-      meter: { current: priceOk ? priceNum : 0, min: 1, unit: 'pln' },
+      meter: requirementMeter(priceOk ? priceNum : 0, 1, 'pln'),
     },
   ];
 }
@@ -249,7 +260,7 @@ function getStep5Requirements(draft: any): AddOfferRequirement[] {
       label: t('addOffer.validation.step5.photos.label'),
       ok: imageCount >= ADD_OFFER_MIN_IMAGES,
       action: t('addOffer.validation.step5.photos.action', { min: ADD_OFFER_MIN_IMAGES }),
-      meter: { current: imageCount, min: ADD_OFFER_MIN_IMAGES, max: 20, unit: 'photos' },
+      meter: requirementMeter(imageCount, ADD_OFFER_MIN_IMAGES, 'photos', 20),
     },
     {
       id: 'title',
@@ -262,14 +273,14 @@ function getStep5Requirements(draft: any): AddOfferRequirement[] {
               unit: charsRemainingLabel(titleRemaining),
             })
           : t('addOffer.validation.step5.title.actionLong', { max: ADD_OFFER_TITLE_MAX }),
-      meter: { current: titleLen, min: ADD_OFFER_TITLE_MIN, max: ADD_OFFER_TITLE_MAX, unit: 'chars' },
+      meter: requirementMeter(titleLen, ADD_OFFER_TITLE_MIN, 'chars', ADD_OFFER_TITLE_MAX),
     },
     {
       id: 'description',
       label: t('addOffer.validation.step5.description.label'),
       ok: descLen >= ADD_OFFER_DESC_MIN,
       action: t('addOffer.validation.step5.description.action', { min: ADD_OFFER_DESC_MIN }),
-      meter: { current: descLen, min: ADD_OFFER_DESC_MIN, max: ADD_OFFER_DESC_MAX, unit: 'chars' },
+      meter: requirementMeter(descLen, ADD_OFFER_DESC_MIN, 'chars', ADD_OFFER_DESC_MAX),
     },
   ];
 }

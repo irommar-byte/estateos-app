@@ -1,6 +1,22 @@
 import { useNavigation } from "@react-navigation/native";
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView, Animated, Modal, Easing } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  Animated,
+  Modal,
+  Easing,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -489,16 +505,11 @@ export default function AuthScreen({
     outputRange: [1, 1, 0]
   });
 
-  const glowShadow = successGlowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(0,0,0,0)', 'rgba(16, 185, 129, 0.6)']
-  });
-
   const FormShell = embedded ? View : Animated.View;
-  const formShellStyle = embedded
-    ? { flex: 1 as const }
+  const formShellStyle: StyleProp<ViewStyle> = embedded
+    ? { flex: 1 }
     : {
-        flex: 1 as const,
+        flex: 1,
         opacity,
         transform: [
           { perspective: 850 },
@@ -506,12 +517,8 @@ export default function AuthScreen({
           { rotateX },
           { rotateY },
         ],
-        shadowColor: glowShadow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: successGlowAnim,
-        shadowRadius: 50,
         elevation: 20,
-        backfaceVisibility: 'hidden' as const,
+        backfaceVisibility: 'hidden',
       };
 
   return (

@@ -69,8 +69,8 @@ import {
   fetchPublicationQuote,
   getPublicationCopy,
   isPublicationRequiresPlusError,
-  readFirstFreePublicationUsed,
 } from '../services/offerPublicationService';
+import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags';
 import PublicationChoiceModal, {
   type PublicationChoiceConfirm,
 } from '../components/publication/PublicationChoiceModal';
@@ -686,9 +686,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             token,
             userId: user?.id,
             email: latestUser?.email,
-            firstFreePublicationUsed: readFirstFreePublicationUsed(
-              latestUser as Record<string, unknown>,
-            ),
+            firstFreePublicationUsed: readUserFirstFreePublicationUsed(latestUser),
             t,
           });
           pendingReactivationRef.current = { offerId, offerTitle };
@@ -759,7 +757,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         token,
         userId: user.id,
         email: latestUser?.email,
-        firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
+        firstFreePublicationUsed: readUserFirstFreePublicationUsed(latestUser),
         t,
       });
       const hasPlusCredit = hasAdditionalPlusPublication(latestUser);

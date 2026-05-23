@@ -1024,7 +1024,7 @@ type PushNavigationTarget =
   | {
       screen: 'MainTabs';
       params: {
-        screen: 'Radar' | 'Ulubione' | 'Wiadomości';
+        screen: 'Radar' | 'Ulubione' | 'Wiadomości' | 'Profil';
         params?: Record<string, unknown>;
       };
     };

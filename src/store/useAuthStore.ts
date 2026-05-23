@@ -12,8 +12,9 @@ import {
   normalizePhoneE164,
   userHasDialablePhone,
 } from '../utils/phoneRegions';
+import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags';
 
-interface User {
+export interface User {
   id: number;
   email: string;
   name: string | null;
@@ -28,6 +29,10 @@ interface User {
   plusExpiresAt?: string | null;
   /** Licznik kupionych publikacji Plus (zużywany przy publikacji ogłoszenia). */
   extraListings?: number | null;
+  /** Jednorazowa darmowa publikacja — camelCase z API mobilnego. */
+  firstFreePublicationUsed?: boolean | null;
+  /** Jednorazowa darmowa publikacja — snake_case z legacy API. */
+  first_free_publication_used?: boolean | null;
   isVerifiedPhone?: boolean;
   /** Zweryfikowany adres e-mail (osobno od telefonu / profilu). */
   isEmailVerified?: boolean;
@@ -331,9 +336,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const grantUser = get().user;
       if (grantUser?.id) {
         const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
-        const legacyUsed =
-          grantUser.firstFreePublicationUsed === true ||
-          (grantUser as any).first_free_publication_used === true;
+        const legacyUsed = readUserFirstFreePublicationUsed(grantUser) === true;
         await ensureWelcomeCouponForUser(grantUser.id, {
           email: loginEmail,
           firstFreePublicationUsed: legacyUsed ? true : false,
@@ -467,9 +470,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const grantUser = get().user;
         if (grantUser?.id) {
           const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
-          const legacyUsed =
-            grantUser.firstFreePublicationUsed === true ||
-            (grantUser as any).first_free_publication_used === true;
+          const legacyUsed = readUserFirstFreePublicationUsed(grantUser) === true;
           await ensureWelcomeCouponForUser(grantUser.id, {
             email: hintEmail || grantUser.email,
             firstFreePublicationUsed: legacyUsed ? true : false,

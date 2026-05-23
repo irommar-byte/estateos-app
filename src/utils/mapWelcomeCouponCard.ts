@@ -1,9 +1,7 @@
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
+import type { TranslateFn } from '../i18n/types';
 
-export function mapWelcomeCouponCard(
-  raw: ProfilePromoCardRecord,
-  t: (key: string, vars?: Record<string, unknown>) => string,
-): ProfilePromoCardRecord {
+export function mapWelcomeCouponCard(raw: ProfilePromoCardRecord, t: TranslateFn): ProfilePromoCardRecord {
   const used = raw.couponUsed === true;
   const checking = raw.couponUsed == null && raw.grantsFreeListing === true;
   const accent = '#0A84FF';

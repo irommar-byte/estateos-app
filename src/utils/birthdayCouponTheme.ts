@@ -1,4 +1,5 @@
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
+import type { TranslateFn } from '../i18n/types';
 
 export type BirthdayYearPalette = {
   accentColor: string;
@@ -78,10 +79,7 @@ export function getBirthdayYearPalette(year: number): BirthdayYearPalette {
   return BIRTHDAY_YEAR_PALETTES[idx];
 }
 
-export function buildBirthdayCouponTitle(
-  t: (key: string, vars?: Record<string, unknown>) => string,
-  year: number,
-): string {
+export function buildBirthdayCouponTitle(t: TranslateFn, year: number): string {
   return t('profile.shop.birthdayCouponTitleYear', { year });
 }
 

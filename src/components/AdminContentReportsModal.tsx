@@ -271,7 +271,7 @@ export default function AdminContentReportsModal({ visible, onClose, theme, onQu
           </Text>
           {report.reason ? (
             <Text style={[styles.reasonPreview, { color: theme.text }]} numberOfLines={expanded ? undefined : 2}>
-              „{report.reason}"
+              {`„${report.reason}”`}
             </Text>
           ) : null}
           <View style={styles.cardFooterRow}>

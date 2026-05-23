@@ -8,18 +8,18 @@
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
     <string>EstateOS™</string>
-    <key>CFBundleLocalizations</key>
-    <array>
-      <string>pl</string>
-      <string>en</string>
-      <string>ru</string>
-    </array>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+      <string>pl</string>
+      <string>en</string>
+      <string>ru</string>
+    </array>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key>
@@ -45,7 +45,7 @@
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>25</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>LSMinimumSystemVersion</key>
@@ -60,23 +60,29 @@
       <true/>
     </dict>
     <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).</string>
+    <string>EstateOS zapisuje w kalendarzu termin prezentacji, adres i przypomnienia o wyjeździe.</string>
     <key>NSCalendarsUsageDescription</key>
-    <string>EstateOS zapisuje w kalendarzu termin prezentacji nieruchomości, adres z ogłoszenia oraz przypomnienia (w tym czas wyjazdu).</string>
+    <string>EstateOS zapisuje w kalendarzu termin prezentacji, adres i przypomnienia o wyjeździe.</string>
     <key>NSCameraUsageDescription</key>
     <string>EstateOS używa aparatu, aby robić zdjęcia nieruchomości publikowanych w ofercie oraz aby zeskanować kod QR przy logowaniu.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>EstateOS używa Twojej lokalizacji tylko podczas korzystania z aplikacji, aby pokazywać oferty nieruchomości w okolicy, mierzyć odległość do prezentacji i ustawiać radar na Twoją lokalizację.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>EstateOS zapisuje wybrane materiały (np. plan PDF mieszkania) do Twojej biblioteki na życzenie.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>EstateOS używa zdjęć z Twojej biblioteki, aby dodać je do publikowanej oferty nieruchomości.</string>
     <key>NSRemindersFullAccessUsageDescription</key>
-    <string>Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.</string>
+    <string>Powiązanie z przypomnieniami systemowymi jest opcjonalne.</string>
     <key>NSRemindersUsageDescription</key>
-    <string>Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.</string>
+    <string>Powiązanie z przypomnieniami systemowymi jest opcjonalne.</string>
     <key>NSSupportsLiveActivities</key>
     <true/>
     <key>NSSupportsLiveActivitiesFrequentUpdates</key>
@@ -96,7 +102,6 @@
     <key>UISupportedInterfaceOrientations</key>
     <array>
       <string>UIInterfaceOrientationPortrait</string>
-      <string>UIInterfaceOrientationPortraitUpsideDown</string>
     </array>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>

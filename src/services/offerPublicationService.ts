@@ -121,16 +121,10 @@ export async function fetchPublicationQuote(
   }
 }
 
-export function readFirstFreePublicationUsed(
-  user: Record<string, unknown> | null | undefined,
-): boolean | null {
-  if (!user) return null;
-  if (user.firstFreePublicationUsed === true || user.first_free_publication_used === true) return true;
-  if (user.firstFreePublicationUsed === false || user.first_free_publication_used === false) {
-    return false;
-  }
-  return null;
-}
+export {
+  readUserFirstFreePublicationUsed as readFirstFreePublicationUsed,
+  type UserPublicationFlags,
+} from '../utils/userPublicationFlags';
 
 export async function activateOfferPublication(
   apiUrl: string,

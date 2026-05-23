@@ -11,6 +11,7 @@ import {
   getBirthdayCouponYear,
 } from './birthdayCouponTheme';
 import { isWelcomeCouponRecord } from '../services/welcomeCouponService';
+import type { TranslateFn } from '../i18n/types';
 import { mapWelcomeCouponCard } from './mapWelcomeCouponCard';
 
 function withPurposeAndTheme(
@@ -31,7 +32,7 @@ function withPurposeAndTheme(
 }
 
 type BuildParams = {
-  t: (key: string, vars?: Record<string, unknown>) => string;
+  t: TranslateFn;
   adminPromos: ProfilePromoCardRecord[];
   dismissedIds?: Set<string>;
 };
