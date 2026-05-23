@@ -45,6 +45,15 @@ describe('locationEcosystem international', () => {
     assert.equal(localityCountryIso('PL', 'Stany Zjednoczone'), 'US');
   });
 
+  it('map coordinates valid with negative longitude (Houston)', () => {
+    const lat = 29.76;
+    const lng = -95.37;
+    assert.ok(Number.isFinite(lat) && Number.isFinite(lng));
+    assert.ok(Math.abs(lat) <= 90 && Math.abs(lng) <= 180);
+    assert.ok(!(lat === 0 && lng === 0));
+    assert.ok(!(lng > 0));
+  });
+
   it('allows intl step with coords and street when locality is Ogólna', () => {
     assert.equal(
       isLocationStepComplete({

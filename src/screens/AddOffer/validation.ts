@@ -37,6 +37,15 @@ const isTruthyNumber = (value: unknown) => {
   return Number.isFinite(num) && num > 0;
 };
 
+/** Pinezka na mapie — dopuszcza ujemne lng (USA, UK itd.), odrzuca (0,0). */
+const hasValidMapCoordinates = (lat: unknown, lng: unknown) => {
+  const latN = Number(String(lat ?? '').replace(/\s/g, '').replace(',', '.'));
+  const lngN = Number(String(lng ?? '').replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(latN) || !Number.isFinite(lngN)) return false;
+  if (latN === 0 && lngN === 0) return false;
+  return Math.abs(latN) <= 90 && Math.abs(lngN) <= 180;
+};
+
 const trimLen = (value: unknown) => String(value ?? '').trim().length;
 
 function requirementMeter(
@@ -103,7 +112,7 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
   const locality = String(pres.district || '').trim();
   const hasLocality = locality.length > 0 && locality !== 'Ogólna';
   const street = String(draft?.street || '').trim();
-  const hasCoords = isTruthyNumber(draft?.lat) && isTruthyNumber(draft?.lng);
+  const hasCoords = hasValidMapCoordinates(draft?.lat, draft?.lng);
   const hasIntlLocation =
     hasLocality || (hasCoords && street.length >= ADD_OFFER_STREET_MIN);
 
