@@ -113,7 +113,8 @@ export default function FeaturedGallery() {
 
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {featured.map((offer, index) => {
-            const location = [offer.city, offer.district].filter(Boolean).join(", ") || "Private market";
+            const location =
+              [offer.city, offer.district].filter(Boolean).join(", ") || dict.homePremium.galleryLocationFallback;
             const isDealRoom = offer.badges?.isPartner === true;
             return (
               <motion.article
@@ -135,7 +136,9 @@ export default function FeaturedGallery() {
                   <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
 
                   <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/90 backdrop-blur-xl">
-                    {String(offer.transactionType || "sale").toLowerCase().includes("rent") ? "Lease" : "Acquire"}
+                    {String(offer.transactionType || "sale").toLowerCase().includes("rent")
+                      ? dict.homePremium.galleryTxRent
+                      : dict.homePremium.galleryTxSale}
                   </div>
                   {isDealRoom && (
                     <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-orange-400/50 bg-orange-500/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(249,115,22,0.35)] backdrop-blur-xl">
@@ -150,7 +153,7 @@ export default function FeaturedGallery() {
                       {location}
                     </div>
                     <h3 className="text-2xl font-light leading-tight text-white">
-                      {offer.title || "Private EstateOS Residence"}
+                      {offer.title || dict.homePremium.defaultListingTitle}
                     </h3>
                     <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/60">
                       <span className="text-base font-semibold text-white">

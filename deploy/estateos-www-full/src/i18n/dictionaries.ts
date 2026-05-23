@@ -17,6 +17,14 @@ export type Dictionary = {
     logout: string;
     langPl: string;
     langEn: string;
+    language: string;
+    menuOpen: string;
+    menuClose: string;
+    home: string;
+  };
+  badges: {
+    partner: string;
+    investorPro: string;
   };
   theme: {
     label: string;
@@ -31,6 +39,7 @@ export type Dictionary = {
     empty: string;
     markAllRead: string;
     messages: string;
+    close: string;
   };
   hero: {
     eyebrow: string;
@@ -42,6 +51,7 @@ export type Dictionary = {
     ctaAccount: string;
     ctaPro: string;
     exploreMap: string;
+    scroll: string;
   };
   pulse: {
     title: string;
@@ -88,6 +98,11 @@ export type Dictionary = {
     searchTypeCommercial: string;
     searchTypePlot: string;
     searchButton: string;
+    advancedFilters: string;
+    galleryTxSale: string;
+    galleryTxRent: string;
+    galleryLocationFallback: string;
+    defaultListingTitle: string;
     statsActiveOffers: string;
     statsNewOffers24h: string;
     statsMarketCities: string;
@@ -204,6 +219,14 @@ const pl: Dictionary = {
     logout: "Wyloguj",
     langPl: "PL",
     langEn: "EN",
+    language: "Język",
+    menuOpen: "Otwórz menu",
+    menuClose: "Zamknij menu",
+    home: "Strona główna EstateOS",
+  },
+  badges: {
+    partner: "Partner EstateOS",
+    investorPro: "Investor Pro",
   },
   theme: {
     label: "Motyw",
@@ -218,6 +241,7 @@ const pl: Dictionary = {
     empty: "Brak nowych powiadomień.",
     markAllRead: "Oznacz jako przeczytane",
     messages: "wiadomości",
+    close: "Zamknij",
   },
   hero: {
     eyebrow: "Globalna inteligencja rynku premium",
@@ -230,6 +254,7 @@ const pl: Dictionary = {
     ctaAccount: "Moje konto",
     ctaPro: "Pakiety Pro",
     exploreMap: "Mapa ofert",
+    scroll: "Przewiń",
   },
   pulse: {
     title: "Puls rynku",
@@ -281,6 +306,11 @@ const pl: Dictionary = {
     searchTypeCommercial: "Komercyjne",
     searchTypePlot: "Działki",
     searchButton: "Szukaj",
+    advancedFilters: "Filtry zaawansowane",
+    galleryTxSale: "Sprzedaż",
+    galleryTxRent: "Wynajem",
+    galleryLocationFallback: "Rynek prywatny",
+    defaultListingTitle: "Rezydencja EstateOS",
     statsActiveOffers: "Zweryfikowanych Ofert",
     statsNewOffers24h: "Nowych w 24h",
     statsMarketCities: "Obsługiwanych Miast",
@@ -408,6 +438,14 @@ const en: Dictionary = {
     logout: "Log out",
     langPl: "PL",
     langEn: "EN",
+    language: "Language",
+    menuOpen: "Open menu",
+    menuClose: "Close menu",
+    home: "EstateOS home",
+  },
+  badges: {
+    partner: "EstateOS Partner",
+    investorPro: "Investor Pro",
   },
   theme: {
     label: "Theme",
@@ -422,6 +460,7 @@ const en: Dictionary = {
     empty: "No new notifications.",
     markAllRead: "Mark all as read",
     messages: "messages",
+    close: "Close",
   },
   hero: {
     eyebrow: "Global premium real estate intelligence",
@@ -434,6 +473,7 @@ const en: Dictionary = {
     ctaAccount: "My account",
     ctaPro: "Pro plans",
     exploreMap: "Explore market",
+    scroll: "Scroll",
   },
   pulse: {
     title: "Market pulse",
@@ -485,6 +525,11 @@ const en: Dictionary = {
     searchTypeCommercial: "Commercial",
     searchTypePlot: "Land / Plots",
     searchButton: "Search",
+    advancedFilters: "Advanced filters",
+    galleryTxSale: "For sale",
+    galleryTxRent: "For rent",
+    galleryLocationFallback: "Private market",
+    defaultListingTitle: "EstateOS residence",
     statsActiveOffers: "Verified Listings",
     statsNewOffers24h: "New in 24h",
     statsMarketCities: "Cities Covered",

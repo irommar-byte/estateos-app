@@ -68,7 +68,7 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage relative h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -191,7 +191,7 @@ export default function HeroDepthEffect() {
                 <button
                   type="button"
                   onClick={() => openHomeCta("RADAR")}
-                  className="group relative overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-10 py-4 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.03] active:scale-[0.97]"
+                  className="premium-hero-cta-primary group relative overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-10 py-4 text-xs font-black uppercase tracking-[0.18em] shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.03] active:scale-[0.97]"
                 >
                   <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
                   <span className="relative">{dict.hero.ctaRadar}</span>
@@ -199,7 +199,7 @@ export default function HeroDepthEffect() {
                 <button
                   type="button"
                   onClick={() => openHomeCta("LIST")}
-                  className="rounded-full border border-white/16 bg-black/45 px-10 py-4 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[0_16px_34px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all hover:border-white/28 hover:bg-white/10 active:scale-[0.97]"
+                  className="premium-hero-cta-secondary rounded-full border px-10 py-4 text-xs font-black uppercase tracking-[0.18em] backdrop-blur-xl transition-all active:scale-[0.97]"
                 >
                   {dict.hero.ctaList}
                 </button>
@@ -208,17 +208,17 @@ export default function HeroDepthEffect() {
                 <button
                   type="button"
                   onClick={() => openHomeCta("ACCOUNT")}
-                  className="text-[10px] uppercase tracking-[0.24em] text-white/55 transition-colors hover:text-emerald-300 sm:text-[11px]"
+                  className="premium-hero-cta-link text-[10px] uppercase tracking-[0.24em] transition-colors sm:text-[11px]"
                 >
                   {dict.hero.ctaAccount}
                 </button>
-                <span className="hidden text-white/20 sm:inline" aria-hidden>
+                <span className="premium-hero-scroll hidden sm:inline" aria-hidden>
                   ·
                 </span>
                 <button
                   type="button"
                   onClick={() => openHomeCta("PRO")}
-                  className="text-[10px] uppercase tracking-[0.24em] text-amber-400/80 transition-colors hover:text-amber-300 sm:text-[11px]"
+                  className="premium-hero-cta-link-pro text-[10px] uppercase tracking-[0.24em] transition-colors sm:text-[11px]"
                 >
                   {dict.hero.ctaPro}
                 </button>
@@ -228,7 +228,7 @@ export default function HeroDepthEffect() {
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-3 text-white/30 sm:flex">
-          <span className="text-[9px] font-black uppercase tracking-[0.28em]">Scroll</span>
+          <span className="premium-hero-scroll text-[9px] font-black uppercase tracking-[0.28em]">{dict.hero.scroll}</span>
           <motion.span
             className="h-12 w-px bg-gradient-to-b from-white/60 to-transparent"
             animate={reduceMotion ? undefined : { scaleY: [0.35, 1, 0.35], opacity: [0.25, 0.75, 0.25] }}

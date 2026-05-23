@@ -461,6 +461,86 @@ html.light .premium-home-shell {
   background:
     radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.12), transparent 34%),
     linear-gradient(180deg, #f5f5f7 0%, #ffffff 44%, #f5f5f7 100%) !important;
+  /* Nie ustawiamy color na całym shell — psuło to białe CTA na ciemnym hero (czarny tekst na czerni). */
+}
+
+/* Kinowe hero — zawsze jasny tekst na ciemnym tle (niezależnie od motywu strony) */
+.premium-hero-stage,
+.premium-hero-stage h1,
+.premium-hero-stage p {
+  color: #ffffff;
+}
+
+.premium-hero-cta-primary {
+  color: #0a0a0a !important;
+}
+
+.premium-hero-cta-secondary {
+  color: #ffffff !important;
+  background-color: rgba(8, 8, 10, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.premium-hero-cta-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+}
+
+.premium-hero-cta-link {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.premium-hero-cta-link:hover {
+  color: #6ee7b7 !important;
+}
+
+.premium-hero-cta-link-pro {
+  color: rgba(251, 191, 36, 0.95) !important;
+}
+
+.premium-hero-cta-link-pro:hover {
+  color: #fde68a !important;
+}
+
+.premium-hero-scroll {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */
+.eos-segment-active {
+  background-color: var(--eos-accent) !important;
+  color: #020617 !important;
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.35),
+    0 8px 20px rgba(16, 185, 129, 0.22) !important;
+}
+
+.eos-segment-inactive {
+  color: var(--eos-muted) !important;
+  background-color: transparent !important;
+}
+
+.eos-segment-inactive:hover {
+  color: var(--eos-text) !important;
+}
+
+.eos-theme-switcher-pill {
+  background-color: var(--eos-accent) !important;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.28) !important;
+}
+
+.eos-theme-switcher-pill .eos-theme-switcher-icon {
+  color: #020617 !important;
+}
+
+.eos-theme-switcher-idle {
+  color: var(--eos-muted) !important;
+}
+
+.eos-theme-switcher-idle:hover {
   color: var(--eos-text) !important;
 }
 
