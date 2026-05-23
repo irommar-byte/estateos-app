@@ -3,6 +3,7 @@ import os from 'os';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
+import { isAdminCoreOfflineFlagSet } from '@/lib/adminCoreControl';
 
 export type AdminCoreMetricsPayload = {
   collectedAt: string;
@@ -164,6 +165,13 @@ export async function handleAdminCoreMetricsGET(req: Request) {
     const gate = await requireMobileAdmin(req);
     if (!gate.ok) return gate.response;
 
+    if (isAdminCoreOfflineFlagSet()) {
+      return NextResponse.json(
+        { success: false, state: 'offline', message: 'CORE jest w trybie OFFLINE (sterowanie admin).' },
+        { status: 503, headers: NO_CACHE_HEADERS },
+      );
+    }
+
     const metrics = await collectAdminCoreMetrics();
     return NextResponse.json({ success: true, metrics }, { headers: NO_CACHE_HEADERS });
   } catch (error) {
@@ -174,7 +182,7 @@ export async function handleAdminCoreMetricsGET(req: Request) {
     }
     return NextResponse.json(
       { success: false, message: 'Nie udało się zebrać metryk CORE' },
-      { status: 500, headers: NO_CACHE_HEADERS }
+      { status: 500, headers: NO_CACHE_HEADERS },
     );
   }
 }
@@ -183,6 +191,13 @@ export async function handleAdminCoreHealthGET(req: Request) {
   try {
     const gate = await requireMobileAdmin(req);
     if (!gate.ok) return gate.response;
+
+    if (isAdminCoreOfflineFlagSet()) {
+      return NextResponse.json(
+        { success: false, status: 'offline', healthy: false, message: 'CORE jest w trybie OFFLINE (sterowanie admin).' },
+        { status: 503, headers: NO_CACHE_HEADERS },
+      );
+    }
 
     const metrics = await collectAdminCoreMetrics();
     return NextResponse.json(
@@ -195,13 +210,13 @@ export async function handleAdminCoreHealthGET(req: Request) {
         uptimeSec: metrics.uptimeSec,
         databaseLatencyMs: metrics.database.latencyMs,
       },
-      { headers: NO_CACHE_HEADERS }
+      { headers: NO_CACHE_HEADERS },
     );
   } catch (error) {
     console.error('[admin/core/health]', error);
     return NextResponse.json(
       { success: false, status: 'degraded', healthy: false },
-      { status: 500, headers: NO_CACHE_HEADERS }
+      { status: 500, headers: NO_CACHE_HEADERS },
     );
   }
 }

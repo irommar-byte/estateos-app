@@ -1,5 +1,5 @@
-export type HomeCtaId = 'BUY' | 'SELL' | 'INVESTOR' | 'OWNER';
-export type HomeCtaMode = 'BUYER' | 'SELLER' | 'INVESTOR' | 'OWNER';
+export type HomeCtaId = 'RADAR' | 'LIST' | 'ACCOUNT' | 'PRO';
+export type HomeCtaMode = 'APP';
 export type HomeCtaAnalyticsEvent =
   | 'home_cta_click'
   | 'home_cta_route_resolved'
@@ -13,33 +13,40 @@ export type HomeCtaContractEntry = {
 };
 
 /**
- * SOT parity z aplikacją mobilną.
- * appRoute pochodzi 1:1 z kontraktu mobile, webRoute to ekwiwalent web flow.
+ * Parity z aplikacją: jedno konto — Radar (szukaj), Dodaj ofertę, Profil.
+ * Pro / partner tylko na WWW (/cennik, /moje-konto).
  */
 export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
-  BUY: {
-    id: 'BUY',
-    mode: 'BUYER',
+  RADAR: {
+    id: 'RADAR',
+    mode: 'APP',
     appRoute: 'MainTabs/Radar',
     webRoute: '/#map',
   },
-  SELL: {
-    id: 'SELL',
-    mode: 'SELLER',
+  LIST: {
+    id: 'LIST',
+    mode: 'APP',
     appRoute: 'MainTabs/Dodaj',
     webRoute: '/dodaj-oferte',
   },
-  INVESTOR: {
-    id: 'INVESTOR',
-    mode: 'INVESTOR',
-    appRoute: 'EstateDiscovery',
-    webRoute: '/oferty',
-  },
-  OWNER: {
-    id: 'OWNER',
-    mode: 'OWNER',
+  ACCOUNT: {
+    id: 'ACCOUNT',
+    mode: 'APP',
     appRoute: 'MainTabs/Profil',
     webRoute: '/moje-konto',
   },
+  PRO: {
+    id: 'PRO',
+    mode: 'APP',
+    appRoute: 'WebOnly/Cennik',
+    webRoute: '/cennik',
+  },
 };
 
+/** @deprecated Użyj HOME_CTA_CONTRACT — mapowanie starych ID z analytics. */
+export const LEGACY_HOME_CTA_MAP: Record<string, HomeCtaId> = {
+  BUY: 'RADAR',
+  SELL: 'LIST',
+  INVESTOR: 'RADAR',
+  OWNER: 'ACCOUNT',
+};

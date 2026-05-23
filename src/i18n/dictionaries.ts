@@ -37,8 +37,10 @@ export type Dictionary = {
     lead: string;
     leadBold: string;
     leadExtra: string;
-    ctaBuy: string;
-    ctaSell: string;
+    ctaRadar: string;
+    ctaList: string;
+    ctaAccount: string;
+    ctaPro: string;
     exploreMap: string;
   };
   pulse: {
@@ -223,9 +225,11 @@ const pl: Dictionary = {
     leadBold: "bez kosztów",
     leadExtra:
       " lub odkryj swój nowy adres. Ustaw Inteligentny Radar raz — oferty premium dotrą do Ciebie same.",
-    ctaBuy: "Kup",
-    ctaSell: "Dodaj ofertę",
-    exploreMap: "Eksploruj rynek",
+    ctaRadar: "Szukaj na Radarze",
+    ctaList: "Dodaj ofertę",
+    ctaAccount: "Moje konto",
+    ctaPro: "Pakiety Pro",
+    exploreMap: "Mapa ofert",
   },
   pulse: {
     title: "Puls rynku",
@@ -425,8 +429,10 @@ const en: Dictionary = {
     leadBold: "at no cost",
     leadExtra:
       " or discover your next address anywhere. Set Intelligent Radar once — premium matches arrive on their own.",
-    ctaBuy: "Acquire",
-    ctaSell: "List property",
+    ctaRadar: "Search on Radar",
+    ctaList: "List property",
+    ctaAccount: "My account",
+    ctaPro: "Pro plans",
     exploreMap: "Explore market",
   },
   pulse: {

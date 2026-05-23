@@ -360,7 +360,8 @@ export default function CRMDashboard() {
     currentUser?.isPro === 'true' ||
     currentUser?.role === 'ADMIN' ||
     isPartnerPlan;
-  const isPartnerMode = mode === 'AGENCY';
+  const isAgentAccount =
+    currentUser?.role === 'AGENT' || isPartnerPlan;
 
   const mockUsers = [
     { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
@@ -922,7 +923,7 @@ export default function CRMDashboard() {
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">{isPartnerMode ? 'Panel Partnera' : 'Panel Inwestora'}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">Moje konto EstateOS™</p>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
                 {avatarSrc ? (
@@ -1042,7 +1043,7 @@ export default function CRMDashboard() {
             }`}>
               
              {activeTab === 'radar' && (
-  isPartnerMode ? (
+  isAgentAccount ? (
   <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-full perspective-1000">
     <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(16,185,129,0.25),inset_0_0_24px_rgba(251,146,60,0.15)] bg-gradient-to-tr from-emerald-950/35 via-black/40 to-amber-950/35" />
     <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }} className="absolute inset-0 rounded-full">
@@ -1157,7 +1158,7 @@ export default function CRMDashboard() {
                 <div className="flex items-center gap-6">
                   <div className="relative flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-black border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)] overflow-hidden">
                      <div className="absolute inset-0 rounded-full border border-emerald-500/25 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                     {isPartnerMode ? (
+                     {isAgentAccount ? (
                        <>
                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }} className="absolute inset-2 rounded-full">
                            <div className="w-full h-full bg-[conic-gradient(from_0deg,transparent_75%,rgba(16,185,129,0.45)_100%)]" />
@@ -1177,9 +1178,9 @@ export default function CRMDashboard() {
                   <div>
                     <h3 className="text-white text-2xl font-black tracking-tighter">Active Scanning</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${isPartnerMode ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
-                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${isPartnerMode ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
-                        {isPartnerMode ? 'Dual radar active' : 'Radar active'}
+                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${isAgentAccount ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
+                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${isAgentAccount ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
+                        {isAgentAccount ? 'Dual radar active' : 'Radar active'}
                       </span>
                     </div>
                   </div>
@@ -1397,15 +1398,15 @@ export default function CRMDashboard() {
                  ))}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
-            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${isPartnerMode ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
+            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${isAgentAccount ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
                 <div className={`flex items-center gap-4 mb-6 relative z-10`}>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
                   >
-                  <Radar size={48} className={isPartnerMode ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
+                  <Radar size={48} className={isAgentAccount ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
                   </motion.div>
-                  {isPartnerMode && (
+                  {isAgentAccount && (
                     <motion.div
                       animate={{ rotate: -360 }}
                       transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
@@ -1414,12 +1415,8 @@ export default function CRMDashboard() {
                     </motion.div>
                   )}
                 </div>
-                <p className="text-white/40 font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4">
-                  {mode === 'BUYER'
-                    ? 'Radar skanuje oferty w okresie premiery i po niej. Wyniki pojawią się tutaj.'
-                    : isPartnerMode
-                      ? 'Gdy pojawią się dopasowane preferencje kupujących i dopasowane oferty pod Twój profil prowadzenia, rekordy pokażemy tutaj jako leady Radar Pro.'
-                    : 'Czekamy na dopasowanie zweryfikowanych kupców do Twoich ogłoszeń.'}
+                <p className="text-white/40 font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
+                  Ustaw kryteria Radaru — dopasowane oferty pojawią się tutaj. Jedno konto: szukasz i wystawiasz, jak w aplikacji mobilnej.
                 </p>
                 <div className="mt-6 flex gap-2">
                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

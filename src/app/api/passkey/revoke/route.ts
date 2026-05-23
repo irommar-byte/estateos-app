@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 function parseUserIdFromVerifiedPayload(payload: unknown): number | null {
   const p = payload as Record<string, unknown> | null;
@@ -105,10 +106,12 @@ export async function POST(req: Request) {
         );
       }
 
+      const hasPasskey = await userHasRegisteredPasskey(finalUserId);
       return NextResponse.json({
         success: true,
         message: 'Klucz tego urządzenia został usunięty.',
         deletedCount: deleted.count,
+        hasPasskey,
       });
     }
 
@@ -120,6 +123,7 @@ export async function POST(req: Request) {
       success: true,
       message: 'Wszystkie passkey dla konta zostały usunięte.',
       deletedCount: deleted.count,
+      hasPasskey: false,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

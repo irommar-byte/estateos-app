@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 function parseUserIdFromBearer(req: Request): number | null {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization');
@@ -58,8 +59,9 @@ async function removePasskeys(req: Request) {
         { status: 404 }
       );
     }
+    const hasPasskey = await userHasRegisteredPasskey(userId);
     return NextResponse.json(
-      { success: true, deletedCount: deleted.count, hasPasskey: false },
+      { success: true, deletedCount: deleted.count, hasPasskey },
       { headers: { 'Cache-Control': 'no-store' } }
     );
   }

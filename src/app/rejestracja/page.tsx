@@ -33,8 +33,14 @@ export default function RejestracjaPage() {
           </div>
 
           <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
-            Ten sam proces co w aplikacji mobilnej EstateOS: imię, nazwisko, e-mail, telefon z kodem kraju,
-            hasło i opcjonalnie konto Partner lub biura.
+            Ten sam proces co w aplikacji mobilnej EstateOS™: imię, nazwisko, e-mail, telefon z kodem kraju,
+            hasło oraz wybór <strong className="text-[var(--eos-text)]">osoby prywatnej</strong> lub{' '}
+            <strong className="text-[var(--eos-text)]">agenta / biura</strong>. Bez podziału na kupującego i sprzedającego.
+            Pakiety Pro i partner — w{' '}
+            <Link href="/cennik" className="text-emerald-500 hover:underline">
+              cenniku
+            </Link>
+            .
           </p>
 
           <RegisterForm />

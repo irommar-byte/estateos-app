@@ -2,10 +2,11 @@ import { generateAuthenticationOptions } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
-import { mobilePasskeyChallenges } from '../_challengeStore';
+import { setLoginPasskeyChallenge } from '../_challengeStore';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { getPasskeyRpId } from '@/lib/env.server';
+import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -36,14 +37,23 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Brak kluczy Passkey' }, { status: 400 });
       }
 
-      const options = await generateAuthenticationOptions({ rpID, userVerification: 'preferred' });
-      mobilePasskeyChallenges.set(sessionId, options.challenge);
-      await prisma.user.update({ where: { id: user.id }, data: { otpCode: options.challenge } });
+      const allowCredentials = authenticators.map((auth) => ({
+        id: normalizeCredentialIdToBase64URL(auth.credentialID),
+        type: 'public-key' as const,
+        transports: ['internal', 'hybrid'] as ('internal' | 'hybrid')[],
+      }));
+
+      const options = await generateAuthenticationOptions({
+        rpID,
+        userVerification: 'preferred',
+        allowCredentials,
+      });
+      await setLoginPasskeyChallenge(sessionId, options.challenge);
       return NextResponse.json({ ...options, sessionId });
     }
 
     const options = await generateAuthenticationOptions({ rpID, userVerification: 'preferred' });
-    mobilePasskeyChallenges.set(sessionId, options.challenge);
+    await setLoginPasskeyChallenge(sessionId, options.challenge);
     return NextResponse.json({ ...options, sessionId });
   } catch (error) {
     logEvent('error', 'mobile_passkey_auth_options_failed', 'api.mobile.v1.passkeys.auth-options', {
@@ -66,7 +76,7 @@ export async function GET(req: Request) {
     });
 
     const sessionId = crypto.randomUUID();
-    mobilePasskeyChallenges.set(sessionId, options.challenge);
+    await setLoginPasskeyChallenge(sessionId, options.challenge);
     return NextResponse.json({ ...options, sessionId });
   } catch (error) {
     logEvent('error', 'mobile_passkey_auth_options_get_failed', 'api.mobile.v1.passkeys.auth-options', {

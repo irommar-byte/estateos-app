@@ -2,20 +2,29 @@ import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { signMobileToken } from '@/lib/jwtMobile';
-import { mobilePasskeyChallenges } from '../_challengeStore';
+import { clearLoginPasskeyChallenge, getLoginPasskeyChallenge } from '../_challengeStore';
+import { extractAuthenticationResponse } from '@/lib/passkeyMobileRequest';
+import { buildExpectedPasskeyOrigins, extractOriginFromWebAuthnResponse } from '@/lib/passkeyOrigins';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
-import { getPasskeyOrigin, getPasskeyRpId } from '@/lib/env.server';
+import { getPasskeyRpId } from '@/lib/env.server';
 import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
+import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const response = body?.response || body?.credential || body?.assertion || body;
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const response = extractAuthenticationResponse(body);
     const sessionId = String(body?.sessionId || body?.challengeId || '').trim();
-    const rawCredentialId = String(response?.id || response?.rawId || '').trim();
+
+    if (!response) {
+      return NextResponse.json({ error: 'Brak danych Passkey (credential)' }, { status: 400 });
+    }
+
+    const rawCredentialId = String(response.id || response.rawId || '').trim();
 
     const ipBucket = checkRateLimit(`mobile-passkeys-auth-verify:ip:${ip}`, 25, 60_000);
     if (!ipBucket.allowed) return rateLimitResponse(ipBucket.retryAfterSeconds);
@@ -49,21 +58,19 @@ export async function POST(req: Request) {
     const userBucket = checkRateLimit(`mobile-passkeys-auth-verify:user:${user.id}`, 12, 60_000);
     if (!userBucket.allowed) return rateLimitResponse(userBucket.retryAfterSeconds);
 
-    const expectedChallenge = user.otpCode || (sessionId ? mobilePasskeyChallenges.get(sessionId) || null : null);
+    const expectedChallenge =
+      (sessionId ? await getLoginPasskeyChallenge(sessionId) : null) || user.otpCode || null;
     if (!expectedChallenge) {
-      return NextResponse.json({ error: 'Brak wyzwania' }, { status: 400 });
+      return NextResponse.json({ error: 'Brak wyzwania — spróbuj ponownie' }, { status: 400 });
     }
 
-    const configuredOrigin = String(getPasskeyOrigin() || '').replace(/\/$/, '');
-    const expectedOrigins =
-      process.env.NODE_ENV === 'production'
-        ? Array.from(new Set([configuredOrigin, 'https://estateos.pl', 'https://www.estateos.pl'].filter(Boolean)))
-        : [configuredOrigin || 'http://localhost:3000'];
+    const parsedOrigin = extractOriginFromWebAuthnResponse(response);
+    const expectedOrigins = buildExpectedPasskeyOrigins(parsedOrigin);
 
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge,
-      expectedOrigin: expectedOrigins.length > 1 ? expectedOrigins : expectedOrigins[0] || getPasskeyOrigin(),
+      expectedOrigin: expectedOrigins,
       expectedRPID: getPasskeyRpId(),
       credential: {
         id: auth.credentialID,
@@ -86,11 +93,20 @@ export async function POST(req: Request) {
     }
 
     await prisma.user.update({ where: { id: user.id }, data: { otpCode: null } });
-    if (sessionId) mobilePasskeyChallenges.delete(sessionId);
+    if (sessionId) await clearLoginPasskeyChallenge(sessionId);
+
+    const profile = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: MOBILE_USER_SELECT,
+    });
+    const hasPasskey = await userHasRegisteredPasskey(user.id);
 
     return NextResponse.json({
       success: true,
-      user: { id: user.id, email: user.email, role: user.role, name: user.name, image: user.image },
+      hasPasskey,
+      user: profile
+        ? { ...shapeMobileUser(profile), hasPasskey }
+        : { id: user.id, email: user.email, hasPasskey },
       token: signMobileToken({ id: user.id, email: user.email, role: user.role, credentialId: auth.credentialID }),
       credentialId: auth.credentialID,
     });

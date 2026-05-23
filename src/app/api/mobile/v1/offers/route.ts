@@ -208,30 +208,43 @@ export async function POST(req: Request) {
       offerId: Number(offer.id),
       action: 'CREATE_AND_ACTIVATE',
     });
-    if (quote.requiresPayment) {
-      const txId = String(body?.publication?.iapTransactionId ?? '').trim();
-      if (!txId) {
-        return NextResponse.json(
-          {
-            success: true,
-            offer,
-            activationSkipped: true,
-            errorCode: 'PUBLICATION_REQUIRES_PLUS',
-            message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
-            quote,
-          },
-          { status: 422 }
-        );
-      }
+    const pub = body?.publication;
+    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
+    const bypassPaymentRequirement =
+      pub?.kind === 'FREE_FIRST' ||
+      Boolean(pub?.bonusCouponId) ||
+      pub?.kind === 'PLUS_CREDIT' ||
+      pub?.consumePlusPublication === true;
+
+    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
+      return NextResponse.json(
+        {
+          success: false,
+          offer,
+          activationSkipped: true,
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
+          quote,
+        },
+        { status: 422 }
+      );
     }
+    const activationKind =
+      pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
+        ? 'PLUS_PAID'
+        : pub?.kind === 'PLUS_CREDIT' || pub?.consumePlusPublication === true
+          ? 'PLUS_CREDIT'
+          : pub?.kind === 'FREE_FIRST' || pub?.bonusCouponId
+            ? 'FREE_FIRST'
+            : txId
+                ? 'PLUS_PAID'
+                : 'PLUS_CREDIT';
 
     const activation = await activateOfferPublication({
       userId: authUserId,
       offerId: Number(offer.id),
-      kind: quote.allowedFreeFirst ? 'FREE_FIRST' : 'PLUS_PAID',
-      iapTransactionId: quote.allowedFreeFirst
-        ? null
-        : String(body?.publication?.iapTransactionId ?? '').trim(),
+      kind: activationKind,
+      iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
 
@@ -257,6 +270,16 @@ export async function POST(req: Request) {
           success: false,
           errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
           message: 'Nie znaleziono niewykorzystanej transakcji IAP dla publikacji.',
+        },
+        { status: 409 }
+      );
+    }
+    if (e instanceof Error && e.message === 'NO_PLUS_CREDIT_AVAILABLE') {
+      return NextResponse.json(
+        {
+          success: false,
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Brak dostępnego kredytu Pakietu Plus. Kup nowy pakiet i spróbuj ponownie.',
         },
         { status: 409 }
       );

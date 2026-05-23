@@ -42,8 +42,15 @@ export async function POST(req: Request, context: RouteContext) {
       });
     }
 
-    const txId = String(body?.iapTransactionId ?? '').trim();
-    if (quote.requiresPayment && !txId) {
+    const pub = body?.publication;
+    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
+    const bypassPaymentRequirement =
+      pub?.kind === 'FREE_FIRST' ||
+      Boolean(pub?.bonusCouponId) ||
+      pub?.kind === 'PLUS_CREDIT' ||
+      pub?.consumePlusPublication === true;
+
+    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
       return NextResponse.json(
         {
           errorCode: 'PUBLICATION_REQUIRES_PLUS',
@@ -53,12 +60,22 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 422 }
       );
     }
+    const activationKind =
+      pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
+        ? 'PLUS_PAID'
+        : pub?.kind === 'PLUS_CREDIT' || pub?.consumePlusPublication === true
+          ? 'PLUS_CREDIT'
+          : pub?.kind === 'FREE_FIRST' || pub?.bonusCouponId
+            ? 'FREE_FIRST'
+            : txId
+              ? 'PLUS_PAID'
+              : 'PLUS_CREDIT';
 
     const activation = await activateOfferPublication({
       userId,
       offerId,
-      kind: quote.allowedFreeFirst ? 'FREE_FIRST' : 'PLUS_PAID',
-      iapTransactionId: quote.allowedFreeFirst ? null : txId,
+      kind: activationKind,
+      iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
 
@@ -78,6 +95,15 @@ export async function POST(req: Request, context: RouteContext) {
         {
           errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
           message: 'Nie znaleziono niewykorzystanej transakcji IAP dla tej publikacji.',
+        },
+        { status: 409 }
+      );
+    }
+    if (message === 'NO_PLUS_CREDIT_AVAILABLE') {
+      return NextResponse.json(
+        {
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Brak dostępnego kredytu Pakietu Plus. Kup nowy pakiet i spróbuj ponownie.',
         },
         { status: 409 }
       );

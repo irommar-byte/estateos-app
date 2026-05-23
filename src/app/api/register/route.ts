@@ -29,6 +29,18 @@ export async function POST(req: Request) {
     const roleUpper = String(role || '').toUpperCase();
     const isPartner = roleUpper === 'PARTNER';
 
+    if (isPartner) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'PARTNER_WEB_ONLY',
+          message:
+            'Rejestracja partnera odbywa się przez onboarding na stronie — skorzystaj z sekcji Cennik / Pro.',
+        },
+        { status: 400 },
+      );
+    }
+
     if (!cleanEmail || !password) {
       return NextResponse.json({ success: false, message: 'Brak danych' }, { status: 400 });
     }

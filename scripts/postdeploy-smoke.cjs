@@ -47,6 +47,19 @@ const mobileReconciliationChecks = [
     url: '/api/mobile/v1/admin/core/metrics',
     expectStatus: [401],
   },
+
+  {
+    name: 'mobile admin core start requires auth',
+    url: '/api/mobile/v1/admin/core/start',
+    method: 'POST',
+    expectStatus: [401],
+  },
+  {
+    name: 'mobile admin core stop requires auth',
+    url: '/api/mobile/v1/admin/core/stop',
+    method: 'POST',
+    expectStatus: [401],
+  },
   { name: 'mobile admin offers requires auth', url: '/api/mobile/v1/admin/offers', expectStatus: [401] },
   { name: 'mobile admin radar-analytics requires auth', url: '/api/mobile/v1/admin/radar-analytics', expectStatus: [401] },
   {

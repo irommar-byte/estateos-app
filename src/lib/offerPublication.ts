@@ -3,11 +3,13 @@ import { prisma } from '@/lib/prisma';
 const PUBLICATION_DURATION_DAYS = 30;
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
 
-export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID';
+export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
 export type PublicationEndReason = 'EXPIRED' | 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN';
 export type PublicationQuoteReason =
   | 'NOT_FIRST_OFFER'
   | 'FREE_ALREADY_USED'
+  | 'PLUS_CREDIT_AVAILABLE'
+  | 'PUBLICATION_REQUIRES_PLUS'
   | 'REACTIVATION_AFTER_ARCHIVE'
   | 'REACTIVATION_AFTER_SOLD'
   | 'ALREADY_ACTIVE'
@@ -50,6 +52,14 @@ function asDb(db?: any): any {
 function toBooleanFlag(value: unknown): boolean {
   const n = Number(value ?? 0);
   return Number.isFinite(n) && n > 0;
+}
+
+function hasPlusCreditOnUser(user: { extraListings?: number | null; plusExpiresAt?: Date | string | null }) {
+  const credits = Number(user?.extraListings ?? 0);
+  if (!Number.isFinite(credits) || credits <= 0) return false;
+  if (!user?.plusExpiresAt) return false;
+  const expiresAt = new Date(user.plusExpiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
 
 function isIgnorableSchemaError(error: unknown) {
@@ -211,27 +221,24 @@ export async function getPublicationQuote(params: {
   }
 
   const userRows = (await db.$queryRawUnsafe(
-    'SELECT id, firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
+    'SELECT id, firstFreePublicationUsed, extraListings, plusExpiresAt FROM `User` WHERE id = ? LIMIT 1',
     userId
-  )) as Array<{ id: number; firstFreePublicationUsed: number }>;
+  )) as Array<{
+    id: number;
+    firstFreePublicationUsed: number;
+    extraListings: number | null;
+    plusExpiresAt: Date | string | null;
+  }>;
   const user = userRows[0];
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  const firstRows = (await db.$queryRawUnsafe(
-    'SELECT MIN(id) AS firstOfferId FROM `Offer` WHERE userId = ?',
-    userId
-  )) as Array<{ firstOfferId: number | null }>;
-  const firstOfferId = Number(firstRows?.[0]?.firstOfferId ?? 0) || null;
-
-  const firstFreeUsed = toBooleanFlag(user.firstFreePublicationUsed);
-  const canUseFreeFirst = firstOfferId === offerId && !firstFreeUsed;
-  if (canUseFreeFirst) {
+  if (hasPlusCreditOnUser(user)) {
     return {
       offerId,
       action,
       requiresPayment: false,
-      allowedFreeFirst: true,
-      reason: null,
+      allowedFreeFirst: false,
+      reason: 'PLUS_CREDIT_AVAILABLE',
       productId: PAKIET_PLUS_PRODUCT_ID,
     };
   }
@@ -240,7 +247,6 @@ export async function getPublicationQuote(params: {
   let reason: PublicationQuoteReason = 'NOT_FIRST_OFFER';
   if (last?.endReason === 'SOLD') reason = 'REACTIVATION_AFTER_SOLD';
   else if (last) reason = 'REACTIVATION_AFTER_ARCHIVE';
-  else if (firstOfferId === offerId && firstFreeUsed) reason = 'FREE_ALREADY_USED';
 
   return {
     offerId,
@@ -259,21 +265,25 @@ export async function getCreatePublicationQuote(params: {
   const db = asDb(params.db);
   await ensureOfferPublicationSchema();
   const userRows = (await db.$queryRawUnsafe(
-    'SELECT id, firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
+    'SELECT id, firstFreePublicationUsed, extraListings, plusExpiresAt FROM `User` WHERE id = ? LIMIT 1',
     params.userId
-  )) as Array<{ id: number; firstFreePublicationUsed: number }>;
+  )) as Array<{
+    id: number;
+    firstFreePublicationUsed: number;
+    extraListings: number | null;
+    plusExpiresAt: Date | string | null;
+  }>;
   const user = userRows[0];
   if (!user) throw new Error('USER_NOT_FOUND');
 
-  const count = await db.offer.count({ where: { userId: params.userId } });
-  const firstFreeUsed = toBooleanFlag(user.firstFreePublicationUsed);
-  const allowedFreeFirst = count === 0 && !firstFreeUsed;
+  const hasPlusCredit = hasPlusCreditOnUser(user);
+  const requiresPayment = !hasPlusCredit;
   return {
     offerId: null,
     action: 'CREATE_AND_ACTIVATE',
-    requiresPayment: !allowedFreeFirst,
-    allowedFreeFirst,
-    reason: allowedFreeFirst ? null : firstFreeUsed ? 'FREE_ALREADY_USED' : 'NOT_FIRST_OFFER',
+    requiresPayment,
+    allowedFreeFirst: false,
+    reason: hasPlusCredit ? 'PLUS_CREDIT_AVAILABLE' : 'PUBLICATION_REQUIRES_PLUS',
     productId: PAKIET_PLUS_PRODUCT_ID,
   };
 }
@@ -297,8 +307,7 @@ export async function activateOfferPublication(params: {
   const now = new Date();
   const endsAt = new Date(now.getTime() + PUBLICATION_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
-  const txId =
-    params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
+  const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
   if (params.kind === 'PLUS_PAID' && !txId) {
     throw new Error('IAP_TRANSACTION_REQUIRED');
   }
@@ -329,6 +338,21 @@ export async function activateOfferPublication(params: {
       );
       if (Number(consume || 0) < 1) {
         throw new Error('IAP_TRANSACTION_NOT_AVAILABLE');
+      }
+    } else if (params.kind === 'PLUS_CREDIT') {
+      const consumeCredit = await tx.$executeRawUnsafe(
+        `
+          UPDATE \`User\`
+          SET extraListings = GREATEST(0, extraListings - 1)
+          WHERE id = ?
+            AND extraListings > 0
+            AND plusExpiresAt IS NOT NULL
+            AND plusExpiresAt > NOW(3)
+        `,
+        params.userId
+      );
+      if (Number(consumeCredit || 0) < 1) {
+        throw new Error('NO_PLUS_CREDIT_AVAILABLE');
       }
     }
 

@@ -17,7 +17,8 @@ import {
 import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 
-type AccountKind = 'private' | 'partner' | 'agency';
+/** Zgodne z aplikacją mobilną: PRIVATE | AGENT (bez PARTNER — partner/Pro tylko przez /cennik). */
+type AccountKind = 'private' | 'agent';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
@@ -98,10 +99,11 @@ export default function RegisterForm() {
 
   const handlePhoneChange = useCallback((v: string) => setPhoneE164(v), []);
 
-  const rolePayload = (): { role?: string; companyName?: string } => {
-    if (accountKind === 'partner') return { role: 'PARTNER' };
-    if (accountKind === 'agency') return { role: 'AGENT', companyName: companyName.trim() };
-    return {};
+  const rolePayload = (): { role: 'PRIVATE' | 'AGENT'; companyName?: string } => {
+    if (accountKind === 'agent') {
+      return { role: 'AGENT', companyName: companyName.trim() };
+    }
+    return { role: 'PRIVATE' };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -132,8 +134,8 @@ export default function RegisterForm() {
       setError('Hasła nie są identyczne.');
       return;
     }
-    if (accountKind === 'agency' && !companyName.trim()) {
-      setError('Podaj nazwę biura nieruchomości.');
+    if (accountKind === 'agent' && companyName.trim().length < 2) {
+      setError('Podaj nazwę biura nieruchomości (min. 2 znaki).');
       return;
     }
     if (!acceptTerms) {
@@ -158,6 +160,7 @@ export default function RegisterForm() {
         body: JSON.stringify({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
+          name: `${firstName.trim()} ${lastName.trim()}`.trim(),
           email: trimmedEmail,
           password,
           phone: e164,
@@ -175,7 +178,9 @@ export default function RegisterForm() {
 
       setSuccessMsg('Konto utworzone. Przekierowuję…');
       const role = data.role || data.user?.role || 'USER';
-      window.location.href = role === 'ADMIN' ? '/centrala' : '/moje-konto';
+      window.setTimeout(() => {
+        window.location.href = role === 'ADMIN' ? '/centrala' : '/moje-konto';
+      }, 400);
     } catch {
       setError('Błąd połączenia z serwerem.');
       setLoading(false);
@@ -287,13 +292,20 @@ export default function RegisterForm() {
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Typ konta</p>
-        <div className="grid gap-2">
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Typ konta (jak w aplikacji)</p>
+        <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
-              { id: 'private' as const, label: 'Kupuję / szukam nieruchomości', desc: 'Konto prywatne' },
-              { id: 'partner' as const, label: 'Partner EstateOS™', desc: 'Tryb biura partnerskiego (jak w aplikacji)' },
-              { id: 'agency' as const, label: 'Biuro nieruchomości (agent)', desc: 'Wymaga nazwy firmy' },
+              {
+                id: 'private' as const,
+                label: 'Osoba prywatna',
+                desc: 'Szukasz i wystawiasz — jedno konto, bez podziału kupujący/sprzedający.',
+              },
+              {
+                id: 'agent' as const,
+                label: 'Agent / biuro',
+                desc: 'Pośrednik z nazwą firmy (pole biura wymagane).',
+              },
             ] as const
           ).map((opt) => (
             <button
@@ -307,13 +319,20 @@ export default function RegisterForm() {
               }`}
             >
               <span className="block text-sm font-black text-white">{opt.label}</span>
-              <span className="text-[10px] text-white/40">{opt.desc}</span>
+              <span className="text-[10px] leading-relaxed text-white/40">{opt.desc}</span>
             </button>
           ))}
         </div>
+        <p className="text-[10px] leading-relaxed text-white/35">
+          Pakiety <strong className="text-amber-400/90">Investor Pro</strong> i onboarding partnera — tylko w{' '}
+          <Link href="/cennik" className="text-emerald-500 hover:underline">
+            cenniku na stronie
+          </Link>
+          , nie przy rejestracji.
+        </p>
       </div>
 
-      {accountKind === 'agency' && (
+      {accountKind === 'agent' && (
         <div>
           <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
             <Building2 size={14} /> Nazwa biura
@@ -321,6 +340,7 @@ export default function RegisterForm() {
           <input
             type="text"
             required
+            maxLength={80}
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
             className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
@@ -374,12 +394,7 @@ export default function RegisterForm() {
 
       <button
         type="submit"
-        disabled={
-          loading ||
-          emailStatus === 'taken' ||
-          phoneStatus === 'taken' ||
-          !acceptTerms
-        }
+        disabled={loading || emailStatus === 'taken' || phoneStatus === 'taken' || !acceptTerms}
         style={{ backgroundColor: '#10b981', color: '#000000' }}
         className="mt-2 flex w-full items-center justify-center gap-3 rounded-full py-6 text-sm font-black uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
       >

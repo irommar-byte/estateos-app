@@ -8,6 +8,7 @@ import { activeChallenges, getRpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
+import { savePasskeyLoginChallenge } from '@/lib/passkeyChallengeDb';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -28,7 +29,7 @@ export async function POST(req: Request) {
       }
     }
 
-    let allowCredentials: Array<{ id: string; type: 'public-key' }> | undefined;
+    let allowCredentials: Array<{ id: string; type: 'public-key'; transports?: ('internal' | 'hybrid')[] }> | undefined;
 
     if (email) {
       const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
           allowCredentials = authenticators.map((a) => ({
             id: normalizeCredentialIdToBase64URL(a.credentialID as string),
             type: 'public-key' as const,
+            transports: ['internal', 'hybrid'],
           }));
         }
       }
@@ -48,13 +50,14 @@ export async function POST(req: Request) {
 
     const options = await generateAuthenticationOptions({
       rpID: getRpID(),
-      timeout: 60000,
+      timeout: 120000,
       userVerification: 'preferred',
       allowCredentials,
     });
 
     const sessionId = crypto.randomUUID();
     activeChallenges.set(sessionId, options.challenge);
+    await savePasskeyLoginChallenge(sessionId, options.challenge);
 
     return NextResponse.json({ publicKey: options, sessionId });
   } catch (error) {

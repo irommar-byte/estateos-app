@@ -4,41 +4,71 @@ import { NextResponse } from 'next/server';
 import { verifyAuthenticationResponse } from '@simplewebauthn/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
-import { activeChallenges, getOrigin, getRpID } from '../../store';
+import { activeChallenges, getRpID } from '../../store';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
 import { credentialPublicKeyToUint8Array } from '@/lib/passkeyDbEncoding';
+import {
+  buildExpectedPasskeyOrigins,
+  extractOriginFromWebAuthnResponse,
+} from '@/lib/passkeyOrigins';
+import {
+  clearPasskeyLoginChallenge,
+  getPasskeyLoginChallenge,
+} from '@/lib/passkeyChallengeDb';
+import { extractAuthenticationResponse } from '@/lib/passkeyMobileRequest';
+import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
 
   try {
-    const body = await req.json();
-    const { sessionId, ...assertion } = body;
+    const body = (await req.json()) as Record<string, unknown>;
+    const sessionId = String(body?.sessionId || '').trim();
+    const responsePayload = extractAuthenticationResponse(body);
+
+    if (!responsePayload) {
+      return NextResponse.json({ error: 'Brak danych Passkey (credential)' }, { status: 400 });
+    }
 
     const bucket = checkRateLimit(`passkey-login-finish:ip:${ip}`, 25, 60_000);
     if (!bucket.allowed) {
       return rateLimitResponse(bucket.retryAfterSeconds);
     }
 
-    const expectedChallenge = activeChallenges.get(sessionId);
+    const expectedChallenge =
+      (sessionId && activeChallenges.get(sessionId)) ||
+      (sessionId ? await getPasskeyLoginChallenge(sessionId) : null);
+
     if (!expectedChallenge) {
-      return NextResponse.json({ error: 'Challenge expired' }, { status: 400 });
+      return NextResponse.json({ error: 'Challenge expired', code: 'CHALLENGE_EXPIRED' }, { status: 400 });
     }
 
-    const normalizeBase64Url = (value: string) => value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+    const normalizeBase64Url = (value: string) =>
+      value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
     const candidateIds = new Set<string>();
     const addCandidate = (value: unknown) => {
       const str = String(value || '').trim();
       if (!str) return;
       candidateIds.add(str);
       candidateIds.add(normalizeBase64Url(str));
-      try { const asUrl = Buffer.from(str, 'base64').toString('base64url'); if (asUrl) candidateIds.add(asUrl); } catch {}
-      try { const asB64 = Buffer.from(str, 'base64url').toString('base64'); if (asB64) candidateIds.add(asB64); } catch {}
+      try {
+        const asUrl = Buffer.from(str, 'base64').toString('base64url');
+        if (asUrl) candidateIds.add(asUrl);
+      } catch {
+        /* ignore */
+      }
+      try {
+        const asB64 = Buffer.from(str, 'base64url').toString('base64');
+        if (asB64) candidateIds.add(asB64);
+      } catch {
+        /* ignore */
+      }
     };
 
-    addCandidate(assertion.id);
-    addCandidate(assertion.rawId);
+    addCandidate(responsePayload?.id);
+    addCandidate(responsePayload?.rawId);
 
     const credList = Array.from(candidateIds).filter(Boolean);
     const authRecord = credList.length
@@ -60,11 +90,12 @@ export async function POST(req: Request) {
     }
 
     const publicKeyBytes = credentialPublicKeyToUint8Array(authRecord.credentialPublicKey);
+    const parsedOrigin = extractOriginFromWebAuthnResponse(responsePayload);
 
     const verification = await verifyAuthenticationResponse({
-      response: assertion,
+      response: responsePayload,
       expectedChallenge,
-      expectedOrigin: getOrigin(),
+      expectedOrigin: buildExpectedPasskeyOrigins(parsedOrigin),
       expectedRPID: getRpID(),
       credential: {
         id: authRecord.credentialID,
@@ -74,7 +105,10 @@ export async function POST(req: Request) {
     });
 
     if (!verification.verified) {
-      return NextResponse.json({ error: 'Kryptografia klucza odrzucona' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Kryptografia klucza odrzucona', code: 'VERIFICATION_FAILED', origin: parsedOrigin },
+        { status: 400 }
+      );
     }
 
     await prisma.authenticator.update({
@@ -82,7 +116,10 @@ export async function POST(req: Request) {
       data: { counter: verification.authenticationInfo.newCounter },
     });
 
-    activeChallenges.delete(sessionId);
+    if (sessionId) {
+      activeChallenges.delete(sessionId);
+      await clearPasskeyLoginChallenge(sessionId);
+    }
 
     const jwtSecret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
     if (!jwtSecret) {
@@ -90,10 +127,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak konfiguracji JWT' }, { status: 500 });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, jwtSecret, { expiresIn: '30d' });
-    const { password: _omit, ...safeUser } = user as typeof user & { password?: string | null };
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, jwtSecret, {
+      expiresIn: '30d',
+    });
 
-    return NextResponse.json({ token, user: safeUser });
+    const profile = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: MOBILE_USER_SELECT,
+    });
+    const hasPasskey = await userHasRegisteredPasskey(user.id);
+
+    return NextResponse.json({
+      token,
+      success: true,
+      hasPasskey,
+      user: profile
+        ? { ...shapeMobileUser(profile), hasPasskey: true }
+        : { id: user.id, email: user.email, hasPasskey: true },
+    });
   } catch (error) {
     logEvent('error', 'passkey_login_finish_failed', 'api.passkey.login.finish', {
       ip,
