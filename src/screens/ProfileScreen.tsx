@@ -561,6 +561,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const [archiving, setArchiving] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
   const [reactivationChoiceVisible, setReactivationChoiceVisible] = useState(false);
+  const [reactivationChoiceLoading, setReactivationChoiceLoading] = useState(false);
   const [reactivationChoiceCoupons, setReactivationChoiceCoupons] = useState([]);
   const [reactivationChoicePlusSlots, setReactivationChoicePlusSlots] = useState(0);
   const [reactivationChoiceHasPlus, setReactivationChoiceHasPlus] = useState(false);
@@ -582,9 +583,22 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     delete recentlyReactivatedUntilRef.current[offerId];
   };
 
+  const dismissReactivationChoice = () => {
+    setReactivationChoiceVisible(false);
+    setReactivationChoiceLoading(false);
+    pendingReactivationRef.current = null;
+  };
+
+  const handleMyOffersClose = () => {
+    dismissReactivationChoice();
+    setSelectedOffer(null);
+    onClose();
+  };
+
   useEffect(() => {
     if (!visible) {
       recentlyReactivatedUntilRef.current = {};
+      dismissReactivationChoice();
       return;
     }
     const pulse = () => {
@@ -729,41 +743,46 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   };
 
   const openReactivationPublicationChoice = async (offerId: number, offerTitle: string) => {
-    if (!token || !user?.id || reactivating) return;
-    const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
-    const decision = decideReactivationFromQuote(quoteRes);
-    if (decision.action === 'block') {
-      Alert.alert(decision.title, decision.message);
-      return;
+    if (!token || !user?.id || reactivating || reactivationChoiceLoading) return;
+    setReactivationChoiceLoading(true);
+    try {
+      const quoteRes = await fetchPublicationQuote(API_URL, token, offerId);
+      const decision = decideReactivationFromQuote(quoteRes);
+      if (decision.action === 'block') {
+        Alert.alert(decision.title, decision.message);
+        return;
+      }
+
+      const latestUser = useAuthStore.getState().user ?? user;
+      const gathered = await gatherPublicationBonusCoupons({
+        apiUrl: API_URL,
+        token,
+        userId: user.id,
+        email: latestUser?.email,
+        firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
+        t,
+      });
+      const hasPlusCredit = hasAdditionalPlusPublication(latestUser);
+      const hasCoupons = gathered.coupons.length > 0;
+
+      if (decision.action === 'activate_free' && !hasCoupons && !hasPlusCredit) {
+        await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, {});
+        return;
+      }
+
+      pendingReactivationRef.current = { offerId, offerTitle };
+      setReactivationChoiceCoupons(gathered.coupons);
+      setReactivationChoicePlusSlots(getAdditionalListingSlots(latestUser));
+      setReactivationChoiceHasPlus(hasPlusCredit);
+      setReactivationChoiceVisible(true);
+    } finally {
+      setReactivationChoiceLoading(false);
     }
-
-    const latestUser = useAuthStore.getState().user ?? user;
-    const gathered = await gatherPublicationBonusCoupons({
-      apiUrl: API_URL,
-      token,
-      userId: user.id,
-      email: latestUser?.email,
-      firstFreePublicationUsed: readFirstFreePublicationUsed(latestUser as Record<string, unknown>),
-      t,
-    });
-    const hasPlusCredit = hasAdditionalPlusPublication(latestUser);
-    const hasCoupons = gathered.coupons.length > 0;
-
-    if (decision.action === 'activate_free' && !hasCoupons && !hasPlusCredit) {
-      await reactivateEndedOfferWithPakietPlus(offerId, offerTitle, {});
-      return;
-    }
-
-    pendingReactivationRef.current = { offerId, offerTitle };
-    setReactivationChoiceCoupons(gathered.coupons);
-    setReactivationChoicePlusSlots(getAdditionalListingSlots(latestUser));
-    setReactivationChoiceHasPlus(hasPlusCredit);
-    setReactivationChoiceVisible(true);
   };
 
   const handleReactivationPublicationChoice = (result: PublicationChoiceConfirm) => {
-    setReactivationChoiceVisible(false);
     const pending = pendingReactivationRef.current;
+    dismissReactivationChoice();
     if (!pending) return;
     if (result.action === 'cancel') return;
 
@@ -798,7 +817,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   const handleAction = async (actionType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (actionType === 'PREVIEW') {
-      onClose();
+      handleMyOffersClose();
       setTimeout(() => navigation.navigate("OfferDetail", { offer: selectedOffer }), 200);
     } else if (actionType === 'EDIT') {
       /*
@@ -813,7 +832,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         Alert.alert(t('profile.myOffers.alerts.editTitle'), t('profile.myOffers.alerts.editFailed'));
         return;
       }
-      onClose();
+      handleMyOffersClose();
       setTimeout(() => navigation.navigate('EditOffer', { offerId: selectedOffer.id }), 200);
     } else if (actionType === 'BUMP') {
       Alert.alert(
@@ -989,11 +1008,17 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
           {selSt === 'ARCHIVED' && (
             <PremiumActionButton
               isPrimary
-              disabled={reactivating}
+              disabled={reactivating || reactivationChoiceLoading}
               onPress={() => handleAction('REACTIVATE_30D')}
               icon="refresh-circle"
               color={{ bg: 'rgba(52,199,89,0.14)', icon: '#34C759' }}
-              title={reactivating ? t('profile.myOffers.republishing') : t('profile.myOffers.republish')}
+              title={
+                reactivating
+                  ? t('profile.myOffers.republishing')
+                  : reactivationChoiceLoading
+                    ? t('profile.myOffers.republishLoading', { defaultValue: 'Przygotowanie…' })
+                    : t('profile.myOffers.republish')
+              }
               subtitle={t('profile.myOffers.republishSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
               theme={theme}
               isDark={isDark}
@@ -1023,7 +1048,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             {selectedOffer ? t('profile.myOffers.management') : t('profile.myOffers.title')}
           </Text>
 
-          <Pressable onPress={onClose} style={{ width: 80, alignItems: 'flex-end' }}>
+          <Pressable onPress={handleMyOffersClose} style={{ width: 80, alignItems: 'flex-end' }}>
             <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 15 }}>
               <Ionicons name="close" size={20} color={theme.subtitle} />
             </View>
@@ -1043,33 +1068,34 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         ) : (
            selectedOffer ? renderManagementView() : <FlatList data={filteredOffers} extraData={`${activeTab}-${syncTick}`} keyExtractor={item => String(item.id)} renderItem={renderMyOffer} contentContainerStyle={{ padding: 16 }} ListEmptyComponent={<Text style={{ color: theme.subtitle, textAlign: 'center', marginTop: 50 }}>{t('profile.myOffers.emptySection')}</Text>} />
         )}
+        <PublicationChoiceModal
+          variant="overlay"
+          visible={reactivationChoiceVisible}
+          isDark={isDark}
+          title={publicationCopy.reactivateTitle}
+          subtitle={publicationCopy.reactivateBody}
+          couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
+          couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
+          plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
+          plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
+          plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
+            count: reactivationChoicePlusSlots,
+          })}
+          buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
+          buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
+            price: PAKIET_PLUS_PRICE_LABEL,
+          })}
+          publishLabel={t('profile.myOffers.republish')}
+          cancelLabel={t('common.cancel')}
+          couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
+          coupons={reactivationChoiceCoupons}
+          plusSlots={reactivationChoicePlusSlots}
+          hasPlusCredit={reactivationChoiceHasPlus}
+          onConfirm={handleReactivationPublicationChoice}
+          onClose={dismissReactivationChoice}
+        />
       </View>
     </Modal>
-    <PublicationChoiceModal
-      visible={reactivationChoiceVisible}
-      isDark={isDark}
-      title={publicationCopy.reactivateTitle}
-      subtitle={publicationCopy.reactivateBody}
-      couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
-      couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
-      plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
-      plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
-      plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
-        count: reactivationChoicePlusSlots,
-      })}
-      buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
-      buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
-        price: PAKIET_PLUS_PRICE_LABEL,
-      })}
-      publishLabel={t('profile.myOffers.republish')}
-      cancelLabel={t('common.cancel')}
-      couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
-      coupons={reactivationChoiceCoupons}
-      plusSlots={reactivationChoicePlusSlots}
-      hasPlusCredit={reactivationChoiceHasPlus}
-      onConfirm={handleReactivationPublicationChoice}
-      onClose={() => setReactivationChoiceVisible(false)}
-    />
     </>
   );
 };

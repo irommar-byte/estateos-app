@@ -247,44 +247,22 @@ export async function sendAdminProfilePromoCard(
       void requestBonusCouponPushNotify(token, payload.userId, card ?? undefined, body);
       return { ok: true, card: card ?? undefined };
     }
-  } catch {
-    // fallback lokalny (dev / brak API)
-  }
-
-  try {
-    const id = `local_${Date.now()}`;
-    const year = new Date().getFullYear();
-    const isBirthday = payload.templateId === 'birthday_free_listing';
-    const palette = isBirthday ? getBirthdayYearPalette(year) : null;
-    let card: ProfilePromoCardRecord = {
-      id,
-      kind: isBirthday ? 'birthday_coupon' : 'admin_promo',
-      title: body.title,
-      subtitle: body.subtitle,
-      meta: body.meta,
-      pillLabel: body.pillLabel || (isBirthday ? 'Urodziny' : 'Od admina'),
-      pillColor: palette?.pillColor ?? body.accentColor,
-      pillBg: palette?.pillBg ?? `${body.accentColor}24`,
-      pillBorder: palette?.pillBorder ?? `${body.accentColor}55`,
-      iconName: body.iconName,
-      iconBg: palette?.iconBg ?? body.accentColor,
-      borderColor: palette?.borderColor ?? `${body.accentColor}44`,
-      templateId: payload.templateId,
-      grantsFreeListing: body.grantsFreeListing || undefined,
-      couponUsed: false,
-      purpose: payload.purpose ?? (body.grantsFreeListing ? 'publication' : undefined),
-      createdAt: new Date().toISOString(),
-      birthdayYear: isBirthday ? year : undefined,
+    const serverMsg =
+      typeof data?.message === 'string'
+        ? data.message
+        : typeof data?.error === 'string'
+          ? data.error
+          : `Serwer zwrócił HTTP ${res.status}.`;
+    return {
+      ok: false,
+      error:
+        res.status === 404
+          ? 'API kuponów nie jest wdrożone na serwerze (promo-cards). Skontaktuj się z administratorem backendu.'
+          : serverMsg,
     };
-    if (isBirthday) card = applyBirthdayYearPalette(card, year);
-    const key = localKey(payload.userId);
-    const prevRaw = await AsyncStorage.getItem(key);
-    const prev = prevRaw ? JSON.parse(prevRaw) : [];
-    const next = Array.isArray(prev) ? [...prev, card] : [card];
-    await AsyncStorage.setItem(key, JSON.stringify(next));
-    return { ok: true, card };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || 'Nie udało się zapisać promocji.' };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'Brak połączenia z serwerem.';
+    return { ok: false, error: message };
   }
 }
 

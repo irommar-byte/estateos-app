@@ -40,6 +40,8 @@ type Props = {
   hasPlusCredit: boolean;
   onConfirm: (result: PublicationChoiceConfirm) => void;
   onClose: () => void;
+  /** Wewnątrz innego Modal — bez drugiego RN Modal (iOS: niewidoczna warstwa + zablokowany Profil). */
+  variant?: 'modal' | 'overlay';
 };
 
 type SelectionId = `coupon:${string}` | 'plus_credit' | 'buy_plus';
@@ -121,6 +123,7 @@ export default function PublicationChoiceModal({
   hasPlusCredit,
   onConfirm,
   onClose,
+  variant = 'modal',
 }: Props) {
   const defaultSelection = useMemo((): SelectionId => {
     if (coupons.length > 0) return `coupon:${coupons[0].id}`;
@@ -166,8 +169,7 @@ export default function PublicationChoiceModal({
     (selected === 'plus_credit' && hasPlusCredit) ||
     selected === 'buy_plus';
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+  const sheet = (
       <View style={[styles.root, { backgroundColor: panelBg }]}>
         <View style={styles.handleWrap}>
           <View style={[styles.handle, { backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' }]} />
@@ -277,12 +279,42 @@ export default function PublicationChoiceModal({
           </Pressable>
         </View>
       </View>
+  );
+
+  if (!visible) return null;
+
+  if (variant === 'overlay') {
+    return (
+      <View style={styles.overlayHost} pointerEvents="box-none">
+        <Pressable style={styles.overlayBackdrop} onPress={onClose} accessibilityRole="button" />
+        <View style={styles.overlaySheet} pointerEvents="box-none">
+          {sheet}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      {sheet}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  overlayHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 50,
+  },
+  overlayBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  overlaySheet: {
+    flex: 1,
+  },
+  root: { flex: 1, borderTopLeftRadius: 16, borderTopRightRadius: 16, overflow: 'hidden' },
   handleWrap: { alignItems: 'center', paddingTop: 10 },
   handle: { width: 36, height: 5, borderRadius: 3 },
   header: {
