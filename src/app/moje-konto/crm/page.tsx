@@ -371,12 +371,19 @@ export default function CRMDashboard() {
   const isAgentRole = isAgentRoleIdentity(currentUser);
   const isProgramPartner =
     isPartnerIdentity(currentUser) && !isAgentRole;
+  const isElitePartner =
+    currentUser?.badges?.isPartner === true ||
+    Boolean(currentUser?.isPartner || currentUser?.partner) ||
+    isProgramPartner;
   const isInvestorPro =
-    currentUser?.role === 'ADMIN' || isInvestorProIdentity(currentUser);
-  /** Radar PRO / ProWidget — tylko Investor Pro (jak w aplikacji), nie rola AGENT ani plan AGENCY. */
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.badges?.isInvestorPro === true ||
+    isInvestorProIdentity(currentUser);
+  /** ProWidget — Investor Pro (nie sam program partnerski). */
   const isPremium = isInvestorPro;
-  /** Podwójna animacja radaru — tylko Radar PRO w programie partnerskim (nie agenci). */
-  const showDualRadarPro = isProgramPartner && isInvestorPro;
+  /** Podwójny radar + etykieta Radar PRO — konto partnerskie (flaga / program), nie zwykły Agent. */
+  const showDualRadarPro =
+    isElitePartner && !(isAgentRole && !currentUser?.isPartner && !currentUser?.partner);
   const radarSummary = formatRadarSummary(
     radarDisplayFilters || defaultWebRadarFilters("Warszawa"),
   );
@@ -1173,14 +1180,22 @@ export default function CRMDashboard() {
 
           <div className="relative z-10 text-center md:text-left">
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
-              {activeTab === 'radar' && <>Investment <span className="text-emerald-500">Radar</span></>}
+              {activeTab === 'radar' && (
+                showDualRadarPro ? (
+                  <>Radar <span className="text-amber-400">PRO</span></>
+                ) : (
+                  <>Investment <span className="text-emerald-500">Radar</span></>
+                )
+              )}
               {activeTab === 'my_offers' && <>My <span className="text-blue-500">Listings</span></>}
               {activeTab === 'offers' && <>My <span className="text-blue-500">Favorites</span></>}
                {activeTab === 'planowanie' && <>Planning <span className="text-purple-500">Center</span></>}
                 {activeTab === 'transakcje' && <>Encrypted <span className="text-amber-500">Deal Rooms</span></>}
             </h2>
             <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
-               {activeTab === 'radar' && 'Set criteria exactly like in mobile: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.'}
+               {activeTab === 'radar' && (showDualRadarPro
+                 ? 'Radar PRO: kalibracja jak w aplikacji — tryb MAP (obszar na mapie) lub miasto i dzielnice. Po zapisie natychmiastowe przeliczenie dopasowań.'
+                 : 'Set criteria exactly like in mobile: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.')}
                {activeTab === 'my_offers' && 'Manage your listings in one place: statuses, renewals, negotiations, and view statistics.'}
                {activeTab === 'offers' && 'Your market watchlist. Quickly return to key properties and check their current status.'}
                {activeTab === 'planowanie' && 'Calendar as your planning hub: showings, negotiations, and daily priorities synced with your deals.'}
@@ -1219,11 +1234,17 @@ export default function CRMDashboard() {
                      )}
                   </div>
                   <div>
-                    <h3 className="text-white text-2xl font-black tracking-tighter">Active Scanning</h3>
+                    <h3 className="text-white text-2xl font-black tracking-tighter">
+                      {showDualRadarPro ? (
+                        <>Radar <span className="text-amber-400">PRO</span></>
+                      ) : (
+                        'Active Scanning'
+                      )}
+                    </h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${showDualRadarPro ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
                       <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${showDualRadarPro ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
-                        {showDualRadarPro ? 'Radar PRO · dual scan' : radarDisplayFilters?.pushNotifications === false ? 'Radar wyłączony' : 'Radar active'}
+                        {showDualRadarPro ? 'Podwójny skan · Radar PRO' : radarDisplayFilters?.pushNotifications === false ? 'Radar wyłączony' : 'Radar active'}
                       </span>
                     </div>
                   </div>

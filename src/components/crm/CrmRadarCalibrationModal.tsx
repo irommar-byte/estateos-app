@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Radar,
@@ -61,6 +62,11 @@ export default function CrmRadarCalibrationModal({
   const [draft, setDraft] = useState<WebRadarFilters>(initialFilters);
   const [areaPickerOpen, setAreaPickerOpen] = useState(false);
   const [mapAreaLabel, setMapAreaLabel] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -135,20 +141,24 @@ export default function CrmRadarCalibrationModal({
     setAreaPickerOpen(false);
   };
 
-  return (
+  const modalTree = (
     <AnimatePresence>
       {open ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md"
+          className="fixed inset-0 z-[99999] overflow-y-auto overscroll-y-contain bg-black/90 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="crm-radar-calibration-title"
         >
+          <div className="flex min-h-full items-start justify-center px-4 py-6 sm:py-10">
           <motion.div
             initial={{ scale: 0.96, y: 16 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 16 }}
-            className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] p-8 shadow-2xl"
+            className="relative my-auto w-full max-w-2xl max-h-none overflow-visible rounded-[2.5rem] border border-white/10 bg-[#0a0a0a] p-6 shadow-2xl sm:p-8"
           >
             <button
               type="button"
@@ -163,14 +173,14 @@ export default function CrmRadarCalibrationModal({
                 <Radar className="text-emerald-500" size={22} />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-white">Kalibracja radaru</h3>
+                <h3 id="crm-radar-calibration-title" className="text-2xl font-black text-white">Kalibracja radaru</h3>
                 <p className="mt-1 text-xs uppercase tracking-widest text-white/40">
                   Te same ustawienia co w aplikacji mobilnej
                 </p>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="relative z-10 space-y-6">
+            <form onSubmit={handleSubmit} className="relative z-10 max-h-[min(72vh,720px)] space-y-6 overflow-y-auto overscroll-y-contain pr-1">
               <div
                 className={`rounded-2xl border p-5 transition-colors ${
                   radarAwake ? "border-emerald-500/30 bg-emerald-500/5" : "border-white/10 bg-white/[0.02]"
@@ -235,21 +245,26 @@ export default function CrmRadarCalibrationModal({
                     </div>
                   </div>
 
-                  <div className="flex rounded-full border border-white/10 bg-[#111] p-1">
-                    {(["CITY", "MAP"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setDraft((p) => ({ ...p, calibrationMode: mode }))}
-                        className={`flex-1 rounded-full py-2.5 text-[10px] font-black uppercase tracking-widest transition-all ${
-                          draft.calibrationMode === mode
-                            ? "bg-emerald-500 text-black"
-                            : "text-white/40 hover:text-white/70"
-                        }`}
-                      >
-                        {mode === "CITY" ? "Miasto i dzielnice" : "Obszar mapy"}
-                      </button>
-                    ))}
+                  <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400/90">
+                      Lokalizacja · wybierz sposób
+                    </p>
+                    <div className="flex rounded-full border border-white/10 bg-[#111] p-1">
+                      {(["CITY", "MAP"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setDraft((p) => ({ ...p, calibrationMode: mode }))}
+                          className={`flex-1 rounded-full py-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                            draft.calibrationMode === mode
+                              ? "bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.35)]"
+                              : "text-white/40 hover:text-white/70"
+                          }`}
+                        >
+                          {mode === "CITY" ? "Miasto i dzielnice" : "Obszar na mapie"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {draft.calibrationMode === "MAP" ? (
@@ -500,6 +515,7 @@ export default function CrmRadarCalibrationModal({
               </button>
             </form>
           </motion.div>
+          </div>
         </motion.div>
       ) : null}
 
@@ -513,4 +529,7 @@ export default function CrmRadarCalibrationModal({
       />
     </AnimatePresence>
   );
+
+  if (!mounted) return null;
+  return createPortal(modalTree, document.body);
 }
