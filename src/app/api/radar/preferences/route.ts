@@ -68,7 +68,6 @@ export async function POST(req: Request) {
       requireElevator,
       requireParking,
       requireFurnished,
-      requireTwoLevel,
       pushNotifications,
       lat,
       lng,
@@ -122,7 +121,6 @@ export async function POST(req: Request) {
         requireElevator: !!requireElevator,
         requireParking: !!requireParking,
         requireFurnished: !!requireFurnished,
-        requireTwoLevel: !!requireTwoLevel,
         pushNotifications: pushNotifications !== false,
         minMatchThreshold: body.minMatchThreshold ?? 70,
         lat: mapLat,
@@ -143,7 +141,6 @@ export async function POST(req: Request) {
         requireElevator: !!requireElevator,
         requireParking: !!requireParking,
         requireFurnished: !!requireFurnished,
-        requireTwoLevel: !!requireTwoLevel,
         pushNotifications: pushNotifications !== false,
         minMatchThreshold: body.minMatchThreshold ?? 70,
         lat: mapLat,
@@ -166,14 +163,18 @@ export async function POST(req: Request) {
       requireElevator: !!requireElevator,
       requireParking: !!requireParking,
       requireFurnished: !!requireFurnished,
-      requireTwoLevel: !!requireTwoLevel,
+      requireTwoLevel: !!body.requireTwoLevel,
       pushNotifications: pushNotifications !== false,
       minMatchThreshold: body.minMatchThreshold ?? 70,
       lat: mapLat,
       lng: mapLng,
       radius: mapRadius,
     };
-    await syncUserLegacySearchFromRadarPreference(targetUserId, canonicalPayload);
+    try {
+      await syncUserLegacySearchFromRadarPreference(targetUserId, canonicalPayload);
+    } catch (syncErr) {
+      console.error('radar legacy User.search sync failed', syncErr);
+    }
 
     const radarPreference = shapeRadarPreference(pref);
 

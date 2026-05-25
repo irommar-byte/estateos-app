@@ -5,7 +5,8 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
-import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
+import { shapeRadarPreference, type RadarPreferenceDto } from '@/lib/radarPreferenceShape';
+import type { RadarPreference } from '@prisma/client';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
@@ -49,6 +50,19 @@ const PROFILE_SELECT = {
   },
 } as const;
 
+/** Gdy pełny select (relacje JSON / radar) pada na produkcji — profil i sesja WWW nadal działają. */
+const PROFILE_SELECT_SAFE = {
+  ...MOBILE_USER_SELECT,
+  searchType: true,
+  searchMaxPrice: true,
+  searchAreaFrom: true,
+  searchRooms: true,
+  searchDistricts: true,
+  searchAmenities: true,
+  searchTransactionType: true,
+  offers: PROFILE_SELECT.offers,
+} as const;
+
 function serializeOfferAmenityTokens(offer: {
   hasBalcony?: boolean | null;
   hasElevator?: boolean | null;
@@ -67,7 +81,7 @@ function serializeOfferAmenityTokens(offer: {
   return parts.join(',');
 }
 
-async function resolveSessionUser() {
+async function fetchSessionUser(select: typeof PROFILE_SELECT | typeof PROFILE_SELECT_SAFE) {
   const cookieStore = await cookies();
   const rawSession =
     cookieStore.get('estateos_session')?.value || cookieStore.get('luxestate_user')?.value || '';
@@ -78,7 +92,7 @@ async function resolveSessionUser() {
   if (Number.isFinite(sessionId) && sessionId > 0) {
     return prisma.user.findUnique({
       where: { id: sessionId },
-      select: PROFILE_SELECT,
+      select,
     });
   }
 
@@ -86,8 +100,17 @@ async function resolveSessionUser() {
   if (!email) return null;
   return prisma.user.findUnique({
     where: { email },
-    select: PROFILE_SELECT,
+    select,
   });
+}
+
+async function resolveSessionUser() {
+  try {
+    return await fetchSessionUser(PROFILE_SELECT);
+  } catch (err) {
+    console.error('profile resolve: full select failed, retrying safe', err);
+    return fetchSessionUser(PROFILE_SELECT_SAFE);
+  }
 }
 
 function normalizeString(value: unknown, max = 120): string | null | undefined {
@@ -193,7 +216,20 @@ export async function GET() {
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
     const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
     const badges = resolveEliteBadges(user);
-    const radarPreference = shapeRadarPreference(user.radarPreference);
+    const userRadarPref =
+      'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null;
+    let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(
+      userRadarPref,
+      user.searchAmenities,
+    );
+    if (!radarPreference) {
+      try {
+        const pref = await prisma.radarPreference.findUnique({ where: { userId: user.id } });
+        radarPreference = shapeRadarPreference(pref, user.searchAmenities);
+      } catch {
+        radarPreference = null;
+      }
+    }
 
     return NextResponse.json(
       {
