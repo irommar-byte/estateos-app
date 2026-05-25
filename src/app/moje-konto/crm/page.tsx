@@ -52,6 +52,21 @@ import AppointmentManager from "@/components/AppointmentManager";
 import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import OfferListingSlots from "@/components/crm/OfferListingSlots";
+import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
+import {
+  buildLegacyRadarUpdateBody,
+  buildRadarPreferencesPostBody,
+  defaultWebRadarFilters,
+  formatRadarSummary,
+  webRadarFiltersFromPreference,
+  type WebRadarFilters,
+} from "@/lib/radarCalibrationWeb";
+import type { RadarPreferenceDto } from "@/lib/radarPreferenceShape";
+import {
+  isAgentRoleIdentity,
+  isInvestorProIdentity,
+  isPartnerIdentity,
+} from "@/utils/partnerIdentity";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -256,85 +271,38 @@ export default function CRMDashboard() {
     strictCities: [],
     strictCityDistricts: {},
   });
-  const [radarCity, setRadarCity] = useState("Warszawa");
   const [isEditRadarOpen, setIsEditRadarOpen] = useState(false);
-  const [radarFormData, setRadarFormData] = useState({ searchDistricts: [] as string[], searchRooms: '', searchAreaFrom: '', searchMaxPrice: '', searchTransactionType: 'all' });
+  const [radarCalibrationDraft, setRadarCalibrationDraft] = useState<WebRadarFilters>(
+    defaultWebRadarFilters("Warszawa"),
+  );
+  const [radarDisplayFilters, setRadarDisplayFilters] = useState<WebRadarFilters | null>(null);
   const [isSavingRadar, setIsSavingRadar] = useState(false);
   const [isRadarUpdating, setIsRadarUpdating] = useState(false);
   const [marketOffers, setMarketOffers] = useState<any[]>([]);
 
-  const toggleDistrict = (district: string) => {
-    setRadarFormData(prev => ({
-        ...prev,
-        searchDistricts: prev.searchDistricts.includes(district)
-            ? prev.searchDistricts.filter((d: string) => d !== district)
-            : [...prev.searchDistricts, district]
-    }));
-  };
-
-  const handleSaveRadar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingRadar(true);
-    
-    const formattedData = {
-        districts: radarFormData.searchDistricts,
-        rooms: radarFormData.searchRooms ? parseInt(String(radarFormData.searchRooms).replace(/\D/g, '')) : null,
-        areaFrom: radarFormData.searchAreaFrom ? parseInt(String(radarFormData.searchAreaFrom).replace(/\D/g, '')) : null,
-        maxPrice: radarFormData.searchMaxPrice ? parseInt(String(radarFormData.searchMaxPrice).replace(/\D/g, '')) : null,
-        transactionType: radarFormData.searchTransactionType
-    };
-
-    try {
-        const legacyPayload = {
-          ...formattedData,
-          city: radarCity,
-          districts: radarFormData.searchDistricts,
-        };
-
-        const [legacyRes, mobileRes] = await Promise.all([
-          fetch('/api/szukaj/aktualizuj', {
-            credentials: 'include',
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(legacyPayload)
-          }),
-          currentUser?.id
-            ? fetch('/api/radar/preferences', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  userId: currentUser.id,
-                  transactionType: radarFormData.searchTransactionType,
-                  city: radarCity,
-                  selectedDistricts: radarFormData.searchDistricts,
-                  maxPrice: radarFormData.searchMaxPrice || null,
-                  minArea: radarFormData.searchAreaFrom || null,
-                  minMatchThreshold: 70,
-                }),
-              })
-            : Promise.resolve(new Response(null, { status: 200 })),
-        ]);
-
-        if (legacyRes.ok && mobileRes.ok) {
-          setIsEditRadarOpen(false);
-          setIsRadarUpdating(true);
-          setTimeout(async () => {
-            setIsRadarUpdating(false);
-            if (currentUser?.id) {
-              await Promise.all([fetchData(currentUser.id), fetchRadarData(), fetchMarketOffers()]);
-            }
-          }, 2200);
-        }
-    } catch(err) {
-        console.error(err);
+  const loadRadarFiltersForUser = async (
+    user: any,
+    pref?: RadarPreferenceDto | null,
+  ): Promise<WebRadarFilters> => {
+    let radarPref = pref ?? user?.radarPreference ?? null;
+    if (!radarPref && user?.id) {
+      try {
+        const res = await fetch(`/api/radar/preferences?userId=${user.id}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) radarPref = data.radarPreference ?? data.pref ?? null;
+      } catch {
+        // ignore
+      }
     }
-    setIsSavingRadar(false);
-  };
-
-  const openRadarEditor = (e: React.MouseEvent) => {
-    e.preventDefault(); 
-    const userDistricts = (currentUser?.searchDistricts || '').split(',').map((d: string) => d.trim()).filter(Boolean);
+    const userDistricts = String(user?.searchDistricts || "")
+      .split(",")
+      .map((d: string) => d.trim())
+      .filter(Boolean);
     const guessedCity = (() => {
+      if (radarPref?.city) return canonicalizeCity(radarPref.city) || "Warszawa";
       if (!userDistricts.length) return "Warszawa";
       const strict = radarCatalog.strictCities || [];
       for (const city of strict) {
@@ -343,25 +311,75 @@ export default function CRMDashboard() {
       }
       return "Warszawa";
     })();
-    setRadarCity(canonicalizeCity(guessedCity) || "Warszawa");
-    setRadarFormData({ 
-       searchDistricts: userDistricts,
-       searchRooms: currentUser?.searchRooms || '', 
-       searchAreaFrom: currentUser?.searchAreaFrom || '', 
-       searchMaxPrice: currentUser?.searchMaxPrice || '',
-      searchTransactionType: currentUser?.searchTransactionType || 'all'
-    }); 
+    return webRadarFiltersFromPreference(radarPref, user, guessedCity);
+  };
+
+  const handleSaveRadarCalibration = async (filters: WebRadarFilters) => {
+    if (!currentUser?.id) return;
+    setIsSavingRadar(true);
+    try {
+      const legacyPayload = buildLegacyRadarUpdateBody(filters);
+      const prefPayload = buildRadarPreferencesPostBody(Number(currentUser.id), filters);
+
+      const [legacyRes, prefRes] = await Promise.all([
+        fetch("/api/szukaj/aktualizuj", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(legacyPayload),
+        }),
+        fetch("/api/radar/preferences", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(prefPayload),
+        }),
+      ]);
+
+      const prefData = await prefRes.json().catch(() => ({}));
+      if (!legacyRes.ok || !prefRes.ok || prefData.success === false) {
+        console.error("Radar save failed", { legacyRes, prefRes, prefData });
+        return;
+      }
+
+      setRadarDisplayFilters(filters);
+      setIsEditRadarOpen(false);
+      setIsRadarUpdating(true);
+      const refreshed = await refreshCurrentUserFromBackend();
+      setRadarDisplayFilters(await loadRadarFiltersForUser(refreshed, prefData.radarPreference));
+      setTimeout(async () => {
+        setIsRadarUpdating(false);
+        if (currentUser?.id) {
+          await Promise.all([fetchData(currentUser.id), fetchRadarData(), fetchMarketOffers()]);
+        }
+      }, 2200);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingRadar(false);
+    }
+  };
+
+  const openRadarEditor = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    const filters = await loadRadarFiltersForUser(currentUser);
+    setRadarCalibrationDraft(filters);
     setIsEditRadarOpen(true);
   };
 
-  const isPartnerPlan = currentUser?.planType === 'AGENCY' || currentUser?.advertiserType === 'agency';
-  const isPremium =
-    currentUser?.isPro === true ||
-    currentUser?.isPro === 'true' ||
-    currentUser?.role === 'ADMIN' ||
-    isPartnerPlan;
-  const isAgentAccount =
-    currentUser?.role === 'AGENT' || isPartnerPlan;
+  const isAgentRole = isAgentRoleIdentity(currentUser);
+  const isProgramPartner =
+    isPartnerIdentity(currentUser) && !isAgentRole;
+  const isInvestorPro =
+    currentUser?.role === 'ADMIN' || isInvestorProIdentity(currentUser);
+  /** Radar PRO / ProWidget — tylko Investor Pro (jak w aplikacji), nie rola AGENT ani plan AGENCY. */
+  const isPremium = isInvestorPro;
+  /** Podwójna animacja radaru — tylko Radar PRO w programie partnerskim (nie agenci). */
+  const showDualRadarPro = isProgramPartner && isInvestorPro;
+  const radarSummary = formatRadarSummary(
+    radarDisplayFilters || defaultWebRadarFilters("Warszawa"),
+  );
 
   const mockUsers = [
     { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
@@ -675,9 +693,10 @@ export default function CRMDashboard() {
       }
       
       const uData = await refreshCurrentUserFromBackend();
+      await fetchRadarCatalog();
+      setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
 
-      // Mamy usera! Odpalamy dane ofert i radaru z jego ID
-      await Promise.all([fetchData(uData.id), fetchRadarData(), fetchRadarCatalog(), fetchMarketOffers()]);
+      await Promise.all([fetchData(uData.id), fetchRadarData(), fetchMarketOffers()]);
 
       if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
         setIsBooting(true);
@@ -855,10 +874,6 @@ export default function CRMDashboard() {
   const isListingsTab = activeTab === 'my_offers';
   const isFavoritesTab = activeTab === 'offers';
   const showAddOfferTile = isListingsTab && offerSectionFilter !== 'COMPLETED';
-  const availableRadarDistricts =
-    radarCatalog.strictCityDistricts?.[radarCity] ||
-    getDistrictsForCity(radarCity) ||
-    [];
 
   const baseOffersForView = isListingsTab
     ? (crmData.offers || [])
@@ -920,6 +935,29 @@ export default function CRMDashboard() {
 
       <div className="max-w-7xl mx-auto">
         <ProStatusBar user={currentUser} />
+
+        {currentUser &&
+        (!currentUser.isEmailVerified || !currentUser.isVerifiedPhone) &&
+        currentUser.role !== 'ADMIN' ? (
+          <div className="mb-6 rounded-[1.75rem] border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-transparent p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 mb-1">Weryfikacja konta</p>
+              <p className="text-sm text-white/65 max-w-xl">
+                {!currentUser.isVerifiedPhone && !currentUser.isEmailVerified
+                  ? 'Potwierdź telefon (SMS) i e-mail, aby publikować ogłoszenia i negocjować — jak w aplikacji.'
+                  : !currentUser.isVerifiedPhone
+                    ? 'Potwierdź telefon SMS-em, aby negocjować i umawiać wizyty.'
+                    : 'Potwierdź e-mail, aby publikować ogłoszenia.'}
+              </p>
+            </div>
+            <Link
+              href="/moje-konto/weryfikacja"
+              className="shrink-0 py-3 px-6 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 text-center"
+            >
+              Zweryfikuj teraz
+            </Link>
+          </div>
+        ) : null}
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
@@ -964,12 +1002,17 @@ export default function CRMDashboard() {
             )}
           </div>
           <div className="flex items-center shrink-0 mb-1 md:mb-0 self-start md:self-auto">
-            {isPartnerPlan ? (
+            {isAgentRole ? (
+              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/15 to-amber-500/10 border border-orange-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(255,149,0,0.12)]">
+                <Briefcase size={14} className="text-orange-400" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-orange-200/90">Agent EstateOS</span>
+              </div>
+            ) : isProgramPartner ? (
               <div className="px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-[#D4AF37]/10 border border-amber-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.12)]">
                 <Crown size={14} className="text-amber-400" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-200/90">EstateOS Partner</span>
               </div>
-            ) : currentUser?.isPro ? (
+            ) : isInvestorPro ? (
               <div className="px-4 py-2 rounded-full bg-gradient-to-r from-[#D4AF37]/10 to-[#AA771C]/10 border border-[#D4AF37]/30 flex items-center gap-2 shadow-[0_0_20px_rgba(212,175,55,0.15)]">
                 <Crown size={14} className="text-[#D4AF37]" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">PRO</span>
@@ -1043,7 +1086,7 @@ export default function CRMDashboard() {
             }`}>
               
              {activeTab === 'radar' && (
-  isAgentAccount ? (
+  showDualRadarPro ? (
   <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-full perspective-1000">
     <div className="absolute inset-0 rounded-full shadow-[inset_0_0_20px_rgba(16,185,129,0.25),inset_0_0_24px_rgba(251,146,60,0.15)] bg-gradient-to-tr from-emerald-950/35 via-black/40 to-amber-950/35" />
     <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }} className="absolute inset-0 rounded-full">
@@ -1158,7 +1201,7 @@ export default function CRMDashboard() {
                 <div className="flex items-center gap-6">
                   <div className="relative flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-black border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)] overflow-hidden">
                      <div className="absolute inset-0 rounded-full border border-emerald-500/25 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                     {isAgentAccount ? (
+                     {showDualRadarPro ? (
                        <>
                          <motion.div animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }} className="absolute inset-2 rounded-full">
                            <div className="w-full h-full bg-[conic-gradient(from_0deg,transparent_75%,rgba(16,185,129,0.45)_100%)]" />
@@ -1178,9 +1221,9 @@ export default function CRMDashboard() {
                   <div>
                     <h3 className="text-white text-2xl font-black tracking-tighter">Active Scanning</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${isAgentAccount ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
-                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${isAgentAccount ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
-                        {isAgentAccount ? 'Dual radar active' : 'Radar active'}
+                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${showDualRadarPro ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
+                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${showDualRadarPro ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
+                        {showDualRadarPro ? 'Radar PRO · dual scan' : radarDisplayFilters?.pushNotifications === false ? 'Radar wyłączony' : 'Radar active'}
                       </span>
                     </div>
                   </div>
@@ -1194,140 +1237,40 @@ export default function CRMDashboard() {
 
               <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Location</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchDistricts ? currentUser.searchDistricts.split(',').length + ' Districts' : 'All'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Lokalizacja</span>
+                    <span className="text-white font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Minimum area</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchAreaFrom ? 'From ' + currentUser.searchAreaFrom + ' m²' : 'Any area'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Typ</span>
+                    <span className="text-white font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Rooms</span>
-                    <span className="text-white font-black text-sm truncate">{currentUser?.searchRooms ? currentUser.searchRooms + ' rooms' : 'All'}</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Metraż</span>
+                    <span className="text-white font-black text-sm truncate">{radarSummary.minArea}</span>
                  </div>
                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
-                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">Max budget</span>
-                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{currentUser?.searchMaxPrice ? 'Up to ' + new Intl.NumberFormat('en-US').format(currentUser.searchMaxPrice) + ' PLN' : 'No limit'}</span>
+                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">Budżet</span>
+                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
-              {currentUser?.searchAmenities && (
-                 <div className="relative z-10 mt-6 pt-6 border-t border-white/5 flex gap-3 flex-wrap items-center">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mr-2">Selected amenities:</span>
-                    {currentUser.searchAmenities.split(',').map((a: string) => (
-                       <span key={a} className="px-4 py-2 bg-[#161616] border border-white/10 rounded-xl text-white/70 text-[10px] font-black uppercase tracking-widest shadow-inner">{a.trim()}</span>
-                    ))}
-                 </div>
-              )}
+              <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
+                <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold">Próg dopasowania:</span>
+                <span className="rounded-xl border border-white/10 bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
+                  {radarSummary.threshold}
+                </span>
+              </div>
             </div>
 
-            {/* MODAL KONFIGURACJI RADARU */}
-            <AnimatePresence>
-            {isEditRadarOpen && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-                    <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen" />
-                        <button onClick={() => setIsEditRadarOpen(false)} className="absolute top-6 right-6 w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-colors cursor-pointer z-50"><X size={20}/></button>
-                        
-                        <div className="flex items-center gap-4 mb-8 z-10 relative">
-                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                                <Radar className="text-emerald-500" size={20} />
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-black text-white">Radar configuration</h3>
-                                <p className="text-white/40 text-xs uppercase tracking-widest mt-1">Matchmaking settings</p>
-                            </div>
-                        </div>
-
-                        <form onSubmit={handleSaveRadar} className="space-y-6 z-10 relative">
-
-                            {/* PRZEŁĄCZNIK KUPNO / WYNAJEM DLA RADARU */}
-                            <div>
-                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Search objective</label>
-                                <div className="flex bg-[#111] border border-white/10 rounded-full p-1.5 shadow-inner relative w-full">
-                                    <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${radarFormData.searchTransactionType === 'sale' ? 'translate-x-[calc(100%+4px)]' : (radarFormData.searchTransactionType === 'rent' ? 'translate-x-[calc(200%+8px)]' : 'translate-x-0')}`}></div>
-                                    
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'all'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'all' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>All</button>
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'sale'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'sale' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>For purchase</button>
-                                    <button type="button" onClick={() => setRadarFormData({...radarFormData, searchTransactionType: 'rent'})} className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${radarFormData.searchTransactionType === 'rent' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>For rent</button>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Miasto bazowe</label>
-                                <select
-                                  className="w-full bg-[#111] border border-white/10 rounded-2xl px-4 py-3 text-white font-bold outline-none focus:border-emerald-500 transition-colors"
-                                  value={radarCity}
-                                  onChange={(e) => {
-                                    const nextCity = canonicalizeCity(e.target.value) || "Warszawa";
-                                    setRadarCity(nextCity);
-                                    setRadarFormData((prev) => ({ ...prev, searchDistricts: [] }));
-                                  }}
-                                >
-                                  {(radarCatalog.strictCities.length ? radarCatalog.strictCities : ["Warszawa"]).map((city) => (
-                                    <option key={city} value={city}>{city}</option>
-                                  ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-3">Preferowane Dzielnice / Miasta</label>
-                                <div className="max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-500/30 scrollbar-track-white/5 p-2 bg-[#111] border border-white/10 rounded-2xl grid grid-cols-2 gap-2">
-                                    {availableRadarDistricts.map((d) => (
-                                        <div key={d} onClick={() => toggleDistrict(d)} className={`flex items-center gap-2 px-4 py-2 rounded-xl border border-white/5 cursor-pointer transition-all hover:bg-black/80 hover:border-emerald-500/30 ${radarFormData.searchDistricts.includes(d) ? 'bg-emerald-500/10 border-emerald-500/50' : ''}`}>
-                                            <div className={`w-4 h-4 rounded border border-white/20 transition-all flex items-center justify-center ${radarFormData.searchDistricts.includes(d) ? 'bg-emerald-500 border-emerald-500' : ''}`}>
-                                                {radarFormData.searchDistricts.includes(d) && <Check size={12} className="text-black" strokeWidth={3} />}
-                                            </div>
-                                            <span className={`text-[11px] font-bold uppercase tracking-widest transition-all ${radarFormData.searchDistricts.includes(d) ? 'text-white' : 'text-white/60'}`}>{d}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-2">Minimalny Metraż (m²)</label>
-                                    <div className="relative">
-                                        <Target size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500/50 pointer-events-none" />
-                                        <input type="text" className="w-full bg-[#111] border border-white/10 rounded-xl px-5 pl-12 py-4 text-white font-black text-lg outline-none focus:border-emerald-500 transition-colors" placeholder="np. 40" value={radarFormData.searchAreaFrom || ''} onChange={e => setRadarFormData({...radarFormData, searchAreaFrom: e.target.value.replace(/\D/g, '')})} />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-2">Liczba Pokoi (Select)</label>
-                                    <div className="relative">
-                                        <SlidersHorizontal size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500/50 pointer-events-none" />
-                                        <select className="w-full bg-[#111] border border-white/10 rounded-xl px-5 pl-12 py-4 text-white font-black text-lg outline-none focus:border-emerald-500 transition-colors appearance-none cursor-pointer" value={radarFormData.searchRooms || ''} onChange={e => setRadarFormData({...radarFormData, searchRooms: e.target.value})}>
-                                            <option value="">Wszystkie</option>
-                                            <option value="1">1 Pokój</option>
-                                            <option value="2">2 Pokoje</option>
-                                            <option value="3">3 Pokoje</option>
-                                            <option value="4">4+ Pokoje</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold block mb-2">Maksymalny Budżet (PLN)</label>
-                                <div className="relative">
-                                    <DollarSign size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500/50 pointer-events-none" />
-                                    <input type="text" className="w-full bg-[#111] border border-white/10 rounded-xl px-5 pl-12 py-4 text-emerald-500 font-black outline-none focus:border-emerald-500 transition-colors text-2xl" placeholder="2 500 000" value={radarFormData.searchMaxPrice || ''} onChange={e => setRadarFormData({...radarFormData, searchMaxPrice: e.target.value.replace(/\D/g, '')})} />
-                                </div>
-                            </div>
-
-                            <button type="submit" disabled={isSavingRadar} className="group relative w-full mt-4 py-5 bg-gradient-to-r from-emerald-500 to-emerald-400 text-black font-black uppercase tracking-[0.2em] rounded-xl hover:scale-[1.02] transition-all duration-300 shadow-[0_0_30px_rgba(16,185,129,0.5)] disabled:opacity-50 cursor-pointer overflow-hidden border border-emerald-300/50">
-                                <div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out skew-x-12" />
-                                <div className="relative z-10 flex items-center justify-center gap-3">
-                                    <Radar size={20} className={`text-black ${isSavingRadar ? 'animate-spin' : 'group-hover:animate-spin'}`} />
-                                    <span className="drop-shadow-sm">{isSavingRadar ? 'SKANOWANIE RYNKU...' : 'ZAKTUALIZUJ RADAR'}</span>
-                                </div>
-                            </button>
-                        </form>
-                    </motion.div>
-                </motion.div>
-            )}
-            </AnimatePresence>
+            <CrmRadarCalibrationModal
+              open={isEditRadarOpen}
+              onClose={() => setIsEditRadarOpen(false)}
+              initialFilters={radarCalibrationDraft}
+              catalog={radarCatalog}
+              saving={isSavingRadar}
+              onSave={handleSaveRadarCalibration}
+            />
 
             <AnimatePresence>
               {isRadarUpdating && (
@@ -1398,15 +1341,15 @@ export default function CRMDashboard() {
                  ))}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
-            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${isAgentAccount ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
+            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
                 <div className={`flex items-center gap-4 mb-6 relative z-10`}>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
                   >
-                  <Radar size={48} className={isAgentAccount ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
+                  <Radar size={48} className={showDualRadarPro ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
                   </motion.div>
-                  {isAgentAccount && (
+                  {showDualRadarPro && (
                     <motion.div
                       animate={{ rotate: -360 }}
                       transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}

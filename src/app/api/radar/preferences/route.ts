@@ -2,7 +2,22 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from '@/lib/location/locationCatalog';
 import { requireMobileAdmin, parseUserIdFromMobileJwt, extractBearerToken } from '@/lib/mobileAdminAuth';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
+
+async function assertCanAccessUserRadar(req: Request, targetUserId: number) {
+  const adminGate = await requireMobileAdmin(req);
+  if (adminGate.ok) return { ok: true as const };
+
+  const sessionUserId = await resolveWebUserId(req);
+  if (sessionUserId && sessionUserId === targetUserId) return { ok: true as const };
+
+  const token = extractBearerToken(req);
+  const callerId = token ? parseUserIdFromMobileJwt(token) : null;
+  if (callerId && callerId === targetUserId) return { ok: true as const };
+
+  return { ok: false as const, response: adminGate.response };
+}
 
 export async function GET(req: Request) {
   try {
@@ -14,14 +29,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ success: false, message: 'Brak lub nieprawidłowy userId' }, { status: 400 });
     }
 
-    const adminGate = await requireMobileAdmin(req);
-    if (!adminGate.ok) {
-      const token = extractBearerToken(req);
-      const callerId = token ? parseUserIdFromMobileJwt(token) : null;
-      if (!callerId || callerId !== targetUserId) {
-        return adminGate.response;
-      }
-    }
+    const access = await assertCanAccessUserRadar(req, targetUserId);
+    if (!access.ok) return access.response;
 
     const pref = await prisma.radarPreference.findUnique({
       where: { userId: targetUserId },
@@ -64,9 +73,13 @@ export async function POST(req: Request) {
       radius
     } = body;
 
-    if (!userId) {
-      return NextResponse.json({ success: false, message: 'Brak userId' });
+    const targetUserId = Number(userId);
+    if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+      return NextResponse.json({ success: false, message: 'Brak userId' }, { status: 400 });
     }
+
+    const access = await assertCanAccessUserRadar(req, targetUserId);
+    if (!access.ok) return access.response;
 
     const normalizedCity = city ? canonicalizeCity(String(city)) : null;
     const strictCity = isStrictCity(normalizedCity);
@@ -82,7 +95,7 @@ export async function POST(req: Request) {
       : [];
 
     const pref = await prisma.radarPreference.upsert({
-      where: { userId: Number(userId) },
+      where: { userId: targetUserId },
       update: {
         transactionType,
         propertyType,
@@ -103,7 +116,7 @@ export async function POST(req: Request) {
         radius: radius ? Number(radius) : null
       },
       create: {
-        userId: Number(userId),
+        userId: targetUserId,
         transactionType,
         propertyType,
         city: normalizedCity,

@@ -5,6 +5,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 
@@ -28,6 +29,7 @@ const PROFILE_SELECT = {
       reasonStats: true,
     },
   },
+  radarPreference: true,
   offers: {
     orderBy: { updatedAt: 'desc' as const },
     select: {
@@ -191,6 +193,7 @@ export async function GET() {
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
     const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
     const badges = resolveEliteBadges(user);
+    const radarPreference = shapeRadarPreference(user.radarPreference);
 
     return NextResponse.json(
       {
@@ -199,6 +202,7 @@ export async function GET() {
         ...shaped,
         offers: user.offers,
         badges,
+        radarPreference,
         matchedOffers,
       },
       {
@@ -253,7 +257,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     const phone = normalizePhone(body.phone);
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) {
+      const prevPhone = normalizePhone(user.phone);
+      updateData.phone = phone;
+      if (phone !== prevPhone) {
+        updateData.phoneVerifiedAt = null;
+      }
+    }
 
     const image = body.image === undefined ? normalizeString(body.avatar, 4000) : normalizeString(body.image, 4000);
     if (image !== undefined) updateData.image = image;
