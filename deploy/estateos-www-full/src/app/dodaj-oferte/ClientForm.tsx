@@ -25,7 +25,6 @@ import {
   AGENT_COMMISSION_MIN_NONZERO,
   AGENT_COMMISSION_STEP,
 } from "@/lib/agentCommission";
-import { getNbpEurPlnRate } from "@/lib/money/nbpEurPln";
 import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
@@ -593,9 +592,14 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
   useEffect(() => {
     let cancelled = false;
-    void getNbpEurPlnRate().then((snap) => {
-      if (!cancelled) setFxRate(snap.rate);
-    });
+    void fetch('/api/fx/eur-pln', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const rate = Number(data?.rate ?? data?.eurPln);
+        if (Number.isFinite(rate) && rate > 0) setFxRate(rate);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
