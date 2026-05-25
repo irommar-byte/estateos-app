@@ -9,6 +9,7 @@ import { shapeRadarPreference, type RadarPreferenceDto } from '@/lib/radarPrefer
 import type { RadarPreference } from '@prisma/client';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
+import { shapeMatchedOfferForCrm } from '@/lib/crmMatchedOffer';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -169,6 +170,7 @@ export async function GET() {
           hasStorage: true,
           isFurnished: true,
           images: true,
+          transactionType: true,
           status: true,
           userId: true,
         },
@@ -211,11 +213,16 @@ export async function GET() {
 
         return true;
       });
+
+      matchedOffers = matchedOffers.map((offer) =>
+        shapeMatchedOfferForCrm(offer as Record<string, unknown>),
+      );
     }
 
     const passkeyCount = await prisma.authenticator.count({ where: { userId: user.id } });
     const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
-    const badges = resolveEliteBadges(user);
+    const elite = resolveEliteBadges(user);
+    const badges = { ...elite, isPartner: elite.isProgramPartner };
     const userRadarPref =
       'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null;
     let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(

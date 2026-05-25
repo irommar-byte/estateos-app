@@ -146,6 +146,58 @@ export type Dictionary = {
     listings: string;
     central: string;
   };
+  badges: {
+    admin: string;
+    agent: string;
+    partner: string;
+    investorPro: string;
+  };
+  crm: {
+    accountEyebrow: string;
+    userIdLabel: string;
+    tabRadar: string;
+    tabMyOffers: string;
+    tabFavorites: string;
+    tabPlanning: string;
+    tabDeals: string;
+    radarTitle: string;
+    radarTitlePro: string;
+    radarDesc: string;
+    radarDescPro: string;
+    activeScanning: string;
+    radarPro: string;
+    radarProDual: string;
+    radarOff: string;
+    radarActive: string;
+    calibrate: string;
+    location: string;
+    propertyType: string;
+    minArea: string;
+    budget: string;
+    matchThreshold: string;
+    matchLabel: string;
+    sale: string;
+    rent: string;
+    rooms: string;
+    statusActive: string;
+    viewOffer: string;
+    perMonth: string;
+    noMatches: string;
+    standardUser: string;
+    seeProfile: string;
+    dealsTitle: string;
+    dealsTitleHighlight: string;
+    dealsDesc: string;
+    planningTitle: string;
+    planningTitleHighlight: string;
+    planningDesc: string;
+    favoritesTitle: string;
+    favoritesTitleHighlight: string;
+    favoritesDesc: string;
+    myOffersTitle: string;
+    myOffersTitleHighlight: string;
+    myOffersDesc: string;
+  };
   pricing: {
     eyebrow: string;
     title: string;
@@ -342,6 +394,60 @@ const pl: Dictionary = {
     privacy: "Prywatność",
     listings: "Oferty",
     central: "Centrala",
+  },
+  badges: {
+    admin: "Administrator",
+    agent: "Agent EstateOS",
+    partner: "Partner EstateOS",
+    investorPro: "Investor Pro",
+  },
+  crm: {
+    accountEyebrow: "Moje konto EstateOS™",
+    userIdLabel: "ID użytkownika",
+    tabRadar: "Radar inwestycji",
+    tabMyOffers: "Moje ogłoszenia",
+    tabFavorites: "Ulubione",
+    tabPlanning: "Planowanie",
+    tabDeals: "Transakcje",
+    radarTitle: "Radar",
+    radarTitlePro: "PRO",
+    radarDesc:
+      "Ustaw kryteria jak w aplikacji: lokalizacja, metraż, budżet i tryb transakcji. Po zapisie radar natychmiast przelicza dopasowania.",
+    radarDescPro:
+      "Radar PRO: kalibracja jak w aplikacji — tryb MAP (obszar na mapie) lub miasto i dzielnice. Po zapisie natychmiastowe przeliczenie dopasowań.",
+    activeScanning: "Aktywne skanowanie",
+    radarPro: "Radar PRO",
+    radarProDual: "Podwójny skan · Radar PRO",
+    radarOff: "Radar wyłączony",
+    radarActive: "Radar aktywny",
+    calibrate: "Kalibruj radar",
+    location: "Lokalizacja",
+    propertyType: "Typ",
+    minArea: "Metraż",
+    budget: "Budżet",
+    matchThreshold: "Próg dopasowania",
+    matchLabel: "Dopasowanie",
+    sale: "Sprzedaż",
+    rent: "Wynajem",
+    rooms: "Pokoje",
+    statusActive: "Aktywna",
+    viewOffer: "Zobacz ofertę",
+    perMonth: "/ mc",
+    noMatches: "Brak dopasowań — skalibruj radar, aby zobaczyć oferty.",
+    standardUser: "Użytkownik",
+    seeProfile: "Zobacz profil",
+    dealsTitle: "Szyfrowane",
+    dealsTitleHighlight: "pokoje transakcyjne",
+    dealsDesc: "Prywatne Deal roomy do finalizacji: wiadomości, oferty cenowe, dokumenty.",
+    planningTitle: "Centrum",
+    planningTitleHighlight: "planowania",
+    planningDesc: "Kalendarz spotkań, wizyty i priorytety powiązane z transakcjami.",
+    favoritesTitle: "Moje",
+    favoritesTitleHighlight: "ulubione",
+    favoritesDesc: "Obserwowane oferty i szybki powrót do statusu na rynku.",
+    myOffersTitle: "Moje",
+    myOffersTitleHighlight: "ogłoszenia",
+    myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
   },
   pricing: {
     eyebrow: "Wybierz swój poziom",
@@ -546,6 +652,60 @@ const en: Dictionary = {
     privacy: "Privacy",
     listings: "Listings",
     central: "Central",
+  },
+  badges: {
+    admin: "Administrator",
+    agent: "Agent EstateOS",
+    partner: "Partner EstateOS",
+    investorPro: "Investor Pro",
+  },
+  crm: {
+    accountEyebrow: "My EstateOS™ account",
+    userIdLabel: "User ID",
+    tabRadar: "Investment radar",
+    tabMyOffers: "My listings",
+    tabFavorites: "Favorites",
+    tabPlanning: "Planning",
+    tabDeals: "Transactions",
+    radarTitle: "Investment",
+    radarTitlePro: "Radar PRO",
+    radarDesc:
+      "Set criteria exactly like in the mobile app: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.",
+    radarDescPro:
+      "Radar PRO: calibration like the app — MAP area or city and districts. Matches refresh right after you save.",
+    activeScanning: "Active scanning",
+    radarPro: "Radar PRO",
+    radarProDual: "Dual scan · Radar PRO",
+    radarOff: "Radar off",
+    radarActive: "Radar active",
+    calibrate: "Calibrate radar",
+    location: "Location",
+    propertyType: "Type",
+    minArea: "Min. area",
+    budget: "Budget",
+    matchThreshold: "Match threshold",
+    matchLabel: "Match",
+    sale: "For sale",
+    rent: "For rent",
+    rooms: "Rooms",
+    statusActive: "Active",
+    viewOffer: "View listing",
+    perMonth: "/ mo",
+    noMatches: "No matches yet — calibrate radar to see listings.",
+    standardUser: "Member",
+    seeProfile: "View profile",
+    dealsTitle: "Encrypted",
+    dealsTitleHighlight: "deal rooms",
+    dealsDesc: "Private deal rooms to close: messages, bids, documents.",
+    planningTitle: "Planning",
+    planningTitleHighlight: "center",
+    planningDesc: "Calendar for viewings, negotiations, and daily priorities.",
+    favoritesTitle: "My",
+    favoritesTitleHighlight: "favorites",
+    favoritesDesc: "Watchlist and quick return to listing status.",
+    myOffersTitle: "My",
+    myOffersTitleHighlight: "listings",
+    myOffersDesc: "Manage statuses, renewals, and listing statistics.",
   },
   pricing: {
     eyebrow: "Choose your level",

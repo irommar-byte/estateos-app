@@ -103,7 +103,11 @@ export async function GET() {
 
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
-      const badges = resolveEliteBadges({ user });
+      const elite = resolveEliteBadges({ user });
+      const badges = {
+        ...elite,
+        isPartner: elite.isProgramPartner || elite.isAgent,
+      };
       const { cleanDescription, verification } = extractVerificationMeta(rest.description);
       const legal = computePublicLegalFields({
         description: rest.description,

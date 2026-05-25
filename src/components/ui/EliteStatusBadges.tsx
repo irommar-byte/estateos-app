@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveEliteBadges } from "@/lib/eliteStatus";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type EliteStatusBadgesProps = {
   subject: any;
@@ -10,29 +11,21 @@ type EliteStatusBadgesProps = {
 };
 
 const TOKENS = {
+  admin: {
+    dark: { bg: "rgba(168,85,247,0.18)", border: "rgba(168,85,247,0.55)", text: "#C4B5FD" },
+    light: { bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.4)", text: "#6D28D9" },
+  },
+  agent: {
+    dark: { bg: "rgba(255,149,0,0.20)", border: "rgba(255,159,10,0.70)", text: "#FFB340" },
+    light: { bg: "rgba(255,149,0,0.12)", border: "rgba(255,149,0,0.50)", text: "#C96C00" },
+  },
   partner: {
-    dark: {
-      bg: "rgba(255,149,0,0.20)",
-      border: "rgba(255,159,10,0.70)",
-      text: "#FFB340",
-    },
-    light: {
-      bg: "rgba(255,149,0,0.12)",
-      border: "rgba(255,149,0,0.50)",
-      text: "#C96C00",
-    },
+    dark: { bg: "rgba(212,175,55,0.15)", border: "rgba(212,175,55,0.55)", text: "#E8D5A3" },
+    light: { bg: "rgba(212,175,55,0.10)", border: "rgba(212,175,55,0.45)", text: "#9A7B2F" },
   },
   investorPro: {
-    dark: {
-      bg: "rgba(184,189,199,0.20)",
-      border: "rgba(202,208,219,0.72)",
-      text: "#E4E9F2",
-    },
-    light: {
-      bg: "rgba(124,136,152,0.12)",
-      border: "rgba(124,136,152,0.45)",
-      text: "#5D6A7D",
-    },
+    dark: { bg: "rgba(184,189,199,0.20)", border: "rgba(202,208,219,0.72)", text: "#E4E9F2" },
+    light: { bg: "rgba(124,136,152,0.12)", border: "rgba(124,136,152,0.45)", text: "#5D6A7D" },
   },
 } as const;
 
@@ -67,26 +60,22 @@ export default function EliteStatusBadges({
   compact = false,
   className = "",
 }: EliteStatusBadgesProps) {
-  const { isPartner, isInvestorPro } = resolveEliteBadges(subject);
-  if (!isPartner && !isInvestorPro) return null;
+  const { dict } = useLocale();
+  const b = dict.badges;
+  const { isAdmin, isAgent, isProgramPartner, isInvestorPro } = resolveEliteBadges(subject);
+  if (!isAdmin && !isAgent && !isProgramPartner && !isInvestorPro) return null;
 
   const tone = isDark ? "dark" : "light";
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      {isPartner && (
-        <Badge
-          label="Partner EstateOS"
-          theme={TOKENS.partner[tone]}
-          compact={compact}
-        />
+      {isAdmin && <Badge label={b.admin} theme={TOKENS.admin[tone]} compact={compact} />}
+      {isAgent && <Badge label={b.agent} theme={TOKENS.agent[tone]} compact={compact} />}
+      {isProgramPartner && (
+        <Badge label={b.partner} theme={TOKENS.partner[tone]} compact={compact} />
       )}
       {isInvestorPro && (
-        <Badge
-          label="Investor Pro"
-          theme={TOKENS.investorPro[tone]}
-          compact={compact}
-        />
+        <Badge label={b.investorPro} theme={TOKENS.investorPro[tone]} compact={compact} />
       )}
     </div>
   );

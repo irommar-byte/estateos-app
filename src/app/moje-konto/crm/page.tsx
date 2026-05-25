@@ -62,11 +62,10 @@ import {
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
 import type { RadarPreferenceDto } from "@/lib/radarPreferenceShape";
-import {
-  isAgentRoleIdentity,
-  isInvestorProIdentity,
-  isPartnerIdentity,
-} from "@/utils/partnerIdentity";
+import { isInvestorProIdentity } from "@/utils/partnerIdentity";
+import { resolveEliteBadges } from "@/lib/eliteStatus";
+import { shapeMatchedOfferForCrm } from "@/lib/crmMatchedOffer";
+import { useLocale } from "@/contexts/LocaleContext";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -234,6 +233,8 @@ const WowPlusOverlay = () => {
 };
 
 export default function CRMDashboard() {
+  const { dict, locale } = useLocale();
+  const c = dict.crm;
   const [currentUser, setCurrentUser] = useState<any>(null);
   const { mode, initModeFromUser } = useUserMode();
 
@@ -368,22 +369,13 @@ export default function CRMDashboard() {
     setIsEditRadarOpen(true);
   };
 
-  const isAgentRole = isAgentRoleIdentity(currentUser);
-  const isProgramPartner =
-    isPartnerIdentity(currentUser) && !isAgentRole;
-  const isElitePartner =
-    currentUser?.badges?.isPartner === true ||
-    Boolean(currentUser?.isPartner || currentUser?.partner) ||
-    isProgramPartner;
+  const eliteBadges = currentUser ? resolveEliteBadges(currentUser) : null;
   const isInvestorPro =
     currentUser?.role === 'ADMIN' ||
-    currentUser?.badges?.isInvestorPro === true ||
+    eliteBadges?.isInvestorPro === true ||
     isInvestorProIdentity(currentUser);
-  /** ProWidget — Investor Pro (nie sam program partnerski). */
   const isPremium = isInvestorPro;
-  /** Podwójny radar + etykieta Radar PRO — konto partnerskie (flaga / program), nie zwykły Agent. */
-  const showDualRadarPro =
-    isElitePartner && !(isAgentRole && !currentUser?.isPartner && !currentUser?.partner);
+  const showDualRadarPro = Boolean(eliteBadges?.isProgramPartner);
   const radarSummary = formatRadarSummary(
     radarDisplayFilters || defaultWebRadarFilters("Warszawa"),
   );
@@ -968,7 +960,7 @@ export default function CRMDashboard() {
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">Moje konto EstateOS™</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">{c.accountEyebrow}</p>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
                 {avatarSrc ? (
@@ -989,7 +981,7 @@ export default function CRMDashboard() {
               <EliteStatusBadges subject={currentUser} isDark compact className="mt-1" />
               {currentUser?.id && (
                 <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
-                   <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">ID Użytkownika</span>
+                   <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">{c.userIdLabel}</span>
                    <span className="text-xs sm:text-sm md:text-base font-black text-emerald-500 tracking-widest drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{currentUser.id}</span>
                 </div>
               )}
@@ -999,9 +991,8 @@ export default function CRMDashboard() {
                 <button onClick={() => setIsReviewsModalOpen(true)} className="mt-3 flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-3 py-1.5 rounded-full transition-colors group cursor-pointer">
                    <Star size={14} className="text-yellow-500 fill-yellow-500 group-hover:animate-pulse" />
                    <span className="text-[10px] font-black text-yellow-500">{reviewsData.averageRating?.toFixed(1)} / 5.0</span>
-                   <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">Zobacz Profil ({reviewsData.totalReviews})</span>
+                   <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
                 </button>
-                <EliteStatusBadges subject={currentUser} isDark compact className="mt-2" />
                 <div className="mt-3 w-full max-w-[420px]">
                   <PasskeyToggle onProfileRefresh={refreshCurrentUserFromBackend} />
                 </div>
@@ -1009,26 +1000,7 @@ export default function CRMDashboard() {
             )}
           </div>
           <div className="flex items-center shrink-0 mb-1 md:mb-0 self-start md:self-auto">
-            {isAgentRole ? (
-              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/15 to-amber-500/10 border border-orange-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(255,149,0,0.12)]">
-                <Briefcase size={14} className="text-orange-400" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-orange-200/90">Agent EstateOS</span>
-              </div>
-            ) : isProgramPartner ? (
-              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-[#D4AF37]/10 border border-amber-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.12)]">
-                <Crown size={14} className="text-amber-400" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-200/90">EstateOS Partner</span>
-              </div>
-            ) : isInvestorPro ? (
-              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-[#D4AF37]/10 to-[#AA771C]/10 border border-[#D4AF37]/30 flex items-center gap-2 shadow-[0_0_20px_rgba(212,175,55,0.15)]">
-                <Crown size={14} className="text-[#D4AF37]" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">PRO</span>
-              </div>
-            ) : (
-              <div className="px-4 py-2 rounded-full bg-white/5 border border-white/10 flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white">Zwykły Użytkownik</span>
-              </div>
-            )}
+            <EliteStatusBadges subject={currentUser} isDark compact />
           </div>
         </motion.div>
 
@@ -1054,12 +1026,14 @@ export default function CRMDashboard() {
                 )}
                 <span className="relative z-20">
                     {tab === 'radar'
-                        ? 'Radar Inwestycji'
+                        ? c.tabRadar
                         : tab === 'my_offers'
-                        ? 'Moje Ogłoszenia'
+                        ? c.tabMyOffers
                         : tab === 'offers'
-                        ? 'Ulubione'
-                        : tab === 'planowanie' ? 'Planowanie' : 'Transakcje'}
+                        ? c.tabFavorites
+                        : tab === 'planowanie'
+                        ? c.tabPlanning
+                        : c.tabDeals}
                  </span>
               </button>
             ))}
@@ -1182,24 +1156,46 @@ export default function CRMDashboard() {
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tighter mb-2 transition-colors">
               {activeTab === 'radar' && (
                 showDualRadarPro ? (
-                  <>Radar <span className="text-amber-400">PRO</span></>
+                  <>
+                    {c.radarTitle} <span className="text-amber-400">{c.radarTitlePro}</span>
+                  </>
+                ) : locale === 'en' ? (
+                  <>
+                    {c.radarTitle} <span className="text-emerald-500">Radar</span>
+                  </>
                 ) : (
-                  <>Investment <span className="text-emerald-500">Radar</span></>
+                  <>
+                    Radar <span className="text-emerald-500">inwestycji</span>
+                  </>
                 )
               )}
-              {activeTab === 'my_offers' && <>My <span className="text-blue-500">Listings</span></>}
-              {activeTab === 'offers' && <>My <span className="text-blue-500">Favorites</span></>}
-               {activeTab === 'planowanie' && <>Planning <span className="text-purple-500">Center</span></>}
-                {activeTab === 'transakcje' && <>Encrypted <span className="text-amber-500">Deal Rooms</span></>}
+              {activeTab === 'my_offers' && (
+                <>
+                  {c.myOffersTitle} <span className="text-blue-500">{c.myOffersTitleHighlight}</span>
+                </>
+              )}
+              {activeTab === 'offers' && (
+                <>
+                  {c.favoritesTitle} <span className="text-blue-500">{c.favoritesTitleHighlight}</span>
+                </>
+              )}
+              {activeTab === 'planowanie' && (
+                <>
+                  {c.planningTitle} <span className="text-purple-500">{c.planningTitleHighlight}</span>
+                </>
+              )}
+              {activeTab === 'transakcje' && (
+                <>
+                  {c.dealsTitle} <span className="text-amber-500">{c.dealsTitleHighlight}</span>
+                </>
+              )}
             </h2>
             <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
-               {activeTab === 'radar' && (showDualRadarPro
-                 ? 'Radar PRO: kalibracja jak w aplikacji — tryb MAP (obszar na mapie) lub miasto i dzielnice. Po zapisie natychmiastowe przeliczenie dopasowań.'
-                 : 'Set criteria exactly like in mobile: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.')}
-               {activeTab === 'my_offers' && 'Manage your listings in one place: statuses, renewals, negotiations, and view statistics.'}
-               {activeTab === 'offers' && 'Your market watchlist. Quickly return to key properties and check their current status.'}
-               {activeTab === 'planowanie' && 'Calendar as your planning hub: showings, negotiations, and daily priorities synced with your deals.'}
-               {activeTab === 'transakcje' && 'Encrypted Deal Rooms for closing: messages, pricing offers, documents, and direct party contact.'}
+               {activeTab === 'radar' && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
+               {activeTab === 'my_offers' && c.myOffersDesc}
+               {activeTab === 'offers' && c.favoritesDesc}
+               {activeTab === 'planowanie' && c.planningDesc}
+               {activeTab === 'transakcje' && c.dealsDesc}
             </p>
           </div>
         </motion.div>
@@ -1236,15 +1232,21 @@ export default function CRMDashboard() {
                   <div>
                     <h3 className="text-white text-2xl font-black tracking-tighter">
                       {showDualRadarPro ? (
-                        <>Radar <span className="text-amber-400">PRO</span></>
+                        <>
+                          {c.radarTitle} <span className="text-amber-400">{c.radarTitlePro}</span>
+                        </>
                       ) : (
-                        'Active Scanning'
+                        c.activeScanning
                       )}
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${showDualRadarPro ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
                       <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${showDualRadarPro ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
-                        {showDualRadarPro ? 'Podwójny skan · Radar PRO' : radarDisplayFilters?.pushNotifications === false ? 'Radar wyłączony' : 'Radar active'}
+                        {showDualRadarPro
+                          ? c.radarProDual
+                          : radarDisplayFilters?.pushNotifications === false
+                            ? c.radarOff
+                            : c.radarActive}
                       </span>
                     </div>
                   </div>
@@ -1252,32 +1254,32 @@ export default function CRMDashboard() {
 
                 <button onClick={openRadarEditor} className="relative flex items-center gap-2 px-5 py-3 bg-transparent border border-white/20 hover:border-emerald-500 hover:bg-emerald-500/10 text-white/80 hover:text-white rounded-xl font-bold uppercase tracking-widest text-[10px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] cursor-pointer group">
                   <SlidersHorizontal size={14} className="text-emerald-500 transition-colors" />
-                  <span>CALIBRATE RADAR</span>
+                  <span>{c.calibrate}</span>
                 </button>
               </div>
 
               <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Lokalizacja</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Typ</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
                  <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Metraż</span>
+                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.minArea}</span>
                  </div>
                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
-                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">Budżet</span>
+                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
                     <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
-                <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold">Próg dopasowania:</span>
+                <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
                 <span className="rounded-xl border border-white/10 bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
                   {radarSummary.threshold}
                 </span>
@@ -1316,33 +1318,37 @@ export default function CRMDashboard() {
             {/* WYNIKI RADARU */}
             {currentUser?.matchedOffers && currentUser.matchedOffers.length > 0 ? (
               <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                 {currentUser.matchedOffers.map((offer: any) => (
+                 {currentUser.matchedOffers.map((offer: any) => {
+                   const card = shapeMatchedOfferForCrm(offer);
+                   const thumb =
+                     resolveOfferPrimaryImage(card) || "/placeholder.jpg";
+                   const txRent = card.transactionType === "rent";
+                   return (
                      <div key={offer.id} className="bg-[#0a0a0a] border border-emerald-500/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:border-emerald-500 transition-all">
                         <div className="absolute top-0 right-0 bg-emerald-500 text-black font-black px-4 py-1 rounded-bl-2xl rounded-tr-[2.5rem] text-xs z-20 shadow-[0_0_15px_rgba(16,185,129,0.5)]">
-                           DOPASOWANIE {offer.matchScore || 100}%
+                           {c.matchLabel} {offer.matchScore || 100}%
                         </div>
                         <div className="flex gap-4 mb-4 relative z-10">
-                           <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-emerald-500/30">
-                              <img src={offer.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" alt={offer.title || 'Oferta radaru'} />
+                           <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-emerald-500/30 bg-[#111]">
+                              <img src={thumb} className="w-full h-full object-cover" alt={offer.title || 'Oferta'} onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                              <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${offer.transactionType === 'rent' ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{offer.transactionType === 'rent' ? 'Wynajem' : 'Sprzedaż'}</span>
-                              <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${offer.transactionType === 'rent' ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{offer.transactionType === 'rent' ? 'Wynajem' : 'Sprzedaż'}</span>
+                              <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{txRent ? c.rent : c.sale}</span>
                               <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-white text-sm truncate hover:text-emerald-400 transition-colors">
                                  {offer.title}
                               </a>
                               
                               <div className="flex flex-col mt-1">
-                                {offer.transactionType === 'rent' ? (
+                                {txRent ? (
                                     <>
-                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-white/40">/ mc</span></p>
+                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-white/40">{c.perMonth}</span></p>
                                         <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-0.5 flex gap-1">
                                             {offer.deposit && <span>Kaucja: {offer.deposit}</span>} 
                                             {offer.rentAdminFee && <span>| Admin: {offer.rentAdminFee}</span>}
                                         </p>
                                     </>
                                 ) : (
-                                    <p className="font-black text-xs text-emerald-500">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
+                                    <p className="font-black text-xs text-emerald-500">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN</p>
                                 )}
                               </div>
                            </div>
@@ -1352,14 +1358,15 @@ export default function CRMDashboard() {
                            <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><Target size={12}/> {offer.area} m²</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-white/50 uppercase tracking-widest font-bold mb-4">
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><Building2 size={12}/> {offer.rooms} Pokoje</span>
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><span className="text-emerald-500 animate-pulse">●</span> Aktywna</span>
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><Building2 size={12}/> {offer.rooms} {c.rooms}</span>
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><span className="text-emerald-500 animate-pulse">●</span> {c.statusActive}</span>
                         </div>
                         <button onClick={() => window.open(`/oferta/${offer.id}`, '_blank')} className="w-full mt-2 py-3 bg-transparent border border-emerald-500/50 text-emerald-500 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500 hover:text-black transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] cursor-pointer">
-                           ZOBACZ OFERTĘ
+                           {c.viewOffer}
                         </button>
                      </div>
-                 ))}
+                   );
+                 })}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
             <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
