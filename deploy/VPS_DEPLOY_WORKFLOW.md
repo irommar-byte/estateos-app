@@ -1,17 +1,17 @@
-# EstateOS — workflow deploy na VPS (zweryfikowany 2026-05-25)
+# EstateOS — deploy backendu (estateos.pl) na VPS
 
-## Branch produkcyjny
+**Jedyne źródło prawdy** dla wdrożeń WWW/API na produkcję (zweryfikowane na VPS 2026-05-25).
 
-- `recovery-local-snapshot` (GitHub `origin` ↔ VPS `~/estateos`)
+Backend (**estateos.pl**) jest wdrażany **z Git na VPS**:
 
-## Zasady
+| | |
+|---|---|
+| Katalog | `~/estateos` |
+| Branch produkcyjny | `recovery-local-snapshot` |
 
-- **Bez** wdrożeń przez SCP
-- **Bez** pracy na `master`
-- **Bez** `git push --all`
-- **Bez** commitowania `.env`, `.env.bak*`, kluczy API ani innych sekretów (`.env.bak*` w `.gitignore`)
+## Workflow
 
-## Lokalnie
+**Lokalnie:**
 
 ```bash
 git add .
@@ -19,9 +19,7 @@ git commit -m "opis zmian"
 git push
 ```
 
-Push na branch `recovery-local-snapshot` (lub merge/PR do niego przed deployem).
-
-## Na VPS — standard (zmiany Next.js / API)
+**Na VPS — standard (Next.js / API):**
 
 ```bash
 cd ~/estateos
@@ -29,9 +27,7 @@ git pull
 npm run deploy:server-only
 ```
 
-`deploy:server-only` = `npm run build` + `pm2 startOrReload ecosystem.config.cjs --env production`.
-
-## Na VPS — zmiana zależności (`package.json` / `package-lock.json`)
+**Na VPS — zmiana `package.json` / `package-lock.json`:**
 
 ```bash
 cd ~/estateos
@@ -39,20 +35,34 @@ git pull
 npm run deploy:prod
 ```
 
-`deploy:prod` = `npm ci` + build + reload + `pm2 save`.
-
-## Opcjonalna weryfikacja po deploy
+**Opcjonalnie po deploy:**
 
 ```bash
 npm run smoke:postdeploy
 ```
 
+## Zakazy
+
+- SCP
+- branch `master` jako produkcja
+- `git push --all`
+- commitowanie `.env`, `.env.bak*`, kluczy API
+- **`pm2 restart all` jako zamiennik deploy** — patrz niżej
+
 ## Dlaczego nie `pm2 restart all`
 
-- Produkcja: PM2 **`nieruchomosci`** → `npm run start:prod` → serwuje **gotowy** katalog `.next`.
-- Samo `git pull` nie przebudowuje `.next`.
-- `pm2 restart all` może uruchomić **stary** build i dotyka też procesu cron (`reviews-finalization-fallback`).
+Produkcja: PM2 **`nieruchomosci`** → `npm run start:prod` → serwuje **gotowy** katalog `.next` (wynik `next build`).
+
+| Kroki | Efekt |
+|-------|--------|
+| `git pull` | Aktualizuje **kod źródłowy**, nie `.next` |
+| `pm2 restart all` | Restartuje proces ze **starym** buildem |
+| `npm run deploy:server-only` | `build` + `pm2 reload` przez `ecosystem.config.cjs` |
+
+`deploy:server-only` = `npm run build` + `pm2 startOrReload ecosystem.config.cjs --env production`.
+
+`deploy:prod` = `npm ci` + build + reload + `pm2 save`.
 
 ## Backup referencyjny (nie do codziennej pracy)
 
-- Gałąź/tag na VPS: `backup-vps-20260525-1535`
+- `backup-vps-20260525-1535`

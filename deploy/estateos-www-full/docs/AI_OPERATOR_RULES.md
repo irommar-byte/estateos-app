@@ -161,7 +161,7 @@ Zasady:
 
 Nie używać `pm2 restart all` zamiast `deploy:server-only` — produkcja serwuje zbudowany `.next` (`nieruchomosci` → `start:prod`).
 
-Pełna procedura: `deploy/VPS_DEPLOY_WORKFLOW.md` (zweryfikowana na VPS 2026-05-25).
+Jedyne źródło prawdy deploy: **`deploy/VPS_DEPLOY_WORKFLOW.md`** (Git na VPS, zweryfikowane 2026-05-25). Kontrakt API mobilnego: `deploy/HANDOFF_BACKEND_SYNC.md`.
 
 ⸻
 
