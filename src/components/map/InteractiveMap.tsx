@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Lock, LocateFixed } from "lucide-react";
@@ -83,6 +83,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
 
+  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const [mapInitError, setMapInitError] = useState<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
@@ -110,6 +112,41 @@ export default function InteractiveMap({ immersive = false }: Props) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const envToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim();
+    if (envToken) {
+      setMapboxToken(envToken);
+      return;
+    }
+    fetch("/api/map/config", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data: { mapboxToken?: string | null }) => {
+        if (cancelled) return;
+        const token = String(data?.mapboxToken || "").trim();
+        setMapboxToken(token || null);
+        if (!token) {
+          setMapInitError(
+            locale === "pl"
+              ? "Brak klucza Mapbox na serwerze (NEXT_PUBLIC_MAPBOX_TOKEN lub MAPBOX_TOKEN)."
+              : "Mapbox token missing on server (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN).",
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMapInitError(
+            locale === "pl"
+              ? "Nie udało się pobrać konfiguracji mapy."
+              : "Could not load map configuration.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
+
+  useEffect(() => {
     fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
@@ -130,117 +167,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     setFilteredOffers(result);
   }, [transactionMode, priceMax, priceMaxRent, allOffers]);
 
-  useEffect(() => {
-    if (!mapContainer.current) return;
-
-    if (!map.current) {
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      if (!token) return;
-
-      mapboxgl.accessToken = token;
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/dark-v11",
-        center: [21.0122, 52.2297],
-        zoom: immersive ? 2.2 : 3,
-        pitch: 45,
-        bearing: 0,
-        antialias: true,
-        cooperativeGestures: true,
-      });
-
-      map.current.on("load", () => {
-        const layers = map.current!.getStyle().layers;
-        const labelLayerId = layers?.find(
-          (layer) => layer.type === "symbol" && layer.layout?.["text-field"],
-        )?.id;
-
-        map.current!.addLayer(
-          {
-            id: "3d-buildings",
-            source: "composite",
-            "source-layer": "building",
-            filter: ["==", "extrude", "true"],
-            type: "fill-extrusion",
-            minzoom: 15,
-            paint: {
-              "fill-extrusion-color": "#111",
-              "fill-extrusion-height": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                15,
-                0,
-                15.05,
-                ["get", "height"],
-              ],
-              "fill-extrusion-base": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                15,
-                0,
-                15.05,
-                ["get", "min_height"],
-              ],
-              "fill-extrusion-opacity": 0.8,
-            },
-          },
-          labelLayerId,
-        );
-
-        map.current!.addSource("offers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-          cluster: true,
-          clusterMaxZoom: 14,
-          clusterRadius: 50,
-        });
-        map.current!.addLayer({
-          id: "clustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["has", "point_count"],
-          paint: { "circle-radius": 0, "circle-opacity": 0 },
-        });
-        map.current!.addLayer({
-          id: "unclustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["!", ["has", "point_count"]],
-          paint: { "circle-radius": 0, "circle-opacity": 0 },
-        });
-
-        map.current!.on("render", updateMarkers);
-        map.current!.on("idle", updateMarkers);
-        setMapLoaded(true);
-      });
-    }
-
-    if (map.current?.getSource("offers") && map.current.isStyleLoaded()) {
-      const features = filteredOffers
-        .filter((o) => o.lng != null && o.lat != null)
-        .map((offer: any) => ({
-          type: "Feature" as const,
-          properties: {
-            id: offer.id,
-            price: offer.price ?? "",
-            transactionType: offer.transactionType,
-            isPartner: !!offer.badges?.isPartner,
-          },
-          geometry: {
-            type: "Point" as const,
-            coordinates: [Number(offer.lng), Number(offer.lat)],
-          },
-        }));
-
-      const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
-      source?.setData({ type: "FeatureCollection", features });
-      map.current.triggerRepaint();
-    }
-  }, [filteredOffers, mapLoaded, immersive]);
-
-  const updateMarkers = () => {
+  const updateMarkers = useCallback(() => {
     if (!map.current) return;
     const newMarkers: Record<string, boolean> = {};
     const features = map.current.queryRenderedFeatures({
@@ -324,7 +251,171 @@ export default function InteractiveMap({ immersive = false }: Props) {
         delete markersRef.current[id];
       }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!mapboxToken || !mapContainer.current || map.current) return;
+
+    setMapInitError(null);
+    mapboxgl.accessToken = mapboxToken;
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/dark-v11",
+      center: [21.0122, 52.2297],
+      zoom: immersive ? 2.2 : 3,
+      pitch: 45,
+      bearing: 0,
+      antialias: true,
+      cooperativeGestures: true,
+    });
+
+    const onLoad = () => {
+      if (!map.current) return;
+      try {
+        map.current.resize();
+      } catch {
+        /* noop */
+      }
+
+      try {
+        const layers = map.current.getStyle().layers;
+        const labelLayerId = layers?.find(
+          (layer) => layer.type === "symbol" && layer.layout?.["text-field"],
+        )?.id;
+        if (labelLayerId) {
+          map.current.addLayer(
+            {
+              id: "3d-buildings",
+              source: "composite",
+              "source-layer": "building",
+              filter: ["==", "extrude", "true"],
+              type: "fill-extrusion",
+              minzoom: 15,
+              paint: {
+                "fill-extrusion-color": "#111",
+                "fill-extrusion-height": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  15,
+                  0,
+                  15.05,
+                  ["get", "height"],
+                ],
+                "fill-extrusion-base": [
+                  "interpolate",
+                  ["linear"],
+                  ["zoom"],
+                  15,
+                  0,
+                  15.05,
+                  ["get", "min_height"],
+                ],
+                "fill-extrusion-opacity": 0.8,
+              },
+            },
+            labelLayerId,
+          );
+        }
+      } catch {
+        /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
+      }
+
+      if (!map.current.getSource("offers")) {
+        map.current.addSource("offers", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+          cluster: true,
+          clusterMaxZoom: 14,
+          clusterRadius: 50,
+        });
+        map.current.addLayer({
+          id: "clustered-point",
+          type: "circle",
+          source: "offers",
+          filter: ["has", "point_count"],
+          paint: { "circle-radius": 0, "circle-opacity": 0 },
+        });
+        map.current.addLayer({
+          id: "unclustered-point",
+          type: "circle",
+          source: "offers",
+          filter: ["!", ["has", "point_count"]],
+          paint: { "circle-radius": 0, "circle-opacity": 0 },
+        });
+      }
+
+      map.current.on("render", updateMarkers);
+      map.current.on("idle", updateMarkers);
+      setMapLoaded(true);
+    };
+
+    map.current.on("load", onLoad);
+    map.current.on("error", (e) => {
+      console.error("Mapbox error:", e);
+      setMapInitError(
+        locale === "pl"
+          ? "Mapa nie załadowała się — sprawdź token Mapbox i domenę w panelu Mapbox."
+          : "Map failed to load — check Mapbox token and allowed URLs.",
+      );
+    });
+
+    return () => {
+      map.current?.off("load", onLoad);
+      map.current?.remove();
+      map.current = null;
+      setMapLoaded(false);
+      markersRef.current = {};
+    };
+  }, [mapboxToken, immersive, locale, updateMarkers]);
+
+  useEffect(() => {
+    if (!map.current?.getSource("offers") || !map.current.isStyleLoaded()) return;
+
+    const features = filteredOffers
+      .filter((o) => o.lng != null && o.lat != null)
+      .map((offer: any) => ({
+        type: "Feature" as const,
+        properties: {
+          id: offer.id,
+          price: offer.price ?? "",
+          transactionType: offer.transactionType,
+          isPartner: !!offer.badges?.isPartner,
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [Number(offer.lng), Number(offer.lat)],
+        },
+      }));
+
+    const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
+    source?.setData({ type: "FeatureCollection", features });
+    map.current.triggerRepaint();
+  }, [filteredOffers, mapLoaded]);
+
+  useEffect(() => {
+    const el = mapContainer.current;
+    if (!el) return;
+
+    const resize = () => {
+      try {
+        map.current?.resize();
+      } catch {
+        /* noop */
+      }
+    };
+
+    const ro = new ResizeObserver(() => resize());
+    ro.observe(el);
+    window.addEventListener("resize", resize);
+    const t = window.setTimeout(resize, 120);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", resize);
+      window.clearTimeout(t);
+    };
+  }, [mapboxToken]);
 
   const locateUser = () => {
     if (!navigator.geolocation || !map.current) return;
@@ -357,13 +448,27 @@ export default function InteractiveMap({ immersive = false }: Props) {
     <div
       className={
         immersive
-          ? "relative h-full w-full overflow-hidden bg-black"
-          : "relative mt-10 h-[85vh] min-h-[600px] w-full overflow-hidden border-t border-white/10 bg-black"
+          ? "relative h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0a]"
+          : "relative mt-10 h-[85vh] min-h-[600px] w-full overflow-hidden border-t border-white/10 bg-[#0a0a0a]"
       }
     >
-      <div ref={mapContainer} className="absolute inset-0 z-10 outline-none" />
+      <div ref={mapContainer} className="absolute inset-0 z-0 h-full w-full min-h-[280px]" />
 
-      <div className="pointer-events-none absolute inset-0 z-20 shadow-[inset_0_0_150px_rgba(0,0,0,0.9)]" />
+      <div className="pointer-events-none absolute inset-0 z-[1] shadow-[inset_0_0_80px_rgba(0,0,0,0.55)]" />
+
+      {mapInitError && (
+        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[#0a0a0a]/95 p-6 text-center">
+          <p className="max-w-md text-sm leading-relaxed text-zinc-400">{mapInitError}</p>
+        </div>
+      )}
+
+      {!mapboxToken && !mapInitError && (
+        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[#0a0a0a] p-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
+            {locale === "pl" ? "Ładowanie mapy…" : "Loading map…"}
+          </p>
+        </div>
+      )}
 
       <div className="absolute left-1/2 top-4 z-30 flex w-[92%] max-w-lg -translate-x-1/2 flex-col items-center gap-3 sm:top-6 sm:gap-4">
         <div className="flex rounded-full border border-white/10 bg-zinc-900/60 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-3xl">
