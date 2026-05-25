@@ -11,6 +11,7 @@ import Tracker from "@/components/Tracker";
 import { LocaleProvider } from "@/contexts/LocaleContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { UserModeProvider } from "@/contexts/UserModeContext";
+import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 const inter = Inter({ subsets: ["latin"] });
 
@@ -81,12 +82,14 @@ export default async function RootLayout({
           <LocaleProvider initialLocale={locale}>
             <LocaleDocumentMeta />
             <UserModeProvider>
-              <SkipToContent />
-              <Tracker />
-              <Navbar />
-              <div id="main-content" tabIndex={-1} className="outline-none">
-                {children}
-              </div>
+              <FavoritesProvider>
+                <SkipToContent />
+                <Tracker />
+                <Navbar />
+                <div id="main-content" tabIndex={-1} className="outline-none">
+                  {children}
+                </div>
+              </FavoritesProvider>
             </UserModeProvider>
             <UpgradeModal />
             <ModeTransition />

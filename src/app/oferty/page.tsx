@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Loader2 } from "lucide-react";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 
 type CatalogOffer = {
   id: number;
@@ -168,7 +169,16 @@ export default function CatalogPage() {
               className="grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16"
             >
               {offers.map((offer, i) => (
-                <Link href={`/oferta/${offer.id}`} key={offer.id} className="block">
+                <div key={offer.id} className="relative">
+                  <div className="absolute right-4 top-4 z-20">
+                    <OfferFavoriteButton
+                      offerId={offer.id}
+                      onRequireAuth={() => {
+                        window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+                      }}
+                    />
+                  </div>
+                  <Link href={`/oferta/${offer.id}`} className="block">
                   <motion.article
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -211,6 +221,7 @@ export default function CatalogPage() {
                     </div>
                   </motion.article>
                 </Link>
+                </div>
               ))}
             </motion.div>
           )}

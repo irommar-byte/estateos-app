@@ -7,9 +7,19 @@ import { MapPin, ArchiveX, Eye, Shield, Briefcase, Phone, MessageCircle, Video, 
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
+import { useLocale } from "@/contexts/LocaleContext";
+
+/** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
+const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
+  const { locale } = useLocale();
+  const favoriteLabels =
+    locale === 'en'
+      ? { add: 'Save', remove: 'Saved' }
+      : { add: 'Ulubione', remove: 'W ulubionych' };
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
@@ -162,27 +172,38 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   return (
     <main className="bg-[#050505] min-h-screen text-white font-sans selection:bg-emerald-500 selection:text-black pb-32">
       
-      <div ref={ref} className="relative w-full h-[100vh] overflow-hidden bg-black">
-        <div className="absolute top-24 sm:top-32 left-4 sm:left-6 right-4 sm:right-6 z-40 flex flex-col sm:flex-row justify-between items-start gap-4 pointer-events-none">
-          
-          {/* Lewa strona: Guzik powrotu */}
-          <div className="flex flex-wrap gap-2 sm:gap-4 pointer-events-auto">
-            <Link href="/" className="px-4 sm:px-6 py-2 sm:py-3 bg-black/40 backdrop-blur-2xl rounded-full border border-white/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white hover:text-black transition-all shadow-2xl flex items-center gap-2">
-              ← Back to map
-            </Link>
-          </div>
-          
-        </div>
-
+      <div ref={ref} className="relative w-full min-h-[100vh] h-[100dvh] overflow-hidden bg-black">
         {/* Tło pod zdjęciem */}
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-sm' : ''} ${isArchived ? 'grayscale' : ''}`} />
-        
-        {/* Warstwa interaktywna dla kliknięcia w galerię (oprócz paska na dole) */}
-        <div onClick={() => !isLocked && openGallery(0)} className="absolute inset-0 flex flex-col items-center justify-end pb-32 z-10 px-4 cursor-pointer hover:bg-black/10 transition-colors">
-            
-            {/* --- JEDEN FENOMENALNY DASHBOARD INFORMACYJNY (UX PREMIUM) --- */}
-            <div className="flex justify-center mb-6 relative z-20 w-full px-4 sm:px-8 max-w-5xl mx-auto pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 px-5 py-3 bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-[2rem] shadow-2xl hover:border-white/20 transition-all duration-300">
+
+        {/* Chrome pod Navbar — back, ulubione, pasek wystawcy (nie ucięty) */}
+        <div
+          className="absolute inset-x-0 z-40 px-4 sm:px-6 pointer-events-none"
+          style={{ top: HERO_BELOW_NAV }}
+        >
+          <div className="mx-auto flex max-w-5xl flex-col gap-3 sm:gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pointer-events-auto">
+              <Link href="/" className="flex items-center gap-2 rounded-full border border-white/10 bg-black/50 px-4 py-2.5 text-[9px] font-black uppercase tracking-[0.2em] shadow-2xl backdrop-blur-2xl transition-all hover:bg-white hover:text-black sm:px-6 sm:py-3 sm:text-[10px]">
+                ← Back to map
+              </Link>
+              <OfferFavoriteButton
+                offerId={offer.id}
+                variant="pill"
+                size={22}
+                labelAdd={favoriteLabels.add}
+                labelRemove={favoriteLabels.remove}
+                className="shrink-0"
+                onRequireAuth={() => {
+                  window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                }}
+              />
+            </div>
+
+            <div
+              className="pointer-events-auto w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-wrap items-center justify-center gap-2 rounded-[2rem] border border-white/10 bg-[#0a0a0a]/88 px-4 py-3 shadow-2xl backdrop-blur-xl sm:gap-4 sm:px-5 hover:border-white/20 transition-all duration-300">
                 
                 {/* 1. Kapsuła Tożsamości i Zaufania (Klikalna) */}
                 <button 
@@ -245,11 +266,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
               </div>
             </div>
-            
-            
-<h1 className="text-4xl sm:text-[7vw] font-bold tracking-tighter text-center leading-tight drop-shadow-2xl px-4 sm:px-8 max-w-7xl mx-auto [text-wrap:balance]">
-              {isLocked ? "Before full market launch" : offer.title}
-            </h1>
+          </div>
+        </div>
+
+        {/* Tytuł na dole hero — klik otwiera galerię */}
+        <div
+          onClick={() => !isLocked && openGallery(0)}
+          className="absolute inset-x-0 bottom-0 z-10 flex cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:pb-24"
+        >
+          <h1 className="max-w-7xl text-center text-3xl font-bold leading-tight tracking-tighter drop-shadow-2xl [text-wrap:balance] sm:text-5xl md:text-[7vw] px-4 sm:px-8 pointer-events-none">
+            {isLocked ? "Before full market launch" : offer.title}
+          </h1>
         </div>
         <div className="absolute bottom-0 w-full h-1/2 z-20 bg-gradient-to-t from-[#050505] to-transparent" />
         {isArchived && (

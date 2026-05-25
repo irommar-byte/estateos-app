@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 
 type Offer = {
   id: number;
@@ -122,7 +123,16 @@ export default function FeaturedGallery() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 0.65, delay: index * 0.12, ease: [0.16, 1, 0.3, 1] }}
+                className="relative"
               >
+                <div className="absolute right-4 top-14 z-20">
+                  <OfferFavoriteButton
+                    offerId={offer.id}
+                    onRequireAuth={() => {
+                      window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+                    }}
+                  />
+                </div>
                 <Link
                   href={`/oferta/${offer.id}`}
                   className="group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-[0_30px_90px_rgba(0,0,0,0.45)]"

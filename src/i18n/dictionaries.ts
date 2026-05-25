@@ -194,6 +194,8 @@ export type Dictionary = {
     favoritesTitle: string;
     favoritesTitleHighlight: string;
     favoritesDesc: string;
+    favoritesEmpty: string;
+    favoritesDiscoverMarket: string;
     myOffersTitle: string;
     myOffersTitleHighlight: string;
     myOffersDesc: string;
@@ -445,6 +447,8 @@ const pl: Dictionary = {
     favoritesTitle: "Moje",
     favoritesTitleHighlight: "ulubione",
     favoritesDesc: "Obserwowane oferty i szybki powrót do statusu na rynku.",
+    favoritesEmpty: "Nie obserwujesz jeszcze żadnych ofert.",
+    favoritesDiscoverMarket: "Odkryj Rynek",
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
@@ -703,6 +707,8 @@ const en: Dictionary = {
     favoritesTitle: "My",
     favoritesTitleHighlight: "favorites",
     favoritesDesc: "Watchlist and quick return to listing status.",
+    favoritesEmpty: "You are not watching any listings yet.",
+    favoritesDiscoverMarket: "Explore the market",
     myOffersTitle: "My",
     myOffersTitleHighlight: "listings",
     myOffersDesc: "Manage statuses, renewals, and listing statistics.",

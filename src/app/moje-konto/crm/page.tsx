@@ -66,6 +66,8 @@ import { isInvestorProIdentity } from "@/utils/partnerIdentity";
 import { resolveEliteBadges } from "@/lib/eliteStatus";
 import { shapeMatchedOfferForCrm } from "@/lib/crmMatchedOffer";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useFavorites } from "@/hooks/useFavorites";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -234,6 +236,7 @@ const WowPlusOverlay = () => {
 
 export default function CRMDashboard() {
   const { dict, locale } = useLocale();
+  const { favoriteOffers, isFavorite, toggleFavorite, refresh: refreshFavorites } = useFavorites();
   const c = dict.crm;
   const [currentUser, setCurrentUser] = useState<any>(null);
   const { mode, initModeFromUser } = useUserMode();
@@ -424,8 +427,6 @@ export default function CRMDashboard() {
 
   const [crmData, setCrmData] = useState<any>({ offers: [], contacts: [], appointments: [], bids: [], leadTransfers: [] });
   
-  const [likedOfferIds, setLikedOfferIds] = useState<string[]>([]);
-
   useEffect(() => {
      if (typeof window !== 'undefined' && crmData?.appointments) {
         const urlParams = new URLSearchParams(window.location.search);
@@ -442,25 +443,6 @@ export default function CRMDashboard() {
      }
   }, [crmData]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem('crm_liked_offers');
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setLikedOfferIds(parsed.map((id) => String(id)));
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem('crm_liked_offers', JSON.stringify(likedOfferIds));
-  }, [likedOfferIds]);
-  
   const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
@@ -695,7 +677,7 @@ export default function CRMDashboard() {
       await fetchRadarCatalog();
       setRadarDisplayFilters(await loadRadarFiltersForUser(uData));
 
-      await Promise.all([fetchData(uData.id), fetchRadarData(), fetchMarketOffers()]);
+      await Promise.all([fetchData(uData.id), fetchRadarData(), fetchMarketOffers(), refreshFavorites()]);
 
       if (uData.isPro && !sessionStorage.getItem('pro_booted')) {
         setIsBooting(true);
@@ -876,7 +858,7 @@ export default function CRMDashboard() {
 
   const baseOffersForView = isListingsTab
     ? (crmData.offers || [])
-    : (marketOffers || []).filter((o: any) => likedOfferIds.includes(String(o.id)));
+    : favoriteOffers;
 
   const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
     const now = new Date();
@@ -1325,6 +1307,7 @@ export default function CRMDashboard() {
                    const txRent = card.transactionType === "rent";
                    return (
                      <div key={offer.id} className="bg-[#0a0a0a] border border-emerald-500/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:border-emerald-500 transition-all">
+                        <OfferFavoriteButton offerId={offer.id} className="absolute top-6 left-6 z-30" />
                         <div className="absolute top-0 right-0 bg-emerald-500 text-black font-black px-4 py-1 rounded-bl-2xl rounded-tr-[2.5rem] text-xs z-20 shadow-[0_0_15px_rgba(16,185,129,0.5)]">
                            {c.matchLabel} {offer.matchScore || 100}%
                         </div>
@@ -1460,7 +1443,7 @@ export default function CRMDashboard() {
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
                   {isFavoritesTab
-                    ? 'Nie obserwujesz jeszcze żadnych ofert.'
+                    ? dict.crm.favoritesEmpty
                     : offerSectionFilter === 'ACTIVE'
                       ? 'Brak aktywnych ogłoszeń.'
                       : offerSectionFilter === 'PENDING'
@@ -1481,7 +1464,7 @@ export default function CRMDashboard() {
                     onClick={() => { window.location.href = '/szukaj'; }}
                     className="relative z-10 px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 cursor-pointer"
                   >
-                    Odkryj Rynek
+                    {dict.crm.favoritesDiscoverMarket}
                   </button>
                 )}
               </div>
@@ -1523,17 +1506,18 @@ export default function CRMDashboard() {
 
                     
                     {isFavoritesTab && !offer.isDummy && (
-                      <button 
+                      <button
+                        type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          setLikedOfferIds(prev => prev.includes(offer.id.toString()) ? prev.filter(id => id !== offer.id.toString()) : [...prev, offer.id.toString()]);
+                          void toggleFavorite(offer.id);
                         }}
                         className="absolute top-6 right-6 z-30 p-2.5 rounded-full bg-black/40 border border-white/10 backdrop-blur-md hover:scale-110 transition-all duration-300 group/heart shadow-[0_4px_15px_rgba(0,0,0,0.5)]"
                       >
-                        <Heart 
-                          size={20} 
-                          className={`transition-all duration-500 ${likedOfferIds.includes(offer.id.toString()) ? 'fill-emerald-500 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.8)] scale-110' : 'text-white/40 group-hover/heart:text-emerald-400'}`} 
+                        <Heart
+                          size={20}
+                          className={`transition-all duration-500 ${isFavorite(offer.id) ? 'fill-emerald-500 text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.8)] scale-110' : 'text-white/40 group-hover/heart:text-emerald-400'}`}
                         />
                       </button>
                     )}
