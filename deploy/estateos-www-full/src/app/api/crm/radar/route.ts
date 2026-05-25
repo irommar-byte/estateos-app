@@ -48,7 +48,6 @@ export async function GET(req: Request) {
           isPro: true,
           planType: true,
           proExpiresAt: true,
-          subscriptionStatus: true,
           plusExpiresAt: true,
           extraListings: true,
         },
