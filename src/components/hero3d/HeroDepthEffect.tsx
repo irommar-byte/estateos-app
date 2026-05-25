@@ -8,7 +8,6 @@ import {
   HomeCtaAnalyticsEvent,
   HomeCtaId,
 } from "@/contracts/homeCtaContract";
-import EosDynamicIslandBadge from "@/components/home/EosDynamicIslandBadge";
 import { useLocale } from "@/contexts/LocaleContext";
 
 const HERO_IMAGE =
@@ -141,15 +140,6 @@ export default function HeroDepthEffect() {
             style={{ opacity: opacityFade }}
             className="flex w-full max-w-6xl flex-col items-center"
           >
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: customEase, delay: 0.08 }}
-              className="mb-7"
-            >
-              <EosDynamicIslandBadge />
-            </motion.div>
-
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -174,10 +164,10 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="mt-6 max-w-2xl text-sm font-light leading-relaxed text-white/72 sm:text-lg"
+              className="mt-8 max-w-xl text-sm font-light leading-[1.7] text-white/65 sm:max-w-2xl sm:text-base"
             >
               {dict.hero.lead}
-              <span className="font-medium text-white">{dict.hero.leadBold}</span>
+              <span className="font-medium text-white/95">{dict.hero.leadBold}</span>
               {dict.hero.leadExtra}
             </motion.p>
 
@@ -185,44 +175,23 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.48 }}
-              className="mt-10 flex w-full flex-col items-center gap-5"
+              className="mt-12 flex w-full max-w-md flex-col justify-center gap-3 sm:max-w-none sm:flex-row sm:gap-4"
             >
-              <div className="flex w-full flex-col justify-center gap-4 sm:w-auto sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("RADAR")}
-                  className="group relative overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-10 py-4 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.03] active:scale-[0.97]"
-                >
-                  <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-                  <span className="relative">{dict.hero.ctaRadar}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("LIST")}
-                  className="rounded-full border border-white/16 bg-black/45 px-10 py-4 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[0_16px_34px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all hover:border-white/28 hover:bg-white/10 active:scale-[0.97]"
-                >
-                  {dict.hero.ctaList}
-                </button>
-              </div>
-              <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("ACCOUNT")}
-                  className="text-[10px] uppercase tracking-[0.24em] text-white/55 transition-colors hover:text-emerald-300 sm:text-[11px]"
-                >
-                  {dict.hero.ctaAccount}
-                </button>
-                <span className="hidden text-white/20 sm:inline" aria-hidden>
-                  ·
-                </span>
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("PRO")}
-                  className="text-[10px] uppercase tracking-[0.24em] text-amber-400/80 transition-colors hover:text-amber-300 sm:text-[11px]"
-                >
-                  {dict.hero.ctaPro}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => openHomeCta("RADAR")}
+                className="group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
+              >
+                <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
+                <span className="relative">{dict.hero.ctaMap}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openHomeCta("LIST")}
+                className="w-full rounded-full border border-white/18 bg-black/50 px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_34px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all hover:border-white/30 hover:bg-white/[0.08] active:scale-[0.98] sm:w-auto sm:px-10"
+              >
+                {dict.hero.ctaList}
+              </button>
             </motion.div>
           </motion.div>
         </motion.div>

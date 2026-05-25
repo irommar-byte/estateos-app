@@ -87,7 +87,7 @@ export default function FeaturedGallery() {
   }
 
   return (
-    <section className="premium-home-surface relative overflow-hidden bg-[#050505] py-24 sm:py-32">
+    <section className="premium-home-surface relative overflow-hidden border-t border-white/[0.06] bg-[#050505] py-20 sm:py-28">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.055),transparent_58%)]" />
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-12 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">

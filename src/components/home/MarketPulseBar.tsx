@@ -40,7 +40,7 @@ export default function MarketPulseBar() {
       initial={{ opacity: 0, y: reduceMotion ? 0 : -16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduceMotion ? 0.2 : 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+6.25rem)] z-[60] flex justify-center px-4 sm:top-[calc(env(safe-area-inset-top)+5.25rem)]"
+      className="relative z-20 -mt-10 flex justify-center px-4 pb-6 sm:-mt-12 sm:pb-8"
     >
       <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/50 px-5 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
         <span className="relative flex size-2">
@@ -48,7 +48,7 @@ export default function MarketPulseBar() {
           <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
         </span>
         <span className="text-[9px] font-black uppercase tracking-[0.22em] text-emerald-400/90">
-          Live Market Pulse: {activeOffers.toLocaleString("en-US")} {dict.homePremium.livePulseActive}
+          {dict.pulse.liveFrom}: {activeOffers.toLocaleString("en-US")} {dict.homePremium.livePulseActive}
         </span>
       </div>
     </motion.div>

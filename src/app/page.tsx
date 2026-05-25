@@ -4,7 +4,6 @@ import HeroDepthEffect from "@/components/hero3d/HeroDepthEffect";
 import InteractiveMap from "@/components/map/InteractiveMap";
 import CinematicLoader from "@/components/ui/CinematicLoader";
 import SmoothScroll from "@/components/layout/SmoothScroll";
-import PremiumSearchBar from "@/components/home/PremiumSearchBar";
 import GlobalStats from "@/components/home/GlobalStats";
 import FeaturedGallery from "@/components/home/FeaturedGallery";
 import MarketPulseBar from "@/components/home/MarketPulseBar";
@@ -28,18 +27,15 @@ export default function Home() {
       <CinematicLoader />
       <SmoothScroll>
         <main className="premium-home-shell relative min-h-screen overflow-hidden bg-[#050505] text-white selection:bg-emerald-500/30">
-          <MarketPulseBar />
           <HeroDepthEffect />
-
-          <div className="relative z-30 -mt-16 flex w-full justify-center px-4 sm:-mt-14">
-            <PremiumSearchBar />
+          <div className="relative z-20 bg-[#050505]">
+            <MarketPulseBar />
           </div>
 
-          <div className="mt-16">
-            <GlobalStats />
-          </div>
+          <GlobalStats />
 
           <FeaturedGallery />
+
           <SignatureHighlights />
 
           <div

@@ -37,10 +37,8 @@ export type Dictionary = {
     lead: string;
     leadBold: string;
     leadExtra: string;
-    ctaRadar: string;
+    ctaMap: string;
     ctaList: string;
-    ctaAccount: string;
-    ctaPro: string;
     exploreMap: string;
   };
   pulse: {
@@ -274,15 +272,13 @@ const pl: Dictionary = {
     messages: "wiadomości",
   },
   hero: {
-    eyebrow: "Globalna inteligencja rynku premium",
-    lead: "Wystaw rezydencję ",
-    leadBold: "bez kosztów",
+    eyebrow: "Rynek nieruchomości · jedna platforma",
+    lead: "Wystaw nieruchomość ",
+    leadBold: "bez opłat za publikację",
     leadExtra:
-      " lub odkryj swój nowy adres. Ustaw Inteligentny Radar raz — oferty premium dotrą do Ciebie same.",
-    ctaRadar: "Szukaj na Radarze",
-    ctaList: "Dodaj ofertę",
-    ctaAccount: "Moje konto",
-    ctaPro: "Pakiety Pro",
+      ". Przeglądaj oferty na mapie, dodaj ogłoszenie lub włącz Radar Inwestycji — dopasowania trafią do Twojego konta.",
+    ctaMap: "Szukaj na mapie",
+    ctaList: "Dodaj swoją ofertę",
     exploreMap: "Mapa ofert",
   },
   pulse: {
@@ -300,22 +296,22 @@ const pl: Dictionary = {
     delayedTicker: "Opóźniona synchronizacja — Puls rynku EstateOS™",
   },
   highlights: {
-    eyebrow: "Doświadczenie EstateOS",
-    title: "Stworzone dla globalnego premium",
+    eyebrow: "EstateOS™",
+    title: "Rynek, radar i transakcje w jednym miejscu",
     body:
-      "EstateOS™ łączy odkrywanie, zaufanie i proces transakcyjny w jednej platformie — od pierwszego wrażenia po podpis umowy.",
-    radarTitle: "Inteligentny Radar",
+      "Ta sama baza ofert na stronie i w aplikacji: mapa na żywo, ogłoszenia, Radar Inwestycji oraz Deal Room do negocjacji.",
+    radarTitle: "Radar Inwestycji",
     radarBody:
-      "Ustaw kryteria raz. Dopasowane oferty premium pojawiają się automatycznie na rynkach globalnych.",
-    verifiedTitle: "Zweryfikowane oferty",
+      "Lokalizacja, budżet, metraż i typ transakcji — system monitoruje rynek i pokazuje dopasowania w koncie.",
+    verifiedTitle: "Weryfikacja ofert",
     verifiedBody:
-      "Kontrole prawne, sygnały zaufania i workflow concierge dla poważnych transakcji.",
-    passkeyTitle: "Dostęp Passkey",
+      "Status dokumentów, sygnały zaufania i przejrzysty profil wystawcy przed kontaktem.",
+    passkeyTitle: "Logowanie Passkey",
     passkeyBody:
-      "Logowanie biometryczne — szybko, bezpiecznie i wygodnie w aplikacji mobilnej.",
-    dealsTitle: "Oferty prywatne",
+      "Bezpieczne logowanie biometryczne w aplikacji — bez haseł na co dzień.",
+    dealsTitle: "Deal Room",
     dealsBody:
-      "Wczesny dostęp i transakcje off-market dla członków, którzy działają pierwsi.",
+      "Prywatne pokoje transakcyjne: wiadomości, oferty cenowe i dokumenty w jednym miejscu.",
   },
   homePremium: {
     loading: "Wczytywanie...",
@@ -339,22 +335,22 @@ const pl: Dictionary = {
     statsNewOffers24h: "Nowych w 24h",
     statsMarketCities: "Obsługiwanych Miast",
     statsRegisteredMembers: "Zaufanych Klientów",
-    galleryEyebrow: "Wyselekcjonowane z rynku",
-    galleryTitle: "Ekskluzywne",
-    galleryTitleHighlight: "Odkrycia",
-    gallerySubtitle: "Wyselekcjonowane oferty z rynku EstateOS, przygotowane do odkrywania premium.",
+    galleryEyebrow: "Aktywny rynek",
+    galleryTitle: "Wybrane",
+    galleryTitleHighlight: "ogłoszenia",
+    gallerySubtitle: "Aktualne oferty z bazy EstateOS — sprzedaż i wynajem, ten sam katalog co na mapie.",
     galleryViewAll: "Zobacz całą kolekcję",
     galleryPriceLabel: "Cena",
     galleryAreaLabel: "Powierzchnia",
     galleryRoomsLabel: "pokoje",
-    mapEyebrow: "Radar nieruchomości live",
-    mapTitle: "Inteligentny",
-    mapTitleHighlight: "Radar",
+    mapEyebrow: "Rynek na żywo",
+    mapTitle: "Mapa",
+    mapTitleHighlight: "ofert",
     mapSubtitle:
-      "Interaktywna mapa globalnych ofert premium. Zdefiniuj parametry i pozwól systemowi zlokalizować Twoją następną inwestycję.",
-    trustRadarTitle: "Inteligentny Radar",
+      "Przeglądaj aktywne ogłoszenia, filtruj lokalizację i typ nieruchomości — ten sam rynek co w aplikacji mobilnej.",
+    trustRadarTitle: "Radar Inwestycji",
     trustRadarDesc:
-      "Zdefiniuj swoje parametry. Nasz system 24/7 skanuje rynek i dostarcza idealnie dopasowane inwestycje.",
+      "Ustaw kryteria w koncie. System skanuje rynek i pokazuje dopasowane oferty w zakładce radaru.",
     trustSecurityTitle: "Technologia Passkey",
     trustSecurityDesc:
       "Biometryczna autoryzacja bez haseł. Zapewniamy bezpieczeństwo klasy korporacyjnej dla Twoich danych.",
@@ -534,16 +530,14 @@ const en: Dictionary = {
     messages: "messages",
   },
   hero: {
-    eyebrow: "Global premium real estate intelligence",
-    lead: "List a residence ",
-    leadBold: "at no cost",
+    eyebrow: "Real estate market · one platform",
+    lead: "List a property ",
+    leadBold: "with no listing fee",
     leadExtra:
-      " or discover your next address anywhere. Set Intelligent Radar once — premium matches arrive on their own.",
-    ctaRadar: "Search on Radar",
-    ctaList: "List property",
-    ctaAccount: "My account",
-    ctaPro: "Pro plans",
-    exploreMap: "Explore market",
+      ". Browse live listings on the map, publish your own, or enable Investment Radar — matches land in your account.",
+    ctaMap: "Search on the map",
+    ctaList: "Add your listing",
+    exploreMap: "Listing map",
   },
   pulse: {
     title: "Market pulse",
@@ -560,22 +554,22 @@ const en: Dictionary = {
     delayedTicker: "Live sync delayed — EstateOS™ market pulse",
   },
   highlights: {
-    eyebrow: "Signature experience",
-    title: "Built for global premium real estate",
+    eyebrow: "EstateOS™",
+    title: "Market, radar, and deals in one place",
     body:
-      "EstateOS™ combines discovery, trust, and deal flow in one refined platform — from first impression to signed agreement.",
-    radarTitle: "Intelligent Radar",
+      "The same listing database on web and mobile: live map, listings, Investment Radar, and Deal Rooms for negotiations.",
+    radarTitle: "Investment Radar",
     radarBody:
-      "Set your criteria once. Premium matches surface automatically across global markets.",
-    verifiedTitle: "Verified listings",
+      "Location, budget, size, and transaction type — the system monitors the market and surfaces matches in your account.",
+    verifiedTitle: "Listing verification",
     verifiedBody:
-      "Legal checks, trust signals, and concierge-grade workflows for serious transactions.",
-    passkeyTitle: "Passkey access",
+      "Document status, trust signals, and a clear advertiser profile before you reach out.",
+    passkeyTitle: "Passkey sign-in",
     passkeyBody:
-      "Biometric-grade sign-in designed for speed, security, and seamless mobile use.",
-    dealsTitle: "Private deals",
+      "Secure biometric login in the app — no daily password friction.",
+    dealsTitle: "Deal Room",
     dealsBody:
-      "Early visibility windows and off-market flows for members who move first.",
+      "Private deal rooms: messages, price offers, and documents in one workflow.",
   },
   homePremium: {
     loading: "Loading...",
@@ -599,22 +593,22 @@ const en: Dictionary = {
     statsNewOffers24h: "New in 24h",
     statsMarketCities: "Cities Covered",
     statsRegisteredMembers: "Trusted Members",
-    galleryEyebrow: "Exclusive Global Selection",
-    galleryTitle: "Curated",
-    galleryTitleHighlight: "Residences",
-    gallerySubtitle: "Real listings from the EstateOS market, presented with a gallery made for premium discovery.",
-    galleryViewAll: "View all collection",
+    galleryEyebrow: "Active market",
+    galleryTitle: "Featured",
+    galleryTitleHighlight: "listings",
+    gallerySubtitle: "Live listings from EstateOS — sale and rent, the same catalog as on the map.",
+    galleryViewAll: "View full catalog",
     galleryPriceLabel: "Price",
     galleryAreaLabel: "Area",
     galleryRoomsLabel: "rooms",
-    mapEyebrow: "Live property radar",
-    mapTitle: "Intelligent",
-    mapTitleHighlight: "Radar",
+    mapEyebrow: "Live market",
+    mapTitle: "Listing",
+    mapTitleHighlight: "map",
     mapSubtitle:
-      "Interactive global map of premium listings. Define your parameters and let EstateOS locate your next legacy asset.",
-    trustRadarTitle: "AI Radar",
+      "Browse active listings, filter by location and property type — the same market as in the mobile app.",
+    trustRadarTitle: "Investment Radar",
     trustRadarDesc:
-      "Automated matchmaking. Define your parameters and let the system hunt for properties 24/7.",
+      "Set criteria in your account. The system scans the market and shows matches in your radar tab.",
     trustSecurityTitle: "Passkey Security",
     trustSecurityDesc:
       "Biometric authentication. No passwords. Enterprise-grade security for your assets.",

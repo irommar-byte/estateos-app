@@ -14,7 +14,7 @@ export default function SignatureHighlights() {
   ] as const;
 
   return (
-    <section className="premium-home-surface relative overflow-hidden bg-black py-16 sm:py-24">
+    <section className="premium-home-surface relative overflow-hidden border-t border-white/[0.06] bg-black py-16 sm:py-24">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.08),transparent_55%)]"
