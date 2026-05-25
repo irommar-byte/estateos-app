@@ -31,6 +31,7 @@ export function resolveEliteBadges(subject: any): EliteBadges {
       isAgent: false,
       isProgramPartner: false,
       isInvestorPro: false,
+      isPartner: false,
     };
   }
 
