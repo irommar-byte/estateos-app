@@ -614,6 +614,7 @@ model RadarPreference {
   requireElevator Boolean @default(false)
   requireParking  Boolean @default(false)
   requireFurnished Boolean @default(false)
+  requireTwoLevel   Boolean @default(false)
 
   pushNotifications Boolean @default(true)
 

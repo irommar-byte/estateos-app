@@ -4,6 +4,7 @@ import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCi
 import { requireMobileAdmin, parseUserIdFromMobileJwt, extractBearerToken } from '@/lib/mobileAdminAuth';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { shapeRadarPreference } from '@/lib/radarPreferenceShape';
+import { syncUserLegacySearchFromRadarPreference } from '@/lib/radarPreferenceSync';
 
 async function assertCanAccessUserRadar(req: Request, targetUserId: number) {
   const adminGate = await requireMobileAdmin(req);
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       requireElevator,
       requireParking,
       requireFurnished,
+      requireTwoLevel,
       pushNotifications,
       lat,
       lng,
@@ -94,6 +96,17 @@ export async function POST(req: Request) {
           })
       : [];
 
+    const hasMap =
+      lat != null &&
+      lng != null &&
+      radius != null &&
+      Number(lat) !== 0 &&
+      Number(lng) !== 0 &&
+      Number(radius) > 0;
+    const mapLat = hasMap ? Number(lat) : null;
+    const mapLng = hasMap ? Number(lng) : null;
+    const mapRadius = hasMap ? Number(radius) : null;
+
     const pref = await prisma.radarPreference.upsert({
       where: { userId: targetUserId },
       update: {
@@ -109,11 +122,12 @@ export async function POST(req: Request) {
         requireElevator: !!requireElevator,
         requireParking: !!requireParking,
         requireFurnished: !!requireFurnished,
+        requireTwoLevel: !!requireTwoLevel,
         pushNotifications: pushNotifications !== false,
         minMatchThreshold: body.minMatchThreshold ?? 70,
-        lat: lat ? Number(lat) : null,
-        lng: lng ? Number(lng) : null,
-        radius: radius ? Number(radius) : null
+        lat: mapLat,
+        lng: mapLng,
+        radius: mapRadius,
       },
       create: {
         userId: targetUserId,
@@ -129,13 +143,37 @@ export async function POST(req: Request) {
         requireElevator: !!requireElevator,
         requireParking: !!requireParking,
         requireFurnished: !!requireFurnished,
+        requireTwoLevel: !!requireTwoLevel,
         pushNotifications: pushNotifications !== false,
         minMatchThreshold: body.minMatchThreshold ?? 70,
-        lat: lat ? Number(lat) : null,
-        lng: lng ? Number(lng) : null,
-        radius: radius ? Number(radius) : null
+        lat: mapLat,
+        lng: mapLng,
+        radius: mapRadius,
       }
     });
+
+    const canonicalPayload = {
+      userId: targetUserId,
+      transactionType,
+      propertyType,
+      city: normalizedCity,
+      selectedDistricts: normalizedDistricts,
+      maxPrice: maxPrice ? Number(maxPrice) : null,
+      minArea: minArea ? Number(minArea) : null,
+      minYear: minYear ? Number(minYear) : null,
+      requireBalcony: !!requireBalcony,
+      requireGarden: !!requireGarden,
+      requireElevator: !!requireElevator,
+      requireParking: !!requireParking,
+      requireFurnished: !!requireFurnished,
+      requireTwoLevel: !!requireTwoLevel,
+      pushNotifications: pushNotifications !== false,
+      minMatchThreshold: body.minMatchThreshold ?? 70,
+      lat: mapLat,
+      lng: mapLng,
+      radius: mapRadius,
+    };
+    await syncUserLegacySearchFromRadarPreference(targetUserId, canonicalPayload);
 
     const radarPreference = shapeRadarPreference(pref);
 

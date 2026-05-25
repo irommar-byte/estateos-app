@@ -46,6 +46,7 @@ const PROPERTY_TYPES = [
 const AMENITIES = [
   { key: "requireBalcony" as const, label: "Balkon" },
   { key: "requireGarden" as const, label: "Ogródek" },
+  { key: "requireTwoLevel" as const, label: "Dwupoziomowe" },
   { key: "requireElevator" as const, label: "Winda" },
   { key: "requireParking" as const, label: "Parking" },
   { key: "requireFurnished" as const, label: "Umeblowane" },

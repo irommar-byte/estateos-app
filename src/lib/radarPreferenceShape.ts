@@ -13,6 +13,7 @@ export type RadarPreferenceDto = {
   requireElevator: boolean;
   requireParking: boolean;
   requireFurnished: boolean;
+  requireTwoLevel: boolean;
   pushNotifications: boolean;
   minMatchThreshold: number;
   lat: number | null;
@@ -59,6 +60,7 @@ export function shapeRadarPreference(
     requireElevator: !!pref.requireElevator,
     requireParking: !!pref.requireParking,
     requireFurnished: !!pref.requireFurnished,
+    requireTwoLevel: !!pref.requireTwoLevel,
     pushNotifications: pref.pushNotifications !== false,
     minMatchThreshold: pref.minMatchThreshold ?? 70,
     lat: pref.lat ?? null,
