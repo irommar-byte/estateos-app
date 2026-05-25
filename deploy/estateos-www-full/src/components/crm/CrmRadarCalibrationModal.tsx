@@ -18,6 +18,8 @@ import {
   radarIntelligenceLabel,
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
+import CrmRadarAreaPicker from "@/components/crm/CrmRadarAreaPicker";
+import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
 
 type Catalog = {
   strictCities: string[];
@@ -57,9 +59,24 @@ export default function CrmRadarCalibrationModal({
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<WebRadarFilters>(initialFilters);
+  const [areaPickerOpen, setAreaPickerOpen] = useState(false);
+  const [mapAreaLabel, setMapAreaLabel] = useState("");
 
   useEffect(() => {
-    if (open) setDraft(initialFilters);
+    if (open) {
+      setDraft(initialFilters);
+      if (
+        initialFilters.calibrationMode === "MAP" &&
+        initialFilters.lat != null &&
+        initialFilters.lng != null
+      ) {
+        setMapAreaLabel(
+          `${initialFilters.city || "Obszar"} · ${initialFilters.radiusKm ?? "?"} km`,
+        );
+      } else {
+        setMapAreaLabel("");
+      }
+    }
   }, [open, initialFilters]);
 
   const intelligence = useMemo(
@@ -92,7 +109,30 @@ export default function CrmRadarCalibrationModal({
     ) {
       return;
     }
+    if (
+      draft.pushNotifications &&
+      draft.calibrationMode === "MAP" &&
+      (draft.lat == null || draft.lng == null || !draft.radiusKm)
+    ) {
+      return;
+    }
     await onSave(draft);
+  };
+
+  const handleAreaApplied = (sel: RadarMapAreaSelection) => {
+    setDraft((p) => ({
+      ...p,
+      calibrationMode: "MAP",
+      lat: sel.lat,
+      lng: sel.lng,
+      radiusKm: sel.radiusKm,
+      city: sel.city || p.city,
+      selectedDistricts: sel.district ? [sel.district] : [],
+    }));
+    setMapAreaLabel(
+      sel.addressLabel || `${sel.city} · promień ${sel.radiusKm} km`,
+    );
+    setAreaPickerOpen(false);
   };
 
   return (
@@ -213,21 +253,30 @@ export default function CrmRadarCalibrationModal({
                   </div>
 
                   {draft.calibrationMode === "MAP" ? (
-                    <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5 text-sm text-amber-100/90">
-                      {draft.lat != null && draft.lng != null && draft.radiusKm ? (
-                        <p>
-                          Zapisany obszar z aplikacji:{" "}
-                          <strong>
-                            {draft.lat.toFixed(4)}, {draft.lng.toFixed(4)} · promień {draft.radiusKm} km
-                          </strong>
-                          . Aby narysować nowy obszar na mapie, użyj aplikacji mobilnej EstateOS.
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setAreaPickerOpen(true)}
+                        className="flex w-full items-center gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15"
+                      >
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
+                          <MapPin className="text-emerald-400" size={22} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-white">Wybierz obszar na mapie</p>
+                          <p className="mt-1 text-xs leading-relaxed text-white/50">
+                            Przesuń mapę i ustaw promień — tak jak w aplikacji mobilnej.
+                          </p>
+                          {mapAreaLabel ? (
+                            <p className="mt-2 text-[11px] font-bold text-emerald-400/90">{mapAreaLabel}</p>
+                          ) : null}
+                        </div>
+                      </button>
+                      {draft.lat == null || draft.lng == null || !draft.radiusKm ? (
+                        <p className="text-[11px] font-bold text-amber-400/90">
+                          Ustaw obszar na mapie, aby zapisać kalibrację w trybie MAP.
                         </p>
-                      ) : (
-                        <p>
-                          Brak obszaru mapy. Wybierz tryb <strong>Miasto i dzielnice</strong> lub ustaw obszar w
-                          aplikacji mobilnej (Radar → kalibracja → obszar na mapie).
-                        </p>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <>
@@ -437,7 +486,10 @@ export default function CrmRadarCalibrationModal({
                   (radarAwake &&
                     draft.calibrationMode === "CITY" &&
                     districts.length > 0 &&
-                    draft.selectedDistricts.length === 0)
+                    draft.selectedDistricts.length === 0) ||
+                  (radarAwake &&
+                    draft.calibrationMode === "MAP" &&
+                    (draft.lat == null || draft.lng == null || !draft.radiusKm))
                 }
                 className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-xl border border-emerald-300/50 bg-gradient-to-r from-emerald-500 to-emerald-400 py-5 font-black uppercase tracking-[0.2em] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -450,6 +502,15 @@ export default function CrmRadarCalibrationModal({
           </motion.div>
         </motion.div>
       ) : null}
+
+      <CrmRadarAreaPicker
+        open={areaPickerOpen}
+        initialLat={draft.lat}
+        initialLng={draft.lng}
+        initialRadiusKm={draft.radiusKm}
+        onCancel={() => setAreaPickerOpen(false)}
+        onApply={handleAreaApplied}
+      />
     </AnimatePresence>
   );
 }

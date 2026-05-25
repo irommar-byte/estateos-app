@@ -195,7 +195,7 @@ export function formatRadarSummary(filters: WebRadarFilters): {
 } {
   const location =
     filters.calibrationMode === 'MAP' && filters.lat != null && filters.lng != null
-      ? `Obszar mapy (~${filters.radiusKm ?? '?'} km)`
+      ? `${filters.city || 'Obszar'} · ${filters.radiusKm ?? '?'} km`
       : filters.selectedDistricts.length
         ? `${filters.selectedDistricts.length} dzielnic · ${filters.city}`
         : `Całe ${filters.city}`;
