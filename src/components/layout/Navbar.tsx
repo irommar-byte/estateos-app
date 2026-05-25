@@ -99,11 +99,7 @@ export default function Navbar() {
 
   const handleNavClick = (path: string, isMap = false) => {
     if (isMap) {
-      if (pathname === "/") {
-        document.getElementById("map-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else {
-        router.push("/#map");
-      }
+      router.push("/odkryj-mape");
     } else {
       router.push(path);
     }
@@ -139,7 +135,7 @@ export default function Navbar() {
         </button>
 
         <div className="hidden min-w-0 items-center justify-center gap-1 xl:flex 2xl:gap-2">
-          <button type="button" onClick={() => handleNavClick("/", true)} className="eos-nav-link">
+          <button type="button" onClick={() => handleNavClick("/odkryj-mape", true)} className="eos-nav-link">
             {dict.nav.discoverMap}
           </button>
           <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link">
@@ -244,7 +240,7 @@ export default function Navbar() {
                 )}
 
                 <div className="grid gap-2">
-                  <MobileNavButton icon={Home} label={dict.nav.discoverMap} onClick={() => handleNavClick("/", true)} />
+                  <MobileNavButton icon={Home} label={dict.nav.discoverMap} onClick={() => handleNavClick("/odkryj-mape", true)} />
                   <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} />
                   <MobileNavButton icon={Crown} label={dict.nav.elite} accent="amber" onClick={() => handleNavClick("/cennik")} />
                 </div>

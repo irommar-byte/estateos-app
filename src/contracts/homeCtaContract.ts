@@ -21,7 +21,7 @@ export const HOME_CTA_CONTRACT: Record<HomeCtaId, HomeCtaContractEntry> = {
     id: 'RADAR',
     mode: 'APP',
     appRoute: 'MainTabs/Radar',
-    webRoute: '/#map',
+    webRoute: '/odkryj-mape',
   },
   LIST: {
     id: 'LIST',

@@ -135,6 +135,15 @@ export type Dictionary = {
     wholeCity: string;
     selectedCount: string;
     placeholderPlot: string;
+    maxPriceLabel: string;
+    maxRentLabel: string;
+    locateMe: string;
+    geolocationDenied: string;
+    teaserTitleHighlight: string;
+    teaserTitle: string;
+    teaserBody: string;
+    teaserLogin: string;
+    teaserBack: string;
   };
   footer: {
     rights: string;
@@ -384,6 +393,17 @@ const pl: Dictionary = {
     wholeCity: "Całe miasto",
     selectedCount: "{n} wybrane",
     placeholderPlot: "np. 500",
+    maxPriceLabel: "Maks. cena",
+    maxRentLabel: "Maks. czynsz",
+    locateMe: "Zlokalizuj mnie",
+    geolocationDenied:
+      "Zezwól na dostęp do lokalizacji w przeglądarce, aby przejść do swojego miasta.",
+    teaserTitleHighlight: "Zastrzeżony",
+    teaserTitle: "dostęp",
+    teaserBody:
+      "Szczegóły oferty i kontakt są dostępne po zalogowaniu. Utwórz konto lub zaloguj się, aby odblokować adres na mapie.",
+    teaserLogin: "Zaloguj się",
+    teaserBack: "Wróć do mapy",
   },
   footer: {
     rights: "© 2026 EstateOS™. Wszelkie prawa zastrzeżone.",
@@ -642,6 +662,17 @@ const en: Dictionary = {
     wholeCity: "Entire city",
     selectedCount: "{n} selected",
     placeholderPlot: "e.g. 500",
+    maxPriceLabel: "Max price",
+    maxRentLabel: "Max rent",
+    locateMe: "Locate me",
+    geolocationDenied:
+      "Allow location access in your browser to fly to your area on the map.",
+    teaserTitleHighlight: "Restricted",
+    teaserTitle: "access",
+    teaserBody:
+      "Listing details and contact unlock after sign-in. Log in or create an account to open this pin.",
+    teaserLogin: "Sign in",
+    teaserBack: "Back to map",
   },
   footer: {
     rights: "© 2026 EstateOS™. All rights reserved.",

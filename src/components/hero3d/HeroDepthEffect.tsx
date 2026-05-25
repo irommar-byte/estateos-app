@@ -52,14 +52,7 @@ export default function HeroDepthEffect() {
     trackHomeCta("home_cta_click", ctaId);
     trackHomeCta("home_cta_route_resolved", ctaId);
 
-    if (ctaId === "RADAR") {
-      document.getElementById("map-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", entry.webRoute);
-      }
-    } else {
-      router.push(entry.webRoute);
-    }
+    router.push(entry.webRoute);
 
     trackHomeCta("home_cta_flow_opened", ctaId);
   };
