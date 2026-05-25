@@ -19,6 +19,13 @@ import {
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
+import {
+  assertContactVerified,
+  contactVerificationJson,
+  loadUserForContactVerification,
+  PUBLISH_CONTACT_REQUIREMENTS,
+} from '@/lib/contactVerification';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -167,7 +174,9 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    let resolvedUserId: number | null = Number(body?.userId) || null;
+    const sessionUserId = await resolveWebUserId(req);
+    const bodyUserId = Number(body?.userId);
+    let resolvedUserId: number | null = sessionUserId;
 
     if (!resolvedUserId) {
       const cookieStore = await cookies();
@@ -175,25 +184,25 @@ export async function POST(req: Request) {
       const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
 
       let email = nextAuthSession?.user?.email || null;
-      let sessionUserId: number | null = null;
+      let legacySessionUserId: number | null = null;
 
       if (!email && sessionCookie?.value) {
         try {
           const sessionData = decryptSession(sessionCookie.value);
           email = sessionData?.email || null;
-          sessionUserId = Number(sessionData?.id) || null;
+          legacySessionUserId = Number(sessionData?.id) || null;
         } catch {
           email = null;
-          sessionUserId = null;
+          legacySessionUserId = null;
         }
       }
 
-      if (sessionUserId) {
-        resolvedUserId = sessionUserId;
+      if (legacySessionUserId) {
+        resolvedUserId = legacySessionUserId;
       } else if (email) {
         const user = await prisma.user.findUnique({
           where: { email: String(email) },
-          select: { id: true }
+          select: { id: true },
         });
         resolvedUserId = user?.id ?? null;
       }
@@ -202,6 +211,14 @@ export async function POST(req: Request) {
     if (!resolvedUserId) {
       return NextResponse.json({ error: 'Brak ID użytkownika' }, { status: 401 });
     }
+
+    if (Number.isFinite(bodyUserId) && bodyUserId > 0 && bodyUserId !== resolvedUserId) {
+      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 403 });
+    }
+
+    const publisher = await loadUserForContactVerification(resolvedUserId);
+    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
+    if (!publishGate.ok) return contactVerificationJson(publishGate);
 
     const offer = await createOffer({ ...body, userId: resolvedUserId });
 

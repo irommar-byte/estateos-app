@@ -26,8 +26,12 @@ export default function BiddingModal({ offerId, currentPrice, onClose }: { offer
         setSuccess(true);
         setTimeout(() => { onClose(); window.dispatchEvent(new Event('refreshNotifications')); }, 3000);
       } else {
-        const d = await res.json();
-        alert(d.error || "Zaloguj się, aby licytować.");
+        const d = await res.json().catch(() => ({}));
+        if (d.errorCode === 'PHONE_VERIFICATION_REQUIRED') {
+          window.location.href = '/moje-konto/weryfikacja';
+          return;
+        }
+        alert(d.error || d.message || "Zaloguj się, aby licytować.");
       }
     } catch (e) { alert("Błąd połączenia."); } 
     finally { setIsSubmitting(false); }

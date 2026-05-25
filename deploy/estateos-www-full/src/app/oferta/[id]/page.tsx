@@ -6,6 +6,7 @@ import Link from "next/link";
 import { MapPin, ArchiveX, Eye, Shield, Briefcase, Phone, MessageCircle, Video, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 , ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
+import PhoneVerificationGateModal from "@/components/PhoneVerificationGateModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 
@@ -22,6 +23,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isAgency = offer?.user?.buyerType === 'agency' || offer?.advertiserType === 'agency';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBiddingOpen, setIsBiddingOpen] = useState(false);
+  const [phoneGateOpen, setPhoneGateOpen] = useState(false);
 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
@@ -119,20 +121,29 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     e.preventDefault();
     e.stopPropagation();
     if (!currentUser) {
-      alert('You must be signed in to start negotiations.');
       window.location.href = '/login';
       return false;
     }
     return true;
   };
 
+  const guardPhoneVerification = () => {
+    if (!currentUser?.id) return false;
+    const phoneOk = Boolean(currentUser.isVerifiedPhone ?? currentUser.phoneVerified);
+    if (phoneOk) return false;
+    setPhoneGateOpen(true);
+    return true;
+  };
+
   const openBidFlow = (e: React.MouseEvent) => {
     if (!ensureAuthenticated(e)) return;
+    if (guardPhoneVerification()) return;
     setIsBiddingOpen(true);
   };
 
   const openAppointmentFlow = (e: React.MouseEvent) => {
     if (!ensureAuthenticated(e)) return;
+    if (guardPhoneVerification()) return;
     setIsModalOpen(true);
   };
 
@@ -560,6 +571,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         userId={publicProfileId} 
         onClose={() => setPublicProfileId(null)} 
       />
+
+      <PhoneVerificationGateModal
+        open={phoneGateOpen}
+        onClose={() => setPhoneGateOpen(false)}
+      />
     </main>
   );
 }
@@ -576,7 +592,14 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
         const userRes = await fetch('/api/user/profile');
         if (userRes.ok) {
           const userData = await userRes.json();
-          if (userData && userData.email) setCurrentUser(userData);
+          if (userData?.email) {
+            setCurrentUser({
+              id: userData.id,
+              email: userData.email,
+              isVerifiedPhone: Boolean(userData.isVerifiedPhone ?? userData.phoneVerified),
+              isEmailVerified: Boolean(userData.isEmailVerified ?? userData.emailVerified),
+            });
+          }
         }
       } catch (e) {}
 

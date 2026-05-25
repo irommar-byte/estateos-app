@@ -31,16 +31,20 @@ export default function OfferActions({ offerId, currentUserId }: OfferActionsPro
         ? { type: 'APPOINTMENT', date: `${date}T${time}:00Z` }
         : { type: 'BID', amount: parseFloat(amount) };
 
-      const res = await fetch('/api/deals/initiate', {
+      const res = await fetch('/api/deals/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerId, buyerId: currentUserId, ...payload })
+        credentials: 'include',
+        body: JSON.stringify({ offerId }),
       });
 
       const data = await res.json();
-      if (data.success && data.dealId) {
-        // Przenosimy prosto do Deal Roomu
-        router.push(`/moje-konto/crm/dealroom?dealId=${data.dealId}`);
+      if (data.errorCode === 'PHONE_VERIFICATION_REQUIRED') {
+        router.push('/moje-konto/weryfikacja');
+        return;
+      }
+      if (data.success && data.deal?.id) {
+        router.push(`/moje-konto/crm?tab=transakcje&dealId=${data.deal.id}`);
       }
     } catch (e) {
       console.error(e);

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
         name: name,
         companyName: agencyName,
         phone: finalPhone,
-        isVerified: true
+        isVerified: false,
       }
     });
 

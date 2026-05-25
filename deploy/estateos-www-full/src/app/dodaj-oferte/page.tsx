@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import ClientForm from './ClientForm';
 import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimits';
+import { shapeMobileUser } from '@/lib/mobileUserShape';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -45,17 +46,20 @@ export default async function AddOfferPage() {
         // Twarda blokada - przekazujemy do formularza
         const limitReached = activeOffersCount >= limit;
 
-        userData = { 
-          isLoggedIn: true, 
+        const shaped = shapeMobileUser(realUser);
+        userData = {
+          isLoggedIn: true,
           id: realUser.id,
-          name: realUser.name, 
-          phone: realUser.phone, 
+          name: realUser.name,
+          phone: realUser.phone,
           email: realUser.email,
           role: realUser.role,
           isPro: realUser.isPro,
           extraListings: activePlusCredits,
           plusExpiresAt: isPlusCreditActive(realUser) ? realUser.plusExpiresAt : null,
-          limitReached: limitReached 
+          limitReached: limitReached,
+          isEmailVerified: shaped.isEmailVerified,
+          isVerifiedPhone: shaped.isVerifiedPhone,
         };
       }
     }

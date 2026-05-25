@@ -1,12 +1,17 @@
-import { decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { cookies } from 'next/headers';
 import { notificationService } from '@/lib/services/notification.service';
 import {
   buildAppointmentUpdateEmailHtml,
   sendTransactionalEmail,
 } from '@/lib/email/transactional';
+import {
+  assertContactVerified,
+  BUYER_CONTACT_REQUIREMENTS,
+  contactVerificationJson,
+  loadUserForContactVerification,
+} from '@/lib/contactVerification';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export const dynamic = 'force-dynamic';
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
@@ -19,22 +24,12 @@ export async function POST(req: Request) {
   try {
     const { offerId, sellerId, proposedDate, message } = await req.json();
 
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('luxestate_user') || cookieStore.get('estateos_session');
-    if (!sessionCookie) return NextResponse.json({ error: 'Brak sesji' }, { status: 401 });
+    const buyerId = await resolveWebUserId(req);
+    if (!buyerId) return NextResponse.json({ error: 'Brak sesji' }, { status: 401 });
 
-    let sessionData: any = {};
-    try { sessionData = decryptSession(sessionCookie.value); } catch(e) {}
-    
-    const currentUserEmail = sessionData.email || sessionCookie.value;
-    let dbUserId = sessionData.id;
-
-    if (currentUserEmail && String(currentUserEmail).includes('@')) {
-       const u = await prisma.user.findFirst({ where: { email: String(currentUserEmail) } });
-       if (u) dbUserId = u.id;
-    }
-
-    const buyerId = Number(dbUserId);
+    const buyer = await loadUserForContactVerification(buyerId);
+    const buyerGate = assertContactVerified(buyer, BUYER_CONTACT_REQUIREMENTS);
+    if (!buyerGate.ok) return contactVerificationJson(buyerGate);
     const parsedOfferId = Number(offerId);
     if (!buyerId || Number.isNaN(parsedOfferId)) {
       return NextResponse.json({ error: 'Nieprawidłowe dane użytkownika/oferty' }, { status: 400 });

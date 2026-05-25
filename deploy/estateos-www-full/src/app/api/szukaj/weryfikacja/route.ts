@@ -26,11 +26,13 @@ export async function POST(req: Request) {
     // 2. OZNACZENIE JAKO ZWERYFIKOWANY
     await prisma.user.update({
         where: { email },
-        data: { 
-          isVerified: true, 
-          otpCode: null, 
-          otpExpiry: null 
-        }
+        data: {
+          isVerified: true,
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+          phoneVerifiedAt: user.phone ? (user.phoneVerifiedAt ?? new Date()) : user.phoneVerifiedAt,
+          otpCode: null,
+          otpExpiry: null,
+        },
     });
 
     // 3. WYSYŁKA MAILA POWITALNEGO (W tle, żeby nie blokować użytkownika)

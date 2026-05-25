@@ -4,6 +4,12 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { activateOfferPublication, getPublicationQuote } from '@/lib/offerPublication';
+import {
+  assertContactVerified,
+  contactVerificationJson,
+  loadUserForContactVerification,
+  PUBLISH_CONTACT_REQUIREMENTS,
+} from '@/lib/contactVerification';
 
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
@@ -32,6 +38,10 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   try {
+    const publisher = await loadUserForContactVerification(userId);
+    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
+    if (!publishGate.ok) return contactVerificationJson(publishGate);
+
     const body = await req.json().catch(() => ({} as any));
     const quote = await getPublicationQuote({ userId, offerId, action: 'ACTIVATE' });
     if (quote.reason === 'ALREADY_ACTIVE') {

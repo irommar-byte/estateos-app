@@ -920,6 +920,29 @@ export default function CRMDashboard() {
 
       <div className="max-w-7xl mx-auto">
         <ProStatusBar user={currentUser} />
+
+        {currentUser &&
+        (!currentUser.isEmailVerified || !currentUser.isVerifiedPhone) &&
+        currentUser.role !== 'ADMIN' ? (
+          <div className="mb-6 rounded-[1.75rem] border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-transparent p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 mb-1">Weryfikacja konta</p>
+              <p className="text-sm text-white/65 max-w-xl">
+                {!currentUser.isVerifiedPhone && !currentUser.isEmailVerified
+                  ? 'Potwierdź telefon (SMS) i e-mail, aby publikować ogłoszenia i negocjować — jak w aplikacji.'
+                  : !currentUser.isVerifiedPhone
+                    ? 'Potwierdź telefon SMS-em, aby negocjować i umawiać wizyty.'
+                    : 'Potwierdź e-mail, aby publikować ogłoszenia.'}
+              </p>
+            </div>
+            <Link
+              href="/moje-konto/weryfikacja"
+              className="shrink-0 py-3 px-6 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 text-center"
+            >
+              Zweryfikuj teraz
+            </Link>
+          </div>
+        ) : null}
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>

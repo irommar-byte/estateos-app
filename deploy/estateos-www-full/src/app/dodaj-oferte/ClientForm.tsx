@@ -7,7 +7,7 @@ import { Home,
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
   LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check, Shield,
-  Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft
+  Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck
 } from "lucide-react";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -124,7 +124,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-  const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus">("none");
+  const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   
   const [uploadProgress, setUploadProgress] = useState('');
@@ -598,7 +598,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, [currentStep, data.lat, data.lng]);
 
   const handleSubmit = async () => {
-    if (isSubmitting || !canPublish) return;
+    if (isSubmitting) return;
+    if (initialUser?.isLoggedIn && !publishContactOk) {
+      setActionModal('verify');
+      return;
+    }
+    if (!canPublish) return;
     setIsSubmitting(true);
     setUploadProgress('Wysyłanie oferty...');
     try {
@@ -665,6 +670,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           }
         }
         setActionModal(responseData.requiresVerification ? 'otp' : 'success');
+      } else if (
+        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
+        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
+      ) {
+        setServerErrorMessage(responseData.message || responseData.error);
+        setActionModal('verify');
       } else {
         setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
@@ -680,6 +691,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
   const [isProcessingPlus, setIsProcessingPlus] = useState(false);
   const handlePlusPayment = async () => {
+    if (initialUser?.isLoggedIn && !publishContactOk) {
+      setActionModal('verify');
+      return;
+    }
     setIsProcessingPlus(true);
     try {
       const cleanPrice = String(data.price || '').replace(/\D/g, "");
@@ -718,6 +733,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         } else {
            setActionModal("success");
         }
+      } else if (
+        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
+        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
+      ) {
+        setServerErrorMessage(responseData.message || responseData.error);
+        setActionModal('verify');
       } else {
         setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
@@ -754,7 +775,18 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     (data.advertiserType === 'private' || (data.advertiserType === 'agency' && !!data.agencyName))
   );
 
-  const canPublish = isTypeSelected && isLocationDone && isFinanceDone && isTechDone && isMediaDone && isContactDone;
+  const publishContactOk =
+    !initialUser?.isLoggedIn ||
+    (Boolean(initialUser?.isEmailVerified) && Boolean(initialUser?.isVerifiedPhone));
+
+  const canPublish =
+    isTypeSelected &&
+    isLocationDone &&
+    isFinanceDone &&
+    isTechDone &&
+    isMediaDone &&
+    isContactDone &&
+    publishContactOk;
   const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
@@ -1346,6 +1378,23 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
+              {initialUser?.isLoggedIn && !publishContactOk ? (
+                <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">Weryfikacja konta</p>
+                  <p className="text-sm text-white/70 mb-4 leading-relaxed">
+                    Przed publikacją potwierdź{' '}
+                    {!initialUser?.isVerifiedPhone ? 'telefon (SMS)' : ''}
+                    {!initialUser?.isVerifiedPhone && !initialUser?.isEmailVerified ? ' oraz ' : ''}
+                    {!initialUser?.isEmailVerified ? 'adres e-mail' : ''} — tak jak w aplikacji mobilnej.
+                  </p>
+                  <a
+                    href="/moje-konto/weryfikacja"
+                    className="inline-block py-3 px-6 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 transition-colors"
+                  >
+                    Przejdź do weryfikacji
+                  </a>
+                </div>
+              ) : null}
               <button 
                 onClick={handleSubmit} 
                 disabled={isSubmitting || !canPublish} 
@@ -1413,7 +1462,19 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       
       {/* 1. STANDARDOWE OKNA (BŁĄD, LIMIT, SUKCES ZWYKŁY) */}
       <AnimatePresence>
-        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && (
+        {actionModal === "verify" && (
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl relative">
+              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24} /></button>
+              <ShieldCheck className="mx-auto mb-6 text-emerald-400" size={48} />
+              <h2 className="text-2xl font-black text-white mb-3">Potwierdź kontakt</h2>
+              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || 'Publikacja wymaga zweryfikowanego telefonu i e-maila.'}</p>
+              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">Weryfikacja konta</a>
+              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">Zamknij</button>
+            </motion.div>
+          </div>
+        )}
+        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && (
           <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full shadow-2xl relative text-center">
               <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>

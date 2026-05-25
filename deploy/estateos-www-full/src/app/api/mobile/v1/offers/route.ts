@@ -4,6 +4,12 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, OfferValidationError, updateOffer } from '@/lib/services/offer.service';
+import {
+  assertContactVerified,
+  contactVerificationJson,
+  loadUserForContactVerification,
+  PUBLISH_CONTACT_REQUIREMENTS,
+} from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -171,6 +177,11 @@ export async function POST(req: Request) {
     if (!Number.isFinite(bodyUserId) || bodyUserId <= 0 || bodyUserId !== authUserId) {
       return NextResponse.json({ success: false, message: 'Błędny użytkownik w żądaniu.' }, { status: 403 });
     }
+
+    const publisher = await loadUserForContactVerification(authUserId);
+    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
+    if (!publishGate.ok) return contactVerificationJson(publishGate);
+
     cleanupIdempotencyMap();
 
     const reqId = String(body?.clientRequestId || '').trim();

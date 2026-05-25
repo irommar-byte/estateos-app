@@ -253,7 +253,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     const phone = normalizePhone(body.phone);
-    if (phone !== undefined) updateData.phone = phone;
+    if (phone !== undefined) {
+      const prevPhone = normalizePhone(user.phone);
+      updateData.phone = phone;
+      if (phone !== prevPhone) {
+        updateData.phoneVerifiedAt = null;
+      }
+    }
 
     const image = body.image === undefined ? normalizeString(body.avatar, 4000) : normalizeString(body.image, 4000);
     if (image !== undefined) updateData.image = image;
