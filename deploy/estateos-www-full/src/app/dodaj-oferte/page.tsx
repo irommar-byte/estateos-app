@@ -1,5 +1,6 @@
 import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import ClientForm from './ClientForm';
 import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimits';
@@ -14,6 +15,10 @@ export default async function AddOfferPage() {
   const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
 
   let userData = null;
+
+  if (!sessionCookie?.value) {
+    redirect('/login?next=/dodaj-oferte');
+  }
 
   if (sessionCookie) {
     let dbUserId = null;
@@ -63,6 +68,10 @@ export default async function AddOfferPage() {
         };
       }
     }
+  }
+
+  if (!userData?.isLoggedIn) {
+    redirect('/login?next=/dodaj-oferte');
   }
 
   return <ClientForm initialUser={userData} />;

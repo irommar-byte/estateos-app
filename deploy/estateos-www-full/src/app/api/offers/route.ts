@@ -209,7 +209,14 @@ export async function POST(req: Request) {
     }
 
     if (!resolvedUserId) {
-      return NextResponse.json({ error: 'Brak ID użytkownika' }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: 'Zaloguj się, aby dodać ofertę.',
+          errorCode: 'AUTH_REQUIRED',
+          redirect: '/login?next=/dodaj-oferte',
+        },
+        { status: 401 }
+      );
     }
 
     if (Number.isFinite(bodyUserId) && bodyUserId > 0 && bodyUserId !== resolvedUserId) {

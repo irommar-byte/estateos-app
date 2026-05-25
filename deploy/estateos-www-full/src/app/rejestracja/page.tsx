@@ -3,10 +3,13 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { AlertCircle, CheckCircle, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import RegisterForm from '@/components/auth/RegisterForm';
 
-export default function RejestracjaPage() {
+function RejestracjaPageInner() {
+  const searchParams = useSearchParams();
+  const afterRegisterPath = searchParams.get('next') || undefined;
   const [bannerError] = useState('');
   const [bannerSuccess] = useState('');
 
@@ -43,9 +46,17 @@ export default function RejestracjaPage() {
             .
           </p>
 
-          <RegisterForm />
+          <RegisterForm afterRegisterPath={afterRegisterPath} />
         </motion.div>
       </div>
     </main>
+  );
+}
+
+export default function RejestracjaPage() {
+  return (
+    <Suspense fallback={null}>
+      <RejestracjaPageInner />
+    </Suspense>
   );
 }

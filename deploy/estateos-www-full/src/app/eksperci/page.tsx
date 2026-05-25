@@ -123,7 +123,7 @@ export default function ExpertsPage() {
                 </div>
                 <div className="relative z-10 flex-1">
                   <Link href={`/ekspert/${exp.id}`} className="text-2xl font-black mb-1 group-hover:text-orange-500 transition-colors block">{exp.name}</Link>
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500 mb-6"><ShieldCheck size={14} /> Zweryfikowany Partner</div>
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500 mb-6"><ShieldCheck size={14} /> Zweryfikowany Agent</div>
                   <div className="space-y-3 mb-8">
                     <div className="flex justify-between items-center text-sm border-b border-white/5 pb-3"><span className="text-white/40">Udane transakcje</span><span className="font-bold text-white flex items-center gap-2"><Award size={14} className="text-white/40"/> {exp.transactions}+</span></div>
                     <div className="flex justify-between items-center text-sm border-b border-white/5 pb-3"><span className="text-white/40">Opinie klientów</span><span className="font-bold text-white">{exp.reviewsCount}</span></div>

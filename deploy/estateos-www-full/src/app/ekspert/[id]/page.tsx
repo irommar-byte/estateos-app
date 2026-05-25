@@ -39,7 +39,7 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
            <div className="flex-1 text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
                  <ShieldCheck size={18} className="text-emerald-500" />
-                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany Partner PRO</span>
+                 <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Zweryfikowany Agent</span>
               </div>
               <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4">{data.user?.name}</h1>
               

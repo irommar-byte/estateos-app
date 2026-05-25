@@ -21,6 +21,7 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
+import { isInvestorProIdentity } from '@/utils/partnerIdentity';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -134,11 +135,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (loggedInEmail) {
       const realUser = await prisma.user.findUnique({ where: { email: loggedInEmail } });
       if (realUser) {
-        const proExpiresAt = realUser.proExpiresAt ? new Date(realUser.proExpiresAt) : null;
-        isRealPro = Boolean(
-          realUser.role === 'ADMIN' ||
-          (realUser.isPro && (!proExpiresAt || proExpiresAt.getTime() > Date.now()))
-        );
+        isRealPro =
+          realUser.role === 'ADMIN' || isInvestorProIdentity(realUser);
       }
     }
 

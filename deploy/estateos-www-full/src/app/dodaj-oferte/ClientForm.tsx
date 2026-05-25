@@ -20,6 +20,13 @@ import {
   inferStrictDistrictFromMapboxFeature,
   normalizeText,
 } from "@/lib/location/locationCatalog";
+import {
+  AGENT_COMMISSION_MAX,
+  AGENT_COMMISSION_MIN_NONZERO,
+  AGENT_COMMISSION_STEP,
+} from "@/lib/agentCommission";
+import { getNbpEurPlnRate } from "@/lib/money/nbpEurPln";
+import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -101,12 +108,15 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 };
 
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
+  const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const [fxRate, setFxRate] = useState(4.32);
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
     condition: '', locationType: 'exact', address: '', city: '', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
-    price: '', area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
+    price: '', priceCurrency: 'PLN' as OfferPriceCurrency, agentCommissionPercent: '',
+    area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
     advertiserType: 'private', agencyName: '',
     contactName: initialUser?.name || '', contactPhone: initialUser?.phone || '', email: initialUser?.email || '', password: '' 
@@ -582,6 +592,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, [data.lat, data.lng]);
 
   useEffect(() => {
+    let cancelled = false;
+    void getNbpEurPlnRate().then((snap) => {
+      if (!cancelled) setFxRate(snap.rate);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (currentStep !== 2 || !mapInstance.current) return;
     const id = window.setTimeout(() => {
       mapInstance.current?.resize();
@@ -611,7 +631,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const finalDesc = editorRef.current?.innerHTML || data.description || '';
       const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...data,
         userId: initialUser?.id,
         transactionType: data.transactionType,
@@ -620,17 +640,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         description: finalDesc,
         title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
         price: cleanPriceValue,
+        priceCurrency: data.priceCurrency || 'PLN',
         area: String(data.area).replace(',', '.'),
         images: '[]',
         imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
         floorPlan: null,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
       };
+      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+        payload.agentCommissionPercent = Number(
+          String(data.agentCommissionPercent).replace(',', '.')
+        );
+      }
 
       setUploadProgress('Tworzenie oferty...');
       const response = await fetch('/api/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
       const responseData = await response.json().catch(() => ({}));
@@ -670,6 +697,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           }
         }
         setActionModal(responseData.requiresVerification ? 'otp' : 'success');
+      } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
+        window.location.href = String(responseData.redirect);
       } else if (
         responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
         responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
@@ -702,7 +731,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       
       const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
 
-      const payload = { 
+      const payload: Record<string, unknown> = { 
         ...data, 
         userId: initialUser?.id,
         transactionType: data.transactionType,
@@ -710,13 +739,19 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         condition: dbCondition,
         description: finalDesc,
         title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`, 
-        price: cleanPrice, 
+        price: cleanPrice,
+        priceCurrency: data.priceCurrency || 'PLN',
         area: String(data.area).replace(',', '.'),
         images: finalImages.length > 0 ? JSON.stringify(finalImages) : null, 
         imageUrl: finalImages[0] || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop", 
         floorPlan: finalFloorPlan,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
       };
+      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+        payload.agentCommissionPercent = Number(
+          String(data.agentCommissionPercent).replace(',', '.')
+        );
+      }
 
       // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
       if (finalImages.some(img => img.startsWith('blob:'))) {
@@ -1058,8 +1093,34 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-4 flex flex-wrap items-center gap-3">
+                  <span className={labelPremium.replace('mb-2.5', 'mb-0')}>Waluta ceny</span>
+                  {(['PLN', 'EUR'] as OfferPriceCurrency[]).map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => updateData({ priceCurrency: code })}
+                      className={`px-5 py-2.5 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${
+                        data.priceCurrency === code
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
+                          : 'bg-[#111] border-white/10 text-white/40 hover:border-white/25'
+                      }`}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                  {data.priceCurrency === 'EUR' && cleanPrice && Number(cleanPrice) > 0 ? (
+                    <span className="text-[10px] text-zinc-400 font-bold">
+                      ≈ {Math.round(Number(cleanPrice) * fxRate).toLocaleString('pl-PL')} PLN (NBP)
+                    </span>
+                  ) : null}
+                </div>
                 <div>
-                  <label className={labelPremium}>{data.transactionType === 'RENT' ? 'Czynsz najmu (miesięcznie) *' : 'Cena (PLN) *'}</label>
+                  <label className={labelPremium}>
+                    {data.transactionType === 'RENT'
+                      ? `Czynsz najmu (${data.priceCurrency || 'PLN'}) *`
+                      : `Cena (${data.priceCurrency || 'PLN'}) *`}
+                  </label>
                   <input type="text" className={inputPremium} placeholder="850 000" value={data.price || ''} 
                     onChange={(e) => updateData({ price: e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ") })} />
                 </div>
@@ -1133,6 +1194,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     </div>
                   </>
                 )}
+
+                {isAgentPublisher ? (
+                  <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
+                    <label className={labelPremium}>Prowizja agenta (% od ceny oferty)</label>
+                    <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                      Jak w aplikacji: 0% (bez prowizji) albo {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co {AGENT_COMMISSION_STEP}%.
+                      Kwota prowizji jest informacją dla kupującego — rozliczenie poza platformą.
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inputPremium}
+                      placeholder="np. 2,5 lub 0"
+                      value={data.agentCommissionPercent ?? ''}
+                      onChange={(e) =>
+                        updateData({
+                          agentCommissionPercent: e.target.value.replace(/[^0-9.,]/g, ''),
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
                 
                 {/* AI Monitor Przelicznik */}
                 {(() => {

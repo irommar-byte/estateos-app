@@ -1,12 +1,26 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { signIn } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Fingerprint, Lock, Loader2, AlertCircle, Mail, Key, ArrowLeft, CheckCircle } from "lucide-react";
 
-export default function LoginPage() {
+function resolveSafeNextPath(raw: string | null): string {
+  const next = String(raw || "").trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return "/moje-konto";
+  if (next.startsWith("/login")) return "/moje-konto";
+  return next;
+}
+
+function LoginPageInner() {
+  const searchParams = useSearchParams();
+  const afterLoginPath = resolveSafeNextPath(searchParams.get("next"));
+  const registerHref = afterLoginPath.startsWith("/dodaj-oferte")
+    ? "/rejestracja?next=/dodaj-oferte"
+    : "/rejestracja";
+
   const [view, setView] = useState<'login' | 'forgot' | 'reset' | 'verify_otp'>('login');
   
   // Stany logowania
@@ -42,7 +56,8 @@ export default function LoginPage() {
 
       const data = await verifyResp.json();
       if (verifyResp.ok && data.success) {
-        window.location.href = data.role === 'ADMIN' ? "/centrala" : "/moje-konto";
+        window.location.href =
+          data.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath);
       } else {
         setError(data.error || "Weryfikacja biometryczna nieudana.");
       }
@@ -66,7 +81,8 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        window.location.href = data.role === "ADMIN" ? "/centrala" : "/moje-konto";
+        window.location.href =
+          data.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath);
       } else if (data.needs_otp) {
         setPendingPhone(data.phone || email);
         setView("verify_otp");
@@ -149,7 +165,9 @@ export default function LoginPage() {
 
         if (dataLogin.success) {
           localStorage.setItem("token", dataLogin.token);
-          window.location.replace("/moje-konto/crm");
+          window.location.replace(
+            dataLogin.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath)
+          );
         } else {
           setError(dataLogin.message || "Login error");
         }
@@ -212,7 +230,7 @@ export default function LoginPage() {
 
           <p className="eos-muted-copy text-center text-[10px] font-bold uppercase tracking-widest">
             Nie masz konta?{" "}
-            <Link href="/rejestracja" className="text-emerald-500 hover:text-emerald-400">
+            <Link href={registerHref} className="text-emerald-500 hover:text-emerald-400">
               Załóż konto
             </Link>
           </p>
@@ -331,5 +349,13 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

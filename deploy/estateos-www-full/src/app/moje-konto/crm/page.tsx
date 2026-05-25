@@ -52,6 +52,11 @@ import AppointmentManager from "@/components/AppointmentManager";
 import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import OfferListingSlots from "@/components/crm/OfferListingSlots";
+import {
+  isAgentRoleIdentity,
+  isInvestorProIdentity,
+  isPartnerIdentity,
+} from "@/utils/partnerIdentity";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -354,14 +359,14 @@ export default function CRMDashboard() {
     setIsEditRadarOpen(true);
   };
 
-  const isPartnerPlan = currentUser?.planType === 'AGENCY' || currentUser?.advertiserType === 'agency';
-  const isPremium =
-    currentUser?.isPro === true ||
-    currentUser?.isPro === 'true' ||
-    currentUser?.role === 'ADMIN' ||
-    isPartnerPlan;
-  const isAgentAccount =
-    currentUser?.role === 'AGENT' || isPartnerPlan;
+  const isAgentRole = isAgentRoleIdentity(currentUser);
+  const isProgramPartner =
+    isPartnerIdentity(currentUser) && !isAgentRole;
+  const isInvestorPro =
+    currentUser?.role === 'ADMIN' || isInvestorProIdentity(currentUser);
+  /** Radar PRO / ProWidget — tylko Investor Pro (jak w aplikacji), nie rola AGENT ani plan AGENCY. */
+  const isPremium = isInvestorPro;
+  const isAgentAccount = isAgentRole;
 
   const mockUsers = [
     { id: 'usr-s01', role: 'SELLER', firstName: 'Michał', lastName: 'Zalewski', email: 'm.zalewski@example.com', phone: '+48 500 111 222', verificationStatus: 'VERIFIED' },
@@ -987,12 +992,17 @@ export default function CRMDashboard() {
             )}
           </div>
           <div className="flex items-center shrink-0 mb-1 md:mb-0 self-start md:self-auto">
-            {isPartnerPlan ? (
+            {isAgentRole ? (
+              <div className="px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/15 to-amber-500/10 border border-orange-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(255,149,0,0.12)]">
+                <Briefcase size={14} className="text-orange-400" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-orange-200/90">Agent EstateOS</span>
+              </div>
+            ) : isProgramPartner ? (
               <div className="px-4 py-2 rounded-full bg-gradient-to-r from-amber-500/15 to-[#D4AF37]/10 border border-amber-500/35 flex items-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.12)]">
                 <Crown size={14} className="text-amber-400" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-amber-200/90">EstateOS Partner</span>
               </div>
-            ) : currentUser?.isPro ? (
+            ) : isInvestorPro ? (
               <div className="px-4 py-2 rounded-full bg-gradient-to-r from-[#D4AF37]/10 to-[#AA771C]/10 border border-[#D4AF37]/30 flex items-center gap-2 shadow-[0_0_20px_rgba(212,175,55,0.15)]">
                 <Crown size={14} className="text-[#D4AF37]" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#D4AF37]">PRO</span>

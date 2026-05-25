@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
+import { isInvestorProIdentity } from '@/utils/partnerIdentity';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,10 +42,22 @@ export async function GET(req: Request) {
     // Pobieramy użytkownika wraz z jego statusem PRO
     const user = await prisma.user.findUnique({ 
         where: { email: String(email) },
-        select: { id: true, isPro: true, planType: true }
+        select: {
+          id: true,
+          role: true,
+          isPro: true,
+          planType: true,
+          proExpiresAt: true,
+          subscriptionStatus: true,
+          plusExpiresAt: true,
+          extraListings: true,
+        },
     });
     
     if (!user) return NextResponse.json({ error: 'Brak usera' }, { status: 401 });
+
+    const canBypassEmbargo =
+      user.role === 'ADMIN' || isInvestorProIdentity(user);
 
     // 1. Pobierzemy wszystkie aktywne oferty tego użytkownika
     const myOffers = await prisma.offer.findMany({ 
@@ -76,7 +89,7 @@ export async function GET(req: Request) {
        const hoursSinceCreation =
          (Date.now() - new Date(offer.createdAt).getTime()) / (1000 * 60 * 60);
        const isLocked =
-         !user.isPro &&
+         !canBypassEmbargo &&
          hoursSinceCreation < OFFER_PREMARKET_EMBARGO_HOURS;
 
        return {

@@ -22,8 +22,16 @@ type AccountKind = 'private' | 'agent';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
-export default function RegisterForm() {
+function resolveSafeNextPath(raw: string | undefined): string {
+  const next = String(raw || "").trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return "/moje-konto";
+  if (next.startsWith("/login")) return "/moje-konto";
+  return next;
+}
+
+export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?: string }) {
   const router = useRouter();
+  const postRegisterPath = resolveSafeNextPath(afterRegisterPath);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -179,7 +187,8 @@ export default function RegisterForm() {
       setSuccessMsg('Konto utworzone. Przekierowuję…');
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {
-        window.location.href = role === 'ADMIN' ? '/centrala' : '/moje-konto';
+        window.location.href =
+          role === 'ADMIN' ? '/centrala' : postRegisterPath;
       }, 400);
     } catch {
       setError('Błąd połączenia z serwerem.');

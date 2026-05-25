@@ -23,6 +23,7 @@ export type Dictionary = {
     home: string;
   };
   badges: {
+    agent: string;
     partner: string;
     investorPro: string;
   };
@@ -225,7 +226,8 @@ const pl: Dictionary = {
     home: "Strona główna EstateOS",
   },
   badges: {
-    partner: "Partner EstateOS",
+    agent: "Agent EstateOS™",
+    partner: "Partner EstateOS™",
     investorPro: "Investor Pro",
   },
   theme: {
@@ -444,7 +446,8 @@ const en: Dictionary = {
     home: "EstateOS home",
   },
   badges: {
-    partner: "EstateOS Partner",
+    agent: "EstateOS™ Agent",
+    partner: "EstateOS™ Partner",
     investorPro: "Investor Pro",
   },
   theme: {
