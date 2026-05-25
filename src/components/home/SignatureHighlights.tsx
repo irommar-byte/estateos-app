@@ -14,10 +14,10 @@ export default function SignatureHighlights() {
   ] as const;
 
   return (
-    <section className="premium-home-surface relative overflow-hidden border-t border-white/[0.06] bg-black py-16 sm:py-24">
+    <section className="relative overflow-hidden border-t border-white/10 bg-black py-20 sm:py-28">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.08),transparent_55%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.06),transparent_50%)]"
       />
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6">
         <motion.div
@@ -26,13 +26,13 @@ export default function SignatureHighlights() {
           viewport={{ once: true }}
           className="mx-auto max-w-2xl text-center"
         >
-          <p className="text-[10px] font-black uppercase tracking-[0.32em] text-emerald-400/90">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400">
             {dict.highlights.eyebrow}
           </p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--eos-text)] sm:text-4xl">
+          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             {dict.highlights.title}
           </h2>
-          <p className="mt-4 text-sm leading-relaxed text-[var(--eos-muted)] sm:text-base">{dict.highlights.body}</p>
+          <p className="mt-5 text-base leading-relaxed text-zinc-400">{dict.highlights.body}</p>
         </motion.div>
 
         <motion.div
@@ -43,7 +43,7 @@ export default function SignatureHighlights() {
             hidden: {},
             show: { transition: { staggerChildren: 0.1 } },
           }}
-          className="mt-12 grid gap-6 md:grid-cols-3"
+          className="mt-14 grid gap-6 md:grid-cols-3"
         >
           {items.map((item) => (
             <motion.article
@@ -52,15 +52,15 @@ export default function SignatureHighlights() {
                 hidden: { opacity: 0, y: 24 },
                 show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
               }}
-              className="eos-card group relative overflow-hidden rounded-3xl p-6"
+              className="group relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900/50 p-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] backdrop-blur-3xl transition-all hover:bg-zinc-800/50"
             >
               <div
                 aria-hidden
-                className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-500/10 blur-2xl transition-opacity group-hover:opacity-100 opacity-60"
+                className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl opacity-50 transition-opacity group-hover:opacity-100"
               />
-              <item.icon className="size-7 text-emerald-400" aria-hidden />
-              <h3 className="mt-4 text-lg font-semibold text-[var(--eos-text)]">{item.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{item.body}</p>
+              <item.icon className="size-8 text-emerald-400" aria-hidden />
+              <h3 className="mt-6 text-xl font-semibold text-white">{item.title}</h3>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-400">{item.body}</p>
             </motion.article>
           ))}
         </motion.div>

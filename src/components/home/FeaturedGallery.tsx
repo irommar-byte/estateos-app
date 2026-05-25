@@ -87,35 +87,41 @@ export default function FeaturedGallery() {
   }
 
   return (
-    <section className="premium-home-surface relative overflow-hidden border-t border-white/[0.06] bg-[#050505] py-20 sm:py-28">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.055),transparent_58%)]" />
+    <section className="relative overflow-hidden border-t border-white/10 bg-black py-20 sm:py-28">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.03),transparent_50%)]" />
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-12 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
+        <div className="mb-14 flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">
+            <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400">
               {dict.homePremium.galleryEyebrow}
             </p>
-            <h2 className="mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
+            <h2 className="mt-4 text-4xl font-light tracking-tight text-white sm:text-6xl">
               {dict.homePremium.galleryTitle}{" "}
-              <span className="font-semibold">{dict.homePremium.galleryTitleHighlight}</span>
+              <span className="font-semibold text-white">{dict.homePremium.galleryTitleHighlight}</span>
             </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)] sm:text-base">
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-zinc-400">
               {dict.homePremium.gallerySubtitle}
             </p>
           </div>
           <Link
             href="/oferty"
-            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-400 transition-colors hover:text-emerald-300"
+            className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-white backdrop-blur-md transition-all hover:bg-white/10"
           >
             {dict.homePremium.galleryViewAll}
             <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {featured.map((offer, index) => {
             const location = [offer.city, offer.district].filter(Boolean).join(", ") || "Private market";
             const isDealRoom = offer.badges?.isPartner === true;
+            const isRent = String(offer.transactionType || "sale").toLowerCase().includes("rent");
+            
+            const transactionBadgeClass = isRent 
+              ? "border-blue-500/30 bg-blue-500/20 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.15)]" 
+              : "border-emerald-500/30 bg-emerald-500/20 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]";
+
             return (
               <motion.article
                 key={offer.id}
@@ -135,35 +141,36 @@ export default function FeaturedGallery() {
                 </div>
                 <Link
                   href={`/oferta/${offer.id}`}
-                  className="group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
+                  className="group relative block aspect-[4/5] overflow-hidden rounded-[2.5rem] border border-white/10 bg-zinc-900 shadow-2xl transition-all hover:shadow-[0_40px_100px_rgba(0,0,0,0.8)]"
                 >
                   <div
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
+                    className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-105"
                     style={{ backgroundImage: `url(${firstImage(offer, index)})` }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/18 to-transparent opacity-90" />
-                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-95" />
+                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent" />
 
-                  <div className="absolute left-5 top-5 rounded-full border border-white/10 bg-black/35 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/75 backdrop-blur-xl">
-                    {String(offer.transactionType || "sale").toLowerCase().includes("rent") ? "Lease" : "Acquire"}
+                  <div className={`absolute left-6 top-6 rounded-full border px-3.5 py-1.5 text-[10px] font-black uppercase tracking-widest backdrop-blur-xl ${transactionBadgeClass}`}>
+                    {isRent ? "Lease" : "Acquire"}
                   </div>
+                  
                   {isDealRoom && (
-                    <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-orange-400/50 bg-orange-500/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(249,115,22,0.35)] backdrop-blur-xl">
+                    <div className="absolute right-6 top-6 inline-flex items-center gap-1.5 rounded-full border border-orange-400/50 bg-orange-500/90 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(249,115,22,0.35)] backdrop-blur-xl">
                       <Briefcase className="size-3" />
                       {dict.homePremium.dealRoom}
                     </div>
                   )}
 
-                  <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-7">
-                    <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+                  <div className="absolute bottom-0 left-0 right-0 p-7 sm:p-8">
+                    <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400">
                       <MapPin className="size-3.5" />
                       {location}
                     </div>
-                    <h3 className="text-2xl font-light leading-tight text-white">
+                    <h3 className="text-2xl font-medium leading-tight text-white drop-shadow-md">
                       {offer.title || "Private EstateOS Residence"}
                     </h3>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/60">
-                      <span className="text-base font-semibold text-white">
+                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-zinc-300">
+                      <span className="text-lg font-bold text-white">
                         {formatPrice(offer.price, offer.transactionType, dict.homePremium.priceOnRequest, dict.homePremium.pricePerMonth)}
                       </span>
                       {offer.area && <span>{offer.area} m²</span>}

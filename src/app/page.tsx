@@ -26,9 +26,9 @@ export default function Home() {
     <>
       <CinematicLoader />
       <SmoothScroll>
-        <main className="premium-home-shell relative min-h-screen overflow-hidden bg-[#050505] text-white selection:bg-emerald-500/30">
+        <main className="relative min-h-screen overflow-hidden bg-black text-white selection:bg-emerald-500/30">
           <HeroDepthEffect />
-          <div className="relative z-20 bg-[#050505]">
+          <div className="relative z-20 bg-black">
             <MarketPulseBar />
           </div>
 
@@ -40,17 +40,17 @@ export default function Home() {
 
           <div
             id="map-section"
-            className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-white/[0.06] bg-black pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.75)] sm:scroll-mt-24 sm:pt-24"
+            className="relative z-20 w-full scroll-mt-[6.75rem] border-t border-white/10 bg-zinc-950/80 pt-20 backdrop-blur-3xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:scroll-mt-24 sm:pt-28"
           >
-            <div className="mx-auto mb-12 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">
+            <div className="mx-auto mb-14 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
+              <p className="text-[11px] font-black uppercase tracking-[0.3em] text-emerald-400">
                 {dict.homePremium.mapEyebrow}
               </p>
-              <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-white sm:text-6xl">
+              <h2 className="mt-4 text-4xl font-light tracking-tight text-white sm:text-6xl">
                 {dict.homePremium.mapTitle}{" "}
                 <span className="font-semibold text-emerald-400">{dict.homePremium.mapTitleHighlight}</span>
               </h2>
-              <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-white/50 sm:text-base">
+              <p className="mx-auto mt-6 max-w-2xl text-base font-light leading-relaxed text-zinc-400">
                 {dict.homePremium.mapSubtitle}
               </p>
             </div>
