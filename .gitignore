@@ -53,6 +53,8 @@ struktura_mac.txt
 
 # 🚫 env
 .env
+.env.bak*
+.env.*.bak*
 
 *.bak_*
 

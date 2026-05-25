@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Wgrywa patche z deploy/ na produkcję estateos.pl i przeładowuje PM2.
+# DEPRECATED (2026-05-25): nie używać — deploy tylko przez git (recovery-local-snapshot).
+# Zobacz deploy/VPS_DEPLOY_WORKFLOW.md — git push → VPS: git pull && npm run deploy:server-only
+# Wgrywa patche z deploy/ na produkcję estateos.pl i przeładowuje PM2 (SCP — wyłączone).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -142,23 +142,26 @@ Brak smoke PASS:
 
 ## 6. Git workflow
 
-Branch produkcyjny recovery:
-
-- `recovery-local-snapshot`
+Branch produkcyjny: **`recovery-local-snapshot`**
 
 Zasady:
 
-- brak force push,
-- brak pracy na brudnym tree,
-- małe commity,
-- deploy wyłącznie z recovery branch.
+- brak SCP, brak `master`, brak `git push --all`,
+- brak `.env` / `.env.bak*` w repo,
+- brak force push, brak pracy na brudnym tree,
+- małe commity, deploy wyłącznie z recovery branch.
 
-Każda większa zmiana:
+**Lokalnie:** `git add .` → `git commit` → `git push`
 
-- commit,
-- push,
-- deploy,
-- smoke.
+**VPS (standard):** `cd ~/estateos && git pull && npm run deploy:server-only`
+
+**VPS (zmiana zależności):** `git pull && npm run deploy:prod`
+
+**Opcjonalnie:** `npm run smoke:postdeploy`
+
+Nie używać `pm2 restart all` zamiast `deploy:server-only` — produkcja serwuje zbudowany `.next` (`nieruchomosci` → `start:prod`).
+
+Pełna procedura: `deploy/VPS_DEPLOY_WORKFLOW.md` (zweryfikowana na VPS 2026-05-25).
 
 ⸻
 

@@ -1,6 +1,6 @@
 # Kontrakt EstateOS — backend vs aplikacja mobilna
 
-Backend (**estateos.pl**) jest wdrażany na serwerze **bez gitowej synchronizacji** z maszyną deweloperską aplikacji; ta strona to referencja dla agentów od aplikacji.
+Backend (**estateos.pl**) jest wdrażany z gita na VPS (`~/estateos`, branch **`recovery-local-snapshot`**). Kanoniczny workflow: **[VPS_DEPLOY_WORKFLOW.md](./VPS_DEPLOY_WORKFLOW.md)**. Ta strona to referencja kontraktu API dla agentów od aplikacji mobilnej.
 
 ## Backend (estateos.pl)
 
@@ -19,9 +19,7 @@ Backend (**estateos.pl**) jest wdrażany na serwerze **bez gitowej synchronizacj
 
 ## Teraz (ostatnio od backendu)
 
-- **2026-05-22 — publikacja kuponem (produkcja):** wdrożono `deploy/plus-credit-fix/*` na `estateos.pl` — `POST /api/mobile/v1/offers` i `POST .../activate` akceptują `publication.kind: FREE_FIRST` + `bonusCouponId` bez IAP; `pm2 reload` + smoke **21/21 PASS**.
-- Z repo aplikacji (jednorazowo): `./scripts/deploy-production-patches.sh` — kopiuje patche + `deploy:server-only` na hoście `estateos`.
+- **Deploy (2026-05-25):** VPS zsynchronizowany z `origin/recovery-local-snapshot`; workflow: `git pull` → `npm run deploy:server-only` (lub `deploy:prod` przy zmianie lockfile). Szczegóły: [VPS_DEPLOY_WORKFLOW.md](./VPS_DEPLOY_WORKFLOW.md). **Bez SCP.**
 - **GET** na `/api/notifications/device` działa (smoke TLS: JSON `ok`). **Kontraktu POST nie zmieniamy** — aplikacja wysyła push tak jak dotąd.
-- Ręczny deploy na serwerze: `cd ~/estateos && npm run deploy:server-only` (build Next + reload pm2).
 
 <!-- Aktualizuj wyłącznie powyższą sekcję „Teraz”, gdy backend dopisze nowe ustalenia -->
