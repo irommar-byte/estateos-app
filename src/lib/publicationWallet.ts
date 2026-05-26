@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { listProfilePromoCardsForUser } from "@/lib/profilePromoCards";
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import { ensureOfferPublicationSchema } from "@/lib/offerPublication";
 
 function hasPlusCredit(user: { extraListings?: number | null; plusExpiresAt?: Date | string | null }) {
   const credits = Number(user?.extraListings ?? 0);
@@ -10,6 +11,8 @@ function hasPlusCredit(user: { extraListings?: number | null; plusExpiresAt?: Da
 }
 
 export async function getPublicationWallet(userId: number, locale: "pl" | "en" = "pl") {
+  // Ensure columns used by wallet exist even before first activation.
+  await ensureOfferPublicationSchema();
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {

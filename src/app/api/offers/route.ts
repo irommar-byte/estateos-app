@@ -23,6 +23,8 @@ import {
   getPublicationQuote,
 } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
+import { setPendingPublication } from '@/lib/offerPendingPublication';
+import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
@@ -258,25 +260,37 @@ export async function POST(req: Request) {
               ? 'PLUS_PAID'
               : 'PLUS_CREDIT';
 
-    const activation = await activateOfferPublication({
-      userId: resolvedUserId,
+    // WWW flow: new offers should be verified by admin first.
+    // Store the intended publication choice and let admin activation consume it.
+    await setPendingPublication({
       offerId: Number(offer.id),
       kind: activationKind,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
-      iapProductId: quote.productId,
     });
 
-    if (bonusCouponId && activationKind === 'FREE_FIRST') {
-      await markProfilePromoCardUsed(resolvedUserId, bonusCouponId);
+    const adminEmail = String(process.env.ADMIN_OFFERS_EMAIL || '').trim();
+    if (adminEmail) {
+      const subject = `[EstateOS] Nowa oferta do weryfikacji (#${offer.id})`;
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;color:#0f172a">
+          <h2 style="color:#059669;margin:0 0 16px">Nowa oferta do weryfikacji</h2>
+          <p><strong>ID:</strong> ${offer.id}</p>
+          <p><strong>Tytuł:</strong> ${String(offer.title || '').slice(0, 180)}</p>
+          <p><strong>Miasto:</strong> ${String((offer as any).city || '')}</p>
+          <p><strong>Akcja:</strong> ${activationKind} (publikacja po akceptacji)</p>
+          <p><a href="https://estateos.pl/centrala/oferty" target="_blank" rel="noreferrer">Otwórz centralę → Oferty</a></p>
+        </div>
+      `;
+      await sendTransactionalEmail({ to: adminEmail, subject, html });
     }
 
     return NextResponse.json({
       success: true,
-      offer: { ...offer, status: 'ACTIVE', expiresAt: activation.endsAt.toISOString() },
+      offer,
       publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+        status: 'PENDING_REVIEW',
+        kind: activationKind,
       },
     });
 

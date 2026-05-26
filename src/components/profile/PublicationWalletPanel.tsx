@@ -31,15 +31,25 @@ export default function PublicationWalletPanel({ onBuyPlus, buyingPlus }: Props)
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [couponIndex, setCouponIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        setWallet(data);
-        setCouponIndex(0);
+        if (data?.success) {
+          setWallet(data);
+          setCouponIndex(0);
+        } else {
+          setWallet(null);
+          setLoadError(String(data?.error || data?.message || "Nie udało się załadować kuponów."));
+        }
+      } else {
+        setWallet(null);
+        setLoadError("Nie udało się załadować kuponów (błąd HTTP).");
       }
     } finally {
       setLoading(false);
@@ -72,7 +82,11 @@ export default function PublicationWalletPanel({ onBuyPlus, buyingPlus }: Props)
           </div>
         </div>
 
-        {coupons.length === 0 ? (
+        {loadError ? (
+          <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center text-xs text-red-200/90">
+            {loadError}
+          </p>
+        ) : coupons.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-6 text-center text-xs text-white/35">
             Brak aktywnych kuponów. Kupon powitalny pojawi się po rejestracji, jeśli nie został jeszcze wykorzystany.
           </p>

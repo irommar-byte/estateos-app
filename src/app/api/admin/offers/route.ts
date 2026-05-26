@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { extractVerificationMeta, setVerificationStatusInDescription, type OfferVerificationStatus } from '@/lib/offerVerification';
+import { activateOfferPublication, getPublicationQuote } from '@/lib/offerPublication';
+import { clearPendingPublication, readPendingPublication } from '@/lib/offerPendingPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -88,6 +91,34 @@ export async function PUT(req: Request) {
     console.log("STATUS CHECK:", { before: existing?.status, after: normalizedStatus });
 
     if (existing?.status !== 'ACTIVE' && normalizedStatus === 'ACTIVE') {
+      // If the offer was submitted with a pending publication choice (WWW flow),
+      // consume the chosen redemption now and make the offer visible on the market.
+      try {
+        const pending = await readPendingPublication(Number(id));
+        if (pending?.kind) {
+          const quote = await getPublicationQuote({
+            userId: Number(updated.userId),
+            offerId: Number(updated.id),
+            action: 'ACTIVATE',
+          });
+          const txId = pending.kind === 'PLUS_PAID' ? String(pending.iapTransactionId || '').trim() : '';
+          const activation = await activateOfferPublication({
+            userId: Number(updated.userId),
+            offerId: Number(updated.id),
+            kind: pending.kind,
+            iapTransactionId: pending.kind === 'PLUS_PAID' ? txId : null,
+            iapProductId: quote.productId,
+          });
+          if (pending.bonusCouponId && pending.kind === 'FREE_FIRST') {
+            await markProfilePromoCardUsed(Number(updated.userId), pending.bonusCouponId);
+          }
+          await clearPendingPublication(Number(updated.id));
+          // Make sure updated response carries expiresAt.
+          (updated as any).expiresAt = activation.endsAt;
+        }
+      } catch (e) {
+        console.warn('[admin/offers] pending publication activation failed', e);
+      }
       const { radarService } = await import("@/lib/services/radar.service");
       await radarService.matchNewOffer(updated);
     }
