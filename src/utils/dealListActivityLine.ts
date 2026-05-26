@@ -1,5 +1,6 @@
 import { parseDealEvent, normalizeDealEvent } from './dealEventParse';
 import { isDealSaleFinalizedMessage } from '../contracts/parityContracts';
+import { isMessageFromUser, isPositiveUserId } from './dealBidNegotiation';
 
 const shortPl = (iso: string) =>
   new Date(iso).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -83,7 +84,7 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
       return 'Cena: ostatnia propozycja odrzucona — możesz zaproponować nową w czacie';
     }
     if (action === 'PROPOSED' || action === 'COUNTERED') {
-      const fromMe = Number(latestBid.msg?.senderId) === me;
+      const fromMe = isMessageFromUser(latestBid.msg, me);
       const who = formatActorShort(latestBid.msg, me, peer);
       if (fromMe) {
         return `Cena: wysłana Twoja propozycja ${amount.toLocaleString('pl-PL')} PLN — czekasz na decyzję: ${peer}`;
@@ -107,7 +108,7 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
       return 'Termin: ostatnia propozycja odrzucona — możesz zaproponować nowy termin w czacie';
     }
     if (action === 'PROPOSED' || action === 'COUNTERED') {
-      const fromMe = Number(latestAppointment.msg?.senderId) === me;
+      const fromMe = isMessageFromUser(latestAppointment.msg, me);
       if (fromMe) {
         return `Termin: wysłana propozycja${when ? ` (${when})` : ''} — czekasz na odpowiedź: ${peer}`;
       }
@@ -125,11 +126,13 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
   const bidNeedsMe =
     latestBid &&
     ['PROPOSED', 'COUNTERED'].includes(latestBidAction) &&
-    Number(latestBid.msg?.senderId) !== me;
+    isPositiveUserId(latestBid.msg?.senderId) &&
+    !isMessageFromUser(latestBid.msg, me);
   const apptNeedsMe =
     latestAppointment &&
     ['PROPOSED', 'COUNTERED'].includes(latestApptAction) &&
-    Number(latestAppointment.msg?.senderId) !== me;
+    isPositiveUserId(latestAppointment.msg?.senderId) &&
+    !isMessageFromUser(latestAppointment.msg, me);
 
   if (apptNeedsMe && bidNeedsMe) {
     const ta = new Date(latestAppointment!.msg?.createdAt || 0).getTime();

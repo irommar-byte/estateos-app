@@ -31,6 +31,13 @@ import { archiveOwnOfferViaMobileAdmin } from '../utils/mobileOfferArchive';
 import { setActiveDealroomContext } from '../utils/activeDealroomPush';
 import { offerPresentationCalendarAfterAcceptance } from '../utils/presentationCalendar';
 import {
+  type DealNegotiationSnapshot,
+  buildBidEventFromSnapshot,
+  findLatestActionableBidEvent,
+  isMessageFromUser,
+  resolveEventBidId,
+} from '../utils/dealBidNegotiation';
+import {
   schedulePresentationTwoHourReminder,
   cancelPresentationTwoHourReminder,
 } from '../utils/presentationReminderNotification';
@@ -338,6 +345,7 @@ export default function DealroomChatScreen() {
   const [selectedBidHistory, setSelectedBidHistory] = useState<any[]>([]);
   const [selectedAppointmentEvent, setSelectedAppointmentEvent] = useState<any>(null);
   const [selectedAppointmentHistory, setSelectedAppointmentHistory] = useState<any[]>([]);
+  const [bidNegotiationSnapshot, setBidNegotiationSnapshot] = useState<DealNegotiationSnapshot | null>(null);
   
   // Upload State
   const [pendingAttachment, setPendingAttachment] = useState<any>(null);
@@ -674,6 +682,9 @@ export default function DealroomChatScreen() {
         setMessages(data.messages);
         setRoomAttachmentBytes(data.messages.reduce((sum: number, msg: any) => sum + (resolveAttachmentFromMessage(msg)?.size || 0), 0));
       }
+      if (data.negotiation && typeof data.negotiation === 'object') {
+        setBidNegotiationSnapshot(data.negotiation as DealNegotiationSnapshot);
+      }
       if (data.isTyping !== undefined) setIsPartnerTyping(data.isTyping);
     } catch (e) {
       // Ciche ignorowanie w tle
@@ -882,17 +893,20 @@ export default function DealroomChatScreen() {
   const latestAppointment = appointmentEvents[appointmentEvents.length - 1] || null;
 
   const latestActionableBidFromOther = useMemo(
-    () =>
-      [...bidEvents]
-        .reverse()
-        .find(
-          (e) =>
-            String(e.msg?.senderId ?? '') !== String(user?.id ?? '') &&
-            ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
-            Number(e.event?.amount || 0) > 0
-        ) || null,
+    () => findLatestActionableBidEvent(bidEvents, user?.id),
     [bidEvents, user?.id]
   );
+
+  const actionableBidFromServer = useMemo(() => {
+    const fromSnapshot = buildBidEventFromSnapshot(bidNegotiationSnapshot);
+    if (!fromSnapshot?.bidId) return null;
+    return {
+      event: fromSnapshot,
+      msg: { senderId: fromSnapshot.senderId },
+    };
+  }, [bidNegotiationSnapshot]);
+
+  const actionableBidContext = actionableBidFromServer || latestActionableBidFromOther;
 
   /**
    * ====================================================================
@@ -1031,11 +1045,12 @@ export default function DealroomChatScreen() {
   );
 
   const isWaitingForOtherOnPrice = useMemo(() => {
+    if (bidNegotiationSnapshot?.waitingOnOther) return true;
     if (!latestBid) return false;
     const action = String(latestBid.event?.action || '').toUpperCase();
     if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;
-    return String(latestBid.msg?.senderId ?? '') === String(user?.id ?? '');
-  }, [latestBid, user?.id]);
+    return isMessageFromUser(latestBid.msg, user?.id);
+  }, [latestBid, user?.id, bidNegotiationSnapshot?.waitingOnOther]);
 
   const appointmentStatus = useMemo<'IDLE' | 'PENDING' | 'ACCEPTED'>(() => {
     if (!latestAppointment) return 'IDLE';
@@ -1914,12 +1929,18 @@ export default function DealroomChatScreen() {
                   z neonem (np. gdy `latestActionableBidFromOther` to wcześniejszy
                   bid, ale ostatnia akcja to już finalna akceptacja).
                 */}
-                {latestActionableBidFromOther && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && !isWaitingForOtherOnPrice && !isBuyerWaitingOnOwnerDecision && !ownerNeedsFinalDecision && (
+                {actionableBidContext && acceptedPrice === 0 && priceStatus !== 'ACCEPTED' && !transactionFinalized && !isWaitingForOtherOnPrice && !isBuyerWaitingOnOwnerDecision && !ownerNeedsFinalDecision && (
                   <View style={styles.actionRow}>
                     <Pressable
                       style={[styles.actionBtn, styles.actionPrimary]}
                       onPress={() => {
-                        setSelectedBidEvent({ ...latestActionableBidFromOther.event, quickAccept: true });
+                        const bidId = resolveEventBidId(actionableBidContext.event) ?? bidNegotiationSnapshot?.respondToBidId;
+                        setSelectedBidEvent({
+                          ...actionableBidContext.event,
+                          bidId,
+                          amount: actionableBidContext.event?.amount ?? bidNegotiationSnapshot?.respondToBidAmount,
+                          quickAccept: true,
+                        });
                         setSelectedBidHistory(
                           bidEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
                         );
@@ -1930,7 +1951,12 @@ export default function DealroomChatScreen() {
                     <Pressable
                       style={[styles.actionBtn, styles.actionSecondary]}
                       onPress={() => {
-                        setSelectedBidEvent(latestActionableBidFromOther.event);
+                        const bidId = resolveEventBidId(actionableBidContext.event) ?? bidNegotiationSnapshot?.respondToBidId;
+                        setSelectedBidEvent({
+                          ...actionableBidContext.event,
+                          bidId,
+                          amount: actionableBidContext.event?.amount ?? bidNegotiationSnapshot?.respondToBidAmount,
+                        });
                         setSelectedBidHistory(
                           bidEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
                         );
@@ -2148,8 +2174,18 @@ export default function DealroomChatScreen() {
         mode="respond"
         dealId={dealId ? Number(dealId) : null}
         token={token || null}
-        bidId={selectedBidEvent?.bidId || selectedBidEvent?.id || null}
-        initialAmount={selectedBidEvent?.amount || selectedBidEvent?.counterAmount || selectedBidEvent?.value || null}
+        bidId={
+          resolveEventBidId(selectedBidEvent) ??
+          bidNegotiationSnapshot?.respondToBidId ??
+          null
+        }
+        initialAmount={
+          selectedBidEvent?.amount ||
+          selectedBidEvent?.counterAmount ||
+          selectedBidEvent?.value ||
+          bidNegotiationSnapshot?.respondToBidAmount ||
+          null
+        }
         eventAction={selectedBidEvent?.action || null}
         quickAccept={Boolean(selectedBidEvent?.quickAccept)}
         history={selectedBidHistory}

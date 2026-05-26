@@ -6,6 +6,7 @@ import { API_URL } from '../../config/network';
 import { archiveOfferAfterSaleClosed } from '../../utils/mobileOfferArchive';
 import { postDealroomTextMessage } from '../../utils/dealroomOfferReserve';
 import { useI18n } from '../../i18n';
+import { isMessageFromUser } from '../../utils/dealBidNegotiation';
 
 const QUICK_BID_STEPS = [-5000, 5000] as const;
 
@@ -102,8 +103,7 @@ export default function BidActionModal({
     const last = history[history.length - 1];
     const action = String(last?.action || '').toUpperCase();
     if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;
-    const senderId = Number(last?.senderId ?? 0);
-    return Number.isFinite(senderId) && senderId === myId;
+    return isMessageFromUser({ senderId: last?.senderId }, myId);
   }, [mode, myUserId, history]);
 
   // Bezpiecznik roli: jeśli `isListingOwner` przyszło błędnie z ekranu,
