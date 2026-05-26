@@ -1,23 +1,33 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X } from "lucide-react";
+import { Globe, TrendingUp, Newspaper, UserPlus, HandCoins, CheckCircle2, Zap, Activity, LineChart, ChevronLeft, ChevronRight, PenTool, X, type LucideIcon } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
+import {
+  demandLabelForLevel,
+  type PulseEvent,
+  type PulseEventIcon,
+  type PulseHeadline,
+} from "@/types/marketPulse";
 
-// --- DANE ---
-const allNews = [
-  { id: 1, type: 'PL', title: 'Warszawa: Popyt na apartamenty luksusowe wzrósł o 24% r/r.', source: 'Bankier' },
-  { id: 2, type: 'WORLD', title: 'Nowy Jork: Najdroższa transakcja roku sfinalizowana na Manhattanie.', source: 'Bloomberg' },
-  { id: 3, type: 'TREND', title: 'Premiera: nowe oferty pierwsze 24 h widział tylko PRO — potem trafiają na szeroki rynek.', source: 'EstateOS Intel' },
-  { id: 4, type: 'PL', title: 'Kraków: Deficyt działek budowlanych winduje ceny domów premium.', source: 'Rzeczpospolita' },
-  { id: 5, type: 'WORLD', title: 'Dubaj: Rejestr transakcji bije kolejne rekordy w Q1 2026.', source: 'Reuters' },
+const FALLBACK_HEADLINES_PL: PulseHeadline[] = [
+  {
+    id: "fallback-1",
+    type: "INTEL",
+    title: "Synchronizacja z serwerem — oczekiwanie na dane rynku…",
+    source: "EstateOS Terminal",
+  },
 ];
 
-const mockEvents = [
-  { id: 1, icon: UserPlus, color: 'text-emerald-400', text: 'ZAREJESTROWANO: Nowy Inwestor PRO (Warszawa)' },
-  { id: 2, icon: HandCoins, color: 'text-yellow-400', text: 'LICYTACJA: Oferta #84 otrzymała propozycję 1.150.000 PLN' },
-  { id: 3, icon: CheckCircle2, color: 'text-blue-400', text: 'SUKCES: Zaakceptowano termin prezentacji dla Oferty #102' },
-  { id: 4, icon: Zap, color: 'text-purple-400', text: 'SYSTEM: Zaktualizowano parametry Radar Inwestorski' },
-];
+const EVENT_ICONS: Record<PulseEventIcon, LucideIcon> = {
+  UserPlus,
+  HandCoins,
+  CheckCircle2,
+  Zap,
+  TrendingUp,
+};
+
+const PULSE_POLL_MS = 60_000;
 
 // --- EFEKT TABLICY DWORCOWEJ (SCRAMBLE TEXT) ---
 const ScrambleText = ({ text }: { text: string }) => {
@@ -129,7 +139,12 @@ export const AppleClock = ({ isBooting = false }: { isBooting?: boolean }) => {
 
 // --- GŁÓWNY WIDGET PRO ---
 export default function ProWidget({ currentUser, isBooting = false }: { currentUser: any, isBooting?: boolean }) {
+  const { locale } = useLocale();
   const [avgPrice, setAvgPrice] = useState<number | null>(null);
+  const [demandLabel, setDemandLabel] = useState<string>("—");
+  const [headlines, setHeadlines] = useState<PulseHeadline[]>(FALLBACK_HEADLINES_PL);
+  const [events, setEvents] = useState<PulseEvent[]>([]);
+  const [pulseLive, setPulseLive] = useState(false);
   const [newsIndex, setNewsIndex] = useState(0);
   
   // Kalendarz State
@@ -154,16 +169,42 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
   });
   const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
 
-  // Rotacja Newsów (Tablica dworcowa)
-  useEffect(() => {
-    const t = setInterval(() => setNewsIndex(prev => (prev + 1) % allNews.length), 8000);
-    return () => clearInterval(t);
-  }, []);
+  const fetchPulse = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pro-widget/pulse?locale=${locale}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.success) return;
+      if (typeof data.metrics?.avgPricePerSqm === "number") {
+        setAvgPrice(data.metrics.avgPricePerSqm);
+      }
+      if (data.metrics?.demandLevel) {
+        setDemandLabel(demandLabelForLevel(data.metrics.demandLevel, locale));
+      }
+      if (Array.isArray(data.headlines) && data.headlines.length > 0) {
+        setHeadlines(data.headlines);
+        setNewsIndex(0);
+      }
+      if (Array.isArray(data.events) && data.events.length > 0) {
+        setEvents(data.events);
+      }
+      setPulseLive(true);
+    } catch {
+      setPulseLive(false);
+    }
+  }, [locale]);
 
-  // Pobieranie notatek i statystyk
   useEffect(() => {
-    fetch('/api/stats/market').then(res => res.json()).then(data => { if (data.avgPricePerSqm) setAvgPrice(data.avgPricePerSqm); }).catch(()=>{});
-  }, []);
+    fetchPulse();
+    const poll = setInterval(fetchPulse, PULSE_POLL_MS);
+    return () => clearInterval(poll);
+  }, [fetchPulse]);
+
+  useEffect(() => {
+    if (headlines.length < 2) return;
+    const t = setInterval(() => setNewsIndex((prev) => (prev + 1) % headlines.length), 8000);
+    return () => clearInterval(t);
+  }, [headlines.length]);
 
   useEffect(() => {
     const fetchNotes = async () => {
@@ -222,9 +263,11 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
               <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 shadow-[inset_0_2px_10px_rgba(0,0,0,1)] flex flex-col justify-between h-[80px]">
                  <div className="flex justify-between items-start">
                     <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center"><Activity size={12} className="text-emerald-500" /></div>
-                    <span className="text-white/80 font-black text-xs md:text-sm drop-shadow-md">Wysoki</span>
+                    <span className="text-white/80 font-black text-xs md:text-sm drop-shadow-md tabular-nums">{demandLabel}</span>
                  </div>
-                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30">Popyt Inwestycyjny</span>
+                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30">
+                   {locale === "pl" ? "Popyt inwestycyjny" : "Investment demand"}
+                 </span>
               </div>
               <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 shadow-[inset_0_2px_10px_rgba(0,0,0,1)] flex flex-col justify-between h-[80px] relative overflow-hidden group">
                  <div className="absolute bottom-0 left-0 right-0 h-12 opacity-30 group-hover:opacity-60 transition-opacity duration-500">
@@ -238,7 +281,9 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                     <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20"><LineChart size={12} className="text-emerald-500" /></div>
                     <span className="text-emerald-400 font-black text-[11px] md:text-xs tracking-tight tabular-nums drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{avgPrice ? `${avgPrice.toLocaleString('pl-PL')} zł/m²` : '...'}</span>
                  </div>
-                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30 relative z-10">Średnia Rynkowa</span>
+                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30 relative z-10">
+                   {locale === "pl" ? "Średnia rynkowa" : "Market average"}
+                 </span>
               </div>
            </div>
 
@@ -283,26 +328,34 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                  <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.3em] text-white/50">Puls Rynku</h3>
               </div>
               <div className="flex items-center gap-1.5 px-2 py-1 bg-black/50 border border-emerald-500/20 rounded-full shadow-inner">
-                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                 <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500/70">Terminal</span>
+                 <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pulseLive ? "bg-emerald-500" : "bg-amber-500"}`}></div>
+                 <span className={`text-[7px] font-black uppercase tracking-widest ${pulseLive ? "text-emerald-500/70" : "text-amber-500/70"}`}>
+                   {pulseLive ? (locale === "pl" ? "Live" : "Live") : locale === "pl" ? "Sync…" : "Sync…"}
+                 </span>
               </div>
            </div>
            <div className="space-y-5 relative z-10 flex-1 overflow-hidden">
               <div className="flex gap-4 items-start pb-4">
                  <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-black border border-[#222] shadow-[inset_0_2px_5px_rgba(0,0,0,1)] flex items-center justify-center shrink-0">
-                    {allNews[newsIndex].type==='PL' ? <TrendingUp size={14} className="text-emerald-500/80"/> : <Globe size={14} className="text-blue-500/80"/>}
+                    {headlines[newsIndex]?.type === "GLOBAL" ? (
+                      <Globe size={14} className="text-blue-500/80" />
+                    ) : (
+                      <TrendingUp size={14} className="text-emerald-500/80" />
+                    )}
                  </div>
                  <div className="flex-1 min-w-0 font-mono">
                     <p className="text-[10px] md:text-[11px] font-bold text-emerald-400/90 leading-relaxed min-h-[40px] drop-shadow-[0_0_8px_rgba(16,185,129,0.2)]">
-                       <ScrambleText text={allNews[newsIndex].title} />
+                       <ScrambleText key={`${headlines[newsIndex]?.id}-${newsIndex}`} text={headlines[newsIndex]?.title ?? ""} />
                     </p>
                     <p className="text-[8px] md:text-[9px] text-white/20 mt-2 uppercase font-black tracking-widest">
-                       {allNews[newsIndex].source}
+                       {headlines[newsIndex]?.source}
                     </p>
                  </div>
               </div>
               <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-              <p className="text-[8px] text-white/20 uppercase tracking-[0.2em] text-center mt-4">Połączenie z serwerem szyfrowane</p>
+              <p className="text-[8px] text-white/20 uppercase tracking-[0.2em] text-center mt-4">
+                {locale === "pl" ? "Połączenie z serwerem szyfrowane" : "Encrypted server connection"}
+              </p>
            </div>
         </div>
 
@@ -314,13 +367,16 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
           <div className="absolute inset-y-0 right-0 w-16 md:w-32 bg-gradient-to-l from-black to-transparent z-10 pointer-events-none"></div>
           
           <motion.div className="flex items-center gap-12 md:gap-16 whitespace-nowrap pl-12 md:pl-16" animate={{ x: '-33.33%' }} transition={{ duration: 45, ease: "linear", repeat: Infinity }}>
-              {[...mockEvents, ...mockEvents, ...mockEvents].map((e, i) => (
-                  <div key={i} className="flex items-center gap-3 shrink-0">
-                     <e.icon size={14} className={e.color}/>
+              {[...events, ...events, ...events].map((e, i) => {
+                const Icon = EVENT_ICONS[e.icon] ?? Zap;
+                return (
+                  <div key={`${e.id}-${i}`} className="flex items-center gap-3 shrink-0">
+                     <Icon size={14} className={e.color}/>
                      <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white/40">{e.text}</span>
                      <div className="w-1.5 h-1.5 rounded-full bg-white/5 ml-8 md:ml-12"></div>
                   </div>
-              ))}
+                );
+              })}
           </motion.div>
       </div>
 
