@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Crown, Flame, ShieldCheck } from 'lucide-react-native';
+import { Flame, ShieldCheck } from 'lucide-react-native';
 import { useI18n } from '../i18n';
-import { isAgentRoleIdentity, isInvestorProIdentity, isPartnerIdentity } from '../utils/partnerIdentity';
+import InvestorProShimmerBadge from './profile/InvestorProShimmerBadge';
+import { isAgentRoleIdentity, isPartnerIdentity } from '../utils/partnerIdentity';
+import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 
 type Props = {
   subject: any;
@@ -64,7 +66,7 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
   /* Administrator dostaje WSZYSTKIE plakietki które przysługują (Partner,
      Investor Pro) plus DODATKOWO czerwoną „ADMINISTRATOR". Pozostali widzą tylko Partner/Pro. */
   const showPartner = isAdmin || isPartnerIdentity(subject);
-  const showPro = isAdmin || isInvestorProIdentity(subject);
+  const showPro = hasActiveInvestorProMembership(subject);
   if (!isAdmin && !showPartner && !showPro) return null;
 
   // Nowa rola AGENT (mobile) → plakietka „Agent EstateOS".
@@ -74,10 +76,6 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
   const partnerColors = isDark
     ? { bg: 'rgba(255,149,0,0.2)', border: 'rgba(255,159,10,0.7)', text: '#FFB340' }
     : { bg: 'rgba(255,149,0,0.12)', border: 'rgba(255,149,0,0.5)', text: '#C96C00' };
-  const proTitaniumColors = isDark
-    ? { bg: 'rgba(184,189,199,0.2)', border: 'rgba(202,208,219,0.72)', text: '#E4E9F2' }
-    : { bg: 'rgba(124,136,152,0.12)', border: 'rgba(124,136,152,0.45)', text: '#5D6A7D' };
-
   return (
     <View style={[styles.row, compact ? styles.rowCompact : null]}>
       {isAdmin ? <AdminBadge compact={compact} /> : null}
@@ -89,14 +87,7 @@ export default function EliteStatusBadges({ subject, isDark = false, compact = f
           icon={<ShieldCheck size={compact ? 11 : 12} color={partnerColors.text} />}
         />
       ) : null}
-      {showPro ? (
-        <Badge
-          compact={compact}
-          label={t('offer.badges.investorPro')}
-          colors={proTitaniumColors}
-          icon={<Crown size={compact ? 11 : 12} color={proTitaniumColors.text} />}
-        />
-      ) : null}
+      {showPro ? <InvestorProShimmerBadge compact={compact} /> : null}
     </View>
   );
 }

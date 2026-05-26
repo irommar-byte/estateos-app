@@ -24,6 +24,8 @@ import { BlurView } from 'expo-blur';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
+import ProfileProExtrasSection from '../components/profile/ProfileProExtrasSection';
+import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 import DeleteAccountSheet from '../components/DeleteAccountSheet';
 import EditNameSheet from '../components/profile/EditNameSheet';
 import EditPhoneSheet from '../components/profile/EditPhoneSheet';
@@ -3480,6 +3482,12 @@ function ProfileScreenLoggedIn({
             />
           </View>
         </View>
+
+        {hasActiveInvestorProMembership(user) ? (
+          <View style={styles.section}>
+            <ProfileProExtrasSection user={user} isDark={isDark} />
+          </View>
+        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.contact.sectionTitle')}</Text>

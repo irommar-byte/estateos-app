@@ -303,6 +303,54 @@ export const profile = {
         'Dziękujemy za korzystanie z EstateOS™. Sesja została zakończona.',
     },
   },
+  proExtras: {
+    eyebrow: 'EstateOS',
+    title: 'Przywileje Pro',
+    lead: 'Narzędzia dla członków Investor Pro — bez ograniczania pozostałych użytkowników.',
+    footer:
+      'Standardowe funkcje EstateOS pozostają bez zmian. Ten dział to wyłącznie dodatki dla aktywnego członkostwa Pro.',
+    countdown: {
+      title: 'Członkostwo Pro',
+      active: 'Pozostało {{days}} dni',
+      endingSoon: 'Kończy się za {{days}} dni',
+      lastDay: 'Ostatnie godziny ({{hours}} h)',
+      until: 'Ważne do {{date}}',
+    },
+    features: {
+      auction: {
+        title: 'Licytacja',
+        subtitle: 'Uruchom transparentną licytację przy wybranej ofercie — wkrótce w aplikacji.',
+        tag: 'Wkrótce',
+        alertTitle: 'Licytacja Pro',
+        alertBody:
+          'Przygotowujemy moduł licytacji dla członków Investor Pro. Powiadomimy Cię, gdy będzie gotowy do użycia.',
+      },
+      openHouse: {
+        title: 'Dzień otwartych drzwi',
+        subtitle: 'Zaplanuj prezentację zbiorową z kalendarzem i potwierdzeniami gości.',
+        tag: 'Wkrótce',
+        alertTitle: 'Dzień otwartych drzwi',
+        alertBody:
+          'Wkrótce dodasz wydarzenie otwartych drzwi bezpośrednio z profilu — z widocznością dla zainteresowanych kupujących.',
+      },
+      insider: {
+        title: 'Brief inwestorski',
+        subtitle: 'Priorytetowy podgląd trendów rynku i sygnałów z Radaru Pro.',
+        tag: 'Ekskluzywne',
+        alertTitle: 'Brief inwestorski',
+        alertBody:
+          'Twój status Pro daje dostęp do rozszerzonych analiz — kolejne raporty pojawią się w tym dziale.',
+      },
+      circle: {
+        title: 'Krąg Pro',
+        subtitle: 'Społeczność zweryfikowanych inwestorów — wymiana doświadczeń i kontaktów.',
+        tag: 'Społeczność',
+        alertTitle: 'Krąg Pro',
+        alertBody:
+          'Budujemy zamknięty kanał dla członków Investor Pro. Dołączysz automatycznie, gdy moduł będzie aktywny.',
+      },
+    },
+  },
   publicProfile: {
     title: 'Twój profil publiczny',
     loading: 'Ładowanie profilu...',

@@ -302,6 +302,54 @@ export const profile = {
       deleteSuccessBody: 'Thank you for using EstateOS™. Your session has ended.',
     },
   },
+  proExtras: {
+    eyebrow: 'EstateOS',
+    title: 'Pro privileges',
+    lead: 'Tools for Investor Pro members — without limiting everyone else on EstateOS.',
+    footer:
+      'Standard EstateOS features stay the same. This section is only for active Pro membership extras.',
+    countdown: {
+      title: 'Pro membership',
+      active: '{{days}} days left',
+      endingSoon: 'Ends in {{days}} days',
+      lastDay: 'Final hours ({{hours}} h)',
+      until: 'Valid until {{date}}',
+    },
+    features: {
+      auction: {
+        title: 'Auction',
+        subtitle: 'Run a transparent auction on a listing you choose — coming soon in the app.',
+        tag: 'Soon',
+        alertTitle: 'Pro auction',
+        alertBody:
+          'We are preparing the auction module for Investor Pro members. We will notify you when it is ready.',
+      },
+      openHouse: {
+        title: 'Open house day',
+        subtitle: 'Schedule a group viewing with calendar invites and guest confirmations.',
+        tag: 'Soon',
+        alertTitle: 'Open house day',
+        alertBody:
+          'Soon you will add an open house event from your profile, visible to interested buyers.',
+      },
+      insider: {
+        title: 'Investor brief',
+        subtitle: 'Priority market trends and Radar Pro signals.',
+        tag: 'Exclusive',
+        alertTitle: 'Investor brief',
+        alertBody:
+          'Your Pro status unlocks extended insights — new reports will appear in this section.',
+      },
+      circle: {
+        title: 'Pro circle',
+        subtitle: 'A community of verified investors — shared experience and contacts.',
+        tag: 'Community',
+        alertTitle: 'Pro circle',
+        alertBody:
+          'We are building a private channel for Investor Pro members. You will join when the module goes live.',
+      },
+    },
+  },
   publicProfile: {
     title: 'Your public profile',
     loading: 'Loading profile...',

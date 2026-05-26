@@ -54,13 +54,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
       updatedData = {
         isPro: true,
-        planType: PlanType.INVESTOR,
-        proExpiresAt: expiresAt
+        planType: PlanType.PRO,
+        proExpiresAt: expiresAt,
       };
     } else if (action === "take") {
       updatedData = {
         isPro: false,
-        proExpiresAt: null
+        planType: PlanType.INVESTOR,
+        proExpiresAt: null,
       };
     } else {
       return NextResponse.json({ error: "Nieprawidłowa akcja" }, { status: 400 });
