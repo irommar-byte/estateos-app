@@ -30,12 +30,11 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
   const firstFreeUsed = Number(firstFreeRows[0]?.firstFreePublicationUsed ?? 0) > 0;
 
   const promoCards = await listProfilePromoCardsForUser(userId);
-  // Match mobile logic (isPublicationRedeemable) as closely as possible:
-  // - ignore used coupons
-  // - ignore off-market preview coupons
-  // - allow welcome / birthday / admin promo kinds for publication flow
-  // - fallback allow explicit publication purpose
-  const activeCoupons = promoCards.filter((c) => {
+  // UI parity with mobile coupon section: show all active (unused) bonus cards.
+  const allVisibleCoupons = promoCards.filter((c) => !c.couponUsed);
+
+  // Publication parity with mobile publication flow: only redeemable publication coupons.
+  const publicationCoupons = promoCards.filter((c) => {
     if (c.couponUsed) return false;
     if (c.purpose === "off_market_preview") return false;
     if (c.kind === "welcome_coupon" || c.kind === "birthday_coupon" || c.kind === "admin_promo") {
@@ -46,7 +45,7 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
     return c.grantsFreeListing || c.purpose === "publication";
   });
 
-  const coupons = [...activeCoupons];
+  const coupons = [...allVisibleCoupons];
 
   if (!firstFreeUsed && !coupons.some((c) => c.kind === "welcome_coupon")) {
     coupons.unshift({
@@ -82,6 +81,7 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
     plusExpiresAt: expiresAt,
     hasPlusCredit: plusActive,
     coupons,
+    publicationCoupons,
     couponCount: coupons.length,
     priceLabel: PAKIET_PLUS_PRICE_LABEL,
     publicationDays: PUBLICATION_DURATION_DAYS,

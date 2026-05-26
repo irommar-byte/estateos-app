@@ -132,6 +132,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [showPublicationChoice, setShowPublicationChoice] = useState(false);
   const [pubWallet, setPubWallet] = useState<{
     coupons: Array<{ id: string; kind: string; title: string; subtitle: string; pillLabel?: string }>;
+    publicationCoupons?: Array<{ id: string; kind: string; title: string; subtitle: string; pillLabel?: string }>;
     hasPlusCredit: boolean;
     plusCredits: number;
   } | null>(null);
@@ -774,7 +775,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const wallet = walletRes.ok ? await walletRes.json() : null;
       setPubWallet(wallet);
 
-      const coupons = wallet?.coupons ?? [];
+      const coupons = wallet?.publicationCoupons ?? wallet?.coupons ?? [];
       const quote = quoteData?.quote;
       const needsModal = coupons.length > 0 || quote?.requiresPayment === true;
 
@@ -1538,7 +1539,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         onClose={() => setShowPublicationChoice(false)}
         title="Publikacja na 30 dni"
         subtitle={`Opublikuj ofertę na szerokim rynku. Pakiet Plus kosztuje ${PAKIET_PLUS_PRICE_LABEL} za jedną publikację (30 dni). To kredyt, nie abonament.`}
-        coupons={pubWallet?.coupons ?? []}
+        coupons={pubWallet?.publicationCoupons ?? pubWallet?.coupons ?? []}
         hasPlusCredit={Boolean(pubWallet?.hasPlusCredit)}
         plusCredits={pubWallet?.plusCredits ?? 0}
         onConfirm={handlePublicationChoice}
