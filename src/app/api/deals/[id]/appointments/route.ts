@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import jwt from 'jsonwebtoken';
-import { verifyMobileToken } from '@/lib/jwtMobile';
 import { notificationService } from '@/lib/services/notification.service';
+import { resolveDealUserId } from '@/lib/dealRequestAuth';
+import {
+  FINALIZED_DEAL_STATUSES,
+  withdrawOwnPendingAppointments,
+} from '@/lib/dealBidNegotiation';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -24,29 +27,6 @@ function buildDealroomPushData(dealId: number, offerId: number) {
   };
 }
 
-function getUserIdFromToken(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const verified = verifyMobileToken(token) as any;
-    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
-    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-    const secret = process.env.JWT_SECRET;
-    if (secret) {
-      const payload = jwt.verify(token, secret) as any;
-      const jwtId = Number(payload?.id || payload?.sub);
-      if (Number.isFinite(jwtId) && jwtId > 0) return jwtId;
-    }
-    const decoded = jwt.decode(token) as any;
-    const decodedId = Number(decoded?.id || decoded?.userId || decoded?.sub);
-    return Number.isFinite(decodedId) && decodedId > 0 ? decodedId : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string }> }
@@ -59,7 +39,7 @@ export async function POST(
       return NextResponse.json({ error: 'Błędne ID' }, { status: 400 });
     }
 
-    const userId = getUserIdFromToken(req.headers.get('authorization'));
+    const userId = await resolveDealUserId(req);
 
     if (!userId) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
@@ -94,26 +74,27 @@ export async function POST(
       return NextResponse.json({ error: 'Brak dostępu' }, { status: 403 });
     }
 
-    // ❗ BLOKADA PO FINALIZACJI / ANULOWANIU
-    if (['FINALIZED', 'CANCELLED'].includes(deal.status)) {
-      return NextResponse.json({
-        error: 'Transakcja jest zamknięta'
-      }, { status: 400 });
+    if (FINALIZED_DEAL_STATUSES.has(String(deal.status || '').toUpperCase())) {
+      return NextResponse.json({ error: 'Transakcja jest zamknięta' }, { status: 400 });
     }
+
+    const otherPending = await prisma.appointment.findFirst({
+      where: { dealId, status: 'PENDING', proposedById: { not: userId } },
+      select: { id: true },
+    });
+    if (otherPending) {
+      return NextResponse.json(
+        { error: 'Najpierw odpowiedz na propozycję terminu drugiej strony.' },
+        { status: 409 }
+      );
+    }
+
+    await withdrawOwnPendingAppointments(prisma, dealId, userId);
 
     const receiverId =
       deal.buyerId === userId ? deal.sellerId : deal.buyerId;
 
     const result = await prisma.$transaction(async (tx) => {
-
-      // 🔒 LIMIT PENDING (atomic)
-      const pendingCount = await tx.appointment.count({
-        where: { dealId, status: 'PENDING' }
-      });
-
-      if (pendingCount >= 2) {
-        throw new Error('LIMIT_PENDING_APPOINTMENTS');
-      }
 
       // 🧠 CREATE
       const appointment = await tx.appointment.create({
