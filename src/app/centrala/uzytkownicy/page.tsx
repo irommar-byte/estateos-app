@@ -56,13 +56,30 @@ export default function AdminUsers() {
   };
 
   const togglePro = async (id: number, isPro: boolean) => {
-    console.log("CLICK PRO:", id, isPro);
-    await fetch(`/api/admin/users/${id}/toggle-pro`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: isPro ? "take" : "give" })
-    });
-    fetchUsers();
+    try {
+      const res = await fetch(`/api/admin/users/${id}/toggle-pro`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action: isPro ? "take" : "give" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        alert(data?.error || "Nie udało się zmienić statusu PRO.");
+        return;
+      }
+      const patch = {
+        isPro: Boolean(data.isPro),
+        planType: data.planType,
+        proExpiresAt: data.proExpiresAt,
+      };
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+      if (selectedUser?.id === id) {
+        setSelectedUser((prev: any) => (prev ? { ...prev, ...patch } : prev));
+      }
+    } catch {
+      alert("Błąd sieci przy zmianie statusu PRO.");
+    }
   };
 
   const handleUpdate = async (id: string, payload: any) => {

@@ -3,10 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import Stripe from 'stripe';
-import {
-  activateOfferFromStripeRenewal,
-  grantPlusCreditFromStripeCheckout,
-} from '@/lib/stripePublication';
+import { PlanType } from '@prisma/client';
+import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -52,50 +50,49 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Płatność niepotwierdzona dla tej oferty' }, { status: 409 });
       }
 
-      const user = await prisma.user.findFirst({
-        where: { email },
-        select: { id: true },
-      });
-      if (!user?.id) {
-        return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
-      }
+      const expires = new Date();
+      expires.setDate(expires.getDate() + 30);
 
-      await activateOfferFromStripeRenewal({
-        userId: user.id,
-        offerId: numericOfferId,
-        checkoutSessionId: String(sessionId),
+      const result = await prisma.offer.updateMany({
+        where: {
+          id: numericOfferId,
+          userId: Number(sessionData?.id),
+        },
+        data: {
+          status: 'ACTIVE',
+          expiresAt: expires,
+        },
       });
+
+      if (result.count === 0) {
+        return NextResponse.json({ error: 'Nie znaleziono oferty do aktywacji' }, { status: 404 });
+      }
 
       return NextResponse.json({ success: true, renewedOfferId: numericOfferId });
     }
 
     if (normalizedPlan === 'pakiet_plus') {
-      if (!sessionId) {
-        return NextResponse.json({ error: 'Brak session_id' }, { status: 400 });
-      }
-      const user = await prisma.user.findFirst({ where: { email }, select: { id: true } });
-      if (!user?.id) {
-        return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
-      }
-      await grantPlusCreditFromStripeCheckout({
-        userId: user.id,
-        checkoutSessionId: String(sessionId),
-      });
-      return NextResponse.json({ success: true, plusCreditGranted: true });
+      // Pakiet Plus nie może być przyznawany przez ślepy sync z URL-a.
+      // Księgowanie odbywa się wyłącznie po zweryfikowanej transakcji IAP/webhook.
+      return NextResponse.json({ success: true, skipped: 'pakiet_plus_requires_verified_transaction' });
     }
 
-    if (normalizedPlan === 'agency' || normalizedPlan === 'investor' || normalizedPlan === 'pro') {
-      const planType = normalizedPlan === 'agency' ? 'AGENCY' : 'PRO';
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 30);
-      
-      // Twardy zapis do bazy danych - wymuszenie PRO!
+    if (normalizedPlan === 'agency') {
       await prisma.user.updateMany({
         where: { email },
-        data: { isPro: true, planType, proExpiresAt: expires }
+        data: { isPro: false, planType: PlanType.AGENCY, proExpiresAt: null },
       });
-      console.log(`🔥 FORCE-SYNC: Użytkownik ${email} otrzymał wymuszone PRO (${planType})`);
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, planType: 'AGENCY' });
+    }
+
+    if (isStripeInvestorProPlan(normalizedPlan)) {
+      const grant = buildInvestorProGrantData();
+      await prisma.user.updateMany({
+        where: { email },
+        data: grant,
+      });
+      console.log(`[force-sync] investor_pro_granted email=${email} until=${grant.proExpiresAt.toISOString()}`);
+      return NextResponse.json({ success: true, planType: 'PRO', proExpiresAt: grant.proExpiresAt });
     }
 
     return NextResponse.json({ error: 'Nieobsługiwany plan płatności' }, { status: 400 });
