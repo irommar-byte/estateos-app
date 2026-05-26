@@ -1461,6 +1461,44 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
     } catch (e) { Alert.alert("Błąd", "Zmiana statusu nie powiodła się."); }
   };
 
+  const deleteOfferPermanently = (offer) => {
+    const title = String(offer?.title || `Oferta #${offer?.id}`).trim();
+    Alert.alert(
+      'Usunąć ofertę bezpowrotnie?',
+      `"${title}" zostanie trwale usunięta wraz ze zdjęciami i powiązanymi danymi. Tej operacji nie można cofnąć.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            if (!token) {
+              Alert.alert('Sesja', 'Zaloguj się ponownie.');
+              return;
+            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            try {
+              const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ offerId: offer.id }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                fetchUserDetails();
+              } else {
+                Alert.alert('Błąd', String(data?.message || data?.error || 'Nie udało się usunąć oferty.'));
+              }
+            } catch {
+              Alert.alert('Błąd', 'Nie udało się usunąć oferty.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return 'Brak danych';
     const date = new Date(dateString);
@@ -1531,7 +1569,10 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
           <AdminActionButton icon="archive" label="Zawieś / Archiwizuj" tint="#FF9F0A" fill="rgba(255,159,10,0.14)" onPress={() => changeOfferStatus(item.id, 'ARCHIVED')} />
         )}
         {normalizeOfferTabStatus(item?.status) === 'ARCHIVED' && (
-          <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeOfferStatus(item.id, 'ACTIVE')} />
+          <>
+            <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeOfferStatus(item.id, 'ACTIVE')} />
+            <AdminActionButton icon="trash" label="Usuń" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => deleteOfferPermanently(item)} />
+          </>
         )}
       </View>
     </View>
@@ -1768,6 +1809,45 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     }
   };
 
+  const deleteOfferPermanently = (offer) => {
+    const title = String(offer?.title || `Oferta #${offer?.id}`).trim();
+    Alert.alert(
+      'Usunąć ofertę bezpowrotnie?',
+      `"${title}" zostanie trwale usunięta wraz ze zdjęciami i powiązanymi danymi. Tej operacji nie można cofnąć.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            if (!token) {
+              Alert.alert('Sesja', 'Zaloguj się ponownie.');
+              return;
+            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            try {
+              const res = await fetch(`${API_URL}/api/mobile/v1/admin/offers`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ offerId: offer.id }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                fetchOffers();
+                fetchPendingCount();
+              } else {
+                Alert.alert('Błąd', String(data?.message || data?.error || 'Nie udało się usunąć oferty.'));
+              }
+            } catch {
+              Alert.alert('Błąd', 'Nie udało się usunąć oferty.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const renderOffer = ({ item }) => {
     const statusMeta = getAdminStatusMeta(item?.status);
     const imageUri = extractOfferCardImage(item);
@@ -1816,7 +1896,10 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
             <AdminActionButton icon="archive" label="Archiwizuj" tint="#FF9F0A" fill="rgba(255,159,10,0.14)" onPress={() => changeStatus(item.id, 'ARCHIVED')} />
           )}
           {activeTab === 'ARCHIVED' && (
-            <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
+            <>
+              <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
+              <AdminActionButton icon="trash" label="Usuń" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => deleteOfferPermanently(item)} />
+            </>
           )}
         </View>
       </View>
