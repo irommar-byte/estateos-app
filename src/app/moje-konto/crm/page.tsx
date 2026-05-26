@@ -51,7 +51,7 @@ import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Cr
 import AppointmentManager from "@/components/AppointmentManager";
 import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
-import OfferListingSlots from "@/components/crm/OfferListingSlots";
+import PublicationWalletPanel from "@/components/profile/PublicationWalletPanel";
 import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
 import {
   buildLegacyRadarUpdateBody,
@@ -550,6 +550,30 @@ export default function CRMDashboard() {
       }
     } catch {
       alert('Błąd połączenia z serwerem.');
+    }
+  };
+
+  const [buyingPlusPackage, setBuyingPlusPackage] = useState(false);
+
+  const handleBuyPlusPackage = async () => {
+    setBuyingPlusPackage(true);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        credentials: 'include',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: 'pakiet_plus',
+          returnUrl: `${window.location.origin}/moje-konto/crm?tab=my_offers&payment_success=true&plan_activated=pakiet_plus`,
+        }),
+      });
+      const { url } = await res.json();
+      if (url) window.location.href = url;
+      else alert('Nie udało się otworzyć płatności.');
+    } catch {
+      alert('Błąd połączenia z operatorem płatności');
+    } finally {
+      setBuyingPlusPackage(false);
     }
   };
 
@@ -1429,12 +1453,8 @@ export default function CRMDashboard() {
             </div>
           )}
 
-          {isListingsTab && offerSectionFilter === 'ACTIVE' && (
-            <OfferListingSlots
-              user={currentUser}
-              activeOffers={offersBySection.ACTIVE}
-              onAddOffer={goToAddOffer}
-            />
+          {isListingsTab && (
+            <PublicationWalletPanel onBuyPlus={handleBuyPlusPackage} buyingPlus={buyingPlusPackage} />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

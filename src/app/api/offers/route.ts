@@ -17,7 +17,12 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
-import { activePublicationOfferIds } from '@/lib/offerPublication';
+import {
+  activateOfferPublication,
+  activePublicationOfferIds,
+  getPublicationQuote,
+} from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
@@ -209,9 +214,93 @@ export async function POST(req: Request) {
 
     const offer = await createOffer({ ...body, userId: resolvedUserId });
 
-    return NextResponse.json({ success: true, offer });
+    const wantsActivation = body?.activateOnCreate === true || body?.publication;
+    if (!wantsActivation) {
+      return NextResponse.json({ success: true, offer });
+    }
+
+    const quote = await getPublicationQuote({
+      userId: resolvedUserId,
+      offerId: Number(offer.id),
+      action: 'CREATE_AND_ACTIVATE',
+    });
+    const pub = body?.publication;
+    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
+    const bonusCouponId = String(pub?.bonusCouponId ?? body?.bonusCouponId ?? '').trim();
+    const bypassPaymentRequirement =
+      pub?.kind === 'FREE_FIRST' ||
+      Boolean(bonusCouponId) ||
+      pub?.kind === 'PLUS_CREDIT' ||
+      pub?.consumePlusPublication === true;
+
+    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
+      return NextResponse.json(
+        {
+          success: false,
+          offer,
+          activationSkipped: true,
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
+          quote,
+        },
+        { status: 422 },
+      );
+    }
+
+    const activationKind =
+      pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
+        ? 'PLUS_PAID'
+        : pub?.kind === 'PLUS_CREDIT' || pub?.consumePlusPublication === true
+          ? 'PLUS_CREDIT'
+          : pub?.kind === 'FREE_FIRST' || bonusCouponId
+            ? 'FREE_FIRST'
+            : txId
+              ? 'PLUS_PAID'
+              : 'PLUS_CREDIT';
+
+    const activation = await activateOfferPublication({
+      userId: resolvedUserId,
+      offerId: Number(offer.id),
+      kind: activationKind,
+      iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
+      iapProductId: quote.productId,
+    });
+
+    if (bonusCouponId && activationKind === 'FREE_FIRST') {
+      await markProfilePromoCardUsed(resolvedUserId, bonusCouponId);
+    }
+
+    return NextResponse.json({
+      success: true,
+      offer: { ...offer, status: 'ACTIVE', expiresAt: activation.endsAt.toISOString() },
+      publication: {
+        status: activation.status,
+        kind: activation.kind,
+        endsAt: activation.endsAt.toISOString(),
+      },
+    });
 
   } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'IAP_TRANSACTION_NOT_AVAILABLE') {
+      return NextResponse.json(
+        {
+          success: false,
+          errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
+          message: 'Nie znaleziono niewykorzystanej płatności za publikację.',
+        },
+        { status: 409 },
+      );
+    }
+    if (e instanceof Error && e.message === 'NO_PLUS_CREDIT_AVAILABLE') {
+      return NextResponse.json(
+        {
+          success: false,
+          errorCode: 'PUBLICATION_REQUIRES_PLUS',
+          message: 'Brak dostępnego kredytu Pakietu Plus.',
+        },
+        { status: 409 },
+      );
+    }
     if (isOfferSchemaCompatibilityError(e)) {
       return NextResponse.json(
         { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },

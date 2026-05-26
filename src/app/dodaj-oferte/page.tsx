@@ -2,7 +2,7 @@ import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import ClientForm from './ClientForm';
-import { computeListingLimits, isPlusCreditActive } from '@/lib/offerListingLimits';
+import { isPlusCreditActive } from '@/lib/offerListingLimits';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
@@ -31,19 +31,7 @@ export default async function AddOfferPage() {
 
       if (realUser) {
         // 🔥 BEZWZGLĘDNE LICZENIE OFERT (NA ŻYWO, BEZ CACHE) 🔥
-        const activeOffersCount = await prisma.offer.count({
-          where: { 
-            userId: dbUserId,
-            status: { notIn: ['REJECTED', 'ARCHIVED'] } 
-          }
-        });
-
-        const limits = computeListingLimits(realUser);
-        const activePlusCredits = limits.plusCredits;
-        const limit = limits.isAgency ? 999999 : limits.totalSlots;
-
-        // Twarda blokada - przekazujemy do formularza
-        const limitReached = activeOffersCount >= limit;
+        const activePlusCredits = isPlusCreditActive(realUser) ? Number(realUser.extraListings ?? 0) : 0;
 
         userData = { 
           isLoggedIn: true, 
@@ -55,7 +43,6 @@ export default async function AddOfferPage() {
           isPro: realUser.isPro,
           extraListings: activePlusCredits,
           plusExpiresAt: isPlusCreditActive(realUser) ? realUser.plusExpiresAt : null,
-          limitReached: limitReached 
         };
       }
     }

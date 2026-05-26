@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
+import {
+  PAKIET_PLUS_STRIPE_AMOUNT,
+  PUBLICATION_RENEWAL_STRIPE_AMOUNT,
+} from '@/lib/publicationConstants';
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -46,20 +50,20 @@ export async function POST(req: Request) {
     if (plan === 'investor') {
       productName = 'EstateOS Investor PRO';
       productDesc =
-        'Natychmiastowy Radar (bez okna premiery), 3 złote sloty ogłoszeń PRO, wczesny dostęp 24 h. Kolejne ogłoszenia — Pakiet + (30 dni / kredyt).';
+        'Natychmiastowy Radar (bez okna premiery), wczesny dostęp 24 h. Kolejne publikacje — Pakiet Plus (30 dni / kredyt).';
       unitAmount = 24900;
     } else if (plan === 'renewal') {
       productName = 'Odnowienie Oferty (30 Dni)';
       productDesc = 'Przedłużenie ważności Twojej oferty o kolejne 30 dni z natychmiastowym efektem.';
-      unitAmount = 2400; // 24.00 PLN
+      unitAmount = PUBLICATION_RENEWAL_STRIPE_AMOUNT;
       if (offerId) {
           metadata.offer_id_to_renew = String(offerId);
       }
     } else if (plan === 'pakiet_plus') {
-      productName = 'Pakiet + (1 Ogłoszenie / 30 Dni)';
-      productDesc = 'Wykupienie 1 slotu ogłoszeniowego ważnego przez równe 30 dni.';
-      unitAmount = 2999; // 29.99 PLN
-
+      productName = 'Pakiet Plus (1 publikacja / 30 dni)';
+      productDesc =
+        'Jeden kredyt publikacji na 30 dni na szerokim rynku. Nie jest to abonament ani slot — zużywasz kredyt przy wystawieniu lub odnowieniu.';
+      unitAmount = PAKIET_PLUS_STRIPE_AMOUNT;
     }
 
     const successUrl = buildSuccessUrl(finalReturnUrl, {

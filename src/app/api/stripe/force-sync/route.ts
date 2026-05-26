@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import Stripe from 'stripe';
+import {
+  activateOfferFromStripeRenewal,
+  grantPlusCreditFromStripeCheckout,
+} from '@/lib/stripePublication';
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -48,31 +52,36 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Płatność niepotwierdzona dla tej oferty' }, { status: 409 });
       }
 
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 30);
-
-      const result = await prisma.offer.updateMany({
-        where: {
-          id: numericOfferId,
-          userId: Number(sessionData?.id),
-        },
-        data: {
-          status: 'ACTIVE',
-          expiresAt: expires,
-        },
+      const user = await prisma.user.findFirst({
+        where: { email },
+        select: { id: true },
       });
-
-      if (result.count === 0) {
-        return NextResponse.json({ error: 'Nie znaleziono oferty do aktywacji' }, { status: 404 });
+      if (!user?.id) {
+        return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
       }
+
+      await activateOfferFromStripeRenewal({
+        userId: user.id,
+        offerId: numericOfferId,
+        checkoutSessionId: String(sessionId),
+      });
 
       return NextResponse.json({ success: true, renewedOfferId: numericOfferId });
     }
 
     if (normalizedPlan === 'pakiet_plus') {
-      // Pakiet Plus nie może być przyznawany przez ślepy sync z URL-a.
-      // Księgowanie odbywa się wyłącznie po zweryfikowanej transakcji IAP/webhook.
-      return NextResponse.json({ success: true, skipped: 'pakiet_plus_requires_verified_transaction' });
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Brak session_id' }, { status: 400 });
+      }
+      const user = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+      if (!user?.id) {
+        return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
+      }
+      await grantPlusCreditFromStripeCheckout({
+        userId: user.id,
+        checkoutSessionId: String(sessionId),
+      });
+      return NextResponse.json({ success: true, plusCreditGranted: true });
     }
 
     if (normalizedPlan === 'agency' || normalizedPlan === 'investor' || normalizedPlan === 'pro') {
