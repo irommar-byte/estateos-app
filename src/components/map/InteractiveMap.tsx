@@ -46,16 +46,7 @@ function formatOfferPinLabel(price: unknown, offerTx: unknown): string {
 const OFFER_PIN_BASE =
   "px-4 py-2 backdrop-blur-2xl border text-[11px] font-black tracking-widest rounded-full cursor-pointer transition-all duration-300 ease-out";
 
-function offerPinColorClasses(transactionType: unknown, isPartnerRaw: unknown) {
-  const isPartner =
-    isPartnerRaw === true ||
-    isPartnerRaw === 1 ||
-    String(isPartnerRaw).toLowerCase() === "true";
-
-  if (isPartner) {
-    return `${OFFER_PIN_BASE} bg-orange-500/90 text-black border-orange-400/50 hover:bg-orange-400 hover:scale-110 shadow-[0_10px_30px_rgba(249,115,22,0.4)]`;
-  }
-
+function offerPinColorClasses(transactionType: unknown) {
   const tx = normalizeTransactionTypeStatic(transactionType);
 
   if (tx === "rent") {
@@ -203,10 +194,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
             );
           };
         } else {
-          innerEl.className = offerPinColorClasses(
-            feature.properties.transactionType,
-            feature.properties.isPartner,
-          );
+          innerEl.className = offerPinColorClasses(feature.properties.transactionType);
           innerEl.innerText = formatOfferPinLabel(
             feature.properties.price,
             feature.properties.transactionType,
@@ -233,10 +221,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const rootEl = markersRef.current[id].getElement();
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
-          pinEl.className = offerPinColorClasses(
-            feature.properties.transactionType,
-            feature.properties.isPartner,
-          );
+          pinEl.className = offerPinColorClasses(feature.properties.transactionType);
           pinEl.innerText = formatOfferPinLabel(
             feature.properties.price,
             feature.properties.transactionType,
