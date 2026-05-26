@@ -8,6 +8,7 @@ import { extractVerificationMeta, setVerificationStatusInDescription, type Offer
 import { activateOfferPublication, getPublicationQuote } from '@/lib/offerPublication';
 import { clearPendingPublication, readPendingPublication } from '@/lib/offerPendingPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
+import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -150,8 +151,27 @@ export async function DELETE(req: Request) {
 
     const id = new URL(req.url).searchParams.get('id');
     if (!id) return NextResponse.json({ success: false, error: 'Missing id' }, { status: 400 });
-    await prisma.offer.delete({ where: { id: Number(id) } });
-    return NextResponse.json({ success: true });
+
+    const offerId = Number(id);
+    const existing = await prisma.offer.findUnique({
+      where: { id: offerId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
+    }
+    if (String(existing.status).toUpperCase() !== 'ARCHIVED') {
+      return NextResponse.json(
+        { success: false, error: 'Trwałe usuwanie dostępne tylko dla ofert zarchiwizowanych.' },
+        { status: 409 }
+      );
+    }
+
+    const result = await deleteOfferCompletely(offerId);
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ success: true, deleted: true, offerId: result.deletedId });
   } catch (error) {
     return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
   }

@@ -15,6 +15,7 @@ import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import { formatOfferBuildYear, resolveOfferBuildYear } from '@/lib/offerDisplayLabels';
+import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
@@ -375,6 +376,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const isAdmin = String(actor.role || '').toUpperCase() === 'ADMIN';
     if (!isAdmin && Number(offer.userId) !== Number(actor.id)) {
       return NextResponse.json({ error: 'Brak uprawnień do usunięcia tej oferty' }, { status: 403 });
+    }
+
+    if (isAdmin && String(offer.status).toUpperCase() === 'ARCHIVED') {
+      const result = await deleteOfferCompletely(offerId);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true, deleted: true, offerId: result.deletedId });
     }
 
     const relatedDeals = await prisma.deal.count({ where: { offerId } });
