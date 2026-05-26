@@ -30,9 +30,19 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
   const firstFreeUsed = Number(firstFreeRows[0]?.firstFreePublicationUsed ?? 0) > 0;
 
   const promoCards = await listProfilePromoCardsForUser(userId);
-  const activeCoupons = promoCards.filter(
-    (c) => !c.couponUsed && (c.grantsFreeListing || c.purpose === "publication"),
-  );
+  // Match mobile logic (isPublicationRedeemable) as closely as possible:
+  // - ignore used coupons
+  // - ignore off-market preview coupons
+  // - allow welcome / birthday / admin promo kinds for publication flow
+  // - fallback allow explicit publication purpose
+  const activeCoupons = promoCards.filter((c) => {
+    if (c.couponUsed) return false;
+    if (c.purpose === "off_market_preview") return false;
+    if (c.kind === "welcome_coupon" || c.kind === "birthday_coupon" || c.kind === "admin_promo") {
+      return true;
+    }
+    return c.grantsFreeListing || c.purpose === "publication";
+  });
 
   const coupons = [...activeCoupons];
 
