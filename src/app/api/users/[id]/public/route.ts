@@ -14,7 +14,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // 1. Pobieranie użytkownika (User.id to Int)
         const user = await prisma.user.findFirst({
             where: { id: userIdNum },
-            select: { id: true, name: true, planType: true, createdAt: true, email: true }
+            select: {
+                id: true,
+                name: true,
+                planType: true,
+                createdAt: true,
+                email: true,
+                image: true,
+                companyName: true,
+                phone: true,
+            }
         });
 
         if (!user) return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
@@ -44,7 +53,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
                 id: user.id,
                 name: user.name || (user.email ? user.email.split('@')[0] : 'Użytkownik'),
                 type: user.planType === 'AGENCY' ? 'agency' : 'private',
+                planType: user.planType,
                 memberSince: user.createdAt,
+                image: user.image,
+                companyName: user.companyName,
+                phone: user.phone,
                 badges,
             },
             offers,

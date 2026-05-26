@@ -43,6 +43,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
+  const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
+  const [floorPlanUploading, setFloorPlanUploading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -103,6 +105,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
         );
         if (parsedImages.length) setImagesList(parsedImages);
+        const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
+        setFloorPlanUrl(fp || null);
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
     };
@@ -146,6 +150,38 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
   const handleRemoveImage = (url: string) => { const n = imagesList.filter(u => u !== url); setImagesList(n); updateData({ images: n.join(","), imageUrl: n[0] || '' }); };
 
+  const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !offerId) return;
+    setFloorPlanUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('offerId', offerId);
+      formData.append('isFloorPlan', 'true');
+      formData.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData, credentials: 'include' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'Upload rzutu nie powiódł się');
+      }
+      const d = await res.json();
+      if (d.url) {
+        setFloorPlanUrl(d.url);
+        updateData({ floorPlanUrl: d.url, floorPlan: d.url });
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload rzutu nie powiódł się.');
+    } finally {
+      setFloorPlanUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveFloorPlan = () => {
+    setFloorPlanUrl(null);
+    updateData({ floorPlanUrl: null, floorPlan: null });
+  };
+
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -164,6 +200,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       ...data,
       price: String(data.price || '').replace(/\s/g, ''),
       images: JSON.stringify(imagesList),
+      floorPlanUrl: floorPlanUrl || null,
+      floorPlan: floorPlanUrl || null,
       buildYear: data.year,
       yearBuilt: data.year,
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
@@ -338,6 +376,42 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               </div>
             </SortableContext>
           </DndContext>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className={glassPanel}>
+          <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
+            <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-cyan-500/20 to-cyan-900/20 flex items-center justify-center border border-cyan-500/30">
+              <Map size={24} className="text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">Plan nieruchomości</h2>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Rzut lokalu dla kupujących</p>
+            </div>
+          </div>
+          {!floorPlanUrl ? (
+            <label className="w-full min-h-[88px] rounded-2xl border-2 border-dashed border-[#222] hover:border-cyan-500/50 bg-[#0a0a0a]/50 flex flex-col items-center justify-center cursor-pointer transition-all group">
+              {floorPlanUploading ? <Loader2 className="animate-spin text-cyan-400" size={28} /> : (
+                <>
+                  <Map size={28} className="text-zinc-600 group-hover:text-cyan-400 mb-2 transition-colors" />
+                  <span className="text-[10px] uppercase font-black text-zinc-600 group-hover:text-cyan-400 tracking-widest">Dodaj plan nieruchomości</span>
+                </>
+              )}
+              <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
+            </label>
+          ) : (
+            <div className="relative w-full max-w-md mx-auto rounded-2xl overflow-hidden border border-cyan-500/30 bg-black">
+              <img src={floorPlanUrl} alt="Plan nieruchomości" className="w-full h-56 object-contain opacity-90" />
+              <div className="flex gap-2 p-3 border-t border-white/5 bg-[#0a0a0a]">
+                <label className="flex-1 py-2.5 rounded-xl border border-white/10 text-center text-[10px] font-black uppercase tracking-widest text-cyan-400 cursor-pointer hover:bg-white/5">
+                  {floorPlanUploading ? 'Wgrywanie…' : 'Zmień plan'}
+                  <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
+                </label>
+                <button type="button" onClick={handleRemoveFloorPlan} className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10">
+                  Usuń
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* --- OPIS --- */}

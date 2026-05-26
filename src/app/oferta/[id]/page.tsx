@@ -20,6 +20,10 @@ import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
+import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
+import { isOfferNewListing } from "@/lib/offerLifecycle";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -105,6 +109,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       : verificationStatus === "PENDING_REVIEW"
         ? { label: t.pendingReview, hint: t.pendingHint, cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
         : { label: t.notVerified, hint: t.notVerifiedHint, cls: "text-zinc-300 bg-white/5 border-white/15" };
+  const isLegalKwVerified = isOfferLegallyVerified(offer);
+  const isNewListing = isOfferNewListing(offer);
+  const sellerAvatar = getBestUserAvatarUrl(offer?.user);
+  const sellerIsAgency = isAgencyUser(offer?.user);
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -265,8 +273,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
                   className="flex items-center gap-3 shrink-0 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-full px-4 py-2 transition-all duration-300 group cursor-pointer shadow-inner"
                 >
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:border-white/30 transition-colors ${themeColors.textActive}`}>
-                     {offer?.user?.buyerType === 'AGENCY' ? <Briefcase size={14} /> : <span className="text-[14px] group-hover:scale-110 transition-transform">👤</span>}
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:border-white/30 transition-colors ${themeColors.textActive}`}>
+                     {sellerAvatar ? (
+                       <img src={sellerAvatar} alt="" className="w-full h-full object-cover" />
+                     ) : sellerIsAgency ? (
+                       <Briefcase size={14} />
+                     ) : (
+                       <span className="text-[14px] group-hover:scale-110 transition-transform">👤</span>
+                     )}
                   </div>
                   
                   <div className="flex flex-col items-start leading-tight">
@@ -283,20 +297,36 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
                 <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
                 
-                <div className="flex items-center gap-4 sm:gap-6 shrink-0 px-2">
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
-                      <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
-                  </div>
-                  
-                  <span className="w-px h-6 bg-white/10"></span>
-
-                  <div className="flex flex-col items-center justify-center">
+                <div className="flex flex-1 items-center justify-center gap-2 sm:gap-3 min-w-0 px-1">
+                  <div className="flex flex-col items-center justify-center shrink-0">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.views}</span>
                       <div className="flex items-center gap-1.5">
                           <Eye size={12} className="text-zinc-400" />
                           <span className="text-[11px] font-black text-white tracking-widest">{offer?.views || 0}</span>
                       </div>
+                  </div>
+
+                  {isLegalKwVerified ? (
+                    <LegalVerifiedShieldBadge label={t.legalVerifiedKw} compact />
+                  ) : null}
+
+                  {isNewListing ? (
+                    <motion.span
+                      className="rounded-full border border-blue-500/45 bg-blue-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-blue-300"
+                      animate={{ opacity: [1, 0.45, 1] }}
+                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      {t.newOfferBadge}
+                    </motion.span>
+                  ) : null}
+                </div>
+
+                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
+
+                <div className="flex items-center gap-3 sm:gap-4 shrink-0 px-1">
+                  <div className="flex flex-col items-center justify-center">
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
+                      <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
                   </div>
 
                   <span className="w-px h-6 bg-white/10 hidden sm:block"></span>
@@ -305,15 +335,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
                       <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
                   </div>
-                </div>
 
-                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
-
-                <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
-                  <div className="flex items-center gap-1.5">
-                    <Shield size={12} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
-                  </div>
+                  {!isLegalKwVerified ? (
+                    <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
+                      <div className="flex items-center gap-1.5">
+                        <Shield size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
               </div>
