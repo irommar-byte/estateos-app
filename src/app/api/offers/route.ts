@@ -269,7 +269,15 @@ export async function POST(req: Request) {
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
     });
 
-    const adminEmail = String(process.env.ADMIN_OFFERS_EMAIL || '').trim();
+    let adminEmail = String(process.env.ADMIN_OFFERS_EMAIL || '').trim();
+    if (!adminEmail) {
+      const adminUser = await prisma.user.findFirst({
+        where: { role: 'ADMIN' },
+        select: { email: true },
+        orderBy: { id: 'asc' },
+      });
+      adminEmail = String(adminUser?.email || '').trim();
+    }
     if (adminEmail) {
       const subject = `[EstateOS] Nowa oferta do weryfikacji (#${offer.id})`;
       const html = `

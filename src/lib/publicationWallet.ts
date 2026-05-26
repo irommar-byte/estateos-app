@@ -41,6 +41,8 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
     if (c.kind === "welcome_coupon" || c.kind === "birthday_coupon" || c.kind === "admin_promo") {
       return true;
     }
+    const templateId = String((c as { templateId?: string }).templateId || "").toLowerCase();
+    if (templateId.includes("free_listing") || templateId.includes("welcome")) return true;
     return c.grantsFreeListing || c.purpose === "publication";
   });
 

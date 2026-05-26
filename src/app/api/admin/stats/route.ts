@@ -2,8 +2,20 @@ import { NextResponse } from "next/server";
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
 async function requireAdmin() {
+  const nextAuth = await getServerSession(authOptions);
+  const nextAuthEmail = String(nextAuth?.user?.email || '').trim().toLowerCase();
+  if (nextAuthEmail) {
+    const user = await prisma.user.findUnique({
+      where: { email: nextAuthEmail },
+      select: { id: true, role: true },
+    });
+    if (user?.role === 'ADMIN') return user;
+  }
+
   const cookieStore = await cookies();
   const sessionToken =
     cookieStore.get('estateos_session')?.value ||
