@@ -38,6 +38,7 @@ import AdminContentReportsModal from '../components/AdminContentReportsModal';
 import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCenterModal';
 import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
+import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
 import BonusCouponsSection from '../components/profile/BonusCouponsSection';
 import PlusPackageShopPanel from '../components/profile/PlusPackageShopPanel';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
@@ -2858,6 +2859,7 @@ function ProfileScreenLoggedIn({
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
   const [isAdminUsersVisible, setIsAdminUsersVisible] = useState(false);
   const [isAdminRadarVisible, setIsAdminRadarVisible] = useState(false);
+  const [isAdminStatisticsVisible, setIsAdminStatisticsVisible] = useState(false);
   const [isAdminDealroomCheckVisible, setIsAdminDealroomCheckVisible] = useState(false);
   const [isAdminLegalVerifyVisible, setIsAdminLegalVerifyVisible] = useState(false);
   const [isAdminCoreVisible, setIsAdminCoreVisible] = useState(false);
@@ -3874,6 +3876,17 @@ function ProfileScreenLoggedIn({
                 isDark={isDark}
               />
               <ListItem icon="stats-chart" color="#FF2D55" title="Analityka Radaru" onPress={() => setIsAdminRadarVisible(true)} isDark={isDark} />
+              <ListItem
+                icon="analytics"
+                color="#A855F7"
+                title="Statystyki"
+                subtitle="Analityka systemu — jak w Centrali WWW"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setIsAdminStatisticsVisible(true);
+                }}
+                isDark={isDark}
+              />
               <ListItem icon="albums" color="#30B0C7" title="Dealroom Check" subtitle="Lista dealroomów i uczestników" onPress={() => setIsAdminDealroomCheckVisible(true)} isDark={isDark} />
               {/*
                 Weryfikacja prawna: KW + nr lokalu przychodzą od właściciela
@@ -4091,6 +4104,7 @@ function ProfileScreenLoggedIn({
         theme={theme}
       />
       <AdminRadarAnalyticsModal visible={isAdminRadarVisible} onClose={() => setIsAdminRadarVisible(false)} theme={theme} />
+      <AdminStatisticsModal visible={isAdminStatisticsVisible} onClose={() => setIsAdminStatisticsVisible(false)} theme={theme} />
       <AdminDealroomCheckModal visible={isAdminDealroomCheckVisible} onClose={() => setIsAdminDealroomCheckVisible(false)} theme={theme} />
       <AdminLegalVerificationModal
         visible={isAdminLegalVerifyVisible}
