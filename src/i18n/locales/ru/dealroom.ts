@@ -176,6 +176,8 @@ export const dealroom = {
       set: 'Запланировано: {{date}}',
       proposedBy: 'Дата предложена {{who}}',
       negotiating: 'Переговоры',
+      waitingResponse: 'Ваша дата ({{date}}) ожидает ответа второй стороны',
+      waitingHint: 'Ожидаем ответ контрагента. Нельзя принять собственное предложение.',
     },
     priceStatus: {
       idle: 'Нет предложений',

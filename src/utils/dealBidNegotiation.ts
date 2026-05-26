@@ -39,11 +39,45 @@ export function findLatestActionableBidEvent(
 ): (typeof bidEvents)[number] | null {
   for (let i = bidEvents.length - 1; i >= 0; i -= 1) {
     const entry = bidEvents[i];
-    if (isMessageFromUser(entry.msg, userId)) continue;
     const action = String(entry.event?.action || '').toUpperCase();
     if (!['PROPOSED', 'COUNTERED'].includes(action)) continue;
     if (Number(entry.event?.amount || 0) <= 0) continue;
     if (!resolveEventBidId(entry.event)) continue;
+    if (isMessageFromUser(entry.msg, userId)) return null;
+    return entry;
+  }
+  return null;
+}
+
+export function findLatestActionableAppointmentEvent(
+  appointmentEvents: Array<{
+    msg?: { senderId?: unknown };
+    event?: { action?: unknown; proposedDate?: unknown };
+  }>,
+  userId: unknown
+): (typeof appointmentEvents)[number] | null {
+  for (let i = appointmentEvents.length - 1; i >= 0; i -= 1) {
+    const entry = appointmentEvents[i];
+    const action = String(entry.event?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) continue;
+    if (!entry.event?.proposedDate) continue;
+    if (isMessageFromUser(entry.msg, userId)) return null;
+    return entry;
+  }
+  return null;
+}
+
+export function findLatestPendingAppointmentEntry(
+  appointmentEvents: Array<{
+    msg?: { senderId?: unknown };
+    event?: { action?: unknown; proposedDate?: unknown };
+  }>
+): (typeof appointmentEvents)[number] | null {
+  for (let i = appointmentEvents.length - 1; i >= 0; i -= 1) {
+    const entry = appointmentEvents[i];
+    const action = String(entry.event?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) continue;
+    if (!entry.event?.proposedDate) continue;
     return entry;
   }
   return null;

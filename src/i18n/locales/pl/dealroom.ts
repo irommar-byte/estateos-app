@@ -176,6 +176,8 @@ export const dealroom = {
       set: 'Ustalono: {{date}}',
       proposedBy: 'Zaproponowano termin przez {{who}}',
       negotiating: 'W trakcie negocjacji',
+      waitingResponse: 'Twój termin ({{date}}) czeka na odpowiedź drugiej strony',
+      waitingHint: 'Oczekujemy na odpowiedź kontrahenta. Nie możesz zaakceptować własnej propozycji.',
     },
     priceStatus: {
       idle: 'Brak ofert',

@@ -176,6 +176,8 @@ export const dealroom = {
       set: 'Scheduled: {{date}}',
       proposedBy: 'Date proposed by {{who}}',
       negotiating: 'Negotiating',
+      waitingResponse: 'Your date ({{date}}) is waiting for the other party',
+      waitingHint: 'Waiting for the other party. You cannot accept your own proposal.',
     },
     priceStatus: {
       idle: 'No offers',

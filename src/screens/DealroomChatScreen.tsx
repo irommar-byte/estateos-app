@@ -33,7 +33,9 @@ import { offerPresentationCalendarAfterAcceptance } from '../utils/presentationC
 import {
   type DealNegotiationSnapshot,
   buildBidEventFromSnapshot,
+  findLatestActionableAppointmentEvent,
   findLatestActionableBidEvent,
+  findLatestPendingAppointmentEntry,
   isMessageFromUser,
   normalizeNegotiationSnapshot,
   resolveEventBidId,
@@ -899,6 +901,7 @@ export default function DealroomChatScreen() {
   );
 
   const actionableBidFromServer = useMemo(() => {
+    if (bidNegotiationSnapshot?.waitingOnOtherBid) return null;
     const fromSnapshot = buildBidEventFromSnapshot(bidNegotiationSnapshot);
     if (!fromSnapshot?.bidId) return null;
     return {
@@ -998,17 +1001,22 @@ export default function DealroomChatScreen() {
   const [isFinalConfirmOpen, setIsFinalConfirmOpen] = useState(false);
 
   const latestActionableAppointmentFromOther = useMemo(
-    () =>
-      [...appointmentEvents]
-        .reverse()
-        .find(
-          (e) =>
-            String(e.msg?.senderId ?? '') !== String(user?.id ?? '') &&
-            ['PROPOSED', 'COUNTERED'].includes(String(e.event?.action || '').toUpperCase()) &&
-            !!e.event?.proposedDate
-        ) || null,
+    () => findLatestActionableAppointmentEvent(appointmentEvents, user?.id),
     [appointmentEvents, user?.id]
   );
+
+  const latestPendingAppointmentEntry = useMemo(
+    () => findLatestPendingAppointmentEntry(appointmentEvents),
+    [appointmentEvents]
+  );
+
+  const isWaitingForOtherOnAppointment = useMemo(() => {
+    if (bidNegotiationSnapshot?.waitingOnOtherAppointment) return true;
+    if (!latestPendingAppointmentEntry) return false;
+    const action = String(latestPendingAppointmentEntry.event?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;
+    return isMessageFromUser(latestPendingAppointmentEntry.msg, user?.id);
+  }, [latestPendingAppointmentEntry, user?.id, bidNegotiationSnapshot?.waitingOnOtherAppointment]);
 
   const acceptedAppointment = useMemo(
     () =>
@@ -1095,13 +1103,27 @@ export default function DealroomChatScreen() {
     if (appointmentStatus === 'ACCEPTED' && acceptedAppointment?.event?.proposedDate) {
       return t('dealroom.chat.appointmentStatus.set', { date: new Date(acceptedAppointment.event.proposedDate).toLocaleString('pl-PL') });
     }
+    if (isWaitingForOtherOnAppointment && latestPendingAppointmentEntry?.event?.proposedDate) {
+      return t('dealroom.chat.appointmentStatus.waitingResponse', {
+        date: new Date(latestPendingAppointmentEntry.event.proposedDate).toLocaleString('pl-PL'),
+      });
+    }
     const source = latestActionableAppointmentFromOther || latestAppointment;
     if (source?.event?.proposedDate) {
       const who = formatActorLabel(source.msg, user?.id);
       return t('dealroom.chat.appointmentStatus.proposedBy', { who });
     }
     return t('dealroom.chat.appointmentStatus.negotiating');
-  }, [acceptedAppointment, appointmentStatus, latestActionableAppointmentFromOther, latestAppointment, user?.id, t]);
+  }, [
+    acceptedAppointment,
+    appointmentStatus,
+    isWaitingForOtherOnAppointment,
+    latestActionableAppointmentFromOther,
+    latestAppointment,
+    latestPendingAppointmentEntry,
+    user?.id,
+    t,
+  ]);
 
   const transactionFinalized = useMemo(
     () =>
@@ -1790,7 +1812,27 @@ export default function DealroomChatScreen() {
                     </View>
                   </View>
                 )}
-                {latestActionableAppointmentFromOther && !isAppointmentProposalLocked && appointmentStatus !== 'ACCEPTED' && !transactionFinalized && (
+                {isWaitingForOtherOnAppointment && !isAppointmentProposalLocked && appointmentStatus !== 'ACCEPTED' && !transactionFinalized ? (
+                  <View style={styles.waitingOnOtherWrap}>
+                    <Text style={styles.waitingOnOtherText}>
+                      {t('dealroom.chat.appointmentStatus.waitingHint')}
+                    </Text>
+                    {latestPendingAppointmentEntry ? (
+                      <Pressable
+                        style={[styles.actionBtn, styles.actionSecondary, styles.actionBtnSolo]}
+                        onPress={() => {
+                          setSelectedAppointmentEvent(latestPendingAppointmentEntry.event);
+                          setSelectedAppointmentHistory(
+                            appointmentEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
+                          );
+                        }}
+                      >
+                        <Text style={styles.actionSecondaryTxt}>{t('dealroom.chat.change')}</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+                {latestActionableAppointmentFromOther && !isWaitingForOtherOnAppointment && !isAppointmentProposalLocked && appointmentStatus !== 'ACCEPTED' && !transactionFinalized && (
                   <View style={styles.actionRow}>
                     <Pressable
                       style={[styles.actionBtn, styles.actionPrimary]}
@@ -1805,8 +1847,6 @@ export default function DealroomChatScreen() {
                       style={[styles.actionBtn, styles.actionSecondary]} 
                       onPress={() => {
                         setSelectedAppointmentEvent(latestActionableAppointmentFromOther.event);
-                        // Wzbogacamy historię o `senderId` z wiadomości — modal używa go do
-                        // wykrycia, czy ostatnia propozycja terminu pochodzi od „mnie".
                         setSelectedAppointmentHistory(
                           appointmentEvents.map((e) => ({ ...e.event, senderId: e.msg?.senderId ?? null })),
                         );
@@ -2482,6 +2522,15 @@ const styles = StyleSheet.create({
   actionSecondary: { backgroundColor: COLORS.surfaceElevated },
   actionPrimaryTxt: { color: '#000', fontWeight: '700', fontSize: 13 },
   actionSecondaryTxt: { color: COLORS.textBase, fontWeight: '600', fontSize: 13 },
+  waitingOnOtherWrap: { marginTop: 12, gap: 10 },
+  waitingOnOtherText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  actionBtnSolo: { flex: 0, alignSelf: 'stretch', width: '100%' },
 
   royalSealWrap: {
     marginTop: 12,
