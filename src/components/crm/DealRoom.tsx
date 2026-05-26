@@ -339,12 +339,26 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const isBuyer = deal.buyerId === currentUserId;
   const isFinalizationReady = deal?.status === 'AGREED' && !!deal?.acceptedBidId;
   const isFinalized = FINALIZED_STATUSES.has(String(deal?.status || '').toUpperCase()) || isFinalizationReady;
-  const actionableBids = !isFinalized
-    ? (deal.bids || []).filter((b: any) => b.status === 'PENDING' && b.senderId !== currentUserId)
-    : [];
-  const actionableAppointments = !isFinalized
-    ? (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId)
-    : [];
+  const latestPendingBid = !isFinalized
+    ? [...(deal.bids || [])]
+        .filter((b: any) => b.status === 'PENDING')
+        .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0]
+    : null;
+  const actionableBids =
+    latestPendingBid && latestPendingBid.senderId !== currentUserId ? [latestPendingBid] : [];
+
+  const latestPendingAppointment = !isFinalized
+    ? [...(deal.appointments || [])]
+        .filter((a: any) => a.status === 'PENDING')
+        .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0]
+    : null;
+  const actionableAppointments =
+    latestPendingAppointment && latestPendingAppointment.proposedById !== currentUserId
+      ? [latestPendingAppointment]
+      : [];
+  const waitingOnMyAppointment =
+    !!latestPendingAppointment && latestPendingAppointment.proposedById === currentUserId;
+  const waitingOnMyBid = !!latestPendingBid && latestPendingBid.senderId === currentUserId;
   const activeBid = bidActionModal ? (deal.bids || []).find((b: any) => b.id === bidActionModal.bidId) : null;
   const activeAppointment = appointmentActionModal ? (deal.appointments || []).find((a: any) => a.id === appointmentActionModal.appointmentId) : null;
 
@@ -374,12 +388,14 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   const appointmentStatusLabel =
     appointmentStatus === 'ACCEPTED' ? 'Termin uzgodniony' :
-    appointmentStatus === 'PENDING' ? 'Oczekuje na decyzję' :
+    waitingOnMyAppointment ? 'Twoja propozycja czeka na odpowiedź kontrahenta' :
+    appointmentStatus === 'PENDING' ? 'Oczekuje na Twoją decyzję' :
     'Brak aktywnej propozycji';
 
   const priceStatusLabel =
     priceStatus === 'ACCEPTED' ? 'Cena uzgodniona' :
-    priceStatus === 'PENDING' ? 'Oczekuje na decyzję' :
+    waitingOnMyBid ? 'Twoja propozycja czeka na odpowiedź kontrahenta' :
+    priceStatus === 'PENDING' ? 'Oczekuje na Twoją decyzję' :
     'Brak aktywnej propozycji';
 
   const renderEventTimeline = (
@@ -488,6 +504,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
               ) : (
                 renderEventTimeline(appointmentEvents, 'APPOINTMENT')
               )}
+              {!isFinalized && waitingOnMyAppointment && (
+                <p className="mt-3 text-xs text-white/55 text-center font-semibold leading-relaxed px-2">
+                  Oczekujemy na odpowiedź kontrahenta. Nie możesz zaakceptować własnej propozycji.
+                </p>
+              )}
               {!isFinalized && actionableAppointments.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {actionableAppointments.map((app: any) => (
@@ -531,6 +552,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                 <p className="text-xs text-white/40 py-4 text-center">Brak propozycji cenowych</p>
               ) : (
                 renderEventTimeline(bidEvents, 'BID')
+              )}
+              {!isFinalized && waitingOnMyBid && (
+                <p className="mt-3 text-xs text-white/55 text-center font-semibold leading-relaxed px-2">
+                  Oczekujemy na odpowiedź kontrahenta. Nie możesz zaakceptować własnej propozycji.
+                </p>
               )}
               {!isFinalized && actionableBids.length > 0 && (
                 <div className="mt-3 space-y-2">
