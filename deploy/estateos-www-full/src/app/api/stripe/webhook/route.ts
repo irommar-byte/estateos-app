@@ -2,7 +2,9 @@ import { radarService } from '@/lib/services/radar.service';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import { PlanType } from '@prisma/client';
 import type { PropertyType, TransactionType } from '@prisma/client';
+import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 
 function coercePropertyType(raw: unknown): PropertyType {
   const s = String(raw || '').toLowerCase();
@@ -82,24 +84,29 @@ export async function POST(req: Request) {
           console.log(`[stripe:webhook] renewal_completed email=${customerEmail} session=${checkoutSessionId} offer=${offerIdToRenew || 'missing'}`);
         } else if (rawPlanType === 'pakiet_plus') {
           console.log(`[stripe:webhook] pakiet_plus ignored; Plus credits are granted only by verified IAP transaction. email=${customerEmail} session=${checkoutSessionId}`);
-        } else {
-          let validPlanType: 'PRO' | 'AGENCY' | 'NONE' = 'PRO';
-
-          if (rawPlanType.toUpperCase() === 'AGENCY') {
-            validPlanType = 'AGENCY';
-          }
-
-          const proExpiresAtDate = new Date();
-          proExpiresAtDate.setDate(proExpiresAtDate.getDate() + 30);
-
+        } else if (rawPlanType === 'agency') {
           await prisma.user.updateMany({
             where: { email: customerEmail },
             data: {
-              isPro: true,
-              planType: validPlanType,
-              proExpiresAt: proExpiresAtDate
-            }
+              isPro: false,
+              planType: PlanType.AGENCY,
+              proExpiresAt: null,
+            },
           });
+          console.log(`[stripe:webhook] agency_plan email=${customerEmail} session=${checkoutSessionId}`);
+        } else if (isStripeInvestorProPlan(rawPlanType)) {
+          const grant = buildInvestorProGrantData();
+          await prisma.user.updateMany({
+            where: { email: customerEmail },
+            data: grant,
+          });
+          console.log(
+            `[stripe:webhook] investor_pro_granted email=${customerEmail} session=${checkoutSessionId} until=${grant.proExpiresAt.toISOString()}`
+          );
+        } else {
+          console.warn(
+            `[stripe:webhook] unknown_plan_type plan=${rawPlanType} email=${customerEmail} session=${checkoutSessionId}`
+          );
         }
 
 
