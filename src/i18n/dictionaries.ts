@@ -150,8 +150,32 @@ export type Dictionary = {
     tagline: string;
     terms: string;
     privacy: string;
-    listings: string;
-    central: string;
+    help: string;
+    contact: string;
+  };
+  contact: {
+    title: string;
+    subtitle: string;
+    emailTo: string;
+    name: string;
+    namePlaceholder: string;
+    email: string;
+    emailPlaceholder: string;
+    topic: string;
+    topicGeneral: string;
+    topicSupport: string;
+    topicListing: string;
+    topicPartnership: string;
+    topicOther: string;
+    message: string;
+    messagePlaceholder: string;
+    send: string;
+    sending: string;
+    success: string;
+    error: string;
+    close: string;
+    required: string;
+    fallbackMailto: string;
   };
   badges: {
     admin: string;
@@ -410,8 +434,32 @@ const pl: Dictionary = {
     tagline: "Globalna inteligencja nieruchomości premium",
     terms: "Regulamin",
     privacy: "Prywatność",
-    listings: "Oferty",
-    central: "Centrala",
+    help: "Pomoc",
+    contact: "Kontakt",
+  },
+  contact: {
+    title: "Kontakt z EstateOS™",
+    subtitle: "Napisz do nas — odpowiadamy na pytania o platformę, ogłoszenia i współpracę.",
+    emailTo: "kontakt@estateos.pl",
+    name: "Imię i nazwisko",
+    namePlaceholder: "Jan Kowalski",
+    email: "Twój e-mail",
+    emailPlaceholder: "jan@example.com",
+    topic: "Temat",
+    topicGeneral: "Pytanie ogólne",
+    topicSupport: "Wsparcie techniczne",
+    topicListing: "Publikacja ogłoszenia",
+    topicPartnership: "Współpraca / Partner",
+    topicOther: "Inne",
+    message: "Wiadomość",
+    messagePlaceholder: "Opisz swoją sprawę — im więcej szczegółów, tym szybciej pomożemy.",
+    send: "Wyślij wiadomość",
+    sending: "Wysyłanie…",
+    success: "Dziękujemy. Wiadomość została wysłana — odezwiemy się na podany adres e-mail.",
+    error: "Nie udało się wysłać wiadomości. Spróbuj ponownie lub napisz bezpośrednio na kontakt@estateos.pl.",
+    close: "Zamknij",
+    required: "To pole jest wymagane.",
+    fallbackMailto: "Otwórz klienta poczty",
   },
   badges: {
     admin: "Administrator",
@@ -679,8 +727,32 @@ const en: Dictionary = {
     tagline: "Global premium real estate intelligence",
     terms: "Terms",
     privacy: "Privacy",
-    listings: "Listings",
-    central: "Central",
+    help: "Help",
+    contact: "Contact",
+  },
+  contact: {
+    title: "Contact EstateOS™",
+    subtitle: "Reach out — we answer questions about the platform, listings, and partnerships.",
+    emailTo: "kontakt@estateos.pl",
+    name: "Full name",
+    namePlaceholder: "Jane Doe",
+    email: "Your email",
+    emailPlaceholder: "jane@example.com",
+    topic: "Topic",
+    topicGeneral: "General question",
+    topicSupport: "Technical support",
+    topicListing: "Listing publication",
+    topicPartnership: "Partnership",
+    topicOther: "Other",
+    message: "Message",
+    messagePlaceholder: "Describe your request — the more detail, the faster we can help.",
+    send: "Send message",
+    sending: "Sending…",
+    success: "Thank you. Your message was sent — we will reply to your email.",
+    error: "Could not send the message. Try again or email kontakt@estateos.pl directly.",
+    close: "Close",
+    required: "This field is required.",
+    fallbackMailto: "Open email client",
   },
   badges: {
     admin: "Administrator",
