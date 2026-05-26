@@ -45,6 +45,8 @@ export type OfferPageCopy = {
   locationSection: string;
   mainParamsSection: string;
   buildingSection: string;
+  agentCommission: string;
+  agentCommissionZero: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -102,6 +104,8 @@ const PL: OfferPageCopy = {
   locationSection: "Lokalizacja",
   mainParamsSection: "Główne parametry",
   buildingSection: "Budynek i koszty",
+  agentCommission: "Prowizja agenta",
+  agentCommissionZero: "Brak prowizji agenta przy tej ofercie.",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -159,6 +163,8 @@ const EN: OfferPageCopy = {
   locationSection: "Location",
   mainParamsSection: "Main parameters",
   buildingSection: "Building & costs",
+  agentCommission: "Agent commission",
+  agentCommissionZero: "No agent commission on this listing.",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

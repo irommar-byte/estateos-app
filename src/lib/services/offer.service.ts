@@ -223,7 +223,8 @@ function mapCondition(val?: string): PropertyCondition {
   switch (val) {
     case 'READY': return PropertyCondition.READY;
     case 'NEEDS_RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
-    case 'RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
+    case 'RENOVATION':
+    case 'TO_RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
     case 'DEVELOPER_STATE': return PropertyCondition.DEVELOPER_STATE;
     case 'DEVELOPER': return PropertyCondition.DEVELOPER_STATE;
     case 'NOT_APPLICABLE': return PropertyCondition.NOT_APPLICABLE;
@@ -300,7 +301,12 @@ export async function createOffer(body: any) {
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
       totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
-      yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
+      yearBuilt: (() => {
+        const raw = body.yearBuilt ?? body.buildYear ?? body.year;
+        if (raw === undefined || raw === null || raw === "") return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      })(),
 
       city: locationValidation.city,
       district: locationValidation.district,
@@ -511,8 +517,13 @@ export async function updateOffer(body: any) {
       ...(body.totalFloors !== undefined && {
         totalFloors: body.totalFloors === null ? null : Number(body.totalFloors)
       }),
-      ...(body.yearBuilt !== undefined && {
-        yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
+      ...((body.yearBuilt !== undefined || body.buildYear !== undefined || body.year !== undefined) && {
+        yearBuilt: (() => {
+          const raw = body.yearBuilt ?? body.buildYear ?? body.year;
+          if (raw === null || raw === "") return null;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : null;
+        })(),
       }),
       ...(body.city !== undefined && {
         city: locationValidation?.city

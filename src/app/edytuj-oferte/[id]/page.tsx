@@ -6,6 +6,9 @@ import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Gri
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
+import { isAgentCommissionAccount } from '@/lib/agentCommission';
+import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 
 // --- LUKSUSOWE STYLE ---
 const inputWrapper = "relative group flex items-center";
@@ -45,6 +48,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
 
@@ -59,6 +64,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         const offer = await offerRes.json();
 
         if (!auth.loggedIn || offer.error) { setAuthError("Brak dostępu lub oferty."); setIsLoading(false); return; }
+        setViewerRole(auth.user?.role ?? null);
         const isOwner = offer.user?.email === auth.user?.email;
         const isAdmin = auth.user?.role === 'ADMIN';
         if (!isOwner && !isAdmin) { setAuthError("Brak uprawnień do edycji."); setIsLoading(false); return; }
@@ -84,14 +90,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           area: String(offer.area || ''),
           rooms: String(offer.rooms || ''),
           floor: String(offer.floor || ''),
-          year: String(offer.year || offer.buildYear || ''),
+          year: String(offer.yearBuilt ?? offer.year ?? offer.buildYear ?? ''),
           plotArea: String(offer.plotArea || ''),
           amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
           apartmentNumber: offer.apartmentNumber || "",
-          propertyType: offer.propertyType || "Mieszkanie"
+          propertyType: offer.propertyType || "FLAT",
         });
+        const cp = offer.agentCommissionPercent;
+        setAgentCommissionPercent(
+          cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
+        );
         if (parsedImages.length) setImagesList(parsedImages);
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
@@ -150,7 +160,16 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const handleSave = async () => {
     setIsSubmitting(true);
     // Przed wysłaniem usuwamy spacje z ceny
-    const payload = { ...data, price: String(data.price || '').replace(/\s/g, ''), images: JSON.stringify(imagesList), buildYear: data.year };
+    const payload = {
+      ...data,
+      price: String(data.price || '').replace(/\s/g, ''),
+      images: JSON.stringify(imagesList),
+      buildYear: data.year,
+      yearBuilt: data.year,
+      ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
+        ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
+        : {}),
+    };
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       setIsSuccess(true); 
@@ -227,6 +246,20 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 </div>
               </div>
             </div>
+            {isAgentCommissionAccount({ role: viewerRole }) ? (
+              <div className="pt-4 border-t border-white/5">
+                <AgentCommissionEditor
+                  priceRaw={String(data.price || '').replace(/\s/g, '')}
+                  percentValue={agentCommissionPercent}
+                  onPercentChange={setAgentCommissionPercent}
+                />
+              </div>
+            ) : null}
+            {data.propertyType ? (
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-4">
+                Typ: {formatOfferPropertyType(data.propertyType, 'pl') || data.propertyType}
+              </p>
+            ) : null}
           </div>
         </motion.div>
 

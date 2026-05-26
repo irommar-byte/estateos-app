@@ -13,6 +13,8 @@ import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services
 import { enrichOfferMoneyFields, parsePriceAmount, resolveOfferPriceFromBody } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
+import { validateAgentCommissionPercent } from '@/lib/agentCommission';
+import { formatOfferBuildYear, resolveOfferBuildYear } from '@/lib/offerDisplayLabels';
 import {
   applyLegalStatusOverride,
   legalStatusOverridesForOffers,
@@ -36,6 +38,8 @@ const OFFER_WEB_PUT_SELECT = {
   rooms: true,
   floor: true,
   yearBuilt: true,
+  condition: true,
+  agentCommissionPercent: true,
   plotArea: true,
   floorPlanUrl: true,
   heating: true,
@@ -157,12 +161,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       isLegalSafeVerified: legalOffer.isLegalSafeVerified,
     });
 
+    const yearBuilt = resolveOfferBuildYear(legalOffer as Record<string, unknown>);
+    const buildYear = yearBuilt;
+
     return NextResponse.json({
       ...legalOffer,
       description: cleanDescription,
       apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',
       ...legal,
+      yearBuilt,
+      buildYear,
+      year: yearBuilt,
+      buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,
@@ -256,13 +267,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ? parseFloat(String(body.plotArea).replace(',', '.'))
         : currentOffer.plotArea;
     const parsedYear =
-      body.year !== undefined || body.buildYear !== undefined
+      body.year !== undefined || body.buildYear !== undefined || body.yearBuilt !== undefined
         ? (() => {
-            const raw = body.year ?? body.buildYear;
+            const raw = body.yearBuilt ?? body.year ?? body.buildYear;
             const n = parseInt(String(raw), 10);
             return Number.isFinite(n) ? n : currentOffer.yearBuilt;
           })()
         : currentOffer.yearBuilt;
+
+    let agentCommissionPercent: number | null | undefined = undefined;
+    if (body.agentCommissionPercent !== undefined) {
+      if (body.agentCommissionPercent === null || body.agentCommissionPercent === '') {
+        agentCommissionPercent = null;
+      } else {
+        const v = validateAgentCommissionPercent(body.agentCommissionPercent);
+        if (!v.ok) {
+          return NextResponse.json({ error: v.message, code: v.code }, { status: 400 });
+        }
+        agentCommissionPercent = v.value;
+      }
+    }
 
     const updatedOffer = await prisma.offer.update({
       where: { id: Number(resolvedParams.id) },
@@ -295,6 +319,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         isFurnished: body.isFurnished !== undefined
           ? !!body.isFurnished
           : currentOffer.isFurnished,
+        condition: body.condition !== undefined ? body.condition : currentOffer.condition,
+        ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
       },
       select: OFFER_WEB_PUT_SELECT,

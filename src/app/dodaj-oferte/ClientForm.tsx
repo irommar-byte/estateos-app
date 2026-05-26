@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
+import { isAgentCommissionAccount } from '@/lib/agentCommission';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Home, 
@@ -44,9 +46,9 @@ const PROPERTY_TYPES = [
 const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 const HEATING_TYPES = ["Miejskie", "Gazowe", "Elektryczne", "Pompa Ciepła", "Węglowe/Pellet", "Inne"];
 const CONDITION_TYPES = [
-  { id: "READY", label: "Gotowe" },
-  { id: "RENOVATION", label: "Do remontu" },
-  { id: "DEVELOPER", label: "Deweloperski" }
+  { id: "READY", label: "Gotowe do wprowadzenia" },
+  { id: "TO_RENOVATION", label: "Do remontu" },
+  { id: "DEVELOPER", label: "Stan deweloperski" },
 ];
 
 type DistrictCatalogResponse = {
@@ -126,6 +128,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [floorPlan, setFloorPlan] = useState<string | null>(null);
   const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
   
+  const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus">("none");
@@ -612,6 +615,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const cleanPriceValue = String(data.price || '').replace(/\D/g, '');
     const finalDesc = editorRef.current?.innerHTML || data.description || '';
     const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+    const yearBuilt = data.buildYear ? Number(data.buildYear) : null;
+    const commissionPayload =
+      isAgentCommissionAccount(initialUser) && agentCommissionPercent.trim() !== ''
+        ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
+        : {};
     return {
       ...data,
       userId: initialUser?.id,
@@ -622,6 +630,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
       price: cleanPriceValue,
       area: String(data.area).replace(',', '.'),
+      yearBuilt,
+      buildYear: data.buildYear,
+      ...commissionPayload,
       images: '[]',
       imageUrl:
         'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop',
@@ -1182,6 +1193,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     </div>
                   </>
                 )}
+
+                {isAgentCommissionAccount(initialUser) ? (
+                  <div className="lg:col-span-4 mt-4 pt-6 border-t border-white/5">
+                    <AgentCommissionEditor
+                      priceRaw={String(data.price || '').replace(/\s/g, '')}
+                      percentValue={agentCommissionPercent}
+                      onPercentChange={setAgentCommissionPercent}
+                    />
+                  </div>
+                ) : null}
                 
                 {/* AI Monitor Przelicznik */}
                 {(() => {

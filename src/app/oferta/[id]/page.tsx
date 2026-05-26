@@ -5,6 +5,15 @@ import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
+import {
+  describeOfferAgentCommission,
+  formatBuyerAgentCommissionLine,
+} from "@/lib/agentCommission";
+import {
+  formatOfferBuildYear,
+  formatOfferCondition,
+  formatOfferPropertyType,
+} from "@/lib/offerDisplayLabels";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
@@ -187,12 +196,22 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     },
     { label: t.rooms, value: offer.rooms },
     { label: t.floor, value: offer.floor },
-    { label: t.standard, value: offer.condition || offer.finishCondition },
+    {
+      label: t.standard,
+      value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
+    },
   ].filter((p) => p.value);
 
+  const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
+  const agentCommissionLine = agentCommissionInfo
+    ? agentCommissionInfo.isZero
+      ? t.agentCommissionZero
+      : formatBuyerAgentCommissionLine(agentCommissionInfo, locale)
+    : null;
+
   const buildingParams = [
-    { label: t.buildingType, value: offer.propertyType },
-    { label: t.buildYear, value: offer.buildYear },
+    { label: t.buildingType, value: formatOfferPropertyType(offer.propertyType, locale) },
+    { label: t.buildYear, value: formatOfferBuildYear(offer) },
     { label: t.heating, value: offer.heating },
     {
       label: t.furnished,
@@ -205,6 +224,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         ? new Date(offer.availabilityDate).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
         : null,
     },
+    ...(agentCommissionLine ? [{ label: t.agentCommission, value: agentCommissionLine }] : []),
   ].filter((p) => p.value);
 
   return (
