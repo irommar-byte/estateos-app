@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notificationService } from '@/lib/services/notification.service';
-import { finalizeDealWithOfferArchive, isOwnerFinalAccept } from '@/lib/dealFinalize';
+import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
 import { resolveDealUserId } from '@/lib/dealRequestAuth';
 import {
   FINALIZED_DEAL_STATUSES,
@@ -50,7 +50,7 @@ export async function POST(
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
-    const { action, counterAmount, message, note } = await req.json();
+    const { action, counterAmount, message, note, intent } = await req.json();
     const safeNote =
       typeof message === 'string'
         ? message.trim().slice(0, 500)
@@ -174,28 +174,14 @@ export async function POST(
             data: { status: 'REJECTED' },
           });
 
-          const ownerFinalizesNow = isOwnerFinalAccept(userId, deal.sellerId);
-
-          if (ownerFinalizesNow) {
-            await finalizeDealWithOfferArchive(tx, {
-              dealId,
-              offerId: deal.offerId,
-              sellerId: deal.sellerId,
-              buyerId: deal.buyerId,
-              actorUserId: userId,
+          await tx.deal.update({
+            where: { id: dealId },
+            data: {
+              status: 'AGREED',
               acceptedBidId: resolvedBidId,
-              finalPrice: bid.amount,
-            });
-          } else {
-            await tx.deal.update({
-              where: { id: dealId },
-              data: {
-                status: 'AGREED',
-                acceptedBidId: resolvedBidId,
-                isActive: true,
-              },
-            });
-          }
+              isActive: true,
+            },
+          });
 
           await tx.dealMessage.create({
             data: {
@@ -203,8 +189,8 @@ export async function POST(
               senderId: userId,
               content: buildEventContent({
                 entity: 'BID',
-                action: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
-                status: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
+                action: 'ACCEPTED',
+                status: 'ACCEPTED',
                 bidId: resolvedBidId,
                 amount: bid.amount,
                 note: safeNote,
@@ -296,6 +282,10 @@ export async function POST(
           },
         });
 
+        const counterIntent =
+          typeof intent === 'string' && intent.trim()
+            ? intent.trim().slice(0, 64)
+            : null;
         await tx.dealMessage.create({
           data: {
             dealId,
@@ -309,6 +299,7 @@ export async function POST(
               amount: created.amount,
               note: safeNote,
               message: safeNote,
+              ...(counterIntent ? { intent: counterIntent } : {}),
               createdAt: new Date().toISOString(),
             }),
           },

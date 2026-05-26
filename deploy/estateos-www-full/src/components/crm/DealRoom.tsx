@@ -21,8 +21,12 @@ import {
   buildNegotiationEvents,
   type NegotiationEventEntry,
 } from '@/components/crm/dealRoomUtils';
-
-const FINALIZED_STATUSES = new Set(['FINALIZED', 'CLOSED', 'COMPLETED', 'DONE', 'SOLD']);
+import {
+  BUYER_ACCEPT_OWNER_PRICE_NOTE,
+  canFinalizeTransition,
+  detectFinalAcceptanceContext,
+  isDealTransactionFinalized,
+} from '@/lib/dealPriceNegotiationUi';
 
 export default function DealRoom({ dealId, currentUserId }: { dealId: number, currentUserId: number }) {
   const [deal, setDeal] = useState<any>(null);
@@ -268,20 +272,43 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     [negotiationEvents]
   );
 
+  const finalizeDealSale = async () => {
+    setActionLoading('finalize-deal');
+    try {
+      const res = await fetch(`/api/deals/${dealId}/finalize`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: authHeaders(true),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Nie udało się sfinalizować sprzedaży');
+      }
+      refetchDealAndMessages();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Błąd finalizacji');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const respondBid = async (
     bidId: number,
     action: 'ACCEPT' | 'REJECT' | 'COUNTER',
-    counterAmount?: number
+    opts?: { counterAmount?: number; message?: string; intent?: string }
   ) => {
-    let payload: any = { action };
+    let payload: Record<string, unknown> = { action };
     if (action === 'COUNTER') {
-      const numeric = Number(counterAmount);
+      const numeric = Number(opts?.counterAmount);
       if (!Number.isFinite(numeric) || numeric <= 0) {
         alert('Nieprawidłowa kwota kontroferty.');
         return;
       }
       payload.counterAmount = numeric;
+      if (opts?.message) payload.message = opts.message;
+      if (opts?.intent) payload.intent = opts.intent;
     }
+    if (opts?.message && action !== 'COUNTER') payload.message = opts.message;
     setActionLoading(`bid-${bidId}-${action}`);
     try {
       const res = await fetch(`/api/deals/${dealId}/bids/${bidId}/respond`, {
@@ -337,8 +364,13 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
   const isBuyer = deal.buyerId === currentUserId;
-  const isFinalizationReady = deal?.status === 'AGREED' && !!deal?.acceptedBidId;
-  const isFinalized = FINALIZED_STATUSES.has(String(deal?.status || '').toUpperCase()) || isFinalizationReady;
+  const isListingOwner = deal.sellerId === currentUserId;
+  const dealStatus = String(deal?.status || '').toUpperCase();
+  const acceptedBidId = Number(deal?.acceptedBidId || 0);
+  const transactionFinalized = isDealTransactionFinalized({ dealStatus: deal?.status });
+  const dealPriceAgreed = canFinalizeTransition({ dealStatus: deal?.status, acceptedBidId: deal?.acceptedBidId });
+  const isFinalizationReady = dealPriceAgreed && isListingOwner && !transactionFinalized;
+  const isFinalized = transactionFinalized;
   const latestPendingBid = !isFinalized
     ? [...(deal.bids || [])]
         .filter((b: any) => b.status === 'PENDING')
@@ -378,10 +410,30 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     return 'IDLE' as const;
   })();
 
+  const finalAcceptanceContext = detectFinalAcceptanceContext(bidEvents);
+  const ownerNeedsFinalDecision =
+    !!finalAcceptanceContext && isListingOwner && !transactionFinalized && !dealPriceAgreed;
+  const isBuyerWaitingOnOwnerDecision =
+    !!finalAcceptanceContext &&
+    isBuyer &&
+    String(currentUserId) === finalAcceptanceContext.buyerSenderId &&
+    !transactionFinalized;
+
+  const awaitingOwnerPriceFinalize = (() => {
+    if (!latestBid) return false;
+    const action = String(latestBid.event?.action || '').toUpperCase();
+    if (action !== 'ACCEPTED') return false;
+    return !dealPriceAgreed && !transactionFinalized;
+  })();
+
   const priceStatus = (() => {
     if (!latestBid) return 'IDLE' as const;
     const action = String(latestBid.event?.action || '').toUpperCase();
-    if (action === 'ACCEPTED') return 'ACCEPTED' as const;
+    if (awaitingOwnerPriceFinalize || ownerNeedsFinalDecision || isBuyerWaitingOnOwnerDecision) {
+      return 'PENDING' as const;
+    }
+    if (dealPriceAgreed || (action === 'ACCEPTED' && dealPriceAgreed)) return 'ACCEPTED' as const;
+    if (action === 'ACCEPTED' && !dealPriceAgreed) return 'PENDING' as const;
     if (['PROPOSED', 'COUNTERED'].includes(action)) return 'PENDING' as const;
     return 'IDLE' as const;
   })();
@@ -393,6 +445,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     'Brak aktywnej propozycji';
 
   const priceStatusLabel =
+    transactionFinalized ? 'Transakcja sfinalizowana' :
+    dealPriceAgreed ? 'Cena uzgodniona — gotowe do finalizacji przez właściciela' :
+    isBuyerWaitingOnOwnerDecision ? 'Czekasz na ostateczne potwierdzenie sprzedaży przez właściciela' :
+    ownerNeedsFinalDecision ? 'Kupujący zaakceptował cenę — Twoja ostateczna decyzja' :
     priceStatus === 'ACCEPTED' ? 'Cena uzgodniona' :
     waitingOnMyBid ? 'Twoja propozycja czeka na odpowiedź kontrahenta' :
     priceStatus === 'PENDING' ? 'Oczekuje na Twoją decyzję' :
@@ -466,7 +522,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500">Szyfrowanie E2E</span>
           </div>
           <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalized ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : isFinalizationReady ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
-            {isFinalized ? 'Transakcja zamknięta' : isFinalizationReady ? 'Gotowe do finalizacji' : 'Negocjacje aktywne'}
+            {isFinalized ? 'Transakcja zamknięta' : isFinalizationReady ? 'Potwierdź finalizację sprzedaży' : ownerNeedsFinalDecision ? 'Oczekuje Twojej decyzji' : 'Negocjacje aktywne'}
           </span>
         </div>
       </div>
@@ -558,7 +614,45 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   Oczekujemy na odpowiedź kontrahenta. Nie możesz zaakceptować własnej propozycji.
                 </p>
               )}
-              {!isFinalized && actionableBids.length > 0 && (
+              {!isFinalized && isBuyerWaitingOnOwnerDecision && (
+                <p className="mt-3 text-xs text-amber-200/80 text-center font-semibold leading-relaxed px-2">
+                  Zaakceptowałeś cenę właściciela. Sprzedaż zostanie zamknięta dopiero po jego świadomym potwierdzeniu.
+                </p>
+              )}
+              {!isFinalized && ownerNeedsFinalDecision && finalAcceptanceContext && (
+                <div className="mt-3 rounded-xl border border-yellow-500/40 bg-yellow-500/10 p-4">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-yellow-300 mb-2">
+                    Ostateczna decyzja sprzedaży
+                  </p>
+                  <p className="text-sm text-white/80 mb-3">
+                    Kupujący zaakceptował {finalAcceptanceContext.amount.toLocaleString('pl-PL')} PLN. Potwierdź, aby sfinalizować transakcję i zdjąć ofertę z rynku.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!!actionLoading}
+                    onClick={() => setBidActionModal({ bidId: finalAcceptanceContext.bidId, action: 'ACCEPT' })}
+                    className="w-full py-3 rounded-xl bg-yellow-500 text-black text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+                  >
+                    Potwierdzam sprzedaż
+                  </button>
+                </div>
+              )}
+              {!isFinalized && isFinalizationReady && acceptedBidId > 0 && (
+                <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                  <p className="text-sm text-white/80 mb-3">
+                    Cena została uzgodniona. Kliknij poniżej, aby sfinalizować sprzedaż (oferta zniknie z rynku).
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!!actionLoading}
+                    onClick={() => void finalizeDealSale()}
+                    className="w-full py-3 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+                  >
+                    Sfinalizuj sprzedaż
+                  </button>
+                </div>
+              )}
+              {!isFinalized && !ownerNeedsFinalDecision && !isFinalizationReady && actionableBids.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {actionableBids.map((bid: any) => (
                     <div key={`action-bid-${bid.id}`} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
@@ -566,7 +660,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                         Decyzja: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN
                       </p>
                       <div className="grid grid-cols-3 gap-2">
-                        <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase">Akceptuj</button>
+                        <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase">Zgoda</button>
                         <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'COUNTER' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase">Kontroferta</button>
                         <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'REJECT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase">Odrzuć</button>
                       </div>
@@ -721,7 +815,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl">
               <h4 className="text-white font-black text-lg mb-2">Decyzja negocjacyjna — cena</h4>
               <p className="text-white/50 text-sm mb-4">
-                {bidActionModal.action === 'ACCEPT' && `Akceptujesz ofertę ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN.`}
+                {bidActionModal.action === 'ACCEPT' && isFinalizationReady && `Sfinalizujesz sprzedaż za ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Oferta zostanie zdjęta z rynku.`}
+                {bidActionModal.action === 'ACCEPT' && ownerNeedsFinalDecision && `Potwierdzasz ostateczną sprzedaż za ${Number(activeBid?.amount || finalAcceptanceContext?.amount || 0).toLocaleString('pl-PL')} PLN.`}
+                {bidActionModal.action === 'ACCEPT' && !isFinalizationReady && !ownerNeedsFinalDecision && isBuyer && `Zgadzasz się na ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Właściciel musi jeszcze potwierdzić sprzedaż.`}
+                {bidActionModal.action === 'ACCEPT' && !isFinalizationReady && !ownerNeedsFinalDecision && !isBuyer && `Akceptujesz propozycję ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN (cena uzgodniona, bez finalizacji).`}
                 {bidActionModal.action === 'REJECT' && `Odrzucasz ofertę ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN.`}
                 {bidActionModal.action === 'COUNTER' && 'Podaj kwotę kontroferty.'}
               </p>
@@ -739,11 +836,27 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                   disabled={!!actionLoading}
                   onClick={async () => {
                     const numeric = Number(String(counterBidAmount).replace(',', '.'));
-                    await respondBid(
-                      bidActionModal.bidId,
-                      bidActionModal.action,
-                      bidActionModal.action === 'COUNTER' ? numeric : undefined
-                    );
+                    let action = bidActionModal.action;
+                    const bidAmount = Number(activeBid?.amount || 0);
+                    const opts: { counterAmount?: number; message?: string; intent?: string } = {};
+
+                    if (action === 'ACCEPT' && isBuyer && !dealPriceAgreed && !ownerNeedsFinalDecision && bidAmount > 0) {
+                      action = 'COUNTER';
+                      opts.counterAmount = bidAmount;
+                      opts.message = BUYER_ACCEPT_OWNER_PRICE_NOTE;
+                      opts.intent = 'FINAL_ACCEPTANCE';
+                    } else if (action === 'COUNTER') {
+                      opts.counterAmount = numeric;
+                    }
+
+                    await respondBid(bidActionModal.bidId, action, opts);
+                    if (
+                      action === 'ACCEPT' &&
+                      isListingOwner &&
+                      (ownerNeedsFinalDecision || isFinalizationReady)
+                    ) {
+                      await finalizeDealSale();
+                    }
                     setBidActionModal(null);
                     setCounterBidAmount('');
                   }}

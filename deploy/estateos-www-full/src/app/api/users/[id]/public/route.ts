@@ -37,7 +37,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         // 3. Pobieranie opinii
         const reviews = await prisma.review.findMany({
             where: { revieweeId: Number(user.id) },
-            orderBy: { createdAt: 'desc' }
+            include: {
+                reviewer: { select: { id: true, name: true, email: true, image: true } },
+            },
+            orderBy: { createdAt: 'desc' },
         });
 
         // 4. Pobieranie statystyk

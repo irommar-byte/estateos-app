@@ -44,11 +44,13 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
               <h1 className="text-4xl md:text-6xl font-black tracking-tighter mb-4">{data.user?.name}</h1>
               
               <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-8">
+                 {(data.reviews?.length || 0) > 0 && data.avgRating ? (
                  <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 px-4 py-2 rounded-full">
                     <Star size={16} className="text-yellow-500 fill-yellow-500" />
                     <span className="text-sm font-black text-yellow-500">{data.avgRating} / 5.0</span>
-                    <span className="text-[10px] text-yellow-500/50 uppercase tracking-widest">({data.reviews?.length || 0} opinii)</span>
+                    <span className="text-[10px] text-yellow-500/50 uppercase tracking-widest">({data.reviews.length} opinii)</span>
                  </div>
+                 ) : null}
                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full text-xs font-bold text-white/80">
                     <CheckCircle size={16} className="text-white/40"/> Licencja KNF
                  </div>

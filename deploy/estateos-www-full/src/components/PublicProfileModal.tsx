@@ -87,13 +87,13 @@ export default function PublicProfileModal({ isOpen, onClose, userId }: { isOpen
                             className="w-full bg-[#111] border border-white/5 rounded-2xl p-4 text-left hover:border-yellow-500/25 transition-colors"
                         >
                             <div className="flex items-center gap-4">
-                                <span className="text-4xl font-black text-yellow-500 shrink-0">{averageRating.toFixed(1)}</span>
+                                <span className={`text-4xl font-black shrink-0 ${totalReviews > 0 ? 'text-yellow-500' : 'text-white/20'}`}>{totalReviews > 0 ? averageRating.toFixed(1) : '—'}</span>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex gap-0.5 mb-1">
-                                        {[1,2,3,4,5].map(i => <Star key={i} size={14} className={i <= Math.round(averageRating) ? "text-yellow-500 fill-yellow-500" : "text-white/10"} />)}
+                                        {[1,2,3,4,5].map(i => <Star key={i} size={14} className={totalReviews > 0 && i <= Math.round(averageRating) ? "text-yellow-500 fill-yellow-500" : "text-white/10"} />)}
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{totalReviews} opinii</span>
+                                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{totalReviews > 0 ? `${totalReviews} opinii` : 'Brak opinii'}</span>
                                         {showDistribution ? <ChevronUp size={14} className="text-white/40" /> : <ChevronDown size={14} className="text-white/40" />}
                                     </div>
                                 </div>

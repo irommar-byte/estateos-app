@@ -232,10 +232,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                           <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? 'Agency' : 'Private owner')}</span>
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
                       </div>
+                      {(() => {
+                        const total = Number(offer?.user?.reviewsData?.totalReviews ?? 0);
+                        const avg = total > 0 ? Number(offer?.user?.reviewsData?.averageRating ?? 0) : 0;
+                        if (total === 0) return null;
+                        return (
                       <div className="flex items-center gap-1 mt-0.5">
-                          {[1,2,3,4,5].map(i => <Star key={i} size={10} className={i <= Math.round(offer?.user?.reviewsData?.averageRating || 5) ? "text-yellow-500 fill-yellow-500" : "text-white/20"} />)}
-                          <span className="text-[9px] font-bold text-yellow-500/80 tracking-widest ml-1">{offer?.user?.reviewsData?.averageRating?.toFixed(1) || '5.0'}</span>
+                          {[1,2,3,4,5].map(i => <Star key={i} size={10} className={i <= Math.round(avg) ? "text-yellow-500 fill-yellow-500" : "text-white/20"} />)}
+                          <span className="text-[9px] font-bold text-yellow-500/80 tracking-widest ml-1">{avg.toFixed(1)}</span>
                       </div>
+                        );
+                      })()}
                   </div>
                 </button>
 

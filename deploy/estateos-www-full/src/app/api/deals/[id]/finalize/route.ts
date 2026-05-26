@@ -1,22 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import jwt from 'jsonwebtoken';
 import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
-
-function getUserIdFromToken(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
-
-    const payload = jwt.verify(token, secret) as { id?: number; sub?: number };
-    return Number(payload?.id || payload?.sub) || null;
-  } catch {
-    return null;
-  }
-}
+import { resolveDealUserId } from '@/lib/dealRequestAuth';
 
 export async function POST(
   req: Request,
@@ -30,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: 'Błędne ID' }, { status: 400 });
     }
 
-    const userId = getUserIdFromToken(req.headers.get('authorization'));
+    const userId = await resolveDealUserId(req);
 
     if (!userId) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
@@ -47,6 +32,13 @@ export async function POST(
 
     if (deal.buyerId !== userId && deal.sellerId !== userId) {
       return NextResponse.json({ error: 'Brak dostępu' }, { status: 403 });
+    }
+
+    if (userId !== deal.sellerId) {
+      return NextResponse.json(
+        { error: 'Tylko właściciel oferty może sfinalizować sprzedaż.' },
+        { status: 403 }
+      );
     }
 
     if (!deal.acceptedBidId || deal.status !== 'AGREED') {
