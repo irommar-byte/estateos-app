@@ -1,7 +1,35 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
 import { submitDealReview } from '@/lib/dealroomReviews';
 import { collectReviewAuthSignals, resolveUserIdFromReviewAuth } from '@/lib/reviewAuth';
+import { buildReviewsModalPayload } from '@/lib/reviewsPresentation';
+
+export async function GET(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie =
+      cookieStore.get('luxestate_user')?.value || cookieStore.get('estateos_session')?.value || null;
+    const dealToken = cookieStore.get('deal_token')?.value || null;
+    const userId = await resolveUserIdFromReviewAuth({ req, sessionToken: sessionCookie, dealToken });
+    if (!userId) {
+      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+    }
+
+    const reviews = await prisma.review.findMany({
+      where: { revieweeId: userId },
+      include: {
+        reviewer: { select: { id: true, name: true, email: true, image: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return NextResponse.json(buildReviewsModalPayload(reviews));
+  } catch (e) {
+    console.error('[REVIEWS_GET]', e);
+    return NextResponse.json({ error: 'Błąd pobierania opinii' }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {

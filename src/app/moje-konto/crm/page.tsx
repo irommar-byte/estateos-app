@@ -41,7 +41,7 @@ const ProStatusBar = ({ user }: any) => {
 
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
@@ -55,6 +55,8 @@ import OfferListingSlots from "@/components/crm/OfferListingSlots";
 import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
 import PlanningPresentationCalendar from "@/components/crm/PlanningPresentationCalendar";
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
+import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload } from "@/lib/reviewsPresentation";
+import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -250,13 +252,31 @@ export default function CRMDashboard() {
   const [rescheduleStep, setRescheduleStep] = useState(1);
   
 
-  const [reviewsData, setReviewsData] = useState<any>({ averageRating: 4.9, totalReviews: 28, distribution: { 5: 24, 4: 3, 3: 1, 2: 0, 1: 0 }, reviews: [ { id: 1, author: "System", avatar: "S", rating: 5, date: "Dzisiaj", text: "Konto gotowe do działania." } ] });
-  
-  useEffect(() => {
-    fetch('/api/reviews', { credentials: 'include' }).then(r => r.json()).then(d => {
-      if (!d.error) setReviewsData(d);
-    }).catch(e => console.log("Błąd pobierania opinii:", e));
+  const [reviewsData, setReviewsData] = useState<ReviewsModalPayload | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+
+  const loadMyReviews = useCallback(async () => {
+    setReviewsLoading(true);
+    try {
+      const res = await fetch('/api/reviews', { credentials: 'include', cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && !data.error && typeof data.totalReviews === 'number') {
+        setReviewsData(data as ReviewsModalPayload);
+      } else if (res.ok && !data.error && Array.isArray(data.reviews)) {
+        setReviewsData(buildReviewsModalPayload(data.reviews));
+      } else {
+        setReviewsData(EMPTY_REVIEWS_MODAL);
+      }
+    } catch {
+      setReviewsData(EMPTY_REVIEWS_MODAL);
+    } finally {
+      setReviewsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadMyReviews();
+  }, [loadMyReviews]);
 
   const [isReviewsModalOpen, setIsReviewsModalOpen] = useState(false);
   const [isBooting, setIsBooting] = useState(false);
@@ -517,23 +537,36 @@ export default function CRMDashboard() {
   // ===================================================================
 
   
-  const handleBidResponse = async (e: React.MouseEvent, bidId: string, status: string) => {
+  const handleBidResponse = async (
+    e: React.MouseEvent,
+    bid: { id: number | string; dealId?: number | string },
+    decision: 'ACCEPT' | 'REJECT'
+  ) => {
     e.preventDefault();
     e.stopPropagation();
+    const dealId = Number(bid.dealId);
+    const bidId = Number(bid.id);
+    if (!Number.isFinite(dealId) || dealId <= 0 || !Number.isFinite(bidId) || bidId <= 0) {
+      alert('Otwórz Deal Room w zakładce Komunikacja, aby bezpiecznie zaakceptować cenę.');
+      setActiveTab('transakcje');
+      return;
+    }
     try {
-      const res = await fetch('/api/bids/respond', {
+      const res = await fetch(`/api/deals/${dealId}/bids/${bidId}/respond`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bidId, status })
+        body: JSON.stringify({ action: decision }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
         if (currentUser?.id) fetchData(currentUser.id);
+        setActiveTab('transakcje');
+        setSelectedDealId(dealId);
       } else {
-        const err = await res.json();
-        alert('Błąd: ' + (err.error || 'Wystąpił błąd przy przetwarzaniu.'));
+        alert('Błąd: ' + (data?.error || 'Wystąpił błąd przy przetwarzaniu.'));
       }
-    } catch(err) {
+    } catch {
       alert('Błąd sieci.');
     }
   };
@@ -871,6 +904,37 @@ export default function CRMDashboard() {
     }
   };
 
+  const openCounterpartyProfile = async (user: { id?: number; name?: string; email?: string }) => {
+    if (!user?.id) return;
+    setViewingProfile({ ...user, profileLoading: true });
+    setProfileReviewsOpen(false);
+    try {
+      const res = await fetch(`/api/users/${user.id}/public`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error('profile');
+      const reviewsPayload = buildReviewsModalPayload(data.reviews || []);
+      setViewingProfile({
+        id: data.user?.id ?? user.id,
+        name: data.user?.name ?? user.name,
+        email: data.user?.email ?? user.email,
+        image: data.user?.image,
+        planType: data.user?.planType,
+        buyerType: data.user?.planType,
+        badges: data.user?.badges,
+        reviewsData: reviewsPayload,
+        publicOffers: data.offers || [],
+        stats: data.stats,
+        profileLoading: false,
+      });
+    } catch {
+      setViewingProfile({
+        ...user,
+        reviewsData: EMPTY_REVIEWS_MODAL,
+        profileLoading: false,
+      });
+    }
+  };
+
   const isListingsTab = activeTab === 'my_offers';
   const isFavoritesTab = activeTab === 'offers';
   const showAddOfferTile = isListingsTab && offerSectionFilter !== 'COMPLETED';
@@ -981,12 +1045,16 @@ export default function CRMDashboard() {
                 </div>
               )}
             </div>
-            {reviewsData && (
+            {!reviewsLoading && reviewsData && (
               <>
                 <button onClick={() => setIsReviewsModalOpen(true)} className="mt-3 flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-3 py-1.5 rounded-full transition-colors group cursor-pointer">
-                   <Star size={14} className="text-yellow-500 fill-yellow-500 group-hover:animate-pulse" />
-                   <span className="text-[10px] font-black text-yellow-500">{reviewsData.averageRating?.toFixed(1)} / 5.0</span>
-                   <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
+                   <Star size={14} className={`${reviewsData.totalReviews > 0 ? 'text-yellow-500 fill-yellow-500 group-hover:animate-pulse' : 'text-white/30'}`} />
+                   <span className="text-[10px] font-black text-yellow-500">
+                     {reviewsData.totalReviews > 0 ? `${reviewsData.averageRating.toFixed(1)} / 5.0` : 'Brak opinii'}
+                   </span>
+                   {reviewsData.totalReviews > 0 ? (
+                     <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
+                   ) : null}
                 </button>
                 <div className="mt-3 w-full max-w-[420px]">
                   <PasskeyToggle onProfileRefresh={refreshCurrentUserFromBackend} />
@@ -1613,8 +1681,8 @@ export default function CRMDashboard() {
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 mt-1">
-                                            <button onClick={(e) => handleBidResponse(e, bid.id, 'ACCEPTED')} className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-500/30 text-emerald-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Akceptuj</button>
-                                            <button onClick={(e) => handleBidResponse(e, bid.id, 'DECLINED')} className="py-2.5 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Odrzuć</button>
+                                            <button onClick={(e) => handleBidResponse(e, bid, 'ACCEPT')} className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-500/30 text-emerald-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Akceptuj w Deal Room</button>
+                                            <button onClick={(e) => handleBidResponse(e, bid, 'REJECT')} className="py-2.5 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Odrzuć</button>
                                         </div>
                                     </div>
                                 ))}
@@ -1776,7 +1844,7 @@ export default function CRMDashboard() {
               contacts={crmData.contacts || []}
               currentUserId={Number(currentUser.id)}
               onManage={(app) => setManagingApp(app)}
-              onViewProfile={(user) => setViewingProfile(user)}
+              onViewProfile={(user) => void openCounterpartyProfile(user)}
             />
           </motion.div>
         )}
@@ -1995,9 +2063,20 @@ export default function CRMDashboard() {
 
                     <div className="custom-scrollbar" style={{ padding: '40px 32px 32px 32px', overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', position: 'relative', zIndex: 10 }}>
                         
-                        <div style={{ width: '80px', height: '80px', borderRadius: '24px', backgroundColor: '#111', border: '1px solid rgba(234,179,8,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', boxShadow: '0 0 30px rgba(234,179,8,0.1)', flexShrink: 0 }}>
-                            <span style={{ fontSize: '40px' }}>👤</span>
-                        </div>
+                        {(() => {
+                          const avatarUrl = getBestUserAvatarUrl(viewingProfile);
+                          return (
+                            <div style={{ width: '80px', height: '80px', borderRadius: '24px', backgroundColor: '#111', border: '1px solid rgba(234,179,8,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', boxShadow: '0 0 30px rgba(234,179,8,0.1)', flexShrink: 0, overflow: 'hidden' }}>
+                              {avatarUrl ? (
+                                <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              ) : (
+                                <span style={{ fontSize: '28px', fontWeight: 900, color: 'rgba(255,255,255,0.35)' }}>
+                                  {(viewingProfile.name || viewingProfile.email || '?').charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                         
                         <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{viewingProfile.name || viewingProfile.email?.split('@')[0]}</h3>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '100px', border: '1px solid rgba(16,185,129,0.2)' }}>
@@ -2005,17 +2084,35 @@ export default function CRMDashboard() {
                             <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>Tożsamość Zweryfikowana</span>
                         </div>
 
+                        {viewingProfile.profileLoading ? (
+                          <div style={{ padding: '32px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 700 }}>Ładowanie profilu…</div>
+                        ) : (
                         <div onClick={() => setProfileReviewsOpen(true)} style={{ backgroundColor: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '24px', width: '100%', marginBottom: '16px', cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={(e) => { e.currentTarget.style.borderColor = 'rgba(234,179,8,0.3)'; e.currentTarget.style.transform = 'scale(1.02)'; }} onMouseOut={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'scale(1)'; }}>
-                            <div style={{ fontSize: '48px', fontWeight: '900', color: '#eab308', lineHeight: '1', marginBottom: '8px', textShadow: '0 0 30px rgba(234,179,8,0.3)' }}>{viewingProfile.reviewsData?.averageRating?.toFixed(1) || '5.0'}</div>
+                            {(() => {
+                              const rd = viewingProfile.reviewsData || EMPTY_REVIEWS_MODAL;
+                              const hasReviews = rd.totalReviews > 0;
+                              const avg = hasReviews ? rd.averageRating : 0;
+                              return (
+                                <>
+                            <div style={{ fontSize: '48px', fontWeight: '900', color: hasReviews ? '#eab308' : 'rgba(255,255,255,0.2)', lineHeight: '1', marginBottom: '8px', textShadow: hasReviews ? '0 0 30px rgba(234,179,8,0.3)' : 'none' }}>{hasReviews ? avg.toFixed(1) : '—'}</div>
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', marginBottom: '10px' }}>
-                                {[1,2,3,4,5].map(i => <span key={i} style={{ color: i <= (viewingProfile.reviewsData?.averageRating || 5) ? '#eab308' : 'rgba(255,255,255,0.1)', fontSize: '18px' }}>★</span>)}
+                                {[1,2,3,4,5].map(i => <span key={i} style={{ color: hasReviews && i <= Math.round(avg) ? '#eab308' : 'rgba(255,255,255,0.1)', fontSize: '18px' }}>★</span>)}
                             </div>
-                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#eab308', fontWeight: '900' }}>{viewingProfile.reviewsData?.totalReviews > 0 ? `${viewingProfile.reviewsData.totalReviews} Opinii • Zobacz szczegóły` : 'Brak Ocen'}</span>
+                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: hasReviews ? '#eab308' : 'rgba(255,255,255,0.35)', fontWeight: '900' }}>{hasReviews ? `${rd.totalReviews} opinii • Zobacz szczegóły` : 'Brak opinii po transakcjach'}</span>
+                                </>
+                              );
+                            })()}
                         </div>
+                        )}
 
                         <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', backgroundColor: '#050505', border: '1px solid rgba(255,255,255,0.02)', borderRadius: '16px', padding: '16px' }}>
                             <div style={{ textAlign: 'center', flex: 1 }}>
-                                <span style={{ display: 'block', fontSize: '14px', fontWeight: '900', color: '#fff' }}>{viewingProfile.buyerType === 'AGENCY' ? 'Agencja' : viewingProfile.buyerType === 'PRO' ? 'PRO' : 'Standard'}</span>
+                                <span style={{ display: 'block', fontSize: '14px', fontWeight: '900', color: '#fff' }}>{(() => {
+                                  const pt = String(viewingProfile.planType || viewingProfile.buyerType || '').toUpperCase();
+                                  if (pt === 'AGENCY' || pt === 'AGENT') return 'Agencja';
+                                  if (pt.includes('PRO') || pt.includes('INVESTOR')) return 'PRO';
+                                  return 'Standard';
+                                })()}</span>
                                 <span style={{ display: 'block', fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.3)', marginTop: '4px', fontWeight: 'bold' }}>Typ Konta</span>
                             </div>
                             <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.05)' }}></div>
@@ -2049,7 +2146,7 @@ export default function CRMDashboard() {
                     </div>
                  </motion.div>
                  
-                 <ReviewsModal isOpen={profileReviewsOpen} onClose={() => setProfileReviewsOpen(false)} reviewsData={viewingProfile.reviewsData} userName={viewingProfile.name || viewingProfile.email?.split('@')[0]} subject={viewingProfile} />
+                 <ReviewsModal isOpen={profileReviewsOpen} onClose={() => setProfileReviewsOpen(false)} reviewsData={viewingProfile.reviewsData || EMPTY_REVIEWS_MODAL} userName={viewingProfile.name || viewingProfile.email?.split('@')[0]} subject={viewingProfile} />
 
               </motion.div>
             )}
@@ -2165,7 +2262,7 @@ export default function CRMDashboard() {
       <ReviewsModal 
           isOpen={isReviewsModalOpen} 
           onClose={() => setIsReviewsModalOpen(false)} 
-          reviewsData={reviewsData} 
+          reviewsData={reviewsData ?? EMPTY_REVIEWS_MODAL} 
           userName={currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}` : (currentUser?.name || 'Inwestor')}
           subject={currentUser}
       />

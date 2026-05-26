@@ -26,7 +26,7 @@ export async function GET(req: Request, context: any) {
       orderBy: { createdAt: 'desc' }
     });
 
-    const avgRating = reviews.length > 0 ? (reviews.reduce((a: any,b: any)=>a+b.rating, 0)/reviews.length).toFixed(1) : "5.0";
+    const avgRating = reviews.length > 0 ? (reviews.reduce((a: number, b: { rating: number }) => a + b.rating, 0) / reviews.length).toFixed(1) : null;
 
     return NextResponse.json({ user, offers, reviews, avgRating });
   } catch(e) { return NextResponse.json({ error: 'Błąd' }, { status: 500 }); }
