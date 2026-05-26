@@ -1,7 +1,17 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Crown } from 'lucide-react-native';
+import Animated, {
+  Extrapolation,
+  SensorType,
+  interpolate,
+  useAnimatedReaction,
+  useAnimatedSensor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useI18n } from '../../i18n';
 
 type Props = {
@@ -9,45 +19,93 @@ type Props = {
   label?: string;
 };
 
+const BEAM_WIDTH = 48;
+const BEAM_WIDTH_COMPACT = 39;
+const BEAM_TRAVEL = 102;
+
+/** Snappy but smooth — follows tilt without feeling stuck. */
+const HOLO_SPRING = {
+  damping: 14,
+  stiffness: 280,
+  mass: 0.22,
+};
+
 export default function InvestorProShimmerBadge({ compact = false, label }: Props) {
   const { t } = useI18n();
-  const shimmer = useRef(new Animated.Value(0)).current;
+  const text = label || t('offer.badges.investorPro');
 
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(shimmer, {
-        toValue: 1,
-        duration: 2800,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [shimmer]);
-
-  const translateX = shimmer.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-72, 72],
+  const rotation = useAnimatedSensor(SensorType.ROTATION, {
+    interval: 8,
+    adjustToInterfaceOrientation: true,
+  });
+  const gravity = useAnimatedSensor(SensorType.GRAVITY, {
+    interval: 8,
+    adjustToInterfaceOrientation: true,
   });
 
-  const text = label || t('offer.badges.investorPro');
+  const beamX = useSharedValue(0);
+  const beamY = useSharedValue(0);
+
+  useAnimatedReaction(
+    () => {
+      const { roll, pitch } = rotation.sensor.value;
+      const { x, y } = gravity.sensor.value;
+      return { roll, pitch, gx: x, gy: y };
+    },
+    ({ roll, pitch, gx, gy }) => {
+      const travel = compact ? BEAM_TRAVEL * 0.86 : BEAM_TRAVEL;
+      const tiltRoll = roll + (gx / 9.8) * 0.45;
+      const tiltPitch = pitch + (gy / 9.8) * 0.35;
+
+      const targetX = interpolate(
+        tiltRoll,
+        [-0.22, 0.22],
+        [travel, -travel],
+        Extrapolation.CLAMP
+      );
+      const targetY = interpolate(
+        tiltPitch,
+        [-0.18, 0.18],
+        [9, -9],
+        Extrapolation.CLAMP
+      );
+
+      beamX.value = withSpring(targetX, HOLO_SPRING);
+      beamY.value = withSpring(targetY, HOLO_SPRING);
+    },
+    [compact]
+  );
+
+  const beamStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: beamX.value },
+      { translateY: beamY.value },
+      { skewX: '-14deg' },
+    ],
+  }));
 
   return (
     <View style={[styles.shell, compact ? styles.shellCompact : null]}>
       <LinearGradient
-        colors={['#3d4554', '#8b95a8', '#e8edf5', '#9aa5b8', '#4a5364']}
-        start={{ x: 0, y: 0.2 }}
-        end={{ x: 1, y: 0.9 }}
+        colors={['#3a424f', '#556070', '#4d5868', '#343c48']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.innerBevel} pointerEvents="none" />
       <Animated.View
         pointerEvents="none"
-        style={[styles.shimmerBeam, { transform: [{ translateX }, { skewX: '-18deg' }] }]}
+        style={[styles.beam, compact ? styles.beamCompact : null, beamStyle]}
       >
         <LinearGradient
-          colors={['transparent', 'rgba(255,255,255,0.55)', 'transparent']}
+          colors={[
+            'rgba(255,255,255,0)',
+            'rgba(255,255,255,0.42)',
+            'rgba(255,255,255,0.88)',
+            'rgba(255,255,255,0.42)',
+            'rgba(255,255,255,0)',
+          ]}
+          locations={[0, 0.28, 0.5, 0.72, 1]}
           start={{ x: 0, y: 0.5 }}
           end={{ x: 1, y: 0.5 }}
           style={StyleSheet.absoluteFill}
@@ -56,7 +114,6 @@ export default function InvestorProShimmerBadge({ compact = false, label }: Prop
       <View style={styles.content}>
         <Crown size={compact ? 11 : 12} color="#F4F7FC" strokeWidth={2.4} />
         <Text style={[styles.text, compact ? styles.textCompact : null]}>{text}</Text>
-        <Text style={[styles.proMark, compact ? styles.proMarkCompact : null]}>PRO</Text>
       </View>
     </View>
   );
@@ -68,12 +125,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(220,228,240,0.45)',
+    borderColor: 'rgba(220,228,240,0.4)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     shadowColor: '#C5D0E0',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 3,
   },
@@ -85,20 +142,27 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.35)',
-    borderBottomColor: 'rgba(0,0,0,0.25)',
+    borderTopColor: 'rgba(255,255,255,0.22)',
+    borderBottomColor: 'rgba(0,0,0,0.28)',
   },
-  shimmerBeam: {
+  beam: {
     position: 'absolute',
-    top: -8,
-    bottom: -8,
-    width: 42,
-    opacity: 0.9,
+    top: -12,
+    bottom: -12,
+    left: '50%',
+    width: BEAM_WIDTH,
+    marginLeft: -BEAM_WIDTH / 2,
+    opacity: 0.96,
+  },
+  beamCompact: {
+    width: BEAM_WIDTH_COMPACT,
+    marginLeft: -BEAM_WIDTH_COMPACT / 2,
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    zIndex: 2,
   },
   text: {
     fontSize: 11,
@@ -109,17 +173,5 @@ const styles = StyleSheet.create({
   },
   textCompact: {
     fontSize: 10,
-  },
-  proMark: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0,0,0,0.35)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  proMarkCompact: {
-    fontSize: 9,
   },
 });
