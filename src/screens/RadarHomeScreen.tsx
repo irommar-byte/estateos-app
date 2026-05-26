@@ -150,11 +150,8 @@ const CalibrationLens = ({ isMoving, isDark, diameter }: { isMoving: boolean, is
 };
 
 function markerLuxuryGradient(accentHex: string): [string, string, string] {
-  if (accentHex === '#0A84FF') {
+  if (accentHex === RENT_MARKER_COLOR) {
     return ['#8ECBFF', '#3DA3FF', '#0066CC'];
-  }
-  if (accentHex === '#FF9F0A') {
-    return ['#FFD08A', '#FFB648', '#FF8A00'];
   }
   return ['#6EE7B7', '#22C993', '#0A9F6E'];
 }
@@ -212,7 +209,6 @@ function formatClusterCount(n: number) {
 }
 
 const RadarMapComponent: any = Platform.OS === 'ios' ? MapViewCore : ClusteredMapView;
-const PARTNER_MARKER_COLOR = '#FF9F0A';
 const SELL_MARKER_COLOR = '#10b981';
 const RENT_MARKER_COLOR = '#0A84FF';
 
@@ -381,54 +377,8 @@ const getTransactionBadge = (rawTransactionType: unknown) => {
   return { label: translate('radar.home.transactionSell'), color: SELL_MARKER_COLOR };
 };
 
-/**
- * Czy oferta pochodzi od pośrednika / agenta? Rozszerzona o nową rolę
- * mobile `AGENT` (rejestracja agentów z poziomu aplikacji). Nazwa funkcji
- * pozostaje historyczna, ale obejmuje również:
- *   • legacy WWW Partner (`role=USER` + `planType=AGENCY`),
- *   • nową mobile rolę `AGENT` (rejestracja z poziomu aplikacji),
- *   • dowolne pola `isPartner` / `isAgency` zwracane przez backend.
- * Pomarańczowy pin (`PARTNER_MARKER_COLOR`) dotyczy WSZYSTKICH ofert
- * od pośredników — niezależnie od kanału rejestracji.
- */
-function isPartnerOffer(raw: any): boolean {
-  const candidates = [
-    raw?.role,
-    raw?.userRole,
-    raw?.ownerRole,
-    raw?.publisherRole,
-    raw?.accountType,
-    raw?.source,
-    raw?.listingSource,
-    raw?.authorType,
-    raw?.user?.role,
-    raw?.owner?.role,
-    raw?.seller?.role,
-    raw?.user?.planType,
-    raw?.owner?.planType,
-    raw?.seller?.planType,
-  ]
-    .map((v) => String(v || '').toUpperCase())
-    .filter(Boolean);
-
-  if (
-    raw?.isPartner === true ||
-    raw?.partner === true ||
-    raw?.isAgency === true ||
-    raw?.agency === true ||
-    raw?.isProAgency === true ||
-    raw?.isAgent === true
-  ) {
-    return true;
-  }
-
-  return candidates.some(
-    (v) => v === 'AGENT' || v.includes('PARTNER') || v.includes('AGENCY'),
-  );
-}
-
+/** Kolor pinezki wyłącznie od typu transakcji (sprzedaż / wynajem). */
 function offerMarkerAccent(raw: any): string {
-  if (isPartnerOffer(raw)) return PARTNER_MARKER_COLOR;
   const tx = String(raw?.transactionType || '').toUpperCase();
   return tx === 'RENT' ? RENT_MARKER_COLOR : SELL_MARKER_COLOR;
 }

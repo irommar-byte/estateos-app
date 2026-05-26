@@ -81,11 +81,7 @@ function formatOfferPinLabel(price: unknown, offerTx: unknown): string {
 const OFFER_PIN_BASE =
   "px-5 py-3 backdrop-blur-xl border text-xs font-bold rounded-full cursor-pointer hover:scale-125 active:scale-95 transition-all duration-300 ease-out";
 
-function offerPinColorClasses(normalizeTx: (v: unknown) => "sale" | "rent" | "other", transactionType: unknown, isPartnerRaw: unknown) {
-  const isPartner = isPartnerRaw === true || isPartnerRaw === 1 || String(isPartnerRaw).toLowerCase() === "true";
-  if (isPartner) {
-    return `${OFFER_PIN_BASE} bg-orange-500/90 text-black border-orange-400/55 hover:bg-orange-400 shadow-[0_12px_32px_rgba(249,115,22,0.45)] hover:shadow-[0_14px_40px_rgba(249,115,22,0.55)]`;
-  }
+function offerPinColorClasses(normalizeTx: (v: unknown) => "sale" | "rent" | "other", transactionType: unknown) {
   const tx = normalizeTx(transactionType);
   if (tx === "rent") {
     return `${OFFER_PIN_BASE} bg-blue-500/90 text-white border-blue-400/55 hover:bg-blue-400 shadow-[0_12px_32px_rgba(59,130,246,0.45)] hover:shadow-[0_14px_40px_rgba(59,130,246,0.55)]`;
@@ -375,7 +371,7 @@ export default function InteractiveMap() {
             });
           };
         } else {
-          innerEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType, feature.properties.isPartner);
+          innerEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType);
           innerEl.innerText = String(
             feature.properties.priceLabel ?? formatOfferPinLabel(feature.properties.price, feature.properties.transactionType),
           );
@@ -392,7 +388,7 @@ export default function InteractiveMap() {
         const rootEl = markersRef.current[id].getElement();
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
-          pinEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType, feature.properties.isPartner);
+          pinEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType);
           pinEl.innerText = String(
             feature.properties.priceLabel ?? formatOfferPinLabel(feature.properties.price, feature.properties.transactionType),
           );

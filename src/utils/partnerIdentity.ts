@@ -30,7 +30,7 @@ export function isPartnerIdentity(input: any): boolean {
 /**
  * Czy podmiot to NOWA mobilna rola `AGENT` (rejestracja przez aplikację,
  * 2026-05). Używane tylko do wyboru etykiety plakietki — funkcjonalnie
- * (pomarańczowy pin, walidacja prowizji) AGENT zachowuje się jak partner.
+ * (walidacja prowizji itd.) AGENT zachowuje się jak partner w backendzie/UI oferty.
  *
  *   • `true`  → plakietka „Agent EstateOS"
  *   • `false` → fallback do „Partner EstateOS" (legacy: PARTNER / AGENCY / BROKER /

@@ -12,8 +12,8 @@
  *    dodatkowych ponad tę kwotę. Tekst „Kwota jest BRUTTO" pojawia się
  *    równolegle w UI: Step4_Finance, Step6_Summary, EditOfferScreen oraz
  *    pigułce w OfferDetail (widok kupującego).
- *  • Oferty agentów ZAWSZE oznaczane pomarańczową pinezką na radarze
- *    (`PARTNER_MARKER_COLOR = '#FF9F0A'`).
+ *  • Pinezki na mapie: zielone = sprzedaż, niebieskie = wynajem (bez wyjątku
+ *    dla agenta; osobny kolor partnera — w późniejszej iteracji).
  *
  * Walidacja zakresu: 0.5%–10%. Powyżej 10% nie ma praktyki rynkowej w PL,
  * niżej (np. 0.1%) najczęściej to literówki — wymuszamy minimum, żeby

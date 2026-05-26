@@ -483,7 +483,7 @@ export default function Radar({ theme, route }: any) {
           if (!hasFiniteCoords(lat, lng)) return null;
           return (
             <Marker key={offer.id || index} coordinate={{ latitude: lat, longitude: lng }} onPress={() => handleMarkerPress(index)} style={{ zIndex: isSelected ? 10 : 1 }} tracksViewChanges={isSelected}>
-              <View style={[styles.markerPill, { backgroundColor: offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL, borderColor: (offer.user?.role === 'AGENT' || offer.role === 'AGENT') ? '#FF9F0A' : '#FFFFFF', borderWidth: 2, shadowColor: isSelected ? (offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL) : '#000', shadowOpacity: isSelected ? 0.8 : 0.3, shadowRadius: isSelected ? 12 : 5 }, isSelected && { transform: [{ scale: 1.15 }] }]}>
+              <View style={[styles.markerPill, { backgroundColor: offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL, borderColor: '#FFFFFF', borderWidth: 2, shadowColor: isSelected ? (offer.transactionType === 'RENT' ? ThemeColors.RENT : ThemeColors.SELL) : '#000', shadowOpacity: isSelected ? 0.8 : 0.3, shadowRadius: isSelected ? 12 : 5 }, isSelected && { transform: [{ scale: 1.15 }] }]}>
                 <Text style={[styles.markerText, { color: '#FFF' }]}>{formatPriceMarker(offer.price)}</Text>
               </View>
             </Marker>
