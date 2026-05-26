@@ -53,6 +53,8 @@ import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCa
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import OfferListingSlots from "@/components/crm/OfferListingSlots";
 import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
+import PlanningPresentationCalendar from "@/components/crm/PlanningPresentationCalendar";
+import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -469,7 +471,6 @@ export default function CRMDashboard() {
   const [profileModalUser, setProfileModalUser] = useState<any>(null);
   const [profileModalLoading, setProfileModalLoading] = useState(false);
   const [profileModalData, setProfileModalData] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   
   const [radarResults, setRadarResults] = useState<any[]>([]);
   const [radarLoading, setRadarLoading] = useState(false);
@@ -889,12 +890,6 @@ export default function CRMDashboard() {
     if (isCompleted) return 'COMPLETED';
     return 'ACTIVE';
   };
-
-  const isSameCalendarDay = (left: Date, right: Date) => (
-    left.getDate() === right.getDate() &&
-    left.getMonth() === right.getMonth() &&
-    left.getFullYear() === right.getFullYear()
-  );
 
   const sortOffersBySection = (offers: any[]) => {
     const withTs = (offer: any) => {
@@ -1774,135 +1769,17 @@ export default function CRMDashboard() {
 
 
       
-        {activeTab === 'planowanie' && (
+        {activeTab === 'planowanie' && currentUser?.id && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            
-            <div className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-6 md:p-8 shadow-2xl relative overflow-hidden">
-              <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-6">
-                <div>
-                   <h2 className="text-2xl font-black text-white tracking-tighter flex items-center gap-3">
-                     <Calendar className="text-emerald-500" /> Kalendarz Prezentacji
-                   </h2>
-                   <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mt-1">Podgląd rezerwacji i negocjacji</p>
-                </div>
-                
-                <div className="flex gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.6)]"></div>
-                    <span className="text-[9px] uppercase tracking-widest font-black text-white/50">Negocjacje</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]"></div>
-                    <span className="text-[9px] uppercase tracking-widest font-black text-white/50">Zatwierdzone</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                {Array.from({ length: 14 }).map((_, i) => {
-                  const d = new Date();
-                  d.setDate(d.getDate() + i);
-                  
-                  const dayAppointments = (crmData.appointments || []).filter((app: any) => {
-                      const appDate = new Date(app.proposedDate);
-                      return isSameCalendarDay(appDate, d);
-                  });
-                  
-                  const hasNegotiation = dayAppointments.some((a:any) => ['PROPOSED', 'COUNTER'].includes(a.status));
-                  const hasAccepted = dayAppointments.some((a:any) => a.status === 'ACCEPTED');
-
-                  const isToday = i === 0;
-
-                  return (
-                    <div key={i} onClick={() => setSelectedDate(d)} className={`relative bg-[#111] rounded-2xl p-4 flex flex-col items-center justify-center border transition-all duration-300 hover:scale-[1.05] cursor-pointer ${isToday ? 'border-emerald-500/50 shadow-[0_0_30px_rgba(16,185,129,0.1)]' : 'border-white/5 hover:border-white/20'}`}>
-                      <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${isToday ? 'text-emerald-500' : 'text-white/30'}`}>
-                        {d.toLocaleDateString('pl-PL', { weekday: 'short' })}
-                      </span>
-                      <span className={`text-3xl font-black mb-3 ${isToday ? 'text-emerald-500' : 'text-white'}`}>
-                        {d.getDate()}
-                      </span>
-                      
-                      <div className="flex gap-1.5 h-2">
-                         {hasNegotiation && <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shadow-[0_0_5px_rgba(234,179,8,0.5)]"></div>}
-                         {hasAccepted && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]"></div>}
-                         {!hasNegotiation && !hasAccepted && <div className="w-1.5 h-1.5 rounded-full bg-white/10"></div>}
-                      </div>
-
-                      {isToday && <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>}
-                    </div>
-                  );
-                })}
-              </div>
-              
-              <div className="mt-8 text-center border-t border-white/5 pt-6">
-                 <p className="text-white/30 text-xs italic">Kliknij dzień, aby zobaczyć szczegóły prezentacji lub zatwierdzić przychodzące negocjacje.</p>
-              </div>
-
-            </div>
+            <PlanningPresentationCalendar
+              appointments={crmData.appointments || []}
+              contacts={crmData.contacts || []}
+              currentUserId={Number(currentUser.id)}
+              onManage={(app) => setManagingApp(app)}
+              onViewProfile={(user) => setViewingProfile(user)}
+            />
           </motion.div>
         )}
-
-      
-        <AnimatePresence>
-          {selectedDate && (
-             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6" onClick={() => setSelectedDate(null)}>
-                <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} onClick={e => e.stopPropagation()} className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)]">
-                   <div className="p-6 md:p-8 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-emerald-500/10 to-transparent">
-                      <div>
-                         <h3 className="text-2xl font-black text-white tracking-tighter">Plan Dnia</h3>
-                         <p className="text-emerald-500 font-bold uppercase tracking-widest text-[10px]">{selectedDate.toLocaleDateString('pl-PL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                      </div>
-                      <button onClick={() => setSelectedDate(null)} className="p-3 bg-white/5 hover:bg-red-500 hover:text-white rounded-full transition-colors text-white/50"><X size={20}/></button>
-                   </div>
-                   
-                   <div className="p-6 md:p-8 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-4">
-                      {(() => {
-                         const dayApps = (crmData.appointments || []).filter((a: any) => {
-                            const appDate = new Date(a.proposedDate);
-                            return isSameCalendarDay(appDate, selectedDate);
-                         });
-                         
-                         if (dayApps.length === 0) return <div className="text-center py-10 text-white/30 font-bold uppercase tracking-widest text-xs">Brak zaplanowanych spotkań i negocjacji na ten dzień.</div>;
-                         
-                         return dayApps.map((app: any, idx: number) => (
-                            <div key={idx} className="bg-[#111] border border-white/10 rounded-2xl p-5 flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-                               <div>
-                                  <div className="flex items-center gap-2 mb-1">
-                                     <Clock size={14} className="text-emerald-500" />
-                                     <span className="font-black text-lg text-white">{new Date(app.proposedDate).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</span>
-                                     {['PROPOSED', 'COUNTER'].includes(app.status) && <span className="ml-2 px-2 py-0.5 bg-yellow-500/20 text-yellow-500 text-[8px] font-black uppercase tracking-widest rounded border border-yellow-500/30 animate-pulse">W Negocjacji</span>}
-                                     {app.status === 'ACCEPTED' && <span className="ml-2 px-2 py-0.5 bg-emerald-500/20 text-emerald-500 text-[8px] font-black uppercase tracking-widest rounded border border-emerald-500/30">Zatwierdzone</span>}
-                                  </div>
-                                  <p className="text-xs text-white/50 font-bold flex items-center gap-2 mt-1">Oferta: <Link href={`/oferta/${app.offerId}`} target="_blank" onClick={(e) => e.stopPropagation()} className="px-2 py-0.5 bg-white/5 hover:bg-emerald-500 hover:text-black border border-white/10 rounded-md text-emerald-500 transition-all cursor-pointer inline-flex items-center gap-1 shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]">ID {app.offerId} <span className="text-[10px] font-black">↗</span></Link></p>
-                                  <div className="mt-2 flex items-center gap-2">
-    <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
-        <span className="text-[8px] text-emerald-500 font-black">👤</span>
-    </div>
-    <div className="flex flex-col">
-        {(() => {
-            const client = crmData?.contacts?.find((c: any) => String(c.id) === String(app.buyerId) || c.email === app.buyerId);
-            if (client) {
-                return (
-                    <>
-                        <span className="text-[10px] text-white font-bold uppercase tracking-widest">{client.name || client.email.split('@')[0]}</span>
-                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setViewingProfile(client); }} className="text-[8px] text-yellow-500 font-black uppercase tracking-widest mt-1.5 cursor-pointer hover:text-yellow-400 transition-colors inline-flex items-center gap-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 px-2.5 py-1 rounded-full border border-yellow-500/20 w-fit shadow-[0_0_10px_rgba(234,179,8,0.1)]"><span className="text-[10px]">★</span> Zobacz Profil</button>
-                    </>
-                );
-            }
-            return <span className="text-[10px] text-white/50 uppercase tracking-widest">Wczytywanie profilu...</span>;
-        })()}
-    </div>
-</div>
-                               </div>
-                               <motion.button whileHover={{ scale: 1.05, filter: 'brightness(1.1)' }} whileTap={{ scale: 0.95 }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManagingApp(app); }} style={{ backgroundColor: '#10b981', color: '#000', fontWeight: '900', padding: '12px 24px', borderRadius: '12px', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '2px', border: 'none', cursor: 'pointer', flexShrink: 0, boxShadow: '0 10px 20px rgba(16,185,129,0.3)' }}>ZARZĄDZAJ</motion.button>
-                            </div>
-                         ));
-                      })()}
-                   </div>
-                </motion.div>
-             </motion.div>
-          )}
-        </AnimatePresence>
 </div>
     
           <AnimatePresence>
@@ -1910,6 +1787,14 @@ export default function CRMDashboard() {
                const dates = Array.from({ length: 30 }).map((_, i) => { const d = new Date(); d.setDate(d.getDate() + i + 1); return d; });
                const hours = [];
                for (let h = 8; h <= 20; h++) { hours.push(`${h.toString().padStart(2, '0')}:00`); if (h !== 20) hours.push(`${h.toString().padStart(2, '0')}:30`); }
+               const myId = Number(currentUser?.id || 0);
+               const enriched = enrichAppointmentForUi(managingApp, myId, crmData.contacts || []);
+               const statusUpper = String(managingApp.status || '').toUpperCase();
+               const isAccepted = statusUpper === 'ACCEPTED';
+               const isPending = statusUpper === 'PENDING';
+               const cp = enriched.counterpartyDisplay;
+               const cpLabel = cp?.name || (cp?.email ? String(cp.email).split('@')[0] : 'Kontrahent');
+               const refreshPlanning = () => { if (currentUser?.id) void fetchData(currentUser.id); };
 
                return (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, backgroundColor: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
@@ -1932,9 +1817,9 @@ export default function CRMDashboard() {
                              )}
                              <div>
                                 <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#fff', margin: 0, letterSpacing: '-0.05em' }}>
-                                    {isRescheduling ? (rescheduleStep === 1 ? 'Wybierz Dzień' : rescheduleStep === 2 ? 'Wybierz Godzinę' : 'Wyślij') : (managingApp.status === 'ACCEPTED' ? 'Zatwierdzone' : 'Propozycja Terminu')}
+                                    {isRescheduling ? (rescheduleStep === 1 ? 'Wybierz Dzień' : rescheduleStep === 2 ? 'Wybierz Godzinę' : 'Wyślij') : (isAccepted ? 'Zatwierdzone' : 'Propozycja Terminu')}
                                 </h3>
-                                <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: managingApp.status === 'ACCEPTED' ? '#10b981' : '#D4AF37', margin: '4px 0 0 0' }}>{isRescheduling ? `KROK ${rescheduleStep} Z 3` : 'Negocjacje EstateOS'}</p>
+                                <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: isAccepted ? '#10b981' : '#D4AF37', margin: '4px 0 0 0' }}>{isRescheduling ? `KROK ${rescheduleStep} Z 3` : enriched.offerTitle}</p>
                              </div>
                           </div>
                           <motion.button whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManagingApp(null); setIsRescheduling(false); setRescheduleStep(1); }} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: '14px', transition: 'background-color 0.2s' }}>✕</motion.button>
@@ -1944,19 +1829,30 @@ export default function CRMDashboard() {
                           {!isRescheduling && (
                              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, overflow: 'hidden' }} style={{ backgroundColor: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)' }}>{managingApp.status === 'COUNTER' ? 'Nowa Propozycja' : 'Data i Czas'}</span>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)' }}>Data i czas</span>
                                    <span style={{ fontSize: '18px', fontWeight: '900', color: '#fff' }}>{new Date(managingApp.proposedDate).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
                                 <div style={{ width: '100%', height: '1px', backgroundColor: 'rgba(255,255,255,0.05)', marginBottom: '16px' }}></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Nieruchomość</span>
+                                   <div style={{ textAlign: 'right', maxWidth: '70%' }}>
+                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{enriched.offerTitle}</span>
+                                      <span style={{ fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.55)', display: 'block', marginTop: '4px' }}>
+                                        {isAccepted || enriched.offerAddress ? enriched.offerAddress || '—' : 'Adres widoczny po akceptacji terminu'}
+                                      </span>
+                                      {enriched.offer?.apartmentNumber ? (
+                                        <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>Nr lokalu: {enriched.offer.apartmentNumber}</span>
+                                      ) : null}
+                                      {enriched.offerId ? (
+                                        <span style={{ fontSize: '10px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '6px' }}>Oferta #{enriched.offerId}</span>
+                                      ) : null}
+                                   </div>
+                                </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Adres</span>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{enriched.needsMyResponse ? 'Propozycja od' : 'Kontrahent'}</span>
                                    <div style={{ textAlign: 'right' }}>
-                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{managingApp.status === 'ACCEPTED' ? (managingApp.offer?.address || 'Złota 44, Warszawa') : 'Ukryty przed akceptacją'}</span>
-                                      {managingApp.status === 'ACCEPTED' ? (
-                                          <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>Mieszkanie nr {managingApp.offer?.apartmentNumber || '12B'}</span>
-                                      ) : (
-                                          <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>ID oferty: {managingApp.offerId || managingApp.id}</span>
-                                      )}
+                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{cpLabel}</span>
+                                      {cp?.email ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', display: 'block', marginTop: '4px' }}>{cp.email}</span> : null}
                                    </div>
                                 </div>
                              </motion.div>
@@ -1966,26 +1862,30 @@ export default function CRMDashboard() {
 
                     <div className="custom-scrollbar" style={{ padding: '0 32px 32px 32px', overflowY: 'auto', flex: 1 }}>
                        <AnimatePresence mode="wait">
-                          {managingApp.status === 'ACCEPTED' && !isRescheduling ? (
+                          {isAccepted && !isRescheduling ? (
                              <motion.div key="accepted" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 <motion.button whileHover={{ scale: 1.02, backgroundColor: '#7f1d1d', borderColor: '#ef4444' }} whileTap={{ scale: 0.98 }} onClick={async () => {
-    if(!confirm('Czy na pewno chcesz odwołać to spotkanie? Kupujący otrzyma powiadomienie.')) return;
+    if(!confirm('Czy na pewno chcesz odwołać to spotkanie? Druga strona otrzyma powiadomienie.')) return;
     try {
         const res = await fetch('/api/appointments/respond', { credentials: 'include', 
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: managingApp.id, status: 'CANCELED', message: 'Sprzedający odwołał prezentację przez CRM.' })
+            body: JSON.stringify({ id: managingApp.id, status: 'DECLINED', message: 'Prezentacja odwołana przez CRM.' })
         });
         if(res.ok) {
             setManagingApp(null);
-            window.location.reload();
+            refreshPlanning();
         } else alert('Błąd: Nie udało się odwołać spotkania.');
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
 }} style={{ width: '100%', padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', cursor: 'pointer', transition: 'all 0.2s' }}>
                                     ⚠️ Odwołaj Prezentację
                                 </motion.button>
                              </motion.div>
-                          ) : !isRescheduling ? (
+                          ) : enriched.waitingOnOther && !isRescheduling ? (
+                             <motion.div key="waiting" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', textAlign: 'center' }}>
+                                <p style={{ color: '#eab308', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Oczekujesz na odpowiedź kontrahenta</p>
+                             </motion.div>
+                          ) : isPending && enriched.needsMyResponse && !isRescheduling ? (
                              <motion.div key="buttons" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', gap: '12px' }}>
                                 <motion.button whileHover={{ scale: 1.03, filter: 'brightness(1.15)' }} whileTap={{ scale: 0.95 }} onClick={async (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -1996,8 +1896,9 @@ export default function CRMDashboard() {
             body: JSON.stringify({ id: managingApp.id, status: 'ACCEPTED' })
         });
         if(res.ok) {
-            setManagingApp({...managingApp, status: 'ACCEPTED'});
-            setTimeout(() => window.location.reload(), 1500); 
+            const next = enrichAppointmentForUi({ ...managingApp, status: 'ACCEPTED' }, myId, crmData.contacts || []);
+            setManagingApp(next);
+            refreshPlanning();
         } else alert('Błąd: Nie udało się zapisać w bazie.');
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
 }} style={{ flex: 1, padding: '16px', borderRadius: '12px', backgroundColor: '#10b981', color: '#000', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 10px 20px rgba(16,185,129,0.3)' }}>
@@ -2007,6 +1908,8 @@ export default function CRMDashboard() {
                                     ZMIEŃ TERMIN
                                 </motion.button>
                              </motion.div>
+                          ) : !isRescheduling ? (
+                             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>Brak dostępnych akcji dla tego wpisu.</motion.div>
                           ) : (
                              <motion.div key="calendar" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
                                 
@@ -2056,10 +1959,11 @@ export default function CRMDashboard() {
             body: JSON.stringify({ id: managingApp.id, status: 'COUNTER', proposedDate: newIsoString })
         });
         if(res.ok) {
-            setManagingApp({...managingApp, status: 'COUNTER', proposedDate: newIsoString});
+            const next = enrichAppointmentForUi({ ...managingApp, status: 'PENDING', proposedDate: newIsoString }, myId, crmData.contacts || []);
+            setManagingApp(next);
             setIsRescheduling(false);
             setRescheduleStep(1);
-            setTimeout(() => window.location.reload(), 1500);
+            refreshPlanning();
         } else alert('Błąd: Nie udało się wysłać propozycji.');
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
 }} className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-[#0a0a0a] hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]">

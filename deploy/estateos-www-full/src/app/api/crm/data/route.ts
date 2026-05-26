@@ -64,14 +64,47 @@ export async function GET(req: Request) {
     // ==========================================
     // APPOINTMENTS (🔥 POPRAWIONE)
     // ==========================================
-    const appointments = await prisma.appointment.findMany({
+    const appointmentsRaw = await prisma.appointment.findMany({
       where: {
         dealId: { in: dealIds }
       },
       include: {
-        deal: true
+        deal: {
+          include: {
+            offer: true,
+            buyer: { select: { id: true, name: true, email: true, phone: true, image: true } },
+            seller: { select: { id: true, name: true, email: true, phone: true, image: true } },
+          },
+        },
+        proposedBy: { select: { id: true, name: true, email: true } },
       },
       orderBy: { proposedDate: 'asc' }
+    });
+
+    const appointments = appointmentsRaw.map((item) => {
+      const deal = item.deal;
+      const offer = deal.offer;
+      const counterparty =
+        deal.buyerId === finalUserId ? deal.seller : deal.buyer;
+      return {
+        ...item,
+        offerId: deal.offerId,
+        buyerId: deal.buyerId,
+        sellerId: deal.sellerId,
+        offer: offer
+          ? {
+              id: offer.id,
+              title: offer.title,
+              street: offer.street,
+              city: offer.city,
+              district: offer.district,
+              apartmentNumber: offer.apartmentNumber,
+              price: offer.price,
+              imageUrl: resolveOfferPrimaryImage(offer),
+            }
+          : null,
+        counterparty,
+      };
     });
 
     // ==========================================
