@@ -221,6 +221,10 @@ export const offer = {
       count: '{{count}} wyświetleń',
       countZero: '0 wyświetleń',
     },
+    legalVerified: {
+      label: 'zweryfikowane',
+      a11y: 'Księga wieczysta zweryfikowana przez EstateOS',
+    },
     stats: {
       rooms: '{{count}} Pokoje',
       floor: 'Piętro {{floor}}',
@@ -406,6 +410,13 @@ export const offer = {
       cover: 'Główne',
       footer:
         'Pierwsze zdjęcie pokazujemy w wynikach Radaru i jako okładkę oferty publicznej. Zmieniaj kolejność, aż dopasujesz idealny pierwszy kadr.',
+    },
+    floorPlan: {
+      sectionTitle: 'PLAN NIERUCHOMOŚCI',
+      upload: 'Dodaj lub zmień rzut',
+      replace: 'Zmień plan',
+      remove: 'Usuń plan',
+      hint: 'Rzut lokalu zwiększa zaufanie — kupujący widzą układ pomieszczeń przed wizytą.',
     },
     mainInfo: {
       sectionTitle: 'INFORMACJE GŁÓWNE',

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { PasskeyService } from '../services/passkeyService'; // 🔥 IMPORT NASZEGO SERWISU!
+import { markPasskeyEnabledForUser } from '../utils/passkeyBootstrap';
 import { stopRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
 import {
@@ -464,6 +465,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await AsyncStorage.setItem('user_data', JSON.stringify(normUser));
         if (hintEmail) {
           await AsyncStorage.setItem('@estateos_last_login_email', hintEmail);
+        }
+        if (normUser?.id) {
+          await markPasskeyEnabledForUser(normUser.id);
         }
         set({ user: normUser, token: normalizedToken, isLoading: false });
         await get().refreshUser();

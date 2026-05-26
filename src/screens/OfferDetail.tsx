@@ -52,7 +52,9 @@ import BlockUserSheet from '../components/BlockUserSheet';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { useFocusEffect } from '@react-navigation/native';
 import { deriveOfferDealPresentation } from '../utils/offerDealPresentation';
-import UserRegionFlag from '../components/UserRegionFlag';
+import ProfilePublicHeader from '../components/ProfilePublicHeader';
+import ProfileReputationBlock from '../components/ProfileReputationBlock';
+import LegalVerifiedShieldBadge from '../components/LegalVerifiedShieldBadge';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
 import { useMoneyContext } from '../money/useMoneyContext';
@@ -1278,13 +1280,6 @@ export default function OfferDetail({ route, navigation }: any) {
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
-            {/*
-              Wcześniej tu była zielona pigułka „+ czynsz admin {kwota} PLN".
-              Została przeniesiona do dolnego paska CTA — bezpośrednio pod
-              ceną — żeby cała informacja o cenie i jej składnikach była
-              w jednym miejscu. Tutaj zostawiamy tylko widget „liczby
-              wyświetleń / Nowa oferta" jako neutralny meta-badge.
-            */}
             <View style={[styles.viewsBadge, { backgroundColor: isDark ? '#1c1c1e' : '#f3f4f6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)' }]}>
               <Eye color={isDark ? "#9ca3af" : "#374151"} size={14} />
               <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>
@@ -1293,6 +1288,13 @@ export default function OfferDetail({ route, navigation }: any) {
                   : t('offer.detail.views.countZero')}
               </Text>
             </View>
+            {isLegalSafeVerified ? (
+              <View style={styles.topMetaCenterBadge}>
+                <LegalVerifiedShieldBadge isDark={isDark} compact />
+              </View>
+            ) : (
+              <View style={styles.topMetaCenterSpacer} />
+            )}
             {isNewOfferListing ? (
               <Animated.View
                 style={[
@@ -1308,7 +1310,9 @@ export default function OfferDetail({ route, navigation }: any) {
                   {t('offer.detail.views.newOfferBadge')}
                 </Text>
               </Animated.View>
-            ) : null}
+            ) : (
+              <View style={styles.topMetaEndSpacer} />
+            )}
           </View>
           
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
@@ -2039,55 +2043,18 @@ export default function OfferDetail({ route, navigation }: any) {
               </View>
             ) : (
               <>
-                <View style={{ alignItems: 'center', marginBottom: 12 }}>
-                  <UserRegionFlag
-                    phone={activeProfileData?.user?.phone || activeProfileData?.user?.contactPhone}
-                    fallbackIso="PL"
-                    size={40}
-                    isDark={isDark}
-                  />
-                </View>
-                <Text style={styles.profileName}>{activeProfileData?.user?.name || t('offer.detail.profile.userFallback')}</Text>
-                <EliteStatusBadges subject={activeProfileData?.user || activeProfileData} isDark compact />
-                <Text style={styles.profileMeta}>{t('offer.detail.profile.idLabel', { id: activeProfileData?.user?.id || activeProfileUserId || offer?.userId || '-' })}</Text>
-
-                <View style={styles.profileRatingBox}>
-                  <Text style={styles.profileRatingValue}>
-                    {(
-                      (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
-                        ? (
-                            activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
-                            activeProfileData.reviews.length
-                          )
-                        : 0
-                    ).toFixed(1)}
-                  </Text>
-                  <View style={styles.profileStarsRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Star
-                        key={s}
-                        size={14}
-                        color={s <= Math.round(
-                          (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
-                            ? (
-                                activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
-                                activeProfileData.reviews.length
-                              )
-                            : 0
-                        ) ? '#f59e0b' : '#4b5563'}
-                        fill={s <= Math.round(
-                          (Array.isArray(activeProfileData?.reviews) && activeProfileData.reviews.length > 0)
-                            ? (
-                                activeProfileData.reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) /
-                                activeProfileData.reviews.length
-                              )
-                            : 0
-                        ) ? '#f59e0b' : 'transparent'}
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.profileMuted}>{t('offer.detail.profile.reviewsCount', { count: Array.isArray(activeProfileData?.reviews) ? activeProfileData.reviews.length : 0 })}</Text>
-                </View>
+                <ProfilePublicHeader
+                  user={activeProfileData?.user || activeProfileData}
+                  idLabel={t('offer.detail.profile.idLabel', {
+                    id: activeProfileData?.user?.id || activeProfileUserId || offer?.userId || '-',
+                  })}
+                  isDark
+                />
+                <ProfileReputationBlock
+                  reviews={Array.isArray(activeProfileData?.reviews) ? activeProfileData.reviews : []}
+                  reviewsCountLabel={(count) => t('offer.detail.profile.reviewsCount', { count })}
+                  isDark
+                />
 
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
                   {!Array.isArray(activeProfileData?.reviews) || activeProfileData.reviews.length === 0 ? (
@@ -2407,7 +2374,16 @@ const styles = StyleSheet.create({
   },
   contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, minHeight: 800, shadowColor: '#000', shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 10 },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
-  topMetaBadgesRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 },
+  topMetaBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+  },
+  topMetaCenterBadge: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  topMetaCenterSpacer: { flex: 1 },
+  topMetaEndSpacer: { minWidth: 0 },
   adminFeeBadge: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(52,199,89,0.12)',

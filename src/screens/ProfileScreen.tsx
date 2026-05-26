@@ -13,6 +13,9 @@ import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
 import UserRegionFlag from '../components/UserRegionFlag';
+import ProfilePublicHeader from '../components/ProfilePublicHeader';
+import ProfileReputationBlock from '../components/ProfileReputationBlock';
+import { markPasskeyEnabledForUser, clearPasskeyLocalForUser } from '../utils/passkeyBootstrap';
 import { getDeviceRegionCountry } from '../utils/phoneRegions';
 import AuthScreen from './AuthScreen';
 import { useThemeStore, ThemeMode } from '../store/useThemeStore';
@@ -2795,7 +2798,7 @@ function ProfileScreenLoggedIn({
         if (serverHas !== null) {
           setIsPasskeyActive(serverHas);
           if (serverHas) {
-            await AsyncStorage.setItem(`@passkey_${user.id}`, 'active');
+            await markPasskeyEnabledForUser(user.id);
           } else {
             await AsyncStorage.removeItem(`@passkey_${user.id}`);
           }
@@ -2947,7 +2950,7 @@ function ProfileScreenLoggedIn({
               }
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setIsPasskeyActive(false);
-              await AsyncStorage.removeItem(`@passkey_${user.id}`);
+              await clearPasskeyLocalForUser(user.id);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (err: any) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -4055,30 +4058,24 @@ function ProfileScreenLoggedIn({
               </View>
             ) : (
               <>
-                <View style={{ alignItems: 'center', marginBottom: 10 }}>
-                  <UserRegionFlag
-                    phone={ownPublicProfile?.user?.phone || user?.phone}
-                    fallbackIso={getDeviceRegionCountry()}
-                    size={44}
-                  />
-                </View>
-                <Text style={styles.profileName}>{ownPublicProfile?.user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || t('profile.publicProfile.userFallback')}</Text>
-                <EliteStatusBadges subject={ownPublicProfile?.user || user} isDark compact />
-                <Text style={styles.profileMeta}>{t('profile.publicProfile.id', { id: user?.id || '-' })}</Text>
-                <View style={styles.profileRatingBox}>
-                  <Text style={styles.profileRatingValue}>{ownAverageRating.toFixed(1)}</Text>
-                  <View style={styles.profileStarsRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <Ionicons
-                        key={s}
-                        name={s <= Math.round(ownAverageRating) ? 'star' : 'star-outline'}
-                        size={14}
-                        color="#f59e0b"
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.profileMuted}>{t('profile.publicProfile.reviewsCount', { count: ownReviews.length })}</Text>
-                </View>
+                <ProfilePublicHeader
+                  user={{
+                    ...(ownPublicProfile?.user || user),
+                    name:
+                      ownPublicProfile?.user?.name ||
+                      `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+                      t('profile.publicProfile.userFallback'),
+                    image: ownPublicProfile?.user?.image || user?.image,
+                    companyName: ownPublicProfile?.user?.companyName || user?.companyName,
+                  }}
+                  idLabel={t('profile.publicProfile.id', { id: user?.id || '-' })}
+                  isDark
+                />
+                <ProfileReputationBlock
+                  reviews={ownReviews}
+                  reviewsCountLabel={(count) => t('profile.publicProfile.reviewsCount', { count })}
+                  isDark
+                />
 
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
                   {ownReviews.length === 0 ? (

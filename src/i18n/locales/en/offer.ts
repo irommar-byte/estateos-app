@@ -221,6 +221,10 @@ export const offer = {
       count: '{{count}} views',
       countZero: '0 views',
     },
+    legalVerified: {
+      label: 'verified',
+      a11y: 'Land registry verified by EstateOS',
+    },
     stats: {
       rooms: '{{count}} rooms',
       floor: 'Floor {{floor}}',
@@ -406,6 +410,13 @@ export const offer = {
       cover: 'Cover',
       footer:
         'We show the first photo in Radar results and as the public listing cover. Reorder until the first frame is perfect.',
+    },
+    floorPlan: {
+      sectionTitle: 'FLOOR PLAN',
+      upload: 'Add or change floor plan',
+      replace: 'Change plan',
+      remove: 'Remove plan',
+      hint: 'A floor plan builds trust — buyers see the layout before a viewing.',
     },
     mainInfo: {
       sectionTitle: 'MAIN INFORMATION',

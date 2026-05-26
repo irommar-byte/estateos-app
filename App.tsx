@@ -53,6 +53,7 @@ import Step4_Finance from './src/screens/AddOffer/Step4_Finance';
 import Step5_Media from './src/screens/AddOffer/Step5_Media';
 import Step6_Summary from './src/screens/AddOffer/Step6_Summary';
 import AuthScreen from './src/screens/AuthScreen';
+import PasskeyLaunchPrompt from './src/components/PasskeyLaunchPrompt';
 import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './src/screens/AddOffer/flow';
 
 const Colors = {
@@ -1416,6 +1417,7 @@ export default function App() {
         <I18nProvider>
         <BonusCouponNotifyBootstrap />
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
+        <PasskeyLaunchPrompt ready={!isSplashVisible} />
         <NavigationContainer
           ref={navigationRef}
           theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}

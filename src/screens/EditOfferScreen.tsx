@@ -202,6 +202,10 @@ export default function EditOfferScreen({ route }: any) {
   // --- ZMIENNE FORMULARZA ---
   const [images, setImages] = useState<EditableImage[]>([]);
   const [originalImageKeys, setOriginalImageKeys] = useState<string[]>([]);
+  const [floorPlanPreview, setFloorPlanPreview] = useState<string | null>(null);
+  const [floorPlanLocalUri, setFloorPlanLocalUri] = useState<string | null>(null);
+  const [floorPlanCleared, setFloorPlanCleared] = useState(false);
+  const [originalFloorPlanKey, setOriginalFloorPlanKey] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
@@ -327,6 +331,20 @@ export default function EditOfferScreen({ route }: any) {
             }));
             setImages(mapped);
             setOriginalImageKeys(mapped.map((i: EditableImage) => i.serverPath || i.uri));
+          }
+
+          const floorPlanRaw = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
+          if (floorPlanRaw) {
+            const serverPath = toServerPath(floorPlanRaw);
+            setOriginalFloorPlanKey(serverPath);
+            setFloorPlanPreview(toAbsoluteImageUrl(floorPlanRaw));
+            setFloorPlanLocalUri(null);
+            setFloorPlanCleared(false);
+          } else {
+            setOriginalFloorPlanKey(null);
+            setFloorPlanPreview(null);
+            setFloorPlanLocalUri(null);
+            setFloorPlanCleared(false);
           }
 
           setAmenities({
@@ -512,6 +530,27 @@ export default function EditOfferScreen({ route }: any) {
         Alert.alert(t('offer.edit.alerts.photoLimitTitle'), t('offer.edit.alerts.photoLimitPartial', { count: slotsLeft, max: MAX_IMAGES }));
       }
     }
+  };
+
+  const pickFloorPlan = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 0.88,
+    });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setFloorPlanLocalUri(result.assets[0].uri);
+      setFloorPlanPreview(result.assets[0].uri);
+      setFloorPlanCleared(false);
+    }
+  };
+
+  const removeFloorPlan = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setFloorPlanPreview(null);
+    setFloorPlanLocalUri(null);
+    setFloorPlanCleared(true);
   };
 
   const removeImage = (indexToRemove: number) => {
@@ -731,6 +770,9 @@ export default function EditOfferScreen({ route }: any) {
     if (isAgentUser && resolvedCommission !== undefined) {
       updatePayload.agentCommissionPercent = resolvedCommission;
     }
+    if (floorPlanCleared) {
+      updatePayload.floorPlanUrl = null;
+    }
 
     try {
       const stringifySaveError = (data: any, response: Response) =>
@@ -845,6 +887,35 @@ export default function EditOfferScreen({ route }: any) {
         if (!uploadRes.ok) {
           const uploadErr = await uploadRes.text();
           throw new Error(uploadErr || `Upload zdjęcia ${i + 1} nie powiódł się.`);
+        }
+      }
+
+      if (floorPlanLocalUri) {
+        let localUri = floorPlanLocalUri;
+        let filename = localUri.split('/').pop() || `floorplan_${Date.now()}.jpg`;
+        const lower = localUri.toLowerCase();
+        if (lower.endsWith('.heic') || lower.endsWith('.heif')) {
+          const converted = await ImageManipulator.manipulateAsync(localUri, [], {
+            format: ImageManipulator.SaveFormat.JPEG,
+            compress: 0.88,
+          });
+          localUri = converted.uri;
+          filename = filename.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
+        } else if (!filename.match(/\.(jpg|jpeg|png|webp)$/i)) {
+          filename = `${filename}.jpg`;
+        }
+        const fpForm = new FormData();
+        fpForm.append('offerId', String(offerId));
+        fpForm.append('isFloorPlan', 'true');
+        fpForm.append('file', { uri: localUri, name: filename, type: 'image/jpeg' } as any);
+        const fpRes = await fetch(`${API_URL}/api/upload/mobile`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fpForm,
+        });
+        if (!fpRes.ok) {
+          const fpErr = await fpRes.text();
+          throw new Error(fpErr || t('addOffer.step5.alerts.floorPlanFailed.message'));
         }
       }
 
@@ -1307,6 +1378,49 @@ export default function EditOfferScreen({ route }: any) {
           <Text style={styles.sectionFooter}>
             {t('offer.edit.gallery.footer')}
           </Text>
+
+          <View style={styles.sectionHeaderContainer}>
+            <Text style={styles.sectionTitle}>{t('offer.edit.floorPlan.sectionTitle')}</Text>
+          </View>
+          <View style={[styles.premiumGroup, { backgroundColor: cardBg, padding: 12 }]}>
+            <Pressable
+              onPress={pickFloorPlan}
+              style={[
+                styles.floorPlanBox,
+                {
+                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)',
+                  backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                  height: floorPlanPreview ? 200 : 72,
+                },
+              ]}
+            >
+              {floorPlanPreview ? (
+                <Image source={{ uri: floorPlanPreview }} style={styles.floorPlanImage} contentFit="cover" />
+              ) : (
+                <View style={styles.floorPlanPlaceholder}>
+                  <Ionicons name="map-outline" size={24} color={primaryColor} />
+                  <Text style={[styles.floorPlanPlaceholderText, { color: primaryColor }]}>
+                    {t('offer.edit.floorPlan.upload')}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            {floorPlanPreview ? (
+              <View style={styles.floorPlanActions}>
+                <Pressable onPress={pickFloorPlan} style={styles.floorPlanActionBtn}>
+                  <Text style={[styles.floorPlanActionText, { color: primaryColor }]}>
+                    {t('offer.edit.floorPlan.replace')}
+                  </Text>
+                </Pressable>
+                <Pressable onPress={removeFloorPlan} style={styles.floorPlanActionBtn}>
+                  <Text style={[styles.floorPlanActionText, { color: '#ef4444' }]}>
+                    {t('offer.edit.floorPlan.remove')}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.sectionFooter}>{t('offer.edit.floorPlan.hint')}</Text>
 
           {/* ====== INFORMACJE GŁÓWNE ====== */}
           <Text style={styles.sectionTitle}>{t('offer.edit.mainInfo.sectionTitle')}</Text>
@@ -2692,6 +2806,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(16,185,129,0.30)',
   },
   galleryHintText: { flex: 1, fontSize: 12, color: '#10B981', fontWeight: '600', lineHeight: 16 },
+  floorPlanBox: {
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floorPlanImage: { width: '100%', height: '100%' },
+  floorPlanPlaceholder: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  floorPlanPlaceholderText: { fontSize: 14, fontWeight: '700' },
+  floorPlanActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, gap: 12 },
+  floorPlanActionBtn: { flex: 1, alignItems: 'center', paddingVertical: 8 },
+  floorPlanActionText: { fontSize: 13, fontWeight: '700' },
 
   /* ===== SECTION HEADERS ===== */
   sectionHeaderContainer: {
