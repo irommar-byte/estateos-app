@@ -197,3 +197,36 @@ function wrapClosed(rawStatus: string, meta: ClosedMeta): OfferLifecycleState {
 export function isOfferClosed(offer: AnyObj | null | undefined, now: number = Date.now()): boolean {
   return getOfferLifecycleState(offer, now).isClosed;
 }
+
+/** Okno „NOWA OFERTA" od momentu aktywacji na rynku. */
+export const OFFER_NEW_LISTING_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/** Najlepszy dostępny timestamp aktywacji / publikacji oferty. */
+export function resolveOfferActivationMs(offer: AnyObj | null | undefined): number | null {
+  if (!offer || typeof offer !== 'object') return null;
+  const candidates = [
+    offer.activatedAt,
+    offer.publishedAt,
+    offer.activeAt,
+    offer.statusChangedAt,
+    offer.promotedAt,
+    offer.createdAt,
+    offer.updatedAt,
+  ];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const ms = new Date(String(raw)).getTime();
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return null;
+}
+
+/** Oferta aktywna na rynku nie dłużej niż 48 h — badge „NOWA OFERTA". */
+export function isOfferNewListing(offer: AnyObj | null | undefined, now: number = Date.now()): boolean {
+  if (!offer || typeof offer !== 'object') return false;
+  const status = normalize(offer.status ?? offer.state ?? '');
+  if (status && status !== 'ACTIVE') return false;
+  const activatedMs = resolveOfferActivationMs(offer);
+  if (!activatedMs) return false;
+  return now - activatedMs <= OFFER_NEW_LISTING_WINDOW_MS;
+}

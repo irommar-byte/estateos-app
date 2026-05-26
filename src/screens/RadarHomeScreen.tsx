@@ -44,6 +44,11 @@ import {
 } from '../utils/radarRecentAreas';
 import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
+import {
+  fetchRadarPreferenceForUser,
+  mapContextForCanonicalDto,
+  radarFiltersFromApiPreference,
+} from '../utils/radarPreferenceSync';
 import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import {
   STRICT_CITIES,
@@ -1010,6 +1015,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       prev.pushNotifications === isRadarActive ? prev : { ...prev, pushNotifications: !!isRadarActive }
     );
   }, [user, isRadarActive]);
+
+  /** Jedno źródło prawdy z backendem (RadarPreference) — parity z CRM WWW. */
+  useEffect(() => {
+    const userId = Number(user?.id || 0);
+    if (!userId) return;
+    let cancelled = false;
+    void (async () => {
+      const pref = await fetchRadarPreferenceForUser(API_URL, userId, token);
+      if (cancelled || !pref) return;
+      const { filters, mapBounds } = radarFiltersFromApiPreference(pref, defaultRadarFilters);
+      setRadarFilters((prev) => ({
+        ...filters,
+        pushNotifications: prev.pushNotifications,
+      }));
+      if (mapBounds) {
+        setRadarMapBounds(mapBounds);
+        setMapUsesRadarFilters(true);
+        setAreaSummary(`${filters.city || 'Obszar'} · ${mapBounds.radiusKm} km`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, token]);
   /** Po kalibracji / zaznaczeniu obszaru filtry radaru (cena, skala %, krąg mapy) mają wpływać na listę i mapę. */
   const [mapUsesRadarFilters, setMapUsesRadarFilters] = useState(false);
   /** Środek i promień zaznaczone na mapie — przy 100% skali tylko oferty wewnątrz tego kręgu. */
@@ -1711,7 +1740,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     useCallback(() => {
       let mounted = true;
       const loadFavorites = async () => {
-        const ids = await loadFavoriteIds();
+        const ids = await loadFavoriteIds({
+          apiBaseUrl: API_URL,
+          accessToken: token || null,
+        });
         if (!mounted) return;
         setFavorites(ids);
       };
@@ -1719,7 +1751,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       return () => {
         mounted = false;
       };
-    }, [showOnlyFavorites])
+    }, [showOnlyFavorites, token])
   );
 
   useEffect(() => {
@@ -2931,11 +2963,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const dto = buildCanonicalRadarPreferencesDto({
         userId: Number(user.id),
         filters: payload,
-        mapContext: {
-          lat: radarMapBounds?.centerLat,
-          lng: radarMapBounds?.centerLng,
-          radius: radarMapBounds?.radiusKm,
-        },
+        mapContext: mapContextForCanonicalDto(payload, radarMapBounds),
       });
       await fetch(`${API_URL}/api/radar/preferences`, {
         method: 'POST',
@@ -3004,11 +3032,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           const dto = buildCanonicalRadarPreferencesDto({
             userId: Number(user.id),
             filters: filtersToApply,
-            mapContext: {
-              lat: radarMapBounds?.centerLat,
-              lng: radarMapBounds?.centerLng,
-              radius: radarMapBounds?.radiusKm,
-            },
+            mapContext: mapContextForCanonicalDto(filtersToApply, radarMapBounds),
           });
           await fetch(`${API_URL}/api/radar/preferences`, {
             method: 'POST',
@@ -3383,7 +3407,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const toggleFavorite = async (offerId: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { ids } = await toggleFavoriteId(offerId, favorites);
+    const { ids } = await toggleFavoriteId(offerId, favorites, {
+      apiBaseUrl: API_URL,
+      accessToken: token || null,
+    });
     setFavorites(ids);
   };
 

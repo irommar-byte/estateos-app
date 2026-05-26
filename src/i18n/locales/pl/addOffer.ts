@@ -301,11 +301,12 @@ export const addOffer = {
       titleZero: 'Oferta bez prowizji',
       subtitleZero:
         'Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.',
-      subtitleDefaultPrefix: 'Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny',
+      subtitleDefaultPrefix:
+        'Cena ofertowa to ostateczna kwota brutto. Kupujący po transakcji z tej kwoty wypłaci Tobie',
       subtitleDefaultSuffix:
-        'stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.',
+        'jako prowizję — bezpośrednio (maks. 10% ceny ofertowej).',
       subtitleVatNote:
-        'Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.',
+        'Prowizja jest brutto (z VAT). Kupujący nie dopłaca nic ponad cenę ofertową i uzgodnioną kwotę prowizji.',
       addDefault: 'Prowizja {{percent}}',
       addZero: 'Bez prowizji',
       label: 'Prowizja',
@@ -315,9 +316,9 @@ export const addOffer = {
       amountZero: 'BEZ PROWIZJI',
       amountEmpty: '— PLN',
       amountHintZero: 'Kupujący nie płaci prowizji.',
-      amountHintDefault: 'To Twoje wynagrodzenie z transakcji.',
+      amountHintDefault: 'Wypłata z ceny ofertowej brutto po transakcji (max. 10%).',
       warnRange:
-        'Prowizja musi być równa 0% (bez prowizji) lub w zakresie {{min}}–{{max}}.',
+        'Prowizja: 0% (bez prowizji) albo {{min}}–{{max}} ceny ofertowej brutto (maks. 10%).',
     },
     footerHint:
       'Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku.',
@@ -538,11 +539,12 @@ export const addOffer = {
       subtitleZeroHighlight: 'nie płaci prowizji',
       subtitleZeroSuffix:
         'na tej ofercie. Adnotacja „Bez prowizji” pojawi się przy ogłoszeniu — buduje zaufanie i przyciąga uwagę.',
-      subtitleDefaultPrefix: 'Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny',
+      subtitleDefaultPrefix:
+        'Cena ofertowa to ostateczna kwota brutto. Kupujący po transakcji z tej kwoty wypłaci agentowi',
       subtitleDefaultSuffix:
-        'stanowi Twoją prowizję — opłacaną bezpośrednio agentowi po sfinalizowaniu transakcji.',
+        'jako prowizję — bezpośrednio (maks. 10% ceny ofertowej).',
       subtitleVatNote:
-        'Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.',
+        'Prowizja jest brutto (z VAT). Kupujący nie dopłaca nic ponad cenę ofertową i uzgodnioną kwotę prowizji.',
     },
     sections: {
       parameters: 'PARAMETRY NIERUCHOMOŚCI',

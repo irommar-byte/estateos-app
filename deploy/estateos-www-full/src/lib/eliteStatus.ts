@@ -1,57 +1,99 @@
-import {
-  isAgentOfferIdentity,
-  isAgentRoleIdentity,
-  isInvestorProIdentity,
-  isPartnerIdentity,
-} from "@/utils/partnerIdentity";
+import { isAgentRoleIdentity, isPartnerIdentity } from '@/utils/partnerIdentity';
 
 export type EliteBadges = {
-  /** Pomarańczowy pin / oferta agentska */
-  isAgentOffer: boolean;
-  /** Plakietka „Agent EstateOS” (rola AGENT) */
+  isAdmin: boolean;
   isAgent: boolean;
-  /** Plakietka programu partnerskiego (legacy PARTNER/AGENCY) */
   isProgramPartner: boolean;
-  /** Investor Pro — Radar bez embargo, PRO w CRM */
-  isInvestorPro: boolean;
-  /** Kompatybilność API/map — agent lub program partner */
-  isPartner: boolean;
-};
-
-/** @deprecated Użyj `resolveEliteBadges` — zachowane dla mapy/list. */
-export type LegacyEliteBadges = {
-  isPartner: boolean;
   isInvestorPro: boolean;
 };
 
-export function resolveEliteBadges(subject: any): EliteBadges {
-  if (!subject || typeof subject !== "object") {
-    return {
-      isAgentOffer: false,
-      isAgent: false,
-      isProgramPartner: false,
-      isInvestorPro: false,
-      isPartner: false,
-    };
-  }
+const INVESTOR_PRO_VALUES = new Set(['INVESTOR_PRO', 'PRO', 'INVESTOR-PRO', 'INVESTOR PRO']);
+const INVESTOR_PRO_SUBSCRIPTION_VALUES = new Set(['ACTIVE', 'TRIALING', 'PAID', 'OK']);
 
-  const isAgent = isAgentRoleIdentity(subject);
-  const isProgramPartner = isPartnerIdentity(subject) && !isAgent;
-  const isAgentOffer = isAgentOfferIdentity(subject);
-  return {
-    isAgentOffer,
-    isAgent,
-    isProgramPartner,
-    isInvestorPro: isInvestorProIdentity(subject),
-    isPartner: isAgentOffer || isProgramPartner,
-  };
+const INVESTOR_PLAN_PATHS = [
+  'plan',
+  'planType',
+  'tier',
+  'subscriptionPlan',
+  'user.plan',
+  'user.planType',
+  'user.tier',
+  'user.subscriptionPlan',
+];
+
+const INVESTOR_SUBSCRIPTION_STATUS_PATHS = [
+  'subscriptionStatus',
+  'status',
+  'paymentStatus',
+  'subscription.status',
+  'subscription.subscriptionStatus',
+  'user.subscriptionStatus',
+  'user.subscription.status',
+];
+
+function normalizeValue(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .replace(/_/g, '_');
 }
 
-/** Kompatybilność wsteczna: `isPartner` = agent na mapie LUB program partner. */
-export function resolveLegacyEliteBadges(subject: any): LegacyEliteBadges {
-  const b = resolveEliteBadges(subject);
+function getPathValue(subject: any, path: string): unknown {
+  return path.split('.').reduce<unknown>((acc, part) => {
+    if (acc === null || acc === undefined) return undefined;
+    if (typeof acc !== 'object') return undefined;
+    return (acc as Record<string, unknown>)[part];
+  }, subject);
+}
+
+function firstBoolean(subject: any, paths: string[]): boolean {
+  for (const path of paths) {
+    const value = getPathValue(subject, path);
+    if (typeof value === 'boolean') return value;
+  }
+  return false;
+}
+
+function valuesFromPaths(subject: any, paths: string[]): string[] {
+  const values: string[] = [];
+  for (const path of paths) {
+    const value = getPathValue(subject, path);
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string' || typeof value === 'number') {
+      values.push(normalizeValue(value));
+    }
+  }
+  return values;
+}
+
+/** Plakietki zgodne z aplikacją mobilną — Agent ≠ Partner. */
+export function resolveEliteBadges(subject: any): EliteBadges {
+  if (!subject || typeof subject !== 'object') {
+    return { isAdmin: false, isAgent: false, isProgramPartner: false, isInvestorPro: false };
+  }
+
+  const role = normalizeValue(subject.role ?? subject.user?.role);
+  const isAdmin = role === 'ADMIN';
+  const isAgent = isAgentRoleIdentity(subject);
+  const isProgramPartner =
+    !isAdmin && !isAgent && isPartnerIdentity(subject);
+
+  const explicitPro = firstBoolean(subject, ['isPro', 'user.isPro']);
+  const investorPlanTokens = valuesFromPaths(subject, INVESTOR_PLAN_PATHS);
+  const hasInvestorProPlan = investorPlanTokens.some((token) => INVESTOR_PRO_VALUES.has(token));
+  const hasPlanContainingPro = investorPlanTokens.some((token) => token.includes('PRO'));
+  const subscriptionStatusTokens = valuesFromPaths(subject, INVESTOR_SUBSCRIPTION_STATUS_PATHS);
+  const hasActiveSubscriptionStatus = subscriptionStatusTokens.some((token) =>
+    INVESTOR_PRO_SUBSCRIPTION_VALUES.has(token),
+  );
+  const isInvestorPro =
+    explicitPro || hasInvestorProPlan || (hasActiveSubscriptionStatus && hasPlanContainingPro);
+
   return {
-    isPartner: b.isAgentOffer || b.isProgramPartner,
-    isInvestorPro: b.isInvestorPro,
+    isAdmin,
+    isAgent,
+    isProgramPartner,
+    isInvestorPro,
   };
 }

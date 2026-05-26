@@ -87,10 +87,10 @@ export function formatApproxLine(
   const r = rate > 0 ? rate : DEFAULT_EUR_PLN_RATE;
   if (currency === 'PLN') {
     const eur = listingAmountFromPln(amount, 'EUR', r);
-    return `≈ ${formatAmountWithCurrency(eur, 'EUR')} (kurs ${r.toFixed(4)} PLN/EUR)`;
+    return `≈ ${formatAmountWithCurrency(eur, 'EUR')}`;
   }
   const pln = plnFromListingAmount(amount, 'EUR', r);
-  return `≈ ${formatAmountWithCurrency(pln, 'PLN')} (kurs ${r.toFixed(4)} PLN/EUR)`;
+  return `≈ ${formatAmountWithCurrency(pln, 'PLN')}`;
 }
 
 export type FormattedOfferPrice = {
@@ -130,9 +130,5 @@ export function formatOfferPriceDisplay(params: {
   } else {
     secondary = formatApproxLine(listingAmount, listingCurrency, params.rate);
   }
-  if (secondary && params.rateDate) {
-    secondary = `${secondary} · ${params.rateDate}`;
-  }
-
   return { primary, secondary, listingCurrency, listingAmount, plnAmount };
 }

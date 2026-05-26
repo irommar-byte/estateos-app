@@ -61,7 +61,13 @@ import {
   isMobileAgentRole,
   isZeroCommissionPercent,
   parseAgentCommissionPercent,
+  commissionAmountInputToPercent,
+  previewAmountFromPercentDraft,
+  previewPercentFromAmountDraft,
+  resolveAgentCommissionPercentForSave,
+  shouldWarnCommissionPercentDraft,
   roundToQuarter,
+  type AgentCommissionInputMode,
   validateAgentCommissionPercent,
 } from '../lib/agentCommission';
 import { API_URL } from '../config/network';
@@ -218,6 +224,10 @@ export default function EditOfferScreen({ route }: any) {
    * Inna wartość = standardowa prowizja w zakresie 0.5%–10%.
    */
   const [agentCommissionPercent, setAgentCommissionPercent] = useState<string>('');
+  const [commissionInputMode, setCommissionInputMode] = useState<AgentCommissionInputMode>('percent');
+  const [agentCommissionAmountDraft, setAgentCommissionAmountDraft] = useState<string>('');
+  const [commissionPercentFocused, setCommissionPercentFocused] = useState(false);
+  const [commissionAmountFocused, setCommissionAmountFocused] = useState(false);
   const [condition, setCondition] = useState<'READY' | 'DEVELOPER' | 'TO_RENOVATION'>('READY');
   const [isExactLocation, setIsExactLocation] = useState(true);
   const [amenities, setAmenities] = useState({
@@ -281,6 +291,8 @@ export default function EditOfferScreen({ route }: any) {
             setAgentCommissionPercent('0');
           } else {
             setAgentCommissionPercent(String(cp).replace('.', ','));
+            const amt = computeAgentCommissionAmount(offer.priceAmount ?? offer.price, cp);
+            if (amt > 0) setAgentCommissionAmountDraft(String(amt));
           }
           setArea(offer.area?.toString() || '');
           setPlotArea(offer.plotArea?.toString() || '');
@@ -644,11 +656,25 @@ export default function EditOfferScreen({ route }: any) {
     const isAgentUser = isMobileAgentRole(user?.role);
     let resolvedCommission: number | null | undefined = undefined; // undefined = nie wysyłaj pola
     if (isAgentUser) {
+      if (commissionInputMode === 'amount') {
+        commitCommissionAmountDraft();
+      } else {
+        commitCommissionPercentDraft();
+      }
       const rawCommission = agentCommissionPercent?.toString().trim() ?? '';
-      if (rawCommission === '') {
+      const amountTrimmed = agentCommissionAmountDraft.trim();
+      if (
+        rawCommission === '' &&
+        (commissionInputMode !== 'amount' || amountTrimmed === '')
+      ) {
         resolvedCommission = null;
       } else {
-        const validation = validateAgentCommissionPercent(rawCommission);
+        const validation = resolveAgentCommissionPercentForSave({
+          mode: commissionInputMode,
+          percentRaw: rawCommission,
+          amountRaw: agentCommissionAmountDraft,
+          priceRaw: price,
+        });
         if (!validation.ok) {
           Alert.alert(t('offer.edit.alerts.commissionTitle'), validation.message);
           setSaving(false);
@@ -939,16 +965,14 @@ export default function EditOfferScreen({ route }: any) {
    * =========================================================== */
   const isAgentUserUI = isMobileAgentRole(user?.role);
   const commissionPercentParsed = parseAgentCommissionPercent(agentCommissionPercent);
-  const hasCommissionSlot = commissionPercentParsed !== null;
+  const hasCommissionSlot = String(agentCommissionPercent || '').trim() !== '';
   const isZeroCommission = isZeroCommissionPercent(commissionPercentParsed);
-  const commissionAmount = isZeroCommission
-    ? 0
-    : computeAgentCommissionAmount(price, commissionPercentParsed);
-  const commissionInRange =
-    commissionPercentParsed !== null &&
-    (commissionPercentParsed === AGENT_COMMISSION_ZERO_PERCENT ||
-      (commissionPercentParsed >= AGENT_COMMISSION_MIN_PERCENT &&
-        commissionPercentParsed <= AGENT_COMMISSION_MAX_PERCENT));
+  const commissionAmountPreview = previewAmountFromPercentDraft(price, agentCommissionPercent);
+  const commissionPercentPreview = previewPercentFromAmountDraft(price, agentCommissionAmountDraft);
+  const showCommissionRangeWarning = shouldWarnCommissionPercentDraft(agentCommissionPercent, {
+    isFocused: commissionPercentFocused || commissionAmountFocused,
+  });
+  const commissionInRange = !showCommissionRangeWarning;
 
   const commissionAccent = isZeroCommission ? '#10b981' : '#FF9F0A';
   const commissionAccentBgLight = isZeroCommission ? 'rgba(16,185,129,0.12)' : 'rgba(255,159,10,0.12)';
@@ -956,10 +980,44 @@ export default function EditOfferScreen({ route }: any) {
   const commissionAccentBorder = isZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.55)';
 
   const handleCommissionChange = (text: string) => {
-    // Akceptujemy tylko cyfry, kropkę i przecinek — agresywna walidacja
-    // dzieje się w `handleSave` (`validateAgentCommissionPercent`).
-    const cleaned = text.replace(/[^0-9.,]/g, '');
-    setAgentCommissionPercent(cleaned);
+    setAgentCommissionPercent(text.replace(/[^0-9.,]/g, ''));
+  };
+
+  const handleCommissionAmountChange = (text: string) => {
+    setAgentCommissionAmountDraft(text.replace(/[^\d]/g, ''));
+  };
+
+  const commitCommissionAmountDraft = () => {
+    const trimmed = agentCommissionAmountDraft.trim();
+    if (!trimmed) {
+      setAgentCommissionAmountDraft('');
+      setAgentCommissionPercent('');
+      return;
+    }
+    const synced = commissionAmountInputToPercent(price, trimmed);
+    if (!synced) return;
+    setAgentCommissionAmountDraft(String(synced.amountPln));
+    setAgentCommissionPercent(String(synced.percent).replace('.', ','));
+  };
+
+  const commitCommissionPercentDraft = () => {
+    const trimmed = String(agentCommissionPercent || '').trim();
+    if (!trimmed) {
+      setAgentCommissionPercent('');
+      return;
+    }
+    const parsed = parseAgentCommissionPercent(trimmed);
+    if (parsed === null) return;
+    if (parsed === 0) {
+      setAgentCommissionPercent('0');
+      setAgentCommissionAmountDraft('0');
+      return;
+    }
+    const snapped = roundToQuarter(
+      Math.min(AGENT_COMMISSION_MAX_PERCENT, Math.max(AGENT_COMMISSION_MIN_PERCENT, parsed)),
+    );
+    setAgentCommissionPercent(String(snapped).replace('.', ','));
+    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(price, snapped)));
   };
 
   /** Zmiana o ±0.25 z preserwacją „twardych" przejść:
@@ -981,6 +1039,7 @@ export default function EditOfferScreen({ route }: any) {
       Math.min(AGENT_COMMISSION_MAX_PERCENT, roundToQuarter(base + delta)),
     );
     setAgentCommissionPercent(String(next).replace('.', ','));
+    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(price, next)));
   };
 
   const enableDefaultCommission = () => {
@@ -1671,25 +1730,82 @@ export default function EditOfferScreen({ route }: any) {
                       },
                     ]}
                   >
+                    <View style={styles.commissionModeRow}>
+                      {(['percent', 'amount'] as const).map((m) => {
+                        const active = commissionInputMode === m;
+                        return (
+                          <Pressable
+                            key={m}
+                            onPress={() => {
+                              setCommissionInputMode(m);
+                              if (m === 'amount') {
+                                if (commissionAmountPreview > 0) {
+                                  setAgentCommissionAmountDraft(String(commissionAmountPreview));
+                                }
+                              } else {
+                                commitCommissionAmountDraft();
+                              }
+                            }}
+                            style={[
+                              styles.commissionModeBtn,
+                              {
+                                backgroundColor: active ? commissionAccentBgStrong : 'transparent',
+                                borderColor: active ? commissionAccentBorder : borderColor,
+                              },
+                            ]}
+                          >
+                            <Text style={{ color: active ? commissionAccent : subColor, fontWeight: '800', fontSize: 11 }}>
+                              {m === 'percent' ? '%' : 'PLN'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                     <View style={styles.commissionRow}>
                       <View style={styles.commissionInputCol}>
-                        <Text style={[styles.commissionLabel, { color: subColor }]}>{t('offer.edit.commission.label')}</Text>
+                        <Text style={[styles.commissionLabel, { color: subColor }]}>
+                          {commissionInputMode === 'percent'
+                            ? t('offer.edit.commission.label')
+                            : t('offer.edit.commission.amountColOffer')}
+                        </Text>
                         <View
                           style={[
                             styles.commissionInputBox,
                             { backgroundColor: commissionAccentBgLight, borderColor: commissionAccentBorder },
                           ]}
                         >
-                          <TextInput
-                            style={[styles.commissionInput, { color: txtColor }]}
-                            value={String(agentCommissionPercent || '')}
-                            onChangeText={handleCommissionChange}
-                            placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
-                            placeholderTextColor={subColor}
-                            keyboardType="decimal-pad"
-                            maxLength={5}
-                          />
-                          <Text style={[styles.commissionInputSuffix, { color: txtColor }]}>%</Text>
+                          {commissionInputMode === 'percent' ? (
+                            <>
+                              <TextInput
+                                style={[styles.commissionInput, { color: txtColor }]}
+                                value={String(agentCommissionPercent || '')}
+                                onChangeText={handleCommissionChange}
+                                onFocus={() => setCommissionPercentFocused(true)}
+                                onBlur={() => {
+                                  setCommissionPercentFocused(false);
+                                  commitCommissionPercentDraft();
+                                }}
+                                placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
+                                placeholderTextColor={subColor}
+                                keyboardType="decimal-pad"
+                              />
+                              <Text style={[styles.commissionInputSuffix, { color: txtColor }]}>%</Text>
+                            </>
+                          ) : (
+                            <TextInput
+                              style={[styles.commissionInput, { color: txtColor, flex: 1 }]}
+                              value={agentCommissionAmountDraft}
+                              onChangeText={handleCommissionAmountChange}
+                              onFocus={() => setCommissionAmountFocused(true)}
+                              onBlur={() => {
+                                setCommissionAmountFocused(false);
+                                commitCommissionAmountDraft();
+                              }}
+                              placeholder="37000"
+                              placeholderTextColor={subColor}
+                              keyboardType="number-pad"
+                            />
+                          )}
                         </View>
                         <View style={styles.commissionStepRow}>
                           <Pressable
@@ -1717,7 +1833,11 @@ export default function EditOfferScreen({ route }: any) {
                       </View>
                       <View style={styles.commissionAmountCol}>
                         <Text style={[styles.commissionLabel, { color: subColor }]} numberOfLines={1}>
-                          {isZeroCommission ? t('offer.edit.commission.amountColBuyer') : t('offer.edit.commission.amountColOffer')}
+                          {commissionInputMode === 'amount'
+                            ? t('offer.edit.commission.label')
+                            : isZeroCommission
+                              ? t('offer.edit.commission.amountColBuyer')
+                              : t('offer.edit.commission.amountColOffer')}
                         </Text>
                         <Text
                           style={[styles.commissionAmountValue, { color: commissionAccent }]}
@@ -1725,11 +1845,20 @@ export default function EditOfferScreen({ route }: any) {
                           adjustsFontSizeToFit
                           minimumFontScale={0.5}
                         >
-                          {isZeroCommission
-                            ? t('offer.edit.commission.amountZero')
-                            : commissionAmount > 0
-                              ? formatPlnAmount(commissionAmount)
-                              : t('offer.edit.commission.amountEmpty')}
+                          {commissionInputMode === 'amount'
+                            ? commissionPercentPreview !== null
+                              ? formatPercentLabel(
+                                  Math.min(
+                                    AGENT_COMMISSION_MAX_PERCENT,
+                                    Math.max(0, commissionPercentPreview),
+                                  ),
+                                )
+                              : t('offer.edit.commission.amountEmpty')
+                            : isZeroCommission
+                              ? t('offer.edit.commission.amountZero')
+                              : commissionAmountPreview > 0
+                                ? formatPlnAmount(commissionAmountPreview)
+                                : t('offer.edit.commission.amountEmpty')}
                         </Text>
                         <Text style={[styles.commissionAmountHint, { color: subColor }]} numberOfLines={2}>
                           {isZeroCommission
@@ -1739,7 +1868,7 @@ export default function EditOfferScreen({ route }: any) {
                       </View>
                     </View>
 
-                    {!commissionInRange ? (
+                    {showCommissionRangeWarning ? (
                       <View style={styles.commissionWarn}>
                         <Ionicons name="warning-outline" size={14} color="#FF3B30" />
                         <Text style={[styles.commissionWarnText, { color: '#FF3B30' }]}>
@@ -2661,6 +2790,18 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     padding: 14,
     borderRadius: 14,
+    borderWidth: 1,
+  },
+  commissionModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    justifyContent: 'flex-end',
+  },
+  commissionModeBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
     borderWidth: 1,
   },
   commissionRow: {

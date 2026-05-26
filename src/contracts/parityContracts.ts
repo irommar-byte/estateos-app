@@ -307,9 +307,10 @@ export function buildCanonicalRadarPreferencesDto(params: {
   mapContext?: { lat?: unknown; lng?: unknown; radius?: unknown };
 }): CanonicalRadarPreferencesDto {
   const { userId, filters, mapContext } = params;
-  const lat = Number(mapContext?.lat);
-  const lng = Number(mapContext?.lng);
-  const radius = Number(mapContext?.radius);
+  const useMap = String(filters.calibrationMode || '').toUpperCase() === 'MAP';
+  const lat = useMap ? Number(mapContext?.lat) : NaN;
+  const lng = useMap ? Number(mapContext?.lng) : NaN;
+  const radius = useMap ? Number(mapContext?.radius) : NaN;
   return {
     userId,
     transactionType: filters.transactionType,

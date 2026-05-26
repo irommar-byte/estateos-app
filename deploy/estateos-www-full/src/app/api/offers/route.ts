@@ -19,13 +19,6 @@ import {
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
-import {
-  assertContactVerified,
-  contactVerificationJson,
-  loadUserForContactVerification,
-  PUBLISH_CONTACT_REQUIREMENTS,
-} from '@/lib/contactVerification';
-import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,7 +103,11 @@ export async function GET() {
 
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
-      const badges = resolveEliteBadges({ user });
+      const elite = resolveEliteBadges({ user });
+      const badges = {
+        ...elite,
+        isPartner: elite.isProgramPartner || elite.isAgent,
+      };
       const { cleanDescription, verification } = extractVerificationMeta(rest.description);
       const legal = computePublicLegalFields({
         description: rest.description,
@@ -174,9 +171,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const sessionUserId = await resolveWebUserId(req);
-    const bodyUserId = Number(body?.userId);
-    let resolvedUserId: number | null = sessionUserId;
+    let resolvedUserId: number | null = Number(body?.userId) || null;
 
     if (!resolvedUserId) {
       const cookieStore = await cookies();
@@ -184,48 +179,33 @@ export async function POST(req: Request) {
       const sessionCookie = cookieStore.get('estateos_session') || cookieStore.get('luxestate_user');
 
       let email = nextAuthSession?.user?.email || null;
-      let legacySessionUserId: number | null = null;
+      let sessionUserId: number | null = null;
 
       if (!email && sessionCookie?.value) {
         try {
           const sessionData = decryptSession(sessionCookie.value);
           email = sessionData?.email || null;
-          legacySessionUserId = Number(sessionData?.id) || null;
+          sessionUserId = Number(sessionData?.id) || null;
         } catch {
           email = null;
-          legacySessionUserId = null;
+          sessionUserId = null;
         }
       }
 
-      if (legacySessionUserId) {
-        resolvedUserId = legacySessionUserId;
+      if (sessionUserId) {
+        resolvedUserId = sessionUserId;
       } else if (email) {
         const user = await prisma.user.findUnique({
           where: { email: String(email) },
-          select: { id: true },
+          select: { id: true }
         });
         resolvedUserId = user?.id ?? null;
       }
     }
 
     if (!resolvedUserId) {
-      return NextResponse.json(
-        {
-          error: 'Zaloguj się, aby dodać ofertę.',
-          errorCode: 'AUTH_REQUIRED',
-          redirect: '/login?next=/dodaj-oferte',
-        },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Brak ID użytkownika' }, { status: 401 });
     }
-
-    if (Number.isFinite(bodyUserId) && bodyUserId > 0 && bodyUserId !== resolvedUserId) {
-      return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 403 });
-    }
-
-    const publisher = await loadUserForContactVerification(resolvedUserId);
-    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
-    if (!publishGate.ok) return contactVerificationJson(publishGate);
 
     const offer = await createOffer({ ...body, userId: resolvedUserId });
 

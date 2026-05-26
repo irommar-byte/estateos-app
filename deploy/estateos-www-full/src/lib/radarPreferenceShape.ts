@@ -13,6 +13,7 @@ export type RadarPreferenceDto = {
   requireElevator: boolean;
   requireParking: boolean;
   requireFurnished: boolean;
+  requireTwoLevel: boolean;
   pushNotifications: boolean;
   minMatchThreshold: number;
   lat: number | null;
@@ -41,8 +42,15 @@ function parseDistricts(value: unknown): string[] {
 }
 
 /** Pełny kształt preferencji radaru (parity z POST /api/radar/preferences). */
+function inferRequireTwoLevel(legacyAmenities?: string | null): boolean {
+  return String(legacyAmenities || '')
+    .toLowerCase()
+    .includes('dwupoziom');
+}
+
 export function shapeRadarPreference(
-  pref: RadarPreference | null | undefined
+  pref: RadarPreference | null | undefined,
+  legacyAmenities?: string | null,
 ): RadarPreferenceDto | null {
   if (!pref) return null;
 
@@ -59,6 +67,7 @@ export function shapeRadarPreference(
     requireElevator: !!pref.requireElevator,
     requireParking: !!pref.requireParking,
     requireFurnished: !!pref.requireFurnished,
+    requireTwoLevel: inferRequireTwoLevel(legacyAmenities),
     pushNotifications: pref.pushNotifications !== false,
     minMatchThreshold: pref.minMatchThreshold ?? 70,
     lat: pref.lat ?? null,

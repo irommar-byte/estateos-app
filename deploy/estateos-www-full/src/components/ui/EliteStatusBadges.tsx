@@ -11,13 +11,17 @@ type EliteStatusBadgesProps = {
 };
 
 const TOKENS = {
+  admin: {
+    dark: { bg: "rgba(168,85,247,0.18)", border: "rgba(168,85,247,0.55)", text: "#C4B5FD" },
+    light: { bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.4)", text: "#6D28D9" },
+  },
   agent: {
     dark: { bg: "rgba(255,149,0,0.20)", border: "rgba(255,159,10,0.70)", text: "#FFB340" },
     light: { bg: "rgba(255,149,0,0.12)", border: "rgba(255,149,0,0.50)", text: "#C96C00" },
   },
   partner: {
-    dark: { bg: "rgba(255,149,0,0.14)", border: "rgba(255,159,10,0.55)", text: "#FF9F40" },
-    light: { bg: "rgba(255,149,0,0.10)", border: "rgba(255,149,0,0.40)", text: "#B86E00" },
+    dark: { bg: "rgba(212,175,55,0.15)", border: "rgba(212,175,55,0.55)", text: "#E8D5A3" },
+    light: { bg: "rgba(212,175,55,0.10)", border: "rgba(212,175,55,0.45)", text: "#9A7B2F" },
   },
   investorPro: {
     dark: { bg: "rgba(184,189,199,0.20)", border: "rgba(202,208,219,0.72)", text: "#E4E9F2" },
@@ -57,31 +61,22 @@ export default function EliteStatusBadges({
   className = "",
 }: EliteStatusBadgesProps) {
   const { dict } = useLocale();
-  const role = String(subject?.role || subject?.user?.role || "")
-    .trim()
-    .toUpperCase();
-  const isAdmin = role === "ADMIN";
-  const badges = resolveEliteBadges(subject);
-
-  const showAgent = isAdmin || badges.isAgent;
-  const showPartner = isAdmin || badges.isProgramPartner;
-  const showPro = isAdmin || badges.isInvestorPro;
-
-  if (!showAgent && !showPartner && !showPro) return null;
+  const b = dict.badges;
+  const { isAdmin, isAgent, isProgramPartner, isInvestorPro } = resolveEliteBadges(subject);
+  if (!isAdmin && !isAgent && !isProgramPartner && !isInvestorPro) return null;
 
   const tone = isDark ? "dark" : "light";
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      {showAgent ? (
-        <Badge label={dict.badges.agent} theme={TOKENS.agent[tone]} compact={compact} />
-      ) : null}
-      {showPartner ? (
-        <Badge label={dict.badges.partner} theme={TOKENS.partner[tone]} compact={compact} />
-      ) : null}
-      {showPro ? (
-        <Badge label={dict.badges.investorPro} theme={TOKENS.investorPro[tone]} compact={compact} />
-      ) : null}
+      {isAdmin && <Badge label={b.admin} theme={TOKENS.admin[tone]} compact={compact} />}
+      {isAgent && <Badge label={b.agent} theme={TOKENS.agent[tone]} compact={compact} />}
+      {isProgramPartner && (
+        <Badge label={b.partner} theme={TOKENS.partner[tone]} compact={compact} />
+      )}
+      {isInvestorPro && (
+        <Badge label={b.investorPro} theme={TOKENS.investorPro[tone]} compact={compact} />
+      )}
     </div>
   );
 }

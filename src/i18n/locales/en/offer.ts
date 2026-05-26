@@ -217,7 +217,9 @@ export const offer = {
     },
     views: {
       newOffer: 'New listing',
+      newOfferBadge: 'NEW LISTING',
       count: '{{count}} views',
+      countZero: '0 views',
     },
     stats: {
       rooms: '{{count}} rooms',
@@ -250,8 +252,10 @@ export const offer = {
       offerPrice: 'Listing price',
     },
     commission: {
-      zeroDetail: 'No commission (0%). The buyer does not pay a broker fee.',
-      percentDetail: '{{percent}} of the listing price (gross), approx. {{amount}}, payable to the agent after closing.',
+      zeroDetail:
+        'No commission (0%). The listing price is the final gross amount — the buyer pays no broker fee.',
+      percentDetail:
+        'Listing price is final gross (not increased). After closing, the buyer pays {{percent}} (approx. {{amount}} gross, max. 10% of price) to the agent.',
       undisclosed: 'The agency did not disclose the commission percentage in this listing.',
       pillZero: 'NO COMMISSION',
       pillAgent: 'AGENT COMMISSION',
@@ -264,10 +268,11 @@ export const offer = {
       bodyZeroAgentDefault: 'The agent',
       bodyZeroCompany: '{{companyName}}',
       bodyPaid:
-        'You pay exactly the listing price — from that amount {{amount}} ({{percent}}) goes to{{agentSuffix}} after closing. ',
-      bodyPaidAgentDefault: ' the agent',
+        'The listing price is final gross — nothing is added on top. After closing you pay {{amount}} ({{percent}} of price, max. 10%){{agentSuffix}} from that amount. ',
+      bodyPaidAgentDefault: ' to the agent',
+      bodyPaidCompany: ' — {{companyName}}',
       bodyPaidVatBold:
-        'The commission is GROSS — VAT is included; the buyer pays no additional tax or fees.',
+        'Commission is gross (VAT included). You pay no tax or fees beyond the listing price and agreed commission.',
     },
     adminFeePill: '+ admin fee {{amount}}',
     roi: {
@@ -434,12 +439,14 @@ export const offer = {
       titleDefault: 'Your commission',
       subtitleZero:
         'The buyer pays no commission on this listing. A “No commission” note will appear on the listing — it attracts attention and builds trust.',
-      subtitleWithSlotPrefix: 'The listing price stays unchanged. The buyer will see a note that from that price',
-      subtitleWithSlotSuffix: 'is your commission — paid to you directly after closing.',
-      subtitleWithSlotVat: 'The amount is GROSS (VAT included) — the buyer pays no additional tax.',
+      subtitleWithSlotPrefix:
+        'The listing price is the final gross amount (not increased). After closing the buyer pays from that amount',
+      subtitleWithSlotSuffix: 'as your commission — directly to you (max. 10% of listing price).',
+      subtitleWithSlotVat:
+        'Commission is gross (VAT included). The buyer pays nothing beyond the listing price and agreed commission.',
       subtitleEmpty:
-        'Choose 0.5%–10% commission or “No commission” (0%). The listing price does NOT change — the buyer only sees a commission note.',
-      subtitleEmptyVat: 'The entered amount is GROSS — VAT included, no additional tax.',
+        'Set 0.5%–10% of listing price or “No commission” (0%). The listing price remains the final gross amount.',
+      subtitleEmptyVat: 'Limit: max. 10% of listing price. Commission amount is gross (VAT included).',
       addDefault: 'Commission {{percent}}',
       addZero: 'No commission',
       label: 'Commission',
@@ -449,9 +456,11 @@ export const offer = {
       amountZero: 'NO COMMISSION',
       amountEmpty: '— PLN',
       amountHintZero: 'The buyer pays no commission.',
-      amountHintDefault: 'Your fee from the transaction.',
-      rangeWarning: 'Commission must be 0% (no commission) or within {{min}}–{{max}}.',
-      footer: 'The listing price is NOT increased. The client only sees a commission note.',
+      amountHintDefault: 'Paid from final gross listing price after closing (max. 10%).',
+      rangeWarning:
+        'Commission: 0% (none) or {{min}}–{{max}} of final gross listing price (max. 10%).',
+      footer:
+        'Listing price = final gross amount. After closing the buyer pays the agreed commission from that amount (max. 10%).',
     },
     condition: {
       sectionTitle: 'FINISH CONDITION',

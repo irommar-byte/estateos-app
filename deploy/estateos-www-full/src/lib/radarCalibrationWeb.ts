@@ -15,6 +15,7 @@ export type WebRadarFilters = {
   requireElevator: boolean;
   requireParking: boolean;
   requireFurnished: boolean;
+  requireTwoLevel: boolean;
   pushNotifications: boolean;
   matchThreshold: number;
   lat: number | null;
@@ -37,6 +38,7 @@ export function defaultWebRadarFilters(city = 'Warszawa'): WebRadarFilters {
     requireElevator: false,
     requireParking: false,
     requireFurnished: false,
+    requireTwoLevel: false,
     pushNotifications: true,
     matchThreshold: 70,
     lat: null,
@@ -135,6 +137,7 @@ export function webRadarFiltersFromPreference(
     requireElevator: pref?.requireElevator ?? amenities.includes('winda'),
     requireParking: pref?.requireParking ?? amenities.includes('parking'),
     requireFurnished: pref?.requireFurnished ?? amenities.includes('umeblow'),
+    requireTwoLevel: pref?.requireTwoLevel ?? amenities.includes('dwupoziom'),
     pushNotifications: pref?.pushNotifications !== false,
     matchThreshold: pref?.minMatchThreshold ?? 70,
     lat: pref?.lat ?? null,
@@ -158,6 +161,7 @@ export function buildRadarPreferencesPostBody(userId: number, filters: WebRadarF
     requireElevator: filters.requireElevator,
     requireParking: filters.requireParking,
     requireFurnished: filters.requireFurnished,
+    requireTwoLevel: filters.requireTwoLevel,
     pushNotifications: filters.pushNotifications,
     minMatchThreshold: filters.matchThreshold,
     lat: filters.calibrationMode === 'MAP' ? filters.lat : null,
@@ -174,6 +178,7 @@ export function buildLegacyRadarUpdateBody(filters: WebRadarFilters) {
   if (filters.requireElevator) amenities.push('Winda');
   if (filters.requireParking) amenities.push('Garaż/Miejsce park.');
   if (filters.requireFurnished) amenities.push('Umeblowanie');
+  if (filters.requireTwoLevel) amenities.push('Dwupoziomowe');
 
   return {
     city: filters.city,

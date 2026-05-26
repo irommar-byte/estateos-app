@@ -9,6 +9,15 @@ import BiddingModal from "@/components/BiddingModal";
 import PhoneVerificationGateModal from "@/components/PhoneVerificationGateModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
+import {
+  describeOfferAgentCommission,
+  formatBuyerAgentCommissionLine,
+} from "@/lib/agentCommission";
+import {
+  formatOfferBuildYear,
+  formatOfferCondition,
+  formatOfferPropertyType,
+} from "@/lib/offerDisplayLabels";
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
   const ref = useRef(null);
@@ -157,17 +166,31 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     { label: "Powierzchnia", value: numericArea > 0 ? `${numericArea} m²` : null },
     { label: "Cena za m²", value: pricePerSqm !== 'Brak' && !isLocked ? `${pricePerSqm} PLN` : (isLocked ? 'Ukryta' : null) },
     { label: "Liczba pokoi", value: offer.rooms },
-    { label: "Floor", value: offer.floor },
-    { label: "Finish standard", value: offer.condition || offer.finishCondition }
+    { label: "Piętro", value: offer.floor },
+    {
+      label: "Stan wykończenia",
+      value: formatOfferCondition(offer.condition || offer.finishCondition, "pl") || null,
+    },
   ].filter(p => p.value);
 
+  const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
+  const agentCommissionLine = agentCommissionInfo
+    ? agentCommissionInfo.isZero
+      ? "Brak prowizji agenta przy tej ofercie."
+      : formatBuyerAgentCommissionLine(agentCommissionInfo, "pl")
+    : null;
+
   const buildingParams = [
-    { label: "Typ obiektu", value: offer.propertyType },
-    { label: "Rok budowy", value: offer.buildYear },
+    { label: "Typ obiektu", value: formatOfferPropertyType(offer.propertyType, "pl") },
+    { label: "Rok budowy", value: formatOfferBuildYear(offer) },
     { label: "Ogrzewanie", value: offer.heating },
     { label: "Umeblowane", value: offer.isFurnished === true ? "Tak" : offer.isFurnished === false ? "Nie" : null },
     { label: "Czynsz", value: offer.rent ? `${String(offer.rent).replace(/\D/g, '')} PLN` : null },
-    { label: "Availability", value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString('pl-PL') : null }
+    {
+      label: "Dostępność",
+      value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString("pl-PL") : null,
+    },
+    ...(agentCommissionLine ? [{ label: "Prowizja agenta", value: agentCommissionLine }] : []),
   ].filter(p => p.value);
 
   return (

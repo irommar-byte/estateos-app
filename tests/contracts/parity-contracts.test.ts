@@ -125,6 +125,7 @@ test('radar preferences use canonical DTO names', () => {
   const radar = buildCanonicalRadarPreferencesDto({
     userId: 7,
     filters: {
+      calibrationMode: 'MAP',
       transactionType: 'SELL',
       propertyType: 'ALL',
       city: 'Warszawa',

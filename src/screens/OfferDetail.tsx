@@ -13,7 +13,8 @@ import Animated, {
   Extrapolation,
   withSpring,
   withTiming,
-  withSequence
+  withSequence,
+  withRepeat,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +30,7 @@ import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import OwnerLegalVerificationCard from '../components/OwnerLegalVerificationCard';
 import ClosedOfferOverlay from '../components/ClosedOfferOverlay';
-import { getOfferLifecycleState } from '../utils/offerLifecycle';
+import { getOfferLifecycleState, isOfferNewListing } from '../utils/offerLifecycle';
 import {
   formatOfferConditionLabel,
   formatOfferHeatingLabel,
@@ -458,20 +459,22 @@ export default function OfferDetail({ route, navigation }: any) {
     setOwnerLegalVerifiedOverride(null);
   }, [offer?.id]);
 
+  const favoriteSync = { apiBaseUrl: API_URL, accessToken: token || null };
+
   useEffect(() => {
     const checkFavorite = async () => {
       if (!offer?.id) return;
-      const ids = await loadFavoriteIds();
+      const ids = await loadFavoriteIds(favoriteSync);
       setIsFavorite(isFavoriteId(offer.id, ids));
     };
     void checkFavorite();
-  }, [offer?.id]);
+  }, [offer?.id, token]);
 
   const handleFavorite = async () => {
     if (!offer?.id) return;
     heartScale.value = withSpring(1.5, { damping: 2, stiffness: 80 }, () => { heartScale.value = withSpring(1); });
-    const ids = await loadFavoriteIds();
-    const { ids: nextIds, added } = await toggleFavoriteId(offer.id, ids);
+    const ids = await loadFavoriteIds(favoriteSync);
+    const { ids: nextIds, added } = await toggleFavoriteId(offer.id, ids, favoriteSync);
     setIsFavorite(added);
     if (added) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -709,6 +712,24 @@ export default function OfferDetail({ route, navigation }: any) {
   })();
   const viewsCountRaw = Number(firstDefined(offer?.views, offer?.viewCount, offer?.viewsCount, offer?.stats?.views, 0));
   const viewsCount = Number.isFinite(viewsCountRaw) && viewsCountRaw > 0 ? Math.round(viewsCountRaw) : 0;
+  const isNewOfferListing = useMemo(() => isOfferNewListing(offer), [offer]);
+  const newOfferPulse = useSharedValue(1);
+
+  useEffect(() => {
+    if (!isNewOfferListing) {
+      newOfferPulse.value = 1;
+      return;
+    }
+    newOfferPulse.value = withRepeat(
+      withSequence(withTiming(0.58, { duration: 1200 }), withTiming(1, { duration: 1200 })),
+      -1,
+      false,
+    );
+  }, [isNewOfferListing, newOfferPulse]);
+
+  const newOfferBadgeAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: newOfferPulse.value,
+  }));
   const isLegalSafeVerified = isOfferLegallyVerified(offer, ownerLegalVerifiedOverride === true);
   const handleOwnerLegalStatusChanged = useCallback((next: any) => {
     const status = String(next?.status || '').toUpperCase();
@@ -1269,9 +1290,25 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={[styles.viewsBadgeText, { color: isDark ? '#d1d5db' : '#374151' }]}>
                 {viewsCount > 0
                   ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
-                  : t('offer.detail.views.newOffer')}
+                  : t('offer.detail.views.countZero')}
               </Text>
             </View>
+            {isNewOfferListing ? (
+              <Animated.View
+                style={[
+                  styles.newOfferBadge,
+                  {
+                    backgroundColor: isDark ? 'rgba(59,130,246,0.22)' : 'rgba(59,130,246,0.14)',
+                    borderColor: isDark ? 'rgba(96,165,250,0.65)' : 'rgba(37,99,235,0.45)',
+                  },
+                  newOfferBadgeAnimatedStyle,
+                ]}
+              >
+                <Text style={[styles.newOfferBadgeText, { color: isDark ? '#93C5FD' : '#1D4ED8' }]}>
+                  {t('offer.detail.views.newOfferBadge')}
+                </Text>
+              </Animated.View>
+            ) : null}
           </View>
           
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
@@ -1694,7 +1731,7 @@ export default function OfferDetail({ route, navigation }: any) {
             PIGUŁKA PROWIZJI — pełna szerokość tylko dla właściciela (lub gdy brak
             wizytówki sprzedawcy). Kupujący widzi skrót w małej pigułce obok ceny.
           */}
-          {agentCommissionInfo && (isOwner || !offer?.userId) ? (
+          {agentCommissionInfo ? (
             <View
               style={[
                 styles.agentCommissionPill,
@@ -2398,6 +2435,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   viewsBadgeText: { color: '#374151', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 },
+  newOfferBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  newOfferBadgeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
   title: { fontSize: 26, fontWeight: '800', color: '#1d1d1f', letterSpacing: -0.5, marginBottom: 8 },
   locationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   locationText: { fontSize: 15, color: '#86868b', marginLeft: 6, fontWeight: '500', flexShrink: 1 },

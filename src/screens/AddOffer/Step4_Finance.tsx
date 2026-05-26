@@ -37,7 +37,12 @@ import {
   isAgentCommissionAccount,
   isZeroCommissionPercent,
   parseAgentCommissionPercent,
+  commissionAmountInputToPercent,
+  previewAmountFromPercentDraft,
+  previewPercentFromAmountDraft,
   roundToQuarter,
+  shouldWarnCommissionPercentDraft,
+  type AgentCommissionInputMode,
 } from '../../lib/agentCommission';
 import { useI18n } from '../../i18n';
 
@@ -165,15 +170,20 @@ export default function Step4_Finance({ theme }: { theme: any }) {
    *  ile z ceny stanowi prowizję pośrednika (opłacaną agentowi BEZPOŚREDNIO
    *  po zawarciu transakcji, poza platformą).
    * ============================================================ */
+  const [commissionInputMode, setCommissionInputMode] = useState<AgentCommissionInputMode>('percent');
+  const [agentCommissionAmountDraft, setAgentCommissionAmountDraft] = useState('');
+  const [commissionPercentFocused, setCommissionPercentFocused] = useState(false);
+  const [commissionAmountFocused, setCommissionAmountFocused] = useState(false);
+
   const commissionPercent = parseAgentCommissionPercent(draft.agentCommissionPercent);
-  const hasCommissionSlot = commissionPercent !== null;
+  const hasCommissionSlot = String(draft.agentCommissionPercent || '').trim() !== '';
   const isZeroCommission = isZeroCommissionPercent(commissionPercent);
-  const commissionAmount = isZeroCommission ? 0 : computeAgentCommissionAmount(priceNum, commissionPercent);
-  const commissionInRange =
-    commissionPercent !== null &&
-    (commissionPercent === AGENT_COMMISSION_ZERO_PERCENT ||
-      (commissionPercent >= AGENT_COMMISSION_MIN_PERCENT &&
-        commissionPercent <= AGENT_COMMISSION_MAX_PERCENT));
+  const commissionAmountPreview = previewAmountFromPercentDraft(priceNum, draft.agentCommissionPercent);
+  const commissionPercentPreview = previewPercentFromAmountDraft(priceNum, agentCommissionAmountDraft);
+  const showCommissionRangeWarning = shouldWarnCommissionPercentDraft(draft.agentCommissionPercent, {
+    isFocused: commissionPercentFocused || commissionAmountFocused,
+  });
+  const commissionInRange = !showCommissionRangeWarning;
 
   // Kolor akcentu karty: zielony dla 0% („bez prowizji"), pomarańczowy dla standardowej.
   const commissionAccent = isZeroCommission ? '#10b981' : '#FF9F0A';
@@ -182,10 +192,44 @@ export default function Step4_Finance({ theme }: { theme: any }) {
   const commissionAccentBorder = isZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.55)';
 
   const handleCommissionChange = (text: string) => {
-    // Akceptujemy puste / liczby z `.` lub `,` — bez agresywnej walidacji
-    // w trakcie wpisywania (walidacja jest przy submitcie w Step6_Summary).
-    const cleaned = text.replace(/[^0-9.,]/g, '');
-    updateDraft({ agentCommissionPercent: cleaned });
+    updateDraft({ agentCommissionPercent: text.replace(/[^0-9.,]/g, '') });
+  };
+
+  const handleCommissionAmountChange = (text: string) => {
+    setAgentCommissionAmountDraft(text.replace(/[^\d]/g, ''));
+  };
+
+  const commitCommissionAmountDraft = () => {
+    const trimmed = agentCommissionAmountDraft.trim();
+    if (!trimmed) {
+      setAgentCommissionAmountDraft('');
+      updateDraft({ agentCommissionPercent: '' });
+      return;
+    }
+    const synced = commissionAmountInputToPercent(priceNum, trimmed);
+    if (!synced) return;
+    setAgentCommissionAmountDraft(String(synced.amountPln));
+    updateDraft({ agentCommissionPercent: String(synced.percent).replace('.', ',') });
+  };
+
+  const commitCommissionPercentDraft = () => {
+    const trimmed = String(draft.agentCommissionPercent || '').trim();
+    if (!trimmed) {
+      updateDraft({ agentCommissionPercent: '' });
+      return;
+    }
+    const parsed = parseAgentCommissionPercent(trimmed);
+    if (parsed === null) return;
+    if (parsed === 0) {
+      updateDraft({ agentCommissionPercent: '0' });
+      setAgentCommissionAmountDraft('0');
+      return;
+    }
+    const snapped = roundToQuarter(
+      Math.min(AGENT_COMMISSION_MAX_PERCENT, Math.max(AGENT_COMMISSION_MIN_PERCENT, parsed)),
+    );
+    updateDraft({ agentCommissionPercent: String(snapped).replace('.', ',') });
+    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(priceNum, snapped)));
   };
 
   /** Zmiana o ±0.25 z preserwacją "twardych" przejść:
@@ -209,6 +253,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
       Math.min(AGENT_COMMISSION_MAX_PERCENT, roundToQuarter(base + delta)),
     );
     updateDraft({ agentCommissionPercent: String(next).replace('.', ',') });
+    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(priceNum, next)));
   };
 
   const enableDefaultCommission = () => {
@@ -441,28 +486,86 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                   },
                 ]}
               >
+                <View style={styles.commissionModeRow}>
+                  {(['percent', 'amount'] as const).map((m) => {
+                    const active = commissionInputMode === m;
+                    return (
+                      <Pressable
+                        key={m}
+                        onPress={() => {
+                          setCommissionInputMode(m);
+                          if (m === 'amount') {
+                            if (commissionAmountPreview > 0) {
+                              setAgentCommissionAmountDraft(String(commissionAmountPreview));
+                            }
+                          } else {
+                            commitCommissionAmountDraft();
+                          }
+                        }}
+                        style={[
+                          styles.commissionModeBtn,
+                          {
+                            backgroundColor: active ? commissionAccentBgStrong : 'transparent',
+                            borderColor: active ? commissionAccentBorder : theme.border,
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: active ? commissionAccent : theme.subtitle, fontWeight: '800', fontSize: 11 }}>
+                          {m === 'percent' ? '%' : 'PLN'}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
                 <View style={styles.commissionRow}>
                   <View style={styles.commissionInputCol}>
-                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]}>{t('addOffer.step4.commission.label')}</Text>
+                    <Text style={[styles.commissionLabel, { color: theme.subtitle }]}>
+                      {commissionInputMode === 'percent'
+                        ? t('addOffer.step4.commission.label')
+                        : t('addOffer.step4.commission.amountLabelFromPrice')}
+                    </Text>
                     <View
                       style={[
                         styles.commissionInputBox,
                         { backgroundColor: commissionAccentBgLight, borderColor: commissionAccentBorder },
                       ]}
                     >
-                      <TextInput
-                        style={[styles.commissionInput, { color: theme.text }]}
-                        value={String(draft.agentCommissionPercent || '')}
-                        onChangeText={handleCommissionChange}
-                        placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
-                        placeholderTextColor={theme.subtitle}
-                        keyboardType="decimal-pad"
-                        maxLength={5}
-                        returnKeyType="done"
-                        blurOnSubmit
-                        {...numericInputProps}
-                      />
-                      <Text style={[styles.commissionInputSuffix, { color: theme.text }]}>%</Text>
+                      {commissionInputMode === 'percent' ? (
+                        <>
+                          <TextInput
+                            style={[styles.commissionInput, { color: theme.text }]}
+                            value={String(draft.agentCommissionPercent || '')}
+                            onChangeText={handleCommissionChange}
+                            onFocus={() => setCommissionPercentFocused(true)}
+                            onBlur={() => {
+                              setCommissionPercentFocused(false);
+                              commitCommissionPercentDraft();
+                            }}
+                            placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace('.', ',')}
+                            placeholderTextColor={theme.subtitle}
+                            keyboardType="decimal-pad"
+                            returnKeyType="done"
+                            blurOnSubmit
+                            {...numericInputProps}
+                          />
+                          <Text style={[styles.commissionInputSuffix, { color: theme.text }]}>%</Text>
+                        </>
+                      ) : (
+                        <TextInput
+                          style={[styles.commissionInput, { color: theme.text, flex: 1 }]}
+                          value={agentCommissionAmountDraft}
+                          onChangeText={handleCommissionAmountChange}
+                          onFocus={() => setCommissionAmountFocused(true)}
+                          onBlur={() => {
+                            setCommissionAmountFocused(false);
+                            commitCommissionAmountDraft();
+                          }}
+                          placeholder="37000"
+                          placeholderTextColor={theme.subtitle}
+                          keyboardType="number-pad"
+                          {...numericInputProps}
+                        />
+                      )}
                     </View>
                     <View style={styles.commissionStepRow}>
                       <Pressable
@@ -487,9 +590,11 @@ export default function Step4_Finance({ theme }: { theme: any }) {
 
                   <View style={styles.commissionAmountCol}>
                     <Text style={[styles.commissionLabel, { color: theme.subtitle }]} numberOfLines={1}>
-                      {isZeroCommission
-                        ? t('addOffer.step4.commission.amountLabelBuyer')
-                        : t('addOffer.step4.commission.amountLabelFromPrice')}
+                      {commissionInputMode === 'amount'
+                        ? t('addOffer.step4.commission.label')
+                        : isZeroCommission
+                          ? t('addOffer.step4.commission.amountLabelBuyer')
+                          : t('addOffer.step4.commission.amountLabelFromPrice')}
                     </Text>
                     <Text
                       style={[styles.commissionAmountValue, { color: commissionAccent }]}
@@ -497,11 +602,20 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                       adjustsFontSizeToFit
                       minimumFontScale={0.5}
                     >
-                      {isZeroCommission
-                        ? t('addOffer.step4.commission.amountZero')
-                        : commissionAmount > 0
-                          ? formatPlnAmount(commissionAmount)
-                          : t('addOffer.step4.commission.amountEmpty')}
+                      {commissionInputMode === 'amount'
+                        ? commissionPercentPreview !== null
+                          ? formatPercentLabel(
+                              Math.min(
+                                AGENT_COMMISSION_MAX_PERCENT,
+                                Math.max(0, commissionPercentPreview),
+                              ),
+                            )
+                          : t('addOffer.step4.commission.amountEmpty')
+                        : isZeroCommission
+                          ? t('addOffer.step4.commission.amountZero')
+                          : commissionAmountPreview > 0
+                            ? formatPlnAmount(commissionAmountPreview)
+                            : t('addOffer.step4.commission.amountEmpty')}
                     </Text>
                     <Text style={[styles.commissionAmountHint, { color: theme.subtitle }]} numberOfLines={2}>
                       {isZeroCommission
@@ -511,7 +625,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
                   </View>
                 </View>
 
-                {!commissionInRange ? (
+                {showCommissionRangeWarning ? (
                   <View style={styles.commissionWarn}>
                     <Ionicons name="warning-outline" size={14} color={Colors.danger} />
                     <Text style={[styles.commissionWarnText, { color: Colors.danger }]}>
@@ -572,6 +686,8 @@ const styles = StyleSheet.create({
   },
   commissionAddCtaText: { fontSize: 14, fontWeight: '700' },
   commissionCard: { padding: 18, borderRadius: 24, borderWidth: 1 },
+  commissionModeRow: { flexDirection: 'row', gap: 8, marginBottom: 12, justifyContent: 'flex-end' },
+  commissionModeBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   commissionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   commissionInputCol: { flex: 1 },
   commissionAmountCol: { flex: 1, alignItems: 'flex-end' },

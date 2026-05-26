@@ -65,7 +65,7 @@ export const offer = {
       READY: 'Gotowe do zamieszkania',
     },
     conditionSegments: {
-      READY: 'Gotowe',
+      READY: 'Gotowe do wprowadzenia',
       DEVELOPER: 'Deweloperski',
       TO_RENOVATION: 'Do remontu',
     },
@@ -217,7 +217,9 @@ export const offer = {
     },
     views: {
       newOffer: 'Nowa oferta',
+      newOfferBadge: 'NOWA OFERTA',
       count: '{{count}} wyświetleń',
+      countZero: '0 wyświetleń',
     },
     stats: {
       rooms: '{{count}} Pokoje',
@@ -250,8 +252,10 @@ export const offer = {
       offerPrice: 'Cena ofertowa',
     },
     commission: {
-      zeroDetail: 'Bez prowizji (0%). Kupujący nie dopłaca prowizji pośrednika.',
-      percentDetail: '{{percent}} ceny ofertowej (brutto), ok. {{amount}}, płatne agentowi po sfinalizowaniu transakcji.',
+      zeroDetail:
+        'Bez prowizji (0%). Cena ofertowa to ostateczna kwota brutto — kupujący nie wypłaca prowizji pośrednika.',
+      percentDetail:
+        'Cena ofertowa: ostateczna kwota brutto (bez podwyżki). Po transakcji kupujący z tej kwoty wypłaca agentowi {{percent}} (ok. {{amount}} brutto, max. 10% ceny).',
       undisclosed: 'Biuro nie ujawniło procentu prowizji w ogłoszeniu.',
       pillZero: 'BEZ PROWIZJI',
       pillAgent: 'PROWIZJA AGENTA',
@@ -264,10 +268,11 @@ export const offer = {
       bodyZeroAgentDefault: 'Agent',
       bodyZeroCompany: '{{companyName}}',
       bodyPaid:
-        'Płacisz dokładnie cenę ofertową — z tej kwoty {{amount}} ({{percent}}) trafia do{{agentSuffix}} po finalizacji transakcji. ',
-      bodyPaidAgentDefault: ' agenta',
+        'Cena w ogłoszeniu to ostateczna kwota brutto — nic nie jest do niej doliczane. Po transakcji z tej kwoty wypłacasz {{amount}} ({{percent}} ceny, max. 10%){{agentSuffix}}. ',
+      bodyPaidAgentDefault: ' agentowi',
+      bodyPaidCompany: ' — {{companyName}}',
       bodyPaidVatBold:
-        'Kwota prowizji jest BRUTTO — zawiera już VAT, kupujący nie dopłaca żadnego podatku ani opłat dodatkowych.',
+        'Prowizja jest brutto (z VAT). Nie dopłacasz podatku ani opłat ponad cenę ofertową i uzgodnioną kwotę prowizji.',
     },
     adminFeePill: '+ czynsz admin {{amount}}',
     roi: {
@@ -434,13 +439,16 @@ export const offer = {
       titleDefault: 'Twoja prowizja',
       subtitleZero:
         'Kupujący nie płaci prowizji od tej oferty. Adnotacja „Bez prowizji” pojawi się na ogłoszeniu — przyciąga uwagę i buduje zaufanie.',
-      subtitleWithSlotPrefix: 'Cena oferty pozostaje bez zmian. Kupujący zobaczy adnotację, że z tej ceny',
+      subtitleWithSlotPrefix:
+        'Cena ofertowa to ostateczna kwota brutto (nie podwyższamy jej). Kupujący zobaczy, że po transakcji z tej kwoty',
       subtitleWithSlotSuffix:
-        'stanowi Twoją prowizję — opłacaną Tobie bezpośrednio po sfinalizowaniu transakcji.',
-      subtitleWithSlotVat: 'Kwota jest BRUTTO (zawiera VAT) — kupujący nie dopłaca żadnego podatku.',
+        'wypłaci Tobie prowizję — bezpośrednio, poza platformą (maks. 10% ceny).',
+      subtitleWithSlotVat:
+        'Prowizja jest brutto (z VAT). Kupujący nie dopłaca nic ponad cenę ofertową i uzgodnioną kwotę prowizji.',
       subtitleEmpty:
-        'Wybierz prowizję 0,5%–10% lub tryb „Bez prowizji” (0%). Cena oferty się NIE zmieni — kupujący zobaczy tylko adnotację o prowizji.',
-      subtitleEmptyVat: 'Wpisana kwota jest BRUTTO — zawiera VAT, bez dodatkowego podatku.',
+        'Ustaw prowizję 0,5%–10% ceny ofertowej lub „Bez prowizji” (0%). Cena w ogłoszeniu pozostaje ostateczną kwotą brutto.',
+      subtitleEmptyVat:
+        'Limit: maks. 10% ceny ofertowej. Kwota prowizji jest brutto (z VAT).',
       addDefault: 'Prowizja {{percent}}',
       addZero: 'Bez prowizji',
       label: 'Prowizja',
@@ -450,10 +458,11 @@ export const offer = {
       amountZero: 'BEZ PROWIZJI',
       amountEmpty: '— PLN',
       amountHintZero: 'Kupujący nie płaci prowizji.',
-      amountHintDefault: 'To Twoje wynagrodzenie z transakcji.',
+      amountHintDefault: 'Wypłata z ceny ofertowej brutto po transakcji (max. 10%).',
       rangeWarning:
-        'Prowizja musi być równa 0% (bez prowizji) lub w zakresie {{min}}–{{max}}.',
-      footer: 'Cena oferty NIE jest podnoszona. Klient widzi tylko adnotację o prowizji.',
+        'Prowizja: 0% (bez prowizji) albo {{min}}–{{max}} ceny ofertowej brutto (maks. 10%).',
+      footer:
+        'Cena ofertowa = ostateczna kwota brutto. Kupujący po transakcji wypłaca agentowi uzgodnioną prowizję z tej kwoty (max. 10%).',
     },
     condition: {
       sectionTitle: 'STAN WYKOŃCZENIA',

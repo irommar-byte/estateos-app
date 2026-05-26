@@ -66,6 +66,53 @@ export function parseAgentCommissionPercent(raw: unknown): number | null {
   return parsed;
 }
 
+/** Czy użytkownik w trakcie wpisywania (nie parsujemy na siłę). */
+export function isIncompleteCommissionPercentDraft(raw: unknown): boolean {
+  const s = String(raw ?? '').trim();
+  if (!s) return false;
+  if (/[,.]$/.test(s)) return true;
+  if (/^[,.]/.test(s)) return true;
+  return false;
+}
+
+/** Podgląd procentu podczas edycji — bez zaokrąglenia i bez „skoków”. */
+export function previewPercentFromAmountDraft(priceRaw: unknown, amountRaw: unknown): number | null {
+  const price = parseOfferNumeric(priceRaw);
+  const amount = parseOfferNumeric(amountRaw);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
+  if (amount === 0) return 0;
+  return (amount / price) * 100;
+}
+
+/** Podgląd kwoty PLN z wpisywanego procentu (także „2,” → 2%). */
+export function previewAmountFromPercentDraft(priceRaw: unknown, percentRaw: unknown): number {
+  if (isIncompleteCommissionPercentDraft(percentRaw)) {
+    const s = String(percentRaw ?? '').trim();
+    const prefix = s.replace(/[,.]$/, '').replace(',', '.');
+    if (!prefix || /^[,.]/.test(prefix)) return 0;
+    const p = Number(prefix);
+    if (!Number.isFinite(p)) return 0;
+    return computeAgentCommissionAmount(priceRaw, p);
+  }
+  const p = parseAgentCommissionPercent(percentRaw);
+  return computeAgentCommissionAmount(priceRaw, p);
+}
+
+/** Czy pokazywać ostrzeżenie o zakresie (nie w trakcie edycji pola). */
+export function shouldWarnCommissionPercentDraft(
+  raw: unknown,
+  options?: { isFocused?: boolean },
+): boolean {
+  if (options?.isFocused) return false;
+  const trimmed = String(raw ?? '').trim();
+  if (!trimmed) return false;
+  if (isIncompleteCommissionPercentDraft(raw)) return false;
+  const parsed = parseAgentCommissionPercent(raw);
+  if (parsed === null) return true;
+  if (parsed === 0) return false;
+  return parsed < AGENT_COMMISSION_MIN_PERCENT || parsed > AGENT_COMMISSION_MAX_PERCENT;
+}
+
 /**
  * Pełna walidacja procentowej prowizji do zapisania w bazie.
  * Wywołaj DOPIERO przy submitcie / przed POSTem do `/api/mobile/v1/offers`.
@@ -91,9 +138,9 @@ export function validateAgentCommissionPercent(raw: unknown): AgentCommissionVal
     return {
       ok: false,
       errorCode: 'OUT_OF_RANGE',
-      message: `Prowizja agenta musi być równa 0% (bez prowizji) lub mieścić się w zakresie ${formatPercentLabel(
+      message: `Prowizja agenta: 0% (bez prowizji) albo ${formatPercentLabel(
         AGENT_COMMISSION_MIN_PERCENT,
-      )} – ${formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)}.`,
+      )} – ${formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)} ceny ofertowej (maks. 10%).`,
     };
   }
   return { ok: true, percent: roundToQuarter(parsed) };
@@ -128,6 +175,62 @@ export function parseOfferNumeric(raw: unknown): number {
  * Cena może być stringiem (np. "650 000") lub liczbą — zawsze zwraca liczbę całkowitą PLN.
  * Brak / 0 → 0.
  */
+export type AgentCommissionInputMode = 'percent' | 'amount';
+
+/** Maksymalna kwota prowizji (PLN) przy limicie 10% ceny ofertowej. */
+export function maxAgentCommissionAmountPln(priceRaw: unknown): number {
+  return computeAgentCommissionAmount(priceRaw, AGENT_COMMISSION_MAX_PERCENT);
+}
+
+export function percentFromCommissionAmount(
+  priceRaw: unknown,
+  amountRaw: unknown,
+  options?: { clampToMax?: boolean },
+): number | null {
+  const price = parseOfferNumeric(priceRaw);
+  const amount = parseOfferNumeric(amountRaw);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
+  if (amount === 0) return 0;
+  let percent = roundToQuarter((amount / price) * 100);
+  if (options?.clampToMax && percent > AGENT_COMMISSION_MAX_PERCENT) {
+    percent = AGENT_COMMISSION_MAX_PERCENT;
+  }
+  return percent;
+}
+
+/** Z kwoty PLN → procent + opcjonalnie przycięta kwota (gdy > 10%). */
+export function commissionAmountInputToPercent(
+  priceRaw: unknown,
+  amountRaw: unknown,
+): { percent: number; amountPln: number } | null {
+  const price = parseOfferNumeric(priceRaw);
+  let amount = parseOfferNumeric(amountRaw);
+  if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
+  const maxAmt = maxAgentCommissionAmountPln(priceRaw);
+  if (Number.isFinite(maxAmt) && maxAmt > 0 && amount > maxAmt) {
+    amount = maxAmt;
+  }
+  const percent = percentFromCommissionAmount(price, amount);
+  if (percent === null) return null;
+  return { percent, amountPln: Math.round(amount) };
+}
+
+export function resolveAgentCommissionPercentForSave(opts: {
+  mode: AgentCommissionInputMode;
+  percentRaw: unknown;
+  amountRaw: unknown;
+  priceRaw: unknown;
+}): AgentCommissionValidation {
+  if (opts.mode === 'amount') {
+    const synced = commissionAmountInputToPercent(opts.priceRaw, opts.amountRaw);
+    if (synced === null) {
+      return { ok: false, errorCode: 'INVALID_NUMBER', message: 'Podaj kwotę prowizji i cenę oferty.' };
+    }
+    return validateAgentCommissionPercent(synced.percent);
+  }
+  return validateAgentCommissionPercent(opts.percentRaw);
+}
+
 export function computeAgentCommissionAmount(priceRaw: unknown, percent: number | null): number {
   if (percent === null || !Number.isFinite(percent)) return 0;
   const priceNum =

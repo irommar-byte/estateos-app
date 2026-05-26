@@ -17,15 +17,6 @@ export type Dictionary = {
     logout: string;
     langPl: string;
     langEn: string;
-    language: string;
-    menuOpen: string;
-    menuClose: string;
-    home: string;
-  };
-  badges: {
-    agent: string;
-    partner: string;
-    investorPro: string;
   };
   theme: {
     label: string;
@@ -40,7 +31,6 @@ export type Dictionary = {
     empty: string;
     markAllRead: string;
     messages: string;
-    close: string;
   };
   hero: {
     eyebrow: string;
@@ -52,7 +42,6 @@ export type Dictionary = {
     ctaAccount: string;
     ctaPro: string;
     exploreMap: string;
-    scroll: string;
   };
   pulse: {
     title: string;
@@ -99,11 +88,6 @@ export type Dictionary = {
     searchTypeCommercial: string;
     searchTypePlot: string;
     searchButton: string;
-    advancedFilters: string;
-    galleryTxSale: string;
-    galleryTxRent: string;
-    galleryLocationFallback: string;
-    defaultListingTitle: string;
     statsActiveOffers: string;
     statsNewOffers24h: string;
     statsMarketCities: string;
@@ -161,6 +145,58 @@ export type Dictionary = {
     privacy: string;
     listings: string;
     central: string;
+  };
+  badges: {
+    admin: string;
+    agent: string;
+    partner: string;
+    investorPro: string;
+  };
+  crm: {
+    accountEyebrow: string;
+    userIdLabel: string;
+    tabRadar: string;
+    tabMyOffers: string;
+    tabFavorites: string;
+    tabPlanning: string;
+    tabDeals: string;
+    radarTitle: string;
+    radarTitlePro: string;
+    radarDesc: string;
+    radarDescPro: string;
+    activeScanning: string;
+    radarPro: string;
+    radarProDual: string;
+    radarOff: string;
+    radarActive: string;
+    calibrate: string;
+    location: string;
+    propertyType: string;
+    minArea: string;
+    budget: string;
+    matchThreshold: string;
+    matchLabel: string;
+    sale: string;
+    rent: string;
+    rooms: string;
+    statusActive: string;
+    viewOffer: string;
+    perMonth: string;
+    noMatches: string;
+    standardUser: string;
+    seeProfile: string;
+    dealsTitle: string;
+    dealsTitleHighlight: string;
+    dealsDesc: string;
+    planningTitle: string;
+    planningTitleHighlight: string;
+    planningDesc: string;
+    favoritesTitle: string;
+    favoritesTitleHighlight: string;
+    favoritesDesc: string;
+    myOffersTitle: string;
+    myOffersTitleHighlight: string;
+    myOffersDesc: string;
   };
   pricing: {
     eyebrow: string;
@@ -220,15 +256,6 @@ const pl: Dictionary = {
     logout: "Wyloguj",
     langPl: "PL",
     langEn: "EN",
-    language: "Język",
-    menuOpen: "Otwórz menu",
-    menuClose: "Zamknij menu",
-    home: "Strona główna EstateOS",
-  },
-  badges: {
-    agent: "Agent EstateOS™",
-    partner: "Partner EstateOS™",
-    investorPro: "Investor Pro",
   },
   theme: {
     label: "Motyw",
@@ -243,7 +270,6 @@ const pl: Dictionary = {
     empty: "Brak nowych powiadomień.",
     markAllRead: "Oznacz jako przeczytane",
     messages: "wiadomości",
-    close: "Zamknij",
   },
   hero: {
     eyebrow: "Globalna inteligencja rynku premium",
@@ -256,7 +282,6 @@ const pl: Dictionary = {
     ctaAccount: "Moje konto",
     ctaPro: "Pakiety Pro",
     exploreMap: "Mapa ofert",
-    scroll: "Przewiń",
   },
   pulse: {
     title: "Puls rynku",
@@ -308,11 +333,6 @@ const pl: Dictionary = {
     searchTypeCommercial: "Komercyjne",
     searchTypePlot: "Działki",
     searchButton: "Szukaj",
-    advancedFilters: "Filtry zaawansowane",
-    galleryTxSale: "Sprzedaż",
-    galleryTxRent: "Wynajem",
-    galleryLocationFallback: "Rynek prywatny",
-    defaultListingTitle: "Rezydencja EstateOS",
     statsActiveOffers: "Zweryfikowanych Ofert",
     statsNewOffers24h: "Nowych w 24h",
     statsMarketCities: "Obsługiwanych Miast",
@@ -375,6 +395,60 @@ const pl: Dictionary = {
     listings: "Oferty",
     central: "Centrala",
   },
+  badges: {
+    admin: "Administrator",
+    agent: "Agent EstateOS",
+    partner: "Partner EstateOS",
+    investorPro: "Investor Pro",
+  },
+  crm: {
+    accountEyebrow: "Moje konto EstateOS™",
+    userIdLabel: "ID użytkownika",
+    tabRadar: "Radar inwestycji",
+    tabMyOffers: "Moje ogłoszenia",
+    tabFavorites: "Ulubione",
+    tabPlanning: "Planowanie",
+    tabDeals: "Transakcje",
+    radarTitle: "Radar",
+    radarTitlePro: "PRO",
+    radarDesc:
+      "Ustaw kryteria jak w aplikacji: lokalizacja, metraż, budżet i tryb transakcji. Po zapisie radar natychmiast przelicza dopasowania.",
+    radarDescPro:
+      "Radar PRO: kalibracja jak w aplikacji — tryb MAP (obszar na mapie) lub miasto i dzielnice. Po zapisie natychmiastowe przeliczenie dopasowań.",
+    activeScanning: "Aktywne skanowanie",
+    radarPro: "Radar PRO",
+    radarProDual: "Podwójny skan · Radar PRO",
+    radarOff: "Radar wyłączony",
+    radarActive: "Radar aktywny",
+    calibrate: "Kalibruj radar",
+    location: "Lokalizacja",
+    propertyType: "Typ",
+    minArea: "Metraż",
+    budget: "Budżet",
+    matchThreshold: "Próg dopasowania",
+    matchLabel: "Dopasowanie",
+    sale: "Sprzedaż",
+    rent: "Wynajem",
+    rooms: "Pokoje",
+    statusActive: "Aktywna",
+    viewOffer: "Zobacz ofertę",
+    perMonth: "/ mc",
+    noMatches: "Brak dopasowań — skalibruj radar, aby zobaczyć oferty.",
+    standardUser: "Użytkownik",
+    seeProfile: "Zobacz profil",
+    dealsTitle: "Szyfrowane",
+    dealsTitleHighlight: "pokoje transakcyjne",
+    dealsDesc: "Prywatne Deal roomy do finalizacji: wiadomości, oferty cenowe, dokumenty.",
+    planningTitle: "Centrum",
+    planningTitleHighlight: "planowania",
+    planningDesc: "Kalendarz spotkań, wizyty i priorytety powiązane z transakcjami.",
+    favoritesTitle: "Moje",
+    favoritesTitleHighlight: "ulubione",
+    favoritesDesc: "Obserwowane oferty i szybki powrót do statusu na rynku.",
+    myOffersTitle: "Moje",
+    myOffersTitleHighlight: "ogłoszenia",
+    myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
+  },
   pricing: {
     eyebrow: "Wybierz swój poziom",
     title: "Inwestuj",
@@ -382,7 +456,7 @@ const pl: Dictionary = {
     titleSuffix: ", nie ciężej.",
     subtitle:
       "Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje zanim pojawią się na szerokim rynku, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.",
-    tabPrivate: "Osoby prywatne",
+    tabPrivate: "Prywatni & Inwestorzy",
     tabAgency: "Agencje PRO",
     basicName: "Basic",
     basicDesc: "Idealny start do sprzedaży własnej nieruchomości lub szukania ofert.",
@@ -440,15 +514,6 @@ const en: Dictionary = {
     logout: "Log out",
     langPl: "PL",
     langEn: "EN",
-    language: "Language",
-    menuOpen: "Open menu",
-    menuClose: "Close menu",
-    home: "EstateOS home",
-  },
-  badges: {
-    agent: "EstateOS™ Agent",
-    partner: "EstateOS™ Partner",
-    investorPro: "Investor Pro",
   },
   theme: {
     label: "Theme",
@@ -463,7 +528,6 @@ const en: Dictionary = {
     empty: "No new notifications.",
     markAllRead: "Mark all as read",
     messages: "messages",
-    close: "Close",
   },
   hero: {
     eyebrow: "Global premium real estate intelligence",
@@ -476,7 +540,6 @@ const en: Dictionary = {
     ctaAccount: "My account",
     ctaPro: "Pro plans",
     exploreMap: "Explore market",
-    scroll: "Scroll",
   },
   pulse: {
     title: "Market pulse",
@@ -528,11 +591,6 @@ const en: Dictionary = {
     searchTypeCommercial: "Commercial",
     searchTypePlot: "Land / Plots",
     searchButton: "Search",
-    advancedFilters: "Advanced filters",
-    galleryTxSale: "For sale",
-    galleryTxRent: "For rent",
-    galleryLocationFallback: "Private market",
-    defaultListingTitle: "EstateOS residence",
     statsActiveOffers: "Verified Listings",
     statsNewOffers24h: "New in 24h",
     statsMarketCities: "Cities Covered",
@@ -595,6 +653,60 @@ const en: Dictionary = {
     listings: "Listings",
     central: "Central",
   },
+  badges: {
+    admin: "Administrator",
+    agent: "Agent EstateOS",
+    partner: "Partner EstateOS",
+    investorPro: "Investor Pro",
+  },
+  crm: {
+    accountEyebrow: "My EstateOS™ account",
+    userIdLabel: "User ID",
+    tabRadar: "Investment radar",
+    tabMyOffers: "My listings",
+    tabFavorites: "Favorites",
+    tabPlanning: "Planning",
+    tabDeals: "Transactions",
+    radarTitle: "Investment",
+    radarTitlePro: "Radar PRO",
+    radarDesc:
+      "Set criteria exactly like in the mobile app: location, area, budget, and transaction mode. After saving, radar recalculates matches instantly.",
+    radarDescPro:
+      "Radar PRO: calibration like the app — MAP area or city and districts. Matches refresh right after you save.",
+    activeScanning: "Active scanning",
+    radarPro: "Radar PRO",
+    radarProDual: "Dual scan · Radar PRO",
+    radarOff: "Radar off",
+    radarActive: "Radar active",
+    calibrate: "Calibrate radar",
+    location: "Location",
+    propertyType: "Type",
+    minArea: "Min. area",
+    budget: "Budget",
+    matchThreshold: "Match threshold",
+    matchLabel: "Match",
+    sale: "For sale",
+    rent: "For rent",
+    rooms: "Rooms",
+    statusActive: "Active",
+    viewOffer: "View listing",
+    perMonth: "/ mo",
+    noMatches: "No matches yet — calibrate radar to see listings.",
+    standardUser: "Member",
+    seeProfile: "View profile",
+    dealsTitle: "Encrypted",
+    dealsTitleHighlight: "deal rooms",
+    dealsDesc: "Private deal rooms to close: messages, bids, documents.",
+    planningTitle: "Planning",
+    planningTitleHighlight: "center",
+    planningDesc: "Calendar for viewings, negotiations, and daily priorities.",
+    favoritesTitle: "My",
+    favoritesTitleHighlight: "favorites",
+    favoritesDesc: "Watchlist and quick return to listing status.",
+    myOffersTitle: "My",
+    myOffersTitleHighlight: "listings",
+    myOffersDesc: "Manage statuses, renewals, and listing statistics.",
+  },
   pricing: {
     eyebrow: "Choose your level",
     title: "Invest",
@@ -602,7 +714,7 @@ const en: Dictionary = {
     titleSuffix: ", not harder.",
     subtitle:
       "Whether you are selling your first home, hunting deals before they hit the open market, or running an agency — we have a plan built for you.",
-    tabPrivate: "Private accounts",
+    tabPrivate: "Private & Investors",
     tabAgency: "Agency PRO",
     basicName: "Basic",
     basicDesc: "Perfect start for selling your property or searching listings.",
