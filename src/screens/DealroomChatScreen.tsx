@@ -35,6 +35,7 @@ import {
   buildBidEventFromSnapshot,
   findLatestActionableBidEvent,
   isMessageFromUser,
+  normalizeNegotiationSnapshot,
   resolveEventBidId,
 } from '../utils/dealBidNegotiation';
 import {
@@ -683,7 +684,7 @@ export default function DealroomChatScreen() {
         setRoomAttachmentBytes(data.messages.reduce((sum: number, msg: any) => sum + (resolveAttachmentFromMessage(msg)?.size || 0), 0));
       }
       if (data.negotiation && typeof data.negotiation === 'object') {
-        setBidNegotiationSnapshot(data.negotiation as DealNegotiationSnapshot);
+        setBidNegotiationSnapshot(normalizeNegotiationSnapshot(data.negotiation));
       }
       if (data.isTyping !== undefined) setIsPartnerTyping(data.isTyping);
     } catch (e) {
@@ -1045,7 +1046,7 @@ export default function DealroomChatScreen() {
   );
 
   const isWaitingForOtherOnPrice = useMemo(() => {
-    if (bidNegotiationSnapshot?.waitingOnOther) return true;
+    if (bidNegotiationSnapshot?.waitingOnOtherBid || bidNegotiationSnapshot?.waitingOnOther) return true;
     if (!latestBid) return false;
     const action = String(latestBid.event?.action || '').toUpperCase();
     if (!['PROPOSED', 'COUNTERED'].includes(action)) return false;

@@ -340,7 +340,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const isFinalizationReady = deal?.status === 'AGREED' && !!deal?.acceptedBidId;
   const isFinalized = FINALIZED_STATUSES.has(String(deal?.status || '').toUpperCase()) || isFinalizationReady;
   const actionableBids = !isFinalized
-    ? (deal.bids || []).filter((b: any) => (b.status === 'PENDING' || b.status === 'COUNTER_OFFER') && b.senderId !== currentUserId)
+    ? (deal.bids || []).filter((b: any) => b.status === 'PENDING' && b.senderId !== currentUserId)
     : [];
   const actionableAppointments = !isFinalized
     ? (deal.appointments || []).filter((a: any) => a.status === 'PENDING' && a.proposedById !== currentUserId)

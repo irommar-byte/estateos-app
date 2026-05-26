@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
-import { verifyMobileToken } from '@/lib/jwtMobile';
 import { finalizeDealWithOfferArchive, isOwnerFinalAccept } from '@/lib/dealFinalize';
+import { resolveDealUserId } from '@/lib/dealRequestAuth';
+import {
+  FINALIZED_DEAL_STATUSES,
+  isPriceNegotiationFrozen,
+  resolveBidForResponse,
+} from '@/lib/dealBidNegotiation';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -26,29 +30,6 @@ function buildDealroomPushData(dealId: number, offerId: number) {
   };
 }
 
-// ================================
-// AUTH HELPER
-// ================================
-function getUserIdFromToken(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  try {
-    const token = authHeader.split(' ')[1];
-    const verified = verifyMobileToken(token) as any;
-    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
-    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
-    const payload = jwt.verify(token, secret) as any;
-    return Number(payload?.id || payload?.sub) || null;
-  } catch {
-    return null;
-  }
-}
-
-// ================================
-// RESPOND TO BID
-// ================================
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string; bidId: string }> }
@@ -63,14 +44,13 @@ export async function POST(
       return NextResponse.json({ error: 'Nieprawidłowe ID' }, { status: 400 });
     }
 
-    const authHeader = req.headers.get('authorization');
-    const userId = getUserIdFromToken(authHeader);
+    const userId = await resolveDealUserId(req);
 
     if (!userId) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
-    const { action, counterAmount, message, note } = await req.json(); // 'ACCEPT' | 'REJECT' | 'COUNTER'
+    const { action, counterAmount, message, note } = await req.json();
     const safeNote =
       typeof message === 'string'
         ? message.trim().slice(0, 500)
@@ -82,45 +62,64 @@ export async function POST(
       return NextResponse.json({ error: 'Nieznana akcja' }, { status: 400 });
     }
 
-    // 🔍 DEAL + BID
     const deal = await prisma.deal.findUnique({
       where: { id: dealId },
-      include: { offer: true }
+      include: { offer: true },
     });
 
-    const bid = await prisma.bid.findUnique({
-      where: { id: bidId }
-    });
-
-    if (!deal || !bid || bid.dealId !== dealId) {
+    if (!deal) {
       return NextResponse.json({ error: 'Nie znaleziono danych' }, { status: 404 });
-    }
-
-    // ❗ BLOKADY LOGICZNE
-    if (!deal.isActive) {
-      return NextResponse.json({ error: 'Transakcja jest zamknięta' }, { status: 400 });
-    }
-
-    if (deal.acceptedBidId) {
-      return NextResponse.json({ error: 'Oferta została już zaakceptowana' }, { status: 400 });
     }
 
     if (deal.buyerId !== userId && deal.sellerId !== userId) {
       return NextResponse.json({ error: 'Brak dostępu do tego pokoju' }, { status: 403 });
     }
 
-    if (bid.senderId === userId) {
-      return NextResponse.json({ error: 'Nie możesz reagować na własną ofertę' }, { status: 403 });
+    if (FINALIZED_DEAL_STATUSES.has(String(deal.status || '').toUpperCase())) {
+      return NextResponse.json({ error: 'Transakcja jest zamknięta' }, { status: 400 });
     }
 
-    if (bid.status !== 'PENDING' && bid.status !== 'COUNTER_OFFER') {
-      return NextResponse.json({ error: 'Ta oferta została już rozpatrzona' }, { status: 400 });
+    const sellerFinalAcceptFlow =
+      action === 'ACCEPT' &&
+      userId === deal.sellerId &&
+      deal.status === 'AGREED' &&
+      Number(deal.acceptedBidId || 0) > 0;
+
+    if (!sellerFinalAcceptFlow && isPriceNegotiationFrozen(deal) && action !== 'REJECT') {
+      return NextResponse.json(
+        {
+          error:
+            'Cena została już uzgodniona. Właściciel może jeszcze sfinalizować sprzedaż w Deal Room.',
+        },
+        { status: 409 }
+      );
     }
 
+    let bid;
+    try {
+      bid = await resolveBidForResponse(prisma, dealId, userId, bidId, deal);
+    } catch (resolveErr: unknown) {
+      const code = resolveErr instanceof Error ? resolveErr.message : '';
+      if (code === 'OWN_BID_PENDING') {
+        return NextResponse.json(
+          {
+            error:
+              'Twoja ostatnia propozycja czeka na odpowiedź drugiej strony. Nie możesz wysłać kolejnej kontroferty.',
+          },
+          { status: 409 }
+        );
+      }
+      if (code === 'BID_ALREADY_HANDLED') {
+        return NextResponse.json({ error: 'Ta propozycja została już rozpatrzona' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'Brak aktywnej oferty do której można odpowiedzieć' }, { status: 404 });
+    }
+
+    const resolvedBidId = bid.id;
     const senderOfBid = bid.senderId;
 
-    if (!senderOfBid) {
-      return NextResponse.json({ error: 'Błąd danych' }, { status: 500 });
+    if (!sellerFinalAcceptFlow && bid.status !== 'PENDING') {
+      return NextResponse.json({ error: 'Ta oferta została już rozpatrzona' }, { status: 409 });
     }
 
     // ================================
@@ -131,63 +130,90 @@ export async function POST(
       if (action === 'ACCEPT') {
 
         // A. Akceptacja, atomicznie tylko dla nadal oczekującej propozycji.
-        const updatedBid = await tx.bid.updateMany({
-          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
-          data: { status: 'ACCEPTED' }
-        });
-        if (updatedBid.count === 0) {
-          throw new Error('BID_ALREADY_HANDLED');
-        }
-
-        // 🔥 Zamknięcie wszystkich innych ofert
-        await tx.bid.updateMany({
-          where: {
-            dealId,
-            id: { not: bidId }
-          },
-          data: { status: 'REJECTED' }
-        });
-
-        const ownerFinalizesNow = isOwnerFinalAccept(userId, deal.sellerId);
-
-        if (ownerFinalizesNow) {
+        if (sellerFinalAcceptFlow) {
           await finalizeDealWithOfferArchive(tx, {
             dealId,
             offerId: deal.offerId,
             sellerId: deal.sellerId,
             buyerId: deal.buyerId,
             actorUserId: userId,
-            acceptedBidId: bidId,
+            acceptedBidId: resolvedBidId,
             finalPrice: bid.amount,
           });
-        } else {
-          await tx.deal.update({
-            where: { id: dealId },
+          await tx.dealMessage.create({
             data: {
-              status: 'AGREED',
-              acceptedBidId: bidId,
-              isActive: false,
+              dealId,
+              senderId: userId,
+              content: buildEventContent({
+                entity: 'BID',
+                action: 'FINALIZED',
+                status: 'FINALIZED',
+                bidId: resolvedBidId,
+                amount: bid.amount,
+                note: safeNote,
+                message: safeNote,
+                createdAt: new Date().toISOString(),
+              }),
+            },
+          });
+        } else {
+          const updatedBid = await tx.bid.updateMany({
+            where: { id: resolvedBidId, dealId, status: 'PENDING' },
+            data: { status: 'ACCEPTED' },
+          });
+          if (updatedBid.count === 0) {
+            throw new Error('BID_ALREADY_HANDLED');
+          }
+
+          await tx.bid.updateMany({
+            where: {
+              dealId,
+              id: { not: resolvedBidId },
+              status: { in: ['PENDING', 'COUNTER_OFFER'] },
+            },
+            data: { status: 'REJECTED' },
+          });
+
+          const ownerFinalizesNow = isOwnerFinalAccept(userId, deal.sellerId);
+
+          if (ownerFinalizesNow) {
+            await finalizeDealWithOfferArchive(tx, {
+              dealId,
+              offerId: deal.offerId,
+              sellerId: deal.sellerId,
+              buyerId: deal.buyerId,
+              actorUserId: userId,
+              acceptedBidId: resolvedBidId,
+              finalPrice: bid.amount,
+            });
+          } else {
+            await tx.deal.update({
+              where: { id: dealId },
+              data: {
+                status: 'AGREED',
+                acceptedBidId: resolvedBidId,
+                isActive: true,
+              },
+            });
+          }
+
+          await tx.dealMessage.create({
+            data: {
+              dealId,
+              senderId: userId,
+              content: buildEventContent({
+                entity: 'BID',
+                action: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
+                status: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
+                bidId: resolvedBidId,
+                amount: bid.amount,
+                note: safeNote,
+                message: safeNote,
+                createdAt: new Date().toISOString(),
+              }),
             },
           });
         }
-
-        // D. SYSTEM MESSAGE (canonical DEAL_EVENT)
-        await tx.dealMessage.create({
-          data: {
-            dealId,
-            senderId: userId,
-            content: buildEventContent({
-              entity: 'BID',
-              action: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
-              status: ownerFinalizesNow ? 'FINALIZED' : 'ACCEPTED',
-              bidId,
-              amount: bid.amount,
-              note: safeNote,
-              message: safeNote,
-              createdAt: new Date().toISOString(),
-            })
-          }
-        });
 
         // E. NOTIFICATION
         await tx.notification.create({
@@ -205,8 +231,8 @@ export async function POST(
 
         // A. Odrzucenie, atomicznie tylko dla nadal oczekującej propozycji.
         const updatedBid = await tx.bid.updateMany({
-          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
-          data: { status: 'REJECTED' }
+          where: { id: resolvedBidId, dealId, status: 'PENDING' },
+          data: { status: 'REJECTED' },
         });
         if (updatedBid.count === 0) {
           throw new Error('BID_ALREADY_HANDLED');
@@ -221,16 +247,15 @@ export async function POST(
               entity: 'BID',
               action: 'REJECTED',
               status: 'REJECTED',
-              bidId,
+              bidId: resolvedBidId,
               amount: bid.amount,
               note: safeNote,
               message: safeNote,
               createdAt: new Date().toISOString(),
-            })
-          }
+            }),
+          },
         });
 
-        // C. NOTIFICATION
         await tx.notification.create({
           data: {
             userId: senderOfBid,
@@ -254,12 +279,22 @@ export async function POST(
         }
 
         const updatedBid = await tx.bid.updateMany({
-          where: { id: bidId, dealId, status: { in: ['PENDING', 'COUNTER_OFFER'] } },
-          data: { status: 'COUNTER_OFFER', amount: numericCounter }
+          where: { id: resolvedBidId, dealId, status: 'PENDING' },
+          data: { status: 'COUNTER_OFFER' },
         });
         if (updatedBid.count === 0) {
           throw new Error('BID_ALREADY_HANDLED');
         }
+
+        const created = await tx.bid.create({
+          data: {
+            dealId,
+            senderId: userId,
+            amount: numericCounter,
+            message: safeNote || 'Kontroferta',
+            status: 'PENDING',
+          },
+        });
 
         await tx.dealMessage.create({
           data: {
@@ -269,13 +304,14 @@ export async function POST(
               entity: 'BID',
               action: 'COUNTERED',
               status: 'PENDING',
-              bidId,
-              amount: numericCounter,
+              bidId: created.id,
+              parentBidId: resolvedBidId,
+              amount: created.amount,
               note: safeNote,
               message: safeNote,
               createdAt: new Date().toISOString(),
-            })
-          }
+            }),
+          },
         });
 
         await tx.notification.create({

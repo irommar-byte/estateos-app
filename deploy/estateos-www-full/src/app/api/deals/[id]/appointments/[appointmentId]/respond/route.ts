@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { notificationService } from '@/lib/services/notification.service';
 import { resolveDealUserId } from '@/lib/dealRequestAuth';
 import {
+  FINALIZED_DEAL_STATUSES,
+  resolveAppointmentForResponse,
+} from '@/lib/dealBidNegotiation';
+import {
   buildAppointmentUpdateEmailHtml,
   sendTransactionalEmail,
 } from '@/lib/email/transactional';
@@ -57,21 +61,12 @@ export async function POST(
           ? note.trim().slice(0, 500)
           : null;
 
-    const actionMap: Record<string, 'ACCEPTED' | 'DECLINED' | 'RESCHEDULED'> = {
-      ACCEPT: 'ACCEPTED',
-      DECLINE: 'DECLINED',
-      RESCHEDULE: 'RESCHEDULED'
-    };
-
-    if (!actionMap[action]) {
+    if (!['ACCEPT', 'DECLINE', 'RESCHEDULE'].includes(String(action || ''))) {
       return NextResponse.json({ error: 'Nieznana akcja' }, { status: 400 });
     }
 
-    // 🔍 DATA CHECK
     const deal = await prisma.deal.findUnique({ where: { id: dealId } });
-    const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
-
-    if (!deal || !appointment || appointment.dealId !== dealId) {
+    if (!deal) {
       return NextResponse.json({ error: 'Nie znaleziono danych' }, { status: 404 });
     }
 
@@ -79,67 +74,38 @@ export async function POST(
       return NextResponse.json({ error: 'Brak dostępu' }, { status: 403 });
     }
 
-    // ❗ BLOKADY SYSTEMOWE
-    if (!deal.isActive || ['FINALIZED', 'CANCELLED'].includes(deal.status)) {
+    if (FINALIZED_DEAL_STATUSES.has(String(deal.status || '').toUpperCase())) {
       return NextResponse.json({ error: 'Transakcja zamknięta' }, { status: 400 });
     }
 
-    if (appointment.proposedById === userId) {
-      return NextResponse.json({ error: 'Nie możesz reagować na własną propozycję' }, { status: 403 });
+    let appointment;
+    try {
+      appointment = await resolveAppointmentForResponse(prisma, dealId, userId, appointmentId);
+    } catch (resolveErr: unknown) {
+      const code = resolveErr instanceof Error ? resolveErr.message : '';
+      if (code === 'OWN_APPOINTMENT_PENDING') {
+        return NextResponse.json(
+          {
+            error:
+              'Twoja propozycja terminu czeka na odpowiedź drugiej strony.',
+          },
+          { status: 409 }
+        );
+      }
+      if (code === 'APPOINTMENT_ALREADY_HANDLED') {
+        return NextResponse.json({ error: 'Ta propozycja została już rozpatrzona' }, { status: 409 });
+      }
+      return NextResponse.json({ error: 'Brak aktywnej propozycji terminu' }, { status: 404 });
     }
 
+    const resolvedAppointmentId = appointment.id;
     const senderOfProposal = appointment.proposedById;
+    let counterDateForEmail: Date | null = null;
 
     await prisma.$transaction(async (tx) => {
-
-      // 🔒 ATOMIC LOCK
-      const updated = await tx.appointment.updateMany({
-        where: {
-          id: appointmentId,
-          status: 'PENDING'
-        },
-        data: {
-          status: actionMap[action],
-        }
-      });
-
-      if (updated.count === 0) {
-        throw new Error('APPOINTMENT_ALREADY_HANDLED');
-      }
-
       let content = '';
       let notifTitle = '';
       let notifBody = '';
-
-      if (action === 'ACCEPT') {
-        content = buildEventContent({
-          entity: 'APPOINTMENT',
-          action: 'ACCEPTED',
-          status: 'ACCEPTED',
-          appointmentId,
-          proposedDate: appointment.proposedDate.toISOString(),
-          note: safeMessage,
-          message: safeMessage,
-          createdAt: new Date().toISOString(),
-        });
-        notifTitle = '✅ Termin zaakceptowany';
-        notifBody = 'Spotkanie zostało potwierdzone.';
-      }
-
-      if (action === 'DECLINE') {
-        content = buildEventContent({
-          entity: 'APPOINTMENT',
-          action: 'DECLINED',
-          status: 'DECLINED',
-          appointmentId,
-          proposedDate: appointment.proposedDate.toISOString(),
-          note: safeMessage,
-          message: safeMessage,
-          createdAt: new Date().toISOString(),
-        });
-        notifTitle = '❌ Termin odrzucony';
-        notifBody = 'Twoja propozycja została odrzucona.';
-      }
 
       if (action === 'RESCHEDULE') {
         const counterDateRaw = proposedDate || body.counterDate || body.newDate;
@@ -148,11 +114,11 @@ export async function POST(
           throw new Error('INVALID_COUNTER_DATE');
         }
 
-        const updatedAppointment = await tx.appointment.updateMany({
-          where: { id: appointmentId, status: 'PENDING' },
+        const closed = await tx.appointment.updateMany({
+          where: { id: resolvedAppointmentId, dealId, status: 'PENDING' },
           data: { status: 'RESCHEDULED' },
         });
-        if (updatedAppointment.count === 0) {
+        if (closed.count === 0) {
           throw new Error('APPOINTMENT_ALREADY_HANDLED');
         }
 
@@ -166,12 +132,13 @@ export async function POST(
           },
         });
 
+        counterDateForEmail = counterDate;
         content = buildEventContent({
           entity: 'APPOINTMENT',
           action: 'COUNTERED',
           status: 'PENDING',
           appointmentId: created.id,
-          parentAppointmentId: appointmentId,
+          parentAppointmentId: resolvedAppointmentId,
           proposedDate: created.proposedDate.toISOString(),
           note: safeMessage,
           message: safeMessage,
@@ -179,18 +146,49 @@ export async function POST(
         });
         notifTitle = '🔄 Nowa kontroferta terminu';
         notifBody = counterDate.toLocaleString('pl-PL');
+      } else {
+        const nextStatus = action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED';
+        const updated = await tx.appointment.updateMany({
+          where: { id: resolvedAppointmentId, dealId, status: 'PENDING' },
+          data: { status: nextStatus },
+        });
+        if (updated.count === 0) {
+          throw new Error('APPOINTMENT_ALREADY_HANDLED');
+        }
+
+        if (action === 'ACCEPT') {
+          content = buildEventContent({
+            entity: 'APPOINTMENT',
+            action: 'ACCEPTED',
+            status: 'ACCEPTED',
+            appointmentId: resolvedAppointmentId,
+            proposedDate: appointment.proposedDate.toISOString(),
+            note: safeMessage,
+            message: safeMessage,
+            createdAt: new Date().toISOString(),
+          });
+          notifTitle = '✅ Termin zaakceptowany';
+          notifBody = 'Spotkanie zostało potwierdzone.';
+        } else {
+          content = buildEventContent({
+            entity: 'APPOINTMENT',
+            action: 'DECLINED',
+            status: 'DECLINED',
+            appointmentId: resolvedAppointmentId,
+            proposedDate: appointment.proposedDate.toISOString(),
+            note: safeMessage,
+            message: safeMessage,
+            createdAt: new Date().toISOString(),
+          });
+          notifTitle = '❌ Termin odrzucony';
+          notifBody = 'Twoja propozycja została odrzucona.';
+        }
       }
 
-      // 💬 TIMELINE
       await tx.dealMessage.create({
-        data: {
-          dealId,
-          senderId: userId,
-          content
-        }
+        data: { dealId, senderId: userId, content },
       });
 
-      // 🔔 NOTIFICATION
       await tx.notification.create({
         data: {
           userId: senderOfProposal,
@@ -199,15 +197,13 @@ export async function POST(
           body: notifBody,
           targetType: 'DEAL',
           targetId: String(dealId),
-        }
+        },
       });
 
-      // 🔄 bump deal
       await tx.deal.update({
         where: { id: dealId },
-        data: { updatedAt: new Date() }
+        data: { updatedAt: new Date() },
       });
-
     });
 
     const pushTitle =
@@ -272,7 +268,7 @@ export async function POST(
               recipientName: entry.recipientName,
               otherPartyName: entry.otherParty,
               offerTitle: dealWithUsers.offer?.title,
-              proposedDate: appointment.proposedDate,
+              proposedDate: counterDateForEmail || appointment.proposedDate,
               statusLabel,
               note,
               dealId,
@@ -296,8 +292,8 @@ export async function POST(
   } catch (error: any) {
     if (error.message === 'APPOINTMENT_ALREADY_HANDLED') {
       return NextResponse.json({
-        error: 'Ta propozycja została już rozpatrzona'
-      }, { status: 400 });
+        error: 'Ta propozycja została już rozpatrzona',
+      }, { status: 409 });
     }
     if (error.message === 'INVALID_COUNTER_DATE') {
       return NextResponse.json({

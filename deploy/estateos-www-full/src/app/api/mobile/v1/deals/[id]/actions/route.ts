@@ -5,7 +5,14 @@ import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { Prisma } from '@prisma/client';
 import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
-import { resolveBidForResponse } from '@/lib/dealBidNegotiation';
+import {
+  FINALIZED_DEAL_STATUSES,
+  isPriceNegotiationFrozen,
+  resolveAppointmentForResponse,
+  resolveBidForResponse,
+  withdrawOwnPendingAppointments,
+  withdrawOwnPendingBids,
+} from '@/lib/dealBidNegotiation';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -185,6 +192,12 @@ export async function POST(req: Request) {
     }
 
     if (type === 'BID_PROPOSE') {
+      if (isPriceNegotiationFrozen(deal)) {
+        return NextResponse.json(
+          { error: 'Cena została już uzgodniona — negocjacja kwoty jest zamknięta.' },
+          { status: 409 }
+        );
+      }
       const amount = Number(body?.amount);
       const financingRaw = String(body?.financing || 'CASH').toUpperCase();
       const financing = financingRaw === 'CREDIT' ? 'CREDIT' : 'CASH';
@@ -197,6 +210,8 @@ export async function POST(req: Request) {
       if (!amount || Number.isNaN(amount) || amount <= 0) {
         return NextResponse.json({ error: 'Podaj poprawna kwote' }, { status: 400 });
       }
+
+      await withdrawOwnPendingBids(prisma, dealId, actorId);
 
       const bid = await prisma.bid.create({
         data: {
@@ -258,7 +273,8 @@ export async function POST(req: Request) {
           prisma,
           dealId,
           actorId,
-          requestedBidId && !Number.isNaN(requestedBidId) ? requestedBidId : null
+          requestedBidId && !Number.isNaN(requestedBidId) ? requestedBidId : null,
+          deal
         );
       } catch (resolveErr: any) {
         const code = String(resolveErr?.message || '');
@@ -515,12 +531,17 @@ export async function POST(req: Request) {
     }
 
     if (type === 'APPOINTMENT_PROPOSE') {
+      if (FINALIZED_DEAL_STATUSES.has(String(deal.status || '').toUpperCase())) {
+        return NextResponse.json({ error: 'Transakcja jest zamknieta' }, { status: 400 });
+      }
       const proposedDateRaw = String(body?.proposedDate || '');
       const note = typeof body?.message === 'string' ? body.message.trim().slice(0, 500) : null;
       const proposedDate = new Date(proposedDateRaw);
       if (Number.isNaN(proposedDate.getTime())) {
         return NextResponse.json({ error: 'Nieprawidlowy termin' }, { status: 400 });
       }
+
+      await withdrawOwnPendingAppointments(prisma, dealId, actorId);
 
       const appointment = await prisma.appointment.create({
         data: {
@@ -576,22 +597,32 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Nieznana decyzja APPOINTMENT' }, { status: 400 });
       }
 
-      const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
-      if (!appointment || appointment.dealId !== dealId) {
-        return NextResponse.json({ error: 'Spotkanie nie istnieje' }, { status: 404 });
-      }
-      if (appointment.proposedById === actorId) {
-        return NextResponse.json({ error: 'Nie mozesz odpowiedziec na swoja propozycje' }, { status: 403 });
-      }
-      if (appointment.status !== 'PENDING') {
-        return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+      let appointment;
+      try {
+        appointment = await resolveAppointmentForResponse(prisma, dealId, actorId, appointmentId);
+      } catch (resolveErr: unknown) {
+        const code = resolveErr instanceof Error ? resolveErr.message : '';
+        if (code === 'OWN_APPOINTMENT_PENDING') {
+          return NextResponse.json(
+            {
+              error:
+                'Twoja propozycja terminu czeka na odpowiedź drugiej strony.',
+            },
+            { status: 409 }
+          );
+        }
+        if (code === 'APPOINTMENT_ALREADY_HANDLED') {
+          return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });
+        }
+        return NextResponse.json({ error: 'Brak aktywnej propozycji terminu' }, { status: 404 });
       }
 
+      const resolvedAppointmentId = appointment.id;
       const senderOfOriginalAppointment = appointment.proposedById;
       if (decision === 'ACCEPT') {
         const accepted = await prisma.$transaction(async (tx) => {
           const updatedAppointment = await tx.appointment.updateMany({
-            where: { id: appointmentId, dealId, status: 'PENDING' },
+            where: { id: resolvedAppointmentId, dealId, status: 'PENDING' },
             data: { status: 'ACCEPTED' }
           });
           if (updatedAppointment.count === 0) return false;
@@ -603,7 +634,7 @@ export async function POST(req: Request) {
               content: buildEventContent({
                 entity: 'APPOINTMENT',
                 action: 'ACCEPTED',
-                appointmentId,
+                appointmentId: resolvedAppointmentId,
                 proposedDate: appointment.proposedDate.toISOString(),
                 note,
                 status: 'ACCEPTED',
@@ -623,7 +654,7 @@ export async function POST(req: Request) {
           offerId: deal.offerId,
           title: 'Termin zostal zaakceptowany',
           body: appointment.proposedDate.toLocaleString('pl-PL'),
-          eventId: `deal:${dealId}:appointment:${appointmentId}:ACCEPTED`,
+          eventId: `deal:${dealId}:appointment:${resolvedAppointmentId}:ACCEPTED`,
           type: 'APPOINTMENT',
         });
         return NextResponse.json({ success: true, status: 'ACCEPTED' });
@@ -632,7 +663,7 @@ export async function POST(req: Request) {
       if (decision === 'DECLINE') {
         const declined = await prisma.$transaction(async (tx) => {
           const updatedAppointment = await tx.appointment.updateMany({
-            where: { id: appointmentId, dealId, status: 'PENDING' },
+            where: { id: resolvedAppointmentId, dealId, status: 'PENDING' },
             data: { status: 'DECLINED' }
           });
           if (updatedAppointment.count === 0) return false;
@@ -644,7 +675,7 @@ export async function POST(req: Request) {
               content: buildEventContent({
                 entity: 'APPOINTMENT',
                 action: 'DECLINED',
-                appointmentId,
+                appointmentId: resolvedAppointmentId,
                 proposedDate: appointment.proposedDate.toISOString(),
                 note,
                 status: 'DECLINED',
@@ -664,7 +695,7 @@ export async function POST(req: Request) {
           offerId: deal.offerId,
           title: 'Termin zostal odrzucony',
           body: appointment.proposedDate.toLocaleString('pl-PL'),
-          eventId: `deal:${dealId}:appointment:${appointmentId}:REJECTED`,
+          eventId: `deal:${dealId}:appointment:${resolvedAppointmentId}:DECLINED`,
           type: 'APPOINTMENT',
         });
         return NextResponse.json({ success: true, status: 'DECLINED' });
@@ -677,7 +708,7 @@ export async function POST(req: Request) {
 
       const counterAppointment = await prisma.$transaction(async (tx) => {
         const updatedAppointment = await tx.appointment.updateMany({
-          where: { id: appointmentId, dealId, status: 'PENDING' },
+          where: { id: resolvedAppointmentId, dealId, status: 'PENDING' },
           data: { status: 'RESCHEDULED' }
         });
         if (updatedAppointment.count === 0) {
@@ -701,7 +732,7 @@ export async function POST(req: Request) {
               entity: 'APPOINTMENT',
               action: 'COUNTERED',
               appointmentId: created.id,
-              parentAppointmentId: appointmentId,
+              parentAppointmentId: resolvedAppointmentId,
               proposedDate: created.proposedDate.toISOString(),
               note,
               status: created.status,
@@ -729,6 +760,23 @@ export async function POST(req: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === 'BID_ALREADY_HANDLED') {
       return NextResponse.json({ error: 'Ta propozycja zostala juz rozpatrzona' }, { status: 409 });
+    }
+    if (error instanceof Error && error.message === 'OWN_BID_PENDING') {
+      return NextResponse.json(
+        {
+          error:
+            'Twoja ostatnia propozycja czeka na odpowiedź drugiej strony.',
+        },
+        { status: 409 }
+      );
+    }
+    if (error instanceof Error && error.message === 'OWN_APPOINTMENT_PENDING') {
+      return NextResponse.json(
+        {
+          error: 'Twoja propozycja terminu czeka na odpowiedź drugiej strony.',
+        },
+        { status: 409 }
+      );
     }
     if (error instanceof Error && error.message === 'APPOINTMENT_ALREADY_HANDLED') {
       return NextResponse.json({ error: 'Ta propozycja terminu zostala juz rozpatrzona' }, { status: 409 });

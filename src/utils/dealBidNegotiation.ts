@@ -4,9 +4,16 @@ export type DealNegotiationSnapshot = {
   respondToBidId: number | null;
   respondToBidAmount: number | null;
   respondToBidSenderId: number | null;
-  waitingOnOther: boolean;
+  waitingOnOtherBid: boolean;
   myPendingBidId: number | null;
   myPendingBidAmount: number | null;
+  respondToAppointmentId: number | null;
+  respondToAppointmentDate: string | null;
+  respondToAppointmentProposerId: number | null;
+  waitingOnOtherAppointment: boolean;
+  myPendingAppointmentId: number | null;
+  /** @deprecated API v1 alias */
+  waitingOnOther?: boolean;
 };
 
 export function isPositiveUserId(id: unknown): id is number {
@@ -40,6 +47,15 @@ export function findLatestActionableBidEvent(
     return entry;
   }
   return null;
+}
+
+export function normalizeNegotiationSnapshot(raw: unknown): DealNegotiationSnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const n = raw as DealNegotiationSnapshot;
+  return {
+    ...n,
+    waitingOnOther: n.waitingOnOtherBid ?? n.waitingOnOther ?? false,
+  };
 }
 
 export function buildBidEventFromSnapshot(
