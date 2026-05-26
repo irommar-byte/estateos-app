@@ -2477,24 +2477,46 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
 };
 
 const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
+  const { token } = useAuthStore();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const isDark = theme.glass === 'dark';
   const { width } = Dimensions.get('window');
 
   const fetchAnalytics = async () => {
+    if (!token) {
+      setFetchError('Brak sesji — zaloguj się ponownie.');
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setFetchError(null);
     try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/admin/radar-analytics`, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
-      const json = await res.json();
-      if (res.ok && json.success) setData(json.radar);
-    } catch (e) {}
-    setLoading(false);
+      const res = await fetch(`${API_URL}/api/mobile/v1/admin/radar-analytics`, {
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Cache-Control': 'no-cache',
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        setData(json.radar || {});
+      } else {
+        setData(null);
+        setFetchError(String(json?.message || json?.error || `Serwer: ${res.status}`).trim() || 'Nie udało się pobrać analityki.');
+      }
+    } catch {
+      setData(null);
+      setFetchError('Brak połączenia z serwerem.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { if (visible) fetchAnalytics(); }, [visible]);
-
-  if (!visible) return null;
+  useEffect(() => { if (visible) fetchAnalytics(); }, [visible, token]);
 
   const kpis = data?.kpis || {};
   const pushActive = Number(kpis.pushActive || 0);
@@ -2521,8 +2543,22 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
           <Text style={[styles.modalTitle, { color: theme.text }]}>Analityka Radaru</Text>
           <Pressable onPress={onClose}><Ionicons name="close-circle" size={32} color={theme.subtitle} /></Pressable>
         </View>
-        {loading || !data ? (
+        {loading ? (
           <ActivityIndicator size="large" color="#FF2D55" style={{ marginTop: 50 }} />
+        ) : fetchError ? (
+          <View style={{ paddingHorizontal: 24, paddingTop: 32 }}>
+            <View style={[styles.adminInlineError, { borderColor: 'rgba(255,59,48,0.35)', backgroundColor: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.08)' }]}>
+              <Ionicons name="alert-circle" size={22} color="#FF3B30" />
+              <Text style={[styles.adminInlineErrorText, { color: theme.text }]}>{fetchError}</Text>
+            </View>
+            <Pressable
+              onPress={() => void fetchAnalytics()}
+              style={({ pressed }) => [styles.adminRetryBtn, pressed && { opacity: 0.88 }]}
+            >
+              <Ionicons name="refresh" size={18} color="#fff" />
+              <Text style={styles.adminRetryBtnText}>Spróbuj ponownie</Text>
+            </Pressable>
+          </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
             <View style={[styles.analyticsHero, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}>
