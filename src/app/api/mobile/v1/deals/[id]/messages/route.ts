@@ -10,6 +10,7 @@ import {
   saveDealAttachmentForDealRoom,
 } from '@/lib/upload/offerMediaUpload';
 import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
+import { getDealBidNegotiationSnapshot } from '@/lib/dealBidNegotiation';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -87,8 +88,11 @@ export async function GET(req: Request) {
       finalizedAt: resolveFinalizedAtSafe(deal),
     });
 
+    const negotiation = await getDealBidNegotiationSnapshot(prisma, dealIdInt, userId);
+
     return NextResponse.json({
       messages,
+      negotiation,
       isTyping: isPartnerTyping,
       ...(reviewGate || {
         myReviewSubmitted: false,

@@ -5,6 +5,7 @@ import { notificationService } from '@/lib/services/notification.service';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { Prisma } from '@prisma/client';
 import { finalizeDealWithOfferArchive } from '@/lib/dealFinalize';
+import { resolveBidForResponse } from '@/lib/dealBidNegotiation';
 
 type BidDecision = 'ACCEPT' | 'REJECT' | 'COUNTER';
 type AppointmentDecision = 'ACCEPT' | 'DECLINE' | 'COUNTER';
@@ -238,7 +239,7 @@ export async function POST(req: Request) {
     }
 
     if (type === 'BID_RESPOND') {
-      const bidId = Number(body?.bidId);
+      const requestedBidId = Number(body?.bidId);
       const decision = String(body?.decision || '').toUpperCase() as BidDecision;
       const counterAmount = Number(body?.counterAmount);
       const note = typeof body?.message === 'string'
@@ -247,20 +248,39 @@ export async function POST(req: Request) {
           ? body.note.trim().slice(0, 500)
           : null;
 
-      if (!bidId || Number.isNaN(bidId)) {
-        return NextResponse.json({ error: 'Brak bidId' }, { status: 400 });
-      }
       if (!['ACCEPT', 'REJECT', 'COUNTER'].includes(decision)) {
         return NextResponse.json({ error: 'Nieznana decyzja BID' }, { status: 400 });
       }
 
-      const bid = await prisma.bid.findUnique({ where: { id: bidId } });
-      if (!bid || bid.dealId !== dealId) {
-        return NextResponse.json({ error: 'Oferta nie istnieje' }, { status: 404 });
+      let bid;
+      try {
+        bid = await resolveBidForResponse(
+          prisma,
+          dealId,
+          actorId,
+          requestedBidId && !Number.isNaN(requestedBidId) ? requestedBidId : null
+        );
+      } catch (resolveErr: any) {
+        const code = String(resolveErr?.message || '');
+        if (code === 'OWN_BID_PENDING') {
+          return NextResponse.json(
+            {
+              error:
+                'Twoja ostatnia propozycja czeka na odpowiedź drugiej strony. Nie możesz wysłać kolejnej kontroferty.',
+            },
+            { status: 409 }
+          );
+        }
+        if (code === 'BID_ALREADY_HANDLED') {
+          return NextResponse.json({ error: 'Ta propozycja została już rozpatrzona' }, { status: 409 });
+        }
+        return NextResponse.json(
+          { error: 'Brak aktywnej oferty do której można odpowiedzieć' },
+          { status: 404 }
+        );
       }
-      if (bid.senderId === actorId) {
-        return NextResponse.json({ error: 'Nie mozesz odpowiedziec na swoja oferte' }, { status: 403 });
-      }
+
+      const bidId = bid.id;
       const sellerFinalAcceptFlow =
         decision === 'ACCEPT' &&
         actorId === deal.sellerId &&

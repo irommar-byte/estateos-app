@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import jwt from 'jsonwebtoken';
 import { notificationService } from '@/lib/services/notification.service';
-import { verifyMobileToken } from '@/lib/jwtMobile';
+import { resolveDealUserId } from '@/lib/dealRequestAuth';
 import {
   buildAppointmentUpdateEmailHtml,
   sendTransactionalEmail,
@@ -29,25 +28,6 @@ function buildDealroomPushData(dealId: number, offerId: number) {
   };
 }
 
-function getUserIdFromToken(authHeader: string | null): number | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const verified = verifyMobileToken(token) as any;
-    const verifiedId = Number(verified?.id || verified?.userId || verified?.sub);
-    if (Number.isFinite(verifiedId) && verifiedId > 0) return verifiedId;
-
-    const secret = process.env.JWT_SECRET;
-    if (!secret) return null;
-
-    const payload = jwt.verify(token, secret) as any;
-    return Number(payload?.id || payload?.sub) || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(
   req: Request,
   context: { params: Promise<{ id: string; appointmentId: string }> }
@@ -61,14 +41,14 @@ export async function POST(
       return NextResponse.json({ error: 'Nieprawidłowe ID' }, { status: 400 });
     }
 
-    const userId = getUserIdFromToken(req.headers.get('authorization'));
+    const userId = await resolveDealUserId(req);
 
     if (!userId) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
     const body = await req.json();
-    const { action, message, note } = body;
+    const { action, message, note, proposedDate } = body;
 
     const safeMessage =
       typeof message === 'string'
@@ -162,18 +142,43 @@ export async function POST(
       }
 
       if (action === 'RESCHEDULE') {
+        const counterDateRaw = proposedDate || body.counterDate || body.newDate;
+        const counterDate = counterDateRaw ? new Date(String(counterDateRaw)) : null;
+        if (!counterDate || Number.isNaN(counterDate.getTime()) || counterDate <= new Date()) {
+          throw new Error('INVALID_COUNTER_DATE');
+        }
+
+        const updatedAppointment = await tx.appointment.updateMany({
+          where: { id: appointmentId, status: 'PENDING' },
+          data: { status: 'RESCHEDULED' },
+        });
+        if (updatedAppointment.count === 0) {
+          throw new Error('APPOINTMENT_ALREADY_HANDLED');
+        }
+
+        const created = await tx.appointment.create({
+          data: {
+            dealId,
+            proposedById: userId,
+            proposedDate: counterDate,
+            message: safeMessage,
+            status: 'PENDING',
+          },
+        });
+
         content = buildEventContent({
           entity: 'APPOINTMENT',
           action: 'COUNTERED',
           status: 'PENDING',
-          appointmentId,
-          proposedDate: appointment.proposedDate.toISOString(),
+          appointmentId: created.id,
+          parentAppointmentId: appointmentId,
+          proposedDate: created.proposedDate.toISOString(),
           note: safeMessage,
           message: safeMessage,
           createdAt: new Date().toISOString(),
         });
-        notifTitle = '🔄 Zmiana terminu';
-        notifBody = 'Poproszono o nowy termin spotkania.';
+        notifTitle = '🔄 Nowa kontroferta terminu';
+        notifBody = counterDate.toLocaleString('pl-PL');
       }
 
       // 💬 TIMELINE
@@ -292,6 +297,11 @@ export async function POST(
     if (error.message === 'APPOINTMENT_ALREADY_HANDLED') {
       return NextResponse.json({
         error: 'Ta propozycja została już rozpatrzona'
+      }, { status: 400 });
+    }
+    if (error.message === 'INVALID_COUNTER_DATE') {
+      return NextResponse.json({
+        error: 'Wybierz przyszły termin z kalendarza'
       }, { status: 400 });
     }
 
