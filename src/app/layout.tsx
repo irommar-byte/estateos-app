@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
+import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock";
 import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
@@ -86,6 +87,7 @@ export default async function RootLayout({
                 <SkipToContent />
                 <Tracker />
                 <Navbar />
+                <FloatingPreferencesDock />
                 <div id="main-content" tabIndex={-1} className="outline-none">
                   {children}
                 </div>

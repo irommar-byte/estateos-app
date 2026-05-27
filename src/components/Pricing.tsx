@@ -205,7 +205,7 @@ export default function Pricing() {
                   <Building2 size={14} /> {p.agencySoon}
                 </span>
                 <h4 className="text-3xl md:text-4xl font-black text-white mb-3 tracking-tight">
-                  EstateOS <span className="text-emerald-500">Agency PRO</span>
+                  <span className="text-emerald-500">{p.agencySoonTitle}</span>
                 </h4>
                 <p className="text-white/55 text-sm md:text-base max-w-lg leading-relaxed">{p.agencySoonDesc}</p>
               </div>

@@ -525,7 +525,7 @@ const pl: Dictionary = {
     subtitle:
       "Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje zanim pojawią się na szerokim rynku, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.",
     tabPrivate: "Prywatni & Inwestorzy",
-    tabAgency: "Agencje PRO",
+    tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
     basicDesc: "Idealny start do sprzedaży własnej nieruchomości lub szukania ofert.",
     basicPrice: "0 PLN",
@@ -552,7 +552,7 @@ const pl: Dictionary = {
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
     agencySoon: "Wkrótce",
-    agencySoonTitle: "EstateOS Agency PRO",
+    agencySoonTitle: "EstateOS™ Partner",
     agencySoonDesc:
       "Pakiet dla biur nieruchomości przygotowujemy — CRM, import XML i leady Concierge. Wróć za chwilę.",
     modalTitle: "Jaki jest Twój Cel?",
@@ -818,7 +818,7 @@ const en: Dictionary = {
     subtitle:
       "Whether you are selling your first home, hunting deals before they hit the open market, or running an agency — we have a plan built for you.",
     tabPrivate: "Private & Investors",
-    tabAgency: "Agency PRO",
+    tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
     basicDesc: "Perfect start for selling your property or searching listings.",
     basicPrice: "0 PLN",
@@ -845,7 +845,7 @@ const en: Dictionary = {
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
     agencySoon: "Coming soon",
-    agencySoonTitle: "EstateOS Agency PRO",
+    agencySoonTitle: "EstateOS™ Partner",
     agencySoonDesc:
       "The agency package is in preparation — CRM, XML import, and Concierge leads. Check back soon.",
     modalTitle: "What is your goal?",
