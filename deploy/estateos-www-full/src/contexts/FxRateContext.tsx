@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { DEFAULT_EUR_PLN_RATE } from "@/lib/money/offerPrice";
+import { DEFAULT_EUR_PLN_RATE } from "@/lib/money/constants";
 import type { FxRateSnapshot } from "@/lib/money/types";
 
 type FxRateContextValue = {

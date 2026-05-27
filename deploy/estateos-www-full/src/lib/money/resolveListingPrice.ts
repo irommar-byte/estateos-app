@@ -1,4 +1,5 @@
-import { DEFAULT_EUR_PLN_RATE, parsePriceAmount } from './offerPrice';
+import { DEFAULT_EUR_PLN_RATE } from './constants';
+import { parsePriceAmount } from './offerPrice';
 import { normalizeListingCurrency, plnFromListingAmount } from './convert';
 import type { ListingCurrency } from './types';
 

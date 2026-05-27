@@ -25,8 +25,8 @@ import {
 import {
   bodyTouchesOfferPrice,
   getCanonicalOfferPricePln,
-  resolveOfferPriceFromBody,
 } from '@/lib/money/offerPrice';
+import { resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {

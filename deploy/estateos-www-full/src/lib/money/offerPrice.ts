@@ -1,4 +1,6 @@
-import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
+import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
+
+export { DEFAULT_EUR_PLN_RATE };
 
 export type OfferPriceCurrency = 'PLN' | 'EUR';
 
@@ -29,37 +31,6 @@ export function roundPricePln(value: number): number {
   return Math.round(value);
 }
 
-export async function resolveOfferPriceFromBody(body: {
-  price?: unknown;
-  priceAmount?: unknown;
-  priceCurrency?: unknown;
-}): Promise<ResolvedOfferPrice> {
-  const amount = parsePriceAmount(body.priceAmount ?? body.price);
-  const priceCurrency = normalizePriceCurrency(body.priceCurrency);
-
-  if (priceCurrency === 'PLN') {
-    const pricePln = roundPricePln(amount);
-    return {
-      price: amount,
-      priceCurrency: 'PLN',
-      pricePln,
-      exchangeRateUsed: null,
-      exchangeRateDate: null,
-    };
-  }
-
-  const fx = await getNbpEurPlnRate();
-  const pricePln = roundPricePln(amount * fx.rate);
-
-  return {
-    price: amount,
-    priceCurrency: 'EUR',
-    pricePln,
-    exchangeRateUsed: fx.rate,
-    exchangeRateDate: new Date(`${fx.date}T12:00:00.000Z`),
-  };
-}
-
 export function getCanonicalOfferPricePln(offer: {
   pricePln?: unknown;
   price?: unknown;
@@ -81,10 +52,7 @@ function formatExchangeRateDate(raw: unknown): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-/** Pola money w każdym GET oferty (mobile + web). */
-/** Fallback gdy kurs NBP chwilowo niedostępny (zgodnie z aplikacją mobilną). */
-export const DEFAULT_EUR_PLN_RATE = 4.32;
-
+/** Pola money w każdym GET oferty (mobile + web) — bezpieczne po stronie klienta. */
 export function enrichOfferMoneyFields<T extends Record<string, unknown>>(offer: T) {
   const priceAmount = parsePriceAmount(offer.price ?? offer.priceAmount);
   const priceCurrency = normalizePriceCurrency(offer.priceCurrency);
@@ -106,33 +74,6 @@ export function enrichOfferMoneyFields<T extends Record<string, unknown>>(offer:
     pricePln,
     exchangeRateUsed: Number.isFinite(exchangeRateUsed as number) ? exchangeRateUsed : null,
     exchangeRateDate: formatExchangeRateDate(offer.exchangeRateDate),
-  };
-}
-
-/** Uzupełnia kurs EUR/PLN z NBP, gdy oferta PLN nie ma zapisanego `exchangeRateUsed` (stare wpisy). */
-export async function enrichOfferMoneyFieldsForApi<T extends Record<string, unknown>>(offer: T) {
-  const base = enrichOfferMoneyFields(offer);
-  const amount = parsePriceAmount(base.price);
-  if (amount <= 0) return base;
-
-  let exchangeRateUsed = base.exchangeRateUsed as number | null;
-  let exchangeRateDate = base.exchangeRateDate as string | null;
-
-  if (exchangeRateUsed == null || exchangeRateUsed <= 0) {
-    try {
-      const fx = await getNbpEurPlnRate();
-      exchangeRateUsed = fx.rate;
-      exchangeRateDate = fx.date;
-    } catch {
-      exchangeRateUsed = DEFAULT_EUR_PLN_RATE;
-      exchangeRateDate = exchangeRateDate ?? null;
-    }
-  }
-
-  return {
-    ...base,
-    exchangeRateUsed,
-    exchangeRateDate,
   };
 }
 

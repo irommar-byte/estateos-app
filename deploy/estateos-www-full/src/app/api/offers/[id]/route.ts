@@ -10,12 +10,8 @@ import {
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services/offer.service';
-import {
-  enrichOfferMoneyFields,
-  enrichOfferMoneyFieldsForApi,
-  parsePriceAmount,
-  resolveOfferPriceFromBody,
-} from '@/lib/money/offerPrice';
+import { enrichOfferMoneyFieldsForApi } from '@/lib/money/offerPrice.server';
+import { parsePriceAmount } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';

@@ -1,4 +1,4 @@
-import { DEFAULT_EUR_PLN_RATE } from './offerPrice';
+import { DEFAULT_EUR_PLN_RATE } from './constants';
 import type { ListingCurrency } from './types';
 
 export function normalizeListingCurrency(raw: unknown): ListingCurrency {

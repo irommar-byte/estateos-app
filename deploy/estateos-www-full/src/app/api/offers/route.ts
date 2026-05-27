@@ -21,9 +21,9 @@ import { activePublicationOfferIds } from '@/lib/offerPublication';
 import {
   enrichOfferMoneyFields,
   enrichOfferMoneyFieldsWithRate,
-  getNbpEurPlnRate,
-  DEFAULT_EUR_PLN_RATE,
 } from '@/lib/money/offerPrice';
+import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
+import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
 
 export const dynamic = 'force-dynamic';
 

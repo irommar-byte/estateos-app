@@ -1,5 +1,5 @@
 import type { DisplayCurrencyPreference, ListingCurrency } from './types';
-import { DEFAULT_EUR_PLN_RATE } from './offerPrice';
+import { DEFAULT_EUR_PLN_RATE } from './constants';
 import { listingAmountFromPln, normalizeListingCurrency, plnFromListingAmount } from './convert';
 
 export function formatCurrencySuffix(currency: ListingCurrency, locale: 'pl' | 'en' = 'pl'): string {
