@@ -7,7 +7,12 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { Lock, LocateFixed } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import {
+  normalizeTransactionType,
+  transactionModeFromOffers,
+} from "@/lib/transactionType";
 
 function parseOfferPrice(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -23,18 +28,11 @@ function getOfferFilterPrice(offer: { pricePln?: unknown; price?: unknown }): nu
   return parseOfferPrice(offer.price);
 }
 
-function normalizeTransactionTypeStatic(value: unknown): "sale" | "rent" | "other" {
-  const token = String(value || "").trim().toLowerCase();
-  if (["sale", "sprzedaz", "sprzedaż", "sell"].includes(token)) return "sale";
-  if (["rent", "wynajem", "lease"].includes(token)) return "rent";
-  return "other";
-}
-
 const OFFER_PIN_BASE =
   "px-4 py-2 backdrop-blur-2xl border text-[11px] font-black tracking-widest rounded-full cursor-pointer transition-all duration-300 ease-out";
 
 function offerPinColorClasses(transactionType: unknown) {
-  const tx = normalizeTransactionTypeStatic(transactionType);
+  const tx = normalizeTransactionType(transactionType);
 
   if (tx === "rent") {
     return `${OFFER_PIN_BASE} bg-blue-500/80 text-white border-blue-400/40 hover:bg-blue-400 hover:scale-110 shadow-[0_10px_30px_rgba(59,130,246,0.3)]`;
@@ -48,12 +46,19 @@ type Props = {
   immersive?: boolean;
 };
 
+const MAP_STYLE = {
+  light: "mapbox://styles/mapbox/light-v11",
+  dark: "mapbox://styles/mapbox/dark-v11",
+} as const;
+
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
+  const { resolvedTheme } = useTheme();
   const { formatPinLabel, preference, rate } = useFormatOfferPrice();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const appliedMapTheme = useRef<"light" | "dark" | null>(null);
 
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
@@ -129,14 +134,18 @@ export default function InteractiveMap({ immersive = false }: Props) {
     fetch(`/api/offers?t=${Date.now()}`, { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        setAllOffers(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        setAllOffers(list);
+        if (list.length > 0) {
+          setTransactionMode(transactionModeFromOffers(list));
+        }
       })
       .catch(() => setAllOffers([]));
   }, []);
 
   useEffect(() => {
     const result = allOffers.filter((o) => {
-      if (normalizeTransactionTypeStatic(o.transactionType) !== transactionMode) {
+      if (normalizeTransactionType(o.transactionType) !== transactionMode) {
         return false;
       }
       const price = getOfferFilterPrice(o);
@@ -185,7 +194,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           const offer = filteredOffers.find(
             (o) => String(o.id) === String(feature.properties.id),
           );
-          const tx = normalizeTransactionTypeStatic(feature.properties.transactionType);
+          const tx = normalizeTransactionType(feature.properties.transactionType);
           innerEl.className = offerPinColorClasses(feature.properties.transactionType);
           innerEl.innerText = offer
             ? formatPinLabel(offer, tx === "rent")
@@ -215,7 +224,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           const offer = filteredOffers.find(
             (o) => String(o.id) === String(feature.properties.id),
           );
-          const tx = normalizeTransactionTypeStatic(feature.properties.transactionType);
+          const tx = normalizeTransactionType(feature.properties.transactionType);
           pinEl.className = offerPinColorClasses(feature.properties.transactionType);
           pinEl.innerText = offer
             ? formatPinLabel(offer, tx === "rent")
@@ -239,7 +248,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     mapboxgl.accessToken = mapboxToken;
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: "mapbox://styles/mapbox/dark-v11",
+      style: MAP_STYLE[resolvedTheme],
       center: [21.0122, 52.2297],
       zoom: immersive ? 2.2 : 3,
       pitch: 45,
@@ -250,6 +259,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
     const onLoad = () => {
       if (!map.current) return;
+      appliedMapTheme.current = resolvedTheme;
       try {
         map.current.resize();
       } catch {
@@ -313,14 +323,15 @@ export default function InteractiveMap({ immersive = false }: Props) {
           type: "circle",
           source: "offers",
           filter: ["has", "point_count"],
-          paint: { "circle-radius": 0, "circle-opacity": 0 },
+          /* Niewidoczne kółka — promień > 0, inaczej queryRenderedFeatures nie zwraca pinezek */
+          paint: { "circle-radius": 28, "circle-opacity": 0 },
         });
         map.current.addLayer({
           id: "unclustered-point",
           type: "circle",
           source: "offers",
           filter: ["!", ["has", "point_count"]],
-          paint: { "circle-radius": 0, "circle-opacity": 0 },
+          paint: { "circle-radius": 28, "circle-opacity": 0 },
         });
       }
 
@@ -346,7 +357,65 @@ export default function InteractiveMap({ immersive = false }: Props) {
       setMapLoaded(false);
       markersRef.current = {};
     };
-  }, [mapboxToken, immersive, locale, updateMarkers]);
+  }, [mapboxToken, immersive, locale, resolvedTheme, updateMarkers]);
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    if (appliedMapTheme.current === resolvedTheme) return;
+    appliedMapTheme.current = resolvedTheme;
+    const nextStyle = MAP_STYLE[resolvedTheme];
+    try {
+      map.current.setStyle(nextStyle);
+      map.current.once("style.load", () => {
+        if (!map.current) return;
+        if (!map.current.getSource("offers")) {
+          map.current.addSource("offers", {
+            type: "geojson",
+            data: { type: "FeatureCollection", features: [] },
+            cluster: true,
+            clusterMaxZoom: 14,
+            clusterRadius: 50,
+          });
+          map.current.addLayer({
+            id: "clustered-point",
+            type: "circle",
+            source: "offers",
+            filter: ["has", "point_count"],
+            paint: { "circle-radius": 28, "circle-opacity": 0 },
+          });
+          map.current.addLayer({
+            id: "unclustered-point",
+            type: "circle",
+            source: "offers",
+            filter: ["!", ["has", "point_count"]],
+            paint: { "circle-radius": 28, "circle-opacity": 0 },
+          });
+        }
+        const features = filteredOffers
+          .filter((o) => o.lng != null && o.lat != null)
+          .map((offer: any) => ({
+            type: "Feature" as const,
+            properties: {
+              id: offer.id,
+              price: offer.price ?? "",
+              transactionType: offer.transactionType,
+              isPartner: !!offer.badges?.isPartner,
+            },
+            geometry: {
+              type: "Point" as const,
+              coordinates: [Number(offer.lng), Number(offer.lat)],
+            },
+          }));
+        const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
+        source?.setData({ type: "FeatureCollection", features });
+        map.current.on("render", updateMarkers);
+        map.current.on("idle", updateMarkers);
+        updateMarkers();
+      });
+    } catch {
+      /* noop */
+    }
+  }, [resolvedTheme, mapLoaded, filteredOffers, updateMarkers]);
 
   useEffect(() => {
     if (!map.current?.getSource("offers") || !map.current.isStyleLoaded()) return;
@@ -427,30 +496,30 @@ export default function InteractiveMap({ immersive = false }: Props) {
     <div
       className={
         immersive
-          ? "relative h-full min-h-0 w-full flex-1 overflow-hidden bg-[#0a0a0a]"
-          : "relative mt-10 h-[85vh] min-h-[600px] w-full overflow-hidden border-t border-white/10 bg-[#0a0a0a]"
+          ? "interactive-map-shell relative h-full min-h-0 w-full flex-1 overflow-hidden bg-[var(--eos-bg)]"
+          : "interactive-map-shell relative mt-10 h-[85vh] min-h-[600px] w-full overflow-hidden border-t border-[var(--eos-border)] bg-[var(--eos-bg)]"
       }
     >
       <div ref={mapContainer} className="absolute inset-0 z-0 h-full w-full min-h-[280px]" />
 
-      <div className="pointer-events-none absolute inset-0 z-[1] shadow-[inset_0_0_80px_rgba(0,0,0,0.55)]" />
+      <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
 
       {mapInitError && (
-        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[#0a0a0a]/95 p-6 text-center">
-          <p className="max-w-md text-sm leading-relaxed text-zinc-400">{mapInitError}</p>
+        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
+          <p className="max-w-md text-sm leading-relaxed text-[var(--eos-muted)]">{mapInitError}</p>
         </div>
       )}
 
       {!mapboxToken && !mapInitError && (
-        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[#0a0a0a] p-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">
-            {locale === "pl" ? "Ładowanie mapy…" : "Loading map…"}
+        <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)] p-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)]">
+            {dict.addOffer.mapLoading}
           </p>
         </div>
       )}
 
       <div className="absolute left-1/2 top-4 z-30 flex w-[92%] max-w-lg -translate-x-1/2 flex-col items-center gap-3 sm:top-6 sm:gap-4">
-        <div className="flex rounded-full border border-white/10 bg-zinc-900/60 p-1.5 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-3xl">
+        <div className="interactive-map-controls flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-1.5 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl">
           <button
             type="button"
             onClick={() => setTransactionMode("sale")}
@@ -487,13 +556,13 @@ export default function InteractiveMap({ immersive = false }: Props) {
           </button>
         </div>
 
-        <div className="flex w-full items-center gap-4 rounded-3xl border border-white/10 bg-zinc-900/60 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-3xl sm:p-5">
+        <div className="interactive-map-controls flex w-full items-center gap-4 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl sm:p-5">
           <div className="flex flex-1 flex-col gap-3">
             <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
                 {maxPriceLabel}
               </span>
-              <span className="text-xs font-black tracking-wider text-white">
+              <span className="text-xs font-black tracking-wider text-[var(--eos-text)]">
                 {new Intl.NumberFormat(priceLocale, {
                   style: "currency",
                   currency: "PLN",
@@ -520,16 +589,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
             />
           </div>
 
-          <div className="mx-1 h-10 w-px bg-white/10" />
+          <div className="mx-1 h-10 w-px bg-[var(--eos-border)]" />
 
           <button
             type="button"
             onClick={locateUser}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-all hover:border-white/30 hover:bg-white/10 active:scale-95"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] transition-all hover:border-emerald-500/40 hover:bg-[var(--eos-surface-strong)] active:scale-95"
             title={dict.map.locateMe}
             aria-label={dict.map.locateMe}
           >
-            <LocateFixed className="h-5 w-5 text-white" />
+            <LocateFixed className="h-5 w-5 text-[var(--eos-text)]" />
           </button>
         </div>
       </div>

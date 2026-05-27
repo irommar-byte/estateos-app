@@ -16,14 +16,25 @@ import {
 } from 'lucide-react';
 import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /** Zgodne z aplikacją mobilną: PRIVATE | AGENT (bez PARTNER — partner/Pro tylko przez /cennik). */
 type AccountKind = 'private' | 'agent';
 
 type FieldStatus = 'idle' | 'checking' | 'available' | 'taken';
 
-export default function RegisterForm() {
+function resolveSafeNextPath(raw: string | undefined): string {
+  const next = String(raw || "").trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return "/moje-konto";
+  if (next.startsWith("/login")) return "/moje-konto";
+  return next;
+}
+
+export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?: string }) {
+  const { dict } = useLocale();
+  const t = dict.auth;
   const router = useRouter();
+  const postRegisterPath = resolveSafeNextPath(afterRegisterPath);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -115,39 +126,39 @@ export default function RegisterForm() {
     const e164 = normalizePhoneE164(phoneE164);
 
     if (!firstName.trim() || !lastName.trim()) {
-      setError('Podaj imię i nazwisko.');
+      setError(t.errNameRequired);
       return;
     }
     if (!trimmedEmail.includes('@')) {
-      setError('Podaj prawidłowy adres e-mail.');
+      setError(t.errEmailInvalid);
       return;
     }
     if (!e164) {
-      setError('Podaj prawidłowy numer telefonu (z kodem kraju).');
+      setError(t.errPhoneInvalid);
       return;
     }
     if (password.length < 6) {
-      setError('Hasło musi mieć co najmniej 6 znaków.');
+      setError(t.errPasswordShort);
       return;
     }
     if (password !== passwordConfirm) {
-      setError('Hasła nie są identyczne.');
+      setError(t.errPasswordMismatch);
       return;
     }
     if (accountKind === 'agent' && companyName.trim().length < 2) {
-      setError('Podaj nazwę biura nieruchomości (min. 2 znaki).');
+      setError(t.errAgencyShort);
       return;
     }
     if (!acceptTerms) {
-      setError('Zaakceptuj regulamin i politykę prywatności.');
+      setError(t.errTerms);
       return;
     }
     if (emailStatus === 'taken') {
-      setError('Ten adres e-mail jest już zarejestrowany.');
+      setError(t.errEmailTaken);
       return;
     }
     if (phoneStatus === 'taken') {
-      setError('Ten numer telefonu jest już w użyciu.');
+      setError(t.errPhoneTaken);
       return;
     }
 
@@ -171,18 +182,19 @@ export default function RegisterForm() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.message || 'Rejestracja nie powiodła się.');
+        setError(data.message || t.errRegisterFailed);
         setLoading(false);
         return;
       }
 
-      setSuccessMsg('Konto utworzone. Przekierowuję…');
+      setSuccessMsg(t.successRegister);
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {
-        window.location.href = role === 'ADMIN' ? '/centrala' : '/moje-konto';
+        window.location.href =
+          role === 'ADMIN' ? '/centrala' : postRegisterPath;
       }, 400);
     } catch {
-      setError('Błąd połączenia z serwerem.');
+      setError(t.errConnection);
       setLoading(false);
     }
   };
@@ -192,12 +204,12 @@ export default function RegisterForm() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       onSubmit={handleSubmit}
-      className="space-y-6 rounded-[2rem] border border-white/10 bg-[#0a0a0a] p-8 shadow-2xl"
+      className="eos-auth-card space-y-6 rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-2xl"
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-            <User size={14} /> Imię
+          <label className="eos-label mb-2 flex items-center gap-2">
+            <User size={14} /> {t.firstName}
           </label>
           <input
             type="text"
@@ -205,12 +217,12 @@ export default function RegisterForm() {
             autoComplete="given-name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+            className="eos-field"
             placeholder="Jan"
           />
         </div>
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
+          <label className="eos-label mb-2 flex items-center gap-2">
             <User size={14} /> Nazwisko
           </label>
           <input
@@ -219,15 +231,15 @@ export default function RegisterForm() {
             autoComplete="family-name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+            className="eos-field"
             placeholder="Kowalski"
           />
         </div>
       </div>
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-          <Mail size={14} /> E-mail
+        <label className="eos-label mb-2 flex items-center gap-2">
+          <Mail size={14} /> {t.email}
         </label>
         <input
           type="email"
@@ -235,20 +247,20 @@ export default function RegisterForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={`w-full rounded-2xl border bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500 ${
+          className={`eos-field ${
             emailStatus === 'taken'
               ? 'border-red-500/50'
               : emailStatus === 'available'
                 ? 'border-emerald-500/50'
-                : 'border-white/10'
+                : ''
           }`}
           placeholder="jan@example.com"
         />
         {emailStatus === 'checking' && (
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-white/40">Sprawdzam e-mail…</p>
+          <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">{t.checkingEmail}</p>
         )}
         {emailStatus === 'taken' && (
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">E-mail już zarejestrowany</p>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">{t.emailTaken}</p>
         )}
       </div>
 
@@ -260,8 +272,8 @@ export default function RegisterForm() {
       />
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-          <Lock size={14} /> Hasło (min. 6 znaków)
+        <label className="eos-label mb-2 flex items-center gap-2">
+          <Lock size={14} /> {t.passwordMin}
         </label>
         <input
           type="password"
@@ -270,14 +282,14 @@ export default function RegisterForm() {
           autoComplete="new-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+          className="eos-field"
           placeholder="••••••••"
         />
       </div>
 
       <div>
-        <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-          <Lock size={14} /> Powtórz hasło
+        <label className="eos-label mb-2 flex items-center gap-2">
+          <Lock size={14} /> {t.passwordRepeat}
         </label>
         <input
           type="password"
@@ -286,25 +298,25 @@ export default function RegisterForm() {
           autoComplete="new-password"
           value={passwordConfirm}
           onChange={(e) => setPasswordConfirm(e.target.value)}
-          className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
+          className="eos-field"
           placeholder="••••••••"
         />
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Typ konta (jak w aplikacji)</p>
+        <p className="eos-label">{t.accountTypeLabel}</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
               {
                 id: 'private' as const,
-                label: 'Osoba prywatna',
-                desc: 'Szukasz i wystawiasz — jedno konto, bez podziału kupujący/sprzedający.',
+                label: t.accountPrivate,
+                desc: t.accountPrivateDesc,
               },
               {
                 id: 'agent' as const,
-                label: 'Agent / biuro',
-                desc: 'Pośrednik z nazwą firmy (pole biura wymagane).',
+                label: t.accountAgent,
+                desc: t.accountAgentDesc,
               },
             ] as const
           ).map((opt) => (
@@ -312,30 +324,27 @@ export default function RegisterForm() {
               key={opt.id}
               type="button"
               onClick={() => setAccountKind(opt.id)}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-                accountKind === opt.id
-                  ? 'border-emerald-500/50 bg-emerald-500/10'
-                  : 'border-white/10 bg-black/20 hover:border-white/20'
+              className={`eos-choice-card rounded-2xl px-4 py-3 text-left ${
+                accountKind === opt.id ? 'eos-choice-card--active' : ''
               }`}
             >
-              <span className="block text-sm font-black text-white">{opt.label}</span>
-              <span className="text-[10px] leading-relaxed text-white/40">{opt.desc}</span>
+              <span className="block text-sm font-black text-[var(--eos-text)]">{opt.label}</span>
+              <span className="eos-muted-copy text-[10px] leading-relaxed">{opt.desc}</span>
             </button>
           ))}
         </div>
-        <p className="text-[10px] leading-relaxed text-white/35">
-          Pakiety <strong className="text-amber-400/90">Investor Pro</strong> i onboarding partnera — tylko w{' '}
+        <p className="eos-subtle-copy text-[10px] leading-relaxed">
+          {t.proPricingNote}{' '}
           <Link href="/cennik" className="text-emerald-500 hover:underline">
-            cenniku na stronie
+            /cennik
           </Link>
-          , nie przy rejestracji.
         </p>
       </div>
 
       {accountKind === 'agent' && (
         <div>
-          <label className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
-            <Building2 size={14} /> Nazwa biura
+          <label className="eos-label mb-2 flex items-center gap-2">
+            <Building2 size={14} /> {t.agencyName}
           </label>
           <input
             type="text"
@@ -343,8 +352,8 @@ export default function RegisterForm() {
             maxLength={80}
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-lg font-bold text-white outline-none focus:border-emerald-500"
-            placeholder="Nazwa agencji"
+            className="eos-field"
+            placeholder={t.agencyPlaceholder}
           />
         </div>
       )}
@@ -372,21 +381,21 @@ export default function RegisterForm() {
         )}
       </AnimatePresence>
 
-      <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <label className="eos-choice-card flex cursor-pointer items-start gap-3 rounded-2xl p-4">
         <input
           type="checkbox"
           checked={acceptTerms}
           onChange={(e) => setAcceptTerms(e.target.checked)}
           className="mt-1 size-4 accent-emerald-500"
         />
-        <span className="text-xs leading-relaxed text-white/60">
-          Akceptuję{' '}
+        <span className="eos-muted-copy text-xs leading-relaxed">
+          {t.acceptTermsPrefix}{' '}
           <Link href="/regulamin" className="text-emerald-500 hover:underline" target="_blank">
-            regulamin
+            {t.termsLink}
           </Link>{' '}
-          oraz{' '}
+          {t.acceptTermsMiddle}{' '}
           <Link href="/polityka-prywatnosci" className="text-emerald-500 hover:underline" target="_blank">
-            politykę prywatności
+            {t.privacyLink}
           </Link>
           .
         </span>
@@ -399,13 +408,13 @@ export default function RegisterForm() {
         className="mt-2 flex w-full items-center justify-center gap-3 rounded-full py-6 text-sm font-black uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? <Loader2 className="animate-spin" size={22} /> : <UserPlus size={20} />}
-        {loading ? 'Tworzę konto…' : 'Załóż konto'}
+        {loading ? t.submittingRegister : t.submitRegister}
       </button>
 
-      <p className="text-center text-[10px] font-bold uppercase tracking-widest text-white/40">
-        Masz konto?{' '}
+      <p className="eos-muted-copy text-center text-[10px] font-bold uppercase tracking-widest">
+        {t.hasAccount}{' '}
         <Link href="/login" className="text-emerald-500 hover:text-emerald-400">
-          Zaloguj się
+          {t.signInLink}
         </Link>
       </p>
     </motion.form>

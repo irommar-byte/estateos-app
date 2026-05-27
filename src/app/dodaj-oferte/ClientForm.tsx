@@ -1,5 +1,11 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocale } from '@/contexts/LocaleContext';
+import {
+  AMENITY_DICT_KEYS,
+  HEATING_DICT_KEYS,
+  type AddOfferDictionary,
+} from '@/i18n/addOfferDictionary';
 import { motion, AnimatePresence } from 'framer-motion';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -34,25 +40,37 @@ if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 }
 
-// Luksusowe style bazowe (Glassmorphism & Apple Dark Mode)
-const inputPremium = "w-full bg-white/5 border border-white/10 rounded-2xl text-[#f5f5f7] text-base md:text-lg py-4 px-5 focus:bg-white/10 focus:border-[#10b981] outline-none transition-all duration-300 placeholder:text-zinc-500 backdrop-blur-md shadow-inner";
+const inputPremium =
+  "eos-field w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 px-5 text-base text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500 md:text-lg";
 const labelPremium =
-  "flex items-center gap-2 text-[12px] md:text-[13px] font-semibold text-zinc-300 uppercase tracking-[0.055em] mb-2.5 ml-0.5";
-const glassPanel = "bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden transition-all duration-500";
+  "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
+const glassPanel =
+  "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
 
-const PROPERTY_TYPES = [
-  { id: "FLAT", label: "Mieszkanie", icon: Building2 },
-  { id: "HOUSE", label: "Dom", icon: Castle },
-  { id: "PLOT", label: "Działka", icon: MapIcon },
-  { id: "COMMERCIAL", label: "Lokal", icon: Briefcase }
-];
-const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
-const HEATING_TYPES = ["Miejskie", "Gazowe", "Elektryczne", "Pompa Ciepła", "Węglowe/Pellet", "Inne"];
-const CONDITION_TYPES = [
-  { id: "READY", label: "Gotowe" },
-  { id: "RENOVATION", label: "Do remontu" },
-  { id: "DEVELOPER", label: "Deweloperski" }
-];
+function buildPropertyTypes(ao: AddOfferDictionary) {
+  return [
+    { id: "FLAT", label: ao.propertyFlat, icon: Building2 },
+    { id: "HOUSE", label: ao.propertyHouse, icon: Castle },
+    { id: "PLOT", label: ao.propertyPlot, icon: MapIcon },
+    { id: "COMMERCIAL", label: ao.propertyCommercial, icon: Briefcase },
+  ];
+}
+
+function buildConditionTypes(ao: AddOfferDictionary) {
+  return [
+    { id: "READY", label: ao.conditionReady },
+    { id: "RENOVATION", label: ao.conditionRenovation },
+    { id: "DEVELOPER", label: ao.conditionDeveloper },
+  ];
+}
+
+function buildAmenities(ao: AddOfferDictionary) {
+  return AMENITY_DICT_KEYS.map((key) => ao[key]);
+}
+
+function buildHeatingTypes(ao: AddOfferDictionary) {
+  return HEATING_DICT_KEYS.map((key) => ao[key]);
+}
 
 type DistrictCatalogResponse = {
   strictCities: string[];
@@ -110,6 +128,12 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 };
 
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
+  const { dict } = useLocale();
+  const ao = dict.addOffer;
+  const PROPERTY_TYPES = useMemo(() => buildPropertyTypes(ao), [ao]);
+  const CONDITION_TYPES = useMemo(() => buildConditionTypes(ao), [ao]);
+  const AMENITIES = useMemo(() => buildAmenities(ao), [ao]);
+  const HEATING_TYPES = useMemo(() => buildHeatingTypes(ao), [ao]);
   const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const { rate: fxRate } = useFxRate();
@@ -214,7 +238,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const geo = await res.json();
       const feature = Array.isArray(geo?.features) ? geo.features[0] : null;
       if (!feature) {
-        setAddressError("Nie udało się ustawić pinezki. Wybierz adres z listy podpowiedzi.");
+        setAddressError(ao.pinError);
         return;
       }
       lastGeocodedAddressRef.current = query;
@@ -850,7 +874,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   return (
-    <main className="theme-aware-dashboard min-h-screen bg-[#050505] text-[#f5f5f7] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-[#10b981]/30">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
       
       {/* Dynamiczne Tło */}
       <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-[#10b981]/5 to-transparent blur-[150px] pointer-events-none rounded-full" />
@@ -858,16 +882,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       <div className="max-w-4xl mx-auto relative z-10">
         <div className="text-center mb-12">
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/5 border border-white/10 text-[#f5f5f7] text-xs font-bold tracking-widest mb-6 backdrop-blur-md">
-            <Sparkles size={14} className="text-[#10b981]" /> Formularz EstateOS Premium
+            <Sparkles size={14} className="text-emerald-500" /> {ao.formBadge}
           </motion.div>
-          <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-white">
-            Dodaj <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#10b981] to-emerald-400 drop-shadow-[0_0_30px_rgba(16,185,129,0.3)]">Ofertę.</span>
+          <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-[var(--eos-text)]">
+            {ao.title}{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-emerald-400">
+              {ao.titleHighlight}
+            </span>
           </h1>
         </div>
 
         <div className="sticky top-24 z-40 mb-8 bg-white/[0.03] border border-white/10 rounded-[1.75rem] px-5 py-4 backdrop-blur-2xl shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-white/45">Krok {currentStep} z {totalSteps}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.26em] text-[var(--eos-muted)]">
+              {ao.stepLabel} {currentStep} {ao.stepOf} {totalSteps}
+            </span>
             <span className="text-[10px] font-black uppercase tracking-[0.26em] text-emerald-300">{Math.round((currentStep / totalSteps) * 100)}%</span>
           </div>
           <div className="flex gap-2 h-1.5 mb-3">
@@ -884,7 +913,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             ))}
           </div>
           <p className="text-[10px] text-white/35 tracking-[0.12em] uppercase font-bold">
-            EstateOS Form Experience
+            {ao.stepExperience}
           </p>
         </div>
 
@@ -911,7 +940,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             <section className={`${glassPanel} ${currentStep === 1 ? '' : 'hidden'} ring-1 ring-white/5`}>
               <div className="flex items-center gap-5 mb-10">
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTypeSelected ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>1</div>
-                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Rodzaj Nieruchomości</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-[var(--eos-text)]">{ao.step1Title}</h2>
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -929,7 +958,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
               {data.propertyType && data.propertyType !== 'PLOT' && (
                 <div className="relative">
-                  <label className={labelPremium}>Stan wykończenia</label>
+                  <label className={labelPremium}>{ao.conditionLabel}</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {CONDITION_TYPES.map((condition) => {
                       const isActive = data.condition === condition.id;
@@ -957,26 +986,26 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isLocationDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isLocationDone ? <Check size={24} /> : '2'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Lokalizacja i Mapa</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-[var(--eos-text)]">{ao.step2Title}</h2>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 <div className="space-y-8">
                   
                   <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-                    <button onClick={() => updateData({ locationType: 'exact' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'exact' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}><MapPin size={16}/> Dokładna (Szpilka)</button>
-                    <button onClick={() => updateData({ locationType: 'approximate' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'approximate' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}><Navigation size={16}/> Przybliżona (Dysk)</button>
+                    <button onClick={() => updateData({ locationType: 'exact' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'exact' ? 'bg-emerald-500 text-black shadow-md' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}><MapPin size={16}/> {ao.locationExact}</button>
+                    <button onClick={() => updateData({ locationType: 'approximate' })} className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 ${data.locationType === 'approximate' ? 'bg-emerald-500 text-black shadow-md' : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'}`}><Navigation size={16}/> {ao.locationApprox}</button>
                   </div>
                   
                   <div className="p-4 bg-white/5 rounded-2xl border border-white/10 text-xs text-zinc-400 leading-relaxed">
-                    <strong className="text-white">Widoczność publiczna:</strong> Przy <em>Dokładnej lokalizacji</em> wyświetlimy nazwę ulicy (i nr budynku dla mieszkań). Przy <em>Przybliżonej</em> pokazujemy jedynie orientacyjny obszar dzielnicy.
+                    <strong className="text-[var(--eos-text)]">{ao.locationVisibilityTitle}</strong> {ao.locationVisibilityBody}
                   </div>
 
                   <div className="relative z-50">
-                    <label className={labelPremium}>Wyszukaj Adres *</label>
+                    <label className={labelPremium}>{ao.searchAddress}</label>
                     <input
                       type="text"
-                      placeholder="Np. Główna 12..."
+                      placeholder={ao.searchAddressPlaceholder}
                       className={inputPremium}
                       onChange={(e) => handleAddressSearch(e.target.value)}
                       onBlur={(e) => {
@@ -991,7 +1020,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       value={data.address || ''}
                     />
                     {data.address && !hasBuildingNumber && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> Wymagany numer budynku przed przecinkiem.</motion.div>
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {ao.buildingNumberRequired}</motion.div>
                     )}
                     {addressSuggestions.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 overflow-hidden divide-y divide-white/5">
@@ -1006,24 +1035,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={labelPremium}>Miasto *</label>
+                      <label className={labelPremium}>{ao.city}</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || ''} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
                         {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
                       </select>
                     </div>
 
                     <div>
-                      <label className={labelPremium}>{isStrictCity ? "Dzielnica *" : "Obszar / osiedle"}</label>
+                      <label className={labelPremium}>{isStrictCity ? ao.district : ao.areaLabel}</label>
                       {isStrictCity ? (
                         <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
-                          <option value="" disabled>Wybierz...</option>
+                          <option value="" disabled>{ao.selectPlaceholder}</option>
                           {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
                         </select>
                       ) : (
                         <input
                           type="text"
                           className={inputPremium}
-                          placeholder="Np. osiedle / sołectwo / część miasta"
+                          placeholder={ao.areaPlaceholder}
                           value={data.district || ''}
                           onChange={(e) => updateData({ district: e.target.value })}
                         />
@@ -1523,7 +1552,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       : "border-zinc-500/70 text-zinc-100 bg-zinc-900/50 hover:bg-zinc-800 hover:text-white"
                   }`}
                 >
-                  Wstecz
+                  {ao.prev}
                 </button>
                 <button
                   type="button"
@@ -1539,7 +1568,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         : "border-white/20 text-white/55 bg-white/5 cursor-not-allowed"
                   }`}
                 >
-                  Dalej
+                  {ao.next}
                 </button>
               </div>
               {!canAdvanceStep(currentStep) && (
@@ -1586,7 +1615,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <>
                   <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">Odrzucono</h2>
-                  <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || "Sprawdź poprawność wprowadzonych danych."}</p>
+                  <p className="text-[var(--eos-muted)] mb-8 leading-relaxed">{serverErrorMessage || ao.serverErrorHint}</p>
                   <button onClick={() => setActionModal("none")} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
                 </>
               )}

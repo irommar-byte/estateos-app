@@ -6,6 +6,7 @@ import { signIn } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Fingerprint, Lock, Loader2, AlertCircle, Mail, Key, ArrowLeft, CheckCircle } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
 
 function resolveSafeNextPath(raw: string | null): string {
   const next = String(raw || "").trim();
@@ -15,6 +16,8 @@ function resolveSafeNextPath(raw: string | null): string {
 }
 
 function LoginPageInner() {
+  const { dict } = useLocale();
+  const t = dict.auth;
   const searchParams = useSearchParams();
   const afterLoginPath = resolveSafeNextPath(searchParams.get("next"));
   const registerHref = afterLoginPath.startsWith("/dodaj-oferte")
@@ -59,10 +62,10 @@ function LoginPageInner() {
         window.location.href =
           data.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath);
       } else {
-        setError(data.error || "Weryfikacja biometryczna nieudana.");
+        setError(data.error || t.passkeyFailed);
       }
     } catch (err) {
-      setError("Anulowano lub błąd skanera Face ID / Touch ID.");
+      setError(t.passkeyCancelled);
     } finally {
       setLoading(false);
     }
@@ -86,15 +89,15 @@ function LoginPageInner() {
       } else if (data.needs_otp) {
         setPendingPhone(data.phone || email);
         setView("verify_otp");
-        setSuccessMsg(data.message || "Wpisz kod SMS wysłany podczas rejestracji.");
+        setSuccessMsg(data.message || t.otpRequired);
         setLoading(false);
       } else {
-        setError(data.message || "Nieprawidłowy e-mail lub hasło.");
+        setError(data.message || t.invalidCredentials);
         setLoading(false);
       }
 
     } catch (err) {
-      setError("Błąd połączenia.");
+      setError(t.connectionError);
       setLoading(false);
     }
   };
@@ -111,11 +114,11 @@ function LoginPageInner() {
       const data = await res.json();
       if (res.ok && data.success) {
         setView('reset');
-        setSuccessMsg("Kod weryfikacyjny został wysłany na Twój adres e-mail lub telefon.");
+        setSuccessMsg(t.resetCodeSent);
       } else {
-        setError(data.error || "Wystąpił błąd.");
+        setError(data.error || t.connectionError);
       }
-    } catch (err) { setError("Błąd połączenia z serwerem."); } 
+    } catch (err) { setError(t.errConnection); } 
     finally { setLoading(false); }
   };
 
@@ -130,14 +133,14 @@ function LoginPageInner() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccessMsg("Hasło zostało zmienione. Możesz się teraz zalogować.");
+        setSuccessMsg(t.passwordChanged);
         setEmail(resetEmail);
         setPassword(newPassword);
         setView('login');
       } else {
-        setError(data.error || "Nieprawidłowy kod lub błąd weryfikacji.");
+        setError(data.error || t.resetInvalidCode);
       }
-    } catch (err) { setError("Błąd połączenia z serwerem."); } 
+    } catch (err) { setError(t.errConnection); } 
     finally { setLoading(false); }
   };
 
@@ -169,13 +172,13 @@ function LoginPageInner() {
             dataLogin.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath)
           );
         } else {
-          setError(dataLogin.message || "Błąd logowania.");
+          setError(dataLogin.message || t.invalidCredentials);
         }
       } else {
         setError(dataVerify.error || "Błąd kodu weryfikacyjnego.");
       }
     } catch (err) {
-      setError("Błąd połączenia.");
+      setError(t.connectionError);
     } finally {
       setLoading(false);
     }
@@ -187,24 +190,24 @@ function LoginPageInner() {
         <motion.form key="verify_otp" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} onSubmit={handleVerifyOtp} className="eos-auth-card relative overflow-hidden space-y-6 border-emerald-500/30 p-8 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600"></div>
           <div className="mb-4">
-             <h3 className="mb-3 text-3xl font-black text-[var(--eos-text)]">Autoryzacja SMS</h3>
+             <h3 className="mb-3 text-3xl font-black text-[var(--eos-text)]">{t.smsAuthTitle}</h3>
              <div className="mb-4 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
-                <p className="eos-muted-copy mb-2 text-sm leading-relaxed">Kod autoryzacyjny został wysłany na <b className="text-[var(--eos-text)]">{pendingPhone}</b> podczas rejestracji.</p>
+                <p className="eos-muted-copy mb-2 text-sm leading-relaxed">{t.smsAuthSent} <b className="text-[var(--eos-text)]">{pendingPhone}</b>.</p>
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-emerald-500 font-bold">
-                   <Lock size={12} /> Ważność kodu: 24 godziny
+                   <Lock size={12} /> {t.smsAuthValidity}
                 </div>
              </div>
-             <p className="eos-subtle-copy text-[11px] leading-relaxed">Ze względów bezpieczeństwa nie generujemy nowego kodu. Znajdź SMS EstateOS i wpisz 6-cyfrowy PIN.</p>
+             <p className="eos-subtle-copy text-[11px] leading-relaxed">{t.smsAuthHint}</p>
           </div>
           <div>
-            <label className="eos-label mb-2 flex items-center gap-2 text-emerald-500"><Key size={14}/> Twój 6-cyfrowy kod SMS</label>
-            <input type="text" required maxLength={6} placeholder="000000" className="eos-field p-4 text-center text-4xl font-black tracking-[0.4em] text-emerald-500 shadow-inner" onChange={(e) => setVerifyOtp(e.target.value.replace(/\D/g, ''))} value={verifyOtp} />
+            <label className="eos-label mb-2 flex items-center gap-2 text-emerald-500"><Key size={14}/> {t.smsCodeLabel}</label>
+            <input type="text" required maxLength={6} placeholder={t.smsCodePlaceholder} className="eos-field p-4 text-center text-4xl font-black tracking-[0.4em] text-emerald-500 shadow-inner" onChange={(e) => setVerifyOtp(e.target.value.replace(/\D/g, ''))} value={verifyOtp} />
           </div>
           <button type="submit" disabled={loading || verifyOtp.length !== 6} style={{ backgroundColor: '#10b981', color: '#000000' }} className="w-full py-6 rounded-full font-black text-lg hover:scale-[1.02] shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all cursor-pointer mt-8 flex justify-center items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest">
-            {loading ? <Loader2 className="animate-spin" size={24} /> : "Zweryfikuj telefon"}
+            {loading ? <Loader2 className="animate-spin" size={24} /> : t.verifyPhone}
           </button>
           <button type="button" onClick={() => { setView('login'); setError(""); setSuccessMsg(""); }} className="eos-muted-copy flex w-full items-center justify-center gap-2 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-[var(--eos-text)]">
-            <ArrowLeft size={14}/> Wróć do logowania
+            <ArrowLeft size={14}/> {t.backToLogin}
           </button>
         </motion.form>
       );
@@ -214,30 +217,30 @@ function LoginPageInner() {
       return (
         <motion.form key="login" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} onSubmit={handleLogin} className="eos-auth-card space-y-6 p-8 shadow-2xl">
           <div>
-            <label className="eos-label mb-2 block">E-mail lub telefon</label>
-            <input type="text" required placeholder="jan@example.com lub 500 600 700" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setEmail(e.target.value)} value={email} />
+            <label className="eos-label mb-2 block">{t.emailOrPhone}</label>
+            <input type="text" required placeholder={t.emailOrPhonePlaceholder} className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setEmail(e.target.value)} value={email} />
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
-               <label className="eos-label">Hasło</label>
-               <button type="button" onClick={() => { setView('forgot'); setError(""); setSuccessMsg(""); }} className="text-[9px] font-bold text-emerald-500/70 hover:text-emerald-500 uppercase tracking-widest transition-colors">Zapomniałem hasła</button>
+               <label className="eos-label">{t.password}</label>
+               <button type="button" onClick={() => { setView('forgot'); setError(""); setSuccessMsg(""); }} className="text-[9px] font-bold text-emerald-500/70 hover:text-emerald-500 uppercase tracking-widest transition-colors">{t.forgotPassword}</button>
             </div>
-            <input type="password" required placeholder="••••••••" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setPassword(e.target.value)} value={password} />
+            <input type="password" required placeholder={t.passwordPlaceholder} className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setPassword(e.target.value)} value={password} />
           </div>
           <button type="submit" disabled={loading} className="btn-action mt-8 flex w-full cursor-pointer items-center justify-center gap-3 rounded-full py-6 text-xl font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? <Loader2 className="animate-spin" size={24} /> : "Zaloguj się ➔"}
+            {loading ? <Loader2 className="animate-spin" size={24} /> : t.submitLogin}
           </button>
 
           <p className="eos-muted-copy text-center text-[10px] font-bold uppercase tracking-widest">
-            Nie masz konta?{" "}
+            {t.noAccount}{" "}
             <Link href={registerHref} className="text-emerald-500 hover:text-emerald-400">
-              Załóż konto
+              {t.registerLink}
             </Link>
           </p>
 
           <div className="relative flex items-center py-6 mt-4">
             <div className="flex-grow border-t border-[var(--eos-border)]"></div>
-            <span className="eos-subtle-copy mx-4 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.3em]">Logowanie biometryczne</span>
+            <span className="eos-subtle-copy mx-4 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.3em]">{t.passkeyDivider}</span>
             <div className="flex-grow border-t border-[var(--eos-border)]"></div>
           </div>
 
@@ -257,7 +260,7 @@ function LoginPageInner() {
                 <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-[var(--eos-input)] transition-colors duration-500 group-hover:bg-emerald-500/10">
                    <Fingerprint size={18} className="text-[var(--eos-muted)] transition-colors duration-500 group-hover:text-emerald-500 drop-shadow-[0_0_8px_rgba(52,211,153,0)] group-hover:drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
                 </div>
-                <span className="z-10 transition-colors duration-500 group-hover:text-[var(--eos-text)]">Passkey / Face ID</span>
+                <span className="z-10 transition-colors duration-500 group-hover:text-[var(--eos-text)]">{t.passkeyButton}</span>
               </>
             )}
           </button>
@@ -269,18 +272,18 @@ function LoginPageInner() {
       return (
         <motion.form key="forgot" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} onSubmit={handleRequestReset} className="eos-auth-card space-y-6 p-8 shadow-2xl">
           <div className="mb-2">
-             <h3 className="mb-2 text-2xl font-black text-[var(--eos-text)]">Reset hasła</h3>
-             <p className="eos-muted-copy text-xs leading-relaxed">Podaj e-mail lub telefon. Wyślemy kod autoryzacyjny (SMS lub e-mail).</p>
+             <h3 className="mb-2 text-2xl font-black text-[var(--eos-text)]">{t.resetTitle}</h3>
+             <p className="eos-muted-copy text-xs leading-relaxed">{t.resetDesc}</p>
           </div>
           <div>
-            <label className="eos-label mb-2 flex items-center gap-2"><Mail size={14}/> E-mail lub telefon</label>
-            <input type="text" required placeholder="email lub 123456789" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setResetEmail(e.target.value)} value={resetEmail} />
+            <label className="eos-label mb-2 flex items-center gap-2"><Mail size={14}/> {t.emailOrPhone}</label>
+            <input type="text" required placeholder={t.emailOrPhonePlaceholder} className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setResetEmail(e.target.value)} value={resetEmail} />
           </div>
           <button type="submit" disabled={loading || resetEmail.length < 5} style={{ backgroundColor: '#10b981', color: '#000000' }} className="w-full py-6 rounded-full font-black text-sm md:text-base hover:scale-[1.02] shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all cursor-pointer mt-8 flex justify-center items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "Wyślij kod"}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : t.sendCode}
           </button>
           <button type="button" onClick={() => { setView('login'); setError(""); }} className="eos-muted-copy flex w-full items-center justify-center gap-2 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-[var(--eos-text)]">
-            <ArrowLeft size={14}/> Wróć do logowania
+            <ArrowLeft size={14}/> {t.backToLogin}
           </button>
         </motion.form>
       );
@@ -290,22 +293,22 @@ function LoginPageInner() {
       return (
         <motion.form key="reset" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} onSubmit={handleConfirmReset} className="eos-auth-card space-y-6 border-emerald-500/30 p-8 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
           <div className="mb-2">
-             <h3 className="mb-2 text-2xl font-black text-emerald-500">Autoryzacja</h3>
-             <p className="eos-muted-copy text-xs leading-relaxed">Kod został wysłany na <b className="text-[var(--eos-text)]">{resetEmail}</b>. Wpisz go poniżej wraz z nowym hasłem.</p>
+             <h3 className="mb-2 text-2xl font-black text-emerald-500">{t.resetAuthTitle}</h3>
+             <p className="eos-muted-copy text-xs leading-relaxed">{t.resetAuthDesc} <b className="text-[var(--eos-text)]">{resetEmail}</b>.</p>
           </div>
           <div>
-            <label className="eos-label mb-2 flex items-center gap-2"><Key size={14}/> Kod weryfikacyjny</label>
-            <input type="text" required maxLength={6} placeholder="000000" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-center text-3xl font-black tracking-[0.3em] text-emerald-500 shadow-none focus:border-emerald-500" onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))} value={resetOtp} />
+            <label className="eos-label mb-2 flex items-center gap-2"><Key size={14}/> {t.verificationCode}</label>
+            <input type="text" required maxLength={6} placeholder={t.smsCodePlaceholder} className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-center text-3xl font-black tracking-[0.3em] text-emerald-500 shadow-none focus:border-emerald-500" onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))} value={resetOtp} />
           </div>
           <div>
-            <label className="eos-label mb-2 flex items-center gap-2"><Lock size={14}/> Nowe hasło (min. 6 znaków)</label>
-            <input type="password" required minLength={6} placeholder="••••••••" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setNewPassword(e.target.value)} value={newPassword} />
+            <label className="eos-label mb-2 flex items-center gap-2"><Lock size={14}/> {t.newPasswordMin}</label>
+            <input type="password" required minLength={6} placeholder={t.passwordPlaceholder} className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setNewPassword(e.target.value)} value={newPassword} />
           </div>
           <button type="submit" disabled={loading || resetOtp.length !== 6 || newPassword.length < 6} style={{ backgroundColor: '#10b981', color: '#000000' }} className="w-full py-6 rounded-full font-black text-sm md:text-base hover:scale-[1.02] shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all cursor-pointer mt-8 flex justify-center items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest">
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "Potwierdź nowe hasło"}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : t.confirmNewPassword}
           </button>
           <button type="button" onClick={() => { setView('login'); setError(""); }} className="eos-muted-copy flex w-full items-center justify-center gap-2 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors hover:text-[var(--eos-text)]">
-            Anuluj
+            {t.cancel}
           </button>
         </motion.form>
       );
@@ -316,7 +319,7 @@ function LoginPageInner() {
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] p-6 pt-40 pb-24 flex flex-col items-center">
       <div className="w-full max-w-lg">
         <Link href="/" className="mb-10 inline-block text-sm uppercase tracking-widest font-semibold text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]">
-          ← Wróć na mapę
+          {t.backToMap}
         </Link>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
           
@@ -325,7 +328,7 @@ function LoginPageInner() {
               <Lock size={32} />
             </div>
             <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-tight text-[var(--eos-text)]">
-              {view === 'login' ? <>Zaloguj <br/><span className="text-[var(--eos-muted)] italic">się.</span></> : <>Odzyskaj <br/><span className="text-emerald-500 italic">dostęp.</span></>}
+              {view === 'login' ? <>{t.loginTitle} <br/><span className="text-[var(--eos-muted)] italic">{t.loginTitleMuted}</span></> : <>{t.recoverTitle} <br/><span className="text-emerald-500 italic">{t.recoverTitleHighlight}</span></>}
             </h1>
           </div>
 

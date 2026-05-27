@@ -78,7 +78,7 @@ export default function Centrala() {
   }
 
   return (
-    <div className="theme-aware-dashboard min-h-screen bg-[#050505] text-white p-6 pt-32 md:p-16 md:pt-40">
+    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] p-6 pt-32 md:p-16 md:pt-40">
       <nav className="max-w-7xl mx-auto flex justify-between items-center mb-24">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center justify-center text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)]">

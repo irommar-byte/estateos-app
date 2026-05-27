@@ -3,10 +3,16 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { AlertCircle, CheckCircle, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import RegisterForm from '@/components/auth/RegisterForm';
+import { useLocale } from '@/contexts/LocaleContext';
 
-export default function RejestracjaPage() {
+function RejestracjaPageInner() {
+  const { dict, locale } = useLocale();
+  const t = dict.auth;
+  const searchParams = useSearchParams();
+  const afterRegisterPath = searchParams.get('next') || undefined;
   const [bannerError] = useState('');
   const [bannerSuccess] = useState('');
 
@@ -17,7 +23,7 @@ export default function RejestracjaPage() {
           href="/"
           className="mb-10 inline-block text-sm font-semibold uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
         >
-          ← Wróć na mapę
+          {t.backToMap}
         </Link>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
@@ -26,26 +32,34 @@ export default function RejestracjaPage() {
               <UserPlus size={32} />
             </div>
             <h1 className="text-5xl font-bold leading-tight tracking-tighter md:text-7xl">
-              Załóż
+              {t.registerPageTitle}
               <br />
-              <span className="italic text-emerald-500">konto.</span>
+              <span className="italic text-emerald-500">{t.registerPageTitleHighlight}</span>
             </h1>
           </div>
 
           <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
-            Ten sam proces co w aplikacji mobilnej EstateOS™: imię, nazwisko, e-mail, telefon z kodem kraju,
-            hasło oraz wybór <strong className="text-[var(--eos-text)]">osoby prywatnej</strong> lub{' '}
-            <strong className="text-[var(--eos-text)]">agenta / biura</strong>. Bez podziału na kupującego i sprzedającego.
-            Pakiety Pro i partner — w{' '}
+            {t.registerPageIntro}{' '}
+            <strong className="text-[var(--eos-text)]">{t.registerPageIntroPrivate}</strong>{' '}
+            {locale === 'pl' ? 'lub' : 'or'}{' '}
+            <strong className="text-[var(--eos-text)]">{t.registerPageIntroAgent}</strong>.{' '}
             <Link href="/cennik" className="text-emerald-500 hover:underline">
-              cenniku
+              {t.registerPagePricing}
             </Link>
             .
           </p>
 
-          <RegisterForm />
+          <RegisterForm afterRegisterPath={afterRegisterPath} />
         </motion.div>
       </div>
     </main>
+  );
+}
+
+export default function RejestracjaPage() {
+  return (
+    <Suspense fallback={null}>
+      <RejestracjaPageInner />
+    </Suspense>
   );
 }

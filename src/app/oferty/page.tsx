@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import { normalizeTransactionType } from "@/lib/transactionType";
 
 type CatalogOffer = {
   id: number;
@@ -19,16 +20,6 @@ type CatalogOffer = {
   city?: string | null;
   transactionType?: string | null;
 };
-
-function normalizeTransactionType(value: unknown): "sale" | "rent" | "other" {
-  const token = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (["sale", "sprzedaz", "sprzedaż", "sell", "sell"].includes(token)) return "sale";
-  if (["rent", "wynajem", "lease"].includes(token)) return "rent";
-  return "other";
-}
-
 
 function formatPriceLabel(
   offer: CatalogOffer,
