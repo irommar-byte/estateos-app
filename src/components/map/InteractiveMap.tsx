@@ -158,47 +158,21 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
     const newMarkers: Record<string, boolean> = {};
-    const features = map.current.queryRenderedFeatures({
-      layers: ["clustered-point", "unclustered-point"],
-    });
 
-    features.forEach((feature: any) => {
-      const coords = feature.geometry.coordinates as [number, number];
-      const isCluster = feature.properties.cluster;
-      const id = isCluster
-        ? `cluster-${feature.properties.cluster_id}`
-        : `offer-${feature.properties.id}`;
-      newMarkers[id] = true;
+    filteredOffers
+      .filter((offer) => offer.lng != null && offer.lat != null)
+      .forEach((offer) => {
+        const id = `offer-${offer.id}`;
+        const coords: [number, number] = [Number(offer.lng), Number(offer.lat)];
+        newMarkers[id] = true;
 
-      if (!markersRef.current[id]) {
-        const outerEl = document.createElement("div");
-        outerEl.className = "z-30 relative";
-        const innerEl = document.createElement("div");
-
-        if (isCluster) {
-          innerEl.className =
-            "w-10 h-10 backdrop-blur-2xl border rounded-full flex items-center justify-center font-black text-sm cursor-pointer hover:scale-110 transition-all duration-300 bg-white/10 border-white/20 text-white shadow-[0_10px_30px_rgba(0,0,0,0.5)]";
-          innerEl.innerText = feature.properties.point_count;
-          innerEl.onclick = (e) => {
-            e.stopPropagation();
-            const source = map.current!.getSource("offers") as mapboxgl.GeoJSONSource;
-            source.getClusterExpansionZoom(
-              feature.properties.cluster_id,
-              (err, zoom) => {
-                if (err || zoom == null) return;
-                map.current!.easeTo({ center: coords, zoom: zoom + 2, pitch: 60 });
-              },
-            );
-          };
-        } else {
-          const offer = filteredOffers.find(
-            (o) => String(o.id) === String(feature.properties.id),
-          );
-          const tx = normalizeTransactionType(feature.properties.transactionType);
-          innerEl.className = offerPinColorClasses(feature.properties.transactionType);
-          innerEl.innerText = offer
-            ? formatPinLabel(offer, tx === "rent")
-            : "—";
+        if (!markersRef.current[id]) {
+          const outerEl = document.createElement("div");
+          outerEl.className = "z-30 relative";
+          const innerEl = document.createElement("div");
+          const tx = normalizeTransactionType(offer.transactionType);
+          innerEl.className = offerPinColorClasses(offer.transactionType);
+          innerEl.innerText = formatPinLabel(offer, tx === "rent");
           innerEl.onclick = (e) => {
             e.stopPropagation();
             const win = window as Window & {
@@ -206,32 +180,27 @@ export default function InteractiveMap({ immersive = false }: Props) {
               triggerTeaser?: () => void;
             };
             if (win.isLoggedIn) {
-              window.location.href = `/oferta/${feature.properties.id}`;
+              window.location.href = `/oferta/${offer.id}`;
             } else {
               win.triggerTeaser?.();
             }
           };
-        }
 
-        outerEl.appendChild(innerEl);
-        markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
-          .setLngLat(coords)
-          .addTo(map.current!);
-      } else if (!isCluster && markersRef.current[id]) {
-        const rootEl = markersRef.current[id].getElement();
-        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
-        if (pinEl) {
-          const offer = filteredOffers.find(
-            (o) => String(o.id) === String(feature.properties.id),
-          );
-          const tx = normalizeTransactionType(feature.properties.transactionType);
-          pinEl.className = offerPinColorClasses(feature.properties.transactionType);
-          pinEl.innerText = offer
-            ? formatPinLabel(offer, tx === "rent")
-            : "—";
+          outerEl.appendChild(innerEl);
+          markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
+            .setLngLat(coords)
+            .addTo(map.current!);
+        } else {
+          markersRef.current[id].setLngLat(coords);
+          const rootEl = markersRef.current[id].getElement();
+          const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+          if (pinEl) {
+            const tx = normalizeTransactionType(offer.transactionType);
+            pinEl.className = offerPinColorClasses(offer.transactionType);
+            pinEl.innerText = formatPinLabel(offer, tx === "rent");
+          }
         }
-      }
-    });
+      });
 
     for (const id of Object.keys(markersRef.current)) {
       if (!newMarkers[id]) {
@@ -310,33 +279,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
       }
 
-      if (!map.current.getSource("offers")) {
-        map.current.addSource("offers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-          cluster: true,
-          clusterMaxZoom: 14,
-          clusterRadius: 50,
-        });
-        map.current.addLayer({
-          id: "clustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["has", "point_count"],
-          /* Niewidoczne kółka — promień > 0, inaczej queryRenderedFeatures nie zwraca pinezek */
-          paint: { "circle-radius": 28, "circle-opacity": 0 },
-        });
-        map.current.addLayer({
-          id: "unclustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["!", ["has", "point_count"]],
-          paint: { "circle-radius": 28, "circle-opacity": 0 },
-        });
-      }
-
-      map.current.on("render", updateMarkers);
-      map.current.on("idle", updateMarkers);
+      updateMarkers();
       setMapLoaded(true);
     };
 
@@ -368,78 +311,17 @@ export default function InteractiveMap({ immersive = false }: Props) {
       map.current.setStyle(nextStyle);
       map.current.once("style.load", () => {
         if (!map.current) return;
-        if (!map.current.getSource("offers")) {
-          map.current.addSource("offers", {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-            cluster: true,
-            clusterMaxZoom: 14,
-            clusterRadius: 50,
-          });
-          map.current.addLayer({
-            id: "clustered-point",
-            type: "circle",
-            source: "offers",
-            filter: ["has", "point_count"],
-            paint: { "circle-radius": 28, "circle-opacity": 0 },
-          });
-          map.current.addLayer({
-            id: "unclustered-point",
-            type: "circle",
-            source: "offers",
-            filter: ["!", ["has", "point_count"]],
-            paint: { "circle-radius": 28, "circle-opacity": 0 },
-          });
-        }
-        const features = filteredOffers
-          .filter((o) => o.lng != null && o.lat != null)
-          .map((offer: any) => ({
-            type: "Feature" as const,
-            properties: {
-              id: offer.id,
-              price: offer.price ?? "",
-              transactionType: offer.transactionType,
-              isPartner: !!offer.badges?.isPartner,
-            },
-            geometry: {
-              type: "Point" as const,
-              coordinates: [Number(offer.lng), Number(offer.lat)],
-            },
-          }));
-        const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
-        source?.setData({ type: "FeatureCollection", features });
-        map.current.on("render", updateMarkers);
-        map.current.on("idle", updateMarkers);
         updateMarkers();
       });
     } catch {
       /* noop */
     }
-  }, [resolvedTheme, mapLoaded, filteredOffers, updateMarkers]);
+  }, [resolvedTheme, mapLoaded, updateMarkers]);
 
   useEffect(() => {
-    if (!map.current?.getSource("offers") || !map.current.isStyleLoaded()) return;
-
-    const features = filteredOffers
-      .filter((o) => o.lng != null && o.lat != null)
-      .map((offer: any) => ({
-        type: "Feature" as const,
-        properties: {
-          id: offer.id,
-          price: offer.price ?? "",
-          transactionType: offer.transactionType,
-          isPartner: !!offer.badges?.isPartner,
-        },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [Number(offer.lng), Number(offer.lat)],
-        },
-      }));
-
-    const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
-    source?.setData({ type: "FeatureCollection", features });
-    map.current.triggerRepaint();
-  }, [filteredOffers, mapLoaded, preference, rate]);
+    if (!mapLoaded) return;
+    updateMarkers();
+  }, [mapLoaded, updateMarkers]);
 
   useEffect(() => {
     const el = mapContainer.current;
