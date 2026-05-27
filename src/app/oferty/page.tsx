@@ -8,6 +8,7 @@ import { ArrowRight, Loader2, Building2, KeyRound, Sparkles, BadgePercent, Gem, 
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
 import { useLocale } from "@/contexts/LocaleContext";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 
 type CatalogOffer = {
   id: number;
@@ -324,6 +325,15 @@ export default function CatalogPage() {
                     className="group cursor-pointer"
                   >
                     <div className="relative mb-6 aspect-[4/3] w-full overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)]">
+                      <OfferFavoriteButton
+                        offerId={offer.id}
+                        variant="icon"
+                        size={20}
+                        className="absolute right-4 top-4 z-20"
+                        onRequireAuth={() => {
+                          window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+                        }}
+                      />
                       {offer.imageUrl ? (
                         <Image
                           src={offer.imageUrl}

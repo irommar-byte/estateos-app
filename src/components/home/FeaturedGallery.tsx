@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
@@ -140,6 +141,15 @@ export default function FeaturedGallery() {
                       ? (locale === "en" ? "Rent" : "Wynajem")
                       : (locale === "en" ? "Sale" : "Sprzedaż")}
                   </div>
+                  <OfferFavoriteButton
+                    offerId={offer.id}
+                    variant="icon"
+                    size={20}
+                    className={`absolute z-20 ${isDealRoom ? "right-5 top-16" : "right-5 top-5"}`}
+                    onRequireAuth={() => {
+                      window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
+                    }}
+                  />
                   {isDealRoom && (
                     <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-orange-400/50 bg-orange-500/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(249,115,22,0.35)] backdrop-blur-xl">
                       <Briefcase className="size-3" />
