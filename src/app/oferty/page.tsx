@@ -7,6 +7,7 @@ import Image from "next/image";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type CatalogOffer = {
   id: number;
@@ -19,7 +20,14 @@ type CatalogOffer = {
   district?: string | null;
   city?: string | null;
   transactionType?: string | null;
+  createdAt?: string | null;
+  featured?: boolean | null;
+  previousPrice?: unknown;
+  oldPrice?: unknown;
+  badges?: { isPartner?: boolean; isPro?: boolean } | null;
 };
+
+type GallerySection = "all" | "sale" | "rent" | "newest" | "discounted" | "featured";
 
 function formatPriceLabel(
   offer: CatalogOffer,
@@ -46,10 +54,12 @@ function formatLocationLabel(offer: CatalogOffer): string {
 }
 
 export default function CatalogPage() {
+  const { locale } = useLocale();
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<GallerySection>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +94,78 @@ export default function CatalogPage() {
     void load();
   }, [load]);
 
+  const labels =
+    locale === "pl"
+      ? {
+          title: "Katalog nieruchomości",
+          subtitle: "EstateOS™",
+          lead:
+            "Galeria działów rynku: kup, wynajmij, najnowsze, przecenione i wyróżnione. Ten sam katalog co na mapie i w aplikacji mobilnej.",
+          loading: "Ładowanie katalogu",
+          retry: "Spróbuj ponownie",
+          empty: "Brak aktywnych ofert w tym dziale.",
+          discover: "Odkryj",
+          sections: {
+            all: "Wszystkie",
+            sale: "Kup",
+            rent: "Wynajem",
+            newest: "Najnowsze",
+            discounted: "Przecenione",
+            featured: "Wyróżnione",
+          } as Record<GallerySection, string>,
+        }
+      : {
+          title: "EstateOS™ Property Catalog",
+          subtitle: "EstateOS™",
+          lead:
+            "Curated market galleries: buy, rent, newest, discounted, and featured. The same inventory as the map and mobile app.",
+          loading: "Loading catalog",
+          retry: "Try again",
+          empty: "No active listings in this section.",
+          discover: "Discover",
+          sections: {
+            all: "All",
+            sale: "Buy",
+            rent: "Rent",
+            newest: "Newest",
+            discounted: "Discounted",
+            featured: "Featured",
+          } as Record<GallerySection, string>,
+        };
+
+  const sortedByNewest = [...offers].sort((a, b) => {
+    const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
+    const tb = b.createdAt ? Date.parse(b.createdAt) : Number(b.id) * 1000;
+    return tb - ta;
+  });
+
+  const discountedOffers = offers.filter((offer) => {
+    const current = Number(offer.pricePln ?? offer.price ?? 0);
+    const prev = Number(offer.previousPrice ?? offer.oldPrice ?? 0);
+    return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
+  });
+
+  const featuredOffers = offers.filter(
+    (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
+  );
+
+  const offersInSection = (() => {
+    switch (activeSection) {
+      case "sale":
+        return offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale");
+      case "rent":
+        return offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent");
+      case "newest":
+        return sortedByNewest;
+      case "discounted":
+        return discountedOffers;
+      case "featured":
+        return featuredOffers.length > 0 ? featuredOffers : sortedByNewest.slice(0, 8);
+      default:
+        return offers;
+    }
+  })();
+
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-40 font-sans text-[var(--eos-text)]">
       <div className="mx-auto max-w-7xl px-6">
@@ -92,13 +174,36 @@ export default function CatalogPage() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-24 border-b border-[var(--eos-border)] pb-12"
         >
-          <h1 className="mb-8 text-6xl font-bold leading-none tracking-tighter text-[var(--eos-text)] md:text-8xl">
-            Katalog <br />
-            <span className="italic text-[var(--eos-muted)]">rezydencji.</span>
+          <h1 className="mb-8 text-5xl font-bold leading-none tracking-tighter text-[var(--eos-text)] md:text-7xl">
+            {labels.title}
+            <br />
+            <span className="italic text-[var(--eos-muted)]">{labels.subtitle}</span>
           </h1>
           <p className="max-w-3xl text-xl font-light tracking-wide text-[var(--eos-muted)] md:text-2xl">
-            Live listings from EstateOS server — the same data as on the map and in the mobile app.
+            {labels.lead}
           </p>
+
+          <div className="mt-8 flex flex-wrap gap-2 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/80 p-2 backdrop-blur-xl">
+            {(
+              ["all", "sale", "rent", "newest", "discounted", "featured"] as GallerySection[]
+            ).map((section) => {
+              const active = activeSection === section;
+              return (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => setActiveSection(section)}
+                  className={`rounded-full px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.2em] transition ${
+                    active
+                      ? "bg-emerald-500 text-black shadow-[0_0_18px_rgba(16,185,129,0.38)]"
+                      : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                  }`}
+                >
+                  {labels.sections[section]}
+                </button>
+              );
+            })}
+          </div>
         </motion.div>
 
         <AnimatePresence mode="wait">
@@ -113,7 +218,7 @@ export default function CatalogPage() {
               aria-live="polite"
             >
               <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" aria-hidden />
-              <p className="text-xs font-semibold uppercase tracking-[0.35em]">Loading catalog</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em]">{labels.loading}</p>
             </motion.div>
           ) : error ? (
             <motion.div
@@ -130,17 +235,17 @@ export default function CatalogPage() {
                 onClick={() => void load()}
                 className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-8 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-400 transition hover:bg-emerald-500/20"
               >
-                Try again
+                {labels.retry}
               </button>
             </motion.div>
-          ) : offers.length === 0 ? (
+          ) : offersInSection.length === 0 ? (
             <motion.p
               key="empty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="py-24 text-center text-sm uppercase tracking-[0.25em] text-[var(--eos-muted)]"
             >
-              Brak aktywnych ofert w katalogu.
+              {labels.empty}
             </motion.p>
           ) : (
             <motion.div
@@ -149,7 +254,7 @@ export default function CatalogPage() {
               animate={{ opacity: 1 }}
               className="grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16"
             >
-              {offers.map((offer, i) => (
+              {offersInSection.map((offer, i) => (
                 <Link href={`/oferta/${offer.id}`} key={offer.id} className="block">
                   <motion.article
                     initial={{ opacity: 0, y: 30 }}
@@ -187,7 +292,7 @@ export default function CatalogPage() {
                       <div className="flex flex-col items-end text-right">
                         <p className="text-xl font-bold tabular-nums text-[var(--eos-text)]">{formatPriceLabel(offer, formatOffer)}</p>
                         <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)] transition-colors group-hover:text-emerald-500">
-                          Odkryj <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                          {labels.discover} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                         </div>
                       </div>
                     </div>
