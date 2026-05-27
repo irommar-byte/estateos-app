@@ -11,7 +11,7 @@ import {
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services/offer.service';
 import { enrichOfferMoneyFieldsForApi } from '@/lib/money/offerPrice.server';
-import { parsePriceAmount } from '@/lib/money/offerPrice';
+import { enrichOfferMoneyFields, parsePriceAmount } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
