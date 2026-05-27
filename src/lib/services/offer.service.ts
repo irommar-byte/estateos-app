@@ -25,8 +25,8 @@ import {
 import {
   bodyTouchesOfferPrice,
   getCanonicalOfferPricePln,
-  resolveOfferPriceFromBody,
 } from '@/lib/money/offerPrice';
+import { resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -223,8 +223,7 @@ function mapCondition(val?: string): PropertyCondition {
   switch (val) {
     case 'READY': return PropertyCondition.READY;
     case 'NEEDS_RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
-    case 'RENOVATION':
-    case 'TO_RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
+    case 'RENOVATION': return PropertyCondition.NEEDS_RENOVATION;
     case 'DEVELOPER_STATE': return PropertyCondition.DEVELOPER_STATE;
     case 'DEVELOPER': return PropertyCondition.DEVELOPER_STATE;
     case 'NOT_APPLICABLE': return PropertyCondition.NOT_APPLICABLE;
@@ -301,12 +300,7 @@ export async function createOffer(body: any) {
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
       totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
-      yearBuilt: (() => {
-        const raw = body.yearBuilt ?? body.buildYear ?? body.year;
-        if (raw === undefined || raw === null || raw === "") return null;
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : null;
-      })(),
+      yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
 
       city: locationValidation.city,
       district: locationValidation.district,
@@ -517,13 +511,8 @@ export async function updateOffer(body: any) {
       ...(body.totalFloors !== undefined && {
         totalFloors: body.totalFloors === null ? null : Number(body.totalFloors)
       }),
-      ...((body.yearBuilt !== undefined || body.buildYear !== undefined || body.year !== undefined) && {
-        yearBuilt: (() => {
-          const raw = body.yearBuilt ?? body.buildYear ?? body.year;
-          if (raw === null || raw === "") return null;
-          const n = Number(raw);
-          return Number.isFinite(n) ? n : null;
-        })(),
+      ...(body.yearBuilt !== undefined && {
+        yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
       }),
       ...(body.city !== undefined && {
         city: locationValidation?.city
