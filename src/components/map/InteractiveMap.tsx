@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import { useDisplayCurrency } from "@/contexts/DisplayCurrencyContext";
 import {
   normalizeTransactionType,
   transactionModeFromOffers,
@@ -54,7 +55,8 @@ const MAP_STYLE = {
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
   const { resolvedTheme } = useTheme();
-  const { formatPinLabel, preference, rate } = useFormatOfferPrice();
+  const { preference } = useDisplayCurrency();
+  const { formatPinLabel, rate } = useFormatOfferPrice();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
@@ -78,6 +80,32 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
   const maxPriceLabel =
     transactionMode === "rent" ? dict.map.maxRentLabel : dict.map.maxPriceLabel;
+  const isEurDisplay = preference === "EUR";
+  const safeRate = rate > 0 ? rate : 4.32;
+
+  const saleBounds = {
+    minPln: 100_000,
+    maxPln: 50_000_000,
+    stepPln: 100_000,
+  };
+  const rentBounds = {
+    minPln: 1_000,
+    maxPln: 100_000,
+    stepPln: 500,
+  };
+
+  const saleUiMin = isEurDisplay ? Math.round(saleBounds.minPln / safeRate) : saleBounds.minPln;
+  const saleUiMax = isEurDisplay ? Math.round(saleBounds.maxPln / safeRate) : saleBounds.maxPln;
+  const saleUiStep = Math.max(
+    1,
+    isEurDisplay ? Math.round(saleBounds.stepPln / safeRate) : saleBounds.stepPln,
+  );
+  const rentUiMin = isEurDisplay ? Math.round(rentBounds.minPln / safeRate) : rentBounds.minPln;
+  const rentUiMax = isEurDisplay ? Math.round(rentBounds.maxPln / safeRate) : rentBounds.maxPln;
+  const rentUiStep = Math.max(
+    1,
+    isEurDisplay ? Math.round(rentBounds.stepPln / safeRate) : rentBounds.stepPln,
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -159,11 +187,21 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setPriceMax(priceMaxUi);
-      setPriceMaxRent(priceMaxRentUi);
-    }, 110);
+      setPriceMax(isEurDisplay ? Math.round(priceMaxUi * safeRate) : priceMaxUi);
+      setPriceMaxRent(isEurDisplay ? Math.round(priceMaxRentUi * safeRate) : priceMaxRentUi);
+    }, 120);
     return () => window.clearTimeout(timer);
-  }, [priceMaxUi, priceMaxRentUi]);
+  }, [priceMaxUi, priceMaxRentUi, isEurDisplay, safeRate]);
+
+  useEffect(() => {
+    if (isEurDisplay) {
+      setPriceMaxUi(Math.round(priceMax / safeRate));
+      setPriceMaxRentUi(Math.round(priceMaxRent / safeRate));
+      return;
+    }
+    setPriceMaxUi(priceMax);
+    setPriceMaxRentUi(priceMaxRent);
+  }, [isEurDisplay, priceMax, priceMaxRent, safeRate]);
 
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
@@ -218,7 +256,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, formatPinLabel, preference, rate]);
+  }, [filteredOffers, formatPinLabel, rate]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current || map.current) return;
@@ -379,8 +417,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
   };
 
   const saleSliderPct =
-    ((priceMaxUi - 100_000) / (50_000_000 - 100_000)) * 100;
-  const rentSliderPct = ((priceMaxRentUi - 1_000) / (100_000 - 1_000)) * 100;
+    ((priceMaxUi - saleUiMin) / Math.max(1, saleUiMax - saleUiMin)) * 100;
+  const rentSliderPct =
+    ((priceMaxRentUi - rentUiMin) / Math.max(1, rentUiMax - rentUiMin)) * 100;
   const sliderAccent = transactionMode === "rent" ? "#3b82f6" : "#10b981";
   const sliderPct = transactionMode === "rent" ? rentSliderPct : saleSliderPct;
 
@@ -458,16 +497,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
               <span className="text-xs font-black tracking-wider text-[var(--eos-text)]">
                 {new Intl.NumberFormat(priceLocale, {
                   style: "currency",
-                  currency: "PLN",
+                  currency: isEurDisplay ? "EUR" : "PLN",
                   maximumFractionDigits: 0,
                 }).format(transactionMode === "rent" ? priceMaxRentUi : priceMaxUi)}
               </span>
             </div>
             <input
               type="range"
-              min={transactionMode === "rent" ? 1000 : 100_000}
-              max={transactionMode === "rent" ? 100_000 : 50_000_000}
-              step={transactionMode === "rent" ? 500 : 100_000}
+              min={transactionMode === "rent" ? rentUiMin : saleUiMin}
+              max={transactionMode === "rent" ? rentUiMax : saleUiMax}
+              step={transactionMode === "rent" ? rentUiStep : saleUiStep}
               value={transactionMode === "rent" ? priceMaxRentUi : priceMaxUi}
               onChange={(e) =>
                 transactionMode === "rent"
