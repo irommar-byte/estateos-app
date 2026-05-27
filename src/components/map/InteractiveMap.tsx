@@ -66,6 +66,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [transactionMode, setTransactionMode] = useState<"sale" | "rent">("sale");
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
+  const [priceMaxUi, setPriceMaxUi] = useState<number>(50_000_000);
+  const [priceMaxRentUi, setPriceMaxRentUi] = useState<number>(50_000);
 
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [mapInitError, setMapInitError] = useState<string | null>(null);
@@ -154,6 +156,14 @@ export default function InteractiveMap({ immersive = false }: Props) {
     });
     setFilteredOffers(result);
   }, [transactionMode, priceMax, priceMaxRent, allOffers]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPriceMax(priceMaxUi);
+      setPriceMaxRent(priceMaxRentUi);
+    }, 110);
+    return () => window.clearTimeout(timer);
+  }, [priceMaxUi, priceMaxRentUi]);
 
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
@@ -369,8 +379,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   };
 
   const saleSliderPct =
-    ((priceMax - 100_000) / (50_000_000 - 100_000)) * 100;
-  const rentSliderPct = ((priceMaxRent - 1_000) / (100_000 - 1_000)) * 100;
+    ((priceMaxUi - 100_000) / (50_000_000 - 100_000)) * 100;
+  const rentSliderPct = ((priceMaxRentUi - 1_000) / (100_000 - 1_000)) * 100;
   const sliderAccent = transactionMode === "rent" ? "#3b82f6" : "#10b981";
   const sliderPct = transactionMode === "rent" ? rentSliderPct : saleSliderPct;
 
@@ -384,6 +394,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     >
       <div ref={mapContainer} className="absolute inset-0 z-0 h-full w-full min-h-[280px]" />
 
+      <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
 
       {mapInitError && (
@@ -449,7 +460,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
                   style: "currency",
                   currency: "PLN",
                   maximumFractionDigits: 0,
-                }).format(transactionMode === "rent" ? priceMaxRent : priceMax)}
+                }).format(transactionMode === "rent" ? priceMaxRentUi : priceMaxUi)}
               </span>
             </div>
             <input
@@ -457,11 +468,11 @@ export default function InteractiveMap({ immersive = false }: Props) {
               min={transactionMode === "rent" ? 1000 : 100_000}
               max={transactionMode === "rent" ? 100_000 : 50_000_000}
               step={transactionMode === "rent" ? 500 : 100_000}
-              value={transactionMode === "rent" ? priceMaxRent : priceMax}
+              value={transactionMode === "rent" ? priceMaxRentUi : priceMaxUi}
               onChange={(e) =>
                 transactionMode === "rent"
-                  ? setPriceMaxRent(Number(e.target.value))
-                  : setPriceMax(Number(e.target.value))
+                  ? setPriceMaxRentUi(Number(e.target.value))
+                  : setPriceMaxUi(Number(e.target.value))
               }
               aria-label={maxPriceLabel}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"
