@@ -17,12 +17,23 @@ export type Dictionary = {
     logout: string;
     langPl: string;
     langEn: string;
+    language: string;
   };
   theme: {
     label: string;
     light: string;
     dark: string;
     system: string;
+  };
+  currency: {
+    sectionTitle: string;
+    labelPln: string;
+    labelEur: string;
+    labelListing: string;
+    shortPln: string;
+    shortEur: string;
+    shortListing: string;
+    footer: string;
   };
   notifications: {
     label: string;
@@ -289,12 +300,23 @@ const pl: Dictionary = {
     logout: "Wyloguj",
     langPl: "PL",
     langEn: "EN",
+    language: "Język",
   },
   theme: {
     label: "Motyw",
     light: "Jasny",
     dark: "Ciemny",
     system: "System",
+  },
+  currency: {
+    sectionTitle: "Waluta cen",
+    labelPln: "Złotówki (PLN)",
+    labelEur: "Euro (EUR)",
+    labelListing: "Waluta oferty",
+    shortPln: "PLN",
+    shortEur: "EUR",
+    shortListing: "Oferta",
+    footer: "Przeliczenia po kursie NBP (tabela A).",
   },
   notifications: {
     label: "Powiadomienia",
@@ -582,12 +604,23 @@ const en: Dictionary = {
     logout: "Log out",
     langPl: "PL",
     langEn: "EN",
+    language: "Language",
   },
   theme: {
     label: "Theme",
     light: "Light",
     dark: "Dark",
     system: "System",
+  },
+  currency: {
+    sectionTitle: "Price currency",
+    labelPln: "Polish złoty (PLN)",
+    labelEur: "Euro (EUR)",
+    labelListing: "Listing currency",
+    shortPln: "PLN",
+    shortEur: "EUR",
+    shortListing: "Listing",
+    footer: "Conversions use NBP table A rate.",
   },
   notifications: {
     label: "Notifications",

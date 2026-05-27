@@ -24,7 +24,7 @@ const STORAGE_KEY = "estateos_theme";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function resolveSystemTheme(): ResolvedTheme {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
@@ -41,13 +41,13 @@ function applyTheme(preference: ThemePreference) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemePreference>("dark");
-  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("dark");
+  const [theme, setThemeState] = useState<ThemePreference>("light");
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const next: ThemePreference =
-      saved === "light" || saved === "dark" || saved === "system" ? saved : "dark";
+      saved === "light" || saved === "dark" || saved === "system" ? saved : "light";
     setThemeState(next);
     setResolvedTheme(applyTheme(next));
   }, []);
@@ -81,7 +81,7 @@ export function ThemeInitScript() {
   const code = `
     (function() {
       try {
-        var saved = localStorage.getItem("${STORAGE_KEY}") || "dark";
+        var saved = localStorage.getItem("${STORAGE_KEY}") || "light";
         var resolved = saved === "system"
           ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
           : saved;
@@ -91,9 +91,9 @@ export function ThemeInitScript() {
         root.classList.toggle("dark", resolved !== "light");
         root.style.colorScheme = resolved;
       } catch (_) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.dataset.theme = "dark";
-        document.documentElement.style.colorScheme = "dark";
+        document.documentElement.classList.add("light");
+        document.documentElement.dataset.theme = "light";
+        document.documentElement.style.colorScheme = "light";
       }
     })();
   `;

@@ -9,8 +9,10 @@ import FloatingPreferencesDock from "@/components/layout/FloatingPreferencesDock
 import SkipToContent from "@/components/layout/SkipToContent";
 import LocaleDocumentMeta from "@/components/layout/LocaleDocumentMeta";
 import Tracker from "@/components/Tracker";
+import { DisplayCurrencyProvider } from "@/contexts/DisplayCurrencyContext";
+import { FxRateProvider } from "@/contexts/FxRateContext";
 import { LocaleProvider } from "@/contexts/LocaleContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ThemeInitScript, ThemeProvider } from "@/contexts/ThemeContext";
 import { UserModeProvider } from "@/contexts/UserModeContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
@@ -77,24 +79,29 @@ export default async function RootLayout({
   const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
 
   return (
-    <html suppressHydrationWarning lang={locale} className="dark" data-theme="dark">
+    <html suppressHydrationWarning lang={locale} className="light" data-theme="light">
       <body suppressHydrationWarning className={inter.className}>
+        <ThemeInitScript />
         <ThemeProvider>
           <LocaleProvider initialLocale={locale}>
-            <LocaleDocumentMeta />
-            <UserModeProvider>
-              <FavoritesProvider>
-                <SkipToContent />
-                <Tracker />
-                <Navbar />
-                <FloatingPreferencesDock />
-                <div id="main-content" tabIndex={-1} className="outline-none">
-                  {children}
-                </div>
-              </FavoritesProvider>
-            </UserModeProvider>
-            <UpgradeModal />
-            <ModeTransition />
+            <DisplayCurrencyProvider>
+              <FxRateProvider>
+                <LocaleDocumentMeta />
+                <UserModeProvider>
+                  <FavoritesProvider>
+                    <SkipToContent />
+                    <Tracker />
+                    <Navbar />
+                    <FloatingPreferencesDock />
+                    <div id="main-content" tabIndex={-1} className="outline-none">
+                      {children}
+                    </div>
+                  </FavoritesProvider>
+                </UserModeProvider>
+                <UpgradeModal />
+                <ModeTransition />
+              </FxRateProvider>
+            </DisplayCurrencyProvider>
           </LocaleProvider>
         </ThemeProvider>
       </body>

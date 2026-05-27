@@ -1,15 +1,13 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
-import { isAgentCommissionAccount } from '@/lib/agentCommission';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Home, 
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
   LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check, Shield,
-  Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft
+  Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck
 } from "lucide-react";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -22,10 +20,15 @@ import {
   inferStrictDistrictFromMapboxFeature,
   normalizeText,
 } from "@/lib/location/locationCatalog";
-import PublicationChoiceModal, {
-  type PublicationRedemption,
-} from "@/components/publication/PublicationChoiceModal";
-import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
+import {
+  AGENT_COMMISSION_MAX,
+  AGENT_COMMISSION_MIN_NONZERO,
+  AGENT_COMMISSION_STEP,
+} from "@/lib/agentCommission";
+import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
+import { useFxRate } from "@/contexts/FxRateContext";
+import { convertBetweenCurrencies } from "@/lib/money/convert";
+import { formatApproxLine } from "@/lib/money/format";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -46,9 +49,9 @@ const PROPERTY_TYPES = [
 const AMENITIES = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 const HEATING_TYPES = ["Miejskie", "Gazowe", "Elektryczne", "Pompa Ciepła", "Węglowe/Pellet", "Inne"];
 const CONDITION_TYPES = [
-  { id: "READY", label: "Gotowe do wprowadzenia" },
-  { id: "TO_RENOVATION", label: "Do remontu" },
-  { id: "DEVELOPER", label: "Stan deweloperski" },
+  { id: "READY", label: "Gotowe" },
+  { id: "RENOVATION", label: "Do remontu" },
+  { id: "DEVELOPER", label: "Deweloperski" }
 ];
 
 type DistrictCatalogResponse = {
@@ -107,12 +110,15 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 };
 
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
+  const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const { rate: fxRate } = useFxRate();
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
     condition: '', locationType: 'exact', address: '', city: '', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
-    price: '', area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
+    price: '', priceCurrency: 'PLN' as OfferPriceCurrency, agentCommissionPercent: '',
+    area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
     advertiserType: 'private', agencyName: '',
     contactName: initialUser?.name || '', contactPhone: initialUser?.phone || '', email: initialUser?.email || '', password: '' 
@@ -128,17 +134,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [floorPlan, setFloorPlan] = useState<string | null>(null);
   const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
   
-  const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-  const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus">("none");
-  const [showPublicationChoice, setShowPublicationChoice] = useState(false);
-  const [pubWallet, setPubWallet] = useState<{
-    coupons: Array<{ id: string; kind: string; title: string; subtitle: string; pillLabel?: string }>;
-    publicationCoupons?: Array<{ id: string; kind: string; title: string; subtitle: string; pillLabel?: string }>;
-    hasPlusCredit: boolean;
-    plusCredits: number;
-  } | null>(null);
+  const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   
   const [uploadProgress, setUploadProgress] = useState('');
@@ -611,78 +609,43 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     return () => window.clearTimeout(id);
   }, [currentStep, data.lat, data.lng]);
 
-  const buildOfferPayload = () => {
-    const cleanPriceValue = String(data.price || '').replace(/\D/g, '');
-    const finalDesc = editorRef.current?.innerHTML || data.description || '';
-    const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
-    const yearBuilt = data.buildYear ? Number(data.buildYear) : null;
-    const commissionPayload =
-      isAgentCommissionAccount(initialUser) && agentCommissionPercent.trim() !== ''
-        ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
-        : {};
-    return {
-      ...data,
-      userId: initialUser?.id,
-      transactionType: data.transactionType,
-      propertyType: data.propertyType,
-      condition: dbCondition,
-      description: finalDesc,
-      title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
-      price: cleanPriceValue,
-      area: String(data.area).replace(',', '.'),
-      yearBuilt,
-      buildYear: data.buildYear,
-      ...commissionPayload,
-      images: '[]',
-      imageUrl:
-        'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop',
-      floorPlan: null,
-      amenities: Array.isArray(data.amenities) ? data.amenities.join(', ') : data.amenities,
-    };
-  };
-
-  const uploadMediaForOffer = async (createdOfferId: number | string) => {
-    const uploadableImages = finalImages.filter((img) => filesMap[img]);
-    for (let i = 0; i < uploadableImages.length; i++) {
-      const blobKey = uploadableImages[i];
-      const file = filesMap[blobKey];
-      if (!file) continue;
-      setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
-      const formData = new FormData();
-      formData.append('offerId', String(createdOfferId));
-      formData.append('file', file);
-      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData, credentials: 'include' });
-      if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+    if (initialUser?.isLoggedIn && !publishContactOk) {
+      setActionModal('verify');
+      return;
     }
-    if (floorPlanFile) {
-      setUploadProgress('Wysyłanie rzutu nieruchomości...');
-      const fpFormData = new FormData();
-      fpFormData.append('offerId', String(createdOfferId));
-      fpFormData.append('file', floorPlanFile);
-      fpFormData.append('isFloorPlan', 'true');
-      const fpRes = await fetch('/api/upload', { method: 'POST', body: fpFormData, credentials: 'include' });
-      if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
-    }
-  };
-
-  const executePublish = async (redemption: PublicationRedemption | null) => {
+    if (!canPublish) return;
     setIsSubmitting(true);
     setUploadProgress('Wysyłanie oferty...');
     try {
+      const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
+      const finalDesc = editorRef.current?.innerHTML || data.description || '';
+      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+
       const payload: Record<string, unknown> = {
-        ...buildOfferPayload(),
-        activateOnCreate: true,
+        ...data,
+        userId: initialUser?.id,
+        transactionType: data.transactionType,
+        propertyType: data.propertyType,
+        condition: dbCondition,
+        description: finalDesc,
+        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
+        price: cleanPriceValue,
+        priceCurrency: data.priceCurrency || 'PLN',
+        area: String(data.area).replace(',', '.'),
+        images: '[]',
+        imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
+        floorPlan: null,
+        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
       };
-      if (redemption) {
-        payload.publication = redemption;
-        if (redemption.kind === 'FREE_FIRST') {
-          payload.publication = { kind: 'FREE_FIRST', bonusCouponId: redemption.bonusCouponId };
-        }
-      } else if (pubWallet?.hasPlusCredit) {
-        payload.publication = { kind: 'PLUS_CREDIT', consumePlusPublication: true };
+      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+        payload.agentCommissionPercent = Number(
+          String(data.agentCommissionPercent).replace(',', '.')
+        );
       }
 
-      setUploadProgress('Tworzenie i publikacja oferty...');
+      setUploadProgress('Tworzenie oferty...');
       const response = await fetch('/api/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -690,21 +653,55 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         body: JSON.stringify(payload),
       });
       const responseData = await response.json().catch(() => ({}));
-
-      if (response.status === 422 && responseData.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
-        setShowPublicationChoice(true);
-        return;
-      }
-
       if (response.ok) {
         const createdOfferId = responseData?.offer?.id || responseData?.id;
-        if (createdOfferId) await uploadMediaForOffer(createdOfferId);
+
+        if (createdOfferId) {
+          const uploadableImages = finalImages.filter((img) => filesMap[img]);
+          for (let i = 0; i < uploadableImages.length; i++) {
+            const blobKey = uploadableImages[i];
+            const file = filesMap[blobKey];
+            if (!file) continue;
+            setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+            const formData = new FormData();
+            formData.append('offerId', String(createdOfferId));
+            formData.append('file', file);
+            const uploadRes = await fetch('/api/upload', {
+              method: 'POST',
+              body: formData,
+              credentials: 'include',
+            });
+            if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+          }
+
+          if (floorPlanFile) {
+            setUploadProgress('Wysyłanie rzutu nieruchomości...');
+            const fpFormData = new FormData();
+            fpFormData.append('offerId', String(createdOfferId));
+            fpFormData.append('file', floorPlanFile);
+            fpFormData.append('isFloorPlan', 'true');
+            const fpRes = await fetch('/api/upload', {
+              method: 'POST',
+              body: fpFormData,
+              credentials: 'include',
+            });
+            if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
+          }
+        }
         setActionModal(responseData.requiresVerification ? 'otp' : 'success');
+      } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
+        window.location.href = String(responseData.redirect);
+      } else if (
+        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
+        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
+      ) {
+        setServerErrorMessage(responseData.message || responseData.error);
+        setActionModal('verify');
       } else {
         setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
-        setActionModal('error');
+        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
-    } catch {
+    } catch (_error) {
       setServerErrorMessage('Błąd połączenia z serwerem API.');
       setActionModal('error');
     } finally {
@@ -713,110 +710,69 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
   };
 
-  const startStripePlusCheckout = async () => {
+  const [isProcessingPlus, setIsProcessingPlus] = useState(false);
+  const handlePlusPayment = async () => {
+    if (initialUser?.isLoggedIn && !publishContactOk) {
+      setActionModal('verify');
+      return;
+    }
+    setIsProcessingPlus(true);
     try {
-      const res = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          plan: 'pakiet_plus',
-          returnUrl: `${window.location.origin}/dodaj-oferte?publication_pending=1`,
-          cancelUrl: `${window.location.origin}/dodaj-oferte`,
-        }),
-      });
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    } catch {
-      setServerErrorMessage('Nie udało się otworzyć płatności Stripe.');
-      setActionModal('error');
-    }
-  };
+      const cleanPrice = String(data.price || '').replace(/\D/g, "");
+      const finalDesc = editorRef.current?.innerHTML || data.description;
+      
+      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('publication_pending') === '1' && initialUser?.isLoggedIn) {
-      fetch('/api/user/publication-wallet', { cache: 'no-store' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((w) => {
-          if (w) setPubWallet(w);
-          setShowPublicationChoice(true);
-        });
-    }
-  }, [initialUser?.isLoggedIn]);
+      const payload: Record<string, unknown> = { 
+        ...data, 
+        userId: initialUser?.id,
+        transactionType: data.transactionType,
+        propertyType: data.propertyType,
+        condition: dbCondition,
+        description: finalDesc,
+        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`, 
+        price: cleanPrice,
+        priceCurrency: data.priceCurrency || 'PLN',
+        area: String(data.area).replace(',', '.'),
+        images: finalImages.length > 0 ? JSON.stringify(finalImages) : null, 
+        imageUrl: finalImages[0] || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop", 
+        floorPlan: finalFloorPlan,
+        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
+      };
+      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+        payload.agentCommissionPercent = Number(
+          String(data.agentCommissionPercent).replace(',', '.')
+        );
+      }
 
-  const handleSubmit = async () => {
-    if (isSubmitting || !canPublish) return;
-
-    if (!initialUser?.isLoggedIn) {
-      setIsSubmitting(true);
-      setUploadProgress('Wysyłanie oferty...');
-      try {
-        const response = await fetch('/api/offers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildOfferPayload()),
-        });
-        const responseData = await response.json().catch(() => ({}));
-        if (response.ok) {
-          const createdOfferId = responseData?.offer?.id || responseData?.id;
-          if (createdOfferId) await uploadMediaForOffer(createdOfferId);
-          setActionModal(responseData.requiresVerification ? 'otp' : 'success');
-        } else {
-          setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
-          setActionModal('error');
-        }
-      } catch {
-        setServerErrorMessage('Błąd połączenia z serwerem API.');
-        setActionModal('error');
-      } finally {
+      // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
+      if (finalImages.some(img => img.startsWith('blob:'))) {
+        setServerErrorMessage('Błąd krytyczny: Zdjęcia nie zostały poprawnie przesłane na serwer. Spróbuj dodać je ponownie lub odśwież stronę.');
+        setActionModal("error");
         setIsSubmitting(false);
-        setUploadProgress('');
-      }
-      return;
-    }
-
-    try {
-      const [quoteRes, walletRes] = await Promise.all([
-        fetch('/api/offers/publication-quote', { cache: 'no-store', credentials: 'include' }),
-        fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store', credentials: 'include' }),
-      ]);
-      const quoteData = quoteRes.ok ? await quoteRes.json() : null;
-      const wallet = walletRes.ok ? await walletRes.json() : null;
-      setPubWallet(wallet);
-
-      const coupons = wallet?.publicationCoupons ?? wallet?.coupons ?? [];
-      const quote = quoteData?.quote;
-      const needsModal = coupons.length > 0 || quote?.requiresPayment === true;
-
-      if (needsModal) {
-        setShowPublicationChoice(true);
         return;
       }
-
-      if (wallet?.hasPlusCredit) {
-        await executePublish({ kind: 'PLUS_CREDIT', consumePlusPublication: true });
-        return;
+      const response = await fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const responseData = await response.json().catch(() => ({}));
+      if (response.ok || response.status === 201 || response.status === 200) {
+        if (responseData.requiresVerification) {
+           setActionModal("otp");
+        } else {
+           setActionModal("success");
+        }
+      } else if (
+        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
+        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
+      ) {
+        setServerErrorMessage(responseData.message || responseData.error);
+        setActionModal('verify');
+      } else {
+        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
+        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
-
-      await executePublish(null);
-    } catch {
-      setServerErrorMessage('Nie udało się sprawdzić kredytów publikacji.');
-      setActionModal('error');
-    }
-  };
-
-  const handlePublicationChoice = async (
-    result: { action: 'publish'; redemption: PublicationRedemption } | { action: 'buy_plus' } | { action: 'cancel' },
-  ) => {
-    setShowPublicationChoice(false);
-    if (result.action === 'cancel') return;
-    if (result.action === 'buy_plus') {
-      await startStripePlusCheckout();
-      return;
-    }
-    await executePublish(result.redemption);
+    } catch (error) { 
+        setServerErrorMessage('Błąd połączenia z serwerem API.'); setActionModal("error"); 
+    } finally { setIsSubmitting(false); setUploadProgress(''); }
   };
 
   // --- Żelazna Walidacja Kroków ---
@@ -846,7 +802,18 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     (data.advertiserType === 'private' || (data.advertiserType === 'agency' && !!data.agencyName))
   );
 
-  const canPublish = isTypeSelected && isLocationDone && isFinanceDone && isTechDone && isMediaDone && isContactDone;
+  const publishContactOk =
+    !initialUser?.isLoggedIn ||
+    (Boolean(initialUser?.isEmailVerified) && Boolean(initialUser?.isVerifiedPhone));
+
+  const canPublish =
+    isTypeSelected &&
+    isLocationDone &&
+    isFinanceDone &&
+    isTechDone &&
+    isMediaDone &&
+    isContactDone &&
+    publishContactOk;
   const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
@@ -1118,8 +1085,53 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-4 flex flex-wrap items-center gap-3">
+                  <span className={labelPremium.replace('mb-2.5', 'mb-0')}>Waluta ceny</span>
+                  {(['PLN', 'EUR'] as OfferPriceCurrency[]).map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        const amount = Number(cleanPrice);
+                        const converted =
+                          amount > 0
+                            ? convertBetweenCurrencies(amount, data.priceCurrency, code, fxRate)
+                            : 0;
+                        updateData({
+                          priceCurrency: code,
+                          price:
+                            converted > 0
+                              ? String(converted).replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+                              : data.price,
+                        });
+                      }}
+                      className={`px-5 py-2.5 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${
+                        data.priceCurrency === code
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
+                          : 'bg-[#111] border-white/10 text-white/40 hover:border-white/25'
+                      }`}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                  {cleanPrice && Number(cleanPrice) > 0 && formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate) ? (
+                    <span className="text-[10px] font-bold text-zinc-400">
+                      {formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate)} (NBP)
+                    </span>
+                  ) : null}
+                  {cleanPrice && Number(cleanPrice) > 0 && cleanArea && Number(cleanArea) > 0 ? (
+                    <span className="text-[10px] font-bold text-zinc-500">
+                      {Math.round(Number(cleanPrice) / Number(cleanArea)).toLocaleString('pl-PL')}{' '}
+                      {data.priceCurrency}/m²
+                    </span>
+                  ) : null}
+                </div>
                 <div>
-                  <label className={labelPremium}>{data.transactionType === 'RENT' ? 'Czynsz najmu (miesięcznie) *' : 'Cena (PLN) *'}</label>
+                  <label className={labelPremium}>
+                    {data.transactionType === 'RENT'
+                      ? `Czynsz najmu (${data.priceCurrency || 'PLN'}) *`
+                      : `Cena (${data.priceCurrency || 'PLN'}) *`}
+                  </label>
                   <input type="text" className={inputPremium} placeholder="850 000" value={data.price || ''} 
                     onChange={(e) => updateData({ price: e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ") })} />
                 </div>
@@ -1194,12 +1206,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </>
                 )}
 
-                {isAgentCommissionAccount(initialUser) ? (
-                  <div className="lg:col-span-4 mt-4 pt-6 border-t border-white/5">
-                    <AgentCommissionEditor
-                      priceRaw={String(data.price || '').replace(/\s/g, '')}
-                      percentValue={agentCommissionPercent}
-                      onPercentChange={setAgentCommissionPercent}
+                {isAgentPublisher ? (
+                  <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
+                    <label className={labelPremium}>Prowizja agenta (% od ceny oferty)</label>
+                    <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                      Jak w aplikacji: 0% (bez prowizji) albo {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co {AGENT_COMMISSION_STEP}%.
+                      Kwota prowizji jest informacją dla kupującego — rozliczenie poza platformą.
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={inputPremium}
+                      placeholder="np. 2,5 lub 0"
+                      value={data.agentCommissionPercent ?? ''}
+                      onChange={(e) =>
+                        updateData({
+                          agentCommissionPercent: e.target.value.replace(/[^0-9.,]/g, ''),
+                        })
+                      }
                     />
                   </div>
                 ) : null}
@@ -1448,6 +1472,23 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
+              {initialUser?.isLoggedIn && !publishContactOk ? (
+                <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">Weryfikacja konta</p>
+                  <p className="text-sm text-white/70 mb-4 leading-relaxed">
+                    Przed publikacją potwierdź{' '}
+                    {!initialUser?.isVerifiedPhone ? 'telefon (SMS)' : ''}
+                    {!initialUser?.isVerifiedPhone && !initialUser?.isEmailVerified ? ' oraz ' : ''}
+                    {!initialUser?.isEmailVerified ? 'adres e-mail' : ''} — tak jak w aplikacji mobilnej.
+                  </p>
+                  <a
+                    href="/moje-konto/weryfikacja"
+                    className="inline-block py-3 px-6 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 transition-colors"
+                  >
+                    Przejdź do weryfikacji
+                  </a>
+                </div>
+              ) : null}
               <button 
                 onClick={handleSubmit} 
                 disabled={isSubmitting || !canPublish} 
@@ -1515,7 +1556,19 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       
       {/* 1. STANDARDOWE OKNA (BŁĄD, LIMIT, SUKCES ZWYKŁY) */}
       <AnimatePresence>
-        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && (
+        {actionModal === "verify" && (
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl relative">
+              <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24} /></button>
+              <ShieldCheck className="mx-auto mb-6 text-emerald-400" size={48} />
+              <h2 className="text-2xl font-black text-white mb-3">Potwierdź kontakt</h2>
+              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || 'Publikacja wymaga zweryfikowanego telefonu i e-maila.'}</p>
+              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">Weryfikacja konta</a>
+              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">Zamknij</button>
+            </motion.div>
+          </div>
+        )}
+        {actionModal !== "none" && actionModal !== "payment_success" && actionModal !== "oferta_plus" && actionModal !== "verify" && (
           <div className="fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4 bg-black/90 backdrop-blur-xl">
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full shadow-2xl relative text-center">
               <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white transition-colors"><X size={24} /></button>
@@ -1540,31 +1593,20 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
               {actionModal === "limit" && (
                 <>
-                  <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/30"><Sparkles className="text-emerald-400" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-4 tracking-tighter">Publikacja wymaga Plus</h2>
-                  <p className="text-zinc-400 mb-8 leading-relaxed font-medium">
-                    Wybierz kupon bonusowy, użyj kredytu Pakiet Plus ({PAKIET_PLUS_PRICE_LABEL}) lub opłać publikację na 30 dni.
-                  </p>
-                  <button onClick={() => { setActionModal('none'); setShowPublicationChoice(true); }} className="w-full py-5 bg-emerald-600 text-white font-black uppercase tracking-[0.2em] rounded-[1.5rem] hover:bg-emerald-500 shadow-xl">
-                    Wybierz sposób publikacji
+                  <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/30 shadow-[0_0_40px_rgba(59,130,246,0.3)]"><Sparkles className="text-blue-400" size={40} /></div>
+                  <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">Osiągnięto Limit</h2>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-6 animate-pulse">⚡ Oferta Limitowana</div>
+                  <p className="text-zinc-400 mb-8 leading-relaxed font-medium">Odblokuj to ogłoszenie w specjalnej cenie: <br/><span className="text-zinc-600 line-through text-lg mr-2 decoration-red-500/40">49,99 zł</span><span className="text-white font-black text-3xl">29,99 zł</span></p>
+                  <button onClick={handlePlusPayment} disabled={isProcessingPlus} className="w-full py-5 bg-blue-600 text-white font-black uppercase tracking-[0.2em] rounded-[1.5rem] transition-all duration-300 hover:bg-blue-500 hover:brightness-125 shadow-xl flex flex-col items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isProcessingPlus ? <span>ŁADOWANIE KASY...</span> : <><span>ODBLOKUJ I OPUBLIKUJ</span><span className="text-[9px] opacity-70 mt-1 font-bold">AUTOPUBLIKACJA PO PŁATNOŚCI</span></>}
                   </button>
+                  <button onClick={() => setActionModal("none")} className="mt-6 text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white transition-colors">Wróć do edycji</button>
                 </>
               )}
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
-      <PublicationChoiceModal
-        isOpen={showPublicationChoice}
-        onClose={() => setShowPublicationChoice(false)}
-        title="Publikacja na 30 dni"
-        subtitle={`Opublikuj ofertę na szerokim rynku. Pakiet Plus kosztuje ${PAKIET_PLUS_PRICE_LABEL} za jedną publikację (30 dni). To kredyt, nie abonament.`}
-        coupons={pubWallet?.publicationCoupons ?? pubWallet?.coupons ?? []}
-        hasPlusCredit={Boolean(pubWallet?.hasPlusCredit)}
-        plusCredits={pubWallet?.plusCredits ?? 0}
-        onConfirm={handlePublicationChoice}
-      />
 
       {/* 2. RYTUAŁ PRO (ROLLS ROYCE) */}
       {actionModal === "payment_success" && (

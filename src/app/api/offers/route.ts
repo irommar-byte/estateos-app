@@ -17,15 +17,13 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
 import {
-  activateOfferPublication,
-  activePublicationOfferIds,
-  getPublicationQuote,
-} from '@/lib/offerPublication';
-import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
-import { setPendingPublication } from '@/lib/offerPendingPublication';
-import { sendTransactionalEmail } from '@/lib/email/transactional';
-import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
+  enrichOfferMoneyFields,
+  enrichOfferMoneyFieldsWithRate,
+  getNbpEurPlnRate,
+  DEFAULT_EUR_PLN_RATE,
+} from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,6 +106,16 @@ export async function GET() {
     );
     const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
 
+    let listFxRate = DEFAULT_EUR_PLN_RATE;
+    let listFxDate: string | null = new Date().toISOString().slice(0, 10);
+    try {
+      const fx = await getNbpEurPlnRate();
+      listFxRate = fx.rate;
+      listFxDate = fx.date;
+    } catch {
+      /* fallback rate */
+    }
+
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
       const elite = resolveEliteBadges({ user });
@@ -121,17 +129,21 @@ export async function GET() {
         legalCheckStatus: rest.legalCheckStatus,
         isLegalSafeVerified: rest.isLegalSafeVerified,
       });
-      return enrichOfferMoneyFields({
-        ...rest,
-        imageUrl: resolveOfferPrimaryImage(rest),
-        description: cleanDescription,
-        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
-        landRegistryNumber: verification.landRegistryNumber || '',
-        ...legal,
-        badges,
-        views: viewsCount,
-        viewsCount,
-      });
+      return enrichOfferMoneyFieldsWithRate(
+        {
+          ...rest,
+          imageUrl: resolveOfferPrimaryImage(rest),
+          description: cleanDescription,
+          apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
+          landRegistryNumber: verification.landRegistryNumber || '',
+          ...legal,
+          badges,
+          views: viewsCount,
+          viewsCount,
+        },
+        listFxRate,
+        listFxDate,
+      );
     };
 
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
@@ -216,113 +228,9 @@ export async function POST(req: Request) {
 
     const offer = await createOffer({ ...body, userId: resolvedUserId });
 
-    const wantsActivation = body?.activateOnCreate === true || body?.publication;
-    if (!wantsActivation) {
-      return NextResponse.json({ success: true, offer });
-    }
-
-    const quote = await getPublicationQuote({
-      userId: resolvedUserId,
-      offerId: Number(offer.id),
-      action: 'CREATE_AND_ACTIVATE',
-    });
-    const pub = body?.publication;
-    const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? '').trim();
-    const bonusCouponId = String(pub?.bonusCouponId ?? body?.bonusCouponId ?? '').trim();
-    const bypassPaymentRequirement =
-      pub?.kind === 'FREE_FIRST' ||
-      Boolean(bonusCouponId) ||
-      pub?.kind === 'PLUS_CREDIT' ||
-      pub?.consumePlusPublication === true;
-
-    if (quote.requiresPayment && !txId && !bypassPaymentRequirement) {
-      return NextResponse.json(
-        {
-          success: false,
-          offer,
-          activationSkipped: true,
-          errorCode: 'PUBLICATION_REQUIRES_PLUS',
-          message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
-          quote,
-        },
-        { status: 422 },
-      );
-    }
-
-    const activationKind =
-      pub?.kind === 'PLUS_PAID' || (txId && pub?.kind !== 'FREE_FIRST' && pub?.kind !== 'PLUS_CREDIT')
-        ? 'PLUS_PAID'
-        : pub?.kind === 'PLUS_CREDIT' || pub?.consumePlusPublication === true
-          ? 'PLUS_CREDIT'
-          : pub?.kind === 'FREE_FIRST' || bonusCouponId
-            ? 'FREE_FIRST'
-            : txId
-              ? 'PLUS_PAID'
-              : 'PLUS_CREDIT';
-
-    // WWW flow: new offers should be verified by admin first.
-    // Store the intended publication choice and let admin activation consume it.
-    await setPendingPublication({
-      offerId: Number(offer.id),
-      kind: activationKind,
-      bonusCouponId: bonusCouponId || null,
-      iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
-    });
-
-    let adminEmail = String(process.env.ADMIN_OFFERS_EMAIL || '').trim();
-    if (!adminEmail) {
-      const adminUser = await prisma.user.findFirst({
-        where: { role: 'ADMIN' },
-        select: { email: true },
-        orderBy: { id: 'asc' },
-      });
-      adminEmail = String(adminUser?.email || '').trim();
-    }
-    if (adminEmail) {
-      const subject = `[EstateOS] Nowa oferta do weryfikacji (#${offer.id})`;
-      const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;color:#0f172a">
-          <h2 style="color:#059669;margin:0 0 16px">Nowa oferta do weryfikacji</h2>
-          <p><strong>ID:</strong> ${offer.id}</p>
-          <p><strong>Tytuł:</strong> ${String(offer.title || '').slice(0, 180)}</p>
-          <p><strong>Miasto:</strong> ${String((offer as any).city || '')}</p>
-          <p><strong>Akcja:</strong> ${activationKind} (publikacja po akceptacji)</p>
-          <p><a href="https://estateos.pl/centrala/oferty" target="_blank" rel="noreferrer">Otwórz centralę → Oferty</a></p>
-        </div>
-      `;
-      await sendTransactionalEmail({ to: adminEmail, subject, html });
-    }
-
-    return NextResponse.json({
-      success: true,
-      offer,
-      publication: {
-        status: 'PENDING_REVIEW',
-        kind: activationKind,
-      },
-    });
+    return NextResponse.json({ success: true, offer });
 
   } catch (e: unknown) {
-    if (e instanceof Error && e.message === 'IAP_TRANSACTION_NOT_AVAILABLE') {
-      return NextResponse.json(
-        {
-          success: false,
-          errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
-          message: 'Nie znaleziono niewykorzystanej płatności za publikację.',
-        },
-        { status: 409 },
-      );
-    }
-    if (e instanceof Error && e.message === 'NO_PLUS_CREDIT_AVAILABLE') {
-      return NextResponse.json(
-        {
-          success: false,
-          errorCode: 'PUBLICATION_REQUIRES_PLUS',
-          message: 'Brak dostępnego kredytu Pakietu Plus.',
-        },
-        { status: 409 },
-      );
-    }
     if (isOfferSchemaCompatibilityError(e)) {
       return NextResponse.json(
         { error: getOfferSchemaCompatibilityMessage(), code: 'LEGAL_FIELDS_TEMP_UNAVAILABLE' },

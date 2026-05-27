@@ -16,11 +16,11 @@ html, body {
   --eos-card: rgba(12, 12, 14, 0.92);
   --eos-text: #ffffff;
   --eos-muted: rgba(255, 255, 255, 0.58);
-  --eos-subtle: rgba(255, 255, 255, 0.36);
+  --eos-subtle: rgba(255, 255, 255, 0.52);
   --eos-border: rgba(255, 255, 255, 0.11);
   --eos-border-strong: rgba(255, 255, 255, 0.2);
   --eos-glass: rgba(8, 8, 10, 0.72);
-  --eos-input: rgba(255, 255, 255, 0.055);
+  --eos-input: rgba(255, 255, 255, 0.08);
   --eos-input-text: #ffffff;
   --eos-contrast: #050505;
   --eos-accent: #10b981;
@@ -448,6 +448,8 @@ html.dark button[class*="bg-[#111]"] {
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
+  width: 100%;
+  min-width: 0;
   border-radius: 999px;
   border: 1px solid var(--eos-border);
   background: var(--eos-surface);
@@ -461,6 +463,86 @@ html.light .premium-home-shell {
   background:
     radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.12), transparent 34%),
     linear-gradient(180deg, #f5f5f7 0%, #ffffff 44%, #f5f5f7 100%) !important;
+  /* Nie ustawiamy color na całym shell — psuło to białe CTA na ciemnym hero (czarny tekst na czerni). */
+}
+
+/* Kinowe hero — zawsze jasny tekst na ciemnym tle (niezależnie od motywu strony) */
+.premium-hero-stage,
+.premium-hero-stage h1,
+.premium-hero-stage p {
+  color: #ffffff;
+}
+
+.premium-hero-cta-primary {
+  color: #0a0a0a !important;
+}
+
+.premium-hero-cta-secondary {
+  color: #ffffff !important;
+  background-color: rgba(8, 8, 10, 0.72) !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.premium-hero-cta-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+}
+
+.premium-hero-cta-link {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.premium-hero-cta-link:hover {
+  color: #6ee7b7 !important;
+}
+
+.premium-hero-cta-link-pro {
+  color: rgba(251, 191, 36, 0.95) !important;
+}
+
+.premium-hero-cta-link-pro:hover {
+  color: #fde68a !important;
+}
+
+.premium-hero-scroll {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */
+.eos-segment-active {
+  background-color: var(--eos-accent) !important;
+  color: #020617 !important;
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.35),
+    0 8px 20px rgba(16, 185, 129, 0.22) !important;
+}
+
+.eos-segment-inactive {
+  color: var(--eos-muted) !important;
+  background-color: transparent !important;
+}
+
+.eos-segment-inactive:hover {
+  color: var(--eos-text) !important;
+}
+
+.eos-theme-switcher-pill {
+  background-color: var(--eos-accent) !important;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.28) !important;
+}
+
+.eos-theme-switcher-pill .eos-theme-switcher-icon {
+  color: #020617 !important;
+}
+
+.eos-theme-switcher-idle {
+  color: var(--eos-muted) !important;
+}
+
+.eos-theme-switcher-idle:hover {
   color: var(--eos-text) !important;
 }
 
@@ -572,6 +654,145 @@ html.light .theme-aware-dashboard textarea {
   background-color: rgba(255, 255, 255, 0.86) !important;
   border-color: var(--eos-border) !important;
   color: var(--eos-text) !important;
+}
+
+html.light .theme-aware-dashboard [class*="bg-black/20"],
+html.light .theme-aware-dashboard [class*="bg-black/30"],
+html.light .theme-aware-dashboard [class*="bg-black/40"] {
+  background-color: var(--eos-input) !important;
+}
+
+html.light .eos-chip-off {
+  background-color: rgba(241, 245, 249, 0.96) !important;
+  color: var(--eos-text) !important;
+  border-color: var(--eos-border-strong) !important;
+}
+
+/* --- Kontrast: pola i karty auth (dark + light) --- */
+.eos-label {
+  color: var(--eos-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.eos-field {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid var(--eos-border-strong);
+  background-color: var(--eos-input);
+  color: var(--eos-text);
+  padding: 1rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.eos-field::placeholder {
+  color: var(--eos-subtle);
+}
+
+.eos-field:focus {
+  border-color: var(--eos-accent);
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.eos-auth-card {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  border-radius: 2rem;
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-panel {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  border-radius: 2.5rem;
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-metric-card {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  border-radius: 1rem;
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-metric-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--eos-muted);
+}
+
+.eos-offer-metric-value {
+  font-size: 1.125rem;
+  font-weight: 900;
+  color: var(--eos-text);
+}
+
+.eos-choice-card {
+  border: 1px solid var(--eos-border);
+  background: var(--eos-input);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.eos-choice-card:hover {
+  border-color: var(--eos-border-strong);
+}
+
+.eos-choice-card--active {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: var(--eos-accent-soft);
+}
+
+.eos-muted-copy {
+  color: var(--eos-muted);
+}
+
+.eos-subtle-copy {
+  color: var(--eos-subtle);
+}
+
+/* Ciemne tło: podbij zbyt blade białe napisy (WCAG na #050505) */
+html.dark .theme-aware-dashboard [class*="text-white/35"] {
+  color: var(--eos-subtle) !important;
+}
+
+html.dark .theme-aware-dashboard [class*="text-white/40"] {
+  color: var(--eos-muted) !important;
+}
+
+html.dark .premium-home-shell [class*="text-white/40"],
+html.dark .premium-home-shell [class*="text-white/50"] {
+  color: rgba(255, 255, 255, 0.68) !important;
+}
+
+html.dark .premium-home-shell [class*="border-white/[0.06]"],
+html.dark .premium-home-shell [class*="border-white/[0.08]"] {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+/* Jasny motyw: sekcja cennik (celowo ciemna scena) — czytelne napisy */
+html.light .pricing-dark-stage {
+  background-color: #050505 !important;
+  color: #f8fafc !important;
+}
+
+html.light .pricing-dark-stage .text-white,
+html.light .pricing-dark-stage [class*="text-white"] {
+  color: #f8fafc !important;
+}
+
+html.light .pricing-dark-stage [class*="text-white/40"],
+html.light .pricing-dark-stage [class*="text-white/50"] {
+  color: rgba(248, 250, 252, 0.72) !important;
 }
 
 html.light .theme-aware-dashboard .shadow-inner,

@@ -5,13 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Loader2 } from "lucide-react";
-import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
 type CatalogOffer = {
   id: number;
   title?: string | null;
   area?: unknown;
   price?: unknown;
+  priceCurrency?: unknown;
+  pricePln?: unknown;
   imageUrl?: string | null;
   district?: string | null;
   city?: string | null;
@@ -27,28 +29,15 @@ function normalizeTransactionType(value: unknown): "sale" | "rent" | "other" {
   return "other";
 }
 
-function parsePriceNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (value && typeof value === "object" && "toNumber" in (value as object)) {
-    try {
-      const n = Number((value as { toNumber: () => number }).toNumber());
-      return Number.isFinite(n) ? n : 0;
-    } catch {
-      /* noop */
-    }
-  }
-  const digits = String(value ?? "").replace(/\D/g, "");
-  if (!digits) return 0;
-  const n = Number.parseInt(digits, 10);
-  return Number.isFinite(n) ? n : 0;
-}
 
-function formatPriceLabel(offer: CatalogOffer): string {
-  const n = parsePriceNumber(offer.price);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  const fmt = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 0 }).format(n);
+function formatPriceLabel(
+  offer: CatalogOffer,
+  formatOffer: ReturnType<typeof useFormatOfferPrice>["formatOffer"],
+): string {
+  const info = formatOffer(offer);
+  if (info.listingAmount <= 0) return "—";
   const tx = normalizeTransactionType(offer.transactionType);
-  return tx === "rent" ? `${fmt} zł/m` : `${fmt} zł`;
+  return tx === "rent" ? `${info.primary} / mc` : info.primary;
 }
 
 function formatAreaLabel(offer: CatalogOffer): string {
@@ -66,6 +55,7 @@ function formatLocationLabel(offer: CatalogOffer): string {
 }
 
 export default function CatalogPage() {
+  const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,16 +159,7 @@ export default function CatalogPage() {
               className="grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16"
             >
               {offers.map((offer, i) => (
-                <div key={offer.id} className="relative">
-                  <div className="absolute right-4 top-4 z-20">
-                    <OfferFavoriteButton
-                      offerId={offer.id}
-                      onRequireAuth={() => {
-                        window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
-                      }}
-                    />
-                  </div>
-                  <Link href={`/oferta/${offer.id}`} className="block">
+                <Link href={`/oferta/${offer.id}`} key={offer.id} className="block">
                   <motion.article
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -213,7 +194,7 @@ export default function CatalogPage() {
                         </p>
                       </div>
                       <div className="flex flex-col items-end text-right">
-                        <p className="text-xl font-bold tabular-nums text-[var(--eos-text)]">{formatPriceLabel(offer)}</p>
+                        <p className="text-xl font-bold tabular-nums text-[var(--eos-text)]">{formatPriceLabel(offer, formatOffer)}</p>
                         <div className="mt-3 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)] transition-colors group-hover:text-emerald-500">
                           Odkryj <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                         </div>
@@ -221,7 +202,6 @@ export default function CatalogPage() {
                     </div>
                   </motion.article>
                 </Link>
-                </div>
               ))}
             </motion.div>
           )}
