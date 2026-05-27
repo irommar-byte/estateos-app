@@ -29,6 +29,8 @@ export type OfferPageCopy = {
   street: string;
   area: string;
   pricePerSqm: string;
+  priceInEur: string;
+  pricePerSqmEur: string;
   rooms: string;
   floor: string;
   standard: string;
@@ -58,6 +60,7 @@ export type OfferPageCopy = {
   securedBy: string;
   authRequired: string;
   submitBid: string;
+  listingPriceIncludesCommission: string;
 };
 
 const PL: OfferPageCopy = {
@@ -90,6 +93,8 @@ const PL: OfferPageCopy = {
   street: "Ulica",
   area: "Powierzchnia",
   pricePerSqm: "Cena za m²",
+  priceInEur: "Cena w EUR",
+  pricePerSqmEur: "Cena za m² (EUR)",
   rooms: "Pokoje",
   floor: "Piętro",
   standard: "Standard",
@@ -119,6 +124,8 @@ const PL: OfferPageCopy = {
   securedBy: "Zabezpieczone przez EstateOS™",
   authRequired: "Musisz być zalogowany, aby rozpocząć negocjacje.",
   submitBid: "Złóż ofertę",
+  listingPriceIncludesCommission:
+    "Cena ofertowa nie ulega zmianie dla kupującego/najemcy — zawiera prowizję pośrednika wpisaną w ofertę.",
 };
 
 const EN: OfferPageCopy = {
@@ -151,6 +158,8 @@ const EN: OfferPageCopy = {
   street: "Street",
   area: "Area",
   pricePerSqm: "Price per m²",
+  priceInEur: "Price in EUR",
+  pricePerSqmEur: "Price per m² (EUR)",
   rooms: "Rooms",
   floor: "Floor",
   standard: "Finish standard",
@@ -180,6 +189,8 @@ const EN: OfferPageCopy = {
   securedBy: "Secured by EstateOS™",
   authRequired: "You must be signed in to start negotiations.",
   submitBid: "Submit offer",
+  listingPriceIncludesCommission:
+    "The listing price does not change for buyer/tenant — it already includes the intermediary commission defined in this offer.",
 };
 
 export function getOfferPageCopy(locale: Locale): OfferPageCopy {

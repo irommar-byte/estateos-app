@@ -166,6 +166,21 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     numericPrice > 0 && numericArea > 0
       ? Math.round(numericPrice / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
       : t.noData;
+  const priceCurrency = String(offer.priceCurrency || "PLN").toUpperCase();
+  const exchangeRateUsed = Number(offer.exchangeRateUsed || 0);
+  const priceInEurValue =
+    numericPrice > 0
+      ? priceCurrency === "EUR"
+        ? numericPrice
+        : exchangeRateUsed > 0
+          ? numericPrice / exchangeRateUsed
+          : null
+      : null;
+  const priceInEur = priceInEurValue != null ? Math.round(priceInEurValue).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData;
+  const pricePerSqmEur =
+    priceInEurValue != null && numericArea > 0
+      ? Math.round(priceInEurValue / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
+      : t.noData;
 
     // Sekcje Specyfikacji Luksusowej
   
@@ -238,7 +253,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   return (
     <main className="bg-black min-h-screen text-white font-sans selection:bg-white/20 pb-32">
       
-      <div ref={ref} className="relative w-full min-h-[100vh] h-[100dvh] overflow-hidden bg-black">
+      <div ref={ref} className="relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-xl' : ''} ${isArchived ? 'grayscale' : ''}`} />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
 
@@ -268,7 +283,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               className="pointer-events-auto w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-white/10 bg-zinc-950/80 px-4 py-2.5 shadow-2xl backdrop-blur-3xl sm:gap-4 sm:px-5 hover:border-white/20 transition-all duration-300">
+              <div className="flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-zinc-950/80 px-3 py-2 shadow-2xl backdrop-blur-3xl sm:justify-center sm:gap-4 sm:px-5 sm:py-2.5 sm:rounded-full hover:border-white/20 transition-all duration-300">
                 <button 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
                   className="flex items-center gap-3 shrink-0 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-full px-4 py-2 transition-all duration-300 group cursor-pointer shadow-inner"
@@ -304,7 +319,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
                 <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
                 
-                <div className="flex flex-1 items-center justify-center gap-2 sm:gap-3 min-w-0 px-1">
+                <div className="flex items-center justify-center gap-2 sm:gap-3 shrink-0 min-w-0 px-1">
                   <div className="flex flex-col items-center justify-center shrink-0">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.views}</span>
                       <div className="flex items-center gap-1.5">
@@ -330,7 +345,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
                 <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
 
-                <div className="flex items-center gap-3 sm:gap-4 shrink-0 px-1">
+                <div className="flex items-center gap-2 sm:gap-4 shrink-0 px-1">
                   <div className="flex flex-col items-center justify-center">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
                       <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
@@ -360,7 +375,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
         <div
           onClick={() => !isLocked && openGallery(0)}
-          className="absolute inset-x-0 bottom-0 z-20 flex cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:pb-24"
+          className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
         >
           <h1 className="max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter drop-shadow-2xl [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
             {isLocked ? t.beforeLaunchTitle : offer.title}
@@ -423,7 +438,32 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             )}
 
             <div>
+                <h1 className="sm:hidden text-4xl font-light leading-tight tracking-tighter mb-7 text-white drop-shadow-lg [text-wrap:balance]">
+                  {isLocked ? t.beforeLaunchTitle : offer.title}
+                </h1>
                 <h2 className="text-4xl sm:text-6xl md:text-7xl font-light tracking-tighter mb-8 sm:mb-10 text-white drop-shadow-lg">{priceDisplay} <span className="font-bold">PLN</span></h2>
+                {!isLocked && (
+                  <div className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.priceInEur}</p>
+                      <p className="text-lg font-black text-white mt-1">{priceInEur} EUR</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqm}</p>
+                      <p className="text-lg font-black text-white mt-1">{pricePerSqm} PLN</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqmEur}</p>
+                      <p className="text-lg font-black text-white mt-1">{pricePerSqmEur} EUR</p>
+                    </div>
+                  </div>
+                )}
+                {!isLocked && agentCommissionLine && (
+                  <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <p className="text-sm text-zinc-200">{agentCommissionLine}</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">{t.listingPriceIncludesCommission}</p>
+                  </div>
+                )}
                 
                 <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
                   <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">{t.aboutProperty}</h3>
