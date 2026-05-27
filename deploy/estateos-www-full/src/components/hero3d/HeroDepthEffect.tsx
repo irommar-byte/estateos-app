@@ -8,8 +8,8 @@ import {
   HomeCtaAnalyticsEvent,
   HomeCtaId,
 } from "@/contracts/homeCtaContract";
-import EosDynamicIslandBadge from "@/components/home/EosDynamicIslandBadge";
 import { useLocale } from "@/contexts/LocaleContext";
+import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
 
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop";
@@ -53,14 +53,7 @@ export default function HeroDepthEffect() {
     trackHomeCta("home_cta_click", ctaId);
     trackHomeCta("home_cta_route_resolved", ctaId);
 
-    if (ctaId === "RADAR") {
-      document.getElementById("map-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", entry.webRoute);
-      }
-    } else {
-      router.push(entry.webRoute);
-    }
+    router.push(entry.webRoute);
 
     trackHomeCta("home_cta_flow_opened", ctaId);
   };
@@ -68,7 +61,7 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="premium-hero-stage relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="relative h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -141,15 +134,6 @@ export default function HeroDepthEffect() {
             style={{ opacity: opacityFade }}
             className="flex w-full max-w-6xl flex-col items-center"
           >
-            <motion.div
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: customEase, delay: 0.08 }}
-              className="mb-7"
-            >
-              <EosDynamicIslandBadge />
-            </motion.div>
-
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -174,10 +158,10 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, ease: customEase, delay: 0.32 }}
-              className="mt-6 max-w-2xl text-sm font-light leading-relaxed text-white/72 sm:text-lg"
+              className="mt-8 max-w-xl text-sm font-light leading-[1.7] text-white/65 sm:max-w-2xl sm:text-base"
             >
               {dict.hero.lead}
-              <span className="font-medium text-white">{dict.hero.leadBold}</span>
+              <span className="font-medium text-white/95">{dict.hero.leadBold}</span>
               {dict.hero.leadExtra}
             </motion.p>
 
@@ -185,50 +169,38 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, ease: customEase, delay: 0.48 }}
-              className="mt-10 flex w-full flex-col items-center gap-5"
+              className="mt-12 flex w-full max-w-md flex-col justify-center gap-3 sm:max-w-none sm:flex-row sm:gap-4"
             >
-              <div className="flex w-full flex-col justify-center gap-4 sm:w-auto sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("RADAR")}
-                  className="premium-hero-cta-primary group relative overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-10 py-4 text-xs font-black uppercase tracking-[0.18em] shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.03] active:scale-[0.97]"
-                >
-                  <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
-                  <span className="relative">{dict.hero.ctaRadar}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("LIST")}
-                  className="premium-hero-cta-secondary rounded-full border px-10 py-4 text-xs font-black uppercase tracking-[0.18em] backdrop-blur-xl transition-all active:scale-[0.97]"
-                >
-                  {dict.hero.ctaList}
-                </button>
-              </div>
-              <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-6">
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("ACCOUNT")}
-                  className="premium-hero-cta-link text-[10px] uppercase tracking-[0.24em] transition-colors sm:text-[11px]"
-                >
-                  {dict.hero.ctaAccount}
-                </button>
-                <span className="premium-hero-scroll hidden sm:inline" aria-hidden>
-                  ·
-                </span>
-                <button
-                  type="button"
-                  onClick={() => openHomeCta("PRO")}
-                  className="premium-hero-cta-link-pro text-[10px] uppercase tracking-[0.24em] transition-colors sm:text-[11px]"
-                >
-                  {dict.hero.ctaPro}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => openHomeCta("RADAR")}
+                className="group relative w-full overflow-hidden rounded-full bg-gradient-to-b from-[#d9b58b] via-[#b98c58] to-[#70451f] px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_18px_38px_rgba(0,0,0,0.45),inset_0_1px_1px_rgba(255,255,255,0.45)] transition-transform hover:scale-[1.02] active:scale-[0.98] sm:w-auto sm:px-10"
+              >
+                <span className="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100" />
+                <span className="relative">{dict.hero.ctaMap}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openHomeCta("LIST")}
+                className="w-full rounded-full border border-white/18 bg-black/50 px-8 py-4 text-[11px] font-black uppercase tracking-[0.16em] text-white shadow-[0_16px_34px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl transition-all hover:border-white/30 hover:bg-white/[0.08] active:scale-[0.98] sm:w-auto sm:px-10"
+              >
+                {dict.hero.ctaList}
+              </button>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
+              className="mt-5"
+            >
+              <AppStoreBadgeLink label="Pobierz EstateOS na iPhone" />
             </motion.div>
           </motion.div>
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-3 text-white/30 sm:flex">
-          <span className="premium-hero-scroll text-[9px] font-black uppercase tracking-[0.28em]">{dict.hero.scroll}</span>
+          <span className="text-[9px] font-black uppercase tracking-[0.28em]">Scroll</span>
           <motion.span
             className="h-12 w-px bg-gradient-to-b from-white/60 to-transparent"
             animate={reduceMotion ? undefined : { scaleY: [0.35, 1, 0.35], opacity: [0.25, 0.75, 0.25] }}
