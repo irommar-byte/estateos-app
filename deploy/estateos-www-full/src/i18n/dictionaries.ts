@@ -37,10 +37,8 @@ export type Dictionary = {
     lead: string;
     leadBold: string;
     leadExtra: string;
-    ctaRadar: string;
+    ctaMap: string;
     ctaList: string;
-    ctaAccount: string;
-    ctaPro: string;
     exploreMap: string;
   };
   pulse: {
@@ -137,14 +135,47 @@ export type Dictionary = {
     wholeCity: string;
     selectedCount: string;
     placeholderPlot: string;
+    maxPriceLabel: string;
+    maxRentLabel: string;
+    locateMe: string;
+    geolocationDenied: string;
+    teaserTitleHighlight: string;
+    teaserTitle: string;
+    teaserBody: string;
+    teaserLogin: string;
+    teaserBack: string;
   };
   footer: {
     rights: string;
     tagline: string;
     terms: string;
     privacy: string;
-    listings: string;
-    central: string;
+    help: string;
+    contact: string;
+  };
+  contact: {
+    title: string;
+    subtitle: string;
+    emailTo: string;
+    name: string;
+    namePlaceholder: string;
+    email: string;
+    emailPlaceholder: string;
+    topic: string;
+    topicGeneral: string;
+    topicSupport: string;
+    topicListing: string;
+    topicPartnership: string;
+    topicOther: string;
+    message: string;
+    messagePlaceholder: string;
+    send: string;
+    sending: string;
+    success: string;
+    error: string;
+    close: string;
+    required: string;
+    fallbackMailto: string;
   };
   badges: {
     admin: string;
@@ -194,6 +225,8 @@ export type Dictionary = {
     favoritesTitle: string;
     favoritesTitleHighlight: string;
     favoritesDesc: string;
+    favoritesEmpty: string;
+    favoritesDiscoverMarket: string;
     myOffersTitle: string;
     myOffersTitleHighlight: string;
     myOffersDesc: string;
@@ -272,15 +305,13 @@ const pl: Dictionary = {
     messages: "wiadomości",
   },
   hero: {
-    eyebrow: "Globalna inteligencja rynku premium",
-    lead: "Wystaw rezydencję ",
-    leadBold: "bez kosztów",
+    eyebrow: "Rynek nieruchomości · jedna platforma",
+    lead: "Wystaw nieruchomość ",
+    leadBold: "bez opłat za publikację",
     leadExtra:
-      " lub odkryj swój nowy adres. Ustaw Inteligentny Radar raz — oferty premium dotrą do Ciebie same.",
-    ctaRadar: "Szukaj na Radarze",
-    ctaList: "Dodaj ofertę",
-    ctaAccount: "Moje konto",
-    ctaPro: "Pakiety Pro",
+      ". Przeglądaj oferty na mapie, dodaj ogłoszenie lub włącz Radar Inwestycji — dopasowania trafią do Twojego konta.",
+    ctaMap: "Szukaj na mapie",
+    ctaList: "Dodaj swoją ofertę",
     exploreMap: "Mapa ofert",
   },
   pulse: {
@@ -298,22 +329,22 @@ const pl: Dictionary = {
     delayedTicker: "Opóźniona synchronizacja — Puls rynku EstateOS™",
   },
   highlights: {
-    eyebrow: "Doświadczenie EstateOS",
-    title: "Stworzone dla globalnego premium",
+    eyebrow: "EstateOS™",
+    title: "Rynek, radar i transakcje w jednym miejscu",
     body:
-      "EstateOS™ łączy odkrywanie, zaufanie i proces transakcyjny w jednej platformie — od pierwszego wrażenia po podpis umowy.",
-    radarTitle: "Inteligentny Radar",
+      "Ta sama baza ofert na stronie i w aplikacji: mapa na żywo, ogłoszenia, Radar Inwestycji oraz Deal Room do negocjacji.",
+    radarTitle: "Radar Inwestycji",
     radarBody:
-      "Ustaw kryteria raz. Dopasowane oferty premium pojawiają się automatycznie na rynkach globalnych.",
-    verifiedTitle: "Zweryfikowane oferty",
+      "Lokalizacja, budżet, metraż i typ transakcji — system monitoruje rynek i pokazuje dopasowania w koncie.",
+    verifiedTitle: "Weryfikacja ofert",
     verifiedBody:
-      "Kontrole prawne, sygnały zaufania i workflow concierge dla poważnych transakcji.",
-    passkeyTitle: "Dostęp Passkey",
+      "Status dokumentów, sygnały zaufania i przejrzysty profil wystawcy przed kontaktem.",
+    passkeyTitle: "Logowanie Passkey",
     passkeyBody:
-      "Logowanie biometryczne — szybko, bezpiecznie i wygodnie w aplikacji mobilnej.",
-    dealsTitle: "Oferty prywatne",
+      "Bezpieczne logowanie biometryczne w aplikacji — bez haseł na co dzień.",
+    dealsTitle: "Deal Room",
     dealsBody:
-      "Wczesny dostęp i transakcje off-market dla członków, którzy działają pierwsi.",
+      "Prywatne pokoje transakcyjne: wiadomości, oferty cenowe i dokumenty w jednym miejscu.",
   },
   homePremium: {
     loading: "Wczytywanie...",
@@ -337,22 +368,22 @@ const pl: Dictionary = {
     statsNewOffers24h: "Nowych w 24h",
     statsMarketCities: "Obsługiwanych Miast",
     statsRegisteredMembers: "Zaufanych Klientów",
-    galleryEyebrow: "Wyselekcjonowane z rynku",
-    galleryTitle: "Ekskluzywne",
-    galleryTitleHighlight: "Odkrycia",
-    gallerySubtitle: "Wyselekcjonowane oferty z rynku EstateOS, przygotowane do odkrywania premium.",
+    galleryEyebrow: "Aktywny rynek",
+    galleryTitle: "Wybrane",
+    galleryTitleHighlight: "ogłoszenia",
+    gallerySubtitle: "Aktualne oferty z bazy EstateOS — sprzedaż i wynajem, ten sam katalog co na mapie.",
     galleryViewAll: "Zobacz całą kolekcję",
     galleryPriceLabel: "Cena",
     galleryAreaLabel: "Powierzchnia",
     galleryRoomsLabel: "pokoje",
-    mapEyebrow: "Radar nieruchomości live",
-    mapTitle: "Inteligentny",
-    mapTitleHighlight: "Radar",
+    mapEyebrow: "Rynek na żywo",
+    mapTitle: "Mapa",
+    mapTitleHighlight: "ofert",
     mapSubtitle:
-      "Interaktywna mapa globalnych ofert premium. Zdefiniuj parametry i pozwól systemowi zlokalizować Twoją następną inwestycję.",
-    trustRadarTitle: "Inteligentny Radar",
+      "Przeglądaj aktywne ogłoszenia, filtruj lokalizację i typ nieruchomości — ten sam rynek co w aplikacji mobilnej.",
+    trustRadarTitle: "Radar Inwestycji",
     trustRadarDesc:
-      "Zdefiniuj swoje parametry. Nasz system 24/7 skanuje rynek i dostarcza idealnie dopasowane inwestycje.",
+      "Ustaw kryteria w koncie. System skanuje rynek i pokazuje dopasowane oferty w zakładce radaru.",
     trustSecurityTitle: "Technologia Passkey",
     trustSecurityDesc:
       "Biometryczna autoryzacja bez haseł. Zapewniamy bezpieczeństwo klasy korporacyjnej dla Twoich danych.",
@@ -386,14 +417,49 @@ const pl: Dictionary = {
     wholeCity: "Całe miasto",
     selectedCount: "{n} wybrane",
     placeholderPlot: "np. 500",
+    maxPriceLabel: "Maks. cena",
+    maxRentLabel: "Maks. czynsz",
+    locateMe: "Zlokalizuj mnie",
+    geolocationDenied:
+      "Zezwól na dostęp do lokalizacji w przeglądarce, aby przejść do swojego miasta.",
+    teaserTitleHighlight: "Zastrzeżony",
+    teaserTitle: "dostęp",
+    teaserBody:
+      "Szczegóły oferty i kontakt są dostępne po zalogowaniu. Utwórz konto lub zaloguj się, aby odblokować adres na mapie.",
+    teaserLogin: "Zaloguj się",
+    teaserBack: "Wróć do mapy",
   },
   footer: {
     rights: "© 2026 EstateOS™. Wszelkie prawa zastrzeżone.",
     tagline: "Globalna inteligencja nieruchomości premium",
     terms: "Regulamin",
     privacy: "Prywatność",
-    listings: "Oferty",
-    central: "Centrala",
+    help: "Pomoc",
+    contact: "Kontakt",
+  },
+  contact: {
+    title: "Kontakt z EstateOS™",
+    subtitle: "Napisz do nas — odpowiadamy na pytania o platformę, ogłoszenia i współpracę.",
+    emailTo: "kontakt@estateos.pl",
+    name: "Imię i nazwisko",
+    namePlaceholder: "Jan Kowalski",
+    email: "Twój e-mail",
+    emailPlaceholder: "jan@example.com",
+    topic: "Temat",
+    topicGeneral: "Pytanie ogólne",
+    topicSupport: "Wsparcie techniczne",
+    topicListing: "Publikacja ogłoszenia",
+    topicPartnership: "Współpraca / Partner",
+    topicOther: "Inne",
+    message: "Wiadomość",
+    messagePlaceholder: "Opisz swoją sprawę — im więcej szczegółów, tym szybciej pomożemy.",
+    send: "Wyślij wiadomość",
+    sending: "Wysyłanie…",
+    success: "Dziękujemy. Wiadomość została wysłana — odezwiemy się na podany adres e-mail.",
+    error: "Nie udało się wysłać wiadomości. Spróbuj ponownie lub napisz bezpośrednio na kontakt@estateos.pl.",
+    close: "Zamknij",
+    required: "To pole jest wymagane.",
+    fallbackMailto: "Otwórz klienta poczty",
   },
   badges: {
     admin: "Administrator",
@@ -445,6 +511,8 @@ const pl: Dictionary = {
     favoritesTitle: "Moje",
     favoritesTitleHighlight: "ulubione",
     favoritesDesc: "Obserwowane oferty i szybki powrót do statusu na rynku.",
+    favoritesEmpty: "Nie obserwujesz jeszcze żadnych ofert.",
+    favoritesDiscoverMarket: "Odkryj Rynek",
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
@@ -457,7 +525,7 @@ const pl: Dictionary = {
     subtitle:
       "Niezależnie od tego, czy sprzedajesz swoje pierwsze mieszkanie, polujesz na okazje zanim pojawią się na szerokim rynku, czy zarządzasz agencją – mamy plan skrojony pod Ciebie.",
     tabPrivate: "Prywatni & Inwestorzy",
-    tabAgency: "Agencje PRO",
+    tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
     basicDesc: "Idealny start do sprzedaży własnej nieruchomości lub szukania ofert.",
     basicPrice: "0 PLN",
@@ -484,7 +552,7 @@ const pl: Dictionary = {
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
     agencySoon: "Wkrótce",
-    agencySoonTitle: "EstateOS Agency PRO",
+    agencySoonTitle: "EstateOS™ Partner",
     agencySoonDesc:
       "Pakiet dla biur nieruchomości przygotowujemy — CRM, import XML i leady Concierge. Wróć za chwilę.",
     modalTitle: "Jaki jest Twój Cel?",
@@ -530,16 +598,14 @@ const en: Dictionary = {
     messages: "messages",
   },
   hero: {
-    eyebrow: "Global premium real estate intelligence",
-    lead: "List a residence ",
-    leadBold: "at no cost",
+    eyebrow: "Real estate market · one platform",
+    lead: "List a property ",
+    leadBold: "with no listing fee",
     leadExtra:
-      " or discover your next address anywhere. Set Intelligent Radar once — premium matches arrive on their own.",
-    ctaRadar: "Search on Radar",
-    ctaList: "List property",
-    ctaAccount: "My account",
-    ctaPro: "Pro plans",
-    exploreMap: "Explore market",
+      ". Browse live listings on the map, publish your own, or enable Investment Radar — matches land in your account.",
+    ctaMap: "Search on the map",
+    ctaList: "Add your listing",
+    exploreMap: "Listing map",
   },
   pulse: {
     title: "Market pulse",
@@ -556,22 +622,22 @@ const en: Dictionary = {
     delayedTicker: "Live sync delayed — EstateOS™ market pulse",
   },
   highlights: {
-    eyebrow: "Signature experience",
-    title: "Built for global premium real estate",
+    eyebrow: "EstateOS™",
+    title: "Market, radar, and deals in one place",
     body:
-      "EstateOS™ combines discovery, trust, and deal flow in one refined platform — from first impression to signed agreement.",
-    radarTitle: "Intelligent Radar",
+      "The same listing database on web and mobile: live map, listings, Investment Radar, and Deal Rooms for negotiations.",
+    radarTitle: "Investment Radar",
     radarBody:
-      "Set your criteria once. Premium matches surface automatically across global markets.",
-    verifiedTitle: "Verified listings",
+      "Location, budget, size, and transaction type — the system monitors the market and surfaces matches in your account.",
+    verifiedTitle: "Listing verification",
     verifiedBody:
-      "Legal checks, trust signals, and concierge-grade workflows for serious transactions.",
-    passkeyTitle: "Passkey access",
+      "Document status, trust signals, and a clear advertiser profile before you reach out.",
+    passkeyTitle: "Passkey sign-in",
     passkeyBody:
-      "Biometric-grade sign-in designed for speed, security, and seamless mobile use.",
-    dealsTitle: "Private deals",
+      "Secure biometric login in the app — no daily password friction.",
+    dealsTitle: "Deal Room",
     dealsBody:
-      "Early visibility windows and off-market flows for members who move first.",
+      "Private deal rooms: messages, price offers, and documents in one workflow.",
   },
   homePremium: {
     loading: "Loading...",
@@ -595,22 +661,22 @@ const en: Dictionary = {
     statsNewOffers24h: "New in 24h",
     statsMarketCities: "Cities Covered",
     statsRegisteredMembers: "Trusted Members",
-    galleryEyebrow: "Exclusive Global Selection",
-    galleryTitle: "Curated",
-    galleryTitleHighlight: "Residences",
-    gallerySubtitle: "Real listings from the EstateOS market, presented with a gallery made for premium discovery.",
-    galleryViewAll: "View all collection",
+    galleryEyebrow: "Active market",
+    galleryTitle: "Featured",
+    galleryTitleHighlight: "listings",
+    gallerySubtitle: "Live listings from EstateOS — sale and rent, the same catalog as on the map.",
+    galleryViewAll: "View full catalog",
     galleryPriceLabel: "Price",
     galleryAreaLabel: "Area",
     galleryRoomsLabel: "rooms",
-    mapEyebrow: "Live property radar",
-    mapTitle: "Intelligent",
-    mapTitleHighlight: "Radar",
+    mapEyebrow: "Live market",
+    mapTitle: "Listing",
+    mapTitleHighlight: "map",
     mapSubtitle:
-      "Interactive global map of premium listings. Define your parameters and let EstateOS locate your next legacy asset.",
-    trustRadarTitle: "AI Radar",
+      "Browse active listings, filter by location and property type — the same market as in the mobile app.",
+    trustRadarTitle: "Investment Radar",
     trustRadarDesc:
-      "Automated matchmaking. Define your parameters and let the system hunt for properties 24/7.",
+      "Set criteria in your account. The system scans the market and shows matches in your radar tab.",
     trustSecurityTitle: "Passkey Security",
     trustSecurityDesc:
       "Biometric authentication. No passwords. Enterprise-grade security for your assets.",
@@ -644,14 +710,49 @@ const en: Dictionary = {
     wholeCity: "Entire city",
     selectedCount: "{n} selected",
     placeholderPlot: "e.g. 500",
+    maxPriceLabel: "Max price",
+    maxRentLabel: "Max rent",
+    locateMe: "Locate me",
+    geolocationDenied:
+      "Allow location access in your browser to fly to your area on the map.",
+    teaserTitleHighlight: "Restricted",
+    teaserTitle: "access",
+    teaserBody:
+      "Listing details and contact unlock after sign-in. Log in or create an account to open this pin.",
+    teaserLogin: "Sign in",
+    teaserBack: "Back to map",
   },
   footer: {
     rights: "© 2026 EstateOS™. All rights reserved.",
     tagline: "Global premium real estate intelligence",
     terms: "Terms",
     privacy: "Privacy",
-    listings: "Listings",
-    central: "Central",
+    help: "Help",
+    contact: "Contact",
+  },
+  contact: {
+    title: "Contact EstateOS™",
+    subtitle: "Reach out — we answer questions about the platform, listings, and partnerships.",
+    emailTo: "kontakt@estateos.pl",
+    name: "Full name",
+    namePlaceholder: "Jane Doe",
+    email: "Your email",
+    emailPlaceholder: "jane@example.com",
+    topic: "Topic",
+    topicGeneral: "General question",
+    topicSupport: "Technical support",
+    topicListing: "Listing publication",
+    topicPartnership: "Partnership",
+    topicOther: "Other",
+    message: "Message",
+    messagePlaceholder: "Describe your request — the more detail, the faster we can help.",
+    send: "Send message",
+    sending: "Sending…",
+    success: "Thank you. Your message was sent — we will reply to your email.",
+    error: "Could not send the message. Try again or email kontakt@estateos.pl directly.",
+    close: "Close",
+    required: "This field is required.",
+    fallbackMailto: "Open email client",
   },
   badges: {
     admin: "Administrator",
@@ -703,6 +804,8 @@ const en: Dictionary = {
     favoritesTitle: "My",
     favoritesTitleHighlight: "favorites",
     favoritesDesc: "Watchlist and quick return to listing status.",
+    favoritesEmpty: "You are not watching any listings yet.",
+    favoritesDiscoverMarket: "Explore the market",
     myOffersTitle: "My",
     myOffersTitleHighlight: "listings",
     myOffersDesc: "Manage statuses, renewals, and listing statistics.",
@@ -715,7 +818,7 @@ const en: Dictionary = {
     subtitle:
       "Whether you are selling your first home, hunting deals before they hit the open market, or running an agency — we have a plan built for you.",
     tabPrivate: "Private & Investors",
-    tabAgency: "Agency PRO",
+    tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
     basicDesc: "Perfect start for selling your property or searching listings.",
     basicPrice: "0 PLN",
@@ -742,7 +845,7 @@ const en: Dictionary = {
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
     agencySoon: "Coming soon",
-    agencySoonTitle: "EstateOS Agency PRO",
+    agencySoonTitle: "EstateOS™ Partner",
     agencySoonDesc:
       "The agency package is in preparation — CRM, XML import, and Concierge leads. Check back soon.",
     modalTitle: "What is your goal?",
