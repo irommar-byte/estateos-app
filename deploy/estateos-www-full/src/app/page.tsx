@@ -27,7 +27,7 @@ export default function Home() {
     <>
       <CinematicLoader />
       <SmoothScroll>
-        <main className="premium-home-shell relative min-h-screen overflow-hidden bg-[#050505] text-white selection:bg-emerald-500/30">
+        <main className="premium-home-shell theme-aware-dashboard relative min-h-screen overflow-hidden bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
           <MarketPulseBar />
           <HeroDepthEffect />
 
@@ -44,7 +44,7 @@ export default function Home() {
 
           <div
             id="map-section"
-            className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-white/[0.06] bg-black pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.75)] sm:scroll-mt-24 sm:pt-24"
+            className="premium-home-surface relative z-20 w-full scroll-mt-[6.75rem] border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] pt-16 shadow-[0_-40px_100px_rgba(0,0,0,0.12)] sm:scroll-mt-24 sm:pt-24"
           >
             <div className="mx-auto mb-12 max-w-7xl px-4 text-center sm:px-6 lg:px-8">
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">

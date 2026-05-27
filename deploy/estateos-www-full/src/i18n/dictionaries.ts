@@ -1,6 +1,12 @@
 import type { Locale } from "./config";
+import type { AddOfferDictionary } from "./addOfferDictionary";
+import { getAddOfferDictionary } from "./addOfferDictionary";
+import type { AuthDictionary } from "./authDictionary";
+import { getAuthDictionary } from "./authDictionary";
 
 export type Dictionary = {
+  auth: AuthDictionary;
+  addOffer: AddOfferDictionary;
   meta: {
     title: string;
     description: string;
@@ -42,6 +48,7 @@ export type Dictionary = {
     empty: string;
     markAllRead: string;
     messages: string;
+    close: string;
   };
   hero: {
     eyebrow: string;
@@ -97,6 +104,7 @@ export type Dictionary = {
     searchTypeCommercial: string;
     searchTypePlot: string;
     searchButton: string;
+    advancedFilters: string;
     statsActiveOffers: string;
     statsNewOffers24h: string;
     statsMarketCities: string;
@@ -283,6 +291,8 @@ export type Dictionary = {
 };
 
 const pl: Dictionary = {
+  auth: getAuthDictionary("pl"),
+  addOffer: getAddOfferDictionary("pl"),
   meta: {
     title: "EstateOS™ | Premium nieruchomości na świecie",
     description:
@@ -325,6 +335,7 @@ const pl: Dictionary = {
     empty: "Brak nowych powiadomień.",
     markAllRead: "Oznacz jako przeczytane",
     messages: "wiadomości",
+    close: "Zamknij",
   },
   hero: {
     eyebrow: "Rynek nieruchomości · jedna platforma",
@@ -386,6 +397,7 @@ const pl: Dictionary = {
     searchTypeCommercial: "Komercyjne",
     searchTypePlot: "Działki",
     searchButton: "Szukaj",
+    advancedFilters: "Filtry zaawansowane",
     statsActiveOffers: "Zweryfikowanych Ofert",
     statsNewOffers24h: "Nowych w 24h",
     statsMarketCities: "Obsługiwanych Miast",
@@ -587,6 +599,8 @@ const pl: Dictionary = {
 };
 
 const en: Dictionary = {
+  auth: getAuthDictionary("en"),
+  addOffer: getAddOfferDictionary("en"),
   meta: {
     title: "EstateOS™ | Global Premium Real Estate",
     description:
@@ -629,6 +643,7 @@ const en: Dictionary = {
     empty: "No new notifications.",
     markAllRead: "Mark all as read",
     messages: "messages",
+    close: "Close",
   },
   hero: {
     eyebrow: "Real estate market · one platform",
@@ -690,6 +705,7 @@ const en: Dictionary = {
     searchTypeCommercial: "Commercial",
     searchTypePlot: "Land / Plots",
     searchButton: "Search",
+    advancedFilters: "Advanced filters",
     statsActiveOffers: "Verified Listings",
     statsNewOffers24h: "New in 24h",
     statsMarketCities: "Cities Covered",

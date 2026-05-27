@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
+import { useLocale } from '@/contexts/LocaleContext';
 
 /** Zgodne z aplikacją mobilną: PRIVATE | AGENT (bez PARTNER — partner/Pro tylko przez /cennik). */
 type AccountKind = 'private' | 'agent';
@@ -30,6 +31,8 @@ function resolveSafeNextPath(raw: string | undefined): string {
 }
 
 export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?: string }) {
+  const { dict } = useLocale();
+  const t = dict.auth;
   const router = useRouter();
   const postRegisterPath = resolveSafeNextPath(afterRegisterPath);
   const [firstName, setFirstName] = useState('');
@@ -123,39 +126,39 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
     const e164 = normalizePhoneE164(phoneE164);
 
     if (!firstName.trim() || !lastName.trim()) {
-      setError('Podaj imię i nazwisko.');
+      setError(t.errNameRequired);
       return;
     }
     if (!trimmedEmail.includes('@')) {
-      setError('Podaj prawidłowy adres e-mail.');
+      setError(t.errEmailInvalid);
       return;
     }
     if (!e164) {
-      setError('Podaj prawidłowy numer telefonu (z kodem kraju).');
+      setError(t.errPhoneInvalid);
       return;
     }
     if (password.length < 6) {
-      setError('Hasło musi mieć co najmniej 6 znaków.');
+      setError(t.errPasswordShort);
       return;
     }
     if (password !== passwordConfirm) {
-      setError('Hasła nie są identyczne.');
+      setError(t.errPasswordMismatch);
       return;
     }
     if (accountKind === 'agent' && companyName.trim().length < 2) {
-      setError('Podaj nazwę biura nieruchomości (min. 2 znaki).');
+      setError(t.errAgencyShort);
       return;
     }
     if (!acceptTerms) {
-      setError('Zaakceptuj regulamin i politykę prywatności.');
+      setError(t.errTerms);
       return;
     }
     if (emailStatus === 'taken') {
-      setError('Ten adres e-mail jest już zarejestrowany.');
+      setError(t.errEmailTaken);
       return;
     }
     if (phoneStatus === 'taken') {
-      setError('Ten numer telefonu jest już w użyciu.');
+      setError(t.errPhoneTaken);
       return;
     }
 
@@ -179,19 +182,19 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setError(data.message || 'Rejestracja nie powiodła się.');
+        setError(data.message || t.errRegisterFailed);
         setLoading(false);
         return;
       }
 
-      setSuccessMsg('Konto utworzone. Przekierowuję…');
+      setSuccessMsg(t.successRegister);
       const role = data.role || data.user?.role || 'USER';
       window.setTimeout(() => {
         window.location.href =
           role === 'ADMIN' ? '/centrala' : postRegisterPath;
       }, 400);
     } catch {
-      setError('Błąd połączenia z serwerem.');
+      setError(t.errConnection);
       setLoading(false);
     }
   };
@@ -201,12 +204,12 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       onSubmit={handleSubmit}
-      className="space-y-6 rounded-[2rem] border border-white/10 bg-[#0a0a0a] p-8 shadow-2xl"
+      className="eos-auth-card space-y-6 rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-8 shadow-2xl"
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="eos-label mb-2 flex items-center gap-2">
-            <User size={14} /> Imię
+            <User size={14} /> {t.firstName}
           </label>
           <input
             type="text"
@@ -236,7 +239,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
 
       <div>
         <label className="eos-label mb-2 flex items-center gap-2">
-          <Mail size={14} /> E-mail
+          <Mail size={14} /> {t.email}
         </label>
         <input
           type="email"
@@ -254,10 +257,10 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
           placeholder="jan@example.com"
         />
         {emailStatus === 'checking' && (
-          <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">Sprawdzam e-mail…</p>
+          <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">{t.checkingEmail}</p>
         )}
         {emailStatus === 'taken' && (
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">E-mail już zarejestrowany</p>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">{t.emailTaken}</p>
         )}
       </div>
 
@@ -270,7 +273,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
 
       <div>
         <label className="eos-label mb-2 flex items-center gap-2">
-          <Lock size={14} /> Hasło (min. 6 znaków)
+          <Lock size={14} /> {t.passwordMin}
         </label>
         <input
           type="password"
@@ -286,7 +289,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
 
       <div>
         <label className="eos-label mb-2 flex items-center gap-2">
-          <Lock size={14} /> Powtórz hasło
+          <Lock size={14} /> {t.passwordRepeat}
         </label>
         <input
           type="password"
@@ -301,19 +304,19 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
       </div>
 
       <div className="space-y-3">
-        <p className="eos-label">Typ konta (jak w aplikacji)</p>
+        <p className="eos-label">{t.accountTypeLabel}</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
               {
                 id: 'private' as const,
-                label: 'Osoba prywatna',
-                desc: 'Szukasz i wystawiasz — jedno konto, bez podziału kupujący/sprzedający.',
+                label: t.accountPrivate,
+                desc: t.accountPrivateDesc,
               },
               {
                 id: 'agent' as const,
-                label: 'Agent / biuro',
-                desc: 'Pośrednik z nazwą firmy (pole biura wymagane).',
+                label: t.accountAgent,
+                desc: t.accountAgentDesc,
               },
             ] as const
           ).map((opt) => (
@@ -331,18 +334,17 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
           ))}
         </div>
         <p className="eos-subtle-copy text-[10px] leading-relaxed">
-          Pakiety <strong className="text-amber-400/90">Investor Pro</strong> i onboarding partnera — tylko w{' '}
+          {t.proPricingNote}{' '}
           <Link href="/cennik" className="text-emerald-500 hover:underline">
-            cenniku na stronie
+            /cennik
           </Link>
-          , nie przy rejestracji.
         </p>
       </div>
 
       {accountKind === 'agent' && (
         <div>
           <label className="eos-label mb-2 flex items-center gap-2">
-            <Building2 size={14} /> Nazwa biura
+            <Building2 size={14} /> {t.agencyName}
           </label>
           <input
             type="text"
@@ -351,7 +353,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
             className="eos-field"
-            placeholder="Nazwa agencji"
+            placeholder={t.agencyPlaceholder}
           />
         </div>
       )}
@@ -387,13 +389,13 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
           className="mt-1 size-4 accent-emerald-500"
         />
         <span className="eos-muted-copy text-xs leading-relaxed">
-          Akceptuję{' '}
+          {t.acceptTermsPrefix}{' '}
           <Link href="/regulamin" className="text-emerald-500 hover:underline" target="_blank">
-            regulamin
+            {t.termsLink}
           </Link>{' '}
-          oraz{' '}
+          {t.acceptTermsMiddle}{' '}
           <Link href="/polityka-prywatnosci" className="text-emerald-500 hover:underline" target="_blank">
-            politykę prywatności
+            {t.privacyLink}
           </Link>
           .
         </span>
@@ -406,13 +408,13 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
         className="mt-2 flex w-full items-center justify-center gap-3 rounded-full py-6 text-sm font-black uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.3)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? <Loader2 className="animate-spin" size={22} /> : <UserPlus size={20} />}
-        {loading ? 'Tworzę konto…' : 'Załóż konto'}
+        {loading ? t.submittingRegister : t.submitRegister}
       </button>
 
       <p className="eos-muted-copy text-center text-[10px] font-bold uppercase tracking-widest">
-        Masz konto?{' '}
+        {t.hasAccount}{' '}
         <Link href="/login" className="text-emerald-500 hover:text-emerald-400">
-          Zaloguj się
+          {t.signInLink}
         </Link>
       </p>
     </motion.form>
