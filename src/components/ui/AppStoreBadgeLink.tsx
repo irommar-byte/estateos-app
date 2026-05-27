@@ -19,16 +19,16 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
   const [googleBadgeError, setGoogleBadgeError] = useState(false);
 
   return (
-    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+    <div className={`flex flex-wrap items-center gap-3 ${className}`}>
       <a
         href={APP_STORE_URL}
         target="_blank"
         rel="noreferrer"
         aria-label={label || "Pobierz EstateOS w App Store"}
-        className="inline-flex items-center rounded-xl border border-white/12 bg-black/35 p-1 backdrop-blur transition-all hover:border-emerald-400/40 hover:shadow-[0_0_24px_rgba(16,185,129,0.18)]"
+        className="inline-flex items-center transition-opacity hover:opacity-90"
       >
         {appleBadgeError ? (
-          <span className="inline-flex h-10 items-center rounded-lg bg-black px-4 text-[11px] font-bold text-white">
+          <span className="inline-flex h-12 items-center rounded-lg bg-black px-4 text-[11px] font-bold text-white">
             <span className="mr-2 text-xl leading-none"></span>
             Pobierz w App Store
           </span>
@@ -36,7 +36,7 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
           <img
             src={APPLE_BADGE_URL}
             alt={label || "Pobierz w App Store"}
-            className={compact ? "h-10 w-auto" : "h-12 w-auto"}
+            className={compact ? "h-11 w-auto" : "h-14 w-auto"}
             loading="lazy"
             onError={() => setAppleBadgeError(true)}
           />
@@ -47,17 +47,17 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
         target="_blank"
         rel="noreferrer"
         aria-label="Pobierz EstateOS w Google Play"
-        className="inline-flex items-center rounded-xl border border-white/12 bg-black/35 p-1 backdrop-blur transition-all hover:border-emerald-400/40 hover:shadow-[0_0_24px_rgba(16,185,129,0.18)]"
+        className="inline-flex items-center transition-opacity hover:opacity-90"
       >
         {googleBadgeError ? (
-          <span className="inline-flex h-10 items-center rounded-lg bg-black px-4 text-[11px] font-bold text-white">
+          <span className="inline-flex h-12 items-center rounded-lg bg-black px-4 text-[11px] font-bold text-white">
             ▶ Get it on Google Play
           </span>
         ) : (
           <img
             src={GOOGLE_PLAY_BADGE_URL}
             alt="Get it on Google Play"
-            className={compact ? "h-10 w-auto" : "h-12 w-auto"}
+            className={compact ? "h-11 w-auto" : "h-14 w-auto"}
             loading="lazy"
             onError={() => setGoogleBadgeError(true)}
           />
