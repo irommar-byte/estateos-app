@@ -3,12 +3,8 @@ import PublicProfileModal from "@/components/PublicProfileModal";
 import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { MapPin, ArchiveX, Eye, Shield, Briefcase, Phone, MessageCircle, Video, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 , ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
-import AppointmentModal from "@/components/AppointmentModal";
-import BiddingModal from "@/components/BiddingModal";
-import PhoneVerificationGateModal from "@/components/PhoneVerificationGateModal";
-import OfferShareLink from "@/components/offer/OfferShareLink";
-import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
+import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
   formatBuyerAgentCommissionLine,
@@ -18,8 +14,50 @@ import {
   formatOfferCondition,
   formatOfferPropertyType,
 } from "@/lib/offerDisplayLabels";
+import AppointmentModal from "@/components/AppointmentModal";
+import BiddingModal from "@/components/BiddingModal";
+import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
+import { useLocale } from "@/contexts/LocaleContext";
+import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
+import { isOfferNewListing } from "@/lib/offerLifecycle";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
+
+/** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
+const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
+  const { locale } = useLocale();
+  const t = getOfferPageCopy(locale);
+  const favoriteLabels =
+    locale === 'en'
+      ? { add: 'Save', remove: 'Saved' }
+      : { add: 'Ulubione', remove: 'W ulubionych' };
+
+  const tx = String(offer.transactionType || "sale").toLowerCase();
+  const isRent = tx.includes("rent") || tx.includes("wynajem");
+  const isDealRoom = offer.badges?.isPartner === true;
+  const themeColors = {
+    primaryBg: isDealRoom ? "bg-orange-500" : isRent ? "bg-blue-500" : "bg-emerald-500",
+    primaryHover: isDealRoom ? "hover:bg-orange-400" : isRent ? "hover:bg-blue-400" : "hover:bg-emerald-400",
+    primaryText: isDealRoom ? "text-black" : isRent ? "text-white" : "text-black",
+    primaryShadow: isDealRoom
+      ? "shadow-[0_15px_40px_rgba(249,115,22,0.3)]"
+      : isRent
+        ? "shadow-[0_15px_40px_rgba(59,130,246,0.3)]"
+        : "shadow-[0_15px_40px_rgba(16,185,129,0.3)]",
+    textActive: isDealRoom ? "text-orange-500" : isRent ? "text-blue-500" : "text-emerald-500",
+    borderActive: isDealRoom ? "border-orange-500/30" : isRent ? "border-blue-500/30" : "border-emerald-500/30",
+    hoverBorderActive: isDealRoom ? "hover:border-orange-400" : isRent ? "hover:border-blue-400" : "hover:border-emerald-400",
+    glowActive: isDealRoom
+      ? "shadow-[0_0_40px_rgba(249,115,22,0.3)]"
+      : isRent
+        ? "shadow-[0_0_40px_rgba(59,130,246,0.3)]"
+        : "shadow-[0_0_40px_rgba(16,185,129,0.3)]",
+    bgActiveSoft: isDealRoom ? "bg-orange-500/10" : isRent ? "bg-blue-500/10" : "bg-emerald-500/10",
+  };
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
   const bgY = useTransform(scrollYProgress, [0, 1], ["0%", "15%"]);
@@ -29,10 +67,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
 
   const isArchived = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
-  const isAgency = offer?.user?.buyerType === 'agency' || offer?.advertiserType === 'agency';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBiddingOpen, setIsBiddingOpen] = useState(false);
-  const [phoneGateOpen, setPhoneGateOpen] = useState(false);
 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
@@ -69,10 +105,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const verificationStatus = String(offer.verificationStatus || "UNVERIFIED");
   const verificationUi =
     verificationStatus === "VERIFIED"
-      ? { label: "Verified", hint: "EstateOS quality badge", cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
+      ? { label: t.verified, hint: t.verifiedHint, cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
       : verificationStatus === "PENDING_REVIEW"
-        ? { label: "Weryfikacja w toku", hint: "Sprawdzamy dokumenty i stan prawny", cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
-        : { label: "Not verified", hint: "Full document verification missing", cls: "text-zinc-300 bg-white/5 border-white/15" };
+        ? { label: t.pendingReview, hint: t.pendingHint, cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
+        : { label: t.notVerified, hint: t.notVerifiedHint, cls: "text-zinc-300 bg-white/5 border-white/15" };
+  const isLegalKwVerified = isOfferLegallyVerified(offer);
+  const isNewListing = isOfferNewListing(offer);
+  const sellerAvatar = getBestUserAvatarUrl(offer?.user);
+  const sellerIsAgency = isAgencyUser(offer?.user);
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -121,8 +161,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const numericPrice = parseInt(rawPriceStr) || 0;
   const numericArea = parseFloat(rawAreaStr) || 0;
   
-  const priceDisplay = numericPrice > 0 ? numericPrice.toLocaleString('pl-PL') : 'Brak Danych';
-  const pricePerSqm = (numericPrice > 0 && numericArea > 0) ? Math.round(numericPrice / numericArea).toLocaleString('pl-PL') : 'Brak';
+  const priceDisplay = numericPrice > 0 ? numericPrice.toLocaleString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData;
+  const pricePerSqm =
+    numericPrice > 0 && numericArea > 0
+      ? Math.round(numericPrice / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
+      : t.noData;
+  const priceCurrency = String(offer.priceCurrency || "PLN").toUpperCase();
+  const exchangeRateUsed = Number(offer.exchangeRateUsed || 0);
+  const priceInEurValue =
+    numericPrice > 0
+      ? priceCurrency === "EUR"
+        ? numericPrice
+        : exchangeRateUsed > 0
+          ? numericPrice / exchangeRateUsed
+          : null
+      : null;
+  const priceInEur = priceInEurValue != null ? Math.round(priceInEurValue).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData;
+  const pricePerSqmEur =
+    priceInEurValue != null && numericArea > 0
+      ? Math.round(priceInEurValue / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
+      : t.noData;
 
     // Sekcje Specyfikacji Luksusowej
   
@@ -130,107 +188,120 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     e.preventDefault();
     e.stopPropagation();
     if (!currentUser) {
+      alert(t.authRequired);
       window.location.href = '/login';
       return false;
     }
     return true;
   };
 
-  const guardPhoneVerification = () => {
-    if (!currentUser?.id) return false;
-    const phoneOk = Boolean(currentUser.isVerifiedPhone ?? currentUser.phoneVerified);
-    if (phoneOk) return false;
-    setPhoneGateOpen(true);
-    return true;
-  };
-
   const openBidFlow = (e: React.MouseEvent) => {
     if (!ensureAuthenticated(e)) return;
-    if (guardPhoneVerification()) return;
     setIsBiddingOpen(true);
   };
 
   const openAppointmentFlow = (e: React.MouseEvent) => {
     if (!ensureAuthenticated(e)) return;
-    if (guardPhoneVerification()) return;
     setIsModalOpen(true);
   };
 
   const locationParams = [
-    { label: "City", value: offer.city || 'Nie podano' },
-    { label: "Dzielnica", value: isLocked ? 'Hidden — before full market launch' : offer.district },
-    { label: "Adres (Ulica)", value: isLocked ? 'Hidden — before full market launch' : offer.address }
-  ].filter(p => p.value);
+    { label: t.city, value: offer.city || t.noData },
+    { label: t.district, value: isLocked ? t.hiddenLocation : offer.district },
+    { label: t.street, value: isLocked ? t.hiddenLocation : offer.address },
+  ].filter((p) => p.value);
 
   const mainParams = [
-    { label: "Powierzchnia", value: numericArea > 0 ? `${numericArea} m²` : null },
-    { label: "Cena za m²", value: pricePerSqm !== 'Brak' && !isLocked ? `${pricePerSqm} PLN` : (isLocked ? 'Ukryta' : null) },
-    { label: "Liczba pokoi", value: offer.rooms },
-    { label: "Piętro", value: offer.floor },
+    { label: t.area, value: numericArea > 0 ? `${numericArea} m²` : null },
     {
-      label: "Stan wykończenia",
-      value: formatOfferCondition(offer.condition || offer.finishCondition, "pl") || null,
+      label: t.pricePerSqm,
+      value: pricePerSqm !== t.noData && !isLocked ? `${pricePerSqm} PLN` : isLocked ? t.hiddenPrice : null,
     },
-  ].filter(p => p.value);
+    { label: t.rooms, value: offer.rooms },
+    { label: t.floor, value: offer.floor },
+    {
+      label: t.standard,
+      value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
+    },
+  ].filter((p) => p.value);
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
   const agentCommissionLine = agentCommissionInfo
     ? agentCommissionInfo.isZero
-      ? "Brak prowizji agenta przy tej ofercie."
-      : formatBuyerAgentCommissionLine(agentCommissionInfo, "pl")
+      ? t.agentCommissionZero
+      : formatBuyerAgentCommissionLine(agentCommissionInfo, locale)
     : null;
 
   const buildingParams = [
-    { label: "Typ obiektu", value: formatOfferPropertyType(offer.propertyType, "pl") },
-    { label: "Rok budowy", value: formatOfferBuildYear(offer) },
-    { label: "Ogrzewanie", value: offer.heating },
-    { label: "Umeblowane", value: offer.isFurnished === true ? "Tak" : offer.isFurnished === false ? "Nie" : null },
-    { label: "Czynsz", value: offer.rent ? `${String(offer.rent).replace(/\D/g, '')} PLN` : null },
+    { label: t.buildingType, value: formatOfferPropertyType(offer.propertyType, locale) },
+    { label: t.buildYear, value: formatOfferBuildYear(offer) },
+    { label: t.heating, value: offer.heating },
     {
-      label: "Dostępność",
-      value: offer.availabilityDate ? new Date(offer.availabilityDate).toLocaleDateString("pl-PL") : null,
+      label: t.furnished,
+      value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    ...(agentCommissionLine ? [{ label: "Prowizja agenta", value: agentCommissionLine }] : []),
-  ].filter(p => p.value);
+    { label: t.rentFee, value: offer.rent ? `${String(offer.rent).replace(/\D/g, "")} PLN` : null },
+    {
+      label: t.availability,
+      value: offer.availabilityDate
+        ? new Date(offer.availabilityDate).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
+        : null,
+    },
+    ...(agentCommissionLine ? [{ label: t.agentCommission, value: agentCommissionLine }] : []),
+  ].filter((p) => p.value);
 
   return (
-    <main className="bg-[#050505] min-h-screen text-white font-sans selection:bg-emerald-500 selection:text-black pb-32">
+    <main className="bg-black min-h-screen text-white font-sans selection:bg-white/20 pb-32">
       
-      <div ref={ref} className="relative w-full h-[100vh] overflow-hidden bg-black">
-        <div className="absolute top-24 sm:top-32 left-4 sm:left-6 right-4 sm:right-6 z-40 flex flex-col sm:flex-row justify-between items-start gap-4 pointer-events-none">
-          
-          {/* Lewa strona: Guzik powrotu */}
-          <div className="flex flex-wrap gap-2 sm:gap-4 pointer-events-auto">
-            <Link href="/" className="px-4 sm:px-6 py-2 sm:py-3 bg-black/40 backdrop-blur-2xl rounded-full border border-white/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white hover:text-black transition-all shadow-2xl flex items-center gap-2">
-              ← Back to map
-            </Link>
-          </div>
-          
-        </div>
+      <div ref={ref} className="relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
+        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-xl' : ''} ${isArchived ? 'grayscale' : ''}`} />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
 
-        {/* Tło pod zdjęciem */}
-        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-sm' : ''} ${isArchived ? 'grayscale' : ''}`} />
-        
-        {/* Warstwa interaktywna dla kliknięcia w galerię (oprócz paska na dole) */}
-        <div onClick={() => !isLocked && openGallery(0)} className="absolute inset-0 flex flex-col items-center justify-end pb-32 z-10 px-4 cursor-pointer hover:bg-black/10 transition-colors">
-            
-            {/* --- JEDEN FENOMENALNY DASHBOARD INFORMACYJNY (UX PREMIUM) --- */}
-            <div className="flex justify-center mb-6 relative z-20 w-full px-4 sm:px-8 max-w-5xl mx-auto pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 px-5 py-3 bg-[#0a0a0a]/80 backdrop-blur-xl border border-white/10 rounded-[2rem] shadow-2xl hover:border-white/20 transition-all duration-300">
-                
-                {/* 1. Kapsuła Tożsamości i Zaufania (Klikalna) */}
+        <div
+          className="absolute inset-x-0 z-40 px-4 sm:px-6 pointer-events-none"
+          style={{ top: HERO_BELOW_NAV }}
+        >
+          <div className="mx-auto flex max-w-5xl flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pointer-events-auto">
+              <Link href="/odkryj-mape" className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl backdrop-blur-2xl transition-all hover:bg-white hover:text-black">
+                {t.backToMap}
+              </Link>
+              <OfferFavoriteButton
+                offerId={offer.id}
+                variant="pill"
+                size={22}
+                labelAdd={favoriteLabels.add}
+                labelRemove={favoriteLabels.remove}
+                className="shrink-0"
+                onRequireAuth={() => {
+                  window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                }}
+              />
+            </div>
+
+            <div
+              className="pointer-events-auto w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-zinc-950/80 px-3 py-2 shadow-2xl backdrop-blur-3xl sm:justify-center sm:gap-4 sm:px-5 sm:py-2.5 sm:rounded-full hover:border-white/20 transition-all duration-300">
                 <button 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
                   className="flex items-center gap-3 shrink-0 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-full px-4 py-2 transition-all duration-300 group cursor-pointer shadow-inner"
                 >
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500/20 to-transparent border border-emerald-500/30 group-hover:border-emerald-500/50 transition-colors">
-                     {offer?.user?.buyerType === 'AGENCY' ? <Briefcase size={14} className="text-blue-400" /> : <span className="text-[14px] group-hover:scale-110 transition-transform">👤</span>}
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:border-white/30 transition-colors ${themeColors.textActive}`}>
+                     {sellerAvatar ? (
+                       <img src={sellerAvatar} alt="" className="w-full h-full object-cover" />
+                     ) : sellerIsAgency ? (
+                       <Briefcase size={14} />
+                     ) : (
+                       <span className="text-[14px] group-hover:scale-110 transition-transform">👤</span>
+                     )}
                   </div>
                   
                   <div className="flex flex-col items-start leading-tight">
                       <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? 'Agency' : 'Private owner')}</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? t.agency : t.privateOwner)}</span>
+                          <span className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.5)] ${themeColors.primaryBg}`}></span>
                       </div>
                       {(() => {
                         const total = Number(offer?.user?.reviewsData?.totalReviews ?? 0);
@@ -248,59 +319,76 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
                 <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
                 
-                {/* 2. Kapsuła Danych Operacyjnych (Odsłony, Data, ID) */}
-                <div className="flex items-center gap-3 sm:gap-4 shrink-0 px-2">
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">ID Oferty</span>
-                      <span className="text-[11px] font-black text-emerald-500 tracking-[0.2em] px-2 py-0.5 bg-emerald-500/10 rounded-md border border-emerald-500/20">{offer?.id || offer?._id}</span>
-                  </div>
-                  
-                  <span className="w-px h-6 bg-white/10"></span>
-
-                  <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Views</span>
+                <div className="flex items-center justify-center gap-2 sm:gap-3 shrink-0 min-w-0 px-1">
+                  <div className="flex flex-col items-center justify-center shrink-0">
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.views}</span>
                       <div className="flex items-center gap-1.5">
-                          <Eye size={12} className="text-white/70" />
-                          <span className="text-[11px] font-black text-white/90 tracking-widest">{offer?.views || 0}</span>
+                          <Eye size={12} className="text-zinc-400" />
+                          <span className="text-[11px] font-black text-white tracking-widest">{offer?.views || 0}</span>
                       </div>
+                  </div>
+
+                  {isLegalKwVerified ? (
+                    <LegalVerifiedShieldBadge label={t.legalVerifiedKw} compact />
+                  ) : null}
+
+                  {isNewListing ? (
+                    <motion.span
+                      className="rounded-full border border-blue-500/45 bg-blue-500/15 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-blue-300"
+                      animate={{ opacity: [1, 0.45, 1] }}
+                      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      {t.newOfferBadge}
+                    </motion.span>
+                  ) : null}
+                </div>
+
+                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
+
+                <div className="flex items-center gap-2 sm:gap-4 shrink-0 px-1">
+                  <div className="flex flex-col items-center justify-center">
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
+                      <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
                   </div>
 
                   <span className="w-px h-6 bg-white/10 hidden sm:block"></span>
 
                   <div className="flex flex-col items-center justify-center hidden sm:flex">
-                      <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Na Rynku Od</span>
-                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString('pl-PL') : 'Brak danych'}</span>
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
+                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
                   </div>
-                </div>
 
-                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
-
-                {/* 3. Status jakości dokumentów */}
-                <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
-                  <div className="flex items-center gap-1.5">
-                    <Shield size={12} />
-                    <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
-                  </div>
-                  <p className="mt-1 text-[8px] font-bold uppercase tracking-[0.12em] opacity-80">{verificationUi.hint}</p>
+                  {!isLegalKwVerified ? (
+                    <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
+                      <div className="flex items-center gap-1.5">
+                        <Shield size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
               </div>
             </div>
-            
-            
-<h1 className="text-4xl sm:text-[7vw] font-bold tracking-tighter text-center leading-tight drop-shadow-2xl px-4 sm:px-8 max-w-7xl mx-auto [text-wrap:balance]">
-              {isLocked ? "Before full market launch" : offer.title}
-            </h1>
+          </div>
         </div>
-        <div className="absolute bottom-0 w-full h-1/2 z-20 bg-gradient-to-t from-[#050505] to-transparent" />
+
+        <div
+          onClick={() => !isLocked && openGallery(0)}
+          className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
+        >
+          <h1 className="max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter drop-shadow-2xl [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
+            {isLocked ? t.beforeLaunchTitle : offer.title}
+          </h1>
+        </div>
         {isArchived && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none px-4">
-             <div className="bg-[#050505]/90 backdrop-blur-2xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center">
+             <div className="bg-zinc-950/90 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center">
                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10">
-                   <ArchiveX size={32} className="text-white/50" />
+                   <ArchiveX size={32} className="text-zinc-500" />
                 </div>
-                <h2 className="text-3xl sm:text-5xl font-black text-white mb-2 uppercase tracking-tighter opacity-50">Nieaktualne</h2>
-                <p className="text-white/30 text-xs sm:text-sm font-bold uppercase tracking-widest">This listing has been archived</p>
+                <h2 className="text-3xl sm:text-5xl font-black text-white mb-2 uppercase tracking-tighter opacity-50">{t.archivedTitle}</h2>
+                <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest">{t.archivedSubtitle}</p>
              </div>
           </div>
         )}
@@ -310,27 +398,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         {/* 🔥 POTEŻNA NAKŁADKA FOMO (WYŚWIETLA SIĘ TYLKO ZABLOKOWANYM) 🔥 */}
         {isLocked && (
           <div className="absolute inset-0 z-50 flex flex-col items-center justify-center px-4 pb-20">
-            <div className="bg-[#0a0a0a]/90 backdrop-blur-2xl border border-white/10 p-8 sm:p-12 rounded-[3rem] max-w-2xl w-full shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/10 to-transparent opacity-50"></div>
+            <div className="bg-zinc-950/90 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] max-w-2xl w-full shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center relative overflow-hidden">
+              <div className={`absolute inset-0 bg-gradient-to-b ${themeColors.bgActiveSoft} to-transparent opacity-50`}></div>
               
-              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-black border border-white/10 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 relative z-10 shadow-[0_0_50px_rgba(16,185,129,0.2)]">
-                <Lock size={40} className="text-emerald-500" />
+              <div className={`w-20 h-20 sm:w-24 sm:h-24 bg-black border border-white/10 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 relative z-10 ${themeColors.glowActive}`}>
+                <Lock size={40} className={themeColors.textActive} />
               </div>
               
-              <h2 className="text-2xl sm:text-4xl font-black text-white mb-4 relative z-10 tracking-tighter">Jeszcze nie na szerokim rynku</h2>
-              <p className="text-white/50 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">
-                The first 24 hours after publishing are a launch window: full address, full-resolution photos, and contact are visible only to the owner and PRO users. After that, details become visible to everyone, like on the open market.
+              <h2 className="text-2xl sm:text-4xl font-black text-white mb-4 relative z-10 tracking-tighter">{t.lockTitle}</h2>
+              <p className="text-zinc-400 text-xs sm:text-sm mb-8 relative z-10 max-w-md mx-auto leading-relaxed">
+                {t.lockBody}
               </p>
               
-              <div className="text-4xl sm:text-6xl font-mono font-black text-emerald-500 mb-10 tracking-widest drop-shadow-[0_0_20px_rgba(16,185,129,0.5)] relative z-10 flex items-center justify-center gap-4">
-                <Timer size={36} className="text-emerald-500/50" />
+              <div className={`text-4xl sm:text-6xl font-mono font-black mb-10 tracking-widest relative z-10 flex items-center justify-center gap-4 ${themeColors.textActive} ${themeColors.glowActive}`}>
+                <Timer size={36} className="opacity-50" />
                 {timeString}
               </div>
               
-              <Link href="/cennik" className="btn-action w-full block py-5 sm:py-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest relative z-10 shadow-[0_20px_40px_rgba(16,185,129,0.2)] bg-emerald-500 text-black hover:bg-emerald-400 transition-colors">
-                Upgrade to PRO and unlock now
+              <Link href="/cennik" className={`block w-full py-5 sm:py-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest relative z-10 transition-colors ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryHover} ${themeColors.primaryShadow}`}>
+                {t.unlockPro}
               </Link>
-              <p className="mt-6 text-[10px] uppercase tracking-widest text-white/30 font-bold relative z-10">Get post-launch visibility immediately — full address, photos, and contact from now.</p>
             </div>
           </div>
         )}
@@ -351,21 +438,46 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             )}
 
             <div>
-                <h2 className="text-3xl sm:text-4xl md:text-6xl font-black tracking-tighter mb-6 sm:mb-8">{priceDisplay} PLN</h2>
+                <h1 className="sm:hidden text-4xl font-light leading-tight tracking-tighter mb-7 text-white drop-shadow-lg [text-wrap:balance]">
+                  {isLocked ? t.beforeLaunchTitle : offer.title}
+                </h1>
+                <h2 className="text-4xl sm:text-6xl md:text-7xl font-light tracking-tighter mb-8 sm:mb-10 text-white drop-shadow-lg">{priceDisplay} <span className="font-bold">PLN</span></h2>
+                {!isLocked && (
+                  <div className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.priceInEur}</p>
+                      <p className="text-lg font-black text-white mt-1">{priceInEur} EUR</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqm}</p>
+                      <p className="text-lg font-black text-white mt-1">{pricePerSqm} PLN</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqmEur}</p>
+                      <p className="text-lg font-black text-white mt-1">{pricePerSqmEur} EUR</p>
+                    </div>
+                  </div>
+                )}
+                {!isLocked && agentCommissionLine && (
+                  <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <p className="text-sm text-zinc-200">{agentCommissionLine}</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">{t.listingPriceIncludesCommission}</p>
+                  </div>
+                )}
                 
-                <div className="bg-white/5 border border-white/10 rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 md:p-10 backdrop-blur-md shadow-2xl">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6">About property</h3>
-                  <p className="text-sm sm:text-base text-white/80 leading-loose font-light whitespace-pre-line break-words">{offer.description}</p>
+                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">{t.aboutProperty}</h3>
+                  <p className="text-base sm:text-lg text-zinc-300 leading-relaxed font-light whitespace-pre-line break-words">{offer.description}</p>
                 </div>
 
                 {offer.amenities && offer.amenities.length > 0 && (
-                <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 md:p-10 backdrop-blur-md mt-6 sm:mt-8 shadow-2xl">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6">Atuty i Udogodnienia</h3>
-                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl mt-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">{t.amenities}</h3>
+                  <div className="flex flex-wrap gap-3">
                     {offer.amenities.split(',').filter(Boolean).map((amenity: string, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2 bg-black/40 border border-emerald-500/30 px-3 sm:px-4 py-2 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                        <CheckCircle2 size={14} className="text-emerald-500" />
-                        <span className="text-xs sm:text-sm font-bold text-white/90">{amenity.trim()}</span>
+                      <div key={idx} className={`flex items-center gap-2 bg-white/5 border px-4 py-2.5 rounded-2xl shadow-inner ${themeColors.borderActive}`}>
+                        <CheckCircle2 size={16} className={themeColors.textActive} />
+                        <span className="text-sm font-semibold text-white/90">{amenity.trim()}</span>
                       </div>
                     ))}
                   </div>
@@ -373,18 +485,18 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 )}
 
                 {offer.floorPlan && !isLocked && (
-                <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 md:p-10 backdrop-blur-md mt-6 sm:mt-8 shadow-2xl">
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-6 flex items-center gap-2">
-                    <FileImage size={14} /> Property floor plan
+                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl mt-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6 flex items-center gap-2">
+                    <FileImage size={16} /> {t.floorPlan}
                   </h3>
                   <div 
                     onClick={() => setIsFloorplanModalOpen(true)}
-                    className="relative w-full h-[300px] sm:h-[400px] rounded-[1.5rem] overflow-hidden border border-white/10 cursor-pointer group bg-[#111]"
+                    className="relative w-full h-[400px] rounded-[2rem] overflow-hidden border border-white/10 cursor-pointer group bg-black"
                   >
-                    <img src={offer.floorPlan} className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt="Rzut Lokalu" />
+                    <img src={offer.floorPlan} className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={t.floorPlan} />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                       <span className="px-6 py-3 bg-black/60 backdrop-blur-md rounded-full text-white font-bold text-[10px] uppercase tracking-widest border border-white/20 flex items-center gap-2 shadow-2xl">
-                         <Maximize2 size={14} /> Zoom
+                       <span className="px-6 py-3 bg-black/60 backdrop-blur-xl rounded-full text-white font-bold text-[11px] uppercase tracking-[0.2em] border border-white/20 flex items-center gap-2 shadow-2xl">
+                         <Maximize2 size={14} /> {t.enlarge}
                        </span>
                     </div>
                   </div>
@@ -397,43 +509,42 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           <div className="xl:w-1/3 flex flex-col relative mt-8 xl:mt-0">
             <div className="xl:sticky top-32 space-y-6 pt-2">
               
-                            <div className="space-y-6">
-                {/* SEKCJA LOKALIZACJI */}
-                {locationParams.length > 0 && (
-                  <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col gap-5">
-                    <h4 className="text-[9px] uppercase tracking-widest text-emerald-500 font-black mb-1">Lokalizacja</h4>
+              <div className="space-y-8">
+                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                  <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
+                  <div className="grid grid-cols-1 gap-3">
                     {locationParams.map((param, idx) => (
-                      <div key={idx} className={`flex justify-between items-center ${idx !== locationParams.length - 1 ? 'border-b border-white/5 pb-5' : ''}`}>
-                        <span className="text-white/40 uppercase tracking-widest text-[10px] sm:text-xs font-bold">{param.label}</span>
-                        <span className="font-bold text-right text-sm sm:text-base max-w-[65%]">{param.value}</span>
+                      <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center hover:bg-white/10 transition-colors">
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold">{param.label}</span>
+                        <span className="font-bold text-white text-sm max-w-[65%] text-right">{param.value}</span>
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
 
-                {/* SEKCJA PARAMETRÓW GŁÓWNYCH */}
-                {mainParams.length > 0 && (
-                  <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col gap-5">
-                    <h4 className="text-[9px] uppercase tracking-widest text-emerald-500 font-black mb-1">Main parameters</h4>
+                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                  <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
+                  <div className="grid grid-cols-2 gap-3">
                     {mainParams.map((param, idx) => (
-                      <div key={idx} className={`flex justify-between items-center ${idx !== mainParams.length - 1 ? 'border-b border-white/5 pb-5' : ''}`}>
-                        <span className="text-white/40 uppercase tracking-widest text-[10px] sm:text-xs font-bold">{param.label}</span>
-                        <span className="font-bold text-right text-sm sm:text-base max-w-[65%]">{param.value}</span>
+                      <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex flex-col justify-between min-h-[90px] hover:bg-white/10 transition-colors">
+                        <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold mb-2">{param.label}</span>
+                        <span className="font-bold text-white text-lg">{param.value}</span>
                       </div>
                     ))}
                   </div>
-                )}
+                </div>
 
-                {/* SEKCJA BUDYNKU */}
                 {buildingParams.length > 0 && (
-                  <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 sm:p-8 backdrop-blur-md shadow-2xl flex flex-col gap-5">
-                    <h4 className="text-[9px] uppercase tracking-widest text-emerald-500 font-black mb-1">Budynek & Koszty</h4>
-                    {buildingParams.map((param, idx) => (
-                      <div key={idx} className={`flex justify-between items-center ${idx !== buildingParams.length - 1 ? 'border-b border-white/5 pb-5' : ''}`}>
-                        <span className="text-white/40 uppercase tracking-widest text-[10px] sm:text-xs font-bold">{param.label}</span>
-                        <span className="font-bold text-right text-sm sm:text-base max-w-[65%]">{param.value}</span>
-                      </div>
-                    ))}
+                  <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                    <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.buildingSection}</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {buildingParams.map((param, idx) => (
+                        <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex flex-col justify-between min-h-[90px] hover:bg-white/10 transition-colors">
+                          <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold mb-2">{param.label}</span>
+                          <span className="font-bold text-white text-base">{param.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -446,54 +557,50 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
                     </span>
-                    <span className="text-[10px] text-white/80 font-black uppercase tracking-[0.2em] relative z-10">
-                      {negotiatorsCount === 1 ? '1 person submitted an offer' : `${negotiatorsCount} people submitted an offer`}
+                    <span className="text-[10px] text-white/90 font-black uppercase tracking-[0.2em] relative z-10">
+                      {negotiatorsCount === 1 ? t.negotiatorsOne : t.negotiatorsMany(negotiatorsCount)}
                     </span>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <div className="bg-[#0a0a0a] border border-white/5 rounded-[2.5rem] p-2.5 backdrop-blur-3xl shadow-2xl mt-6 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent pointer-events-none"></div>
-                
-                <div className="flex flex-col gap-2.5 relative z-10">
+              <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-3 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] relative overflow-hidden">
+                <div className="flex flex-col gap-3 relative z-10">
                   {isArchived ? (
-                  <div className="py-8 text-center flex flex-col items-center justify-center border-t border-white/5 mt-4">
-                     <ArchiveX size={24} className="text-white/20 mb-3" />
-                     <p className="text-white/40 font-black uppercase tracking-widest text-[10px]">Contact disabled</p>
-                     <p className="text-white/20 text-[8px] mt-1 uppercase tracking-widest">Listing is in archive</p>
+                  <div className="py-8 text-center flex flex-col items-center justify-center">
+                     <ArchiveX size={24} className="text-zinc-600 mb-3" />
+                     <p className="text-zinc-500 font-black uppercase tracking-widest text-[10px]">{t.contactDisabled}</p>
                   </div>
                 ) : (
                   <>
                     <button
                     onClick={openBidFlow}
-                    style={{ backgroundColor: '#ffffff', color: '#000000' }}
-                    className="relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.03] active:scale-[0.98] shadow-[0_15px_40px_rgba(255,255,255,0.15)] hover:shadow-[0_20px_60px_rgba(255,255,255,0.3)] cursor-pointer"
+                    className={`relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1.5 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryShadow}`}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                     
-                    <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight" style={{ color: '#000000' }}>
-                      <><Briefcase size={22} style={{ color: "#000000" }} /> Submit offer / Negotiate</>
+                    <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight">
+                      <Briefcase size={22} /> {t.submitOffer}
                     </span>
-                    <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] mt-0.5" style={{ color: 'rgba(0,0,0,0.6)' }}>
-                      Rozpocznij Negocjacje
+                    <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] opacity-70">
+                      {t.startNegotiations}
                     </span>
                   </button>
 
                   <button
                     onClick={openAppointmentFlow}
-                    className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer !bg-[#0a0a0a] hover:!bg-emerald-950/40 !border-emerald-500/30 hover:!border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]"
+                    className={`relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-zinc-950/80 ${themeColors.borderActive} ${themeColors.hoverBorderActive} ${themeColors.glowActive}`}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"></div>
-                    <CalendarPlus size={18} className="relative z-10 transition-all duration-300 !text-emerald-500 group-hover:!text-white group-hover:scale-125 group-hover:-translate-y-0.5 group-hover:rotate-[-5deg]" />
-                    <span className="relative z-10 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] transition-colors duration-300 !text-emerald-500 group-hover:!text-white">
-                      Zaproponuj Termin Prezentacji
+                    <div className={`absolute inset-0 bg-gradient-to-r from-transparent ${themeColors.bgActiveSoft} to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out`}></div>
+                    <CalendarPlus size={18} className={`relative z-10 transition-all duration-300 ${themeColors.textActive} group-hover:text-white group-hover:scale-125 group-hover:-translate-y-0.5 group-hover:rotate-[-5deg]`} />
+                    <span className={`relative z-10 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-300 ${themeColors.textActive} group-hover:text-white`}>
+                      {t.proposeViewing}
                     </span>
                   </button>
 
-                  <div className="mt-1.5 mb-2.5 flex items-center justify-center gap-1.5 opacity-40 select-none">
+                  <div className="mt-2 mb-3 flex items-center justify-center gap-1.5 opacity-40 select-none">
                     <Shield size={10} className="text-white" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">Zabezpieczone przez EstateOS™</span>
+                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">{t.securedBy}</span>
                   </div>
 
                   <OfferShareLink offerId={Number(offer.id ?? offer._id)} />
@@ -542,7 +649,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           >
             <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-50 bg-gradient-to-b from-black/80 to-transparent">
               <div className="flex items-center gap-3 px-5 py-2.5 bg-white/10 rounded-full backdrop-blur-md border border-white/10 shadow-2xl">
-                <ImageIcon size={16} className="text-emerald-500" />
+                <ImageIcon size={16} className={themeColors.textActive} />
                 <span className="text-white font-black text-[10px] tracking-widest uppercase">{currentImageIndex + 1} / {images.length}</span>
               </div>
               <button onClick={() => setIsGalleryOpen(false)} className="p-4 bg-white/10 hover:bg-red-500 rounded-full text-white transition-all shadow-2xl group">
@@ -552,10 +659,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
             {images.length > 1 && (
               <>
-                <button onClick={prevImage} className="absolute left-4 sm:left-8 p-4 sm:p-5 bg-black/50 hover:bg-emerald-500 border border-white/10 rounded-full text-white hover:text-black transition-all hover:scale-110 z-50 backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.8)]">
+                <button onClick={prevImage} className={`absolute left-4 sm:left-8 p-4 sm:p-5 bg-black/50 ${themeColors.primaryHover} border border-white/10 rounded-full text-white ${themeColors.primaryText} transition-all hover:scale-110 z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.8)]`}>
                   <ChevronLeft size={24} strokeWidth={3} />
                 </button>
-                <button onClick={nextImage} className="absolute right-4 sm:right-8 p-4 sm:p-5 bg-black/50 hover:bg-emerald-500 border border-white/10 rounded-full text-white hover:text-black transition-all hover:scale-110 z-50 backdrop-blur-md shadow-[0_0_30px_rgba(0,0,0,0.8)]">
+                <button onClick={nextImage} className={`absolute right-4 sm:right-8 p-4 sm:p-5 bg-black/50 ${themeColors.primaryHover} border border-white/10 rounded-full text-white ${themeColors.primaryText} transition-all hover:scale-110 z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.8)]`}>
                   <ChevronRight size={24} strokeWidth={3} />
                 </button>
               </>
@@ -583,7 +690,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     <div 
                       key={idx} 
                       onClick={() => setCurrentImageIndex(idx)} 
-                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden cursor-pointer shrink-0 border-2 transition-all duration-300 ${currentImageIndex === idx ? 'border-emerald-500 scale-105 shadow-[0_0_20px_rgba(16,185,129,0.5)] brightness-110' : 'border-transparent opacity-40 hover:opacity-100 hover:scale-95'}`}
+                      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden cursor-pointer shrink-0 border-2 transition-all duration-300 ${currentImageIndex === idx ? `${themeColors.borderActive} scale-105 ${themeColors.glowActive} brightness-110` : 'border-transparent opacity-40 hover:opacity-100 hover:scale-95'}`}
                     >
                       <img src={img} className="w-full h-full object-cover" />
                     </div>
@@ -601,11 +708,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         userId={publicProfileId} 
         onClose={() => setPublicProfileId(null)} 
       />
-
-      <PhoneVerificationGateModal
-        open={phoneGateOpen}
-        onClose={() => setPhoneGateOpen(false)}
-      />
     </main>
   );
 }
@@ -622,14 +724,7 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
         const userRes = await fetch('/api/user/profile');
         if (userRes.ok) {
           const userData = await userRes.json();
-          if (userData?.email) {
-            setCurrentUser({
-              id: userData.id,
-              email: userData.email,
-              isVerifiedPhone: Boolean(userData.isVerifiedPhone ?? userData.phoneVerified),
-              isEmailVerified: Boolean(userData.isEmailVerified ?? userData.emailVerified),
-            });
-          }
+          if (userData && userData.email) setCurrentUser(userData);
         }
       } catch (e) {}
 
