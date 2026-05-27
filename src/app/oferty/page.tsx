@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Building2, KeyRound, Sparkles, BadgePercent, Gem, Grid2x2 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -105,6 +105,7 @@ export default function CatalogPage() {
           retry: "Spróbuj ponownie",
           empty: "Brak aktywnych ofert w tym dziale.",
           discover: "Odkryj",
+          cardCaption: "ofert",
           sections: {
             all: "Wszystkie",
             sale: "Kup",
@@ -123,6 +124,7 @@ export default function CatalogPage() {
           retry: "Try again",
           empty: "No active listings in this section.",
           discover: "Discover",
+          cardCaption: "listings",
           sections: {
             all: "All",
             sale: "Buy",
@@ -148,6 +150,24 @@ export default function CatalogPage() {
   const featuredOffers = offers.filter(
     (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
   );
+
+  const sectionCounts: Record<GallerySection, number> = {
+    all: offers.length,
+    sale: offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale").length,
+    rent: offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent").length,
+    newest: sortedByNewest.length,
+    discounted: discountedOffers.length,
+    featured: featuredOffers.length,
+  };
+
+  const sectionIcons: Record<GallerySection, typeof Grid2x2> = {
+    all: Grid2x2,
+    sale: Building2,
+    rent: KeyRound,
+    newest: Sparkles,
+    discounted: BadgePercent,
+    featured: Gem,
+  };
 
   const offersInSection = (() => {
     switch (activeSection) {
@@ -205,6 +225,46 @@ export default function CatalogPage() {
             })}
           </div>
         </motion.div>
+
+        {!loading && !error && (
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-10 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6"
+          >
+            {(
+              ["all", "sale", "rent", "newest", "discounted", "featured"] as GallerySection[]
+            ).map((section) => {
+              const Icon = sectionIcons[section];
+              const active = activeSection === section;
+              return (
+                <button
+                  key={`card-${section}`}
+                  type="button"
+                  onClick={() => setActiveSection(section)}
+                  className={`rounded-[1.25rem] border p-4 text-left backdrop-blur-xl transition ${
+                    active
+                      ? "border-emerald-400/50 bg-emerald-500/12 shadow-[0_0_26px_rgba(16,185,129,0.2)]"
+                      : "border-[var(--eos-border)] bg-[var(--eos-card)]/70 hover:border-[var(--eos-border-strong)]"
+                  }`}
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <Icon className={`h-4 w-4 ${active ? "text-emerald-400" : "text-[var(--eos-muted)]"}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
+                      {labels.sections[section]}
+                    </span>
+                  </div>
+                  <p className="text-2xl font-black tabular-nums tracking-tight text-[var(--eos-text)]">
+                    {sectionCounts[section]}
+                  </p>
+                  <p className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[var(--eos-muted)]">
+                    {labels.cardCaption}
+                  </p>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
 
         <AnimatePresence mode="wait">
           {loading ? (
