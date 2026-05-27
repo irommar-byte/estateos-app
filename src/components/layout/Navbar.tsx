@@ -16,8 +16,6 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
 import ReviewPrompt from "@/components/ReviewPrompt";
-import LanguageSwitcher from "@/components/layout/LanguageSwitcher";
-import ThemeSwitcher from "@/components/layout/ThemeSwitcher";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
@@ -106,8 +104,8 @@ export default function Navbar() {
     setIsOpen(false);
   };
 
-  const managePath = user?.role === "ADMIN" ? "/centrala" : "/moje-konto";
-  const manageLabel = user?.role === "ADMIN" ? dict.nav.manageCentral : dict.nav.manage;
+  const isAdmin = user?.role === "ADMIN";
+  const manageLabel = dict.nav.manageCentral;
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-[var(--eos-border)] bg-[var(--eos-glass)] font-sans text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl [padding-top:env(safe-area-inset-top)]">
@@ -153,8 +151,6 @@ export default function Navbar() {
         )}
 
         <div className="hidden min-w-0 items-center justify-end gap-2 lg:flex 2xl:gap-3">
-          <ThemeSwitcher compact />
-          <LanguageSwitcher />
           {user && <NotificationCenter />}
 
           {user ? (
@@ -162,13 +158,15 @@ export default function Navbar() {
               <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link">
                 {dict.nav.profile}
               </button>
-              <button
-                type="button"
-                onClick={() => router.push(managePath)}
-                className="rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black"
-              >
-                {manageLabel}
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => router.push("/centrala")}
+                  className="rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black"
+                >
+                  {manageLabel}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleLogout}
@@ -191,8 +189,6 @@ export default function Navbar() {
         </div>
 
         <div className="relative z-40 flex min-w-0 items-center justify-end gap-2 lg:hidden">
-          <ThemeSwitcher compact className="hidden md:flex" />
-          <LanguageSwitcher className="hidden sm:flex" />
           {user && <NotificationCenter />}
           <button
             type="button"
@@ -228,11 +224,6 @@ export default function Navbar() {
               className="relative z-40 overflow-hidden border-b border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-[var(--eos-shadow-strong)] lg:hidden"
             >
               <div className="space-y-6 p-5 pb-8">
-                <div className="flex items-center justify-between gap-3 sm:hidden">
-                  <ThemeSwitcher compact />
-                  <LanguageSwitcher />
-                </div>
-
                 {user && (
                   <div className="flex justify-center rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 xl:hidden">
                     <PremiumModeToggle currentUser={user} />
@@ -250,7 +241,9 @@ export default function Navbar() {
                 {user ? (
                   <div className="grid gap-2">
                     <MobileNavButton icon={User} label={dict.nav.profile} onClick={() => handleNavClick("/moje-konto")} />
-                    <MobileNavButton icon={Shield} label={user.role === "ADMIN" ? dict.nav.manageCentral : dict.nav.manageAccount} onClick={() => handleNavClick(managePath)} />
+                    {isAdmin && (
+                      <MobileNavButton icon={Shield} label={dict.nav.manageCentral} onClick={() => handleNavClick("/centrala")} />
+                    )}
                     <MobileNavButton icon={LogOut} label={dict.nav.logout} accent="red" onClick={handleLogout} />
                   </div>
                 ) : (
