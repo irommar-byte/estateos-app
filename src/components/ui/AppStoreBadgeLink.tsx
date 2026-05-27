@@ -3,8 +3,7 @@ import { useState } from "react";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/estateos/id6762899098";
 const GOOGLE_PLAY_URL = "https://play.google.com/store/apps/details?id=pl.estateos.app";
-const APPLE_BADGE_URL =
-  "https://tools.applemediaservices.com/api/badge-download-on-the-app-store/black/pl-pl?size=250x83";
+const APPLE_BADGE_URL = "/badges/app-store-pl-official.png";
 const GOOGLE_PLAY_BADGE_URL =
   "https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg";
 
@@ -36,7 +35,7 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
           <img
             src={APPLE_BADGE_URL}
             alt={label || "Pobierz w App Store"}
-            className={compact ? "h-11 w-auto" : "h-14 w-auto"}
+            className={compact ? "h-10 w-auto" : "h-12 w-auto"}
             loading="lazy"
             onError={() => setAppleBadgeError(true)}
           />
