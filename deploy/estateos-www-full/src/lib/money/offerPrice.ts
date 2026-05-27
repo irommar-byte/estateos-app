@@ -82,6 +82,9 @@ function formatExchangeRateDate(raw: unknown): string | null {
 }
 
 /** Pola money w każdym GET oferty (mobile + web). */
+/** Fallback gdy kurs NBP chwilowo niedostępny (zgodnie z aplikacją mobilną). */
+export const DEFAULT_EUR_PLN_RATE = 4.32;
+
 export function enrichOfferMoneyFields<T extends Record<string, unknown>>(offer: T) {
   const priceAmount = parsePriceAmount(offer.price ?? offer.priceAmount);
   const priceCurrency = normalizePriceCurrency(offer.priceCurrency);
@@ -103,6 +106,51 @@ export function enrichOfferMoneyFields<T extends Record<string, unknown>>(offer:
     pricePln,
     exchangeRateUsed: Number.isFinite(exchangeRateUsed as number) ? exchangeRateUsed : null,
     exchangeRateDate: formatExchangeRateDate(offer.exchangeRateDate),
+  };
+}
+
+/** Uzupełnia kurs EUR/PLN z NBP, gdy oferta PLN nie ma zapisanego `exchangeRateUsed` (stare wpisy). */
+export async function enrichOfferMoneyFieldsForApi<T extends Record<string, unknown>>(offer: T) {
+  const base = enrichOfferMoneyFields(offer);
+  const amount = parsePriceAmount(base.price);
+  if (amount <= 0) return base;
+
+  let exchangeRateUsed = base.exchangeRateUsed as number | null;
+  let exchangeRateDate = base.exchangeRateDate as string | null;
+
+  if (exchangeRateUsed == null || exchangeRateUsed <= 0) {
+    try {
+      const fx = await getNbpEurPlnRate();
+      exchangeRateUsed = fx.rate;
+      exchangeRateDate = fx.date;
+    } catch {
+      exchangeRateUsed = DEFAULT_EUR_PLN_RATE;
+      exchangeRateDate = exchangeRateDate ?? null;
+    }
+  }
+
+  return {
+    ...base,
+    exchangeRateUsed,
+    exchangeRateDate,
+  };
+}
+
+/** Wersja wsadowa — jeden kurs NBP dla listy ofert (GET /api/offers). */
+export function enrichOfferMoneyFieldsWithRate<T extends Record<string, unknown>>(
+  offer: T,
+  rate: number,
+  rateDate: string | null,
+) {
+  const base = enrichOfferMoneyFields(offer);
+  const amount = parsePriceAmount(base.price);
+  if (amount <= 0) return base;
+  const existing = base.exchangeRateUsed as number | null;
+  if (existing != null && existing > 0) return base;
+  return {
+    ...base,
+    exchangeRateUsed: rate > 0 ? rate : DEFAULT_EUR_PLN_RATE,
+    exchangeRateDate: rateDate,
   };
 }
 

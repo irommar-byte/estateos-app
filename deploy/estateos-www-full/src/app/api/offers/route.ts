@@ -18,7 +18,12 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
-import { enrichOfferMoneyFields } from '@/lib/money/offerPrice';
+import {
+  enrichOfferMoneyFields,
+  enrichOfferMoneyFieldsWithRate,
+  getNbpEurPlnRate,
+  DEFAULT_EUR_PLN_RATE,
+} from '@/lib/money/offerPrice';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +106,16 @@ export async function GET() {
     );
     const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
 
+    let listFxRate = DEFAULT_EUR_PLN_RATE;
+    let listFxDate: string | null = new Date().toISOString().slice(0, 10);
+    try {
+      const fx = await getNbpEurPlnRate();
+      listFxRate = fx.rate;
+      listFxDate = fx.date;
+    } catch {
+      /* fallback rate */
+    }
+
     const toPublicOffer = (offer: any, viewsCount: number) => {
       const { user, ...rest } = offer;
       const elite = resolveEliteBadges({ user });
@@ -114,17 +129,21 @@ export async function GET() {
         legalCheckStatus: rest.legalCheckStatus,
         isLegalSafeVerified: rest.isLegalSafeVerified,
       });
-      return enrichOfferMoneyFields({
-        ...rest,
-        imageUrl: resolveOfferPrimaryImage(rest),
-        description: cleanDescription,
-        apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
-        landRegistryNumber: verification.landRegistryNumber || '',
-        ...legal,
-        badges,
-        views: viewsCount,
-        viewsCount,
-      });
+      return enrichOfferMoneyFieldsWithRate(
+        {
+          ...rest,
+          imageUrl: resolveOfferPrimaryImage(rest),
+          description: cleanDescription,
+          apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
+          landRegistryNumber: verification.landRegistryNumber || '',
+          ...legal,
+          badges,
+          views: viewsCount,
+          viewsCount,
+        },
+        listFxRate,
+        listFxDate,
+      );
     };
 
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));

@@ -21,6 +21,7 @@ import OffMarketModal from "@/components/OffMarketModal";
 import { AnimatePresence, motion } from "framer-motion";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import type { HomeMapSearchDetail } from "@/components/home/PremiumSearchBar";
 
 /** Zgodnie z `dodaj-oferte/ClientForm` (enum Prisma ↔ etykiety w aplikacji). */
@@ -70,13 +71,6 @@ function normalizeTransactionTypeStatic(value: unknown): "sale" | "rent" | "othe
   return "other";
 }
 
-function formatOfferPinLabel(price: unknown, offerTx: unknown): string {
-  const tx = normalizeTransactionTypeStatic(offerTx);
-  const n = parseOfferPrice(price);
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  const fmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
-  return tx === "rent" ? `${fmt} / mo` : fmt;
-}
 
 const OFFER_PIN_BASE =
   "px-5 py-3 backdrop-blur-xl border text-xs font-bold rounded-full cursor-pointer hover:scale-125 active:scale-95 transition-all duration-300 ease-out";
@@ -91,6 +85,7 @@ function offerPinColorClasses(normalizeTx: (v: unknown) => "sale" | "rent" | "ot
 
 export default function InteractiveMap() {
   const { dict, locale } = useLocale();
+  const { formatPinLabel, preference, rate } = useFormatOfferPrice();
   const mapContainer = useRef(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<{ [key: string]: mapboxgl.Marker }>({});
@@ -329,7 +324,10 @@ export default function InteractiveMap() {
         properties: {
           id: offer.id,
           price: offer.price ?? "",
-          priceLabel: formatOfferPinLabel(offer.price, offer.transactionType),
+          priceLabel: formatPinLabel(
+            offer,
+            normalizeTransactionTypeStatic(offer.transactionType) === "rent",
+          ),
           transactionType: offer.transactionType,
           isPartner: !!(offer.badges?.isPartner),
         },
@@ -341,7 +339,7 @@ export default function InteractiveMap() {
         map.current.triggerRepaint(); 
       }
     }
-  }, [filteredOffers, mapLoaded]);
+  }, [filteredOffers, mapLoaded, preference, rate, formatPinLabel]);
 
   // LOGIKA PINÓW Z KOLORAMI RYNKU
   const updateMarkers = () => {
@@ -372,9 +370,7 @@ export default function InteractiveMap() {
           };
         } else {
           innerEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType);
-          innerEl.innerText = String(
-            feature.properties.priceLabel ?? formatOfferPinLabel(feature.properties.price, feature.properties.transactionType),
-          );
+          innerEl.innerText = String(feature.properties.priceLabel ?? "—");
           innerEl.onclick = (e) => {
             e.stopPropagation();
             if ((window as any).isLoggedIn) window.location.href = `/oferta/${feature.properties.id}`;
@@ -389,9 +385,7 @@ export default function InteractiveMap() {
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
           pinEl.className = offerPinColorClasses(normalizeTransactionType, feature.properties.transactionType);
-          pinEl.innerText = String(
-            feature.properties.priceLabel ?? formatOfferPinLabel(feature.properties.price, feature.properties.transactionType),
-          );
+          pinEl.innerText = String(feature.properties.priceLabel ?? "—");
         }
       }
     });

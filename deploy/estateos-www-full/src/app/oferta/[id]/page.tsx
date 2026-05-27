@@ -24,13 +24,22 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import {
+  formatAmountWithCurrency,
+  resolveOfferDisplayAmount,
+} from "@/lib/money/format";
+import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
   const { locale } = useLocale();
+  const { formatOffer, pricePerSqmLabel, rate } = useFormatOfferPrice();
   const t = getOfferPageCopy(locale);
+  const priceFormatted = formatOffer(offer);
+  const listingPrice = resolveOfferListingPrice(offer, rate);
   const favoriteLabels =
     locale === 'en'
       ? { add: 'Save', remove: 'Saved' }
@@ -156,30 +165,38 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     fetchNegotiations();
   }, [offer]);
 
-  const rawPriceStr = String(offer.price || '0').replace(/\D/g, '');
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
-  const numericPrice = parseInt(rawPriceStr) || 0;
   const numericArea = parseFloat(rawAreaStr) || 0;
-  
-  const priceDisplay = numericPrice > 0 ? numericPrice.toLocaleString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData;
-  const pricePerSqm =
-    numericPrice > 0 && numericArea > 0
-      ? Math.round(numericPrice / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
-      : t.noData;
-  const priceCurrency = String(offer.priceCurrency || "PLN").toUpperCase();
-  const exchangeRateUsed = Number(offer.exchangeRateUsed || 0);
-  const priceInEurValue =
-    numericPrice > 0
-      ? priceCurrency === "EUR"
-        ? numericPrice
-        : exchangeRateUsed > 0
-          ? numericPrice / exchangeRateUsed
-          : null
+  const dateLocale = locale === "pl" ? "pl" : "en";
+
+  const plnResolved =
+    listingPrice.amount > 0
+      ? resolveOfferDisplayAmount({
+          amount: listingPrice.amount,
+          listingCurrency: listingPrice.currency,
+          pricePln: listingPrice.plnAmount,
+          displayPreference: "PLN",
+          rate,
+        })
       : null;
-  const priceInEur = priceInEurValue != null ? Math.round(priceInEurValue).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData;
-  const pricePerSqmEur =
-    priceInEurValue != null && numericArea > 0
-      ? Math.round(priceInEurValue / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")
+  const eurResolved =
+    listingPrice.amount > 0
+      ? resolveOfferDisplayAmount({
+          amount: listingPrice.amount,
+          listingCurrency: listingPrice.currency,
+          pricePln: listingPrice.plnAmount,
+          displayPreference: "EUR",
+          rate,
+        })
+      : null;
+  const perSqmDisplay = pricePerSqmLabel(offer);
+  const perSqmPln =
+    plnResolved && numericArea > 0
+      ? `${Math.round(plnResolved.displayAmount / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} zł/m²`
+      : t.noData;
+  const perSqmEur =
+    eurResolved && numericArea > 0
+      ? `${Math.round(eurResolved.displayAmount / numericArea).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} €/m²`
       : t.noData;
 
     // Sekcje Specyfikacji Luksusowej
@@ -215,7 +232,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     { label: t.area, value: numericArea > 0 ? `${numericArea} m²` : null },
     {
       label: t.pricePerSqm,
-      value: pricePerSqm !== t.noData && !isLocked ? `${pricePerSqm} PLN` : isLocked ? t.hiddenPrice : null,
+      value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
     },
     { label: t.rooms, value: offer.rooms },
     { label: t.floor, value: offer.floor },
@@ -251,7 +268,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
 
   return (
-    <main className="bg-black min-h-screen text-white font-sans selection:bg-white/20 pb-32">
+    <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
       
       <div ref={ref} className="relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-xl' : ''} ${isArchived ? 'grayscale' : ''}`} />
@@ -438,46 +455,65 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             )}
 
             <div>
-                <h1 className="sm:hidden text-4xl font-light leading-tight tracking-tighter mb-7 text-white drop-shadow-lg [text-wrap:balance]">
+                <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
-                <h2 className="text-4xl sm:text-6xl md:text-7xl font-light tracking-tighter mb-8 sm:mb-10 text-white drop-shadow-lg">{priceDisplay} <span className="font-bold">PLN</span></h2>
-                {!isLocked && (
-                  <div className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.priceInEur}</p>
-                      <p className="text-lg font-black text-white mt-1">{priceInEur} EUR</p>
+                <h2 className="mb-2 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
+                  {priceFormatted.primary}
+                </h2>
+                {!isLocked && priceFormatted.secondary ? (
+                  <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
+                ) : (
+                  <div className="mb-6" />
+                )}
+                {!isLocked && listingPrice.amount > 0 && (
+                  <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {eurResolved && priceFormatted.displayCurrency !== "EUR" ? (
+                      <div className="eos-offer-metric-card px-4 py-3">
+                        <p className="eos-offer-metric-label">{t.priceInEur}</p>
+                        <p className="eos-offer-metric-value mt-1">
+                          {formatAmountWithCurrency(eurResolved.displayAmount, "EUR", dateLocale)}
+                        </p>
+                      </div>
+                    ) : null}
+                    {plnResolved && priceFormatted.displayCurrency !== "PLN" ? (
+                      <div className="eos-offer-metric-card px-4 py-3">
+                        <p className="eos-offer-metric-label">{locale === "en" ? "Price in PLN" : "Cena w PLN"}</p>
+                        <p className="eos-offer-metric-value mt-1">
+                          {formatAmountWithCurrency(plnResolved.displayAmount, "PLN", dateLocale)}
+                        </p>
+                      </div>
+                    ) : null}
+                    <div className="eos-offer-metric-card px-4 py-3">
+                      <p className="eos-offer-metric-label">{t.pricePerSqm}</p>
+                      <p className="eos-offer-metric-value mt-1">{perSqmPln}</p>
                     </div>
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqm}</p>
-                      <p className="text-lg font-black text-white mt-1">{pricePerSqm} PLN</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 font-black">{t.pricePerSqmEur}</p>
-                      <p className="text-lg font-black text-white mt-1">{pricePerSqmEur} EUR</p>
+                    <div className="eos-offer-metric-card px-4 py-3">
+                      <p className="eos-offer-metric-label">{t.pricePerSqmEur}</p>
+                      <p className="eos-offer-metric-value mt-1">{perSqmEur}</p>
                     </div>
                   </div>
                 )}
                 {!isLocked && agentCommissionLine && (
-                  <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                    <p className="text-sm text-zinc-200">{agentCommissionLine}</p>
-                    <p className="mt-1 text-[11px] text-zinc-500">{t.listingPriceIncludesCommission}</p>
+                  <div className="eos-offer-panel mb-8 px-4 py-3">
+                    <p className="text-sm text-[var(--eos-text)]">{agentCommissionLine}</p>
+                    <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
                   </div>
                 )}
                 
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">{t.aboutProperty}</h3>
-                  <p className="text-base sm:text-lg text-zinc-300 leading-relaxed font-light whitespace-pre-line break-words">{offer.description}</p>
+                <div className="eos-offer-panel p-8 md:p-12">
+                  <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
+                  <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
                 </div>
 
                 {offer.amenities && offer.amenities.length > 0 && (
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl mt-8 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-6">{t.amenities}</h3>
+                <div className="eos-offer-panel mt-8 p-8 md:p-12">
+                  <h3 className="eos-offer-metric-label mb-6">{t.amenities}</h3>
                   <div className="flex flex-wrap gap-3">
                     {offer.amenities.split(',').filter(Boolean).map((amenity: string, idx: number) => (
-                      <div key={idx} className={`flex items-center gap-2 bg-white/5 border px-4 py-2.5 rounded-2xl shadow-inner ${themeColors.borderActive}`}>
+                      <div key={idx} className={`flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 ${themeColors.borderActive}`}>
                         <CheckCircle2 size={16} className={themeColors.textActive} />
-                        <span className="text-sm font-semibold text-white/90">{amenity.trim()}</span>
+                        <span className="text-sm font-semibold text-[var(--eos-text)]">{amenity.trim()}</span>
                       </div>
                     ))}
                   </div>
@@ -510,38 +546,38 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             <div className="xl:sticky top-32 space-y-6 pt-2">
               
               <div className="space-y-8">
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
+                <div className="eos-offer-panel p-6">
+                  <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
                   <div className="grid grid-cols-1 gap-3">
                     {locationParams.map((param, idx) => (
-                      <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center hover:bg-white/10 transition-colors">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold">{param.label}</span>
-                        <span className="font-bold text-white text-sm max-w-[65%] text-right">{param.value}</span>
+                      <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{param.value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                  <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
+                <div className="eos-offer-panel p-6">
+                  <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
                   <div className="grid grid-cols-2 gap-3">
                     {mainParams.map((param, idx) => (
-                      <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex flex-col justify-between min-h-[90px] hover:bg-white/10 transition-colors">
-                        <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold mb-2">{param.label}</span>
-                        <span className="font-bold text-white text-lg">{param.value}</span>
+                      <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                        <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                        <span className="text-lg font-bold text-[var(--eos-text)]">{param.value}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {buildingParams.length > 0 && (
-                  <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
-                    <h4 className={`text-[11px] uppercase tracking-[0.2em] font-black mb-5 ml-2 ${themeColors.textActive}`}>{t.buildingSection}</h4>
+                  <div className="eos-offer-panel p-6">
+                    <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.buildingSection}</h4>
                     <div className="grid grid-cols-2 gap-3">
                       {buildingParams.map((param, idx) => (
-                        <div key={idx} className="bg-white/5 border border-white/5 rounded-2xl p-4 flex flex-col justify-between min-h-[90px] hover:bg-white/10 transition-colors">
-                          <span className="text-zinc-400 uppercase tracking-widest text-[10px] font-bold mb-2">{param.label}</span>
-                          <span className="font-bold text-white text-base">{param.value}</span>
+                        <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                          <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                          <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
                         </div>
                       ))}
                     </div>
@@ -748,7 +784,7 @@ export default function SingleOfferPage({ params }: { params: Promise<{ id: stri
     fetchUserAndOffer();
   }, [resolvedParams]);
 
-  if (!offer) return <div className="bg-black min-h-screen" />;
+  if (!offer) return <div className="min-h-screen bg-[var(--eos-bg)]" />;
   
   return <OfferDetails offer={offer} currentUser={currentUser} />;
 }

@@ -26,6 +26,9 @@ import {
   AGENT_COMMISSION_STEP,
 } from "@/lib/agentCommission";
 import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
+import { useFxRate } from "@/contexts/FxRateContext";
+import { convertBetweenCurrencies } from "@/lib/money/convert";
+import { formatApproxLine } from "@/lib/money/format";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -109,7 +112,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  const [fxRate, setFxRate] = useState(4.32);
+  const { rate: fxRate } = useFxRate();
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
@@ -589,21 +592,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     });
     startLuxuryOrbit(lngLat);
   }, [data.lat, data.lng]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch('/api/fx/eur-pln', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        const rate = Number(data?.rate ?? data?.eurPln);
-        if (Number.isFinite(rate) && rate > 0) setFxRate(rate);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (currentStep !== 2 || !mapInstance.current) return;
@@ -1103,7 +1091,20 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <button
                       key={code}
                       type="button"
-                      onClick={() => updateData({ priceCurrency: code })}
+                      onClick={() => {
+                        const amount = Number(cleanPrice);
+                        const converted =
+                          amount > 0
+                            ? convertBetweenCurrencies(amount, data.priceCurrency, code, fxRate)
+                            : 0;
+                        updateData({
+                          priceCurrency: code,
+                          price:
+                            converted > 0
+                              ? String(converted).replace(/\B(?=(\d{3})+(?!\d))/g, " ")
+                              : data.price,
+                        });
+                      }}
                       className={`px-5 py-2.5 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${
                         data.priceCurrency === code
                           ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
@@ -1113,9 +1114,15 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       {code}
                     </button>
                   ))}
-                  {data.priceCurrency === 'EUR' && cleanPrice && Number(cleanPrice) > 0 ? (
-                    <span className="text-[10px] text-zinc-400 font-bold">
-                      ≈ {Math.round(Number(cleanPrice) * fxRate).toLocaleString('pl-PL')} PLN (NBP)
+                  {cleanPrice && Number(cleanPrice) > 0 && formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate) ? (
+                    <span className="text-[10px] font-bold text-zinc-400">
+                      {formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate)} (NBP)
+                    </span>
+                  ) : null}
+                  {cleanPrice && Number(cleanPrice) > 0 && cleanArea && Number(cleanArea) > 0 ? (
+                    <span className="text-[10px] font-bold text-zinc-500">
+                      {Math.round(Number(cleanPrice) / Number(cleanArea)).toLocaleString('pl-PL')}{' '}
+                      {data.priceCurrency}/m²
                     </span>
                   ) : null}
                 </div>

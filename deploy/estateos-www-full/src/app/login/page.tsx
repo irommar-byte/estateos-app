@@ -111,11 +111,11 @@ function LoginPageInner() {
       const data = await res.json();
       if (res.ok && data.success) {
         setView('reset');
-        setSuccessMsg("Verification code has been sent to your email address.");
+        setSuccessMsg("Kod weryfikacyjny został wysłany na Twój adres e-mail lub telefon.");
       } else {
-        setError(data.error || "An error occurred.");
+        setError(data.error || "Wystąpił błąd.");
       }
-    } catch (err) { setError("Server connection error."); } 
+    } catch (err) { setError("Błąd połączenia z serwerem."); } 
     finally { setLoading(false); }
   };
 
@@ -130,14 +130,14 @@ function LoginPageInner() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccessMsg("Password has been changed. You can now sign in.");
+        setSuccessMsg("Hasło zostało zmienione. Możesz się teraz zalogować.");
         setEmail(resetEmail);
         setPassword(newPassword);
         setView('login');
       } else {
-        setError(data.error || "Invalid code or verification failed.");
+        setError(data.error || "Nieprawidłowy kod lub błąd weryfikacji.");
       }
-    } catch (err) { setError("Server connection error."); } 
+    } catch (err) { setError("Błąd połączenia z serwerem."); } 
     finally { setLoading(false); }
   };
 
@@ -169,10 +169,10 @@ function LoginPageInner() {
             dataLogin.role === "ADMIN" ? "/centrala" : resolveSafeNextPath(afterLoginPath)
           );
         } else {
-          setError(dataLogin.message || "Login error");
+          setError(dataLogin.message || "Błąd logowania.");
         }
       } else {
-        setError(dataVerify.error || "Verification code error");
+        setError(dataVerify.error || "Błąd kodu weryfikacyjnego.");
       }
     } catch (err) {
       setError("Błąd połączenia.");
@@ -187,7 +187,7 @@ function LoginPageInner() {
         <motion.form key="verify_otp" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} onSubmit={handleVerifyOtp} className="eos-auth-card relative overflow-hidden space-y-6 border-emerald-500/30 p-8 shadow-[0_0_40px_rgba(16,185,129,0.1)]">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-emerald-600"></div>
           <div className="mb-4">
-             <h3 className="text-3xl font-black text-white mb-3">Autoryzacja SMS</h3>
+             <h3 className="mb-3 text-3xl font-black text-[var(--eos-text)]">Autoryzacja SMS</h3>
              <div className="mb-4 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
                 <p className="eos-muted-copy mb-2 text-sm leading-relaxed">Kod autoryzacyjny został wysłany na <b className="text-[var(--eos-text)]">{pendingPhone}</b> podczas rejestracji.</p>
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-emerald-500 font-bold">
@@ -224,7 +224,7 @@ function LoginPageInner() {
             </div>
             <input type="password" required placeholder="••••••••" className="eos-field border-0 border-b border-[var(--eos-border)] bg-transparent pb-2 text-2xl shadow-none focus:border-emerald-500" onChange={(e) => setPassword(e.target.value)} value={password} />
           </div>
-          <button type="submit" disabled={loading} style={{ backgroundColor: '#ffffff', color: '#000000' }} className="w-full py-6 rounded-full font-black text-xl hover:scale-[1.02] shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all cursor-pointer mt-8 flex justify-center items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest">
+          <button type="submit" disabled={loading} className="btn-action mt-8 flex w-full cursor-pointer items-center justify-center gap-3 rounded-full py-6 text-xl font-black uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-50">
             {loading ? <Loader2 className="animate-spin" size={24} /> : "Zaloguj się ➔"}
           </button>
 
@@ -236,9 +236,9 @@ function LoginPageInner() {
           </p>
 
           <div className="relative flex items-center py-6 mt-4">
-            <div className="flex-grow border-t border-white/5"></div>
+            <div className="flex-grow border-t border-[var(--eos-border)]"></div>
             <span className="eos-subtle-copy mx-4 flex-shrink-0 text-[10px] font-bold uppercase tracking-[0.3em]">Logowanie biometryczne</span>
-            <div className="flex-grow border-t border-white/5"></div>
+            <div className="flex-grow border-t border-[var(--eos-border)]"></div>
           </div>
 
           <button 
@@ -254,10 +254,10 @@ function LoginPageInner() {
               <Loader2 className="animate-spin text-emerald-500" size={22} />
             ) : (
               <>
-                <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-white/5 group-hover:bg-emerald-500/10 transition-colors duration-500">
-                   <Fingerprint size={18} className="text-neutral-400 group-hover:text-emerald-400 transition-colors duration-500 drop-shadow-[0_0_8px_rgba(52,211,153,0)] group-hover:drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-[var(--eos-input)] transition-colors duration-500 group-hover:bg-emerald-500/10">
+                   <Fingerprint size={18} className="text-[var(--eos-muted)] transition-colors duration-500 group-hover:text-emerald-500 drop-shadow-[0_0_8px_rgba(52,211,153,0)] group-hover:drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
                 </div>
-                <span className="group-hover:text-white transition-colors duration-500 z-10">Passkey / Face ID</span>
+                <span className="z-10 transition-colors duration-500 group-hover:text-[var(--eos-text)]">Passkey / Face ID</span>
               </>
             )}
           </button>

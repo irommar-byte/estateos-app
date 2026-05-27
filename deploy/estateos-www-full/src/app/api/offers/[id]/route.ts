@@ -10,7 +10,12 @@ import {
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services/offer.service';
-import { enrichOfferMoneyFields, parsePriceAmount, resolveOfferPriceFromBody } from '@/lib/money/offerPrice';
+import {
+  enrichOfferMoneyFields,
+  enrichOfferMoneyFieldsForApi,
+  parsePriceAmount,
+  resolveOfferPriceFromBody,
+} from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
@@ -165,8 +170,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const yearBuilt = resolveOfferBuildYear(legalOffer as Record<string, unknown>);
     const buildYear = yearBuilt;
 
+    const moneyOffer = await enrichOfferMoneyFieldsForApi(
+      legalOffer as Record<string, unknown>,
+    );
+
     return NextResponse.json({
-      ...legalOffer,
+      ...moneyOffer,
       description: cleanDescription,
       apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',

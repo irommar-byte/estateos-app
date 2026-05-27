@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
 type Offer = {
   id: number;
@@ -12,6 +13,8 @@ type Offer = {
   city?: string | null;
   district?: string | null;
   price?: string | number | null;
+  priceCurrency?: string | null;
+  pricePln?: number | null;
   area?: string | number | null;
   rooms?: string | number | null;
   imageUrl?: string | null;
@@ -44,15 +47,9 @@ function parsePrice(price: Offer["price"]) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatPrice(price: Offer["price"], transactionType: Offer["transactionType"], priceOnRequest: string, pricePerMonth: string) {
-  const n = parsePrice(price);
-  if (!Number.isFinite(n) || n <= 0) return priceOnRequest;
-  const suffix = String(transactionType || "").toLowerCase().includes("rent") ? " / mo" : "";
-  return `${new Intl.NumberFormat("en-US").format(n)} PLN${suffix}`.replace(" / mo", ` ${pricePerMonth}`);
-}
-
 export default function FeaturedGallery() {
   const { dict } = useLocale();
+  const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<Offer[]>([]);
 
   useEffect(() => {
@@ -116,6 +113,8 @@ export default function FeaturedGallery() {
             const location =
               [offer.city, offer.district].filter(Boolean).join(", ") || dict.homePremium.galleryLocationFallback;
             const isDealRoom = offer.badges?.isPartner === true;
+            const priceInfo = formatOffer(offer);
+            const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
             return (
               <motion.article
                 key={offer.id}
@@ -157,8 +156,13 @@ export default function FeaturedGallery() {
                     </h3>
                     <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/60">
                       <span className="text-base font-semibold text-white">
-                        {formatPrice(offer.price, offer.transactionType, dict.homePremium.priceOnRequest, dict.homePremium.pricePerMonth)}
+                        {parsePrice(offer.price) > 0
+                          ? `${priceInfo.primary}${isRent ? ` ${dict.homePremium.pricePerMonth}` : ""}`
+                          : dict.homePremium.priceOnRequest}
                       </span>
+                      {priceInfo.secondary ? (
+                        <span className="text-white/45">{priceInfo.secondary}</span>
+                      ) : null}
                       {offer.area && <span>{offer.area} m²</span>}
                       {offer.rooms && <span>{offer.rooms} {dict.homePremium.galleryRoomsLabel}</span>}
                     </div>

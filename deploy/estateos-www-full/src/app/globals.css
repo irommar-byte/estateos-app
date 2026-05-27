@@ -448,6 +448,8 @@ html.dark button[class*="bg-[#111]"] {
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
+  width: 100%;
+  min-width: 0;
   border-radius: 999px;
   border: 1px solid var(--eos-border);
   background: var(--eos-surface);
@@ -705,6 +707,34 @@ html.light .eos-chip-off {
   border: 1px solid var(--eos-border);
   border-radius: 2rem;
   box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-panel {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  border-radius: 2.5rem;
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-metric-card {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  border-radius: 1rem;
+  box-shadow: var(--eos-shadow-soft);
+}
+
+.eos-offer-metric-label {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--eos-muted);
+}
+
+.eos-offer-metric-value {
+  font-size: 1.125rem;
+  font-weight: 900;
+  color: var(--eos-text);
 }
 
 .eos-choice-card {
