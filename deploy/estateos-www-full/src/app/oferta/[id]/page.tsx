@@ -654,7 +654,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       <AppointmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} offerId={offer.id || offer._id} sellerId={offer.userId || offer.user?.id || ""} />
       
       {isBiddingOpen && (
-         <BiddingModal offerId={offer.id || offer._id} currentPrice={numericPrice} onClose={() => setIsBiddingOpen(false)} />
+         <BiddingModal offerId={offer.id || offer._id} currentPrice={listingPrice.plnAmount} onClose={() => setIsBiddingOpen(false)} />
       )}
 
       <AnimatePresence>
