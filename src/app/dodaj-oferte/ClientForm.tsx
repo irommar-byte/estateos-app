@@ -63,6 +63,8 @@ const KW_COURT_SUGGESTIONS = [
   { prefix: "WR1K", court: "Wroclaw-Krzyki" },
   { prefix: "LU1I", court: "Lublin-Zachod" },
 ];
+const ADD_OFFER_DRAFT_VERSION = 1;
+const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
 
 type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
 
@@ -211,6 +213,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const landRegistryInputRef = useRef<HTMLInputElement>(null);
   const agentCommissionInputRef = useRef<HTMLDivElement>(null);
+  const draftHydratedRef = useRef(false);
+  const draftSaveTimerRef = useRef<number | null>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
@@ -219,6 +223,73 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isStrictCity = strictCities.includes(data.city);
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || draftHydratedRef.current) return;
+    try {
+      const raw = window.localStorage.getItem(ADD_OFFER_DRAFT_KEY);
+      if (!raw) {
+        draftHydratedRef.current = true;
+        return;
+      }
+      const parsed = JSON.parse(raw) as {
+        version?: number;
+        data?: Record<string, unknown>;
+        currentStep?: number;
+        images?: string[];
+        floorPlan?: string | null;
+      };
+      if (!parsed || parsed.version !== ADD_OFFER_DRAFT_VERSION) {
+        draftHydratedRef.current = true;
+        return;
+      }
+      const persistedData = parsed.data || {};
+      setData((prev: any) => ({
+        ...prev,
+        ...persistedData,
+        // świeże dane sesji użytkownika mają priorytet nad draftem
+        contactName: initialUser?.name || (persistedData.contactName as string) || prev.contactName,
+        contactPhone: initialUser?.phone || (persistedData.contactPhone as string) || prev.contactPhone,
+        email: initialUser?.email || (persistedData.email as string) || prev.email,
+      }));
+      const safeStep = Number(parsed.currentStep || 1);
+      setCurrentStep(Number.isFinite(safeStep) ? Math.min(6, Math.max(1, safeStep)) : 1);
+      const persistedImages = Array.isArray(parsed.images) ? parsed.images.filter((v) => typeof v === "string" && v.trim()) : [];
+      if (persistedImages.length > 0) setImagesList(persistedImages);
+      const persistedFloorPlan = typeof parsed.floorPlan === "string" ? parsed.floorPlan : null;
+      if (persistedFloorPlan) setFloorPlan(persistedFloorPlan);
+    } catch {
+      // ignore draft parsing errors
+    } finally {
+      draftHydratedRef.current = true;
+    }
+  }, [initialUser?.email, initialUser?.name, initialUser?.phone]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !draftHydratedRef.current) return;
+    if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      try {
+        const persistableImages = imagesList.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
+        const persistableFloorPlan = floorPlan && !floorPlan.startsWith("blob:") ? floorPlan : null;
+        window.localStorage.setItem(
+          ADD_OFFER_DRAFT_KEY,
+          JSON.stringify({
+            version: ADD_OFFER_DRAFT_VERSION,
+            data,
+            currentStep,
+            images: persistableImages,
+            floorPlan: persistableFloorPlan,
+          }),
+        );
+      } catch {
+        // ignore storage errors
+      }
+    }, 250);
+    return () => {
+      if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [data, currentStep, imagesList, floorPlan]);
 
   const pickDistrictFromText = (city: string, text: string, allowedDistricts?: string[]) => {
     if (!city || !text) return "";
@@ -734,6 +805,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
           }
         }
+        if (!responseData.requiresVerification && typeof window !== "undefined") {
+          window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
+        }
         setActionModal(responseData.requiresVerification ? 'otp' : 'success');
       } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
         window.location.href = String(responseData.redirect);
@@ -826,6 +900,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         }
         setActionModal('error');
         return;
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
       }
       setActionModal('success');
     } catch {
@@ -1674,24 +1751,64 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-3">
                   Podsumowanie publikacji
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
                     <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Tytuł</p>
                     <p className="text-white font-semibold">{String(data.title || '').trim() || '-'}</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ</p>
-                    <p className="text-white font-semibold">{data.propertyType || '-'}</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ / Transakcja</p>
+                    <p className="text-white font-semibold">
+                      {(data.propertyType || '-')} / {(data.transactionType === 'RENT' ? 'NA WYNAJEM' : 'NA SPRZEDAŻ')}
+                    </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Cena</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Cena / Metraż</p>
                     <p className="text-white font-semibold">
                       {String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '-'}
+                      {" · "}
+                      {String(data.area || '').trim() ? `${String(data.area).trim()} m²` : '-'}
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
                     <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Lokalizacja</p>
-                    <p className="text-white font-semibold">{[data.city, data.district].filter(Boolean).join(', ') || '-'}</p>
+                    <p className="text-white font-semibold">{[data.city, data.district, data.address].filter(Boolean).join(', ') || '-'}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Parametry</p>
+                    <p className="text-white/80">
+                      Pokoje: {data.rooms || '-'} · Piętro: {data.floor || '-'} · Rok: {data.buildYear || '-'}
+                    </p>
+                    <p className="text-white/60 mt-1">
+                      Ogrzewanie: {data.heating || '-'} · Umeblowane: {data.isFurnished === true ? 'tak' : data.isFurnished === false ? 'nie' : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Koszty i prowizja</p>
+                    <p className="text-white/80">
+                      Czynsz: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
+                    </p>
+                    <p className="text-white/60 mt-1">
+                      Prowizja: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'nie podano'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">Udogodnienia i media</p>
+                  <p className="text-white/80 mb-2">
+                    {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : 'Brak wybranych udogodnień'}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {finalImages.slice(0, 6).map((img) => (
+                      <img key={img} src={img} alt="Podgląd zdjęcia" className="h-14 w-14 rounded-lg object-cover border border-white/15" />
+                    ))}
+                    {finalFloorPlan ? (
+                      <img src={finalFloorPlan} alt="Podgląd rzutu" className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
+                    ) : null}
                   </div>
                 </div>
               </div>
