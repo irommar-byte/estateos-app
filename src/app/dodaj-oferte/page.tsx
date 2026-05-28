@@ -30,6 +30,7 @@ export default async function AddOfferPage() {
       });
 
       if (realUser) {
+        const u = realUser as any;
         // 🔥 BEZWZGLĘDNE LICZENIE OFERT (NA ŻYWO, BEZ CACHE) 🔥
         const activePlusCredits = isPlusCreditActive(realUser) ? Number(realUser.extraListings ?? 0) : 0;
 
@@ -41,6 +42,8 @@ export default async function AddOfferPage() {
           email: realUser.email,
           role: realUser.role,
           isPro: realUser.isPro,
+          isEmailVerified: Boolean(u.emailVerifiedAt || u.isEmailVerified),
+          isVerifiedPhone: Boolean(u.phoneVerifiedAt || u.isVerifiedPhone || u.isVerified),
           extraListings: activePlusCredits,
           plusExpiresAt: isPlusCreditActive(realUser) ? realUser.plusExpiresAt : null,
         };

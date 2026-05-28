@@ -25,7 +25,7 @@ const TOKENS = {
   },
   investorPro: {
     dark: { bg: "rgba(184,189,199,0.20)", border: "rgba(202,208,219,0.72)", text: "#E4E9F2" },
-    light: { bg: "rgba(124,136,152,0.12)", border: "rgba(124,136,152,0.45)", text: "#5D6A7D" },
+    light: { bg: "rgba(226,232,240,0.92)", border: "rgba(100,116,139,0.55)", text: "#111111" },
   },
 } as const;
 

@@ -72,6 +72,7 @@ import { isInvestorProIdentity } from "@/utils/partnerIdentity";
 import { resolveEliteBadges } from "@/lib/eliteStatus";
 import { shapeMatchedOfferForCrm } from "@/lib/crmMatchedOffer";
 import { useLocale } from "@/contexts/LocaleContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -240,6 +241,7 @@ const WowPlusOverlay = () => {
 
 export default function CRMDashboard() {
   const { dict, locale } = useLocale();
+  const { resolvedTheme } = useTheme();
   const c = dict.crm;
   const { favoriteOffers, refresh: refreshFavorites } = useFavorites();
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -831,6 +833,13 @@ export default function CRMDashboard() {
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
     : '';
   const avatarInitial = (displayName || 'U').trim().charAt(0).toUpperCase();
+  const isDarkTheme = resolvedTheme !== "light";
+  const verificationStatus: "verified" | "email" | "sms" =
+    currentUser?.isEmailVerified && currentUser?.isVerifiedPhone
+      ? "verified"
+      : currentUser?.isVerifiedPhone
+        ? "email"
+        : "sms";
   const sortedIsolatedDeals = [...isolatedDeals].sort((a: any, b: any) => {
     const aPinned = pinnedDealIds.includes(Number(a.dealId));
     const bPinned = pinnedDealIds.includes(Number(b.dealId));
@@ -1010,7 +1019,7 @@ export default function CRMDashboard() {
               <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
                 {displayName}
               </h1>
-              <EliteStatusBadges subject={currentUser} isDark compact className="mt-1" />
+              <EliteStatusBadges subject={currentUser} isDark={isDarkTheme} compact className="mt-1" />
               {currentUser?.id && (
                 <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
                    <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">{c.userIdLabel}</span>
@@ -1029,14 +1038,35 @@ export default function CRMDashboard() {
                      <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
                    ) : null}
                 </button>
+                <div className="mt-2">
+                  {verificationStatus === "verified" ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-black">✓</span>
+                      {locale === "en" ? "Verified account" : "Konto zweryfikowane"}
+                    </span>
+                  ) : (
+                    <Link
+                      href="/moje-konto/weryfikacja"
+                      className="inline-flex items-center gap-2 rounded-full border border-amber-500/35 bg-amber-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300 hover:bg-amber-500/15"
+                    >
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-400/60 text-[9px]">
+                        !
+                      </span>
+                      {verificationStatus === "email"
+                        ? locale === "en"
+                          ? "Confirm email"
+                          : "Potwierdź e-mail"
+                        : locale === "en"
+                          ? "Confirm SMS phone"
+                          : "Potwierdź telefon SMS"}
+                    </Link>
+                  )}
+                </div>
                 <div className="mt-3 w-full max-w-[420px]">
                   <PasskeyToggle onProfileRefresh={refreshCurrentUserFromBackend} />
                 </div>
               </>
             )}
-          </div>
-          <div className="flex items-center shrink-0 mb-1 md:mb-0 self-start md:self-auto">
-            <EliteStatusBadges subject={currentUser} isDark compact />
           </div>
         </motion.div>
 
