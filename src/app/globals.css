@@ -678,6 +678,94 @@ html.light .theme-aware-dashboard .eos-passkey-toggle p {
   color: inherit;
 }
 
+/* Tekst na zdjęciu / gradientach — zachowaj jasne napisy w light mode */
+html.light .theme-aware-dashboard .eos-on-media,
+html.light .theme-aware-dashboard .eos-on-media .text-white,
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/"],
+html.light .theme-aware-dashboard .eos-on-media h1,
+html.light .theme-aware-dashboard .eos-on-media h2,
+html.light .theme-aware-dashboard .eos-on-media h3,
+html.light .theme-aware-dashboard .eos-on-media p,
+html.light .theme-aware-dashboard .eos-on-media span {
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/40"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/50"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/60"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/70"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/75"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/85"] {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+html.light .theme-aware-dashboard .eos-on-media [class*="text-emerald-300"] {
+  color: #6ee7b7 !important;
+}
+
+/* Karty CRM / listy — spójne tło w jasnym motywie */
+html.light .theme-aware-dashboard .eos-surface-card {
+  background-color: var(--eos-card) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+  box-shadow: var(--eos-shadow-soft) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card .text-white,
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/"] {
+  color: var(--eos-text) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/40"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/50"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/60"] {
+  color: var(--eos-muted) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-emerald-"] {
+  color: #059669 !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-blue-"] {
+  color: #2563eb !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-yellow-"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-amber-"] {
+  color: #d97706 !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-red-"] {
+  color: #dc2626 !important;
+}
+
+/* Modale portowane — jasny motyw */
+html.light .eos-themed-modal {
+  background-color: var(--eos-card) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+}
+
+html.light .eos-themed-modal .text-white,
+html.light .eos-themed-modal [class*="text-white/"] {
+  color: var(--eos-text) !important;
+}
+
+html.light .eos-themed-modal [class*="text-white/40"],
+html.light .eos-themed-modal [class*="text-white/50"],
+html.light .eos-themed-modal [class*="text-white/60"],
+html.light .eos-themed-modal [class*="text-white/70"] {
+  color: var(--eos-muted) !important;
+}
+
+html.light .eos-themed-modal input,
+html.light .eos-themed-modal select,
+html.light .eos-themed-modal textarea {
+  background-color: var(--eos-input) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+}
+
 html.light .theme-aware-dashboard .text-white,
 html.light .theme-aware-dashboard [class*="text-white/"],
 html.light .theme-aware-dashboard [class*="text-[#f5f5f7]"],

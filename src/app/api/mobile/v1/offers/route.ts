@@ -75,18 +75,30 @@ export async function GET(req: Request) {
   const includeAll = searchParams.get('includeAll') === 'true';
   const userId = searchParams.get('userId');
 
+  const authUserId = parseUserIdFromBearer(req);
+
   let where: any = {};
 
-  // owner view: pełna lista własnych ogłoszeń (bez ograniczania do ACTIVE)
   if (userId) {
-    where = { userId: Number(userId) };
-  } else if (!includeAll) {
-    // public view: tylko aktywne i z koordynatami
-    where = {
-      status: 'ACTIVE',
-      lat: { not: null },
-      lng: { not: null }
-    };
+    const requestedUserId = Number(userId);
+    if (!authUserId || authUserId !== requestedUserId) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
+    }
+    where = { userId: requestedUserId };
+  } else if (includeAll) {
+    if (!authUserId) {
+      return NextResponse.json({ success: false, message: 'Brak autoryzacji.' }, { status: 401 });
+    }
+    const viewer = await prisma.user.findUnique({
+      where: { id: authUserId },
+      select: { role: true },
+    });
+    if (String(viewer?.role || '').toUpperCase() !== 'ADMIN') {
+      return NextResponse.json({ success: false, message: 'Brak uprawnień.' }, { status: 403 });
+    }
+    where = {};
+  } else {
+    where = { status: 'ACTIVE' };
   }
 
   try {

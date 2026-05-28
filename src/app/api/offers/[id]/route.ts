@@ -25,8 +25,7 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
-import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
-import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -125,18 +124,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!offer) return NextResponse.json({ error: "Nie znaleziono oferty" }, { status: 404 });
 
     const currentUser = await resolveCurrentUser();
-    const offerUserId = Number((offer as { userId?: number }).userId);
-    const isOwner =
-      Boolean(currentUser?.id) &&
-      Number.isFinite(offerUserId) &&
-      Number(currentUser?.id) === offerUserId;
-    const isAdmin = currentUser?.role === 'ADMIN';
-    const activeIds = await activePublicationOfferIds([Number(resolvedParams.id)]);
-    const isPublic = canShowOfferOnPublicMarket(
-      { id: resolvedParams.id, status: (offer as { status?: string }).status, expiresAt: (offer as { expiresAt?: Date }).expiresAt },
-      activeIds,
-    );
-    if (!isPublic && !isOwner && !isAdmin) {
+    const offerRow = offer as unknown as {
+      id: number;
+      userId: number;
+      status: unknown;
+      expiresAt?: Date | null;
+    };
+    const access = await resolveOfferDetailAccess(prisma, offerRow, {
+      userId: currentUser?.id,
+      role: currentUser?.role,
+    });
+    if (!access.allowed) {
       return NextResponse.json({ error: 'Oferta niedostępna' }, { status: 404 });
     }
 

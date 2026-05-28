@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -71,6 +72,8 @@ export async function GET(req: Request) {
           hasBalcony: true,
           hasParking: true,
           isFurnished: true,
+          status: true,
+          expiresAt: true,
         },
       }),
     ]);
@@ -101,7 +104,7 @@ export async function GET(req: Request) {
     const qualityPenalty = Number(reasonStats.QUALITY_LOW || 0);
 
     const ranked = offers
-      .filter((offer) => activePublicationIds.has(Number(offer.id)))
+      .filter((offer) => canShowOfferOnPublicMarket(offer, activePublicationIds))
       .filter((o) => !likedOfferIds.has(Number(o.id)))
       .map((offer) => {
         let raw = 55;

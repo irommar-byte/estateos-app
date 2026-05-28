@@ -191,7 +191,7 @@ export default function FeaturedGallery() {
                     </div>
                   )}
 
-                  <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-7">
+                  <div className="eos-on-media absolute bottom-0 left-0 right-0 p-6 sm:p-7">
                     <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-md shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
                       <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                         <MapPin className="size-3.5 shrink-0" />

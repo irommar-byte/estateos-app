@@ -93,7 +93,7 @@ export default function ContactModal({ isOpen, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-3xl sm:p-6"
+        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-3xl sm:p-6 dark:bg-black/80"
         onClick={onClose}
       >
         <motion.div
@@ -101,7 +101,7 @@ export default function ContactModal({ isOpen, onClose }: Props) {
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.96, y: 16 }}
           onClick={(e) => e.stopPropagation()}
-          className="relative my-auto w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-[#0a0a0a] shadow-[0_20px_80px_rgba(0,0,0,0.9)]"
+          className="eos-themed-modal relative my-auto w-full max-w-lg overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)]"
         >
           <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-emerald-500/15 blur-[100px]" />
 

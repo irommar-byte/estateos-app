@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { getPublicationQuote, stageOfferPublicationForReview } from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import {
   assertContactVerified,
   contactVerificationJson,
@@ -81,14 +82,20 @@ export async function POST(req: Request, context: RouteContext) {
               ? 'PLUS_PAID'
               : 'PLUS_CREDIT';
 
+    const bonusCouponId = pub?.bonusCouponId ? String(pub.bonusCouponId).trim() : '';
+
     const staged = await stageOfferPublicationForReview({
       userId,
       offerId,
       kind: activationKind,
-      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
+
+    if (bonusCouponId && activationKind === 'FREE_FIRST') {
+      await markProfilePromoCardUsed(userId, bonusCouponId);
+    }
 
     return NextResponse.json({
       success: true,

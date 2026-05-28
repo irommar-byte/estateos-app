@@ -1544,7 +1544,7 @@ export default function CRMDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {(offersVisibleInSection.length === 0) ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
+              <div className="eos-surface-card col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
                 <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
                   {isFavoritesTab
@@ -1582,7 +1582,7 @@ export default function CRMDashboard() {
                     whileHover={{ scale: 0.98 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={goToAddOffer}
-                    className="bg-[#0a0a0a] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
+                    className="eos-surface-card bg-[#0a0a0a] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
                   >
                     <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors duration-500" />
                     <div className="w-16 h-16 rounded-full border border-blue-400/40 group-hover:border-blue-300 flex items-center justify-center mb-4 transition-colors shadow-[0_0_18px_rgba(59,130,246,0.25)]">
@@ -1607,7 +1607,7 @@ export default function CRMDashboard() {
                 const offerPrimaryImage = resolveOfferPrimaryImage(offer);
 
                 return (
-                  <div key={offer.id} className={`bg-[#0a0a0a] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-white/10 hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
+                  <div key={offer.id} className={`eos-surface-card bg-[#0a0a0a] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-white/10 hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
                     
                     {!isArchived && <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
 
