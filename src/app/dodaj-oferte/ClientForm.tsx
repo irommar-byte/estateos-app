@@ -688,7 +688,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: null,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
       };
-      if (data.agentCommissionPercent !== '') {
+      if (String(data.agentCommissionPercent ?? "").trim() === "") {
+        delete payload.agentCommissionPercent;
+      } else {
         payload.agentCommissionPercent = Number(
           String(data.agentCommissionPercent).replace(',', '.')
         );
@@ -792,7 +794,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: finalFloorPlan,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
       };
-      if (data.agentCommissionPercent !== '') {
+      if (String(data.agentCommissionPercent ?? "").trim() === "") {
+        delete payload.agentCommissionPercent;
+      } else {
         payload.agentCommissionPercent = Number(
           String(data.agentCommissionPercent).replace(',', '.')
         );
@@ -1164,6 +1168,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                           type="text"
                           placeholder="Np. WA1M/00000000/0"
                           list="kw-court-suggestions"
+                          maxLength={15}
+                          autoCapitalize="characters"
+                          autoCorrect="off"
+                          spellCheck={false}
                           className={`${inputPremium} text-sm uppercase ${hasLandRegistryInput && !landRegistryValid ? 'border-red-500/50 focus:border-red-400' : ''}`}
                           value={data.landRegistryNumber || ''}
                           onChange={(e) => updateData({ landRegistryNumber: normalizeLandRegistryInput(e.target.value) })}
