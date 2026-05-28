@@ -35,6 +35,11 @@ import { useFxRate } from "@/contexts/FxRateContext";
 import { convertBetweenCurrencies } from "@/lib/money/convert";
 import { formatApproxLine } from "@/lib/money/format";
 import AgentCommissionEditor from "@/components/offer/AgentCommissionEditor";
+import PublicationWalletPanel from "@/components/profile/PublicationWalletPanel";
+import PublicationChoiceModal, {
+  type PublicationRedemption,
+  type PublicationCouponOption,
+} from "@/components/publication/PublicationChoiceModal";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -186,6 +191,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
+  const [isPublicationChoiceOpen, setIsPublicationChoiceOpen] = useState(false);
+  const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
+  const [walletPlusCredits, setWalletPlusCredits] = useState(0);
+  const [walletHasPlusCredit, setWalletHasPlusCredit] = useState(false);
   
   const [uploadProgress, setUploadProgress] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle');
@@ -666,29 +675,20 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
     if (!canPublish) return;
+    if (initialUser?.isLoggedIn) {
+      try {
+        await loadPublicationWallet();
+        setIsPublicationChoiceOpen(true);
+      } catch (e: unknown) {
+        setServerErrorMessage(e instanceof Error ? e.message : 'Nie udało się pobrać metod publikacji.');
+        setActionModal('error');
+      }
+      return;
+    }
     setIsSubmitting(true);
     setUploadProgress('Wysyłanie oferty...');
     try {
-      const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
-      const finalDesc = editorRef.current?.innerHTML || data.description || '';
-      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
-
-      const payload: Record<string, unknown> = {
-        ...data,
-        userId: initialUser?.id,
-        transactionType: data.transactionType,
-        propertyType: data.propertyType,
-        condition: dbCondition,
-        description: finalDesc,
-        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
-        price: cleanPriceValue,
-        priceCurrency: data.priceCurrency || 'PLN',
-        area: String(data.area).replace(',', '.'),
-        images: '[]',
-        imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
-        floorPlan: null,
-        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
-      };
+      const { payload } = buildOfferPayload();
       if (!applyAgentCommissionToPayload(payload)) return;
 
       setUploadProgress('Tworzenie oferty...');
@@ -768,61 +768,74 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
     setIsProcessingPlus(true);
     try {
-      const cleanPrice = String(data.price || '').replace(/\D/g, "");
-      const finalDesc = editorRef.current?.innerHTML || data.description;
-      
-      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+      await startPakietPlusCheckout();
+    } catch (error) {
+      setServerErrorMessage(error instanceof Error ? error.message : 'Błąd połączenia z kasą Stripe.');
+      setErrorFieldTarget(null);
+      setActionModal("error");
+    } finally {
+      setIsProcessingPlus(false);
+    }
+  };
 
-      const payload: Record<string, unknown> = { 
-        ...data, 
-        userId: initialUser?.id,
-        transactionType: data.transactionType,
-        propertyType: data.propertyType,
-        condition: dbCondition,
-        description: finalDesc,
-        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`, 
-        price: cleanPrice,
-        priceCurrency: data.priceCurrency || 'PLN',
-        area: String(data.area).replace(',', '.'),
-        images: finalImages.length > 0 ? JSON.stringify(finalImages) : null, 
-        imageUrl: finalImages[0] || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop", 
-        floorPlan: finalFloorPlan,
-        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
-      };
+  const submitOfferWithRedemption = async (redemption: PublicationRedemption) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setUploadProgress('Tworzenie oferty...');
+    try {
+      const { payload } = buildOfferPayload();
       if (!applyAgentCommissionToPayload(payload)) return;
-
-      // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
       if (finalImages.some(img => img.startsWith('blob:'))) {
         setServerErrorMessage('Błąd krytyczny: Zdjęcia nie zostały poprawnie przesłane na serwer. Spróbuj dodać je ponownie lub odśwież stronę.');
         setErrorFieldTarget(null);
         setActionModal("error");
-        setIsSubmitting(false);
         return;
       }
-      const response = await fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const responseData = await response.json().catch(() => ({}));
-      if (response.ok || response.status === 201 || response.status === 200) {
-        if (responseData.requiresVerification) {
-           setActionModal("otp");
-        } else {
-           setActionModal("success");
-        }
-      } else if (
-        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
-        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
-      ) {
-        setServerErrorMessage(responseData.message || responseData.error);
-        setErrorFieldTarget(null);
-        setActionModal('verify');
-      } else {
-        const serverMessage = responseData.error || responseData.message || 'Odrzucono przez serwer';
+      const createRes = await fetch('/api/offers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const createData = await createRes.json().catch(() => ({}));
+      if (!createRes.ok) {
+        const serverMessage = createData.error || createData.message || 'Nie udało się utworzyć oferty.';
         setServerErrorMessage(serverMessage);
         setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
-        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
+        setActionModal("error");
+        return;
       }
-    } catch (error) { 
-        setServerErrorMessage('Błąd połączenia z serwerem API.'); setErrorFieldTarget(null); setActionModal("error"); 
-    } finally { setIsSubmitting(false); setUploadProgress(''); }
+      const createdOfferId = Number(createData?.offer?.id || createData?.id);
+      if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
+        setServerErrorMessage('Oferta została utworzona, ale brak ID do aktywacji.');
+        setActionModal('error');
+        return;
+      }
+      const activationRes = await fetch(`/api/offers/${createdOfferId}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ publication: redemption }),
+      });
+      const activationData = await activationRes.json().catch(() => ({}));
+      if (!activationRes.ok) {
+        if (activationData?.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
+          setServerErrorMessage(activationData?.message || 'Do publikacji wymagany jest Pakiet Plus.');
+        } else {
+          setServerErrorMessage(activationData?.error || activationData?.message || 'Nie udało się aktywować publikacji.');
+        }
+        setActionModal('error');
+        return;
+      }
+      setActionModal('success');
+    } catch {
+      setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setActionModal('error');
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress('');
+      setIsPublicationChoiceOpen(false);
+    }
   };
 
   // --- Żelazna Walidacja Kroków ---
@@ -932,6 +945,57 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
     payload.agentCommissionPercent = validation.value;
     return true;
+  };
+
+  const buildOfferPayload = () => {
+    const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
+    const finalDesc = editorRef.current?.innerHTML || data.description || '';
+    const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+    const payload: Record<string, unknown> = {
+      ...data,
+      userId: initialUser?.id,
+      transactionType: data.transactionType,
+      propertyType: data.propertyType,
+      condition: dbCondition,
+      description: finalDesc,
+      title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
+      price: cleanPriceValue,
+      priceCurrency: data.priceCurrency || 'PLN',
+      area: String(data.area).replace(',', '.'),
+      // Czynsz z WWW mapujemy na adminFee, żeby app mobilna widziała tę samą wartość.
+      adminFee: String(data.rent || '').trim() ? Number(String(data.rent).replace(/\D/g, '')) : null,
+      images: '[]',
+      imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
+      floorPlan: null,
+      amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
+    };
+    return { payload, finalDesc };
+  };
+
+  const loadPublicationWallet = async () => {
+    const res = await fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      throw new Error(String(data?.error || data?.message || 'Nie udało się pobrać portfela publikacji.'));
+    }
+    setWalletCoupons(Array.isArray(data.publicationCoupons) ? data.publicationCoupons : []);
+    setWalletPlusCredits(Number(data.plusCredits || 0));
+    setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
+  };
+
+  const startPakietPlusCheckout = async () => {
+    const returnUrl = `${window.location.origin}/dodaj-oferte?plus=success`;
+    const cancelUrl = `${window.location.origin}/dodaj-oferte?plus=cancel`;
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'pakiet_plus', returnUrl, cancelUrl }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body?.url) {
+      throw new Error(String(body?.error || 'Nie udało się uruchomić płatności Pakiet Plus.'));
+    }
+    window.location.href = String(body.url);
   };
 
   const handleFixDataFromErrorModal = () => {
@@ -1606,6 +1670,36 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
+              <div className="mb-6 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 md:p-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-3">
+                  Podsumowanie publikacji
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Tytuł</p>
+                    <p className="text-white font-semibold">{String(data.title || '').trim() || '-'}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ</p>
+                    <p className="text-white font-semibold">{data.propertyType || '-'}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Cena</p>
+                    <p className="text-white font-semibold">
+                      {String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Lokalizacja</p>
+                    <p className="text-white font-semibold">{[data.city, data.district].filter(Boolean).join(', ') || '-'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {initialUser?.isLoggedIn ? (
+                <PublicationWalletPanel onBuyPlus={handlePlusPayment} buyingPlus={isProcessingPlus} />
+              ) : null}
+
               {initialUser?.isLoggedIn && !publishContactOk ? (
                 <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">Weryfikacja konta</p>
@@ -1634,7 +1728,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               >
                 <span className="relative z-10 flex items-center gap-3 text-xl md:text-2xl font-black uppercase tracking-[0.2em]">
                   {isSubmitting ? <Loader2 className="animate-spin" size={28} /> : (!canPublish ? <Lock size={24} /> : <Crown size={32} className="group-hover:animate-bounce" />)}
-                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : 'ZAKOŃCZ I OPUBLIKUJ')}
+                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : (initialUser?.isLoggedIn ? 'WYBIERZ I OPUBLIKUJ' : 'ZAKOŃCZ I OPUBLIKUJ'))}
                 </span>
               </button>
             </div>
@@ -1930,6 +2024,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           </AnimatePresence>
         </div>
       )}
+
+      <PublicationChoiceModal
+        isOpen={isPublicationChoiceOpen}
+        onClose={() => setIsPublicationChoiceOpen(false)}
+        title="Wybierz metodę publikacji"
+        subtitle="Tak jak w aplikacji: kupon, kredyt Plus albo zakup Pakietu Plus."
+        coupons={walletCoupons}
+        hasPlusCredit={walletHasPlusCredit}
+        plusCredits={walletPlusCredits}
+        onConfirm={async (result) => {
+          if (result.action === "cancel") {
+            setIsPublicationChoiceOpen(false);
+            return;
+          }
+          if (result.action === "buy_plus") {
+            setIsPublicationChoiceOpen(false);
+            await handlePlusPayment();
+            return;
+          }
+          await submitOfferWithRedemption(result.redemption);
+        }}
+      />
     </main>
   );
 }

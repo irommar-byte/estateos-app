@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import Stripe from 'stripe';
 import { PlanType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
+import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 
 function getStripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -72,9 +73,25 @@ export async function POST(req: Request) {
     }
 
     if (normalizedPlan === 'pakiet_plus') {
-      // Pakiet Plus nie może być przyznawany przez ślepy sync z URL-a.
-      // Księgowanie odbywa się wyłącznie po zweryfikowanej transakcji IAP/webhook.
-      return NextResponse.json({ success: true, skipped: 'pakiet_plus_requires_verified_transaction' });
+      if (!sessionId) {
+        return NextResponse.json({ error: 'Brak session_id dla Pakiet Plus' }, { status: 400 });
+      }
+      const stripe = getStripeClient();
+      const session = await stripe.checkout.sessions.retrieve(String(sessionId), { expand: ['payment_intent'] });
+      const paymentStatus = session.payment_status;
+      const stripePlan = String(session.metadata?.plan_type || '').trim().toLowerCase();
+      if (paymentStatus !== 'paid' || stripePlan !== 'pakiet_plus') {
+        return NextResponse.json({ error: 'Płatność Pakiet Plus niepotwierdzona' }, { status: 409 });
+      }
+      const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+      if (!user?.id) {
+        return NextResponse.json({ error: 'Nie znaleziono użytkownika do przyznania kredytu Plus' }, { status: 404 });
+      }
+      await grantPlusCreditFromStripeCheckout({
+        userId: Number(user.id),
+        checkoutSessionId: String(sessionId),
+      });
+      return NextResponse.json({ success: true, planType: 'PAKIET_PLUS', plusCreditGranted: true });
     }
 
     if (normalizedPlan === 'agency') {

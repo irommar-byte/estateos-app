@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { PlanType } from '@prisma/client';
 import type { PropertyType, TransactionType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
+import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 
 function coercePropertyType(raw: unknown): PropertyType {
   const s = String(raw || '').toLowerCase();
@@ -83,7 +84,19 @@ export async function POST(req: Request) {
         if (rawPlanType === 'renewal') {
           console.log(`[stripe:webhook] renewal_completed email=${customerEmail} session=${checkoutSessionId} offer=${offerIdToRenew || 'missing'}`);
         } else if (rawPlanType === 'pakiet_plus') {
-          console.log(`[stripe:webhook] pakiet_plus ignored; Plus credits are granted only by verified IAP transaction. email=${customerEmail} session=${checkoutSessionId}`);
+          const user = await prisma.user.findUnique({
+            where: { email: customerEmail },
+            select: { id: true },
+          });
+          if (!user?.id) {
+            console.warn(`[stripe:webhook] pakiet_plus user not found email=${customerEmail} session=${checkoutSessionId}`);
+          } else {
+            await grantPlusCreditFromStripeCheckout({
+              userId: Number(user.id),
+              checkoutSessionId,
+            });
+            console.log(`[stripe:webhook] pakiet_plus credit granted email=${customerEmail} session=${checkoutSessionId}`);
+          }
         } else if (rawPlanType === 'agency') {
           await prisma.user.updateMany({
             where: { email: customerEmail },
