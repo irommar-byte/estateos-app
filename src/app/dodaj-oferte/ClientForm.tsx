@@ -859,12 +859,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     try {
       const { payload } = buildOfferPayload();
       if (!applyAgentCommissionToPayload(payload)) return;
-      if (finalImages.some(img => img.startsWith('blob:'))) {
-        setServerErrorMessage('Błąd krytyczny: Zdjęcia nie zostały poprawnie przesłane na serwer. Spróbuj dodać je ponownie lub odśwież stronę.');
-        setErrorFieldTarget(null);
-        setActionModal("error");
-        return;
-      }
       const createRes = await fetch('/api/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -884,6 +878,35 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         setServerErrorMessage('Oferta została utworzona, ale brak ID do aktywacji.');
         setActionModal('error');
         return;
+      }
+      const uploadableImages = finalImages.filter((img) => filesMap[img]);
+      for (let i = 0; i < uploadableImages.length; i++) {
+        const blobKey = uploadableImages[i];
+        const file = filesMap[blobKey];
+        if (!file) continue;
+        setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+        const formData = new FormData();
+        formData.append('offerId', String(createdOfferId));
+        formData.append('file', file);
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+        if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+      }
+      if (floorPlanFile) {
+        setUploadProgress('Wysyłanie rzutu nieruchomości...');
+        const fpFormData = new FormData();
+        fpFormData.append('offerId', String(createdOfferId));
+        fpFormData.append('file', floorPlanFile);
+        fpFormData.append('isFloorPlan', 'true');
+        const fpRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: fpFormData,
+          credentials: 'include',
+        });
+        if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
       }
       const activationRes = await fetch(`/api/offers/${createdOfferId}/activate`, {
         method: 'POST',
