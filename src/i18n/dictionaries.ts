@@ -50,6 +50,26 @@ export type Dictionary = {
     messages: string;
     close: string;
   };
+  welcomeGate: {
+    seekerTitle: string;
+    seekerTitleMuted: string;
+    seekerSubtitle: string;
+    sellerTitle: string;
+    sellerTitleMuted: string;
+    sellerSubtitle: string;
+    formTitle: string;
+    formTitleMuted: string;
+    formSubtitle: string;
+    emailLabel: string;
+    budgetLabel: string;
+    phoneLabel: string;
+    phoneHint: string;
+    propertyTypesLabel: string;
+    districtsLabel: string;
+    back: string;
+    submit: string;
+    close: string;
+  };
   hero: {
     eyebrow: string;
     lead: string;
@@ -341,6 +361,26 @@ const pl: Dictionary = {
     empty: "Brak nowych powiadomień.",
     markAllRead: "Oznacz jako przeczytane",
     messages: "wiadomości",
+    close: "Zamknij",
+  },
+  welcomeGate: {
+    seekerTitle: "Szukam",
+    seekerTitleMuted: "miejsca.",
+    seekerSubtitle: "Ustaw preferencje, załóż konto i bądź pierwszy przy nowych ofertach.",
+    sellerTitle: "Sprzedaję",
+    sellerTitleMuted: "nieruchomość.",
+    sellerSubtitle: "Wystaw ogłoszenie i dotrzyj do klientów premium.",
+    formTitle: "Czego",
+    formTitleMuted: "szukasz?",
+    formSubtitle: "Po wysłaniu formularza zakładamy konto — hasło wyślemy e-mailem.",
+    emailLabel: "Twój e-mail *",
+    budgetLabel: "Budżet do (PLN) *",
+    phoneLabel: "Telefon (opcjonalnie)",
+    phoneHint: "Możemy też powiadamiać SMS o pilnych ofertach.",
+    propertyTypesLabel: "Typ nieruchomości (wiele)",
+    districtsLabel: "Dzielnica (wiele)",
+    back: "Wstecz",
+    submit: "Załóż konto i odkryj mapę",
     close: "Zamknij",
   },
   hero: {
@@ -655,6 +695,26 @@ const en: Dictionary = {
     empty: "No new notifications.",
     markAllRead: "Mark all as read",
     messages: "messages",
+    close: "Close",
+  },
+  welcomeGate: {
+    seekerTitle: "I am looking",
+    seekerTitleMuted: "for a place.",
+    seekerSubtitle: "Set preferences, create a free account, and be first to see new listings.",
+    sellerTitle: "I am selling",
+    sellerTitleMuted: "property.",
+    sellerSubtitle: "List your property and reach premium clients.",
+    formTitle: "What are you",
+    formTitleMuted: "looking for?",
+    formSubtitle: "Submitting this form creates your account — we will email your password.",
+    emailLabel: "Your email *",
+    budgetLabel: "Budget up to (PLN) *",
+    phoneLabel: "Phone (optional)",
+    phoneHint: "We can also notify you by SMS about urgent listings.",
+    propertyTypesLabel: "Property type (multiple)",
+    districtsLabel: "District (multiple)",
+    back: "Back",
+    submit: "Create account and explore map",
     close: "Close",
   },
   hero: {

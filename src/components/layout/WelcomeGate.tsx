@@ -3,12 +3,17 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Search, Key, Loader2, X, Smartphone } from "lucide-react";
+import { useLocale } from "@/contexts/LocaleContext";
 
 const propertyTypes = ["Apartment", "Penthouse", "Detached house", "Townhouse", "Villa"];
-// Full district list
-const districtsList = ["Śródmieście", "Mokotów", "Żoliborz", "Wola", "Ochota", "Wilanów", "Praga-Południe", "Praga-Północ", "Ursynów", "Bielany", "Bemowo", "Białołęka", "Targówek", "Rembertów", "Wesoła", "Wawer", "Ursus", "Włochy"];
+const districtsList = [
+  "Śródmieście", "Mokotów", "Żoliborz", "Wola", "Ochota", "Wilanów", "Praga-Południe", "Praga-Północ",
+  "Ursynów", "Bielany", "Bemowo", "Białołęka", "Targówek", "Rembertów", "Wesoła", "Wawer", "Ursus", "Włochy",
+];
 
 export default function WelcomeGate() {
+  const { dict } = useLocale();
+  const wg = dict.welcomeGate;
   const [showGate, setShowGate] = useState(false);
   const [mode, setMode] = useState<"choice" | "form">("choice");
   const [loading, setLoading] = useState(false);
@@ -23,7 +28,7 @@ export default function WelcomeGate() {
 
   const formatNumber = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
-  const toggleSelection = (setter: any, current: string[], item: string) => {
+  const toggleSelection = (setter: React.Dispatch<React.SetStateAction<string[]>>, current: string[], item: string) => {
     if (current.includes(item)) setter(current.filter((i) => i !== item));
     else setter([...current, item]);
   };
@@ -32,7 +37,11 @@ export default function WelcomeGate() {
     if (!localStorage.getItem("luxestate_path_chosen")) setShowGate(true);
     else setCanClose(true);
 
-    const handleOpenGate = () => { setMode("form"); setShowGate(true); setCanClose(true); };
+    const handleOpenGate = () => {
+      setMode("form");
+      setShowGate(true);
+      setCanClose(true);
+    };
     window.addEventListener("open-welcome-gate", handleOpenGate);
     return () => window.removeEventListener("open-welcome-gate", handleOpenGate);
   }, []);
@@ -50,12 +59,12 @@ export default function WelcomeGate() {
       await fetch("/api/alerts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, phone, propertyType, district, maxPrice })
+        body: JSON.stringify({ email, phone, propertyType, district, maxPrice }),
       });
       localStorage.setItem("luxestate_user", email);
       localStorage.setItem("luxestate_path_chosen", "seeker");
       setShowGate(false);
-      window.location.reload(); 
+      window.location.reload();
     } catch (err) {
       console.error(err);
     } finally {
@@ -66,58 +75,141 @@ export default function WelcomeGate() {
   if (!showGate) return null;
 
   return (
-    // Allows free scroll on smaller laptop viewports
-    <div className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-3xl overflow-y-auto">
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-6 py-12 relative">
+    <div className="fixed inset-0 z-[999999] overflow-y-auto bg-[var(--eos-bg)]/95 backdrop-blur-3xl">
+      <div className="relative flex min-h-screen flex-col items-center justify-center p-4 py-12 md:p-6">
         {canClose && (
-          <button onClick={() => setShowGate(false)} className="absolute top-6 right-6 text-white/50 hover:text-white transition-colors z-50 p-2 bg-black/50 rounded-full cursor-pointer">
+          <button
+            type="button"
+            onClick={() => setShowGate(false)}
+            aria-label={wg.close}
+            className="absolute right-6 top-6 z-50 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+          >
             <X size={28} />
           </button>
         )}
 
         <AnimatePresence mode="wait">
           {mode === "choice" && (
-            <motion.div key="choice" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }} className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-6 my-auto">
-              <div onClick={() => setMode("form")} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-12 hover:bg-[#111] transition-all cursor-pointer group flex flex-col justify-center text-center items-center gap-6 min-h-[40vh] md:min-h-[50vh]">
-                <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Search size={32} className="text-white" /></div>
-                <div><h2 className="text-4xl font-bold tracking-tighter mb-4">I am looking <br/><span className="text-white/30 italic">for a place.</span></h2><p className="text-white/40">Set your preferences, create a free account, and be first.</p></div>
-              </div>
-              <div onClick={handleSellerPath} className="bg-white rounded-[3rem] p-12 hover:bg-gray-200 transition-all cursor-pointer group flex flex-col justify-center text-center items-center gap-6 min-h-[40vh] md:min-h-[50vh]">
-                <div className="w-20 h-20 bg-black/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Key size={32} className="text-black" /></div>
-                <div><h2 className="text-4xl font-bold tracking-tighter text-black mb-4">I am selling <br/><span className="text-black/30 italic">property.</span></h2><p className="text-black/50">List your property and reach premium clients.</p></div>
-              </div>
+            <motion.div
+              key="choice"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.05 }}
+              className="my-auto grid w-full max-w-5xl grid-cols-1 gap-6 md:grid-cols-2"
+            >
+              <button
+                type="button"
+                onClick={() => setMode("form")}
+                className="eos-surface-card flex min-h-[40vh] cursor-pointer flex-col items-center justify-center gap-6 rounded-[3rem] border border-[var(--eos-border)] p-12 text-center transition-all hover:border-[var(--eos-accent)]/30 md:min-h-[50vh]"
+              >
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--eos-input)] transition-transform group-hover:scale-110">
+                  <Search size={32} className="text-[var(--eos-text)]" />
+                </div>
+                <div>
+                  <h2 className="mb-4 text-4xl font-bold tracking-tighter text-[var(--eos-text)]">
+                    {wg.seekerTitle} <br />
+                    <span className="italic text-[var(--eos-muted)]">{wg.seekerTitleMuted}</span>
+                  </h2>
+                  <p className="text-[var(--eos-muted)]">{wg.seekerSubtitle}</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={handleSellerPath}
+                className="flex min-h-[40vh] cursor-pointer flex-col items-center justify-center gap-6 rounded-[3rem] border border-[var(--eos-border)] bg-[var(--eos-accent)] p-12 text-center transition-all hover:brightness-105 md:min-h-[50vh]"
+              >
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[var(--eos-contrast)]/10">
+                  <Key size={32} className="text-[var(--eos-contrast)]" />
+                </div>
+                <div>
+                  <h2 className="mb-4 text-4xl font-bold tracking-tighter text-[var(--eos-contrast)]">
+                    {wg.sellerTitle} <br />
+                    <span className="italic opacity-60">{wg.sellerTitleMuted}</span>
+                  </h2>
+                  <p className="text-[var(--eos-contrast)]/70">{wg.sellerSubtitle}</p>
+                </div>
+              </button>
             </motion.div>
           )}
 
           {mode === "form" && (
-            <motion.div key="form" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-3xl bg-[#050505] border border-white/10 rounded-[2.5rem] p-8 md:p-10 shadow-2xl my-auto" onClick={(e) => e.stopPropagation()}>
-              <h2 className="text-4xl md:text-5xl font-bold tracking-tighter mb-2">What are you <span className="text-white/30 italic">looking for?</span></h2>
-              <p className="text-white/40 mb-8 text-sm md:text-base">Submitting this form automatically creates your account. We will send your password by email.</p>
-              
+            <motion.div
+              key="form"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="eos-themed-modal eos-surface-card my-auto w-full max-w-3xl rounded-[2.5rem] border border-[var(--eos-border)] p-8 shadow-[var(--eos-shadow-strong)] md:p-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="mb-2 text-4xl font-bold tracking-tighter text-[var(--eos-text)] md:text-5xl">
+                {wg.formTitle} <span className="italic text-[var(--eos-muted)]">{wg.formTitleMuted}</span>
+              </h2>
+              <p className="mb-8 text-sm text-[var(--eos-muted)] md:text-base">{wg.formSubtitle}</p>
+
               <form onSubmit={handleSeekerSubmit} className="space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-[#111] p-4 rounded-2xl border border-white/5 focus-within:border-white/30 transition-colors">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-2">Your email *</label>
-                    <input type="email" required placeholder="john@example.com" className="w-full text-xl md:text-2xl bg-transparent outline-none text-white appearance-none" onChange={(e) => setEmail(e.target.value)} value={email} />
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 focus-within:border-[var(--eos-accent)]/40">
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                      {wg.emailLabel}
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="john@example.com"
+                      className="w-full appearance-none bg-transparent text-xl text-[var(--eos-text)] outline-none md:text-2xl"
+                      onChange={(e) => setEmail(e.target.value)}
+                      value={email}
+                    />
                   </div>
-                  <div className="bg-[#111] p-4 rounded-2xl border border-white/5 focus-within:border-white/30 transition-colors">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-2">Budget up to (PLN) *</label>
-                    <input type="text" required placeholder="e.g. 3 000 000" className="w-full text-xl md:text-2xl bg-transparent outline-none text-white appearance-none" onChange={(e) => setMaxPrice(formatNumber(e.target.value))} value={maxPrice} />
+                  <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 focus-within:border-[var(--eos-accent)]/40">
+                    <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                      {wg.budgetLabel}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="3 000 000"
+                      className="w-full appearance-none bg-transparent text-xl text-[var(--eos-text)] outline-none md:text-2xl"
+                      onChange={(e) => setMaxPrice(formatNumber(e.target.value))}
+                      value={maxPrice}
+                    />
                   </div>
                 </div>
 
-                <div className="bg-[#111] p-4 rounded-2xl border border-white/5 focus-within:border-white/30 transition-colors relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5"><Smartphone size={60} /></div>
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-2">Phone number (optional)</label>
-                  <input type="tel" placeholder="+48 XXX XXX XXX" className="w-full text-xl bg-transparent outline-none text-white appearance-none relative z-10" onChange={(e) => setPhone(e.target.value)} value={phone} />
-                  <p className="text-xs text-emerald-500/70 mt-2 font-medium flex items-center gap-1 relative z-10">We can also notify you by SMS about the most urgent listings.</p>
+                <div className="relative overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 focus-within:border-[var(--eos-accent)]/40">
+                  <div className="absolute right-0 top-0 p-4 opacity-10">
+                    <Smartphone size={60} />
+                  </div>
+                  <label className="relative z-10 mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    {wg.phoneLabel}
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="+48 ..."
+                    className="relative z-10 w-full appearance-none bg-transparent text-xl text-[var(--eos-text)] outline-none"
+                    onChange={(e) => setPhone(e.target.value)}
+                    value={phone}
+                  />
+                  <p className="relative z-10 mt-2 flex items-center gap-1 text-xs font-medium text-[var(--eos-accent)]">
+                    {wg.phoneHint}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">Property type (select multiple)</label>
+                  <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    {wg.propertyTypesLabel}
+                  </label>
                   <div className="flex flex-wrap gap-2">
-                    {propertyTypes.map(pt => (
-                      <button type="button" key={pt} onClick={() => toggleSelection(setPropertyType, propertyType, pt)} className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all cursor-pointer border ${propertyType.includes(pt) ? '!bg-white !text-black border-white' : 'bg-transparent text-white/50 border-white/10 hover:border-white/30'}`}>
+                    {propertyTypes.map((pt) => (
+                      <button
+                        type="button"
+                        key={pt}
+                        onClick={() => toggleSelection(setPropertyType, propertyType, pt)}
+                        className={`cursor-pointer rounded-full border px-5 py-2.5 text-sm font-bold transition-all ${
+                          propertyType.includes(pt)
+                            ? "border-[var(--eos-accent)] bg-[var(--eos-accent)] text-[var(--eos-contrast)]"
+                            : "border-[var(--eos-border)] bg-transparent text-[var(--eos-muted)] hover:border-[var(--eos-border-strong)]"
+                        }`}
+                      >
                         {pt}
                       </button>
                     ))}
@@ -125,21 +217,42 @@ export default function WelcomeGate() {
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] block mb-3">District (select multiple)</label>
-                  <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                    {districtsList.map(dist => (
-                      <button type="button" key={dist} onClick={() => toggleSelection(setDistrict, district, dist)} className={`px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer border ${district.includes(dist) ? '!bg-white !text-black border-white' : 'bg-[#111] text-white/60 border-transparent hover:border-white/20'}`}>
+                  <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    {wg.districtsLabel}
+                  </label>
+                  <div className="custom-scrollbar flex max-h-48 flex-wrap gap-2 overflow-y-auto pr-2">
+                    {districtsList.map((dist) => (
+                      <button
+                        type="button"
+                        key={dist}
+                        onClick={() => toggleSelection(setDistrict, district, dist)}
+                        className={`cursor-pointer rounded-full border px-4 py-2 text-xs font-bold transition-all ${
+                          district.includes(dist)
+                            ? "border-[var(--eos-accent)] bg-[var(--eos-accent)] text-[var(--eos-contrast)]"
+                            : "border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:border-[var(--eos-border-strong)]"
+                        }`}
+                      >
                         {dist}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="pt-4 flex flex-col md:flex-row gap-4 border-t border-white/10 mt-8">
-                   <button type="button" onClick={() => setMode("choice")} className="px-8 py-5 rounded-full font-bold !text-white/60 hover:!bg-white/10 transition-colors border border-white/10 cursor-pointer w-full md:w-auto">Back</button>
-                   <button type="submit" disabled={loading} className="flex-1 !bg-emerald-500 !text-black py-5 rounded-full font-bold text-xl hover:!bg-emerald-400 transition-colors flex justify-center items-center gap-2 cursor-pointer shadow-[0_0_30px_rgba(16,185,129,0.3)]">
-                     {loading ? <Loader2 className="animate-spin text-black" /> : "Create account and explore map"}
-                   </button>
+                <div className="mt-8 flex flex-col gap-4 border-t border-[var(--eos-border)] pt-4 md:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setMode("choice")}
+                    className="w-full cursor-pointer rounded-full border border-[var(--eos-border)] px-8 py-5 font-bold text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] md:w-auto"
+                  >
+                    {wg.back}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-[var(--eos-accent)] py-5 text-xl font-bold text-[var(--eos-contrast)] shadow-[0_0_30px_rgba(16,185,129,0.25)] transition-colors hover:brightness-105 disabled:opacity-60"
+                  >
+                    {loading ? <Loader2 className="animate-spin" /> : wg.submit}
+                  </button>
                 </div>
               </form>
             </motion.div>

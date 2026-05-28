@@ -1,23 +1,20 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
+import { getAuthedUserIdFromRequest } from '@/lib/sessionAuth';
 
-const prisma = new PrismaClient();
+export const dynamic = 'force-dynamic';
 
+/** Lista Deal Roomów zalogowanego użytkownika (nie przyjmuje userId z query — tylko sesja). */
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId');
-
+    const userId = await getAuthedUserIdFromRequest(req);
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
     }
 
     const deals = await prisma.deal.findMany({
       where: {
-        OR: [
-          { buyerId: parseInt(userId) },
-          { sellerId: parseInt(userId) }
-        ]
+        OR: [{ buyerId: userId }, { sellerId: userId }],
       },
       include: {
         offer: { select: { id: true, title: true, images: true, price: true, city: true } },
@@ -25,15 +22,16 @@ export async function GET(req: Request) {
         seller: { select: { id: true, name: true, image: true, email: true } },
         messages: {
           orderBy: { createdAt: 'desc' },
-          take: 1
-        }
+          take: 1,
+        },
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { updatedAt: 'desc' },
     });
 
     return NextResponse.json({ success: true, deals });
-  } catch (error: any) {
-    console.error('Błąd pobierania listy Deal Roomów:', error.message);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Błąd pobierania listy Deal Roomów:', message);
     return NextResponse.json({ success: false, error: 'Błąd serwera' }, { status: 500 });
   }
 }

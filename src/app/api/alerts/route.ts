@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
               <p style="margin: 10px 0; font-size: 16px;">E-mail: <strong style="color: #fff;">${body.email}</strong></p>
               <p style="margin: 10px 0; font-size: 16px;">Hasło: <strong style="color: #10b981;">${generatedPassword}</strong></p>
             </div>
-            <a href="http://nieruchomosci.mycloudnas.com/login" style="display: block; text-align: center; background-color: #fff; color: #000; text-decoration: none; padding: 18px 30px; border-radius: 50px; font-weight: bold; font-size: 16px;">Przejdź do Panelu ➔</a>
+            <a href="https://estateos.pl/login" style="display: block; text-align: center; background-color: #fff; color: #000; text-decoration: none; padding: 18px 30px; border-radius: 50px; font-weight: bold; font-size: 16px;">Przejdź do Panelu ➔</a>
           </div>
         `
       };

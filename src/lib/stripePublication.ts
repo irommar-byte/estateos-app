@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { buildPakietPlusUserUpdate } from "@/lib/mobileIapEntitlements";
 import { ensureMobileIapTables } from "@/lib/mobileIapTables";
 import { PAKIET_PLUS_PRODUCT_ID } from "@/lib/publicationConstants";
-import { activateOfferPublication } from "@/lib/offerPublication";
+import { stageOfferPublicationForReview } from "@/lib/offerPublication";
 
 export function stripeTransactionId(checkoutSessionId: string) {
   return `stripe_${String(checkoutSessionId).trim()}`;
@@ -87,7 +87,7 @@ export async function activateOfferFromStripeRenewal(params: {
     targetOfferId: params.offerId,
   });
 
-  return activateOfferPublication({
+  return stageOfferPublicationForReview({
     userId: params.userId,
     offerId: params.offerId,
     kind: "PLUS_PAID",

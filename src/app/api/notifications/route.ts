@@ -1,7 +1,10 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
+import { decryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
+import { getAuthedUserIdFromRequest } from '@/lib/sessionAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,14 +101,20 @@ export async function GET(req: Request) {
       .filter((n) => n.type === 'AI_RADAR' && !n.targetType && !n.targetId)
       .map((n) => parseRadarBody(n.body))
       .filter((h) => h.title);
-    const radarCandidates = radarHints.length
+    const radarCandidatesRaw = radarHints.length
       ? await prisma.offer.findMany({
           where: { status: 'ACTIVE' },
           orderBy: { createdAt: 'desc' },
           take: 400,
-          select: { id: true, title: true, price: true },
+          select: { id: true, title: true, price: true, status: true, expiresAt: true },
         })
       : [];
+    const radarPubIds = radarCandidatesRaw.length
+      ? await activePublicationOfferIds(radarCandidatesRaw.map((o) => Number(o.id)))
+      : new Set<number>();
+    const radarCandidates = radarCandidatesRaw.filter((o) =>
+      canShowOfferOnPublicMarket(o, radarPubIds),
+    );
 
     const formatted = notifications.map((n) => {
       const dealId = n.targetType === 'DEAL' ? Number(n.targetId) : null;
@@ -208,15 +217,21 @@ export async function PATCH(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const userId = await getAuthedUserIdFromRequest(req);
+    if (!userId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
+
     const { id } = await req.json().catch(() => ({}));
     if (!id) return NextResponse.json({ error: 'Brak ID' }, { status: 400 });
-    
-    await prisma.notification.update({
-      where: { id },
-      data: { readAt: new Date(), status: 'READ' }
+
+    const updated = await prisma.notification.updateMany({
+      where: { id: String(id), userId },
+      data: { readAt: new Date(), status: 'READ' },
     });
+    if (updated.count === 0) {
+      return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
+    }
     return NextResponse.json({ success: true });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: 'Błąd' }, { status: 500 });
   }
 }

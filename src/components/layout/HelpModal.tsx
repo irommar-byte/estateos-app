@@ -63,7 +63,7 @@ export default function HelpModal({ isOpen, onClose }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/85 p-3 backdrop-blur-3xl sm:p-6"
+        className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/70 p-3 backdrop-blur-3xl sm:p-6"
         onClick={onClose}
       >
         <motion.div
@@ -71,16 +71,16 @@ export default function HelpModal({ isOpen, onClose }: Props) {
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.98, y: 12 }}
           onClick={(e) => e.stopPropagation()}
-          className="relative my-4 flex w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#080808] shadow-[0_30px_100px_rgba(0,0,0,0.85)] sm:my-8 sm:max-h-[92vh]"
+          className="eos-themed-modal relative my-4 flex w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)] shadow-[var(--eos-shadow-strong)] sm:my-8 sm:max-h-[92vh]"
         >
           <div className="pointer-events-none absolute left-0 top-0 h-72 w-72 rounded-full bg-emerald-500/10 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-0 right-0 h-64 w-64 rounded-full bg-white/5 blur-[100px]" />
 
-          <header className="relative shrink-0 border-b border-white/5 px-6 py-6 sm:px-10 sm:py-8">
+          <header className="relative shrink-0 border-b border-[var(--eos-border)] px-6 py-6 sm:px-10 sm:py-8">
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-4 top-4 rounded-full p-2 text-white/40 transition-colors hover:bg-white/10 hover:text-white sm:right-6 sm:top-6"
+              className="absolute right-4 top-4 rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] sm:right-6 sm:top-6"
               aria-label="Close"
             >
               <X size={22} />
@@ -91,15 +91,15 @@ export default function HelpModal({ isOpen, onClose }: Props) {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-emerald-500/80">EstateOS™</p>
-                <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">{help.modalTitle}</h2>
-                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/45">{help.modalSubtitle}</p>
+                <h2 className="mt-1 text-2xl font-bold tracking-tight text-[var(--eos-text)] sm:text-3xl">{help.modalTitle}</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">{help.modalSubtitle}</p>
               </div>
             </div>
           </header>
 
           <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
-            <nav className="shrink-0 border-b border-white/5 bg-[#050505]/80 px-4 py-4 lg:w-56 lg:border-b-0 lg:border-r lg:py-6">
-              <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">{help.tocLabel}</p>
+            <nav className="shrink-0 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] px-4 py-4 lg:w-56 lg:border-b-0 lg:border-r lg:py-6">
+              <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-subtle)]">{help.tocLabel}</p>
               <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
                 {help.sections.map((section, i) => {
                   const Icon = ICONS[section.icon];
@@ -107,7 +107,7 @@ export default function HelpModal({ isOpen, onClose }: Props) {
                     <li key={section.id} className="shrink-0 lg:shrink">
                       <a
                         href={`#help-${section.id}`}
-                        className="flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-white/45 transition-colors hover:border-white/10 hover:bg-white/5 hover:text-white lg:text-[10px]"
+                        className="flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--eos-muted)] transition-colors hover:border-[var(--eos-border)] hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] lg:text-[10px]"
                       >
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
                           <Icon size={12} />
@@ -130,21 +130,21 @@ export default function HelpModal({ isOpen, onClose }: Props) {
                     <article
                       key={section.id}
                       id={`help-${section.id}`}
-                      className="scroll-mt-6 rounded-2xl border border-white/5 bg-gradient-to-br from-white/[0.04] to-transparent p-5 sm:p-7"
+                      className="scroll-mt-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-5 sm:p-7"
                     >
                       <div className="mb-4 flex items-start gap-4">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.12)]">
                           <Icon size={22} />
                         </div>
                         <div>
-                          <h3 className="text-lg font-bold text-white sm:text-xl">{section.title}</h3>
-                          <p className="mt-2 text-sm leading-relaxed text-white/50">{section.summary}</p>
+                          <h3 className="text-lg font-bold text-[var(--eos-text)] sm:text-xl">{section.title}</h3>
+                          <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">{section.summary}</p>
                         </div>
                       </div>
 
                       <ul className="ml-1 space-y-2.5 border-l border-emerald-500/20 pl-5">
                         {section.bullets.map((bullet) => (
-                          <li key={bullet} className="relative text-sm leading-relaxed text-white/65">
+                          <li key={bullet} className="relative text-sm leading-relaxed text-[var(--eos-text)]">
                             <span className="absolute -left-5 top-2 h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
                             {bullet}
                           </li>
@@ -158,7 +158,7 @@ export default function HelpModal({ isOpen, onClose }: Props) {
                               key={link.href}
                               href={link.href}
                               onClick={onClose}
-                              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white/70 transition-colors hover:border-emerald-500/40 hover:text-emerald-300"
+                              className="inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-text)] transition-colors hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)]"
                             >
                               {link.label}
                               <ChevronRight size={12} />
