@@ -27,14 +27,13 @@ import {
   normalizeText,
 } from "@/lib/location/locationCatalog";
 import {
-  AGENT_COMMISSION_MAX,
   AGENT_COMMISSION_MIN_NONZERO,
-  AGENT_COMMISSION_STEP,
 } from "@/lib/agentCommission";
 import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
 import { useFxRate } from "@/contexts/FxRateContext";
 import { convertBetweenCurrencies } from "@/lib/money/convert";
 import { formatApproxLine } from "@/lib/money/format";
+import AgentCommissionEditor from "@/components/offer/AgentCommissionEditor";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -1237,20 +1236,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                 {isAgentPublisher ? (
                   <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
-                    <label className={labelPremium}>Prowizja agenta (% od ceny oferty)</label>
+                    <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
                     <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                      Jak w aplikacji: 0% (bez prowizji) albo {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co {AGENT_COMMISSION_STEP}%.
+                      Jak w aplikacji: 0% (bez prowizji) albo od {AGENT_COMMISSION_MIN_NONZERO}% wzwyż.
                       Kwota prowizji jest informacją dla kupującego — rozliczenie poza platformą.
                     </p>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className={inputPremium}
-                      placeholder="np. 2,5 lub 0"
-                      value={data.agentCommissionPercent ?? ''}
-                      onChange={(e) =>
+                    <AgentCommissionEditor
+                      priceRaw={data.price || 0}
+                      percentValue={String(data.agentCommissionPercent ?? "")}
+                      onPercentChange={(value) =>
                         updateData({
-                          agentCommissionPercent: e.target.value.replace(/[^0-9.,]/g, ''),
+                          agentCommissionPercent: value,
                         })
                       }
                     />

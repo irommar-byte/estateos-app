@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AGENT_COMMISSION_DEFAULT_PERCENT,
-  AGENT_COMMISSION_MAX,
   AGENT_COMMISSION_MIN_NONZERO,
   AGENT_COMMISSION_STEP,
   AGENT_COMMISSION_ZERO_PERCENT,
@@ -74,9 +73,7 @@ export default function AgentCommissionEditor({
       onPercentChange("0");
       return;
     }
-    const snapped = roundToQuarter(
-      Math.min(AGENT_COMMISSION_MAX, Math.max(AGENT_COMMISSION_MIN_NONZERO, parsed)),
-    );
+    const snapped = roundToQuarter(Math.max(AGENT_COMMISSION_MIN_NONZERO, parsed));
     const next = String(snapped).replace(".", ",");
     setPercentDraft(next);
     setAmountDraft(String(computeAgentCommissionAmount(priceRaw, snapped)));
@@ -129,10 +126,7 @@ export default function AgentCommissionEditor({
       onPercentChange("0");
       return;
     }
-    const next = Math.min(
-      AGENT_COMMISSION_MAX,
-      Math.max(AGENT_COMMISSION_ZERO_PERCENT, Math.round((base + delta) * 4) / 4),
-    );
+    const next = Math.max(AGENT_COMMISSION_ZERO_PERCENT, Math.round((base + delta) * 4) / 4);
     const v = String(next).replace(".", ",");
     setPercentDraft(v);
     setAmountDraft(String(computeAgentCommissionAmount(priceRaw, next)));
@@ -144,9 +138,6 @@ export default function AgentCommissionEditor({
     <div className={`space-y-4 ${className}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Prowizja agenta</span>
-        <span className="text-[9px] font-black uppercase tracking-wider text-orange-400/90 border border-orange-500/30 rounded-full px-2 py-0.5">
-          max. {AGENT_COMMISSION_MAX}%
-        </span>
         <div className="flex rounded-full border border-white/10 overflow-hidden ml-auto">
           {(["percent", "amount"] as const).map((m) => (
             <button
@@ -166,10 +157,10 @@ export default function AgentCommissionEditor({
       <p className="text-xs text-zinc-400 leading-relaxed">
         <strong className="text-zinc-200">Cena ofertowa to ostateczna kwota brutto</strong> — nie podwyższamy jej o
         prowizję. Po transakcji kupujący z tej kwoty wypłaca agentowi uzgodnioną prowizję (od{" "}
-        {AGENT_COMMISSION_MIN_NONZERO}% do <strong className="text-zinc-200">maks. {AGENT_COMMISSION_MAX}%</strong>).
+        {AGENT_COMMISSION_MIN_NONZERO}% wzwyż).
         Prowizja jest <strong className="text-zinc-300">brutto</strong>, płatna bezpośrednio agentowi.
       </p>
-      {maxCommissionPln > 0 ? (
+      {Number.isFinite(maxCommissionPln) && maxCommissionPln > 0 ? (
         <p className="text-[10px] text-zinc-500">
           Przy tej cenie maks. kwota prowizji:{" "}
           <span className="text-orange-400/90">{formatPlnAmount(maxCommissionPln)}</span>
@@ -241,21 +232,20 @@ export default function AgentCommissionEditor({
                 ? formatPlnAmount(amountPreview)
                 : "—"
               : percentPreview !== null
-                ? formatPercentLabel(Math.min(AGENT_COMMISSION_MAX, Math.max(0, percentPreview)))
+                ? formatPercentLabel(Math.max(0, percentPreview))
                 : "—"}
           </p>
           <p className="text-xs text-zinc-500 mt-2">
             {mode === "amount"
               ? "Procent aktualizuje się na żywo; po zakończeniu edycji zaokrąglimy do 0,25%."
-              : "Kwota liczona z ceny ofertowej brutto (max. 10%)."}
+              : "Kwota liczona z ceny ofertowej brutto."}
           </p>
         </div>
       </div>
 
       {showWarning ? (
         <p className="text-xs text-red-400">
-          Dozwolone: 0% (bez prowizji) lub {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co{" "}
-          {AGENT_COMMISSION_STEP}%.
+          Dozwolone: 0% (bez prowizji) lub od {AGENT_COMMISSION_MIN_NONZERO}% co {AGENT_COMMISSION_STEP}%.
         </p>
       ) : null}
     </div>

@@ -4,7 +4,7 @@
  */
 
 export const AGENT_COMMISSION_MIN_NONZERO = 0.5;
-export const AGENT_COMMISSION_MAX = 10;
+export const AGENT_COMMISSION_MAX = Number.POSITIVE_INFINITY;
 export const AGENT_COMMISSION_STEP = 0.25;
 
 /** Kody błędów — spójne z deploy/BACKEND_AGENT_ERROR_CODES.md */
@@ -83,11 +83,11 @@ export function shouldWarnCommissionPercentDraft(
   const parsed = parseAgentCommissionPercent(raw);
   if (parsed === null) return true;
   if (parsed === 0) return false;
-  return parsed < AGENT_COMMISSION_MIN_NONZERO || parsed > AGENT_COMMISSION_MAX;
+  return parsed < AGENT_COMMISSION_MIN_NONZERO;
 }
 
 /**
- * Walidacja: dozwolone jest dokładnie **0%** albo wartości z zakresu **[0,5; 10]** co **0,25**.
+ * Walidacja: dozwolone jest dokładnie **0%** albo wartości od **0,5%** w górę, co **0,25**.
  */
 export function validateAgentCommissionPercent(raw: unknown): AgentCommissionValidation {
   const parsed = parseAgentCommissionPercent(raw);
@@ -95,7 +95,7 @@ export function validateAgentCommissionPercent(raw: unknown): AgentCommissionVal
     return {
       ok: false,
       code: AGENT_COMMISSION_ERROR_CODES.INVALID_TYPE,
-      message: "agentCommissionPercent musi być liczbą (0 albo 0,5–10).",
+      message: "agentCommissionPercent musi być liczbą (0 albo od 0,5 w górę).",
     };
   }
 
@@ -103,11 +103,11 @@ export function validateAgentCommissionPercent(raw: unknown): AgentCommissionVal
     return { ok: true, value: 0 };
   }
 
-  if (parsed < AGENT_COMMISSION_MIN_NONZERO - EPS || parsed > AGENT_COMMISSION_MAX + EPS) {
+  if (parsed < AGENT_COMMISSION_MIN_NONZERO - EPS) {
     return {
       ok: false,
       code: AGENT_COMMISSION_ERROR_CODES.OUT_OF_RANGE,
-      message: `Poza zakresem: dozwolone 0% (bez prowizji) lub ${AGENT_COMMISSION_MIN_NONZERO}–${AGENT_COMMISSION_MAX}% ceny ofertowej brutto (maks. 10%).`,
+      message: `Poza zakresem: dozwolone 0% (bez prowizji) lub od ${AGENT_COMMISSION_MIN_NONZERO}% ceny ofertowej brutto.`,
     };
   }
 
@@ -154,6 +154,7 @@ export function computeAgentCommissionAmount(priceRaw: unknown, percent: number 
 }
 
 export function maxAgentCommissionAmountPln(priceRaw: unknown): number {
+  if (!Number.isFinite(AGENT_COMMISSION_MAX)) return Number.NaN;
   return computeAgentCommissionAmount(priceRaw, AGENT_COMMISSION_MAX);
 }
 
@@ -167,7 +168,7 @@ export function percentFromCommissionAmount(
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
   if (amount === 0) return 0;
   let percent = roundToQuarter((amount / price) * 100);
-  if (options?.clampToMax && percent > AGENT_COMMISSION_MAX) {
+  if (options?.clampToMax && Number.isFinite(AGENT_COMMISSION_MAX) && percent > AGENT_COMMISSION_MAX) {
     percent = AGENT_COMMISSION_MAX;
   }
   return percent;
@@ -277,8 +278,8 @@ export function formatBuyerAgentCommissionLine(
       : "Brak prowizji agenta przy tej ofercie.";
   }
   return locale === "en"
-    ? `The listing price is the final gross amount (not increased). After the sale, the buyer pays ${info.amountLabel} (${info.percentLabel} of that price, max. 10%) as gross agent commission directly to the agent.`
-    : `Cena ofertowa to ostateczna kwota brutto — nie jest podwyższana. Po transakcji kupujący z tej kwoty wypłaca agentowi ${info.amountLabel} (${info.percentLabel}, max. 10% ceny) jako prowizję brutto, bezpośrednio poza platformą.`;
+    ? `The listing price is the final gross amount (not increased). After the sale, the buyer pays ${info.amountLabel} (${info.percentLabel} of that price) as gross agent commission directly to the agent.`
+    : `Cena ofertowa to ostateczna kwota brutto — nie jest podwyższana. Po transakcji kupujący z tej kwoty wypłaca agentowi ${info.amountLabel} (${info.percentLabel} ceny) jako prowizję brutto, bezpośrednio poza platformą.`;
 }
 
 export function resolveAgentCommissionPercentForSave(opts: {

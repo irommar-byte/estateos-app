@@ -572,6 +572,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </div>
                   </div>
                 )}
+                {!isLocked && agentCommissionLine ? (
+                  <div className="eos-offer-panel mb-8 px-4 py-3">
+                    <p className="text-sm text-[var(--eos-text)]">{agentCommissionLine}</p>
+                    <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
+                  </div>
+                ) : null}
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
@@ -691,7 +697,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         {agentCommissionLine ? (
                           <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
                         ) : null}
-                        <p className="eos-subtle-copy mt-2 text-[11px]">{t.listingPriceIncludesCommission}</p>
                       </>
                     ) : (
                       <p className="text-sm text-[var(--eos-text)]">{t.agentCommissionZero}</p>
