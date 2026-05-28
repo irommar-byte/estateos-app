@@ -36,10 +36,14 @@ import { convertBetweenCurrencies } from "@/lib/money/convert";
 import { formatApproxLine } from "@/lib/money/format";
 import AgentCommissionEditor from "@/components/offer/AgentCommissionEditor";
 import PublicationWalletPanel from "@/components/profile/PublicationWalletPanel";
-import PublicationChoiceModal, {
-  type PublicationRedemption,
-  type PublicationCouponOption,
-} from "@/components/publication/PublicationChoiceModal";
+import type { PublicationRedemption, PublicationCouponOption } from "@/components/publication/PublicationChoiceModal";
+import { buildAddOfferSummarySections } from "@/lib/addOfferSummary";
+import {
+  defaultPublicationSelection,
+  publicationSelectionLabel,
+  publicationSelectionToRedemption,
+  type PublicationSelection,
+} from "@/lib/publicationSelection";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -193,10 +197,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
   const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
-  const [isPublicationChoiceOpen, setIsPublicationChoiceOpen] = useState(false);
   const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
   const [walletPlusCredits, setWalletPlusCredits] = useState(0);
   const [walletHasPlusCredit, setWalletHasPlusCredit] = useState(false);
+  const [walletPlusExpiresAt, setWalletPlusExpiresAt] = useState<string | null>(null);
+  const [publicationSelection, setPublicationSelection] = useState<PublicationSelection | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
   
   const [uploadProgress, setUploadProgress] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle');
@@ -747,13 +753,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
     if (!canPublish) return;
     if (initialUser?.isLoggedIn) {
-      try {
-        await loadPublicationWallet();
-        setIsPublicationChoiceOpen(true);
-      } catch (e: unknown) {
-        setServerErrorMessage(e instanceof Error ? e.message : 'Nie udało się pobrać metod publikacji.');
+      if (!publicationSelection) {
+        setServerErrorMessage('Wybierz metodę publikacji: kupon, kredyt Plus lub zakup Pakietu Plus.');
         setActionModal('error');
+        return;
       }
+      const resolved = publicationSelectionToRedemption(publicationSelection);
+      if ('action' in resolved && resolved.action === 'buy_plus') {
+        await handlePlusPayment();
+        return;
+      }
+      await submitOfferWithRedemption(resolved as PublicationRedemption);
       return;
     }
     setIsSubmitting(true);
@@ -934,7 +944,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     } finally {
       setIsSubmitting(false);
       setUploadProgress('');
-      setIsPublicationChoiceOpen(false);
     }
   };
 
@@ -986,7 +995,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     isTechDone &&
     isMediaDone &&
     isContactDone &&
-    publishContactOk;
+    publishContactOk &&
+    (!initialUser?.isLoggedIn || Boolean(publicationSelection));
   const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
@@ -1074,14 +1084,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   const loadPublicationWallet = async () => {
-    const res = await fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.success) {
-      throw new Error(String(data?.error || data?.message || 'Nie udało się pobrać portfela publikacji.'));
+    setWalletLoading(true);
+    try {
+      const res = await fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(String(data?.error || data?.message || 'Nie udało się pobrać portfela publikacji.'));
+      }
+      const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+      setWalletCoupons(coupons);
+      setWalletPlusCredits(Number(data.plusCredits || 0));
+      setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
+      setWalletPlusExpiresAt(data.plusExpiresAt ? String(data.plusExpiresAt) : null);
+      setPublicationSelection((prev) =>
+        prev ??
+        defaultPublicationSelection({
+          couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+          hasPlusCredit: Boolean(data.hasPlusCredit),
+        }),
+      );
+    } finally {
+      setWalletLoading(false);
     }
-    setWalletCoupons(Array.isArray(data.publicationCoupons) ? data.publicationCoupons : []);
-    setWalletPlusCredits(Number(data.plusCredits || 0));
-    setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
   };
 
   const startPakietPlusCheckout = async () => {
@@ -1125,43 +1149,35 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
     transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-  const summaryFieldRows = Object.entries({
-    transactionType: data.transactionType === 'RENT' ? 'NA WYNAJEM' : 'NA SPRZEDAŻ',
-    propertyType: data.propertyType,
-    condition: data.condition,
-    title: String(data.title || '').trim(),
-    description: String(descriptionText || '').trim(),
-    price: String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '',
-    area: String(data.area || '').trim() ? `${String(data.area).trim()} m²` : '',
-    rooms: data.rooms,
-    floor: data.floor,
-    buildYear: data.buildYear,
-    plotArea: data.plotArea,
-    heating: data.heating,
-    furnished: data.isFurnished === true ? 'tak' : data.isFurnished === false ? 'nie' : '',
-    locationType: data.locationType,
-    address: data.address,
-    city: data.city,
-    district: data.district,
-    apartmentNumber: data.apartmentNumber,
-    landRegistryNumber: data.landRegistryNumber,
-    latitude: data.lat,
-    longitude: data.lng,
-    rent: String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '',
-    rentAdminFee: data.rentAdminFee,
-    deposit: data.deposit,
-    rentMinPeriod: data.rentMinPeriod,
-    rentAvailableFrom: data.rentAvailableFrom,
-    rentType: data.rentType,
-    petsAllowed: data.petsAllowed === true ? 'tak' : data.petsAllowed === false ? 'nie' : '',
-    agentCommissionPercent: String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'bez prowizji (0%)',
-    advertiserType: data.advertiserType === 'agency' ? 'agencja' : 'osoba prywatna',
-    agencyName: data.agencyName,
-    contactName: data.contactName,
-    contactPhone: data.contactPhone,
-    email: data.email,
-    amenities: Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : '',
-  }).filter(([, value]) => String(value ?? '').trim().length > 0);
+
+  const propertyTypeLabel = PROPERTY_TYPES.find((t) => t.id === data.propertyType)?.label;
+  const conditionLabel = CONDITION_TYPES.find((c) => c.id === data.condition)?.label;
+
+  const summarySections = useMemo(
+    () =>
+      buildAddOfferSummarySections({
+        ao,
+        data,
+        descriptionText,
+        propertyTypeLabel,
+        conditionLabel,
+      }),
+    [ao, data, descriptionText, propertyTypeLabel, conditionLabel],
+  );
+
+  useEffect(() => {
+    if (!initialUser?.isLoggedIn || currentStep !== totalSteps) return;
+    loadPublicationWallet().catch(() => {
+      // panel pokaże błąd ładowania
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUser?.isLoggedIn, currentStep, totalSteps]);
+
+  const publishButtonLabel = useMemo(() => {
+    if (!initialUser?.isLoggedIn) return 'ZAKOŃCZ I OPUBLIKUJ';
+    if (!publicationSelection) return 'WYBIERZ METODĘ PUBLIKACJI';
+    return publicationSelectionLabel(publicationSelection).toUpperCase();
+  }, [initialUser?.isLoggedIn, publicationSelection]);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -1853,7 +1869,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       Czynsz: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
                     </p>
                     <p className="text-white/60 mt-1">
-                      Prowizja: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'nie podano'}
+                      Prowizja: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'Bez prowizji (0%)'}
                     </p>
                   </div>
                 </div>
@@ -1880,21 +1896,43 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">Wszystkie wprowadzone parametry</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
-                    {summaryFieldRows.map(([key, value]) => (
-                      <div key={key} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                        <p className="text-white/40 uppercase tracking-wider text-[9px]">{key}</p>
-                        <p className="text-white/85 break-words">{String(value)}</p>
-                      </div>
-                    ))}
+                {summarySections.map((section) => (
+                  <div key={section.title} className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
+                    <p className="text-white/40 uppercase tracking-[0.18em] text-[10px] font-black mb-3">
+                      {section.title}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                      {section.rows.map((row) => (
+                        <div key={`${section.title}-${row.label}`} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2.5">
+                          <p className="text-white/45 text-[10px] font-semibold tracking-wide">{row.label}</p>
+                          <p className="text-white/90 break-words mt-1 leading-relaxed">{row.value}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
 
               {initialUser?.isLoggedIn ? (
-                <PublicationWalletPanel onBuyPlus={handlePlusPayment} buyingPlus={isProcessingPlus} />
+                <PublicationWalletPanel
+                  selectable
+                  selection={publicationSelection ?? undefined}
+                  onSelectionChange={setPublicationSelection}
+                  walletOverride={{
+                    coupons: walletCoupons.map((c) => ({
+                      id: c.id,
+                      kind: c.kind,
+                      title: c.title,
+                      subtitle: c.subtitle,
+                      pillLabel: c.pillLabel,
+                    })),
+                    plusCredits: walletPlusCredits,
+                    hasPlusCredit: walletHasPlusCredit,
+                    plusExpiresAt: walletPlusExpiresAt,
+                  }}
+                  onBuyPlus={handlePlusPayment}
+                  buyingPlus={isProcessingPlus || walletLoading}
+                />
               ) : null}
 
               {initialUser?.isLoggedIn && !publishContactOk ? (
@@ -1925,7 +1963,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               >
                 <span className="relative z-10 flex items-center gap-3 text-xl md:text-2xl font-black uppercase tracking-[0.2em]">
                   {isSubmitting ? <Loader2 className="animate-spin" size={28} /> : (!canPublish ? <Lock size={24} /> : <Crown size={32} className="group-hover:animate-bounce" />)}
-                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : (initialUser?.isLoggedIn ? 'WYBIERZ I OPUBLIKUJ' : 'ZAKOŃCZ I OPUBLIKUJ'))}
+                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : publishButtonLabel)}
                 </span>
               </button>
             </div>
@@ -2222,27 +2260,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         </div>
       )}
 
-      <PublicationChoiceModal
-        isOpen={isPublicationChoiceOpen}
-        onClose={() => setIsPublicationChoiceOpen(false)}
-        title="Wybierz metodę publikacji"
-        subtitle="Tak jak w aplikacji: kupon, kredyt Plus albo zakup Pakietu Plus."
-        coupons={walletCoupons}
-        hasPlusCredit={walletHasPlusCredit}
-        plusCredits={walletPlusCredits}
-        onConfirm={async (result) => {
-          if (result.action === "cancel") {
-            setIsPublicationChoiceOpen(false);
-            return;
-          }
-          if (result.action === "buy_plus") {
-            setIsPublicationChoiceOpen(false);
-            await handlePlusPayment();
-            return;
-          }
-          await submitOfferWithRedemption(result.redemption);
-        }}
-      />
     </main>
   );
 }

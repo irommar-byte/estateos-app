@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { Ticket, ShoppingBag, Sparkles, Gift, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2 } from "lucide-react";
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import type { PublicationSelection } from "@/lib/publicationSelection";
+import { defaultPublicationSelection } from "@/lib/publicationSelection";
 
 type WalletCoupon = {
   id: string;
@@ -22,18 +23,50 @@ type WalletData = {
   couponCount: number;
 };
 
+type WalletOverride = {
+  coupons: WalletCoupon[];
+  plusCredits: number;
+  hasPlusCredit: boolean;
+  plusExpiresAt?: string | null;
+};
+
 type Props = {
   onBuyPlus?: () => void;
   buyingPlus?: boolean;
+  /** Wybór metody publikacji na ekranie podsumowania (jak w aplikacji). */
+  selectable?: boolean;
+  selection?: PublicationSelection;
+  onSelectionChange?: (selection: PublicationSelection) => void;
+  /** Gdy podane — panel nie robi własnego fetchu (synchronizacja z formularzem). */
+  walletOverride?: WalletOverride | null;
 };
 
-export default function PublicationWalletPanel({ onBuyPlus, buyingPlus }: Props) {
+function SelectRing({ active }: { active: boolean }) {
+  return (
+    <div
+      className={`h-5 w-5 shrink-0 rounded-full border-2 transition-all ${
+        active ? "border-emerald-400 bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.55)]" : "border-white/25 bg-transparent"
+      }`}
+    >
+      {active ? <CheckCircle2 size={14} className="m-[1px] text-black" /> : null}
+    </div>
+  );
+}
+
+export default function PublicationWalletPanel({
+  onBuyPlus,
+  buyingPlus,
+  selectable = false,
+  selection,
+  onSelectionChange,
+  walletOverride,
+}: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
-  const [couponIndex, setCouponIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!walletOverride);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (walletOverride) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -42,149 +75,220 @@ export default function PublicationWalletPanel({ onBuyPlus, buyingPlus }: Props)
         const data = await res.json();
         if (data?.success) {
           setWallet(data);
-          setCouponIndex(0);
         } else {
           setWallet(null);
-          setLoadError(String(data?.error || data?.message || "Nie udało się załadować kuponów."));
+          setLoadError(String(data?.error || data?.message || "Nie udało się załadować portfela."));
         }
       } else {
         setWallet(null);
-        setLoadError("Nie udało się załadować kuponów (błąd HTTP).");
+        setLoadError("Nie udało się załadować portfela (błąd HTTP).");
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [walletOverride]);
 
   useEffect(() => {
+    if (walletOverride) {
+      setWallet({
+        plusCredits: walletOverride.plusCredits,
+        plusExpiresAt: walletOverride.plusExpiresAt ?? null,
+        hasPlusCredit: walletOverride.hasPlusCredit,
+        coupons: walletOverride.coupons,
+        couponCount: walletOverride.coupons.length,
+      });
+      setLoading(false);
+      setLoadError(null);
+      return;
+    }
     load();
-  }, [load]);
+  }, [load, walletOverride]);
 
   const coupons = wallet?.coupons ?? [];
-  const activeCoupon = coupons[couponIndex];
+  const hasPlusCredit = Boolean(wallet?.hasPlusCredit);
+  const plusCredits = Number(wallet?.plusCredits || 0);
 
   const expiryLabel =
     wallet?.plusExpiresAt && wallet.hasPlusCredit
       ? new Date(wallet.plusExpiresAt).toLocaleDateString("pl-PL")
       : null;
 
-  return (
-    <div className="mb-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
-      {/* Kupony */}
-      <div className="rounded-[2rem] border border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent p-6 shadow-xl">
-        <div className="mb-4 flex items-center gap-3">
-          <Ticket className="text-orange-400" size={20} />
-          <div>
-            <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">Kupony bonusowe</h3>
-            <p className="text-[10px] text-white/40 mt-1">
-              {loading ? "…" : `${wallet?.couponCount ?? 0} aktywnych kuponów`}
-            </p>
-          </div>
-        </div>
+  const resolvedSelection = useMemo((): PublicationSelection => {
+    if (selection) return selection;
+    return defaultPublicationSelection({
+      couponIds: coupons.map((c) => c.id),
+      hasPlusCredit,
+    });
+  }, [selection, coupons, hasPlusCredit]);
 
-        {loadError ? (
-          <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center text-xs text-red-200/90">
-            {loadError}
+  const pick = (next: PublicationSelection) => {
+    onSelectionChange?.(next);
+  };
+
+  if (!selectable) {
+    return (
+      <div className="mb-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-[2rem] border border-orange-500/20 bg-gradient-to-br from-orange-500/5 to-transparent p-6 shadow-xl">
+          <div className="mb-4 flex items-center gap-3">
+            <Ticket className="text-orange-400" size={20} />
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">Kupony bonusowe</h3>
+              <p className="mt-1 text-[10px] text-white/40">
+                {loading ? "…" : `${wallet?.couponCount ?? 0} aktywnych kuponów`}
+              </p>
+            </div>
+          </div>
+          {loadError ? (
+            <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center text-xs text-red-200/90">
+              {loadError}
+            </p>
+          ) : coupons.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-6 text-center text-xs text-white/35">
+              Brak aktywnych kuponów.
+            </p>
+          ) : (
+            <p className="rounded-2xl border border-white/10 bg-[#111] p-5 text-xs text-white/50">
+              {coupons[0]?.title}
+            </p>
+          )}
+        </div>
+        <div className="rounded-[2rem] border border-emerald-500/25 bg-gradient-to-br from-emerald-500/5 to-transparent p-6 shadow-xl">
+          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-white/35">Pakiet Plus</p>
+          <p className="text-sm font-bold text-emerald-400">
+            {hasPlusCredit ? `${plusCredits} publikacja Plus do wykorzystania` : "Brak aktywnego kredytu Plus"}
           </p>
-        ) : coupons.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-6 text-center text-xs text-white/35">
-            Brak aktywnych kuponów. Kupon powitalny pojawi się po rejestracji, jeśli nie został jeszcze wykorzystany.
-          </p>
-        ) : (
-          <>
-            <div className="rounded-2xl border border-white/10 bg-[#111] p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
-                  <Gift size={20} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-bold text-white">{activeCoupon?.title}</p>
-                    {activeCoupon?.pillLabel && (
-                      <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-blue-300">
-                        {activeCoupon.pillLabel}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-white/50">{activeCoupon?.subtitle}</p>
-                  {activeCoupon?.meta && (
-                    <p className="mt-2 text-[10px] font-medium text-emerald-400/80">{activeCoupon.meta}</p>
-                  )}
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-center gap-1 rounded-xl bg-emerald-500/10 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                Publikacja
+          {expiryLabel ? <p className="mt-1 text-xs text-white/45">Ważne do {expiryLabel}</p> : null}
+          <button
+            type="button"
+            disabled={buyingPlus}
+            onClick={onBuyPlus}
+            className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-left transition-all hover:border-emerald-400/50 disabled:opacity-60"
+          >
+            <ShoppingBag size={18} className="text-emerald-400" />
+            <span className="text-sm font-bold text-white">Kup Pakiet Plus</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-8">
+      <div className="mb-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">Metoda publikacji</p>
+        <p className="mt-1 text-sm text-white/50">
+          Wybierz kupon, wykorzystaj kredyt Plus lub opłać nową publikację — tak jak w aplikacji mobilnej.
+        </p>
+      </div>
+
+      {loadError ? (
+        <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-center text-xs text-red-200/90">
+          {loadError}
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {coupons.length > 0 && (
+            <div>
+              <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
+                <Ticket size={14} /> Kupony bonusowe
+              </p>
+              <div className="space-y-2">
+                {coupons.map((coupon) => {
+                  const active = resolvedSelection === `coupon:${coupon.id}`;
+                  return (
+                    <button
+                      key={coupon.id}
+                      type="button"
+                      onClick={() => pick(`coupon:${coupon.id}`)}
+                      className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
+                        active
+                          ? "border-orange-400/60 bg-orange-500/10 shadow-[0_0_24px_rgba(251,146,60,0.12)]"
+                          : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                      }`}
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-500/20 text-blue-400">
+                        <Gift size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-bold text-white">{coupon.title}</p>
+                          {coupon.pillLabel ? (
+                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-blue-300">
+                              {coupon.pillLabel}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-white/50">{coupon.subtitle}</p>
+                        {coupon.meta ? (
+                          <p className="mt-1 text-[10px] font-medium text-emerald-400/85">{coupon.meta}</p>
+                        ) : null}
+                      </div>
+                      <SelectRing active={active} />
+                    </button>
+                  );
+                })}
               </div>
             </div>
-            {coupons.length > 1 && (
-              <div className="mt-4 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setCouponIndex((i) => (i === 0 ? coupons.length - 1 : i - 1))}
-                  className="rounded-full p-2 text-white/40 hover:bg-white/10 hover:text-white"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <span className="text-[10px] font-bold text-white/40">
-                  {couponIndex + 1} / {coupons.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCouponIndex((i) => (i + 1) % coupons.length)}
-                  className="rounded-full p-2 text-white/40 hover:bg-white/10 hover:text-white"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+          )}
 
-      {/* Pakiet Plus */}
-      <div className="rounded-[2rem] border border-emerald-500/25 bg-gradient-to-br from-emerald-500/5 to-transparent p-6 shadow-xl">
-        <p className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-white/35">Pakiet Plus</p>
-        <div className="flex items-start gap-4">
-          <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
-            <span className="text-2xl font-black text-emerald-400 tabular-nums">
-              {wallet?.hasPlusCredit ? wallet.plusCredits : 0}
-            </span>
-            <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500/70">Plus</span>
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-emerald-400">
-              {wallet?.hasPlusCredit
-                ? `${wallet.plusCredits} publikacja Plus do wykorzystania`
-                : "Brak aktywnego kredytu Plus"}
+          <div>
+            <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+              <Sparkles size={14} /> Pakiet Plus
             </p>
-            {expiryLabel && (
-              <p className="mt-1 text-xs text-white/45">Ważne do {expiryLabel}</p>
-            )}
-            <p className="mt-2 text-[10px] leading-relaxed text-white/35">
-              Pakiet Plus ({PAKIET_PLUS_PRICE_LABEL}) opłaca jedną publikację na {PUBLICATION_DURATION_DAYS} dni na
-              szerokim rynku. Nie jest to abonament ani „slot”.
-            </p>
+            <div className="space-y-2">
+              {hasPlusCredit ? (
+                <button
+                  type="button"
+                  onClick={() => pick("plus_credit")}
+                  className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
+                    resolvedSelection === "plus_credit"
+                      ? "border-emerald-400/60 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
+                      : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                  }`}
+                >
+                  <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
+                    <span className="text-xl font-black text-emerald-400 tabular-nums">{plusCredits}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500/70">Plus</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-white">Użyj kredytu Plus</p>
+                    <p className="mt-1 text-xs text-white/45">
+                      {plusCredits} publikacja do wykorzystania · {PUBLICATION_DURATION_DAYS} dni na rynku
+                      {expiryLabel ? ` · ważne do ${expiryLabel}` : ""}
+                    </p>
+                  </div>
+                  <SelectRing active={resolvedSelection === "plus_credit"} />
+                </button>
+              ) : (
+                <p className="rounded-2xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-xs text-white/40">
+                  Brak aktywnego kredytu Plus na koncie.
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => pick("buy_plus")}
+                className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
+                  resolvedSelection === "buy_plus"
+                    ? "border-emerald-400/60 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
+                    : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                }`}
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                  <ShoppingBag size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white">Kup Pakiet Plus</p>
+                  <p className="mt-1 text-xs text-white/45">
+                    Opłać 1 dodatkowe wystawienie ({PAKIET_PLUS_PRICE_LABEL}) — kredyt pojawi się na koncie po płatności
+                  </p>
+                </div>
+                <SelectRing active={resolvedSelection === "buy_plus"} />
+              </button>
+            </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          disabled={buyingPlus}
-          onClick={onBuyPlus}
-          className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-left transition-all hover:border-emerald-400/50 hover:bg-emerald-500/15 disabled:opacity-60"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white">
-            <ShoppingBag size={18} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-white">Kup Pakiet Plus</p>
-            <p className="text-xs text-white/45">
-              Opłać 1 dodatkowe wystawienie ({PAKIET_PLUS_PRICE_LABEL}) — kredyt pojawi się na koncie po płatności
-            </p>
-          </div>
-          <Sparkles size={18} className="text-emerald-400" />
-        </button>
-      </div>
+      )}
     </div>
   );
 }
