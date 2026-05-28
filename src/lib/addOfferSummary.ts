@@ -1,4 +1,5 @@
 import type { AddOfferDictionary } from "@/i18n/addOfferDictionary";
+import { formatOfferLocationLine } from "@/lib/offerLocationDisplay";
 
 export type SummaryRow = { label: string; value: string };
 export type SummarySection = { title: string; rows: SummaryRow[] };
@@ -46,9 +47,17 @@ export function buildAddOfferSummarySections(input: {
     row("Opis", descriptionText),
   ].filter(Boolean) as SummaryRow[];
 
+  const locationLine = formatOfferLocationLine({
+    address: data.address,
+    street: data.street,
+    city: data.city,
+    district: data.district,
+  });
+
   const locationRows = [
+    row("Lokalizacja", locationLine),
     row("Widoczność na mapie", formatLocationType(data.locationType)),
-    row("Adres", data.address),
+    row("Ulica i numer", data.street || data.address),
     row("Miasto", data.city),
     row("Dzielnica", data.district),
     row("Nr mieszkania", data.apartmentNumber),

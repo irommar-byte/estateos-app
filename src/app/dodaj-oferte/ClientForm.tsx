@@ -44,6 +44,11 @@ import {
   publicationSelectionToRedemption,
   type PublicationSelection,
 } from "@/lib/publicationSelection";
+import {
+  addressMentionsOtherCity,
+  formatOfferLocationLine,
+  formatShortStreetFromMapboxFeature,
+} from "@/lib/offerLocationDisplay";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -369,21 +374,24 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
       setData((prev: any) => {
         const reverseCity = reverse.city || prev.city;
-        const districtFallback =
-          reverse.district ||
-          pickDistrictFromText(reverseCity, reverse.addressLabel || fallbackAddress || prev.address, reverse.districtOptions);
-        const shouldKeepPrevDistrict = !reverse.strictCity;
-        const nextDistrict = districtFallback || (shouldKeepPrevDistrict ? (prev.district || "") : "");
+        const streetLine =
+          String(reverse.street || "").trim() ||
+          String(fallbackAddress || "").trim() ||
+          String(prev.address || "").split(",")[0]?.trim() ||
+          "";
+        const nextDistrict = reverse.strictCity
+          ? String(reverse.district || "").trim()
+          : String(reverse.district || prev.district || "").trim();
 
-        return ({
-        ...prev,
-        lat,
-        lng,
-        city: reverseCity,
-        district: nextDistrict,
-        address: reverse.addressLabel || fallbackAddress || prev.address,
-        street: reverse.street ?? prev.street ?? null,
-      });
+        return {
+          ...prev,
+          lat,
+          lng,
+          city: reverseCity,
+          district: nextDistrict,
+          address: streetLine,
+          street: streetLine,
+        };
       });
     } catch {
       // no-op, manual selection still available
@@ -394,6 +402,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
     const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
+    const shortStreet = formatShortStreetFromMapboxFeature(feature);
 
     const cityFromFeature = inferCityFromMapboxFeature(feature);
     const cityCanon = canonicalizeCity(cityFromFeature) || canonicalizeCity(data.city) || data.city;
@@ -406,17 +415,20 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       districtGuess ||
       (locationCatalog.strictCities?.includes(cityCanon) ? "" : data.district);
 
+    lastGeocodedAddressRef.current = shortStreet;
     updateData({
-      address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
+      address: shortStreet,
+      street: shortStreet,
       lng: nextLng,
       lat: nextLat,
       ...(cityCanon ? { city: cityCanon } : {}),
       ...(cityCanon ? { district: nextDistrictValue } : {}),
     });
     setAddressSuggestions([]);
+    setAddressError("");
 
     if (nextLat && nextLng) {
-      void resolveLocationFromCoordinates(nextLat, nextLng, feature?.place_name_pl || feature?.place_name || feature?.text);
+      void resolveLocationFromCoordinates(nextLat, nextLng, shortStreet);
     }
   };
 
@@ -468,7 +480,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const handleGenerateAI = async () => {
     setIsGeneratingAI(true);
     try {
-      const hint = `${data.propertyType || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
+      const hint = `${propertyTypeLabel || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
       const generated = `Przedstawiamy wyjątkową ofertę: ${hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.`;
       updateData({ description: generated });
       if (editorRef.current) editorRef.current.innerHTML = generated;
@@ -951,6 +963,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isTypeSelected = !!data.propertyType;
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
+  const locationAddressConflict = addressMentionsOtherCity(data.address, data.city);
+  const locationDisplayLine = formatOfferLocationLine({
+    address: data.address,
+    street: data.street,
+    city: data.city,
+    district: data.district,
+  });
   const districtRequirementMet = isStrictCity ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
@@ -962,7 +981,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     districtRequirementMet &&
     !addressError &&
     hasBuildingNumber &&
+    !locationAddressConflict &&
     landRegistryValid;
+
+  const propertyTypeLabel = PROPERTY_TYPES.find((t) => t.id === data.propertyType)?.label;
+  const conditionLabel = CONDITION_TYPES.find((c) => c.id === data.condition)?.label;
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
   const cleanArea = String(data.area || '').replace(/[^0-9.]/g, "");
@@ -1069,7 +1092,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       propertyType: data.propertyType,
       condition: dbCondition,
       description: finalDesc,
-      title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
+      title: data.title || `${propertyTypeLabel || data.propertyType} - ${data.district || data.city || 'Polska'}`,
       price: cleanPriceValue,
       priceCurrency: data.priceCurrency || 'PLN',
       area: String(data.area).replace(',', '.'),
@@ -1149,9 +1172,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
     transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
-
-  const propertyTypeLabel = PROPERTY_TYPES.find((t) => t.id === data.propertyType)?.label;
-  const conditionLabel = CONDITION_TYPES.find((c) => c.id === data.condition)?.label;
 
   const summarySections = useMemo(
     () =>
@@ -1328,6 +1348,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     {data.address && !hasBuildingNumber && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {ao.buildingNumberRequired}</motion.div>
                     )}
+                    {locationAddressConflict && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1">
+                        <AlertCircle size={14} /> Adres wskazuje inne miasto niż wybrane. Wybierz adres z listy podpowiedzi lub zmień miasto.
+                      </motion.div>
+                    )}
                     {addressSuggestions.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 overflow-hidden divide-y divide-white/5">
                         {addressSuggestions.map((f, i) => (
@@ -1342,7 +1367,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={labelPremium}>{ao.city}</label>
-                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || ''} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
+                      <select
+                        className={`${inputPremium} appearance-none cursor-pointer text-sm`}
+                        value={data.city || ''}
+                        onChange={(e) => {
+                          const newCity = e.target.value;
+                          const patch: Record<string, unknown> = { city: newCity, district: "" };
+                          if (data.address && addressMentionsOtherCity(data.address, newCity)) {
+                            patch.address = "";
+                            patch.street = "";
+                            patch.lat = null;
+                            patch.lng = null;
+                          }
+                          updateData(patch);
+                        }}
+                      >
                         {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
                       </select>
                     </div>
@@ -1365,6 +1404,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       )}
                     </div>
                   </div>
+
+                  {data.city && data.address ? (
+                    <p className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/55">
+                      <span className="font-black uppercase tracking-widest text-[9px] text-emerald-400/90">Podgląd lokalizacji · </span>
+                      {locationDisplayLine}
+                    </p>
+                  ) : null}
 
                   <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 md:p-5">
                     <div className="mb-3 flex items-center gap-2">
@@ -1836,7 +1882,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
                     <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ / Transakcja</p>
                     <p className="text-white font-semibold">
-                      {(data.propertyType || '-')} / {(data.transactionType === 'RENT' ? 'NA WYNAJEM' : 'NA SPRZEDAŻ')}
+                      {propertyTypeLabel || '—'} / {data.transactionType === 'RENT' ? ao.rent : ao.sell}
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
@@ -1849,7 +1895,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
                     <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Lokalizacja</p>
-                    <p className="text-white font-semibold">{[data.city, data.district, data.address].filter(Boolean).join(', ') || '-'}</p>
+                    <p className="text-white font-semibold">{locationDisplayLine}</p>
                   </div>
                 </div>
 
