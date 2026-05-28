@@ -4,6 +4,12 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, OfferValidationError, updateOffer } from '@/lib/services/offer.service';
+import {
+  assertContactVerified,
+  contactVerificationJson,
+  loadUserForContactVerification,
+  PUBLISH_CONTACT_REQUIREMENTS,
+} from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -17,10 +23,11 @@ import {
   toPublicOfferErrorMessage,
 } from '@/lib/offerSchemaErrors';
 import {
-  activateOfferPublication,
   activePublicationOfferIds,
   getPublicationQuote,
+  stageOfferPublicationForReview,
 } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -115,7 +122,9 @@ export async function GET(req: Request) {
     const visibleOffers =
       publicVisibleIds === null
         ? offers
-        : offers.filter((offer: any) => publicVisibleIds.has(Number(offer.id)));
+        : offers.filter((offer: any) =>
+            canShowOfferOnPublicMarket(offer, publicVisibleIds),
+          );
 
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
@@ -171,6 +180,11 @@ export async function POST(req: Request) {
     if (!Number.isFinite(bodyUserId) || bodyUserId <= 0 || bodyUserId !== authUserId) {
       return NextResponse.json({ success: false, message: 'Błędny użytkownik w żądaniu.' }, { status: 403 });
     }
+
+    const publisher = await loadUserForContactVerification(authUserId);
+    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
+    if (!publishGate.ok) return contactVerificationJson(publishGate);
+
     cleanupIdempotencyMap();
 
     const reqId = String(body?.clientRequestId || '').trim();
@@ -240,21 +254,22 @@ export async function POST(req: Request) {
                 ? 'PLUS_PAID'
                 : 'PLUS_CREDIT';
 
-    const activation = await activateOfferPublication({
+    const staged = await stageOfferPublicationForReview({
       userId: authUserId,
       offerId: Number(offer.id),
       kind: activationKind,
+      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
 
     return NextResponse.json({
       success: true,
-      offer: { ...offer, status: 'ACTIVE', expiresAt: activation.endsAt.toISOString() },
+      offer: { ...offer, status: staged.status },
+      awaitingModeration: true,
       publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+        status: staged.status,
+        kind: staged.kind,
       },
     });
   } catch (e: unknown) {

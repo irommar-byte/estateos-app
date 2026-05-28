@@ -876,6 +876,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
   const submitOfferWithRedemption = async (redemption: PublicationRedemption) => {
     if (isSubmitting) return;
+    if (addressMentionsOtherCity(data.address, data.city)) {
+      setServerErrorMessage('Adres wskazuje inne miasto niż wybrane w formularzu. Popraw lokalizację na mapie.');
+      setErrorFieldTarget(null);
+      setActionModal('error');
+      return;
+    }
     setIsSubmitting(true);
     setUploadProgress('Tworzenie oferty...');
     try {
@@ -2086,7 +2092,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <>
                   <div className="w-24 h-24 bg-[#10b981]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#10b981]/30 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><CheckCircle className="text-[#10b981]" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">Gotowe!</h2>
-                  <p className="text-zinc-400 mb-8 leading-relaxed">Ekskluzywna oferta została dodana do bazy i oczekuje na weryfikację.</p>
+                  <p className="text-zinc-400 mb-8 leading-relaxed">
+                    Oferta została zapisana i przesłana do akceptacji EstateOS™. Do czasu zatwierdzenia nie pojawi się na mapie ani na rynku — zobaczysz ją w zakładce „Oczekujące” w panelu.
+                  </p>
                   <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Panel Zarządzania</button>
                 </>
               )}

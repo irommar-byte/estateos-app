@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
-import { getPasskeyOrigin, getPasskeyRpId } from '@/lib/env.server';
+import { getPasskeyExpectedOrigins, getPasskeyRpId } from '@/lib/env.server';
 
 export async function POST(req: Request) {
     try {
@@ -23,17 +23,10 @@ export async function POST(req: Request) {
         const user = await prisma.user.findUnique({ where: { email: session.email }});
         if (!user) return NextResponse.json({ error: "Nie znaleziono użytkownika" }, { status: 404 });
 
-        const configuredOrigin = String(getPasskeyOrigin() || '').replace(/\/$/, '');
-        const expectedOrigin =
-          configuredOrigin ||
-          (process.env.NODE_ENV === 'production'
-            ? ['https://estateos.pl', 'https://www.estateos.pl']
-            : 'http://localhost:3000');
-
         const verification = await verifyRegistrationResponse({
             response: body,
             expectedChallenge,
-            expectedOrigin,
+            expectedOrigin: getPasskeyExpectedOrigins(),
             expectedRPID: getPasskeyRpId(),
         });
 

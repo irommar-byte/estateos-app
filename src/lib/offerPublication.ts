@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ensureOfferPendingPublicationColumns } from '@/lib/offerPendingPublication';
 
 const PUBLICATION_DURATION_DAYS = 30;
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
@@ -288,6 +289,170 @@ export async function getCreatePublicationQuote(params: {
   };
 }
 
+async function consumePublicationEntitlementInTx(
+  tx: any,
+  params: {
+    userId: number;
+    offerId: number;
+    kind: PublicationKind;
+    iapTransactionId?: string | null;
+    iapProductId?: string | null;
+    consumeFreeFirst?: boolean;
+  },
+) {
+  const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
+  const iapProductId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
+
+  if (params.kind === 'PLUS_PAID') {
+    if (!txId) throw new Error('IAP_TRANSACTION_REQUIRED');
+    const consume = await tx.$executeRawUnsafe(
+      `
+          UPDATE MobileIapPurchase
+          SET consumedAt = COALESCE(consumedAt, NOW(3)),
+              offerId = ?,
+              verifyStatus = 'VERIFIED'
+          WHERE userId = ?
+            AND transactionId = ?
+            AND productId = ?
+            AND consumedAt IS NULL
+            AND verifyStatus = 'VERIFIED'
+        `,
+      params.offerId,
+      params.userId,
+      txId,
+      iapProductId,
+    );
+    if (Number(consume || 0) < 1) {
+      throw new Error('IAP_TRANSACTION_NOT_AVAILABLE');
+    }
+  } else if (params.kind === 'PLUS_CREDIT') {
+    const consumeCredit = await tx.$executeRawUnsafe(
+      `
+          UPDATE \`User\`
+          SET extraListings = GREATEST(0, extraListings - 1)
+          WHERE id = ?
+            AND extraListings > 0
+            AND plusExpiresAt IS NOT NULL
+            AND plusExpiresAt > NOW(3)
+        `,
+      params.userId,
+    );
+    if (Number(consumeCredit || 0) < 1) {
+      throw new Error('NO_PLUS_CREDIT_AVAILABLE');
+    }
+  }
+
+  if (params.consumeFreeFirst && params.kind === 'FREE_FIRST') {
+    await tx.$executeRawUnsafe(
+      'UPDATE `User` SET firstFreePublicationUsed = 1 WHERE id = ?',
+      params.userId,
+    );
+  }
+}
+
+async function writePendingPublicationInTx(
+  tx: any,
+  params: {
+    offerId: number;
+    kind: PublicationKind;
+    bonusCouponId?: string | null;
+    iapTransactionId?: string | null;
+  },
+) {
+  await ensureOfferPendingPublicationColumns();
+  await tx.$executeRawUnsafe(
+    `
+      UPDATE \`Offer\`
+      SET pendingPublicationKind = ?,
+          pendingBonusCouponId = ?,
+          pendingIapTransactionId = ?,
+          pendingPublicationCreatedAt = NOW(3)
+      WHERE id = ?
+    `,
+    params.kind,
+    params.bonusCouponId ? String(params.bonusCouponId).slice(0, 64) : null,
+    params.iapTransactionId ? String(params.iapTransactionId).slice(0, 128) : null,
+    params.offerId,
+  );
+}
+
+/**
+ * Rezerwuje płatność / kredyt i zapisuje oczekującą publikację.
+ * Oferta pozostaje PENDING do akceptacji w panelu admina (wtedy activateOfferPublication).
+ */
+export async function stageOfferPublicationForReview(params: {
+  userId: number;
+  offerId: number;
+  kind: PublicationKind;
+  bonusCouponId?: string | null;
+  iapTransactionId?: string | null;
+  iapProductId?: string | null;
+  db?: DbClient;
+}) {
+  const db = asDb(params.db);
+  await ensureOfferPublicationSchema();
+
+  const offer = await readOfferOwnership(db, params.offerId);
+  if (!offer || offer.userId !== params.userId) throw new Error('OFFER_NOT_FOUND_OR_FORBIDDEN');
+  const alreadyActive = await activePublicationForOffer(db, params.offerId);
+  if (alreadyActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
+
+  const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
+  if (params.kind === 'PLUS_PAID' && !txId) {
+    throw new Error('IAP_TRANSACTION_REQUIRED');
+  }
+
+  return db.$transaction(async (tx: any) => {
+    const concurrentActive = await activePublicationForOffer(tx, params.offerId);
+    if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
+
+    if (params.kind === 'PLUS_CREDIT') {
+      const userRows = (await tx.$queryRawUnsafe(
+        'SELECT extraListings, plusExpiresAt FROM `User` WHERE id = ? LIMIT 1',
+        params.userId,
+      )) as Array<{ extraListings: number | null; plusExpiresAt: Date | string | null }>;
+      if (!hasPlusCreditOnUser(userRows[0] || {})) {
+        throw new Error('NO_PLUS_CREDIT_AVAILABLE');
+      }
+    }
+
+    if (params.kind === 'PLUS_PAID') {
+      const iapProductId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
+      const rows = (await tx.$queryRawUnsafe(
+        `
+          SELECT id FROM MobileIapPurchase
+          WHERE userId = ? AND transactionId = ? AND productId = ?
+            AND consumedAt IS NULL AND verifyStatus = 'VERIFIED'
+          LIMIT 1
+        `,
+        params.userId,
+        txId,
+        iapProductId,
+      )) as Array<{ id: unknown }>;
+      if (!rows.length) throw new Error('IAP_TRANSACTION_NOT_AVAILABLE');
+    }
+
+    await writePendingPublicationInTx(tx, {
+      offerId: params.offerId,
+      kind: params.kind,
+      bonusCouponId: params.bonusCouponId,
+      iapTransactionId: txId,
+    });
+
+    await tx.offer.update({
+      where: { id: params.offerId },
+      data: { status: 'PENDING', updatedAt: new Date() },
+    });
+
+    return {
+      offerId: params.offerId,
+      status: 'PENDING' as const,
+      kind: params.kind,
+      awaitingModeration: true,
+    };
+  });
+}
+
 export async function activateOfferPublication(params: {
   userId: number;
   offerId: number;
@@ -318,43 +483,14 @@ export async function activateOfferPublication(params: {
     const concurrentActive = await activePublicationForOffer(tx, params.offerId);
     if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
-    if (params.kind === 'PLUS_PAID') {
-      const consume = await tx.$executeRawUnsafe(
-        `
-          UPDATE MobileIapPurchase
-          SET consumedAt = COALESCE(consumedAt, NOW(3)),
-              offerId = ?,
-              verifyStatus = 'VERIFIED'
-          WHERE userId = ?
-            AND transactionId = ?
-            AND productId = ?
-            AND consumedAt IS NULL
-            AND verifyStatus = 'VERIFIED'
-        `,
-        params.offerId,
-        params.userId,
-        txId,
-        iapProductId
-      );
-      if (Number(consume || 0) < 1) {
-        throw new Error('IAP_TRANSACTION_NOT_AVAILABLE');
-      }
-    } else if (params.kind === 'PLUS_CREDIT') {
-      const consumeCredit = await tx.$executeRawUnsafe(
-        `
-          UPDATE \`User\`
-          SET extraListings = GREATEST(0, extraListings - 1)
-          WHERE id = ?
-            AND extraListings > 0
-            AND plusExpiresAt IS NOT NULL
-            AND plusExpiresAt > NOW(3)
-        `,
-        params.userId
-      );
-      if (Number(consumeCredit || 0) < 1) {
-        throw new Error('NO_PLUS_CREDIT_AVAILABLE');
-      }
-    }
+    await consumePublicationEntitlementInTx(tx, {
+      userId: params.userId,
+      offerId: params.offerId,
+      kind: params.kind,
+      iapTransactionId: params.iapTransactionId,
+      iapProductId: params.iapProductId,
+      consumeFreeFirst: true,
+    });
 
     await tx.$executeRawUnsafe(
       `
@@ -375,13 +511,6 @@ export async function activateOfferPublication(params: {
       where: { id: params.offerId },
       data: { status: 'ACTIVE', expiresAt: endsAt, updatedAt: new Date() },
     });
-
-    if (params.kind === 'FREE_FIRST') {
-      await tx.$executeRawUnsafe(
-        'UPDATE `User` SET firstFreePublicationUsed = 1 WHERE id = ?',
-        params.userId
-      );
-    }
 
     const publication = await activePublicationForOffer(tx, params.offerId);
     return {

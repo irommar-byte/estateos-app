@@ -557,6 +557,28 @@ html.light .premium-home-shell h2 {
   color: var(--eos-text) !important;
 }
 
+@keyframes featured-deal-room-blink {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 22px rgba(249, 115, 22, 0.45);
+  }
+  50% {
+    opacity: 0.72;
+    box-shadow: 0 0 32px rgba(249, 115, 22, 0.75);
+  }
+}
+
+.featured-deal-room-badge {
+  animation: featured-deal-room-blink 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .featured-deal-room-badge {
+    animation: none;
+  }
+}
+
 html.light .mapboxgl-map {
   filter: saturate(0.92) brightness(1.08);
 }
@@ -647,6 +669,13 @@ html.light .theme-aware-dashboard {
     radial-gradient(circle at 18% 0%, rgba(16, 185, 129, 0.1), transparent 34%),
     linear-gradient(180deg, #f5f7fb 0%, #ffffff 46%, #eef2f7 100%) !important;
   color: var(--eos-text) !important;
+}
+
+/* Passkey toggle — własna paleta, bez globalnych nadpisań CRM */
+html.light .theme-aware-dashboard .eos-passkey-toggle,
+html.light .theme-aware-dashboard .eos-passkey-toggle h3,
+html.light .theme-aware-dashboard .eos-passkey-toggle p {
+  color: inherit;
 }
 
 html.light .theme-aware-dashboard .text-white,

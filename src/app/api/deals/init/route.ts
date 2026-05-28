@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import {
+  assertContactVerified,
+  BUYER_CONTACT_REQUIREMENTS,
+  contactVerificationJson,
+  loadUserForContactVerification,
+} from '@/lib/contactVerification';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 // Pomocnicza funkcja do wyciągania ID użytkownika z tokena
 function getUserIdFromToken(authHeader: string | null): number | null {
@@ -32,13 +39,17 @@ function getUserIdFromToken(authHeader: string | null): number | null {
 
 export async function POST(req: Request) {
   try {
-    // 1. Weryfikacja użytkownika (Kupującego)
-    const authHeader = req.headers.get('authorization');
-    const buyerId = getUserIdFromToken(authHeader);
+    const buyerId =
+      (await resolveWebUserId(req)) ||
+      getUserIdFromToken(req.headers.get('authorization'));
 
     if (!buyerId) {
       return NextResponse.json({ error: 'Brak autoryzacji. Zaloguj się.' }, { status: 401 });
     }
+
+    const buyer = await loadUserForContactVerification(buyerId);
+    const buyerGate = assertContactVerified(buyer, BUYER_CONTACT_REQUIREMENTS);
+    if (!buyerGate.ok) return contactVerificationJson(buyerGate);
 
     // 2. Pobranie danych z żądania
     const body = await req.json();

@@ -53,7 +53,6 @@ import { useFavorites } from '@/hooks/useFavorites';
 import AppointmentManager from "@/components/AppointmentManager";
 import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCatalog";
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
-import OfferListingSlots from "@/components/crm/OfferListingSlots";
 import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
 import PlanningPresentationCalendar from "@/components/crm/PlanningPresentationCalendar";
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
@@ -949,14 +948,21 @@ export default function CRMDashboard() {
     ? (crmData.offers || [])
     : favoriteOffers;
 
+  const isOfferAwaitingReview = (offer: any): boolean => {
+    const status = String(offer?.status || '').toUpperCase();
+    if (['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status)) return true;
+    if (offer?.awaitingModeration || offer?.pendingPublicationKind) return true;
+    if (String(offer?.legalCheckStatus || '').toUpperCase() === 'PENDING') return true;
+    return false;
+  };
+
   const classifyOfferSection = (offer: any): 'ACTIVE' | 'PENDING' | 'COMPLETED' => {
     const now = new Date();
     const status = String(offer?.status || '').toUpperCase();
     const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
     const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs < now.getTime();
-    const isPending = ['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status);
     const isCompleted = isExpired || ['ARCHIVED', 'SOLD', 'REJECTED', 'EXPIRED', 'INACTIVE', 'PAUSED', 'CANCELLED'].includes(status);
-    if (isPending) return 'PENDING';
+    if (isOfferAwaitingReview(offer)) return 'PENDING';
     if (isCompleted) return 'COMPLETED';
     return 'ACTIVE';
   };
@@ -1536,14 +1542,6 @@ export default function CRMDashboard() {
             </div>
           )}
 
-          {isListingsTab && offerSectionFilter === 'ACTIVE' && (
-            <OfferListingSlots
-              user={currentUser}
-              activeOffers={offersBySection.ACTIVE}
-              onAddOffer={goToAddOffer}
-            />
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {(offersVisibleInSection.length === 0) ? (
               <div className="col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
@@ -1595,13 +1593,15 @@ export default function CRMDashboard() {
                 );
                 
                 const now = new Date();
-                const expiresAt = new Date(offer.expiresAt);
+                const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
+                const hasValidExpiry = Number.isFinite(expiresAtMs);
                 const createdAt = new Date(offer.createdAt || now);
                 const status = String(offer?.status || '').toUpperCase();
-                const isPending = ['PENDING', 'PENDING_APPROVAL', 'IN_REVIEW'].includes(status);
+                const isPending = isOfferAwaitingReview(offer);
                 const isArchived = classifyOfferSection(offer) === 'COMPLETED';
-                const diffTime = Math.abs(expiresAt.getTime() - now.getTime());
-                const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const daysLeft = hasValidExpiry
+                  ? Math.max(0, Math.ceil((expiresAtMs - now.getTime()) / (1000 * 60 * 60 * 24)))
+                  : null;
                 const isNew = (now.getTime() - createdAt.getTime()) < (1000 * 60 * 60 * 24);
                 const offerBids = (crmData?.bids || []).filter((b: any) => b.offerId === offer.id && b.status === 'PENDING');
                 const offerPrimaryImage = resolveOfferPrimaryImage(offer);
@@ -1731,10 +1731,24 @@ export default function CRMDashboard() {
                       ) : (
                         <div className="w-full py-4 rounded-[1.5rem] bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/30 flex items-center justify-between px-4">
                           <div className="flex items-center gap-3">
-                            <Clock size={16} className={daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'} /> 
+                            <Clock size={16} className={isPending ? 'text-yellow-500' : (daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500')} /> 
                             <div className="flex flex-col text-left">
-                              <span className="block text-white/50 text-[8px]">Ważne do: {new Date(offer.expiresAt).toLocaleDateString('pl-PL')}</span>
-                              <span className={`block font-black text-xs ${daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>Pozostało {daysLeft} Dni</span>
+                              {isPending ? (
+                                <>
+                                  <span className="block text-white/50 text-[8px]">Status publikacji</span>
+                                  <span className="block font-black text-xs text-yellow-500">Czeka na akceptację EstateOS™</span>
+                                </>
+                              ) : hasValidExpiry ? (
+                                <>
+                                  <span className="block text-white/50 text-[8px]">Ważne do: {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
+                                  <span className={`block font-black text-xs ${daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>Pozostało {daysLeft} dni</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="block text-white/50 text-[8px]">Publikacja</span>
+                                  <span className="block font-black text-xs text-emerald-500">Aktywna na rynku</span>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
-import { activateOfferPublication, getPublicationQuote } from "@/lib/offerPublication";
+import { getPublicationQuote, stageOfferPublicationForReview } from "@/lib/offerPublication";
 import { markProfilePromoCardUsed } from "@/lib/profilePromoCards";
 
 type RouteContext = {
@@ -63,10 +63,11 @@ export async function POST(req: Request, context: RouteContext) {
               ? "PLUS_PAID"
               : "PLUS_CREDIT";
 
-    const activation = await activateOfferPublication({
+    const staged = await stageOfferPublicationForReview({
       userId,
       offerId,
       kind: activationKind,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === "PLUS_PAID" ? txId : null,
       iapProductId: quote.productId,
     });
@@ -78,11 +79,13 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({
       success: true,
       offerId,
+      awaitingModeration: true,
       publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+        status: staged.status,
+        kind: staged.kind,
       },
+      message:
+        "Oferta została przesłana do weryfikacji. Po akceptacji pojawi się na mapie i rynku.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

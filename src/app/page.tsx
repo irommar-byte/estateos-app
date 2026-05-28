@@ -4,7 +4,6 @@ import HeroDepthEffect from "@/components/hero3d/HeroDepthEffect";
 import InteractiveMap from "@/components/map/InteractiveMap";
 import CinematicLoader from "@/components/ui/CinematicLoader";
 import SmoothScroll from "@/components/layout/SmoothScroll";
-import PremiumSearchBar from "@/components/home/PremiumSearchBar";
 import GlobalStats from "@/components/home/GlobalStats";
 import FeaturedGallery from "@/components/home/FeaturedGallery";
 import MarketPulseBar from "@/components/home/MarketPulseBar";
@@ -31,11 +30,7 @@ export default function Home() {
           <MarketPulseBar />
           <HeroDepthEffect />
 
-          <div className="relative z-30 -mt-16 flex w-full justify-center px-4 sm:-mt-14">
-            <PremiumSearchBar />
-          </div>
-
-          <div className="mt-16">
+          <div className="mt-8 sm:mt-12">
             <GlobalStats />
           </div>
 
@@ -50,11 +45,11 @@ export default function Home() {
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">
                 {dict.homePremium.mapEyebrow}
               </p>
-              <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-white sm:text-6xl">
+              <h2 className="premium-home-section-title mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
                 {dict.homePremium.mapTitle}{" "}
-                <span className="font-semibold text-emerald-400">{dict.homePremium.mapTitleHighlight}</span>
+                <span className="font-semibold text-emerald-500">{dict.homePremium.mapTitleHighlight}</span>
               </h2>
-              <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-white/50 sm:text-base">
+              <p className="mx-auto mt-5 max-w-2xl text-sm font-light leading-relaxed text-[var(--eos-muted)] sm:text-base">
                 {dict.homePremium.mapSubtitle}
               </p>
             </div>

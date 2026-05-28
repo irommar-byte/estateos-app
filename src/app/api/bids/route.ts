@@ -1,33 +1,28 @@
-import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { cookies } from 'next/headers';
 import nodemailer from 'nodemailer';
+import {
+  assertContactVerified,
+  BUYER_CONTACT_REQUIREMENTS,
+  contactVerificationJson,
+  loadUserForContactVerification,
+} from '@/lib/contactVerification';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { offerId, amount, financing } = body;
 
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('luxestate_user') || cookieStore.get('estateos_session');
-    if (!sessionCookie) return NextResponse.json({ error: 'Zaloguj się, aby złożyć ofertę' }, { status: 401 });
+    const buyerId = await resolveWebUserId(req);
+    if (!buyerId) return NextResponse.json({ error: 'Zaloguj się, aby złożyć ofertę' }, { status: 401 });
 
-    let sessionData: any = {};
-    try { sessionData = decryptSession(sessionCookie.value); } catch(e) {}
-    const currentUserEmail = sessionData.email || sessionCookie.value;
-    let dbUserId = sessionData.id;
-
-    if (currentUserEmail && String(currentUserEmail).includes('@')) {
-       const u = await prisma.user.findFirst({ where: { email: String(currentUserEmail) } });
-       if (u) dbUserId = u.id;
-    }
+    const buyer = await loadUserForContactVerification(buyerId);
+    const buyerGate = assertContactVerified(buyer, BUYER_CONTACT_REQUIREMENTS);
+    if (!buyerGate.ok) return contactVerificationJson(buyerGate);
 
     const offer = await prisma.offer.findUnique({ where: { id: Number(offerId) } });
     if (!offer) return NextResponse.json({ error: 'Brak oferty' }, { status: 404 });
-
-    const buyerId = Number(dbUserId);
-    if (!buyerId) return NextResponse.json({ error: 'Brak użytkownika' }, { status: 401 });
 
     const deal = await prisma.deal.upsert({
       where: { offerId_buyerId: { offerId: Number(offerId), buyerId } },

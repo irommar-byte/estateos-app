@@ -29,6 +29,14 @@ type Offer = {
 
 const FALLBACK_IMAGE = "/fallback-luxury.svg";
 
+const ACTIVE_DEAL_STATUSES = new Set([
+  "INITIATED",
+  "NEGOTIATION",
+  "AGREED",
+  "MEETING",
+  "IN_DEAL",
+]);
+
 function firstImage(offer: Offer, index: number) {
   if (offer.imageUrl) return offer.imageUrl;
   if (Array.isArray(offer.images) && typeof offer.images[0] === "string") return offer.images[0];
@@ -52,6 +60,7 @@ export default function FeaturedGallery() {
   const { dict, locale } = useLocale();
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [negotiatingOfferIds, setNegotiatingOfferIds] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +86,31 @@ export default function FeaturedGallery() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/deals/my", { credentials: "include", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.success || !Array.isArray(json.deals)) return;
+        const ids = new Set<number>();
+        for (const deal of json.deals) {
+          const status = String(deal?.status || "").toUpperCase();
+          if (!ACTIVE_DEAL_STATUSES.has(status)) continue;
+          const offerId = Number(deal?.offerId ?? deal?.offer?.id);
+          if (Number.isFinite(offerId) && offerId > 0) ids.add(offerId);
+        }
+        setNegotiatingOfferIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setNegotiatingOfferIds(new Set());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const featured = useMemo(() => offers.slice(0, 6), [offers]);
 
   if (!featured.length) {
@@ -84,12 +118,12 @@ export default function FeaturedGallery() {
   }
 
   return (
-    <section className="premium-home-surface relative overflow-hidden bg-[#050505] py-24 sm:py-32">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.055),transparent_58%)]" />
+    <section className="premium-home-surface relative overflow-hidden border-t border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] py-24 sm:py-32">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,185,129,0.08),transparent_58%)]" />
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-12 flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400/90">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-600 dark:text-emerald-400/90">
               {dict.homePremium.galleryEyebrow}
             </p>
             <h2 className="mt-3 text-4xl font-light tracking-tight text-[var(--eos-text)] sm:text-6xl">
@@ -102,7 +136,7 @@ export default function FeaturedGallery() {
           </div>
           <Link
             href="/oferty"
-            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-400 transition-colors hover:text-emerald-300"
+            className="group inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-emerald-600 transition-colors hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"
           >
             {dict.homePremium.galleryViewAll}
             <ArrowUpRight className="size-4 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -114,7 +148,7 @@ export default function FeaturedGallery() {
             const location =
               [offer.city, offer.district].filter(Boolean).join(", ") ||
               (locale === "en" ? "Poland" : "Polska");
-            const isDealRoom = offer.badges?.isPartner === true;
+            const hasActiveDealRoom = negotiatingOfferIds.has(Number(offer.id));
             const priceInfo = formatOffer(offer);
             const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
             return (
@@ -127,17 +161,17 @@ export default function FeaturedGallery() {
               >
                 <Link
                   href={`/oferta/${offer.id}`}
-                  className="group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.04] shadow-[0_30px_90px_rgba(0,0,0,0.45)]"
+                  className="group relative block aspect-[4/5] overflow-hidden rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]"
                 >
                   <div
                     className="absolute inset-0 bg-cover bg-center transition-transform duration-700 ease-out group-hover:scale-110"
                     style={{ backgroundImage: `url(${firstImage(offer, index)})` }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/18 to-transparent opacity-90" />
-                  <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/55 to-black/15" />
+                  <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
-                  <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/90 backdrop-blur-xl">
-                    {String(offer.transactionType || "sale").toLowerCase().includes("rent")
+                  <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
+                    {isRent
                       ? (locale === "en" ? "Rent" : "Wynajem")
                       : (locale === "en" ? "Sale" : "Sprzedaż")}
                   </div>
@@ -145,37 +179,43 @@ export default function FeaturedGallery() {
                     offerId={offer.id}
                     variant="icon"
                     size={20}
-                    className={`absolute z-20 ${isDealRoom ? "right-5 top-16" : "right-5 top-5"}`}
+                    className={`absolute z-20 ${hasActiveDealRoom ? "right-5 top-16" : "right-5 top-5"}`}
                     onRequireAuth={() => {
                       window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
                     }}
                   />
-                  {isDealRoom && (
-                    <div className="absolute right-5 top-5 inline-flex items-center gap-1.5 rounded-full border border-orange-400/50 bg-orange-500/90 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_20px_rgba(249,115,22,0.35)] backdrop-blur-xl">
+                  {hasActiveDealRoom && (
+                    <div className="featured-deal-room-badge absolute right-5 top-5 z-20 inline-flex items-center gap-1.5 rounded-full border border-orange-300/70 bg-orange-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_22px_rgba(249,115,22,0.45)] backdrop-blur-xl">
                       <Briefcase className="size-3" />
                       {dict.homePremium.dealRoom}
                     </div>
                   )}
 
                   <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-7">
-                    <div className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
-                      <MapPin className="size-3.5" />
-                      {location}
-                    </div>
-                    <h3 className="text-2xl font-light leading-tight text-white">
-                      {offer.title || (locale === "en" ? "Listing" : "Oferta")}
-                    </h3>
-                    <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-white/60">
-                      <span className="text-base font-semibold text-white">
-                        {parsePrice(offer.price) > 0
-                          ? `${priceInfo.primary}${isRent ? ` ${dict.homePremium.pricePerMonth}` : ""}`
-                          : dict.homePremium.priceOnRequest}
-                      </span>
-                      {priceInfo.secondary ? (
-                        <span className="text-white/45">{priceInfo.secondary}</span>
-                      ) : null}
-                      {offer.area && <span>{offer.area} m²</span>}
-                      {offer.rooms && <span>{offer.rooms} {dict.homePremium.galleryRoomsLabel}</span>}
+                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-md shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                        <MapPin className="size-3.5 shrink-0" />
+                        <span className="truncate">{location}</span>
+                      </div>
+                      <h3 className="line-clamp-2 text-xl font-semibold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] sm:text-2xl">
+                        {offer.title || (locale === "en" ? "Listing" : "Oferta")}
+                      </h3>
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/85">
+                        <span className="text-sm font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+                          {parsePrice(offer.price) > 0
+                            ? `${priceInfo.primary}${isRent ? ` ${dict.homePremium.pricePerMonth}` : ""}`
+                            : dict.homePremium.priceOnRequest}
+                        </span>
+                        {priceInfo.secondary ? (
+                          <span className="text-white/75">{priceInfo.secondary}</span>
+                        ) : null}
+                        {offer.area ? <span className="text-white/75">{offer.area} m²</span> : null}
+                        {offer.rooms ? (
+                          <span className="text-white/75">
+                            {offer.rooms} {dict.homePremium.galleryRoomsLabel}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </Link>

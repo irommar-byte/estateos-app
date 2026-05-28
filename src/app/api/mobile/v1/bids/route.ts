@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import jwt from 'jsonwebtoken';
+import {
+  assertContactVerified,
+  BUYER_CONTACT_REQUIREMENTS,
+  contactVerificationJson,
+  loadUserForContactVerification,
+} from '@/lib/contactVerification';
 
 function getUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -23,6 +29,10 @@ export async function POST(req: Request) {
 
     if (!offerId || Number.isNaN(offerId)) return NextResponse.json({ error: 'Nieprawidłowe ID oferty' }, { status: 400 });
     if (!amount || Number.isNaN(amount) || amount <= 0) return NextResponse.json({ error: 'Podaj poprawną kwotę oferty' }, { status: 400 });
+
+    const buyer = await loadUserForContactVerification(buyerId);
+    const buyerGate = assertContactVerified(buyer, BUYER_CONTACT_REQUIREMENTS);
+    if (!buyerGate.ok) return contactVerificationJson(buyerGate);
 
     const offer = await prisma.offer.findUnique({
       where: { id: offerId },

@@ -45,7 +45,14 @@ export default function AppointmentModal({ isOpen, onClose, offerId, sellerId }:
         body: JSON.stringify({ offerId, sellerId, buyerId, proposedDate: finalDate.toISOString(), message: message + (shareContact ? "\n\n[Zgoda na udostępnienie kontaktów]" : "") })
       });
       if (res.ok) { setIsSuccess(true); setTimeout(() => { onClose(); setIsSuccess(false); setStep(1); setSelectedDate(null); setSelectedHour(null); setMessage(""); }, 3000); } 
-      else { const data = await res.json(); alert(data.error || "Błąd zapisu"); }
+      else {
+        const data = await res.json().catch(() => ({}));
+        if (data.errorCode === 'PHONE_VERIFICATION_REQUIRED') {
+          window.location.href = '/moje-konto/weryfikacja';
+          return;
+        }
+        alert(data.error || data.message || "Błąd zapisu");
+      }
     } catch (e) { alert("Błąd połączenia."); } finally { setIsSubmitting(false); }
   };
 

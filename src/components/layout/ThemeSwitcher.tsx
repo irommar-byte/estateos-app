@@ -48,17 +48,17 @@ export default function ThemeSwitcher({
             title={labels[id]}
             onClick={() => setTheme(id)}
             className={`relative z-10 flex ${compact ? "h-9 w-9" : "h-9 w-10"} items-center justify-center rounded-full transition-colors ${
-              selected ? "text-[var(--eos-contrast)]" : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              selected ? "eos-theme-switcher-icon" : "eos-theme-switcher-idle"
             }`}
           >
             {selected && (
               <motion.span
                 layoutId="estateos-theme-switcher-pill"
-                className="absolute inset-0 -z-10 rounded-full bg-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]"
+                className="eos-theme-switcher-pill absolute inset-0 -z-10 rounded-full"
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}
-            <Icon className="size-4" aria-hidden />
+            <Icon className={`size-4 ${selected ? "eos-theme-switcher-icon" : "eos-theme-switcher-idle"}`} aria-hidden />
           </button>
         );
       })}

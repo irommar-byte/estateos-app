@@ -55,7 +55,7 @@ export default function GlobalStats() {
   if (!stats.length) return null;
 
   return (
-    <section className="relative z-10 border-y border-white/10 bg-zinc-950/60 py-16 backdrop-blur-3xl sm:py-24">
+    <section className="relative z-10 border-y border-[var(--eos-border)] bg-[var(--eos-surface)] py-16 backdrop-blur-3xl sm:py-24">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.05),transparent_60%)]" />
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
@@ -68,10 +68,10 @@ export default function GlobalStats() {
               transition={{ duration: 0.55, delay: index * 0.08 }}
               className="text-center sm:text-left"
             >
-              <h4 className="text-4xl font-light tracking-tighter text-white sm:text-5xl lg:text-6xl drop-shadow-md">
+              <h4 className="text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-5xl lg:text-6xl">
                 {stat.value}
               </h4>
-              <p className="mt-3 text-[11px] font-black uppercase tracking-[0.25em] text-emerald-400">
+              <p className="mt-3 text-[11px] font-black uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-400">
                 {stat.label}
               </p>
             </motion.div>

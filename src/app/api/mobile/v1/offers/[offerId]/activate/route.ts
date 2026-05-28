@@ -3,7 +3,13 @@ export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { activateOfferPublication, getPublicationQuote } from '@/lib/offerPublication';
+import { getPublicationQuote, stageOfferPublicationForReview } from '@/lib/offerPublication';
+import {
+  assertContactVerified,
+  contactVerificationJson,
+  loadUserForContactVerification,
+  PUBLISH_CONTACT_REQUIREMENTS,
+} from '@/lib/contactVerification';
 
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
@@ -32,6 +38,10 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   try {
+    const publisher = await loadUserForContactVerification(userId);
+    const publishGate = assertContactVerified(publisher, PUBLISH_CONTACT_REQUIREMENTS);
+    if (!publishGate.ok) return contactVerificationJson(publishGate);
+
     const body = await req.json().catch(() => ({} as any));
     const quote = await getPublicationQuote({ userId, offerId, action: 'ACTIVATE' });
     if (quote.reason === 'ALREADY_ACTIVE') {
@@ -71,10 +81,11 @@ export async function POST(req: Request, context: RouteContext) {
               ? 'PLUS_PAID'
               : 'PLUS_CREDIT';
 
-    const activation = await activateOfferPublication({
+    const staged = await stageOfferPublicationForReview({
       userId,
       offerId,
       kind: activationKind,
+      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
@@ -82,10 +93,10 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({
       success: true,
       offerId,
+      awaitingModeration: true,
       publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+        status: staged.status,
+        kind: staged.kind,
       },
     });
   } catch (error) {

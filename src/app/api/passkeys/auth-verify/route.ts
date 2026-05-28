@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { encryptSession } from '@/lib/sessionUtils';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
-import { getPasskeyOrigin, getPasskeyRpId } from '@/lib/env.server';
+import { getPasskeyExpectedOrigins, getPasskeyRpId } from '@/lib/env.server';
 
 export async function POST(req: Request) {
   const ip = getClientIp(req);
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     const verification = await verifyAuthenticationResponse({
       response: body,
       expectedChallenge,
-      expectedOrigin: getPasskeyOrigin(),
+      expectedOrigin: getPasskeyExpectedOrigins(),
       expectedRPID: getPasskeyRpId(),
       credential: {
         id: authenticator.credentialID,

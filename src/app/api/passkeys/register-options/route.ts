@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { decryptSession } from '@/lib/sessionUtils';
 import { prisma } from '@/lib/prisma';
 import { getPasskeyRpId } from '@/lib/env.server';
+import { passkeyChallengeCookieOptions } from '@/lib/passkeyCookies';
 import { normalizeCredentialIdToBase64URL } from '@/lib/passkeyDbEncoding';
 
 export async function GET() {
@@ -42,11 +43,7 @@ export async function GET() {
         });
 
         // Zapisujemy wyzwanie w ciasteczku (żyje tylko 5 minut), żeby potem je zweryfikować
-        cookieStore.set('passkey_challenge', options.challenge, { 
-            httpOnly: true, 
-            maxAge: 60 * 5, 
-            path: '/' 
-        });
+        cookieStore.set('passkey_challenge', options.challenge, passkeyChallengeCookieOptions());
 
         return NextResponse.json(options);
     } catch (error) {

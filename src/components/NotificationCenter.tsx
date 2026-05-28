@@ -187,7 +187,7 @@ export default function NotificationCenter() {
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="rounded-full p-1 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
-                aria-label="Close"
+                aria-label={dict.notifications.close}
               >
                 <X className="size-4" />
               </button>

@@ -123,9 +123,7 @@ export default function PremiumSearchBar() {
                   type="button"
                   onClick={() => setTransactionMode(mode)}
                   className={`flex-1 rounded-full px-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    transactionMode === mode
-                      ? "bg-[var(--eos-text)] text-[var(--eos-contrast)]"
-                      : "text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+                    transactionMode === mode ? "eos-segment-active" : "eos-segment-inactive"
                   }`}
                 >
                   {mode === "sale" ? dict.homePremium.searchSale : dict.homePremium.searchRent}
@@ -135,7 +133,7 @@ export default function PremiumSearchBar() {
             <button
               type="button"
               className="hidden size-14 items-center justify-center rounded-full bg-[var(--eos-input)] text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:flex"
-              aria-label="Advanced filters"
+              aria-label={dict.homePremium.advancedFilters}
             >
               <SlidersHorizontal className="size-5" />
             </button>
