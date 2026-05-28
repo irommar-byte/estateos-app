@@ -45,6 +45,30 @@ const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
 const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
+const KW_FULL_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
+const KW_SANITIZE_REGEX = /[^A-Za-z0-9/]/g;
+const KW_COURT_SUGGESTIONS = [
+  { prefix: "WA1M", court: "Warszawa-Mokotow" },
+  { prefix: "WA4M", court: "Warszawa-Wola" },
+  { prefix: "KR1P", court: "Krakow-Podgorze" },
+  { prefix: "KR1K", court: "Krakow-Srodmiescie" },
+  { prefix: "GD1G", court: "Gdansk-Polnoc" },
+  { prefix: "PO1P", court: "Poznan-Stare Miasto" },
+  { prefix: "WR1K", court: "Wroclaw-Krzyki" },
+  { prefix: "LU1I", court: "Lublin-Zachod" },
+];
+
+type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
+
+function normalizeLandRegistryInput(raw: string): string {
+  const cleaned = raw.toUpperCase().replace(KW_SANITIZE_REGEX, "").slice(0, 40);
+  const head = cleaned.slice(0, 4).replace(/[^A-Z0-9]/g, "");
+  const middle = cleaned.slice(4, 12).replace(/[^0-9]/g, "");
+  const tail = cleaned.slice(12, 13).replace(/[^0-9]/g, "");
+  if (cleaned.length <= 4) return head;
+  if (cleaned.length <= 12) return `${head}/${middle}`;
+  return `${head}/${middle}/${tail}`;
+}
 
 function buildPropertyTypes(ao: AddOfferDictionary) {
   return [
@@ -133,7 +157,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const CONDITION_TYPES = useMemo(() => buildConditionTypes(ao), [ao]);
   const AMENITIES = useMemo(() => buildAmenities(ao), [ao]);
   const HEATING_TYPES = useMemo(() => buildHeatingTypes(ao), [ao]);
-  const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const { rate: fxRate } = useFxRate();
   const [data, setData] = useState<any>({
@@ -161,6 +184,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
+  const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
   
   const [uploadProgress, setUploadProgress] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle');
@@ -175,6 +199,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const orbitTimeoutRef = useRef<number | null>(null);
   const lastGeocodedAddressRef = useRef<string>("");
   const editorRef = useRef<HTMLDivElement>(null);
+  const landRegistryInputRef = useRef<HTMLInputElement>(null);
+  const agentCommissionInputRef = useRef<HTMLDivElement>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
@@ -662,7 +688,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: null,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
       };
-      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+      if (data.agentCommissionPercent !== '') {
         payload.agentCommissionPercent = Number(
           String(data.agentCommissionPercent).replace(',', '.')
         );
@@ -719,13 +745,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
       ) {
         setServerErrorMessage(responseData.message || responseData.error);
+        setErrorFieldTarget(null);
         setActionModal('verify');
       } else {
-        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
+        const serverMessage = responseData.error || responseData.message || 'Odrzucono przez serwer';
+        setServerErrorMessage(serverMessage);
+        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
     } catch (_error) {
       setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setErrorFieldTarget(null);
       setActionModal('error');
     } finally {
       setIsSubmitting(false);
@@ -762,7 +792,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: finalFloorPlan,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
       };
-      if (isAgentPublisher && data.agentCommissionPercent !== '') {
+      if (data.agentCommissionPercent !== '') {
         payload.agentCommissionPercent = Number(
           String(data.agentCommissionPercent).replace(',', '.')
         );
@@ -771,6 +801,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
       if (finalImages.some(img => img.startsWith('blob:'))) {
         setServerErrorMessage('Błąd krytyczny: Zdjęcia nie zostały poprawnie przesłane na serwer. Spróbuj dodać je ponownie lub odśwież stronę.');
+        setErrorFieldTarget(null);
         setActionModal("error");
         setIsSubmitting(false);
         return;
@@ -788,13 +819,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
       ) {
         setServerErrorMessage(responseData.message || responseData.error);
+        setErrorFieldTarget(null);
         setActionModal('verify');
       } else {
-        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
+        const serverMessage = responseData.error || responseData.message || 'Odrzucono przez serwer';
+        setServerErrorMessage(serverMessage);
+        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
     } catch (error) { 
-        setServerErrorMessage('Błąd połączenia z serwerem API.'); setActionModal("error"); 
+        setServerErrorMessage('Błąd połączenia z serwerem API.'); setErrorFieldTarget(null); setActionModal("error"); 
     } finally { setIsSubmitting(false); setUploadProgress(''); }
   };
 
@@ -803,7 +837,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
   const districtRequirementMet = isStrictCity ? !!data.district : true;
-  const isLocationDone = !!data.lat && !!data.lng && !!data.city && districtRequirementMet && !addressError && hasBuildingNumber;
+  const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
+  const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
+  const landRegistryValid = !hasLandRegistryInput || KW_FULL_REGEX.test(normalizedLandRegistryNumber);
+  const isLocationDone =
+    !!data.lat &&
+    !!data.lng &&
+    !!data.city &&
+    districtRequirementMet &&
+    !addressError &&
+    hasBuildingNumber &&
+    landRegistryValid;
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
   const cleanArea = String(data.area || '').replace(/[^0-9.]/g, "");
@@ -851,6 +895,41 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (step === 4) return isStep4Done;
     if (step === 5) return isStep5Done;
     return true;
+  };
+
+  const focusFieldTarget = (target: FormFieldTarget) => {
+    if (!target) return;
+    const byTarget: Record<Exclude<FormFieldTarget, null>, { step: number; node: HTMLElement | null }> = {
+      landRegistryNumber: { step: 2, node: landRegistryInputRef.current },
+      agentCommissionPercent: { step: 3, node: agentCommissionInputRef.current },
+    };
+    const config = byTarget[target];
+    setCurrentStep(config.step);
+    window.setTimeout(() => {
+      if (!config.node) return;
+      config.node.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (target === "agentCommissionPercent") {
+        const input = config.node.querySelector("input");
+        if (input) (input as HTMLInputElement).focus();
+      } else {
+        (config.node as HTMLInputElement).focus();
+      }
+    }, 140);
+  };
+
+  const resolveErrorFieldTarget = (messageRaw: unknown): FormFieldTarget => {
+    const message = String(messageRaw || "").toLowerCase();
+    if (message.includes("księgi wieczystej") || message.includes("kw")) return "landRegistryNumber";
+    if (message.includes("agentcommissionpercent") || message.includes("prowiz")) return "agentCommissionPercent";
+    return null;
+  };
+
+  const handleFixDataFromErrorModal = () => {
+    setActionModal("none");
+    if (errorFieldTarget) {
+      focusFieldTarget(errorFieldTarget);
+    }
+    setErrorFieldTarget(null);
   };
 
   const nextStep = () => {
@@ -1081,12 +1160,29 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       <div>
                         <label className={labelPremium}>Numer księgi wieczystej (opcjonalnie)</label>
                         <input
+                          ref={landRegistryInputRef}
                           type="text"
                           placeholder="Np. WA1M/00000000/0"
-                          className={`${inputPremium} text-sm uppercase`}
+                          list="kw-court-suggestions"
+                          className={`${inputPremium} text-sm uppercase ${hasLandRegistryInput && !landRegistryValid ? 'border-red-500/50 focus:border-red-400' : ''}`}
                           value={data.landRegistryNumber || ''}
-                          onChange={(e) => updateData({ landRegistryNumber: e.target.value.toUpperCase() })}
+                          onChange={(e) => updateData({ landRegistryNumber: normalizeLandRegistryInput(e.target.value) })}
                         />
+                        <datalist id="kw-court-suggestions">
+                          {KW_COURT_SUGGESTIONS.map((entry) => (
+                            <option key={entry.prefix} value={`${entry.prefix}/00000000/0`}>
+                              {entry.prefix} - Sad Rejonowy {entry.court}
+                            </option>
+                          ))}
+                        </datalist>
+                        <p className="mt-2 text-[10px] text-zinc-400">
+                          Podpowiedz: wybierz prefiks sadu (np. WA1M), potem numer i cyfre kontrolna.
+                        </p>
+                        {hasLandRegistryInput && !landRegistryValid ? (
+                          <p className="mt-2 text-[10px] text-red-400 font-bold">
+                            Nieprawidlowy format KW. Wymagany: 4 znaki, "/", 8 cyfr, "/", 1 cyfra (np. WA1M/00012345/9).
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <p className="mt-3 text-[11px] text-zinc-300/90 leading-snug flex items-start gap-2">
@@ -1234,25 +1330,23 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </>
                 )}
 
-                {isAgentPublisher ? (
-                  <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
-                    <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
-                    <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                      Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
-                      {AGENT_COMMISSION_MIN_NONZERO}% wzwyż. Cena ogłoszenia pozostaje finalną kwotą brutto dla
-                      klienta, a prowizja jest rozliczana poza platformą.
-                    </p>
-                    <AgentCommissionEditor
-                      priceRaw={data.price || 0}
-                      percentValue={String(data.agentCommissionPercent ?? "")}
-                      onPercentChange={(value) =>
-                        updateData({
-                          agentCommissionPercent: value,
-                        })
-                      }
-                    />
-                  </div>
-                ) : null}
+                <div ref={agentCommissionInputRef} className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
+                  <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
+                  <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                    Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
+                    {AGENT_COMMISSION_MIN_NONZERO}% wzwyż. Cena ogłoszenia pozostaje finalną kwotą brutto dla
+                    klienta, a prowizja jest rozliczana poza platformą.
+                  </p>
+                  <AgentCommissionEditor
+                    priceRaw={data.price || 0}
+                    percentValue={String(data.agentCommissionPercent ?? "")}
+                    onPercentChange={(value) =>
+                      updateData({
+                        agentCommissionPercent: value,
+                      })
+                    }
+                  />
+                </div>
                 
                 {/* AI Monitor Przelicznik */}
                 {(() => {
@@ -1613,7 +1707,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">Odrzucono</h2>
                   <p className="text-[var(--eos-muted)] mb-8 leading-relaxed">{serverErrorMessage || ao.serverErrorHint}</p>
-                  <button onClick={() => setActionModal("none")} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
+                  <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
                 </>
               )}
 
