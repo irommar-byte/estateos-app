@@ -30,6 +30,7 @@ import {
   resolveOfferDisplayAmount,
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
+import { isStrictCity } from "@/lib/location/locationCatalog";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -82,6 +83,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>({
+    name: locale === "pl" ? "Polska" : "Poland",
+    code: "PL",
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -168,6 +173,27 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
   const dateLocale = locale === "pl" ? "pl" : "en";
+  const cityRaw = String(offer.city || "").trim();
+  const districtRaw = String(offer.district || "").trim();
+  const streetRaw = String(offer.street || offer.address || "").trim();
+  const addressNumberRaw = String(offer.buildingNumber || "").trim();
+  const streetLine = [streetRaw, addressNumberRaw].filter(Boolean).join(" ").trim();
+  const districtUpper = districtRaw.toUpperCase();
+  const districtSpecified =
+    districtRaw.length > 0 &&
+    !["OTHER", "INNE", "INNY OBSZAR", "BRAK", "-", "N/A"].includes(districtUpper);
+  const cityLooksGeneric = /reszta kraju|pozosta[ał]e|other|ca[łl]y kraj|polska/i.test(cityRaw);
+  const strictCity = isStrictCity(cityRaw);
+  const localityValue = isLocked
+    ? t.hiddenLocation
+    : !cityRaw || cityLooksGeneric
+      ? districtSpecified
+        ? districtRaw
+        : streetRaw || t.noData
+      : cityRaw;
+  const showDistrictField = !isLocked && strictCity && districtSpecified;
+  const districtValue = showDistrictField ? districtRaw : null;
+  const cityLabel = cityLooksGeneric || !cityRaw ? t.locality : t.city;
 
   const plnResolved =
     listingPrice.amount > 0
@@ -223,9 +249,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   };
 
   const locationParams = [
-    { label: t.city, value: offer.city || t.noData },
-    { label: t.district, value: isLocked ? t.hiddenLocation : offer.district },
-    { label: t.street, value: isLocked ? t.hiddenLocation : offer.address },
+    { label: cityLabel, value: localityValue || t.noData },
+    ...(districtValue ? [{ label: t.district, value: districtValue }] : []),
+    { label: t.street, value: isLocked ? t.hiddenLocation : streetLine || t.noData },
   ].filter((p) => p.value);
 
   const mainParams = [
@@ -264,8 +290,60 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         ? new Date(offer.availabilityDate).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
         : null,
     },
-    ...(agentCommissionLine ? [{ label: t.agentCommission, value: agentCommissionLine }] : []),
   ].filter((p) => p.value);
+  const commissionCompanyName =
+    String(offer?.agencyName || "").trim() ||
+    String(offer?.user?.agencyName || "").trim() ||
+    String(offer?.user?.name || "").trim() ||
+    t.privateOwner;
+
+  const costsParams = agentCommissionInfo
+    ? [
+        {
+          label: t.commissionPercent,
+          value: agentCommissionInfo.percentLabel,
+        },
+        {
+          label: t.commissionAmount,
+          value: agentCommissionInfo.amountLabel,
+        },
+      ]
+    : [];
+
+  useEffect(() => {
+    if (!offer?.lat || !offer?.lng) return;
+    let cancelled = false;
+    fetch(`/api/location/reverse?lat=${encodeURIComponent(String(offer.lat))}&lng=${encodeURIComponent(String(offer.lng))}`, {
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const countryName = String(data.country || "").trim();
+        const countryCode = String(data.countryCode || "").trim().toUpperCase();
+        if (countryName) {
+          setResolvedCountry({
+            name: countryName,
+            code: countryCode || "PL",
+          });
+        }
+      })
+      .catch(() => {
+        /* noop */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.lat, offer?.lng]);
+
+  const countryFlag = resolvedCountry.code
+    ? String.fromCodePoint(
+        ...resolvedCountry.code
+          .slice(0, 2)
+          .split("")
+          .map((char) => 127397 + char.toUpperCase().charCodeAt(0)),
+      )
+    : "🌍";
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
@@ -494,13 +572,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </div>
                   </div>
                 )}
-                {!isLocked && agentCommissionLine && (
-                  <div className="eos-offer-panel mb-8 px-4 py-3">
-                    <p className="text-sm text-[var(--eos-text)]">{agentCommissionLine}</p>
-                    <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
-                  </div>
-                )}
-                
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
@@ -548,6 +619,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <div className="space-y-8">
                 <div className="eos-offer-panel p-6">
                   <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
+                  <div className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.country}</span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] shadow-[0_8px_22px_rgba(0,0,0,0.16)]">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-white/55 text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_10px_rgba(0,0,0,0.15)]">
+                        {countryFlag}
+                      </span>
+                      {resolvedCountry.name}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-3">
                     {locationParams.map((param, idx) => (
                       <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
@@ -581,6 +661,41 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {(costsParams.length > 0 || agentCommissionLine) && (
+                  <div className="eos-offer-panel p-6">
+                    <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.costsSection}</h4>
+                    {costsParams.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          {costsParams.map((param, idx) => (
+                            <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                              <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                              <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
+                          <button
+                            type="button"
+                            onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                            className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                          >
+                            {commissionCompanyName}
+                            <span className="text-[10px] uppercase tracking-wider text-[var(--eos-muted)]">{t.openCompanyProfile}</span>
+                          </button>
+                        </div>
+                        {agentCommissionLine ? (
+                          <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
+                        ) : null}
+                        <p className="eos-subtle-copy mt-2 text-[11px]">{t.listingPriceIncludesCommission}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-[var(--eos-text)]">{t.agentCommissionZero}</p>
+                    )}
                   </div>
                 )}
               </div>

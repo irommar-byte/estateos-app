@@ -24,7 +24,9 @@ export type OfferPageCopy = {
   noData: string;
   hiddenLocation: string;
   hiddenPrice: string;
+  country: string;
   city: string;
+  locality: string;
   district: string;
   street: string;
   area: string;
@@ -49,8 +51,13 @@ export type OfferPageCopy = {
   locationSection: string;
   mainParamsSection: string;
   buildingSection: string;
+  costsSection: string;
   agentCommission: string;
   agentCommissionZero: string;
+  commissionPercent: string;
+  commissionAmount: string;
+  commissionCompany: string;
+  openCompanyProfile: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -88,7 +95,9 @@ const PL: OfferPageCopy = {
   noData: "Brak danych",
   hiddenLocation: "Ukryta do premiery",
   hiddenPrice: "Ukryta",
+  country: "Państwo",
   city: "Miasto",
+  locality: "Miejscowość",
   district: "Dzielnica",
   street: "Ulica",
   area: "Powierzchnia",
@@ -113,8 +122,13 @@ const PL: OfferPageCopy = {
   locationSection: "Lokalizacja",
   mainParamsSection: "Główne parametry",
   buildingSection: "Budynek i koszty",
+  costsSection: "Koszty i prowizja",
   agentCommission: "Prowizja agenta",
   agentCommissionZero: "Brak prowizji agenta przy tej ofercie.",
+  commissionPercent: "Prowizja %",
+  commissionAmount: "Kwota prowizji",
+  commissionCompany: "Firma obsługująca",
+  openCompanyProfile: "Otwórz wizytówkę",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -153,7 +167,9 @@ const EN: OfferPageCopy = {
   noData: "No data",
   hiddenLocation: "Hidden until launch",
   hiddenPrice: "Hidden",
+  country: "Country",
   city: "City",
+  locality: "Town / locality",
   district: "District",
   street: "Street",
   area: "Area",
@@ -178,8 +194,13 @@ const EN: OfferPageCopy = {
   locationSection: "Location",
   mainParamsSection: "Main parameters",
   buildingSection: "Building & costs",
+  costsSection: "Costs & commission",
   agentCommission: "Agent commission",
   agentCommissionZero: "No agent commission on this listing.",
+  commissionPercent: "Commission %",
+  commissionAmount: "Commission amount",
+  commissionCompany: "Handling company",
+  openCompanyProfile: "Open profile card",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

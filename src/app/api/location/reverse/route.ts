@@ -13,6 +13,11 @@ function getContextText(context: any[], idPrefix: string): string {
   return String(hit?.text || hit?.text_pl || "").trim();
 }
 
+function getContextShortCode(context: any[], idPrefix: string): string {
+  const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
+  return String(hit?.short_code || "").trim().toUpperCase();
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const lat = Number(url.searchParams.get("lat"));
@@ -38,6 +43,8 @@ export async function GET(req: Request) {
       getContextText(context, "place") ||
       getContextText(context, "locality") ||
       String(feature?.text || "").trim();
+    const country = getContextText(context, "country") || "Polska";
+    const countryCode = getContextShortCode(context, "country") || "PL";
     const legacyDistrictRaw =
       getContextText(context, "neighborhood") ||
       getContextText(context, "district") ||
@@ -56,6 +63,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       city,
+      country,
+      countryCode,
       district: strictCity ? (validation.valid ? validation.district : "") : district,
       street,
       addressLabel: String(feature?.place_name || "").trim(),
