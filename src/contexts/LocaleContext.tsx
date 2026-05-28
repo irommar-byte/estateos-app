@@ -14,11 +14,11 @@ import {
   type Locale,
   resolveLocale,
 } from "@/i18n/config";
-import { getDictionary, type Dictionary } from "@/i18n/dictionaries";
+import { getDictionary, type FullDictionary } from "@/i18n/dictionaries";
 
 type LocaleContextValue = {
   locale: Locale;
-  dict: Dictionary;
+  dict: FullDictionary;
   setLocale: (next: Locale) => void;
 };
 

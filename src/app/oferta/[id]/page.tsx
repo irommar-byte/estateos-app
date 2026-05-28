@@ -607,8 +607,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     className="relative w-full h-[400px] rounded-[2rem] overflow-hidden border border-white/10 cursor-pointer group bg-black"
                   >
                     <img src={offer.floorPlan} className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={t.floorPlan} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                       <span className="px-6 py-3 bg-black/60 backdrop-blur-xl rounded-full text-white font-bold text-[11px] uppercase tracking-[0.2em] border border-white/20 flex items-center gap-2 shadow-2xl">
+                    <div className="eos-on-media absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                       <span className="flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-2xl backdrop-blur-xl">
                          <Maximize2 size={14} /> {t.enlarge}
                        </span>
                     </div>
@@ -803,12 +803,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center"
             onClick={() => setIsGalleryOpen(false)}
           >
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-50 bg-gradient-to-b from-black/80 to-transparent">
-              <div className="flex items-center gap-3 px-5 py-2.5 bg-white/10 rounded-full backdrop-blur-md border border-white/10 shadow-2xl">
+            <div className="eos-on-media absolute top-0 left-0 z-50 flex w-full items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-6">
+              <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/10 px-5 py-2.5 shadow-2xl backdrop-blur-md">
                 <ImageIcon size={16} className={themeColors.textActive} />
-                <span className="text-white font-black text-[10px] tracking-widest uppercase">{currentImageIndex + 1} / {images.length}</span>
+                <span className="font-black text-[10px] uppercase tracking-widest text-white">{currentImageIndex + 1} / {images.length}</span>
               </div>
-              <button onClick={() => setIsGalleryOpen(false)} className="p-4 bg-white/10 hover:bg-red-500 rounded-full text-white transition-all shadow-2xl group">
+              <button onClick={() => setIsGalleryOpen(false)} className="group rounded-full bg-white/10 p-4 text-white shadow-2xl transition-all hover:bg-red-500">
                 <X size={20} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>

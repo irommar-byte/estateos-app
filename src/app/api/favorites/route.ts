@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { shapeOfferForCrmCard } from '@/lib/favorites/offerShape';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,19 +43,19 @@ export async function GET(req: Request) {
       },
     });
 
-    const offers = rows
-      .map((row) => row.offer)
-      .filter(Boolean)
-      .map((offer) =>
-        shapeOfferForCrmCard({
-          ...offer,
-          imageUrl: resolveOfferPrimaryImage(offer),
-        } as Record<string, unknown>),
-      );
-
-    const offerIds = offers
+    const rawOffers = rows.map((row) => row.offer).filter(Boolean);
+    const offerIds = rawOffers
       .map((o) => Number(o.id))
       .filter((id) => Number.isFinite(id) && id > 0);
+    const pubIds = offerIds.length ? await activePublicationOfferIds(offerIds) : new Set<number>();
+
+    const offers = rawOffers.map((offer) =>
+      shapeOfferForCrmCard({
+        ...offer,
+        imageUrl: resolveOfferPrimaryImage(offer),
+        marketVisible: canShowOfferOnPublicMarket(offer, pubIds),
+      } as Record<string, unknown>),
+    );
 
     return NextResponse.json({ success: true, offerIds, offers });
   } catch (error) {

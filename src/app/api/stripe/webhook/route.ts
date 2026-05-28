@@ -6,6 +6,7 @@ import { PlanType } from '@prisma/client';
 import type { PropertyType, TransactionType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
+import { activePublicationOfferIds } from '@/lib/offerPublication';
 
 function coercePropertyType(raw: unknown): PropertyType {
   const s = String(raw || '').toLowerCase();
@@ -130,15 +131,29 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Nieprawidłowe offerId do odnowienia' }, { status: 400 });
           }
 
+          const existing = await prisma.offer.findUnique({
+            where: { id: numericOfferId },
+            select: { id: true, status: true, expiresAt: true },
+          });
+          if (!existing) {
+            console.error(`[stripe:webhook] renewal update missed offerId=${numericOfferId} session=${checkoutSessionId}`);
+            return NextResponse.json({ error: 'Nie udało się aktywować odnowionej oferty' }, { status: 404 });
+          }
+
+          const pubIds = await activePublicationOfferIds([numericOfferId]);
+          if (!pubIds.has(numericOfferId)) {
+            console.warn(
+              `[stripe:webhook] renewal skipped — no active publication offerId=${numericOfferId} session=${checkoutSessionId}`,
+            );
+            return NextResponse.json({ received: true });
+          }
+
           const newExpiresAt = new Date();
           newExpiresAt.setDate(newExpiresAt.getDate() + 30);
 
           const updateResult = await prisma.offer.updateMany({
-            where: { id: numericOfferId },
-            data: {
-              status: 'ACTIVE',
-              expiresAt: newExpiresAt
-            }
+            where: { id: numericOfferId, status: 'ACTIVE' },
+            data: { expiresAt: newExpiresAt },
           });
 
           if (updateResult.count === 0) {

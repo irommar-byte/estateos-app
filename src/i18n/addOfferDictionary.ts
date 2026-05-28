@@ -82,6 +82,13 @@ export type AddOfferDictionary = {
   heatingOther: string;
   selectPlaceholder: string;
   mapLoading: string;
+  aptNumberPlaceholder: string;
+  landRegistryExample: string;
+  rentPlaceholder: string;
+  descriptionPlaceholderAttr: string;
+  agencyNamePlaceholder: string;
+  floorPlanAlt: string;
+  thumbAlt: string;
 };
 
 const pl: AddOfferDictionary = {
@@ -167,6 +174,13 @@ const pl: AddOfferDictionary = {
   heatingOther: "Inne",
   selectPlaceholder: "Wybierz...",
   mapLoading: "Ładowanie mapy…",
+  aptNumberPlaceholder: "Np. 12",
+  landRegistryExample: "Np. WA1M/00000000/0",
+  rentPlaceholder: "Np. 1500",
+  descriptionPlaceholderAttr: "Rozpocznij tworzenie luksusowego opisu...",
+  agencyNamePlaceholder: "Wpisz nazwę biura...",
+  floorPlanAlt: "Rzut",
+  thumbAlt: "Miniatura",
 };
 
 const en: AddOfferDictionary = {
@@ -252,6 +266,13 @@ const en: AddOfferDictionary = {
   heatingOther: "Other",
   selectPlaceholder: "Select…",
   mapLoading: "Loading map…",
+  aptNumberPlaceholder: "e.g. 12",
+  landRegistryExample: "e.g. WA1M/00000000/0",
+  rentPlaceholder: "e.g. 1500",
+  descriptionPlaceholderAttr: "Start writing a premium description...",
+  agencyNamePlaceholder: "Enter agency name...",
+  floorPlanAlt: "Floor plan",
+  thumbAlt: "Thumbnail",
 };
 
 export function getAddOfferDictionary(locale: Locale): AddOfferDictionary {

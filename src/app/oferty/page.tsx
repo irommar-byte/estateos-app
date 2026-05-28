@@ -55,7 +55,8 @@ function formatLocationLabel(offer: CatalogOffer): string {
 }
 
 export default function CatalogPage() {
-  const { locale } = useLocale();
+  const { dict } = useLocale();
+  const labels = dict.catalog;
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,69 +73,28 @@ export default function CatalogPage() {
         const msg =
           data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
             ? (data as { error: string }).error
-            : "Failed to load catalog.";
+            : labels.errorNetwork;
         setError(msg);
         setOffers([]);
         return;
       }
       if (!Array.isArray(data)) {
-        setError("Niespodziewany format odpowiedzi serwera.");
+        setError(labels.errorUnexpected);
         setOffers([]);
         return;
       }
       setOffers(data as CatalogOffer[]);
     } catch {
-      setError("No server connection. Check your network and try again.");
+      setError(labels.errorNetwork);
       setOffers([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [labels.errorNetwork, labels.errorUnexpected]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  const labels =
-    locale === "pl"
-      ? {
-          title: "Katalog nieruchomości",
-          subtitle: "EstateOS™",
-          lead:
-            "Galeria działów rynku: kup, wynajmij, najnowsze, przecenione i wyróżnione. Ten sam katalog co na mapie i w aplikacji mobilnej.",
-          loading: "Ładowanie katalogu",
-          retry: "Spróbuj ponownie",
-          empty: "Brak aktywnych ofert w tym dziale.",
-          discover: "Odkryj",
-          cardCaption: "ofert",
-          sections: {
-            all: "Wszystkie",
-            sale: "Kup",
-            rent: "Wynajem",
-            newest: "Najnowsze",
-            discounted: "Przecenione",
-            featured: "Wyróżnione",
-          } as Record<GallerySection, string>,
-        }
-      : {
-          title: "EstateOS™ Property Catalog",
-          subtitle: "EstateOS™",
-          lead:
-            "Curated market galleries: buy, rent, newest, discounted, and featured. The same inventory as the map and mobile app.",
-          loading: "Loading catalog",
-          retry: "Try again",
-          empty: "No active listings in this section.",
-          discover: "Discover",
-          cardCaption: "listings",
-          sections: {
-            all: "All",
-            sale: "Buy",
-            rent: "Rent",
-            newest: "Newest",
-            discounted: "Discounted",
-            featured: "Featured",
-          } as Record<GallerySection, string>,
-        };
 
   const sortedByNewest = [...offers].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;

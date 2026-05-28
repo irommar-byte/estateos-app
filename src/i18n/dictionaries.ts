@@ -3,6 +3,8 @@ import type { AddOfferDictionary } from "./addOfferDictionary";
 import { getAddOfferDictionary } from "./addOfferDictionary";
 import type { AuthDictionary } from "./authDictionary";
 import { getAuthDictionary } from "./authDictionary";
+import type { CrmExtendedDictionary } from "./crmExtendedDictionary";
+import { getCrmExtended } from "./crmExtendedDictionary";
 
 export type Dictionary = {
   auth: AuthDictionary;
@@ -197,6 +199,7 @@ export type Dictionary = {
     privacy: string;
     help: string;
     contact: string;
+    appStore: string;
   };
   contact: {
     title: string;
@@ -275,6 +278,35 @@ export type Dictionary = {
     myOffersTitle: string;
     myOffersTitleHighlight: string;
     myOffersDesc: string;
+  };
+  catalog: {
+    title: string;
+    subtitle: string;
+    lead: string;
+    loading: string;
+    retry: string;
+    empty: string;
+    discover: string;
+    cardCaption: string;
+    sections: {
+      all: string;
+      sale: string;
+      rent: string;
+      newest: string;
+      discounted: string;
+      featured: string;
+    };
+    errorUnexpected: string;
+    errorNetwork: string;
+  };
+  editOffer: {
+    noAccess: string;
+    noPermission: string;
+    mainPhoto: string;
+    save: string;
+    saving: string;
+    saved: string;
+    backToCrm: string;
   };
   pricing: {
     eyebrow: string;
@@ -522,6 +554,7 @@ const pl: Dictionary = {
     privacy: "Prywatność",
     help: "Pomoc",
     contact: "Kontakt",
+    appStore: "Pobierz EstateOS w App Store",
   },
   contact: {
     title: "Kontakt z EstateOS™",
@@ -602,6 +635,36 @@ const pl: Dictionary = {
     myOffersTitle: "Moje",
     myOffersTitleHighlight: "ogłoszenia",
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
+  },
+  catalog: {
+    title: "Katalog nieruchomości",
+    subtitle: "EstateOS™",
+    lead:
+      "Galeria działów rynku: kup, wynajmij, najnowsze, przecenione i wyróżnione. Ten sam katalog co na mapie i w aplikacji.",
+    loading: "Ładowanie katalogu",
+    retry: "Spróbuj ponownie",
+    empty: "Brak aktywnych ofert w tym dziale.",
+    discover: "Odkryj",
+    cardCaption: "ofert",
+    sections: {
+      all: "Wszystkie",
+      sale: "Kup",
+      rent: "Wynajem",
+      newest: "Najnowsze",
+      discounted: "Przecenione",
+      featured: "Wyróżnione",
+    },
+    errorUnexpected: "Niespodziewany format odpowiedzi serwera.",
+    errorNetwork: "Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.",
+  },
+  editOffer: {
+    noAccess: "Brak dostępu lub oferty.",
+    noPermission: "Brak uprawnień do edycji.",
+    mainPhoto: "Główne",
+    save: "Zapisz zmiany",
+    saving: "Zapisywanie...",
+    saved: "Zapisano!",
+    backToCrm: "Wróć do panelu",
   },
   pricing: {
     eyebrow: "Wybierz swój poziom",
@@ -856,6 +919,7 @@ const en: Dictionary = {
     privacy: "Privacy",
     help: "Help",
     contact: "Contact",
+    appStore: "Get EstateOS on the App Store",
   },
   contact: {
     title: "Contact EstateOS™",
@@ -937,6 +1001,36 @@ const en: Dictionary = {
     myOffersTitleHighlight: "listings",
     myOffersDesc: "Manage statuses, renewals, and listing statistics.",
   },
+  catalog: {
+    title: "EstateOS™ Property Catalog",
+    subtitle: "EstateOS™",
+    lead:
+      "Market gallery: buy, rent, newest, discounted, and featured. Same catalog as the map and mobile app.",
+    loading: "Loading catalog",
+    retry: "Try again",
+    empty: "No active listings in this section.",
+    discover: "Discover",
+    cardCaption: "listings",
+    sections: {
+      all: "All",
+      sale: "Buy",
+      rent: "Rent",
+      newest: "Newest",
+      discounted: "Reduced",
+      featured: "Featured",
+    },
+    errorUnexpected: "Unexpected server response format.",
+    errorNetwork: "No server connection. Check your network and try again.",
+  },
+  editOffer: {
+    noAccess: "No access or listing not found.",
+    noPermission: "You cannot edit this listing.",
+    mainPhoto: "Main",
+    save: "Save changes",
+    saving: "Saving...",
+    saved: "Saved!",
+    backToCrm: "Back to dashboard",
+  },
   pricing: {
     eyebrow: "Choose your level",
     title: "Invest",
@@ -986,6 +1080,14 @@ const en: Dictionary = {
 
 export const dictionaries: Record<Locale, Dictionary> = { pl, en };
 
-export function getDictionary(locale: Locale): Dictionary {
-  return dictionaries[locale];
+export type FullDictionary = Dictionary & {
+  crm: Dictionary["crm"] & CrmExtendedDictionary;
+};
+
+export function getDictionary(locale: Locale): FullDictionary {
+  const base = dictionaries[locale];
+  return {
+    ...base,
+    crm: { ...base.crm, ...getCrmExtended(locale) },
+  };
 }

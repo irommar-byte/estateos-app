@@ -1,44 +1,6 @@
 "use client";
 import PasskeyToggle from "@/components/PasskeyToggle";
 import DealRoom from "@/components/crm/DealRoom";
-
-const ProStatusBar = ({ user }: any) => {
-  if (!user?.isPro || !user?.proExpiresAt) return null;
-
-  const now = new Date();
-  const expiry = new Date(user.proExpiresAt);
-  const total = 30;
-  const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000*60*60*24)));
-  const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
-  const ratio = Math.min(1, Math.max(0, daysLeft / total));
-  const hue = Math.round(120 * ratio);
-  const tone = `hsl(${hue} 95% 52%)`;
-  const toneSoft = `hsl(${hue} 90% 42%)`;
-
-  return (
-    <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: tone }}>PRO STATUS</p>
-          <p className="text-sm sm:text-base text-white font-bold">Ważny do: {expiry.toLocaleDateString()}</p>
-          <p className="text-xs sm:text-sm text-white/60">Pozostało {daysLeft} dni</p>
-        </div>
-      </div>
-      <div className="relative w-full h-3 sm:h-3.5 rounded-full overflow-hidden border border-white/10 bg-black/40">
-        <div className="absolute inset-0 opacity-25" style={{ background: `linear-gradient(90deg, ${toneSoft}, ${tone})` }} />
-        <div
-          className="relative h-full rounded-full transition-all duration-700"
-          style={{
-            width: `${progress}%`,
-            background: `linear-gradient(90deg, ${toneSoft}, ${tone})`,
-            boxShadow: `0 0 24px color-mix(in srgb, ${tone} 70%, transparent)`
-          }}
-        />
-      </div>
-    </div>
-  );
-};
-
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -73,44 +35,95 @@ import { shapeMatchedOfferForCrm } from "@/lib/crmMatchedOffer";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { parseDealEvent } from "@/components/crm/dealRoomUtils";
+import { fmtDict } from "@/i18n/crmExtendedDictionary";
+import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 
-const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
-  if (type === 'plus') return <WowPlusOverlay />;
+const ProStatusBar = ({ user }: any) => {
+  const { dict } = useLocale();
+  const ps = dict.crm.proStatus;
+  if (!user?.isPro || !user?.proExpiresAt) return null;
+
+  const now = new Date();
+  const expiry = new Date(user.proExpiresAt);
+  const total = 30;
+  const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+  const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
+  const ratio = Math.min(1, Math.max(0, daysLeft / total));
+  const hue = Math.round(120 * ratio);
+  const tone = `hsl(${hue} 95% 52%)`;
+  const toneSoft = `hsl(${hue} 90% 42%)`;
+
+  return (
+    <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-[var(--eos-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: tone }}>
+            {ps.eyebrow}
+          </p>
+          <p className="text-sm sm:text-base text-[var(--eos-text)] font-bold">
+            {ps.validUntil} {expiry.toLocaleDateString()}
+          </p>
+          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">{fmtDict(ps.daysLeft, { n: daysLeft })}</p>
+        </div>
+      </div>
+      <div className="relative h-3 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] sm:h-3.5">
+        <div className="absolute inset-0 opacity-25" style={{ background: `linear-gradient(90deg, ${toneSoft}, ${tone})` }} />
+        <div
+          className="relative h-full rounded-full transition-all duration-700"
+          style={{
+            width: `${progress}%`,
+            background: `linear-gradient(90deg, ${toneSoft}, ${tone})`,
+            boxShadow: `0 0 24px color-mix(in srgb, ${tone} 70%, transparent)`,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const WowOverlay = ({
+  type,
+  wow,
+}: {
+  type: "investor" | "agency" | "plus" | "renewal";
+  wow: CrmExtendedDictionary["wow"];
+}) => {
+  if (type === "plus") return null;
 
   const [step, setStep] = useState(0);
   useEffect(() => {
     setTimeout(() => setStep(1), 500);
     setTimeout(() => setStep(2), 1500);
   }, []);
-  
+
   const config = {
-     investor: { color: 'yellow', text: 'ZŁOTY INWESTOR', sub: 'Eksplozja możliwości! Radar z opóźnieniem 0s jest Twój.' },
-     agency: { color: 'yellow', text: 'AGENCJA PRO', sub: 'Pełen dostęp. Limit ogłoszeń zniesiony.' },
-     plus: { color: 'emerald', text: 'PAKIET +', sub: 'Twoje ogłoszenie zostało odblokowane i trafia na rynek.' },
-     renewal: { color: 'blue', text: 'RYNEK ZDOBYTY', sub: 'Oferta odnowiona. Czas na dominację.' }
+    investor: { color: "yellow", text: wow.investorTitle, sub: wow.investorSub },
+    agency: { color: "yellow", text: wow.agencyTitle, sub: wow.agencySub },
+    plus: { color: "emerald", text: wow.plusTitle, sub: wow.plusSub },
+    renewal: { color: "blue", text: wow.renewalTitle, sub: wow.renewalSub },
   };
-  
-  const c = config[type];
-  const isGold = type === 'investor' || type === 'agency';
-  const isBlue = type === 'renewal';
-  const glowColor = isGold ? '#facc15' : isBlue ? '#3b82f6' : '#10b981';
-  const textColor = isGold ? 'text-yellow-500' : isBlue ? 'text-blue-500' : 'text-emerald-500';
-  const bgGlow = isGold ? 'bg-yellow-500' : isBlue ? 'bg-blue-500' : 'bg-emerald-500';
+
+  const cfg = config[type];
+  const isGold = type === "investor" || type === "agency";
+  const isBlue = type === "renewal";
+  const glowColor = isGold ? "#facc15" : isBlue ? "#3b82f6" : "#10b981";
+  const textColor = isGold ? "text-yellow-500" : isBlue ? "text-blue-500" : "text-emerald-500";
+  const bgGlow = isGold ? "bg-yellow-500" : isBlue ? "bg-blue-500" : "bg-emerald-500";
   
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[#050505]/95 backdrop-blur-3xl overflow-hidden">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-[var(--eos-bg)]/95 backdrop-blur-3xl overflow-hidden">
       <motion.div initial={{ scale: 0.8, y: 50 }} animate={{ scale: 1, y: 0 }} transition={{ type: "spring", bounce: 0.6, duration: 1 }} className="text-center relative">
          {step >= 2 && (
             <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 4, 0], opacity: [1, 0] }} transition={{ duration: 1.5, ease: "easeOut" }} className={`absolute inset-0 rounded-full blur-[100px] pointer-events-none z-0 ${bgGlow}`} />
          )}
          
-         <div className={`w-40 h-40 rounded-full flex items-center justify-center mx-auto mb-8 relative transition-all duration-700 z-10 ${step >= 2 ? (isGold ? 'bg-gradient-to-br from-yellow-300 to-yellow-600 shadow-[0_0_150px_rgba(250,204,21,0.8)] scale-110' : isBlue ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-[0_0_150px_rgba(59,130,246,0.8)] scale-110' : 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_150px_rgba(16,185,129,0.8)] scale-110') : 'bg-[#111] border border-white/10 shadow-[0_0_30px_rgba(255,255,255,0.05)]'}`}>
+         <div className={`w-40 h-40 rounded-full flex items-center justify-center mx-auto mb-8 relative transition-all duration-700 z-10 ${step >= 2 ? (isGold ? 'bg-gradient-to-br from-yellow-300 to-yellow-600 shadow-[0_0_150px_rgba(250,204,21,0.8)] scale-110' : isBlue ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-[0_0_150px_rgba(59,130,246,0.8)] scale-110' : 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_150px_rgba(16,185,129,0.8)] scale-110') : 'bg-[#111] border border-[var(--eos-border)] shadow-[0_0_30px_rgba(255,255,255,0.05)]'}`}>
             {step >= 2 ? (
                type === 'investor' ? <Home size={80} className="text-black relative z-10" /> :
                type === 'agency' ? <Unlock size={80} className="text-black relative z-10" /> :
                type === 'renewal' ? <Activity size={80} className="text-white relative z-10" /> :
                <Sparkles size={80} className="text-black relative z-10" />
-            ) : <Lock size={80} className="text-white/30 relative z-10" />}
+            ) : <Lock size={80} className="text-[var(--eos-subtle)] relative z-10" />}
             
             {type === 'investor' && step >= 2 && Array.from({ length: 6 }).map((_, i) => (
                 <motion.div key={i} className="absolute z-20 text-yellow-300 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]" initial={{ x: 0, y: 0, scale: 0, opacity: 1, rotate: 0 }} animate={{ x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 600 - 100, scale: [0, 1.5, 0], opacity: [1, 1, 0], rotate: Math.random() * 720 }} transition={{ duration: 1.5 + Math.random(), ease: "easeOut" }}>
@@ -119,12 +132,12 @@ const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal'
             ))}
          </div>
          
-         <motion.h1 animate={step >= 2 ? { textShadow: [`0px 0px 0px ${glowColor}`, `0px 0px 50px ${glowColor}`, `0px 0px 0px ${glowColor}`] } : {}} transition={{ duration: 2, repeat: Infinity }} className="text-5xl md:text-7xl font-black text-white mb-4 tracking-tighter relative z-10">
-            {step >= 2 ? <>{c.text} <span className={textColor}>POTWIERDZONY</span></> : 'AUTORYZACJA...'}
+         <motion.h1 animate={step >= 2 ? { textShadow: [`0px 0px 0px ${glowColor}`, `0px 0px 50px ${glowColor}`, `0px 0px 0px ${glowColor}`] } : {}} transition={{ duration: 2, repeat: Infinity }} className="text-5xl md:text-7xl font-black text-[var(--eos-text)] mb-4 tracking-tighter relative z-10">
+            {step >= 2 ? <>{cfg.text} <span className={textColor}>{wow.confirmed}</span></> : wow.auth}
          </motion.h1>
          
-         <p className={`text-sm md:text-xl font-bold uppercase tracking-widest transition-colors duration-700 relative z-10 ${step >= 2 ? textColor : 'text-white/30'}`}>
-            {step >= 2 ? c.sub : 'Weryfikacja płatności Stripe...'}
+         <p className={`text-sm md:text-xl font-bold uppercase tracking-widest transition-colors duration-700 relative z-10 ${step >= 2 ? textColor : 'text-[var(--eos-subtle)]'}`}>
+            {step >= 2 ? cfg.sub : wow.stripeVerify}
          </p>
       </motion.div>
     </motion.div>
@@ -133,7 +146,7 @@ const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal'
 
 interface Particle { id: number; x: number; y: number; z: number; vX: number; vY: number; vZ: number; scale: number; rotX: number; rotY: number; rotZ: number; color: string; }
 
-const WowPlusOverlay = () => {
+const WowPlusOverlay = ({ wowPlus }: { wowPlus: CrmExtendedDictionary["wowPlus"] }) => {
   const [stage, setStage] = useState(0);
   const [particles, setParticles] = useState<Particle[]>([]);
   const reqRef = useRef<number>(0);
@@ -202,7 +215,7 @@ const WowPlusOverlay = () => {
              width: '40vw', height: '120vh', top: '-10vh'
            }}>
          
-         <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] via-[#111] to-[#050505] border border-white/5 shadow-[0_0_100px_rgba(14,165,233,0.05)] overflow-hidden" style={{ transform: 'translateZ(50px)' }}>
+         <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a] via-[#111] to-[#050505] border border-[var(--eos-border)] shadow-[0_0_100px_rgba(14,165,233,0.05)] overflow-hidden" style={{ transform: 'translateZ(50px)' }}>
             <div className="w-full h-full bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:4vw_4vh]" />
             <div className={`absolute top-[40%] left-[50%] ml-[-2vw] mt-[-2vh] w-[4vw] h-[4vh] transition-all duration-1000 ease-in-out transform-gpu ${stage >= 2 ? 'bg-[#0ea5e9] shadow-[0_0_100px_40px_rgba(14,165,233,0.9)] rotate-x-[85deg] scale-150' : 'bg-transparent shadow-none rotate-x-0 scale-100'}`} style={{ transformOrigin: 'top' }} />
          </div>
@@ -227,12 +240,12 @@ const WowPlusOverlay = () => {
       <div className={`absolute inset-0 z-30 flex flex-col items-center justify-center text-center transition-all duration-[2000ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${stage >= 4 ? 'opacity-100 scale-100 backdrop-blur-sm bg-black/40' : 'opacity-0 scale-110 bg-transparent'} ${stage >= 5 ? 'opacity-0' : ''}`}>
          <div className="flex flex-col items-center gap-6 p-12 relative">
             <div className="absolute inset-0 bg-[#0ea5e9]/10 blur-[100px] rounded-full" />
-            <span className="text-[14px] md:text-[18px] font-black uppercase text-[#0ea5e9] tracking-[1em] mb-4 opacity-90 relative z-10" style={{ textShadow: '0 0 20px rgba(14,165,233,0.5)' }}>EstateOS Ultra</span>
+            <span className="text-[14px] md:text-[18px] font-black uppercase text-[#0ea5e9] tracking-[1em] mb-4 opacity-90 relative z-10" style={{ textShadow: '0 0 20px rgba(14,165,233,0.5)' }}>{wowPlus.brand}</span>
             <h1 className="text-7xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-zinc-200 to-zinc-500 leading-none tracking-tighter relative z-10 filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]">
               PAKIET<span className="text-[#0ea5e9] filter drop-shadow-[0_0_50px_rgba(14,165,233,1)]">+</span>
             </h1>
             <div className="h-px w-full max-w-md bg-gradient-to-r from-transparent via-[#0ea5e9]/50 to-transparent my-2" />
-            <h2 className="text-3xl md:text-5xl font-light text-zinc-300 leading-none tracking-[0.2em] relative z-10">AKTYWOWANY</h2>
+            <h2 className="text-3xl md:text-5xl font-light text-zinc-300 leading-none tracking-[0.2em] relative z-10">{wowPlus.activated}</h2>
          </div>
       </div>
     </div>
@@ -287,12 +300,6 @@ export default function CRMDashboard() {
   const [isBooting, setIsBooting] = useState(false);
   const [greeting, setGreeting] = useState("");
   
-  const greetings = [
-      "System gotowy. Twój ruch, {name}.",
-      "Witaj {name}, rynek czeka na Twoje inwestycje.",
-      "Dzień dobry, {name}. Kolejny dzień, nowe możliwości.",
-      "Zabezpieczenie PRO aktywne. Miłego dnia, {name}."
-  ];
   const [loading, setLoading] = useState(true);
 
   const [radarCatalog, setRadarCatalog] = useState<{ strictCities: string[]; strictCityDistricts: Record<string, string[]> }>({
@@ -529,7 +536,7 @@ export default function CRMDashboard() {
     const dealId = Number(bid.dealId);
     const bidId = Number(bid.id);
     if (!Number.isFinite(dealId) || dealId <= 0 || !Number.isFinite(bidId) || bidId <= 0) {
-      alert('Otwórz Deal Room w zakładce Komunikacja, aby bezpiecznie zaakceptować cenę.');
+      alert(c.alerts.bidUseDealRoom);
       setActiveTab('transakcje');
       return;
     }
@@ -546,10 +553,10 @@ export default function CRMDashboard() {
         setActiveTab('transakcje');
         setSelectedDealId(dealId);
       } else {
-        alert('Błąd: ' + (data?.error || 'Wystąpił błąd przy przetwarzaniu.'));
+        alert(`${c.alerts.bidError} ${data?.error || ""}`.trim());
       }
     } catch {
-      alert('Błąd sieci.');
+      alert(c.alerts.network);
     }
   };
 
@@ -561,10 +568,10 @@ export default function CRMDashboard() {
         setOfferToArchive(null);
         if (currentUser?.id) fetchData(currentUser.id); 
       } else {
-        alert("Błąd podczas wstrzymywania oferty.");
+        alert(c.alerts.archiveError);
       }
-    } catch(e) {
-      alert("Błąd połączenia z serwerem.");
+    } catch {
+      alert(c.alerts.network);
     }
   };
 
@@ -577,13 +584,13 @@ export default function CRMDashboard() {
         setOfferToArchive(null);
         if (currentUser?.id) fetchData(currentUser.id);
         if (data?.archived) {
-          alert('Oferta ma historię negocjacji, więc została bezpiecznie zarchiwizowana.');
+          alert(c.alerts.deleteArchived);
         }
       } else {
-        alert(data?.error || 'Błąd podczas usuwania oferty.');
+        alert(data?.error || c.alerts.deleteError);
       }
     } catch {
-      alert('Błąd połączenia z serwerem.');
+      alert(c.alerts.network);
     }
   };
 
@@ -602,7 +609,7 @@ export default function CRMDashboard() {
       const { url } = await res.json();
       if (url) window.location.href = url;
     } catch(e) {
-      alert("Błąd połączenia z operatorem płatności");
+      alert(c.alerts.paymentError);
     } finally {
       setRefreshingId(null);
     }
@@ -704,7 +711,8 @@ export default function CRMDashboard() {
         setIsBooting(true);
         sessionStorage.setItem('pro_booted', 'true');
         const rawName = uData.firstName || uData.name || (uData.email ? uData.email.split('@')[0] : 'Inwestorze');
-        const randGreet = greetings[Math.floor(Math.random() * greetings.length)].replace('{name}', rawName);
+        const bootGreetings = dict.crm.boot.greetings;
+        const randGreet = bootGreetings[Math.floor(Math.random() * bootGreetings.length)].replace("{name}", rawName);
         setGreeting(randGreet);
         setTimeout(() => setIsBooting(false), 3000);
       }
@@ -786,12 +794,12 @@ export default function CRMDashboard() {
   }, [currentUser?.id]);
 
 
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
+  if (loading) return <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
 
   
   if (isBooting) {
     return (
-        <div className="fixed inset-0 z-[999999] bg-[#050505] flex flex-col items-center justify-center font-sans overflow-hidden">
+        <div className="fixed inset-0 z-[999999] bg-[var(--eos-bg)] flex flex-col items-center justify-center font-sans overflow-hidden">
            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#D4AF37]/5 to-emerald-500/5 rounded-full blur-[100px] opacity-50 animate-pulse"></div>
            
            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 1, ease: "easeOut" }} className="relative z-10 flex flex-col items-center">
@@ -827,7 +835,7 @@ export default function CRMDashboard() {
 
   const displayName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
-    : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Witaj'));
+    : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : c.welcome));
   const avatarSrcRaw = currentUser?.image || '';
   const avatarSrc = avatarSrcRaw
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
@@ -850,21 +858,21 @@ export default function CRMDashboard() {
   });
   const formatDealLastMessage = (raw: unknown) => {
     const text = String(raw || "").trim();
-    if (!text) return "Brak wiadomości";
+    if (!text) return c.deals.msgNone;
     const event = parseDealEvent(text);
     if (event?.entity === "APPOINTMENT") {
-      if (event.action === "ACCEPTED") return "Termin spotkania został zaakceptowany.";
-      if (event.action === "PROPOSED") return "Zaproponowano nowy termin spotkania.";
-      if (event.action === "DECLINED" || event.action === "REJECTED") return "Termin spotkania został odrzucony.";
-      if (event.action === "COUNTERED") return "Wysłano kontrofertę terminu spotkania.";
-      return "Aktualizacja terminu spotkania.";
+      if (event.action === "ACCEPTED") return c.deals.msgApptAccepted;
+      if (event.action === "PROPOSED") return c.deals.msgApptProposed;
+      if (event.action === "DECLINED" || event.action === "REJECTED") return c.deals.msgApptDeclined;
+      if (event.action === "COUNTERED") return c.deals.msgApptCountered;
+      return c.deals.msgGeneric;
     }
     if (event?.entity === "BID") {
-      if (event.action === "ACCEPTED") return "Oferta cenowa została zaakceptowana.";
-      if (event.action === "PROPOSED") return "Wysłano nową ofertę cenową.";
-      if (event.action === "REJECTED" || event.action === "DECLINED") return "Oferta cenowa została odrzucona.";
-      if (event.action === "COUNTERED") return "Wysłano kontrofertę cenową.";
-      return "Aktualizacja negocjacji ceny.";
+      if (event.action === "ACCEPTED") return c.deals.msgBidAccepted;
+      if (event.action === "PROPOSED") return c.deals.msgBidProposed;
+      if (event.action === "REJECTED" || event.action === "DECLINED") return c.deals.msgBidRejected;
+      if (event.action === "COUNTERED") return c.deals.msgBidCountered;
+      return c.deals.msgGeneric;
     }
     if (text.startsWith("[[DEAL_EVENT]]") || text.startsWith("[SYSTEM_BID:")) {
       return "Aktualizacja przebiegu transakcji.";
@@ -999,8 +1007,10 @@ export default function CRMDashboard() {
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
-        {wowPlusType && <WowPlusOverlay />}
-        {wowType && <WowOverlay type={wowType as "investor" | "agency" | "plus"} />}
+        {wowPlusType && <WowPlusOverlay wowPlus={c.wowPlus} />}
+        {wowType && wowType !== "plus" && (
+          <WowOverlay type={wowType as "investor" | "agency" | "renewal"} wow={c.wow} />
+        )}
       </AnimatePresence>
 
       <div className="max-w-7xl mx-auto">
@@ -1011,13 +1021,13 @@ export default function CRMDashboard() {
         currentUser.role !== 'ADMIN' ? (
           <div className="mb-6 rounded-[1.75rem] border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-transparent p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 mb-1">Weryfikacja konta</p>
-              <p className="text-sm text-white/65 max-w-xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-amber-400 mb-1">{c.verification.bannerTitle}</p>
+              <p className="text-sm text-[var(--eos-muted)] max-w-xl">
                 {!currentUser.isVerifiedPhone && !currentUser.isEmailVerified
-                  ? 'Potwierdź telefon (SMS) i e-mail, aby publikować ogłoszenia i negocjować — jak w aplikacji.'
+                  ? c.verification.both
                   : !currentUser.isVerifiedPhone
-                    ? 'Potwierdź telefon SMS-em, aby negocjować i umawiać wizyty.'
-                    : 'Potwierdź e-mail, aby publikować ogłoszenia.'}
+                    ? c.verification.phoneOnly
+                    : c.verification.emailOnly}
               </p>
             </div>
             <Link
@@ -1031,7 +1041,7 @@ export default function CRMDashboard() {
         
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 px-1 sm:px-2 md:px-4">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-2">{c.accountEyebrow}</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--eos-subtle)] mb-2">{c.accountEyebrow}</p>
             <div className="flex items-center gap-4 flex-wrap">
               <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border border-white/15 bg-white/5 shadow-[0_0_18px_rgba(0,0,0,0.35)] shrink-0">
                 {avatarSrc ? (
@@ -1051,8 +1061,8 @@ export default function CRMDashboard() {
               </h1>
               <EliteStatusBadges subject={currentUser} isDark={isDarkTheme} compact className="mt-1" />
               {currentUser?.id && (
-                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-white/10 rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
-                   <span className="text-[9px] uppercase tracking-[0.2em] text-white/40 font-bold">{c.userIdLabel}</span>
+                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-[var(--eos-border)] rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
+                   <span className="text-[9px] uppercase tracking-[0.2em] text-[var(--eos-subtle)] font-bold">{c.userIdLabel}</span>
                    <span className="text-xs sm:text-sm md:text-base font-black text-emerald-500 tracking-widest drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{currentUser.id}</span>
                 </div>
               )}
@@ -1060,7 +1070,7 @@ export default function CRMDashboard() {
             {!reviewsLoading && reviewsData && (
               <>
                 <button onClick={() => setIsReviewsModalOpen(true)} className="mt-3 flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-3 py-1.5 rounded-full transition-colors group cursor-pointer">
-                   <Star size={14} className={`${reviewsData.totalReviews > 0 ? 'text-yellow-500 fill-yellow-500 group-hover:animate-pulse' : 'text-white/30'}`} />
+                   <Star size={14} className={`${reviewsData.totalReviews > 0 ? 'text-yellow-500 fill-yellow-500 group-hover:animate-pulse' : 'text-[var(--eos-subtle)]'}`} />
                    <span className="text-[10px] font-black text-yellow-500">
                      {reviewsData.totalReviews > 0 ? `${reviewsData.averageRating.toFixed(1)} / 5.0` : 'Brak opinii'}
                    </span>
@@ -1104,13 +1114,13 @@ export default function CRMDashboard() {
 
         <div className="flex justify-center mb-8 sm:mb-10 relative z-20">
           <div className="w-full md:w-auto max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="bg-[#111] border border-white/5 p-1.5 rounded-full inline-flex md:flex relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] min-w-max md:min-w-0">
+          <div className="bg-[#111] border border-[var(--eos-border)] p-1.5 rounded-full inline-flex md:flex relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)] min-w-max md:min-w-0">
             {profileTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => handleTabSwitch(tab)}
-                className={`relative px-4 sm:px-5 md:px-10 py-3 sm:py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.2em] transition-colors z-10 whitespace-nowrap ${activeTab === tab ? 'text-black' : 'text-white/40 hover:text-white/80'}`}
+                className={`relative px-4 sm:px-5 md:px-10 py-3 sm:py-3.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-[0.18em] sm:tracking-[0.2em] transition-colors z-10 whitespace-nowrap ${activeTab === tab ? 'text-black' : 'text-[var(--eos-subtle)] hover:text-white/80'}`}
               >
                 {activeTab === tab && (
                   <motion.div
@@ -1286,7 +1296,7 @@ export default function CRMDashboard() {
                 </>
               )}
             </h2>
-            <p className="text-white/60 text-xs sm:text-sm max-w-2xl leading-relaxed">
+            <p className="text-[var(--eos-muted)] text-xs sm:text-sm max-w-2xl leading-relaxed">
                {activeTab === 'radar' && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
                {activeTab === 'my_offers' && c.myOffersDesc}
                {activeTab === 'offers' && c.favoritesDesc}
@@ -1300,13 +1310,13 @@ export default function CRMDashboard() {
           <div className="flex flex-col gap-8 mb-12">
             
             <>
-            <div className="relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-white/5 bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
+            <div className="relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
               <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen transition-opacity duration-1000 group-hover:opacity-100 opacity-50" />
               <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
               
-              <div className="relative z-10 flex flex-col md:flex-row gap-8 justify-between items-start md:items-center border-b border-white/5 pb-8">
+              <div className="relative z-10 flex flex-col md:flex-row gap-8 justify-between items-start md:items-center border-b border-[var(--eos-border)] pb-8">
                 <div className="flex items-center gap-6">
-                  <div className="relative flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-black border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)] overflow-hidden">
+                  <div className="relative flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-black border border-[var(--eos-border)] shadow-[inset_0_2px_10px_rgba(255,255,255,0.1)] overflow-hidden">
                      <div className="absolute inset-0 rounded-full border border-emerald-500/25 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" />
                      {showDualRadarPro ? (
                        <>
@@ -1355,16 +1365,16 @@ export default function CRMDashboard() {
               </div>
 
               <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
+                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
-                 <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
+                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
-                 <div className="bg-black/50 border border-white/5 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
+                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
                     <span className="text-white font-black text-sm truncate">{radarSummary.minArea}</span>
                  </div>
                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
@@ -1375,8 +1385,8 @@ export default function CRMDashboard() {
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
-                <span className="text-white/30 text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
-                <span className="rounded-xl border border-white/10 bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
+                <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
+                <span className="rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
                   {radarSummary.threshold}
                 </span>
               </div>
@@ -1420,7 +1430,7 @@ export default function CRMDashboard() {
                      resolveOfferPrimaryImage(card) || "/placeholder.jpg";
                    const txRent = card.transactionType === "rent";
                    return (
-                     <div key={offer.id} className="bg-[#0a0a0a] border border-emerald-500/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:border-emerald-500 transition-all">
+                     <div key={offer.id} className="bg-[var(--eos-bg-elevated)] border border-emerald-500/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:border-emerald-500 transition-all">
                         <div className="absolute top-0 right-0 bg-emerald-500 text-black font-black px-4 py-1 rounded-bl-2xl rounded-tr-[2.5rem] text-xs z-20 shadow-[0_0_15px_rgba(16,185,129,0.5)]">
                            {c.matchLabel} {offer.matchScore || 100}%
                         </div>
@@ -1437,8 +1447,8 @@ export default function CRMDashboard() {
                               <div className="flex flex-col mt-1">
                                 {txRent ? (
                                     <>
-                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-white/40">{c.perMonth}</span></p>
-                                        <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-0.5 flex gap-1">
+                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">{c.perMonth}</span></p>
+                                        <p className="text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest mt-0.5 flex gap-1">
                                             {offer.deposit && <span>Kaucja: {offer.deposit}</span>} 
                                             {offer.rentAdminFee && <span>| Admin: {offer.rentAdminFee}</span>}
                                         </p>
@@ -1449,13 +1459,13 @@ export default function CRMDashboard() {
                               </div>
                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-white/50 uppercase tracking-widest font-bold mb-4">
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || 'Warszawa'}</span>
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><Target size={12}/> {offer.area} m²</span>
+                        <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || 'Warszawa'}</span>
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><Target size={12}/> {offer.area} m²</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-white/50 uppercase tracking-widest font-bold mb-4">
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><Building2 size={12}/> {offer.rooms} {c.rooms}</span>
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-white/5 truncate flex items-center gap-1"><span className="text-emerald-500 animate-pulse">●</span> {c.statusActive}</span>
+                        <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><Building2 size={12}/> {offer.rooms} {c.rooms}</span>
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><span className="text-emerald-500 animate-pulse">●</span> {c.statusActive}</span>
                         </div>
                         <button onClick={() => window.open(`/oferta/${offer.id}`, '_blank')} className="w-full mt-2 py-3 bg-transparent border border-emerald-500/50 text-emerald-500 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500 hover:text-black transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] cursor-pointer">
                            {c.viewOffer}
@@ -1465,7 +1475,7 @@ export default function CRMDashboard() {
                  })}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
-            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[#050505] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
+            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[var(--eos-bg)] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
                 <div className={`flex items-center gap-4 mb-6 relative z-10`}>
                   <motion.div
                     animate={{ rotate: 360 }}
@@ -1482,7 +1492,7 @@ export default function CRMDashboard() {
                     </motion.div>
                   )}
                 </div>
-                <p className="text-white/40 font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
+                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
                   Ustaw kryteria Radaru — dopasowane oferty pojawią się tutaj. Jedno konto: szukasz i wystawiasz, jak w aplikacji mobilnej.
                 </p>
                 <div className="mt-6 flex gap-2">
@@ -1501,9 +1511,9 @@ export default function CRMDashboard() {
           <>
           {isListingsTab && (
             <div className="mb-6">
-              <div className="flex bg-[#111] border border-white/10 rounded-full p-1.5 shadow-inner relative w-full max-w-[560px]">
+              <div className="flex bg-[#111] border border-[var(--eos-border)] rounded-full p-1.5 shadow-inner relative w-full max-w-[560px]">
                 <div
-                  className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(33.33%-4px)] bg-[var(--eos-bg-elevated)] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
                     offerSectionFilter === 'ACTIVE'
                       ? 'translate-x-0'
                       : offerSectionFilter === 'PENDING'
@@ -1515,7 +1525,7 @@ export default function CRMDashboard() {
                   type="button"
                   onClick={() => setOfferSectionFilter('ACTIVE')}
                   className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'ACTIVE' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                    offerSectionFilter === 'ACTIVE' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
                   Aktywne ({offersBySection.ACTIVE.length})
@@ -1524,7 +1534,7 @@ export default function CRMDashboard() {
                   type="button"
                   onClick={() => setOfferSectionFilter('PENDING')}
                   className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'PENDING' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                    offerSectionFilter === 'PENDING' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
                   Oczekujące ({offersBySection.PENDING.length})
@@ -1533,7 +1543,7 @@ export default function CRMDashboard() {
                   type="button"
                   onClick={() => setOfferSectionFilter('COMPLETED')}
                   className={`relative z-10 flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-colors duration-500 text-center ${
-                    offerSectionFilter === 'COMPLETED' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'
+                    offerSectionFilter === 'COMPLETED' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
                   Zakończone ({offersBySection.COMPLETED.length})
@@ -1544,9 +1554,9 @@ export default function CRMDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {(offersVisibleInSection.length === 0) ? (
-              <div className="eos-surface-card col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
+              <div className="eos-surface-card col-span-full flex flex-col items-center justify-center py-24 border border-dashed border-[var(--eos-border)] rounded-[2.5rem] bg-[var(--eos-bg-elevated)] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-blue-900/5 pointer-events-none" />
-                <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
+                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-8 relative z-10">
                   {isFavoritesTab
                     ? c.favoritesEmpty
                     : offerSectionFilter === 'ACTIVE'
@@ -1567,7 +1577,7 @@ export default function CRMDashboard() {
                   <button
                     type="button"
                     onClick={() => { window.location.href = '/oferty'; }}
-                    className="relative z-10 px-8 py-4 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 cursor-pointer"
+                    className="relative z-10 px-8 py-4 bg-white/5 border border-[var(--eos-border)] hover:bg-white/10 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 cursor-pointer"
                   >
                     {c.favoritesDiscoverMarket}
                   </button>
@@ -1582,7 +1592,7 @@ export default function CRMDashboard() {
                     whileHover={{ scale: 0.98 }}
                     whileTap={{ scale: 0.97 }}
                     onClick={goToAddOffer}
-                    className="eos-surface-card bg-[#0a0a0a] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
+                    className="eos-surface-card bg-[var(--eos-bg-elevated)] border border-dashed border-white/25 hover:border-blue-400/80 rounded-[2.5rem] p-6 flex flex-col items-center justify-center min-h-[300px] cursor-pointer transition-colors group relative overflow-hidden shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
                   >
                     <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors duration-500" />
                     <div className="w-16 h-16 rounded-full border border-blue-400/40 group-hover:border-blue-300 flex items-center justify-center mb-4 transition-colors shadow-[0_0_18px_rgba(59,130,246,0.25)]">
@@ -1607,7 +1617,7 @@ export default function CRMDashboard() {
                 const offerPrimaryImage = resolveOfferPrimaryImage(offer);
 
                 return (
-                  <div key={offer.id} className={`eos-surface-card bg-[#0a0a0a] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-white/10 hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
+                  <div key={offer.id} className={`eos-surface-card bg-[var(--eos-bg-elevated)] border rounded-[2.5rem] p-6 relative overflow-hidden transition-all duration-300 shadow-xl group ${isArchived ? 'border-red-500/20 opacity-90' : 'border-[var(--eos-border)] hover:border-emerald-500/30 hover:shadow-[0_20px_40px_-15px_rgba(16,185,129,0.2)] hover:-translate-y-1'}`}>
                     
                     {!isArchived && <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-[80px] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>}
 
@@ -1625,7 +1635,7 @@ export default function CRMDashboard() {
                     )}
                     
                     <div className="flex gap-4 mb-6 relative z-10">
-                      <div className={`w-16 h-16 rounded-2xl overflow-hidden shrink-0 border ${isArchived ? 'border-red-500/30 grayscale' : 'border-white/10'}`}>
+                      <div className={`w-16 h-16 rounded-2xl overflow-hidden shrink-0 border ${isArchived ? 'border-red-500/30 grayscale' : 'border-[var(--eos-border)]'}`}>
                          {offerPrimaryImage ? (
                            <img
                              src={offerPrimaryImage}
@@ -1667,9 +1677,9 @@ export default function CRMDashboard() {
                           <div className="flex flex-col mt-0.5">
                             {offer.transactionType === 'rent' ? (
                               <>
-                                <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-white/30">/ miesiąc</span></p>
+                                <p className={`font-black text-xs ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">/ miesiąc</span></p>
                                 {!isArchived && (
-                                  <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-white/40 uppercase tracking-widest">
+                                  <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest">
                                     {offer.deposit && <span>Kaucja: <span className="text-white/70">{offer.deposit} PLN</span></span>}
                                     {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
                                     {offer.petsAllowed && <span className="text-emerald-500/80">Zwierzęta akceptowane</span>}
@@ -1677,15 +1687,15 @@ export default function CRMDashboard() {
                                 )}
                               </>
                             ) : (
-                              <p className={`font-black text-xs ${isArchived ? 'text-white/40' : 'text-emerald-500'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
+                              <p className={`font-black text-xs ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-emerald-500'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN</p>
                             )}
                           </div>
                       </div>
                     </div>
 
-                    <div className={`rounded-2xl p-4 text-center border mb-6 relative overflow-hidden transition-colors duration-300 ${isArchived ? 'bg-black border-red-500/10' : 'bg-[#111] border-white/5 group-hover:border-emerald-500/20 group-hover:bg-[#111]/80'}`}>
-                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mb-1">Zasięg (Wyświetlenia)</p>
-                      <p className={`text-3xl font-black ${isArchived ? 'text-white/20' : 'text-white'}`}>{offer.views || 0}</p>
+                    <div className={`rounded-2xl p-4 text-center border mb-6 relative overflow-hidden transition-colors duration-300 ${isArchived ? 'bg-black border-red-500/10' : 'bg-[#111] border-[var(--eos-border)] group-hover:border-emerald-500/20 group-hover:bg-[#111]/80'}`}>
+                      <p className="text-[10px] text-[var(--eos-subtle)] font-bold uppercase tracking-widest mb-1">Zasięg (Wyświetlenia)</p>
+                      <p className={`text-3xl font-black ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-white'}`}>{offer.views || 0}</p>
                     </div>
 
                     
@@ -1696,11 +1706,11 @@ export default function CRMDashboard() {
                             <h4 className="text-[10px] uppercase tracking-widest font-black text-amber-500 mb-3 flex items-center gap-2"><DollarSign size={14} /> Oczekujące Propozycje</h4>
                             <div className="flex flex-col gap-3 relative z-10">
                                 {offerBids.map((bid: any) => (
-                                    <div key={bid.id} className="bg-[#050505]/60 border border-white/5 rounded-xl p-4 flex flex-col gap-3 backdrop-blur-md hover:border-amber-500/30 transition-colors">
+                                    <div key={bid.id} className="bg-[var(--eos-bg)]/60 border border-[var(--eos-border)] rounded-xl p-4 flex flex-col gap-3 backdrop-blur-md hover:border-amber-500/30 transition-colors">
                                         <div className="flex justify-between items-center">
                                             <div>
                                                 <p className="text-lg font-black text-amber-400">{Number(bid.amount).toLocaleString('pl-PL')} PLN</p>
-                                                <p className="text-[9px] uppercase tracking-widest text-white/40 font-bold">{bid.financing === 'CASH' ? '💰 Gotówka' : '🏦 Kredyt Bankowy'}</p>
+                                                <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-bold">{bid.financing === 'CASH' ? '💰 Gotówka' : '🏦 Kredyt Bankowy'}</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 mt-1">
@@ -1729,23 +1739,23 @@ export default function CRMDashboard() {
                           </span>
                         </button>
                       ) : (
-                        <div className="w-full py-4 rounded-[1.5rem] bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/30 flex items-center justify-between px-4">
+                        <div className="w-full py-4 rounded-[1.5rem] bg-white/5 border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] flex items-center justify-between px-4">
                           <div className="flex items-center gap-3">
                             <Clock size={16} className={isPending ? 'text-yellow-500' : (daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500')} /> 
                             <div className="flex flex-col text-left">
                               {isPending ? (
                                 <>
-                                  <span className="block text-white/50 text-[8px]">Status publikacji</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">Status publikacji</span>
                                   <span className="block font-black text-xs text-yellow-500">Czeka na akceptację EstateOS™</span>
                                 </>
                               ) : hasValidExpiry ? (
                                 <>
-                                  <span className="block text-white/50 text-[8px]">Ważne do: {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">Ważne do: {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
                                   <span className={`block font-black text-xs ${daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>Pozostało {daysLeft} dni</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="block text-white/50 text-[8px]">Publikacja</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">Publikacja</span>
                                   <span className="block font-black text-xs text-emerald-500">Aktywna na rynku</span>
                                 </>
                               )}
@@ -1783,26 +1793,26 @@ export default function CRMDashboard() {
         <div className="animate-in fade-in zoom-in-95 duration-500">
           <button
             onClick={() => setSelectedDealId(null)}
-            className="mb-6 px-5 py-2.5 bg-[#111] border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-white/50 hover:text-white hover:border-amber-500/50 transition-all flex items-center gap-2 w-fit shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+            className="mb-6 px-5 py-2.5 bg-[#111] border border-[var(--eos-border)] rounded-full text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-white hover:border-amber-500/50 transition-all flex items-center gap-2 w-fit shadow-[0_0_20px_rgba(0,0,0,0.5)]"
           >
             ← Wróć do listy transakcji
           </button>
           <DealRoom dealId={selectedDealId} currentUserId={currentUser?.id} />
         </div>
       ) : isolatedDeals.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 border border-dashed border-white/10 rounded-[2.5rem] bg-[#0a0a0a] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
+              <div className="flex flex-col items-center justify-center py-24 border border-dashed border-[var(--eos-border)] rounded-[2.5rem] bg-[var(--eos-bg-elevated)] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-amber-900/5 pointer-events-none" />
-                <p className="text-white/40 font-bold uppercase tracking-widest text-sm mb-4 relative z-10">Brak aktywnych transakcji</p>
-                <p className="text-white/20 text-xs text-center max-w-sm relative z-10">Złóż ofertę zakupu lub zaakceptuj propozycję od kupca, aby otworzyć szyfrowany Deal Room.</p>
+                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-4 relative z-10">Brak aktywnych transakcji</p>
+                <p className="text-[var(--eos-subtle)] text-xs text-center max-w-sm relative z-10">Złóż ofertę zakupu lub zaakceptuj propozycję od kupca, aby otworzyć szyfrowany Deal Room.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {sortedIsolatedDeals.map((deal: any) => (
                   <div key={deal.dealId} onClick={() => setSelectedDealId(deal.dealId)} className="cursor-pointer block">
-                    <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-white/10 hover:border-amber-500/30 rounded-[2rem] p-6 transition-all duration-300 group cursor-pointer shadow-xl hover:shadow-[0_10px_30px_rgba(245,158,11,0.1)]">
+                    <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-[var(--eos-border)] hover:border-amber-500/30 rounded-[2rem] p-6 transition-all duration-300 group cursor-pointer shadow-xl hover:shadow-[0_10px_30px_rgba(245,158,11,0.1)]">
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex gap-4 items-center min-w-0">
-                          <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-white/5 group-hover:border-amber-500/50 transition-colors">
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-[var(--eos-border)] group-hover:border-amber-500/50 transition-colors">
                             <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || 'Oferta'} />
                           </div>
                           <div className="flex flex-col justify-center min-w-0">
@@ -1823,20 +1833,20 @@ export default function CRMDashboard() {
                             className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
                               pinnedDealIds.includes(Number(deal.dealId))
                                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                : 'bg-white/5 border-white/10 text-white/40 hover:text-white/80'
+                                : 'bg-white/5 border-[var(--eos-border)] text-[var(--eos-subtle)] hover:text-white/80'
                             }`}
                           >
                             {pinnedDealIds.includes(Number(deal.dealId)) ? 'Przypięte' : 'Przypnij'}
                           </button>
                         </div>
                       </div>
-                      <div className="bg-black/50 rounded-xl p-4 border border-white/5 relative overflow-hidden">
+                      <div className="bg-black/50 rounded-xl p-4 border border-[var(--eos-border)] relative overflow-hidden">
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50 group-hover:bg-amber-500 transition-colors" />
                         <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
                           Ostatnia wiadomość {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
                         </p>
                         <p className="text-white/70 text-xs truncate ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
-                        <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-white/40 uppercase tracking-widest font-black">
+                        <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
                           <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (
                             <span className="text-emerald-400">
@@ -1858,7 +1868,7 @@ export default function CRMDashboard() {
                           <Link
                             href={`/profil/${deal.otherParty.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] uppercase tracking-widest font-black text-white/45 hover:text-white transition-colors"
+                            className="text-[10px] uppercase tracking-widest font-black text-[var(--eos-muted)] hover:text-white transition-colors"
                           >
                             Otwórz profil
                           </Link>
@@ -2023,10 +2033,10 @@ export default function CRMDashboard() {
                                       {dates.map((d, i) => {
                                         const isSelected = newPropDate === d.toISOString();
                                         return ( 
-                                          <button key={i} onClick={(e) => { e.preventDefault(); setNewPropDate(d.toISOString()); setTimeout(() => setRescheduleStep(2), 200); }} className={`relative w-full aspect-square rounded-[1.2rem] border flex flex-col items-center justify-center transition-all duration-300 group ${isSelected ? 'bg-[#0a0a0a] border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-white/5 hover:border-white/20 hover:bg-white/5'}`}>
-                                            <span className={`text-[9px] font-black uppercase mb-1 tracking-widest ${isSelected ? 'text-emerald-500/80' : 'text-white/40'}`}>{d.toLocaleDateString('pl-PL', { weekday: 'short' }).replace('.', '')}</span>
+                                          <button key={i} onClick={(e) => { e.preventDefault(); setNewPropDate(d.toISOString()); setTimeout(() => setRescheduleStep(2), 200); }} className={`relative w-full aspect-square rounded-[1.2rem] border flex flex-col items-center justify-center transition-all duration-300 group ${isSelected ? 'bg-[var(--eos-bg-elevated)] border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-[var(--eos-border)] hover:border-white/20 hover:bg-white/5'}`}>
+                                            <span className={`text-[9px] font-black uppercase mb-1 tracking-widest ${isSelected ? 'text-emerald-500/80' : 'text-[var(--eos-subtle)]'}`}>{d.toLocaleDateString('pl-PL', { weekday: 'short' }).replace('.', '')}</span>
                                             <span className={`text-xl font-black ${isSelected ? 'text-emerald-500' : 'text-white/90'}`}>{d.getDate()}</span>
-                                            <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 ${isSelected ? 'text-emerald-500/80' : 'text-white/30'}`}>{d.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '')}</span>
+                                            <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 ${isSelected ? 'text-emerald-500/80' : 'text-[var(--eos-subtle)]'}`}>{d.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '')}</span>
                                           </button> 
                                         )
                                       })}
@@ -2038,7 +2048,7 @@ export default function CRMDashboard() {
                                       {hours.map((h) => {
                                          const isSelected = newPropTime === h;
                                          return ( 
-                                          <button key={h} onClick={(e) => { e.preventDefault(); setNewPropTime(h); setTimeout(() => setRescheduleStep(3), 200); }} className={`py-4 rounded-xl border text-sm font-black tracking-widest transition-all duration-300 ${isSelected ? 'bg-[#0a0a0a] text-emerald-500 border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-white/5 hover:border-white/20 hover:bg-white/5 text-white/80'}`}>{h}</button> 
+                                          <button key={h} onClick={(e) => { e.preventDefault(); setNewPropTime(h); setTimeout(() => setRescheduleStep(3), 200); }} className={`py-4 rounded-xl border text-sm font-black tracking-widest transition-all duration-300 ${isSelected ? 'bg-[var(--eos-bg-elevated)] text-emerald-500 border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-[var(--eos-border)] hover:border-white/20 hover:bg-white/5 text-white/80'}`}>{h}</button> 
                                         )
                                       })}
                                     </div>
@@ -2071,7 +2081,7 @@ export default function CRMDashboard() {
             refreshPlanning();
         } else alert('Błąd: Nie udało się wysłać propozycji.');
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
-}} className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-[#0a0a0a] hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]">
+}} className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-[var(--eos-bg-elevated)] hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]">
                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"></div>
                                             <ShieldCheck size={18} className="relative z-10 transition-colors duration-300 text-emerald-500 group-hover:text-white" /> 
                                             <span className="relative z-10 text-xs sm:text-sm font-black uppercase tracking-[0.2em] transition-colors duration-300 text-emerald-500 group-hover:text-white">Wyślij Kontrofertę</span>
@@ -2192,12 +2202,12 @@ export default function CRMDashboard() {
       <AnimatePresence>
         {profileModalUser && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.95, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 12 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 max-w-2xl w-full shadow-2xl relative">
-              <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+            <motion.div initial={{ scale: 0.95, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 12 }} className="bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2rem] p-6 max-w-2xl w-full shadow-2xl relative">
+              <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-[var(--eos-subtle)] hover:text-white transition-colors">
                 <X size={20} />
               </button>
               <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || 'Profil użytkownika'}</h3>
-              <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-6">ID: {profileModalUser.id}</p>
+              <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-6">ID: {profileModalUser.id}</p>
               <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 
               {profileModalLoading ? (
@@ -2205,29 +2215,29 @@ export default function CRMDashboard() {
               ) : profileModalData ? (
                 <div className="space-y-5">
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Średnia ocen</p>
+                    <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Średnia ocen</p>
                       <p className="text-lg font-black text-amber-300">
                         {Array.isArray(profileModalData.reviews) && profileModalData.reviews.length
                           ? (profileModalData.reviews.reduce((a: number, r: any) => a + Number(r.rating || 0), 0) / profileModalData.reviews.length).toFixed(1)
                           : '0.0'} ★
                       </p>
                     </div>
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Komentarze</p>
+                    <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Komentarze</p>
                       <p className="text-lg font-black text-white">{Array.isArray(profileModalData.reviews) ? profileModalData.reviews.length : 0}</p>
                     </div>
-                    <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-white/40 font-black">Inne oferty</p>
+                    <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Inne oferty</p>
                       <p className="text-lg font-black text-emerald-400">{Array.isArray(profileModalData.offers) ? profileModalData.offers.length : 0}</p>
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                    <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-3">Ostatnie komentarze</p>
+                  <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">Ostatnie komentarze</p>
                     <div className="space-y-2 max-h-40 overflow-auto">
                       {(profileModalData.reviews || []).slice(0, 5).map((r: any) => (
-                        <div key={r.id} className="rounded-lg bg-black/40 border border-white/5 p-3">
+                        <div key={r.id} className="rounded-lg bg-black/40 border border-[var(--eos-border)] p-3">
                           <p className="text-xs text-amber-300 font-black">{Number(r.rating || 0)} ★</p>
                           <p className="text-xs text-white/70">{r.comment || 'Bez komentarza'}</p>
                         </div>
@@ -2236,11 +2246,11 @@ export default function CRMDashboard() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-                    <p className="text-[10px] uppercase tracking-widest text-white/40 font-black mb-3">Pozostałe oferty użytkownika</p>
+                  <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-4">
+                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">Pozostałe oferty użytkownika</p>
                     <div className="space-y-2 max-h-40 overflow-auto">
                       {(profileModalData.offers || []).slice(0, 10).map((o: any) => (
-                        <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-white/5 p-3 hover:border-emerald-500/30 transition-colors">
+                        <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-[var(--eos-border)] p-3 hover:border-emerald-500/30 transition-colors">
                           <p className="text-xs text-white font-bold truncate">{o.title || `Oferta #${o.id}`}</p>
                           <p className="text-[10px] text-emerald-400 font-black">{Number(String(o.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</p>
                         </Link>
@@ -2250,7 +2260,7 @@ export default function CRMDashboard() {
                   </div>
                 </div>
               ) : (
-                <p className="text-white/40 text-sm">Nie udało się pobrać profilu.</p>
+                <p className="text-[var(--eos-subtle)] text-sm">Nie udało się pobrać profilu.</p>
               )}
             </motion.div>
           </motion.div>
@@ -2260,7 +2270,7 @@ export default function CRMDashboard() {
       <AnimatePresence>
         {offerToArchive && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden text-center">
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} className="bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2.5rem] p-8 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)] relative overflow-hidden text-center">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500"></div>
               
               <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6 border border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
@@ -2268,7 +2278,7 @@ export default function CRMDashboard() {
               </div>
               
               <h3 className="text-2xl font-black text-white mb-2 tracking-tighter">Wstrzymać Sprzedaż?</h3>
-              <p className="text-white/50 text-xs mb-6 leading-relaxed">
+              <p className="text-[var(--eos-muted)] text-xs mb-6 leading-relaxed">
                  Ta akcja jest natychmiastowa. Ogłoszenie <br/><strong className="text-white text-sm">{offerToArchive.title}</strong><br/> zniknie z rynku i trafi do archiwum.
               </p>
               
@@ -2277,13 +2287,13 @@ export default function CRMDashboard() {
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
                     <p className="text-[10px] uppercase tracking-widest font-black text-red-500">Ważna Informacja</p>
                  </div>
-                 <p className="text-xs text-white/60 font-medium leading-relaxed">
+                 <p className="text-xs text-[var(--eos-muted)] font-medium leading-relaxed">
                    Obecny opłacony czas wyświetlania zostanie <span className="text-white font-bold">bezpowrotnie zakończony</span>. Aby przywrócić ofertę na mapę w przyszłości, konieczne będzie jej standardowe odnowienie (24 PLN).
                  </p>
               </div>
               
               <div className="flex gap-3">
-                 <button onClick={() => setOfferToArchive(null)} className="flex-1 py-4 rounded-[1.5rem] border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/50 hover:bg-white/5 hover:text-white transition-all cursor-pointer">Anuluj</button>
+                 <button onClick={() => setOfferToArchive(null)} className="flex-1 py-4 rounded-[1.5rem] border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:bg-white/5 hover:text-white transition-all cursor-pointer">Anuluj</button>
                  <button onClick={handleArchiveSubmit} className="flex-1 py-4 rounded-[1.5rem] bg-gradient-to-r from-red-600 to-red-500 text-[10px] font-black uppercase tracking-widest text-white hover:scale-[1.02] shadow-[0_10px_20px_rgba(239,68,68,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer">
                     <ArchiveX size={14} /> Zdejmij z rynku
                  </button>
