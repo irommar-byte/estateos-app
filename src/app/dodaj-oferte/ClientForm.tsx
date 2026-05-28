@@ -1238,8 +1238,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
                     <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
                     <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                      Jak w aplikacji: 0% (bez prowizji) albo od {AGENT_COMMISSION_MIN_NONZERO}% wzwyż.
-                      Kwota prowizji jest informacją dla kupującego — rozliczenie poza platformą.
+                      Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
+                      {AGENT_COMMISSION_MIN_NONZERO}% wzwyż. Cena ogłoszenia pozostaje finalną kwotą brutto dla
+                      klienta, a prowizja jest rozliczana poza platformą.
                     </p>
                     <AgentCommissionEditor
                       priceRaw={data.price || 0}

@@ -139,7 +139,7 @@ const PL: OfferPageCopy = {
   authRequired: "Musisz być zalogowany, aby rozpocząć negocjacje.",
   submitBid: "Złóż ofertę",
   listingPriceIncludesCommission:
-    "Cena ofertowa to finalna kwota brutto dla kupującego/najemcy: tyle widzisz, tyle zapłacisz (bez dopłat). Z tej kwoty rozliczana jest prowizja pośrednika wpisana w ofercie.",
+    "To finalna cena brutto: tyle widzisz, tyle płacisz — bez dopłat. Z tej kwoty rozliczana jest prowizja pośrednika wskazana w ofercie.",
 };
 
 const EN: OfferPageCopy = {
@@ -211,7 +211,7 @@ const EN: OfferPageCopy = {
   authRequired: "You must be signed in to start negotiations.",
   submitBid: "Submit offer",
   listingPriceIncludesCommission:
-    "The listing price is the final gross amount for the buyer/tenant: what you see is what you pay (no surcharge). The intermediary commission listed in this offer is settled from that amount.",
+    "This is the final gross price: what you see is what you pay, with no surcharge. The intermediary commission shown in this listing is settled from that amount.",
 };
 
 export function getOfferPageCopy(locale: Locale): OfferPageCopy {

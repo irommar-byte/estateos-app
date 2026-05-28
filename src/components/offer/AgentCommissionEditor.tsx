@@ -155,10 +155,9 @@ export default function AgentCommissionEditor({
       </div>
 
       <p className="text-xs text-zinc-400 leading-relaxed">
-        <strong className="text-zinc-200">Cena ofertowa to ostateczna kwota brutto</strong> — nie podwyższamy jej o
-        prowizję. Po transakcji kupujący z tej kwoty wypłaca agentowi uzgodnioną prowizję (od{" "}
-        {AGENT_COMMISSION_MIN_NONZERO}% wzwyż).
-        Prowizja jest <strong className="text-zinc-300">brutto</strong>, płatna bezpośrednio agentowi.
+        <strong className="text-zinc-200">Cena z ogłoszenia pozostaje finalną kwotą brutto</strong> — bez dopłaty
+        ponad to, co widzi kupujący. Uzgodniona prowizja (od {AGENT_COMMISSION_MIN_NONZERO}% wzwyż) jest rozliczana z
+        tej kwoty, bezpośrednio z agentem.
       </p>
       {Number.isFinite(maxCommissionPln) && maxCommissionPln > 0 ? (
         <p className="text-[10px] text-zinc-500">
@@ -237,8 +236,8 @@ export default function AgentCommissionEditor({
           </p>
           <p className="text-xs text-zinc-500 mt-2">
             {mode === "amount"
-              ? "Procent aktualizuje się na żywo; po zakończeniu edycji zaokrąglimy do 0,25%."
-              : "Kwota liczona z ceny ofertowej brutto."}
+              ? "Procent aktualizuje się na żywo; po edycji wyrównujemy do kroku 0,25%."
+              : "Kwota liczona od ceny brutto widocznej w ofercie."}
           </p>
         </div>
       </div>
