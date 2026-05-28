@@ -163,6 +163,12 @@ export type Dictionary = {
     teaserBody: string;
     teaserLogin: string;
     teaserBack: string;
+    guideTitle: string;
+    guidePan: string;
+    guidePinch: string;
+    guideHoverZoom: string;
+    hoverZoomHint: string;
+    hoverZoomActive: string;
   };
   footer: {
     rights: string;
@@ -462,6 +468,12 @@ const pl: Dictionary = {
       "Szczegóły oferty i kontakt są dostępne po zalogowaniu. Utwórz konto lub zaloguj się, aby odblokować adres na mapie.",
     teaserLogin: "Zaloguj się",
     teaserBack: "Wróć do mapy",
+    guideTitle: "Nawigacja mapy",
+    guidePan: "Przesuwaj mapę jednym palcem lub myszką.",
+    guidePinch: "Przybliżaj i oddalaj dwoma palcami (pinch).",
+    guideHoverZoom: "Najedź kursorem na pinezkę, aby płynnie przybliżyć lokalizację.",
+    hoverZoomHint: "Najedź na pinezkę, aby przybliżyć",
+    hoverZoomActive: "Przybliżanie do pinezki",
   },
   footer: {
     rights: "© 2026 EstateOS™. Wszelkie prawa zastrzeżone.",
@@ -770,6 +782,12 @@ const en: Dictionary = {
       "Listing details and contact unlock after sign-in. Log in or create an account to open this pin.",
     teaserLogin: "Sign in",
     teaserBack: "Back to map",
+    guideTitle: "Map controls",
+    guidePan: "Drag with one finger or mouse to pan.",
+    guidePinch: "Pinch with two fingers to zoom in and out.",
+    guideHoverZoom: "Hover a pin to smoothly zoom into that location.",
+    hoverZoomHint: "Hover a pin to zoom",
+    hoverZoomActive: "Zooming to pin",
   },
   footer: {
     rights: "© 2026 EstateOS™. All rights reserved.",

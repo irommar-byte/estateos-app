@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Lock, LocateFixed } from "lucide-react";
+import { Hand, Lock, LocateFixed, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -61,6 +61,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const appliedMapTheme = useRef<"light" | "dark" | null>(null);
+  const autoRotateFrameRef = useRef<number | null>(null);
+  const lastInteractionAtRef = useRef<number>(Date.now());
+  const hoverFocusActiveRef = useRef(false);
+  const canHoverRef = useRef(false);
 
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
@@ -76,6 +80,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
+  const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
+  const [showMapGuide, setShowMapGuide] = useState(false);
 
   const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
   const maxPriceLabel =
@@ -115,6 +121,30 @@ export default function InteractiveMap({ immersive = false }: Props) {
         setShowTeaser(true);
     }
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    canHoverRef.current = window.matchMedia("(hover: hover)").matches;
+    const dismissed = window.sessionStorage.getItem("estateos_map_guide_dismissed");
+    setShowMapGuide(dismissed !== "1");
+  }, []);
+
+  const focusPin = useCallback((offerId: number, coords: [number, number]) => {
+    if (!map.current || !canHoverRef.current) return;
+    if (!Number.isFinite(offerId)) return;
+    hoverFocusActiveRef.current = true;
+    setActiveHoverPinId(offerId);
+    lastInteractionAtRef.current = Date.now();
+    map.current.flyTo({
+      center: coords,
+      zoom: 16.2,
+      pitch: 58,
+      bearing: -12,
+      speed: 0.42,
+      curve: 1.42,
+      essential: true,
+    });
+  }, []);
 
   useEffect(() => {
     fetch("/api/user/profile", { credentials: "include" })
@@ -233,6 +263,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
               win.triggerTeaser?.();
             }
           };
+          innerEl.onmouseenter = () => {
+            const id = Number(offer.id);
+            focusPin(id, coords);
+          };
+          innerEl.onmouseover = innerEl.onmouseenter;
+          innerEl.onmouseleave = () => {
+            if (!canHoverRef.current) return;
+            hoverFocusActiveRef.current = false;
+            setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+          };
 
           outerEl.appendChild(innerEl);
           markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
@@ -246,17 +286,34 @@ export default function InteractiveMap({ immersive = false }: Props) {
             const tx = normalizeTransactionType(offer.transactionType);
             pinEl.className = offerPinColorClasses(offer.transactionType);
             pinEl.innerText = formatPinLabel(offer, tx === "rent");
+            pinEl.onmouseenter = () => {
+              const idNum = Number(offer.id);
+              focusPin(idNum, coords);
+            };
+            pinEl.onmouseover = pinEl.onmouseenter;
+            pinEl.onmouseleave = () => {
+              if (!canHoverRef.current) return;
+              hoverFocusActiveRef.current = false;
+              setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+            };
           }
         }
       });
 
     for (const id of Object.keys(markersRef.current)) {
       if (!newMarkers[id]) {
+        const rootEl = markersRef.current[id].getElement();
+        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+        if (pinEl) {
+          pinEl.onmouseenter = null;
+          pinEl.onmouseover = null;
+          pinEl.onmouseleave = null;
+        }
         markersRef.current[id].remove();
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, formatPinLabel, rate]);
+  }, [filteredOffers, focusPin, formatPinLabel, rate]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current || map.current) return;
@@ -372,6 +429,51 @@ export default function InteractiveMap({ immersive = false }: Props) {
   }, [mapLoaded, updateMarkers]);
 
   useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const mapInstance = map.current;
+
+    const markInteraction = () => {
+      lastInteractionAtRef.current = Date.now();
+    };
+
+    mapInstance.on("dragstart", markInteraction);
+    mapInstance.on("zoomstart", markInteraction);
+    mapInstance.on("rotatestart", markInteraction);
+    mapInstance.on("pitchstart", markInteraction);
+    mapInstance.on("mousedown", markInteraction);
+    mapInstance.on("touchstart", markInteraction);
+    mapInstance.on("wheel", markInteraction);
+
+    const spin = () => {
+      if (!map.current) return;
+      if (!hoverFocusActiveRef.current) {
+        const now = Date.now();
+        const idleForMs = now - lastInteractionAtRef.current;
+        const zoom = map.current.getZoom();
+        if (idleForMs > 1600 && zoom <= 4.8) {
+          map.current.setBearing(map.current.getBearing() + 0.03);
+        }
+      }
+      autoRotateFrameRef.current = window.requestAnimationFrame(spin);
+    };
+    autoRotateFrameRef.current = window.requestAnimationFrame(spin);
+
+    return () => {
+      mapInstance.off("dragstart", markInteraction);
+      mapInstance.off("zoomstart", markInteraction);
+      mapInstance.off("rotatestart", markInteraction);
+      mapInstance.off("pitchstart", markInteraction);
+      mapInstance.off("mousedown", markInteraction);
+      mapInstance.off("touchstart", markInteraction);
+      mapInstance.off("wheel", markInteraction);
+      if (autoRotateFrameRef.current) {
+        window.cancelAnimationFrame(autoRotateFrameRef.current);
+        autoRotateFrameRef.current = null;
+      }
+    };
+  }, [mapLoaded]);
+
+  useEffect(() => {
     const el = mapContainer.current;
     if (!el) return;
 
@@ -435,6 +537,56 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
       <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
+
+      {showMapGuide && (
+        <motion.aside
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute bottom-6 left-4 z-30 w-[min(92vw,360px)] rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl sm:left-6 sm:p-5"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setShowMapGuide(false);
+              if (typeof window !== "undefined") {
+                window.sessionStorage.setItem("estateos_map_guide_dismissed", "1");
+              }
+            }}
+            className="absolute right-3 top-3 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+          >
+            OK
+          </button>
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+            {dict.map.guideTitle}
+          </p>
+          <div className="space-y-2 text-xs text-[var(--eos-text)]/90">
+            <div className="flex items-center gap-2">
+              <Move className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guidePan}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Hand className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guidePinch}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MousePointer2 className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guideHoverZoom}</span>
+            </div>
+          </div>
+        </motion.aside>
+      )}
+
+      <div className="pointer-events-none absolute bottom-6 right-4 z-20 flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)] backdrop-blur-xl sm:right-6">
+        <ZoomIn className={`h-3.5 w-3.5 ${activeHoverPinId ? "text-emerald-400" : "text-[var(--eos-muted)]"}`} />
+        <span>{activeHoverPinId ? dict.map.hoverZoomActive : dict.map.hoverZoomHint}</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowMapGuide(true)}
+        className="absolute bottom-16 right-4 z-20 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:right-6"
+      >
+        {locale === "pl" ? "Instrukcja" : "Guide"}
+      </button>
 
       {mapInitError && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
