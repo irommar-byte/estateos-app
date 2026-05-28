@@ -52,6 +52,43 @@ const MAP_STYLE = {
   dark: "mapbox://styles/mapbox/dark-v11",
 } as const;
 
+function distributeOverlappingPins(offers: any[]) {
+  const byCoord = new Map<string, any[]>();
+  offers.forEach((offer) => {
+    const lng = Number(offer?.lng);
+    const lat = Number(offer?.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    const key = `${lng.toFixed(6)}:${lat.toFixed(6)}`;
+    const arr = byCoord.get(key) || [];
+    arr.push(offer);
+    byCoord.set(key, arr);
+  });
+
+  const out = new Map<number, [number, number]>();
+  byCoord.forEach((arr) => {
+    const sorted = [...arr].sort((a, b) => Number(a.id) - Number(b.id));
+    if (sorted.length === 1) {
+      const o = sorted[0];
+      out.set(Number(o.id), [Number(o.lng), Number(o.lat)]);
+      return;
+    }
+    // Rozstawienie po okręgu: pin-y nie nakładają się na siebie przy tym samym adresie.
+    const ringStepMeters = 18;
+    const centerLng = Number(sorted[0].lng);
+    const centerLat = Number(sorted[0].lat);
+    const latMeters = 111_320;
+    const lngMeters = 111_320 * Math.cos((centerLat * Math.PI) / 180);
+    sorted.forEach((offer, idx) => {
+      const angle = (2 * Math.PI * idx) / sorted.length;
+      const radiusMeters = ringStepMeters * (1 + Math.floor(idx / 10));
+      const dLat = (Math.sin(angle) * radiusMeters) / latMeters;
+      const dLng = lngMeters !== 0 ? (Math.cos(angle) * radiusMeters) / lngMeters : 0;
+      out.set(Number(offer.id), [centerLng + dLng, centerLat + dLat]);
+    });
+  });
+  return out;
+}
+
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
   const { resolvedTheme } = useTheme();
@@ -61,6 +98,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const appliedMapTheme = useRef<"light" | "dark" | null>(null);
+  const updateMarkersRef = useRef<() => void>(() => {});
   const autoRotateFrameRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef<number>(Date.now());
   const hoverFocusActiveRef = useRef(false);
@@ -82,6 +120,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showTeaser, setShowTeaser] = useState(false);
   const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
   const [showMapGuide, setShowMapGuide] = useState(false);
+  const sliderChangingRef = useRef(false);
 
   const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
   const maxPriceLabel =
@@ -236,12 +275,14 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
     const newMarkers: Record<string, boolean> = {};
+    const distributed = distributeOverlappingPins(filteredOffers);
 
     filteredOffers
       .filter((offer) => offer.lng != null && offer.lat != null)
       .forEach((offer) => {
         const id = `offer-${offer.id}`;
-        const coords: [number, number] = [Number(offer.lng), Number(offer.lat)];
+        const coords: [number, number] =
+          distributed.get(Number(offer.id)) || [Number(offer.lng), Number(offer.lat)];
         newMarkers[id] = true;
 
         if (!markersRef.current[id]) {
@@ -264,6 +305,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
             }
           };
           innerEl.onmouseenter = () => {
+            if (sliderChangingRef.current) return;
             const id = Number(offer.id);
             focusPin(id, coords);
           };
@@ -287,6 +329,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
             pinEl.className = offerPinColorClasses(offer.transactionType);
             pinEl.innerText = formatPinLabel(offer, tx === "rent");
             pinEl.onmouseenter = () => {
+              if (sliderChangingRef.current) return;
               const idNum = Number(offer.id);
               focusPin(idNum, coords);
             };
@@ -314,6 +357,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
       }
     }
   }, [filteredOffers, focusPin, formatPinLabel, rate]);
+
+  useEffect(() => {
+    updateMarkersRef.current = updateMarkers;
+  }, [updateMarkers]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current || map.current) return;
@@ -384,7 +431,6 @@ export default function InteractiveMap({ immersive = false }: Props) {
         /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
       }
 
-      updateMarkers();
       setMapLoaded(true);
     };
 
@@ -405,7 +451,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
       setMapLoaded(false);
       markersRef.current = {};
     };
-  }, [mapboxToken, immersive, locale, resolvedTheme, updateMarkers]);
+  }, [mapboxToken, immersive, locale, resolvedTheme]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
@@ -416,12 +462,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
       map.current.setStyle(nextStyle);
       map.current.once("style.load", () => {
         if (!map.current) return;
-        updateMarkers();
+        updateMarkersRef.current();
       });
     } catch {
       /* noop */
     }
-  }, [resolvedTheme, mapLoaded, updateMarkers]);
+  }, [resolvedTheme, mapLoaded]);
 
   useEffect(() => {
     if (!mapLoaded) return;
@@ -665,6 +711,22 @@ export default function InteractiveMap({ immersive = false }: Props) {
                   ? setPriceMaxRentUi(Number(e.target.value))
                   : setPriceMaxUi(Number(e.target.value))
               }
+              onMouseDown={() => {
+                sliderChangingRef.current = true;
+                hoverFocusActiveRef.current = false;
+              }}
+              onMouseUp={() => {
+                sliderChangingRef.current = false;
+                lastInteractionAtRef.current = Date.now();
+              }}
+              onTouchStart={() => {
+                sliderChangingRef.current = true;
+                hoverFocusActiveRef.current = false;
+              }}
+              onTouchEnd={() => {
+                sliderChangingRef.current = false;
+                lastInteractionAtRef.current = Date.now();
+              }}
               aria-label={maxPriceLabel}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"
               style={{

@@ -104,7 +104,18 @@ export async function GET() {
     const activeIds = await activePublicationOfferIds(
       offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id))
     );
-    const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
+    const freshActivationThresholdMs = Date.now() - 6 * 60 * 60 * 1000;
+    const visibleOffers = offers.filter((offer: any) => {
+      const id = Number(offer.id);
+      if (activeIds.has(id)) return true;
+      const status = String(offer?.status || '').toUpperCase();
+      const updatedAtMs = offer?.updatedAt ? new Date(offer.updatedAt).getTime() : Number.NaN;
+      const expiresAtMs = offer?.expiresAt ? new Date(offer.expiresAt).getTime() : Number.NaN;
+      const isFreshlyUpdated = Number.isFinite(updatedAtMs) && updatedAtMs >= freshActivationThresholdMs;
+      const isNotExpired = Number.isFinite(expiresAtMs) ? expiresAtMs > Date.now() : true;
+      // Fallback dla świeżo aktywowanych rekordów, gdy tabela OfferPublication jeszcze nie zwróci ACTIVE.
+      return status === "ACTIVE" && isFreshlyUpdated && isNotExpired;
+    });
 
     let listFxRate = DEFAULT_EUR_PLN_RATE;
     let listFxDate: string | null = new Date().toISOString().slice(0, 10);
