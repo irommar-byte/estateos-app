@@ -28,6 +28,7 @@ import {
 } from "@/lib/location/locationCatalog";
 import {
   AGENT_COMMISSION_MIN_NONZERO,
+  validateAgentCommissionPercent,
 } from "@/lib/agentCommission";
 import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
 import { useFxRate } from "@/contexts/FxRateContext";
@@ -688,13 +689,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: null,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
       };
-      if (String(data.agentCommissionPercent ?? "").trim() === "") {
-        delete payload.agentCommissionPercent;
-      } else {
-        payload.agentCommissionPercent = Number(
-          String(data.agentCommissionPercent).replace(',', '.')
-        );
-      }
+      if (!applyAgentCommissionToPayload(payload)) return;
 
       setUploadProgress('Tworzenie oferty...');
       const response = await fetch('/api/offers', {
@@ -794,13 +789,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         floorPlan: finalFloorPlan,
         amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
       };
-      if (String(data.agentCommissionPercent ?? "").trim() === "") {
-        delete payload.agentCommissionPercent;
-      } else {
-        payload.agentCommissionPercent = Number(
-          String(data.agentCommissionPercent).replace(',', '.')
-        );
-      }
+      if (!applyAgentCommissionToPayload(payload)) return;
 
       // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
       if (finalImages.some(img => img.startsWith('blob:'))) {
@@ -926,6 +915,23 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (message.includes("księgi wieczystej") || message.includes("kw")) return "landRegistryNumber";
     if (message.includes("agentcommissionpercent") || message.includes("prowiz")) return "agentCommissionPercent";
     return null;
+  };
+
+  const applyAgentCommissionToPayload = (payload: Record<string, unknown>): boolean => {
+    const raw = String(data.agentCommissionPercent ?? "").trim();
+    if (!raw) {
+      delete payload.agentCommissionPercent;
+      return true;
+    }
+    const validation = validateAgentCommissionPercent(raw);
+    if (!validation.ok) {
+      setServerErrorMessage(validation.message);
+      setErrorFieldTarget("agentCommissionPercent");
+      setActionModal("error");
+      return false;
+    }
+    payload.agentCommissionPercent = validation.value;
+    return true;
   };
 
   const handleFixDataFromErrorModal = () => {
