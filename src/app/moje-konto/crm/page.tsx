@@ -73,6 +73,7 @@ import { resolveEliteBadges } from "@/lib/eliteStatus";
 import { shapeMatchedOfferForCrm } from "@/lib/crmMatchedOffer";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 
 const WowOverlay = ({ type }: { type: 'investor' | 'agency' | 'plus' | 'renewal' }) => {
   if (type === 'plus') return <WowPlusOverlay />;
@@ -848,6 +849,29 @@ export default function CRMDashboard() {
     const bTs = new Date(b.lastMessageAt || b.updatedAt || b.createdAt || 0).getTime();
     return bTs - aTs;
   });
+  const formatDealLastMessage = (raw: unknown) => {
+    const text = String(raw || "").trim();
+    if (!text) return "Brak wiadomości";
+    const event = parseDealEvent(text);
+    if (event?.entity === "APPOINTMENT") {
+      if (event.action === "ACCEPTED") return "Termin spotkania został zaakceptowany.";
+      if (event.action === "PROPOSED") return "Zaproponowano nowy termin spotkania.";
+      if (event.action === "DECLINED" || event.action === "REJECTED") return "Termin spotkania został odrzucony.";
+      if (event.action === "COUNTERED") return "Wysłano kontrofertę terminu spotkania.";
+      return "Aktualizacja terminu spotkania.";
+    }
+    if (event?.entity === "BID") {
+      if (event.action === "ACCEPTED") return "Oferta cenowa została zaakceptowana.";
+      if (event.action === "PROPOSED") return "Wysłano nową ofertę cenową.";
+      if (event.action === "REJECTED" || event.action === "DECLINED") return "Oferta cenowa została odrzucona.";
+      if (event.action === "COUNTERED") return "Wysłano kontrofertę cenową.";
+      return "Aktualizacja negocjacji ceny.";
+    }
+    if (text.startsWith("[[DEAL_EVENT]]") || text.startsWith("[SYSTEM_BID:")) {
+      return "Aktualizacja przebiegu transakcji.";
+    }
+    return text;
+  };
 
   const togglePinDeal = (dealId: number) => {
     setPinnedDealIds((prev) =>
@@ -1797,7 +1821,7 @@ export default function CRMDashboard() {
                         <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
                           Ostatnia wiadomość {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
                         </p>
-                        <p className="text-white/70 text-xs truncate ml-2">{deal.lastMessage}</p>
+                        <p className="text-white/70 text-xs truncate ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
                         <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-white/40 uppercase tracking-widest font-black">
                           <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (

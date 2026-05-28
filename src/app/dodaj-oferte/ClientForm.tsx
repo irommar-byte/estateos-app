@@ -1033,7 +1033,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const applyAgentCommissionToPayload = (payload: Record<string, unknown>): boolean => {
     const raw = String(data.agentCommissionPercent ?? "").trim();
     if (!raw) {
-      delete payload.agentCommissionPercent;
+      // Jeśli użytkownik nie poda prowizji, zapisujemy jawnie 0% (bez prowizji).
+      payload.agentCommissionPercent = 0;
       return true;
     }
     const validation = validateAgentCommissionPercent(raw);
@@ -1124,6 +1125,43 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
     transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
+  const summaryFieldRows = Object.entries({
+    transactionType: data.transactionType === 'RENT' ? 'NA WYNAJEM' : 'NA SPRZEDAŻ',
+    propertyType: data.propertyType,
+    condition: data.condition,
+    title: String(data.title || '').trim(),
+    description: String(descriptionText || '').trim(),
+    price: String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '',
+    area: String(data.area || '').trim() ? `${String(data.area).trim()} m²` : '',
+    rooms: data.rooms,
+    floor: data.floor,
+    buildYear: data.buildYear,
+    plotArea: data.plotArea,
+    heating: data.heating,
+    furnished: data.isFurnished === true ? 'tak' : data.isFurnished === false ? 'nie' : '',
+    locationType: data.locationType,
+    address: data.address,
+    city: data.city,
+    district: data.district,
+    apartmentNumber: data.apartmentNumber,
+    landRegistryNumber: data.landRegistryNumber,
+    latitude: data.lat,
+    longitude: data.lng,
+    rent: String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '',
+    rentAdminFee: data.rentAdminFee,
+    deposit: data.deposit,
+    rentMinPeriod: data.rentMinPeriod,
+    rentAvailableFrom: data.rentAvailableFrom,
+    rentType: data.rentType,
+    petsAllowed: data.petsAllowed === true ? 'tak' : data.petsAllowed === false ? 'nie' : '',
+    agentCommissionPercent: String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'bez prowizji (0%)',
+    advertiserType: data.advertiserType === 'agency' ? 'agencja' : 'osoba prywatna',
+    agencyName: data.agencyName,
+    contactName: data.contactName,
+    contactPhone: data.contactPhone,
+    email: data.email,
+    amenities: Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : '',
+  }).filter(([, value]) => String(value ?? '').trim().length > 0);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -1825,13 +1863,32 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <p className="text-white/80 mb-2">
                     {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : 'Brak wybranych udogodnień'}
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {finalImages.slice(0, 6).map((img) => (
-                      <img key={img} src={img} alt="Podgląd zdjęcia" className="h-14 w-14 rounded-lg object-cover border border-white/15" />
-                    ))}
+                  <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
+                    Zdjęcia: {finalImages.length} {finalFloorPlan ? '· Rzut: 1' : '· Rzut: 0'}
+                  </div>
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                    {finalImages.length > 0 ? finalImages.map((img, idx) => (
+                      <img key={`${img}-${idx}`} src={img} alt={`Podgląd zdjęcia ${idx + 1}`} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
+                    )) : (
+                      <div className="col-span-full rounded-lg border border-dashed border-white/20 px-3 py-2 text-[11px] text-white/50">
+                        Brak zdjęć w podsumowaniu — dodaj zdjęcia w kroku mediów.
+                      </div>
+                    )}
                     {finalFloorPlan ? (
                       <img src={finalFloorPlan} alt="Podgląd rzutu" className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
                     ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">Wszystkie wprowadzone parametry</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                    {summaryFieldRows.map(([key, value]) => (
+                      <div key={key} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                        <p className="text-white/40 uppercase tracking-wider text-[9px]">{key}</p>
+                        <p className="text-white/85 break-words">{String(value)}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
