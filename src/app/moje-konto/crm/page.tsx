@@ -1814,7 +1814,7 @@ export default function CRMDashboard() {
                             <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || c.deals.fallbackTitle} />
                           </div>
                           <div className="flex flex-col justify-center min-w-0">
-                            <p className="text-white font-bold text-sm truncate">{deal.offer?.title || c.deals.fallbackTitle}</p>
+                            <p className="text-white font-bold text-sm leading-snug break-words">{deal.offer?.title || c.deals.fallbackTitle}</p>
                             <p className="text-emerald-500 font-black text-xs">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} PLN</p>
                             <p className="text-[9px] text-white/35 uppercase tracking-widest font-black mt-1">{c.deals.dealId.replace('{id}', String(deal.dealId))}</p>
                           </div>
@@ -1843,7 +1843,7 @@ export default function CRMDashboard() {
                         <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
                           {c.deals.lastMessage} {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
                         </p>
-                        <p className="text-white/70 text-xs truncate ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
+                        <p className="text-white/70 text-xs leading-relaxed break-words ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
                         <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
                           <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (
