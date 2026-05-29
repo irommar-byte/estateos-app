@@ -1710,6 +1710,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   useEffect(() => {
     if (!isRadarActive) return;
     const interval = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
       void fetchOffersOnce(false);
     }, 30000);
     return () => clearInterval(interval);

@@ -70,31 +70,38 @@ private enum RadarLiveActivityStore {
   }
 }
 
-/// Odświeża Live Activity co 0,25 s (jak odliczanie Uber) — TimelineView na lock screen
-/// nie animuje niezawodnie, więc stan musi się zmieniać z natywnego timera.
+/// Odświeża Live Activity tylko na pierwszym planie — w tle widget animuje się przez TimelineView.
 @available(iOS 16.1, *)
 private final class RadarLiveActivityHeartbeat {
   static let shared = RadarLiveActivityHeartbeat()
 
-  /// 1 Hz — zgodnie z limitem Apple dla Live Activity (jak odliczanie Uber).
+  /// 1 Hz — limit sensowny dla Live Activity; tylko gdy app jest active.
   private let tickInterval: TimeInterval = 1.0
   private var timer: DispatchSourceTimer?
   private var baseState: RadarLiveActivityAttributes.ContentState?
   private var currentTick: Int = 0
   private var epochMs: Int64 = 0
-  private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+  private var isAppActive = UIApplication.shared.applicationState == .active
+  private var lifecycleObservers: [NSObjectProtocol] = []
 
-  private func refreshBackgroundRuntime() {
-    if backgroundTask != .invalid {
-      UIApplication.shared.endBackgroundTask(backgroundTask)
-    }
-    backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "RadarLiveActivityHeartbeat") { [weak self] in
-      guard let self else { return }
-      if self.backgroundTask != .invalid {
-        UIApplication.shared.endBackgroundTask(self.backgroundTask)
-        self.backgroundTask = .invalid
-      }
-    }
+  private init() {
+    let center = NotificationCenter.default
+    lifecycleObservers = [
+      center.addObserver(
+        forName: UIApplication.willResignActiveNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.pauseForBackground()
+      },
+      center.addObserver(
+        forName: UIApplication.didBecomeActiveNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.resumeForForeground()
+      },
+    ]
   }
 
   func applySnapshot(_ state: RadarLiveActivityAttributes.ContentState, resetEpoch: Bool) {
@@ -106,8 +113,10 @@ private final class RadarLiveActivityHeartbeat {
     merged.animationEpochMs = epochMs
     merged.animationTick = currentTick
     baseState = merged
-    startTimerIfNeeded()
-    Task { await pushState(merged) }
+    if isAppActive {
+      startTimerIfNeeded()
+      Task { await pushState(merged) }
+    }
   }
 
   func stop() {
@@ -116,13 +125,38 @@ private final class RadarLiveActivityHeartbeat {
     baseState = nil
     currentTick = 0
     epochMs = 0
-    if backgroundTask != .invalid {
-      UIApplication.shared.endBackgroundTask(backgroundTask)
-      backgroundTask = .invalid
+  }
+
+  private func pauseForBackground() {
+    isAppActive = false
+    timer?.cancel()
+    timer = nil
+  }
+
+  private func resumeForForeground() {
+    isAppActive = true
+    guard baseState != nil else { return }
+    syncTickToWallClock()
+    startTimerIfNeeded()
+    Task {
+      guard let state = baseState else { return }
+      await pushState(state)
+    }
+  }
+
+  private func syncTickToWallClock() {
+    guard epochMs > 0 else { return }
+    let elapsed = Date().timeIntervalSince1970 - Double(epochMs) / 1000.0
+    currentTick = max(0, Int(elapsed / tickInterval))
+    if var state = baseState {
+      state.animationTick = currentTick
+      state.animationEpochMs = epochMs
+      baseState = state
     }
   }
 
   private func startTimerIfNeeded() {
+    guard isAppActive else { return }
     guard timer == nil else { return }
 
     let source = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
@@ -135,7 +169,7 @@ private final class RadarLiveActivityHeartbeat {
   }
 
   private func pushState(_ state: RadarLiveActivityAttributes.ContentState) async {
-    refreshBackgroundRuntime()
+    guard isAppActive else { return }
     let activity =
       RadarLiveActivityStore.activity
       ?? Activity<RadarLiveActivityAttributes>.activities.first
@@ -152,6 +186,7 @@ private final class RadarLiveActivityHeartbeat {
   }
 
   private func fireTick() {
+    guard isAppActive else { return }
     Task {
       guard var state = baseState else {
         stop()

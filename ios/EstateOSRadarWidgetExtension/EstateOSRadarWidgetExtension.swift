@@ -99,6 +99,12 @@ private enum RadarDrumMotion {
             drumBlend: min(1, max(0, drumBlend))
         )
     }
+
+    static func frame(at date: Date, epochMs: Int64, itemCount: Int) -> Frame {
+        let elapsed = max(0, date.timeIntervalSince1970 - Double(epochMs) / 1000.0)
+        let tick = Int(elapsed / tickInterval)
+        return frame(tick: tick, itemCount: itemCount)
+    }
 }
 
 private struct RadarSmoothTimeline<Content: View>: View {
@@ -501,7 +507,6 @@ struct EstateOSRadarLiveActivity: Widget {
 
         var body: some View {
             let frozen = isLuminanceReduced
-            let drum = RadarDrumMotion.frame(tick: animationTick, itemCount: paramItems.count)
 
             HStack(spacing: 8) {
                 staticPill
@@ -511,8 +516,31 @@ struct EstateOSRadarLiveActivity: Widget {
                         .layoutPriority(1)
                 } else {
                     RadarSyncedScanBar(accent: accent, epochMs: epochMs, frozen: false, compact: compact)
-                    RadarParamDrum(accent: accent, items: paramItems, drum: drum, compact: compact)
+                    drumTicker
                         .layoutPriority(1)
+                }
+            }
+        }
+
+        @ViewBuilder
+        private var drumTicker: some View {
+            if #available(iOS 17.0, *) {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                    RadarParamDrum(
+                        accent: accent,
+                        items: paramItems,
+                        drum: RadarDrumMotion.frame(at: timeline.date, epochMs: epochMs, itemCount: paramItems.count),
+                        compact: compact
+                    )
+                }
+            } else {
+                TimelineView(.periodic(from: Date(timeIntervalSince1970: Double(epochMs) / 1000.0), by: 1.0 / 30.0)) { timeline in
+                    RadarParamDrum(
+                        accent: accent,
+                        items: paramItems,
+                        drum: RadarDrumMotion.frame(at: timeline.date, epochMs: epochMs, itemCount: paramItems.count),
+                        compact: compact
+                    )
                 }
             }
         }
