@@ -17,6 +17,7 @@ import { canonicalizeCity, getDistrictsForCity } from "@/lib/location/locationCa
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 import CrmRadarCalibrationModal from "@/components/crm/CrmRadarCalibrationModal";
 import PlanningPresentationCalendar from "@/components/crm/PlanningPresentationCalendar";
+import PresentationFlowBanner from "@/components/presentation/PresentationFlowBanner";
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
 import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload } from "@/lib/reviewsPresentation";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
@@ -1015,6 +1016,7 @@ export default function CRMDashboard() {
 
       <div className="max-w-7xl mx-auto">
         <ProStatusBar user={currentUser} />
+        <PresentationFlowBanner variant="crm" />
 
         {currentUser &&
         (!currentUser.isEmailVerified || !currentUser.isVerifiedPhone) &&

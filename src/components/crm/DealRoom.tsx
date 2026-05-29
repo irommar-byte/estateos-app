@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 import DealRoomAppointmentPicker from '@/components/crm/DealRoomAppointmentPicker';
+import PresentationFlowBanner from '@/components/presentation/PresentationFlowBanner';
 import {
   buildChatTimeline,
   buildNegotiationEvents,
@@ -499,7 +500,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
   return (
     <div className="theme-aware-dashboard flex flex-col h-[750px] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.25)] relative isolate font-sans text-[var(--eos-text)]">
-      
+      <div className="px-4 pt-4 shrink-0">
+        <PresentationFlowBanner variant="dealroom" />
+      </div>
       {/* HEADER */}
       <div className="relative z-10 flex items-center justify-between p-6 border-b border-[var(--eos-border)] bg-[var(--eos-bg)]/80 backdrop-blur-xl">
         <div className="flex items-center gap-5">

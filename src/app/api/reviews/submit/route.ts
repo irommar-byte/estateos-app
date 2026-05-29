@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { submitPresentationReview } from '@/lib/appointments/presentationReviews';
 import { submitDealReview } from '@/lib/dealroomReviews';
 import { collectReviewAuthSignals, resolveUserIdFromReviewAuth } from '@/lib/reviewAuth';
 
@@ -20,16 +21,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
     }
 
-    const { targetId, rating, comment, review, dealId, senderId } = await req.json();
-
-    if (!targetId || !rating || !dealId) {
-      return NextResponse.json({ error: "Brak wymaganych danych" }, { status: 400 });
-    }
+    const { targetId, rating, comment, review, dealId, senderId, appointmentId } = await req.json();
 
     const senderIdNumber = Number(senderId);
     if (Number.isFinite(senderIdNumber) && senderIdNumber > 0 && senderIdNumber !== Number(reviewerId)) {
       return NextResponse.json({ error: 'Brak uprawnień do wystawienia opinii' }, { status: 403 });
     }
+
+    const appointmentIdNum = Number(appointmentId);
+    if (Number.isFinite(appointmentIdNum) && appointmentIdNum > 0) {
+      const newReview = await submitPresentationReview({
+        appointmentId: appointmentIdNum,
+        reviewerId: Number(reviewerId),
+        rating: Number(rating),
+        comment: (comment ?? review) || null,
+      });
+      return NextResponse.json({ success: true, review: newReview });
+    }
+
+    if (!targetId || !rating || !dealId) {
+      return NextResponse.json({ error: "Brak wymaganych danych" }, { status: 400 });
+    }
+
     const newReview = await submitDealReview({
       dealId: Number(dealId),
       reviewerId: Number(reviewerId),
@@ -47,8 +60,11 @@ export async function POST(req: Request) {
     if (message === 'INVALID_REVIEW_PAYLOAD') {
       return NextResponse.json({ error: 'Nieprawidłowe dane opinii' }, { status: 400 });
     }
-    if (message === 'DEAL_NOT_FOUND') {
+    if (message === 'DEAL_NOT_FOUND' || message === 'APPOINTMENT_NOT_FOUND') {
       return NextResponse.json({ error: 'Transakcja nie istnieje' }, { status: 404 });
+    }
+    if (message === 'APPOINTMENT_NOT_REVIEWABLE') {
+      return NextResponse.json({ error: 'Ta wizyta nie podlega ocenie' }, { status: 409 });
     }
     if (message === 'DEAL_PARTICIPANT_REQUIRED' || message === 'SELF_REVIEW_FORBIDDEN') {
       return NextResponse.json({ error: 'Brak uprawnień do wystawienia opinii' }, { status: 403 });

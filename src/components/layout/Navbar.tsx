@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
-import ReviewPrompt from "@/components/ReviewPrompt";
+import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
@@ -271,7 +271,7 @@ export default function Navbar() {
         )}
       </AnimatePresence>
 
-      <ReviewPrompt />
+      <PresentationFlowOrchestrator />
 
       <style jsx>{`
         .eos-nav-link {
