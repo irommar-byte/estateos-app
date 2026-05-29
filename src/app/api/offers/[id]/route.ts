@@ -29,7 +29,9 @@ import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
 import {
   resolveSellerDisplayName,
   resolveSellerPersonName,
+  resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
+import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -193,12 +195,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const offerUser = (legalOffer as { user?: Record<string, unknown> }).user;
     const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
     const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
+    const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
     const enrichedUser = offerUser
       ? {
           ...offerUser,
           displayName: sellerDisplayName,
           publicName: sellerDisplayName,
           personName: sellerPersonName,
+          servicingCompanyName,
         }
       : offerUser;
 
@@ -207,6 +211,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       user: enrichedUser,
       sellerDisplayName,
       sellerPersonName,
+      servicingCompanyName,
+      propertyTypeLabel: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'pl'),
+      propertyTypeLabelEn: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'en'),
+      conditionLabel: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'pl'),
+      conditionLabelEn: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'en'),
       description: cleanDescription,
       apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',

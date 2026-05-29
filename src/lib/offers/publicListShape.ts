@@ -6,6 +6,7 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { enrichOfferMoneyFieldsWithRate } from '@/lib/money/offerPrice';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { resolveSellerDisplayName, resolveSellerPersonName } from '@/lib/sellerDisplay';
+import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 
 export type PublicListOffer = Record<string, unknown> & {
   id: number;
@@ -60,6 +61,10 @@ export function shapePublicListOffer(
     ...rest,
     sellerDisplayName,
     sellerPersonName,
+    propertyTypeLabel: formatOfferPropertyType(rest.propertyType, 'pl'),
+    propertyTypeLabelEn: formatOfferPropertyType(rest.propertyType, 'en'),
+    conditionLabel: formatOfferCondition(rest.condition, 'pl'),
+    conditionLabelEn: formatOfferCondition(rest.condition, 'en'),
     imageUrl: resolveOfferPrimaryImage(rest),
     description: cleanDescription,
     apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',

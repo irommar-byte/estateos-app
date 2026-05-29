@@ -54,6 +54,9 @@ export type OfferPageCopy = {
   costsSection: string;
   agentCommission: string;
   agentCommissionZero: string;
+  commissionZeroBadge: string;
+  commissionZeroTitle: string;
+  commissionZeroSub: string;
   commissionPercent: string;
   commissionAmount: string;
   commissionCompany: string;
@@ -125,6 +128,10 @@ const PL: OfferPageCopy = {
   costsSection: "Koszty i prowizja",
   agentCommission: "Prowizja agenta",
   agentCommissionZero: "Brak prowizji agenta przy tej ofercie.",
+  commissionZeroBadge: "Prowizja agenta",
+  commissionZeroTitle: "ZERO PROWIZJI",
+  commissionZeroSub:
+    "Cena oferty nie zawiera prowizji pośrednika — atrakcyjna transakcja dla kupującego.",
   commissionPercent: "Prowizja %",
   commissionAmount: "Kwota prowizji",
   commissionCompany: "Firma obsługująca",
@@ -197,6 +204,9 @@ const EN: OfferPageCopy = {
   costsSection: "Costs & commission",
   agentCommission: "Agent commission",
   agentCommissionZero: "No agent commission on this listing.",
+  commissionZeroBadge: "Agent commission",
+  commissionZeroTitle: "Zero commission",
+  commissionZeroSub: "The listing price does not include agent commission — a better deal for the buyer.",
   commissionPercent: "Commission %",
   commissionAmount: "Commission amount",
   commissionCompany: "Handling company",

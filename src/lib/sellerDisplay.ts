@@ -21,6 +21,17 @@ export function resolveSellerDisplayName(userLike: unknown, fallback = ""): stri
   return person || fallback;
 }
 
+/** Nazwa biura z rejestracji agenta — wyłącznie companyName (bez imienia i nazwiska). */
+export function resolveServicingCompanyName(
+  userLike: unknown,
+  offerAgencyName?: unknown,
+): string | null {
+  if (!isAgentOrAgencySeller(userLike)) return null;
+  const u = (userLike && typeof userLike === "object" ? userLike : {}) as Record<string, unknown>;
+  const company = String(u.companyName ?? u.agencyName ?? offerAgencyName ?? "").trim();
+  return company || null;
+}
+
 /** Imię i nazwisko agenta (podpis pod nazwą firmy). */
 export function resolveSellerPersonName(userLike: unknown): string | null {
   if (!userLike || typeof userLike !== "object") return null;

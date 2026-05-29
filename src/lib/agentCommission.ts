@@ -247,12 +247,26 @@ export type AgentCommissionDescribe = {
   isZero: boolean;
 };
 
+/** Domyślna prowizja 0% dla ofert agenta bez ustawionej wartości w bazie. */
+export function zeroAgentCommissionDescribe(): AgentCommissionDescribe {
+  return {
+    percent: 0,
+    amount: 0,
+    percentLabel: formatPercentLabel(0),
+    amountLabel: formatPlnAmount(0),
+    isZero: true,
+  };
+}
+
 export function describeOfferAgentCommission(
   raw: unknown,
   priceRaw: unknown,
 ): AgentCommissionDescribe | null {
   if (!raw || typeof raw !== "object") return null;
-  const percent = extractAgentCommissionPercent(raw);
+  let percent = extractAgentCommissionPercent(raw);
+  if (percent === null && isAgentCommissionAccount(raw)) {
+    percent = 0;
+  }
   if (percent === null) return null;
   const isZero = isZeroCommissionPercent(percent);
   const priceNum = parseOfferNumeric(priceRaw ?? (raw as Record<string, unknown>).price);

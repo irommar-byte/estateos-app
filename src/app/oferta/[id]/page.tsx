@@ -27,6 +27,8 @@ import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
   resolveSellerPersonName,
+  resolveServicingCompanyName,
+  isAgentOrAgencySeller,
 } from "@/lib/sellerDisplay";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
@@ -157,6 +159,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   // Ukrycie szczegółów do „premiery na szerokim rynku” (PRO i właściciel widzą od razu)
   const isLocked = timeLeft > 0 && !isPro && !isOwner;
+  const contentSuppressed = isLocked || isArchived;
 
   // Formatowanie zegara (HH:MM:SS)
   const h = Math.floor(timeLeft / (1000 * 60 * 60));
@@ -300,25 +303,25 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         : null,
     },
   ].filter((p) => p.value);
-  const commissionCompanyName =
-    String(offer?.agencyName || "").trim() ||
-    String(offer?.user?.companyName || "").trim() ||
-    String(offer?.user?.agencyName || "").trim() ||
-    sellerLabel ||
-    t.privateOwner;
+  const servicingCompanyName = resolveServicingCompanyName(offer?.user, offer?.agencyName);
+  const showCommissionSection =
+    Boolean(servicingCompanyName) ||
+    Boolean(agentCommissionInfo) ||
+    isAgentOrAgencySeller(offer?.user);
 
-  const costsParams = agentCommissionInfo
-    ? [
-        {
-          label: t.commissionPercent,
-          value: agentCommissionInfo.percentLabel,
-        },
-        {
-          label: t.commissionAmount,
-          value: agentCommissionInfo.amountLabel,
-        },
-      ]
-    : [];
+  const costsParams =
+    agentCommissionInfo && !agentCommissionInfo.isZero
+      ? [
+          {
+            label: t.commissionPercent,
+            value: agentCommissionInfo.percentLabel,
+          },
+          {
+            label: t.commissionAmount,
+            value: agentCommissionInfo.amountLabel,
+          },
+        ]
+      : [];
 
   useEffect(() => {
     if (!offer?.lat || !offer?.lng) return;
@@ -359,7 +362,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
       
       <div ref={ref} className="relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
-        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-xl' : ''} ${isArchived ? 'grayscale' : ''}`} />
+        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
 
         <div
@@ -384,6 +387,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               />
             </div>
 
+            {!isArchived ? (
             <div
               className="pointer-events-auto w-full"
               onClick={(e) => e.stopPropagation()}
@@ -482,9 +486,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
               </div>
             </div>
+            ) : null}
           </div>
         </div>
 
+        {!isArchived && (
         <div
           onClick={() => !isLocked && openGallery(0)}
           className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
@@ -493,14 +499,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             {isLocked ? t.beforeLaunchTitle : offer.title}
           </h1>
         </div>
+        )}
         {isArchived && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none px-4">
-             <div className="bg-zinc-950/90 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center">
+             <div className="bg-zinc-950/95 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center max-w-lg w-full">
                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10">
                    <ArchiveX size={32} className="text-zinc-500" />
                 </div>
-                <h2 className="text-3xl sm:text-5xl font-black text-white mb-2 uppercase tracking-tighter opacity-50">{t.archivedTitle}</h2>
-                <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest">{t.archivedSubtitle}</p>
+                <p className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-2">{t.archivedTitle}</p>
+                <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest mb-4">{t.archivedSubtitle}</p>
+                <h2 className="text-2xl sm:text-3xl font-light text-white mb-4 tracking-tight leading-snug [text-wrap:balance]">{offer.title}</h2>
+                <p className="text-4xl sm:text-5xl font-light text-white tracking-tighter">{priceFormatted.primary}</p>
+                {!isLocked && priceFormatted.secondary ? (
+                  <p className="mt-2 text-sm font-semibold text-zinc-400">{priceFormatted.secondary}</p>
+                ) : null}
              </div>
           </div>
         )}
@@ -535,6 +547,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         )}
 
         {/* ORYGINALNA ZAWARTOŚĆ (ZAMAZANA JEŚLI ZABLOKOWANA) */}
+        {isArchived ? (
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-30 pb-24" aria-hidden />
+        ) : (
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
@@ -687,37 +702,52 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 )}
 
-                {(costsParams.length > 0 || agentCommissionLine) && (
+                {showCommissionSection && !contentSuppressed && (
                   <div className="eos-offer-panel p-6">
                     <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.costsSection}</h4>
-                    {costsParams.length > 0 ? (
-                      <>
-                        <div className="grid grid-cols-2 gap-3">
-                          {costsParams.map((param, idx) => (
-                            <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
-                              <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                              <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
-                          <button
-                            type="button"
-                            onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
-                            className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] transition-colors hover:text-emerald-400"
-                          >
-                            {commissionCompanyName}
-                            <span className="text-[10px] uppercase tracking-wider text-[var(--eos-muted)]">{t.openCompanyProfile}</span>
-                          </button>
-                        </div>
-                        {agentCommissionLine ? (
-                          <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
+                    {agentCommissionInfo?.isZero ? (
+                      <div className="mb-4 rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/15 px-4 py-6 text-center shadow-[0_0_40px_rgba(16,185,129,0.12)]">
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
+                          {t.commissionZeroBadge}
+                        </p>
+                        <p className="mt-2 text-3xl sm:text-4xl font-black uppercase tracking-tight text-emerald-400">
+                          {t.commissionZeroTitle}
+                        </p>
+                        <p className="mt-3 text-xs sm:text-sm leading-relaxed text-[var(--eos-muted)] max-w-md mx-auto">
+                          {t.commissionZeroSub}
+                        </p>
+                      </div>
+                    ) : costsParams.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {costsParams.map((param, idx) => (
+                          <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                            <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                            <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {servicingCompanyName ? (
+                      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
+                        <button
+                          type="button"
+                          onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                          className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                        >
+                          {servicingCompanyName}
+                          <span className="text-[10px] uppercase tracking-wider text-[var(--eos-muted)]">{t.openCompanyProfile}</span>
+                        </button>
+                        {resolveSellerPersonName(offer?.user) ? (
+                          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
+                            {resolveSellerPersonName(offer?.user)}
+                          </p>
                         ) : null}
-                      </>
-                    ) : (
-                      <p className="text-sm text-[var(--eos-text)]">{t.agentCommissionZero}</p>
-                    )}
+                      </div>
+                    ) : null}
+                    {agentCommissionLine && !agentCommissionInfo?.isZero ? (
+                      <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -786,6 +816,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             </div>
           </div>
         </div>
+        )}
       </div>
       
       <AppointmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} offerId={offer.id || offer._id} sellerId={offer.userId || offer.user?.id || ""} />

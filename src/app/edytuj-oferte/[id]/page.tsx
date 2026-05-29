@@ -302,7 +302,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             ) : null}
             {data.propertyType ? (
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-4">
-                Typ: {formatOfferPropertyType(data.propertyType, 'pl') || data.propertyType}
+                Typ: {formatOfferPropertyType(data.propertyType, 'pl') || '—'}
               </p>
             ) : null}
           </div>

@@ -34,6 +34,13 @@ const TABS = [
 const PERIODS = ['Ostatnie 30 Dni', 'Ten Rok', 'Godziny Szczytu', 'Dni Szczytu'];
 const PROPERTY_TYPES = ['Wszystkie', 'Mieszkanie', 'Dom', 'Działka', 'Komercyjne'];
 
+const MARKET_FILTER_TO_ENUM: Record<string, string> = {
+  Mieszkanie: 'FLAT',
+  Dom: 'HOUSE',
+  Działka: 'PLOT',
+  Komercyjne: 'COMMERCIAL',
+};
+
 const processChartData = (period: string, timeline: any) => {
   if (!timeline) return [];
   const now = new Date();
@@ -121,7 +128,10 @@ export default function Statystyki() {
     
     // Bierzemy tylko aktywne lub weryfikowane oferty
     let filtered = stats.timeline.offers.filter((o: any) => String(o.status || '').toUpperCase() !== 'REJECTED');
-    if (marketFilter !== 'Wszystkie') filtered = filtered.filter((o: any) => o.propertyType === marketFilter);
+    if (marketFilter !== 'Wszystkie') {
+      const enumType = MARKET_FILTER_TO_ENUM[marketFilter] ?? marketFilter;
+      filtered = filtered.filter((o: any) => String(o.propertyType || '').toUpperCase() === enumType);
+    }
 
     let totalWarsawPrice = 0;
     let totalWarsawArea = 0;
