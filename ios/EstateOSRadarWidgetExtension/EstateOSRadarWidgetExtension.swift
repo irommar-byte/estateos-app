@@ -191,7 +191,123 @@ struct EstateOSRadarLiveActivity: Widget {
         return Array(all.dropFirst(1))
     }
 
-    /// Lista parametrów radaru rotujących co 15 s w **dolnej linii**
+    /// Wszystkie parametry kalibracji jako jeden ciąg do paska newsów.
+    private func allCalibrationMarqueeText(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> String {
+        var parts: [String] = [headlineMessage(context)]
+        parts.append(contentsOf: rotatingParamItems(context))
+        parts.append("Próg dopasowania: \(context.state.minMatchThreshold)%")
+        if context.state.newMatchesCount > 0 {
+            parts.append("NOWE dopasowania: \(context.state.newMatchesCount)")
+        }
+        return parts.joined(separator: "   ◆   ")
+    }
+
+    /// Duży glyph radaru (lewy górny róg) — obracający się skaner.
+    private struct LargeAnimatedRadarGlyph: View {
+        let accent: Color
+        let size: CGFloat
+        @State private var spinning = false
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        var body: some View {
+            ZStack {
+                Circle()
+                    .stroke(accent.opacity(0.28), lineWidth: 2.2)
+                    .frame(width: size, height: size)
+
+                Circle()
+                    .stroke(accent.opacity(0.16), lineWidth: 1.4)
+                    .frame(width: size * 0.62, height: size * 0.62)
+
+                Circle()
+                    .trim(from: 0.03, to: 0.28)
+                    .stroke(
+                        accent.opacity(0.96),
+                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
+                    )
+                    .frame(width: size, height: size)
+                    .rotationEffect(.degrees(spinning && !isLuminanceReduced ? 360 : -84))
+                    .animation(
+                        isLuminanceReduced
+                            ? .default
+                            : .linear(duration: 2.4).repeatForever(autoreverses: false),
+                        value: spinning
+                    )
+
+                Circle()
+                    .fill(accent)
+                    .frame(width: max(6, size * 0.2), height: max(6, size * 0.2))
+                    .shadow(color: accent.opacity(0.9), radius: 5)
+            }
+            .frame(width: size + 6, height: size + 6)
+            .onAppear {
+                spinning = !isLuminanceReduced
+            }
+            .onChange(of: isLuminanceReduced) { reduced in
+                spinning = !reduced
+            }
+        }
+    }
+
+    /// Pasek informacyjny w stylu newsów — ciągły scroll wszystkich parametrów
+    /// kalibracji po rozjaśnieniu ekranu blokady (poza trybem AOD).
+    private struct RadarNewsMarquee: View {
+        let accent: Color
+        let text: String
+        var compact: Bool = false
+
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        var body: some View {
+            GeometryReader { geo in
+                let containerW = max(geo.size.width, 1)
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
+                        )
+
+                    if isLuminanceReduced {
+                        Text(text)
+                            .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 12)
+                            .frame(width: containerW, alignment: .leading)
+                    } else {
+                        TimelineView(.animation) { timeline in
+                            let speed: CGFloat = compact ? 46 : 54
+                            let t = CGFloat(timeline.date.timeIntervalSince1970)
+                            let estW = CGFloat(max(text.count, 24)) * (compact ? 5.4 : 6.0)
+                            let loop = estW + containerW + 56
+                            let offset = -(t * speed).truncatingRemainder(dividingBy: max(loop, 1))
+
+                            HStack(spacing: 56) {
+                                marqueeLine
+                                marqueeLine
+                            }
+                            .offset(x: offset)
+                        }
+                    }
+                }
+            }
+            .frame(height: compact ? 22 : 26)
+            .clipped()
+        }
+
+        private var marqueeLine: some View {
+            Text(text)
+                .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
     /// nad zieloną skalą postępu. Statyczna „Mieszkanie / Dom / Lokal" idzie
     /// osobnym pillem po lewej i tu się NIE pojawia.
     /// Każdy element to jeden „slajd" — staramy się logicznie grupować
@@ -570,38 +686,18 @@ struct EstateOSRadarLiveActivity: Widget {
         }
     }
 
-    /// **Zintegrowana** linia: statyczny pill „Mieszkanie / Dom / Lokal"
-    /// po lewej + zielona skala progresu po prawej, na której co 15 s
-    /// rotuje kolejny parametr radaru. Wypełnienie zielonego pasa rośnie
-    /// liniowo w trakcie 15-sekundowego cyklu i resetuje się przy zmianie
-    /// slajdu — daje to wrażenie skanera, który „przeczytał" jeden
-    /// parametr i przechodzi do następnego.
-    ///
-    /// Założenia:
-    ///   • brak segmentowanych kreseczek — jednolity, płynny pas,
-    ///   • tekst w środku z `lineLimit(1)` + `minimumScaleFactor(0.55)`
-    ///     żeby NIGDY nie przeszedł do następnej linii ani się nie
-    ///     przeniósł pionowo,
-    ///   • crossfade tekstu (blur + opacity + drobne offsety) w stylu
-    ///     Apple — bardziej dostojny niż „instant swap".
+    /// Dolna linia: statyczny typ + pasek newsów z pełną kalibracją radaru.
     private struct RadarUnifiedTicker: View {
         let accent: Color
         let staticLabel: String
-        let rotatingItems: [String]
+        let marqueeText: String
         var compact: Bool = false
 
-        private let rotationSeconds: Double = 15
-        private let crossfadeSeconds: Double = 1.4
-
-        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-
         var body: some View {
-            let items = rotatingItems.isEmpty ? ["Skan rynku · sygnały rejestrowane"] : rotatingItems
-
             HStack(spacing: 8) {
                 staticPill
                     .layoutPriority(1)
-                scaleTrack(items: items)
+                RadarNewsMarquee(accent: accent, text: marqueeText, compact: compact)
             }
         }
 
@@ -622,109 +718,6 @@ struct EstateOSRadarLiveActivity: Widget {
                                 .stroke(accent.opacity(0.42), lineWidth: 0.9)
                         )
                 )
-        }
-
-        @ViewBuilder
-        private func scaleTrack(items: [String]) -> some View {
-            if isLuminanceReduced {
-                staticScale(text: items[0])
-            } else {
-                TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
-                    let t = timeline.date.timeIntervalSince1970
-                    let cycle = t / rotationSeconds
-                    let currentIdx = Int(floor(cycle)) % items.count
-                    let nextIdx = (currentIdx + 1) % items.count
-                    let phase = cycle.truncatingRemainder(dividingBy: 1)
-
-                    let fadeStart = max(0.0, 1.0 - (crossfadeSeconds / rotationSeconds))
-                    let rawFade = phase > fadeStart ? (phase - fadeStart) / (1 - fadeStart) : 0
-                    let fade = easeInOutCubic(min(1, max(0, rawFade)))
-
-                    animatedScale(
-                        currentText: items[currentIdx],
-                        nextText: items[nextIdx],
-                        fadeProgress: fade,
-                        fillProgress: phase
-                    )
-                }
-            }
-        }
-
-        private func staticScale(text: String) -> some View {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
-                        )
-                    Capsule(style: .continuous)
-                        .fill(LinearGradient(
-                            colors: [accent.opacity(0.32), accent.opacity(0.6)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ))
-                        .frame(width: geo.size.width * 0.3)
-                    Text(text)
-                        .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
-                        .truncationMode(.tail)
-                        .padding(.horizontal, 12)
-                }
-            }
-            .frame(height: compact ? 22 : 26)
-        }
-
-        private func animatedScale(currentText: String, nextText: String, fadeProgress: Double, fillProgress: Double) -> some View {
-            GeometryReader { geo in
-                let w = geo.size.width
-                ZStack(alignment: .leading) {
-                    // Tło skali
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
-                        )
-
-                    // Zielony pas wypełniający się przez 15 s
-                    Capsule(style: .continuous)
-                        .fill(LinearGradient(
-                            colors: [accent.opacity(0.30), accent.opacity(0.72)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ))
-                        .frame(width: max(8, w * CGFloat(fillProgress)))
-                        .shadow(color: accent.opacity(0.55), radius: 5)
-
-                    // Crossfade tekstu
-                    ZStack(alignment: .leading) {
-                        Text(currentText)
-                            .opacity(1 - fadeProgress)
-                            .blur(radius: fadeProgress * 1.4)
-                            .offset(y: -fadeProgress * 3)
-                        Text(nextText)
-                            .opacity(fadeProgress)
-                            .blur(radius: (1 - fadeProgress) * 1.4)
-                            .offset(y: (1 - fadeProgress) * 3)
-                    }
-                    .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.55)
-                    .truncationMode(.tail)
-                    .padding(.horizontal, 12)
-                    .frame(width: w, alignment: .leading)
-                }
-            }
-            .frame(height: compact ? 22 : 26)
-        }
-
-        private func easeInOutCubic(_ x: Double) -> Double {
-            x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
         }
     }
 
@@ -1080,7 +1073,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 // GÓRNY WIERSZ — wszystko POZA „Mieszkanie / parametry"
                 // mieści się tutaj w jednej linii (żadnego wrapu pionowego).
                 HStack(spacing: 12) {
-                    radarGlyph(size: 32, emphasized: true)
+                    LargeAnimatedRadarGlyph(accent: accent, size: 32)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 0) {
@@ -1123,7 +1116,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 RadarUnifiedTicker(
                     accent: accent,
                     staticLabel: propertyTypeLabel(context.state.propertyType),
-                    rotatingItems: rotatingParamItems(context)
+                    marqueeText: allCalibrationMarqueeText(context)
                 )
             }
             .padding(.horizontal, 18)
@@ -1186,7 +1179,7 @@ struct EstateOSRadarLiveActivity: Widget {
                     RadarUnifiedTicker(
                         accent: accent,
                         staticLabel: propertyTypeLabel(context.state.propertyType),
-                        rotatingItems: rotatingParamItems(context),
+                        marqueeText: allCalibrationMarqueeText(context),
                         compact: true
                     )
                     .padding(.top, 3)

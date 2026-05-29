@@ -49,6 +49,7 @@ import {
   mapContextForCanonicalDto,
   radarFiltersFromApiPreference,
 } from '../utils/radarPreferenceSync';
+import { loadRadarCommittedState, saveRadarCommittedState } from '../utils/radarCommittedStorage';
 import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import {
   STRICT_CITIES,
@@ -966,14 +967,40 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     );
   }, [user, isRadarActive]);
 
-  /** Jedno źródło prawdy z backendem (RadarPreference) — parity z CRM WWW. */
+  /** Jedno źródło prawdy — lokalna kalibracja ma pierwszeństwo nad API do ręcznej zmiany. */
+  const radarPreferencesHydratedRef = useRef(false);
+  useEffect(() => {
+    radarPreferencesHydratedRef.current = false;
+  }, [user?.id]);
   useEffect(() => {
     const userId = Number(user?.id || 0);
     if (!userId) return;
+    if (radarPreferencesHydratedRef.current) return;
     let cancelled = false;
     void (async () => {
+      const committed = await loadRadarCommittedState(userId);
+      if (cancelled) return;
+      if (committed) {
+        setRadarFilters((prev) => ({
+          ...committed.filters,
+          pushNotifications: prev.pushNotifications,
+        }));
+        if (committed.mapBounds) {
+          setRadarMapBounds(committed.mapBounds);
+          setMapUsesRadarFilters(true);
+          setAreaSummary(committed.areaSummary || `${committed.filters.city || 'Obszar'} · ${committed.mapBounds.radiusKm} km`);
+        } else if (!isRadarFactoryDefaults(committed.filters)) {
+          setMapUsesRadarFilters(true);
+          setAreaSummary(committed.areaSummary || '');
+        }
+        radarPreferencesHydratedRef.current = true;
+        return;
+      }
       const pref = await fetchRadarPreferenceForUser(API_URL, userId, token);
-      if (cancelled || !pref) return;
+      if (cancelled || !pref) {
+        radarPreferencesHydratedRef.current = true;
+        return;
+      }
       const { filters, mapBounds } = radarFiltersFromApiPreference(pref, defaultRadarFilters);
       setRadarFilters((prev) => ({
         ...filters,
@@ -984,6 +1011,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         setMapUsesRadarFilters(true);
         setAreaSummary(`${filters.city || 'Obszar'} · ${mapBounds.radiusKm} km`);
       }
+      radarPreferencesHydratedRef.current = true;
     })();
     return () => {
       cancelled = true;
@@ -2937,6 +2965,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
       await setRadarActive(filtersToApply.pushNotifications);
       await syncRadarPreferencesToBackend(filtersToApply);
+      await saveRadarCommittedState({
+        userId: Number(user?.id || 0),
+        filters: filtersToApply,
+        mapBounds: mapSnap,
+        areaSummary: summarySnap,
+        committedAtIso: new Date().toISOString(),
+      });
       logRadarCalibrationSearch({
         token,
         userId: user?.id,
