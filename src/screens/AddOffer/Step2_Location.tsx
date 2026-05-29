@@ -28,6 +28,7 @@ import {
   resolveIsExactLocation,
   stripHouseNumber,
   streetLineFromGeocodedPlace,
+  resolvePinLocationFromGeocodedPlace,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { coordKeyForCityDistrict } from './districtCoordKeys';
@@ -675,27 +676,6 @@ const getClosestDistrict = (
   return closest;
 };
 
-const detectCityFromText = (raw: string) => {
-  const cityInfo = (raw || '').toLowerCase();
-  if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) return 'Warszawa';
-  if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) return 'Kraków';
-  if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) return 'Łódź';
-  if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) return 'Wrocław';
-  if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) return 'Poznań';
-  if (cityInfo.includes('lublin')) return 'Lublin';
-  if (cityInfo.includes('zamość') || cityInfo.includes('zamosc')) return 'Zamość';
-  if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk')) return 'Gdańsk';
-  if (cityInfo.includes('gdynia')) return 'Gdynia';
-  if (cityInfo.includes('sopot')) return 'Sopot';
-  if (cityInfo.includes('katowice')) return 'Katowice';
-  if (cityInfo.includes('rybnik')) return 'Rybnik';
-  if (cityInfo.includes('białystok') || cityInfo.includes('bialystok')) return 'Białystok';
-  return null;
-};
-
-const localityFromPlace = (place: Location.LocationGeocodedAddress) =>
-  localityNameFromGeocodedPlace(place);
-
 const POLAND_LOCATION = {
   localityCountry: DEFAULT_LOCALITY_COUNTRY,
   localityCountryCode: DEFAULT_LOCALITY_COUNTRY_CODE,
@@ -731,6 +711,28 @@ const normalizeStrictLocation = (
     ? String(districtCandidate)
     : districts[0] || '';
   return { city, district, ...POLAND_LOCATION };
+};
+
+const resolvePlaceToNormalizedLocation = (
+  place: Location.LocationGeocodedAddress,
+  lat: number,
+  lng: number,
+) => {
+  const resolution = resolvePinLocationFromGeocodedPlace(place);
+  if (resolution.mode === 'strict') {
+    return normalizeStrictLocation(
+      resolution.strictCity,
+      getClosestDistrict(lat, lng, resolution.strictCity, place.district),
+      null,
+      place,
+    );
+  }
+  return {
+    city: resolution.city,
+    district: resolution.district,
+    localityCountry: resolution.localityCountry,
+    localityCountryCode: resolution.localityCountryCode,
+  };
 };
 
 export default function Step2_Location({ theme }: { theme: any }) {
@@ -811,6 +813,27 @@ export default function Step2_Location({ theme }: { theme: any }) {
           }, { duration: 1200 });
           setTimeout(() => { isProgrammaticMove.current = false; }, 1300);
         }, 80);
+      }
+
+      if (hasCoords && STRICT_CITY_SET.has(String(currentDraft.city || ''))) {
+        void (async () => {
+          try {
+            const reverse = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+            if (!reverse[0]) return;
+            const normalized = resolvePlaceToNormalizedLocation(reverse[0], lat, lng);
+            if (normalized.city !== REST_OF_COUNTRY_CITY) return;
+            const latest = useOfferStore.getState().draft;
+            if (!STRICT_CITY_SET.has(String(latest.city || ''))) return;
+            useOfferStore.getState().updateDraft({
+              city: normalized.city,
+              district: normalized.district,
+              localityCountry: normalized.localityCountry,
+              localityCountryCode: normalized.localityCountryCode,
+            });
+          } catch {
+            // noop
+          }
+        })();
       }
 
       setNavigationGate((targetStep: number) => {
@@ -945,15 +968,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
       let newStreet = '';
       if (reverse.length > 0) {
         const place = reverse[0];
-        const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-        const normalized = strictCity
-          ? normalizeStrictLocation(
-              strictCity,
-              getClosestDistrict(latitude, longitude, strictCity, place.district),
-              null,
-              place,
-            )
-          : normalizeStrictLocation(null, null, localityFromPlace(place), place);
+        const normalized = resolvePlaceToNormalizedLocation(place, latitude, longitude);
         finalCity = normalized.city;
         finalDistrict = normalized.district;
         finalCountry = normalized.localityCountry;
@@ -1013,15 +1028,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         if (reverse.length > 0) {
           const place = reverse[0];
-          const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-          const normalized = strictCity
-            ? normalizeStrictLocation(
-                strictCity,
-                getClosestDistrict(latitude, longitude, strictCity, place.district),
-                null,
-                place,
-              )
-            : normalizeStrictLocation(null, null, localityFromPlace(place), place);
+          const normalized = resolvePlaceToNormalizedLocation(place, latitude, longitude);
           finalCity = normalized.city;
           finalDistrict = normalized.district;
           finalCountry = normalized.localityCountry;
@@ -1088,15 +1095,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
         const newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
 
-        const strictCity = detectCityFromText(place.city || place.subregion || place.region || '');
-        const normalized = strictCity
-          ? normalizeStrictLocation(
-              strictCity,
-              getClosestDistrict(region.latitude, region.longitude, strictCity, place.district),
-              null,
-              place,
-            )
-          : normalizeStrictLocation(null, null, localityFromPlace(place), place);
+        const normalized = resolvePlaceToNormalizedLocation(place, region.latitude, region.longitude);
         const finalCity = normalized.city;
         const finalDistrict = normalized.district;
         const shouldUpdate =

@@ -194,44 +194,15 @@ function getStep3Requirements(draft: any): AddOfferRequirement[] {
   const needsFloor = String(draft?.propertyType || '') !== 'HOUSE';
   const isHouse = String(draft?.propertyType || '') === 'HOUSE';
   const plotAreaNum = parseDraftDimension(draft?.plotArea);
-  const hasPlotArea =
-    !String(draft?.plotArea || '').trim() || plotAreaNum > 0;
+  const hasPlotArea = plotAreaNum > 0;
 
-  const items = [
+  const items: AddOfferRequirement[] = [
     {
       id: 'area',
       label: t('addOffer.validation.step3.area.label'),
       ok: hasArea,
       action: t('addOffer.validation.step3.area.action'),
       meter: requirementMeter(hasArea ? Math.round(areaNum) : 0, 1, 'sqm'),
-    },
-    {
-      id: 'rooms',
-      label: t('addOffer.validation.step3.rooms.label'),
-      ok: hasArea && !!draft?.rooms,
-      action: hasArea
-        ? t('addOffer.validation.step3.rooms.action')
-        : t('addOffer.validation.step3.rooms.actionNeedArea'),
-    },
-    {
-      id: 'floor',
-      label: t('addOffer.validation.step3.floor.label'),
-      ok: !needsFloor || (hasArea && !!draft?.rooms && !!String(draft?.floor ?? '').trim()),
-      action: !hasArea
-        ? t('addOffer.validation.step3.floor.actionNeedArea')
-        : !draft?.rooms
-          ? t('addOffer.validation.step3.floor.actionNeedRooms')
-          : t('addOffer.validation.step3.floor.action'),
-    },
-    {
-      id: 'year',
-      label: t('addOffer.validation.step3.year.label'),
-      ok:
-        hasArea &&
-        !!draft?.rooms &&
-        (!needsFloor || !!String(draft?.floor ?? '').trim()) &&
-        hasYear,
-      action: t('addOffer.validation.step3.year.action'),
     },
   ];
 
@@ -241,8 +212,42 @@ function getStep3Requirements(draft: any): AddOfferRequirement[] {
       label: t('addOffer.validation.step3.housePlotArea.label'),
       ok: hasPlotArea,
       action: t('addOffer.validation.step3.housePlotArea.action'),
+      meter: requirementMeter(hasPlotArea ? Math.round(plotAreaNum) : 0, 1, 'sqm'),
     });
   }
+
+  const paramsReady = hasArea && (!isHouse || hasPlotArea);
+
+  items.push(
+    {
+      id: 'rooms',
+      label: t('addOffer.validation.step3.rooms.label'),
+      ok: paramsReady && !!draft?.rooms,
+      action: paramsReady
+        ? t('addOffer.validation.step3.rooms.action')
+        : t('addOffer.validation.step3.rooms.actionNeedArea'),
+    },
+    {
+      id: 'floor',
+      label: t('addOffer.validation.step3.floor.label'),
+      ok: !needsFloor || (paramsReady && !!draft?.rooms && !!String(draft?.floor ?? '').trim()),
+      action: !paramsReady
+        ? t('addOffer.validation.step3.floor.actionNeedArea')
+        : !draft?.rooms
+          ? t('addOffer.validation.step3.floor.actionNeedRooms')
+          : t('addOffer.validation.step3.floor.action'),
+    },
+    {
+      id: 'year',
+      label: t('addOffer.validation.step3.year.label'),
+      ok:
+        paramsReady &&
+        !!draft?.rooms &&
+        (!needsFloor || !!String(draft?.floor ?? '').trim()) &&
+        hasYear,
+      action: t('addOffer.validation.step3.year.action'),
+    },
+  );
 
   return items;
 }

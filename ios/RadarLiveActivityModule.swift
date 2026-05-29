@@ -77,7 +77,11 @@ private final class RadarLiveActivityHeartbeat {
 
   /// 1 Hz — limit sensowny dla Live Activity; tylko gdy app jest active.
   private let tickInterval: TimeInterval = 1.0
+  /// Po odblokowaniu telefonu — krótki burst pushy (nawet w tle), żeby iOS odmarzł widget.
+  private let unlockBurstSeconds: TimeInterval = 45
   private var timer: DispatchSourceTimer?
+  private var unlockBurstTimer: DispatchSourceTimer?
+  private var unlockBurstEndsAt: Date?
   private var baseState: RadarLiveActivityAttributes.ContentState?
   private var currentTick: Int = 0
   private var epochMs: Int64 = 0
@@ -101,6 +105,13 @@ private final class RadarLiveActivityHeartbeat {
       ) { [weak self] _ in
         self?.resumeForForeground()
       },
+      center.addObserver(
+        forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        self?.refreshOnDeviceUnlock()
+      },
     ]
   }
 
@@ -122,25 +133,89 @@ private final class RadarLiveActivityHeartbeat {
   func stop() {
     timer?.cancel()
     timer = nil
+    unlockBurstTimer?.cancel()
+    unlockBurstTimer = nil
+    unlockBurstEndsAt = nil
     baseState = nil
     currentTick = 0
     epochMs = 0
   }
 
   private func pauseForBackground() {
-    isAppActive = false
     timer?.cancel()
     timer = nil
+    isAppActive = false
+    // Burst po odblokowaniu zostaje — krótko budzi animację na lock screenie.
     Task {
       guard var state = baseState else { return }
       state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
       baseState = state
-      await pushState(state)
+      await pushState(state, force: true)
+    }
+  }
+
+  /// Odblokowanie telefonu (bez otwierania apki) — odśwież epoch + burst pushy 1 Hz.
+  private func refreshOnDeviceUnlock() {
+    guard baseState != nil else { return }
+    epochMs = Int64(Date().timeIntervalSince1970 * 1000)
+    currentTick = 0
+    syncTickToWallClock()
+    if isAppActive {
+      startTimerIfNeeded()
+    }
+    startUnlockBurst()
+    Task {
+      guard var state = baseState else { return }
+      state.animationEpochMs = epochMs
+      state.animationTick = currentTick
+      state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
+      baseState = state
+      await pushState(state, force: true)
+    }
+  }
+
+  /// Krótki 1 Hz burst po odblokowaniu — TimelineView czasem nie startuje sam po uśpieniu.
+  private func startUnlockBurst() {
+    unlockBurstTimer?.cancel()
+    unlockBurstEndsAt = Date().addingTimeInterval(unlockBurstSeconds)
+
+    let source = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+    source.schedule(deadline: .now() + tickInterval, repeating: tickInterval)
+    source.setEventHandler { [weak self] in
+      self?.fireUnlockBurstTick()
+    }
+    source.resume()
+    unlockBurstTimer = source
+  }
+
+  private func fireUnlockBurstTick() {
+    if let ends = unlockBurstEndsAt, Date() >= ends {
+      unlockBurstTimer?.cancel()
+      unlockBurstTimer = nil
+      unlockBurstEndsAt = nil
+      return
+    }
+    guard baseState != nil else {
+      unlockBurstTimer?.cancel()
+      unlockBurstTimer = nil
+      return
+    }
+    syncTickToWallClock()
+    Task {
+      guard var state = baseState else { return }
+      state.animationTick = currentTick
+      state.animationEpochMs = epochMs
+      state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
+      baseState = state
+      await pushState(state, force: true)
     }
   }
 
   private func resumeForForeground() {
     isAppActive = true
+    unlockBurstTimer?.cancel()
+    unlockBurstTimer = nil
+    unlockBurstEndsAt = nil
     guard baseState != nil else { return }
     epochMs = Int64(Date().timeIntervalSince1970 * 1000)
     currentTick = 0
@@ -180,8 +255,8 @@ private final class RadarLiveActivityHeartbeat {
     timer = source
   }
 
-  private func pushState(_ state: RadarLiveActivityAttributes.ContentState) async {
-    guard isAppActive else { return }
+  private func pushState(_ state: RadarLiveActivityAttributes.ContentState, force: Bool = false) async {
+    if !force && !isAppActive { return }
     let activity =
       RadarLiveActivityStore.activity
       ?? Activity<RadarLiveActivityAttributes>.activities.first
@@ -189,9 +264,8 @@ private final class RadarLiveActivityHeartbeat {
     guard activity.activityState == .active else { return }
     RadarLiveActivityStore.activity = activity
     if #available(iOS 16.2, *) {
-      // Długi staleDate — krótki powodował zatrzymanie TimelineView po zablokowaniu telefonu.
-      let stale = Date().addingTimeInterval(6 * 3600)
-      let content = ActivityContent(state: state, staleDate: stale)
+      // nil staleDate — iOS nie zatrzymuje TimelineView na ekranie blokady.
+      let content = ActivityContent(state: state, staleDate: nil)
       await activity.update(content)
     } else {
       await activity.update(using: state)
@@ -265,11 +339,21 @@ private actor RadarLiveActivityCoordinator {
     await RadarLiveActivityStore.endAllRadarActivities()
 
     let attributes = RadarLiveActivityAttributes(title: "Radar aktywny")
-    let activity = try Activity.request(
-      attributes: attributes,
-      contentState: contentState,
-      pushType: nil
-    )
+    let activity: Activity<RadarLiveActivityAttributes>
+    if #available(iOS 16.2, *) {
+      let content = ActivityContent(state: contentState, staleDate: nil)
+      activity = try Activity.request(
+        attributes: attributes,
+        content: content,
+        pushType: nil
+      )
+    } else {
+      activity = try Activity.request(
+        attributes: attributes,
+        contentState: contentState,
+        pushType: nil
+      )
+    }
     RadarLiveActivityStore.activity = activity
     RadarLiveActivityHeartbeat.shared.applySnapshot(contentState, resetEpoch: resetEpoch)
     return ["status": "started", "id": activity.id]

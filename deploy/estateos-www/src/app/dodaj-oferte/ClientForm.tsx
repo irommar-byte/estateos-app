@@ -739,9 +739,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const isFinanceDone = isLocationDone && cleanPrice.length > 0 && cleanArea.length > 0;
   
   const requiresPlot = ['HOUSE', 'PLOT'].includes(data.propertyType);
-  const isParameterSetDone = data.propertyType === 'PLOT'
-    ? !!data.area && !!data.plotArea
-    : !!data.area && !!data.rooms && !!data.floor && !!data.buildYear;
+  const isParameterSetDone =
+    data.propertyType === 'PLOT'
+      ? !!data.area && !!data.plotArea
+      : data.propertyType === 'HOUSE'
+        ? !!data.area && !!data.plotArea && !!data.rooms && !!data.floor && !!data.buildYear
+        : !!data.area && !!data.rooms && !!data.floor && !!data.buildYear;
   const isTechDone = isFinanceDone && isParameterSetDone;
   
   const descriptionText = String(data.description || '').replace(/<[^>]*>/g, '').trim();

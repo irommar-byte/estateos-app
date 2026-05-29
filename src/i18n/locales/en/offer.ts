@@ -430,7 +430,7 @@ export const offer = {
     parameters: {
       sectionTitle: 'PROPERTY PARAMETERS',
       area: 'Area',
-      plotArea: 'Plot size (opt.)',
+      plotArea: 'Plot size',
       rooms: 'Number of rooms',
       floor: 'Floor',
       yearBuilt: 'Year built',

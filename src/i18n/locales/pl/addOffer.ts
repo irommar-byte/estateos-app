@@ -32,7 +32,7 @@ export const addOffer = {
       plotArea: { label: 'Powierzchnia działki', action: 'Podaj metraż działki w m² (wartość większa od 0).' },
       housePlotArea: {
         label: 'Metraż działki (dom)',
-        action: 'Opcjonalnie — wpisz metraż działki w m² lub zostaw puste.',
+        action: 'Wybierz metraż działki w m² (wartość większa od 0).',
       },
       area: { label: 'Metraż', action: 'Wpisz powierzchnię użytkową w m².' },
       rooms: { label: 'Liczba pokoi', action: 'Wybierz liczbę pokoi.', actionNeedArea: 'Najpierw uzupełnij metraż.' },
@@ -88,7 +88,7 @@ export const addOffer = {
     none: 'Brak',
     groundFloor: 'Parter',
     notSpecified: 'Nie podano',
-    pickerEmpty: '-',
+    pickerEmpty: '‒',
     cancel: 'Anuluj',
     settings: 'Ustawienia',
     super: 'Super',
@@ -224,7 +224,7 @@ export const addOffer = {
     sections: {
       area: 'Metraż',
       plotArea: 'Powierzchnia działki',
-      housePlotArea: 'Metraż działki (opcjonalnie)',
+      housePlotArea: 'Metraż działki',
       details: 'Szczegóły',
       amenities: 'Udogodnienia (Opcjonalne)',
       heating: 'Ogrzewanie',
@@ -232,7 +232,7 @@ export const addOffer = {
     },
     hints: {
       plotArea: 'Podaj metraż całej działki w metrach kwadratowych.',
-      housePlotArea: 'Opcjonalnie — metraż działki przy domu jednorodzinnym.',
+      housePlotArea: 'Podaj metraż działki przy domu jednorodzinnym (w m²).',
     },
     placeholders: {
       area: '0',
@@ -246,6 +246,7 @@ export const addOffer = {
       floor: 'PIĘTRO',
       year: 'ROK',
     },
+    wheelHint: 'Przesuń palcem',
     heating: {
       none: 'Nie podano',
       district: 'Miejskie',

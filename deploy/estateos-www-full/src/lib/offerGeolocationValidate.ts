@@ -22,9 +22,9 @@ export async function resolveCityAtCoordinates(lat: number, lng: number): Promis
     const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
     const context = Array.isArray(feature?.context) ? feature.context : [];
     const cityRaw =
+      String(feature?.text || "").trim() ||
       getContextText(context, "place") ||
-      getContextText(context, "locality") ||
-      String(feature?.text || "").trim();
+      getContextText(context, "locality");
     return canonicalizeCity(cityRaw);
   } catch {
     return "";
@@ -51,6 +51,10 @@ export async function assertCoordinatesMatchCity(params: {
   if (!compareTarget) return;
 
   if (normalizeText(resolved) !== normalizeText(compareTarget)) {
+    const districtLocality = canonicalizeCity(params.district || "");
+    if (districtLocality && normalizeText(resolved) === normalizeText(districtLocality)) {
+      return;
+    }
     throw new Error(
       `Pinezka na mapie wskazuje ${resolved}, a wybrane miasto to ${isRestOfCountry ? compareTarget : selected}. Przesuń pinezkę lub zmień miasto.`,
     );

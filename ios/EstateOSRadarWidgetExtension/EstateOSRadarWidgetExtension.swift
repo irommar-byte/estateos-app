@@ -119,12 +119,10 @@ private struct RadarSmoothTimeline<Content: View>: View {
     var body: some View {
         if frozen {
             content(RadarPulseClock.sample(at: Date(), epochMs: epochMs, frozen: true))
-        } else if #available(iOS 17.0, *) {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-                content(RadarPulseClock.sample(at: timeline.date, epochMs: epochMs))
-            }
         } else {
-            TimelineView(.periodic(from: Date(timeIntervalSince1970: Double(epochMs) / 1000.0), by: 1.0 / 30.0)) { timeline in
+            // `.animation` wznawia się po raise-to-wake; `.periodic(from: epochDate)` potrafi
+            // „zamrozić” Live Activity po uśpieniu telefonu (stary anchor w przeszłości).
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
                 content(RadarPulseClock.sample(at: timeline.date, epochMs: epochMs))
             }
         }
@@ -288,7 +286,6 @@ struct EstateOSRadarLiveActivity: Widget {
     /// miasto i flaga są już w nagłówku nad tickerem).
     private func allCalibrationMarqueeText(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> String {
         var parts: [String] = rotatingParamItems(context)
-        parts.append("Próg dopasowania: \(context.state.minMatchThreshold)%")
         if context.state.newMatchesCount > 0 {
             parts.append("NOWE dopasowania: \(context.state.newMatchesCount)")
         }
@@ -550,24 +547,13 @@ struct EstateOSRadarLiveActivity: Widget {
 
         @ViewBuilder
         private var drumTicker: some View {
-            if #available(iOS 17.0, *) {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-                    RadarParamDrum(
-                        accent: accent,
-                        items: paramItems,
-                        drum: RadarDrumMotion.frame(at: timeline.date, epochMs: epochMs, itemCount: paramItems.count),
-                        compact: compact
-                    )
-                }
-            } else {
-                TimelineView(.periodic(from: Date(timeIntervalSince1970: Double(epochMs) / 1000.0), by: 1.0 / 30.0)) { timeline in
-                    RadarParamDrum(
-                        accent: accent,
-                        items: paramItems,
-                        drum: RadarDrumMotion.frame(at: timeline.date, epochMs: epochMs, itemCount: paramItems.count),
-                        compact: compact
-                    )
-                }
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                RadarParamDrum(
+                    accent: accent,
+                    items: paramItems,
+                    drum: RadarDrumMotion.frame(at: timeline.date, epochMs: epochMs, itemCount: paramItems.count),
+                    compact: compact
+                )
             }
         }
 
@@ -589,11 +575,6 @@ struct EstateOSRadarLiveActivity: Widget {
                         )
                 )
         }
-    }
-
-    /// Stary anchor dla pozostałych dekoracji (badge pulse) — główna animacja idzie przez heartbeat.
-    private enum RadarAnimationClock {
-        static let anchor = Date(timeIntervalSince1970: 1_700_000_000)
     }
 
     /// Slajdy bębna parametrów kalibracji (co 2 s).
@@ -626,7 +607,6 @@ struct EstateOSRadarLiveActivity: Widget {
         if state.requireFurnished { reqs.append("umeblowane") }
         if !reqs.isEmpty { items.append("Wymagania: \(reqs.joined(separator: ", "))") }
 
-        items.append("Próg dopasowania: \(state.minMatchThreshold)%")
         if state.newMatchesCount > 0 {
             items.append("NOWE dopasowania: \(state.newMatchesCount)")
         }
@@ -676,7 +656,7 @@ struct EstateOSRadarLiveActivity: Widget {
                     if isLuminanceReduced {
                         countLabel(scale: 1.0, opacity: 0.92)
                     } else {
-                        TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 24.0)) { timeline in
+                        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
                             let t = timeline.date.timeIntervalSince1970
                             let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.85)
                             countLabel(scale: 1.0 + 0.04 * wave, opacity: 0.92 + 0.08 * wave)
@@ -708,7 +688,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     badge(strokeOpacity: 0.4, scale: 1.0)
                 } else {
-                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 24.0)) { timeline in
+                    TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: false)) { timeline in
                         let t = timeline.date.timeIntervalSince1970
                         let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.95)
                         badge(strokeOpacity: 0.4 + 0.32 * wave, scale: 1.0 + 0.04 * wave)
@@ -768,7 +748,7 @@ struct EstateOSRadarLiveActivity: Widget {
             .overlay(
                 Group {
                     if !isLuminanceReduced {
-                        TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 30.0)) { timeline in
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
                             let t = timeline.date.timeIntervalSince1970
                             let phase = (t.truncatingRemainder(dividingBy: shinePeriod)) / shinePeriod
                             GeometryReader { geo in
@@ -816,7 +796,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     content(pulse: 0)
                 } else {
-                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
+                    TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
                         content(pulse: computePulse(at: timeline.date))
                     }
                 }
@@ -878,7 +858,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     pill(red: red, fillOpacity: 1.0, glow: 0.5)
                 } else {
-                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
+                    TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
                         let t = timeline.date.timeIntervalSince1970
                         let phase = t.truncatingRemainder(dividingBy: 1.0)
                         let pulse = 0.55 + 0.45 * (1.0 - cos(2 * .pi * phase)) / 2
@@ -935,7 +915,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 TickerLineView(text: safeLines[0], accent: accent, compact: compact)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
+                TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
                     let t = timeline.date.timeIntervalSince1970
                     let cycle = t / rotationSeconds
                     let currentIdx = Int(floor(cycle)) % safeLines.count
@@ -1047,7 +1027,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 // AOD: statyczny pasek 30%-fill, bez TimelineView.
                 staticBar(progress: 0.3)
             } else {
-                TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.06)) { timeline in
+                TimelineView(.animation(minimumInterval: 0.06, paused: false)) { timeline in
                     let t = timeline.date.timeIntervalSince1970
                     let phase = t.truncatingRemainder(dividingBy: cycleSeconds) / cycleSeconds
                     animatedBar(phase: phase)
@@ -1322,6 +1302,8 @@ struct EstateOSRadarLiveActivity: Widget {
                     endPoint: .bottom
                 )
             )
+            // Wymusza re-render po pushu z natywnego heartbeat (odblokowanie / burst).
+            .id("\(epochMs)-\(animationTick)")
             .activityBackgroundTint(Color.black)
             .activitySystemActionForegroundColor(accent)
 

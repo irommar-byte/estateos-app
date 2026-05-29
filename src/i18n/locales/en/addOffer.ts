@@ -32,7 +32,7 @@ export const addOffer = {
       plotArea: { label: 'Plot area', action: 'Enter plot size in m² (greater than 0).' },
       housePlotArea: {
         label: 'Plot size (house)',
-        action: 'Optional — plot size in m² or leave empty.',
+        action: 'Select plot size in m² (greater than 0).',
       },
       area: { label: 'Floor area', action: 'Enter usable area in m².' },
       rooms: { label: 'Number of rooms', action: 'Select number of rooms.', actionNeedArea: 'Enter floor area first.' },
@@ -88,7 +88,7 @@ export const addOffer = {
     none: 'None',
     groundFloor: 'Ground floor',
     notSpecified: 'Not specified',
-    pickerEmpty: '-',
+    pickerEmpty: '‒',
     cancel: 'Cancel',
     settings: 'Settings',
     super: 'Great',
@@ -224,7 +224,7 @@ export const addOffer = {
     sections: {
       area: 'Floor area',
       plotArea: 'Plot area',
-      housePlotArea: 'Plot size (optional)',
+      housePlotArea: 'Plot size',
       details: 'Details',
       amenities: 'Amenities (optional)',
       heating: 'Heating',
@@ -232,7 +232,7 @@ export const addOffer = {
     },
     hints: {
       plotArea: 'Enter the total plot size in square meters.',
-      housePlotArea: 'Optional — plot size for a detached house.',
+      housePlotArea: 'Plot size for a detached house (m²).',
     },
     placeholders: {
       area: '0',
@@ -246,6 +246,7 @@ export const addOffer = {
       floor: 'FLOOR',
       year: 'YEAR',
     },
+    wheelHint: 'Scroll with finger',
     heating: {
       none: 'Not specified',
       district: 'District heating',

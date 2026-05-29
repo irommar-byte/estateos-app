@@ -32,7 +32,7 @@ export const addOffer = {
       plotArea: { label: 'Площадь участка', action: 'Введите размер участка в м² (больше 0).' },
       housePlotArea: {
         label: 'Размер участка (дом)',
-        action: 'Необязательно — размер участка в м² или оставьте пустым.',
+        action: 'Выберите размер участка в м² (больше 0).',
       },
       area: { label: 'Площадь пола', action: 'Введите полезную площадь в м².' },
       rooms: { label: 'Количество комнат', action: 'Выберите количество комнат.', actionNeedArea: 'Сначала введите площадь пола.' },
@@ -88,7 +88,7 @@ export const addOffer = {
     none: 'Никто',
     groundFloor: 'Первый этаж',
     notSpecified: 'Не указан',
-    pickerEmpty: '-',
+    pickerEmpty: '‒',
     cancel: 'Отмена',
     settings: 'Настройки',
     super: 'Большой',
@@ -224,7 +224,7 @@ export const addOffer = {
     sections: {
       area: 'Площадь пола',
       plotArea: 'Площадь участка',
-      housePlotArea: 'Размер участка (необязательно)',
+      housePlotArea: 'Размер участка',
       details: 'Подробности',
       amenities: 'Удобства (по желанию)',
       heating: 'Обогрев',
@@ -232,7 +232,7 @@ export const addOffer = {
     },
     hints: {
       plotArea: 'Укажите общую площадь участка в квадратных метрах.',
-      housePlotArea: 'Необязательно — площадь участка у частного дома.',
+      housePlotArea: 'Укажите площадь участка у частного дома (м²).',
     },
     placeholders: {
       area: '0',
@@ -242,10 +242,11 @@ export const addOffer = {
       landRegistryNumber: 'Номер земельного кадастра (например, WA4N/00012345/6)',
     },
     pickers: {
-      rooms: 'ROOMS',
-      floor: 'FLOOR',
-      year: 'YEAR',
+      rooms: 'КОМНАТЫ',
+      floor: 'ЭТАЖ',
+      year: 'ГОД',
     },
+    wheelHint: 'Листайте пальцем',
     heating: {
       none: 'Не указан',
       district: 'Централизованное отопление',

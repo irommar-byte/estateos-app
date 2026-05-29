@@ -30,6 +30,7 @@ export type OfferPageCopy = {
   district: string;
   street: string;
   area: string;
+  plotArea: string;
   pricePerSqm: string;
   priceInEur: string;
   pricePerSqmEur: string;
@@ -104,6 +105,7 @@ const PL: OfferPageCopy = {
   district: "Dzielnica",
   street: "Ulica",
   area: "Powierzchnia",
+  plotArea: "Metraż działki",
   pricePerSqm: "Cena za m²",
   priceInEur: "Cena w EUR",
   pricePerSqmEur: "Cena za m² (EUR)",
@@ -180,6 +182,7 @@ const EN: OfferPageCopy = {
   district: "District",
   street: "Street",
   area: "Area",
+  plotArea: "Plot size",
   pricePerSqm: "Price per m²",
   priceInEur: "Price in EUR",
   pricePerSqmEur: "Price per m² (EUR)",

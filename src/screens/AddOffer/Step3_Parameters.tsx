@@ -35,7 +35,56 @@ const ROOMS = ['', ...Array.from({ length: 10 }, (_, i) => (i + 1).toString())];
 const FLOORS = ['', 'Parter', ...Array.from({ length: 30 }, (_, i) => (i + 1).toString())];
 const YEARS = ['', ...Array.from({ length: 100 }, (_, i) => (new Date().getFullYear() - i).toString())];
 
-const formatNumericInput = (text: string) => text.replace(/[^0-9.,]/g, '');
+const buildSqmPickerValues = (ranges: { start: number; end: number; step: number }[]) => {
+  const numeric = new Set<number>();
+  ranges.forEach(({ start, end, step }) => {
+    for (let i = start; i <= end; i += step) numeric.add(i);
+  });
+  return ['', ...Array.from(numeric).sort((a, b) => a - b).map(String)];
+};
+
+/** Mieszkanie / lokal — typowe metraże. */
+const UNIT_AREA_SQM = buildSqmPickerValues([
+  { start: 15, end: 80, step: 1 },
+  { start: 82, end: 120, step: 2 },
+  { start: 125, end: 200, step: 5 },
+  { start: 210, end: 400, step: 10 },
+]);
+
+/** Dom — większe powierzchnie użytkowe. */
+const HOUSE_LIVING_AREA_SQM = buildSqmPickerValues([
+  { start: 30, end: 150, step: 1 },
+  { start: 155, end: 250, step: 5 },
+  { start: 260, end: 600, step: 10 },
+]);
+
+/** Działka / działka przy domu — krok 10 m². */
+const PLOT_AREA_SQM = buildSqmPickerValues([
+  { start: 100, end: 2000, step: 10 },
+  { start: 2100, end: 10000, step: 100 },
+  { start: 11000, end: 50000, step: 500 },
+]);
+
+const withCurrentSqmValue = (values: readonly string[], current: string): string[] => {
+  const cur = String(current ?? '').trim();
+  if (!cur || values.includes(cur)) return [...values];
+  if (parseDraftDimension(cur) <= 0) return [...values];
+  return [...values, cur].sort((a, b) => {
+    if (a === '') return -1;
+    if (b === '') return 1;
+    return Number(a) - Number(b);
+  });
+};
+
+const sqmPickerOptions = (
+  values: readonly string[],
+  current: string,
+  t: (key: string) => string,
+): AddOfferOption[] =>
+  withCurrentSqmValue(values, current).map((v) => ({
+    value: v,
+    label: v === '' ? t('addOffer.common.pickerEmpty') : `${v} m²`,
+  }));
 
 type TogglePillProps = {
   label: string;
@@ -84,74 +133,6 @@ function TogglePill({
   );
 }
 
-type PremiumMetricRowProps = {
-  label: string;
-  hint?: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder: string;
-  theme: { text: string; subtitle: string };
-  cardBg: string;
-  cardBorder: string;
-  shadowOpacity: number;
-  icon?: React.ComponentProps<typeof Ionicons>['name'];
-};
-
-function PremiumMetricRow({
-  label,
-  hint,
-  value,
-  onChangeText,
-  placeholder,
-  theme,
-  cardBg,
-  cardBorder,
-  shadowOpacity,
-  icon = 'resize-outline',
-}: PremiumMetricRowProps) {
-  return (
-    <View
-      style={[
-        styles.premiumMetricCard,
-        {
-          backgroundColor: cardBg,
-          borderColor: cardBorder,
-          shadowColor: '#000',
-          shadowOpacity,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 2,
-        },
-      ]}
-    >
-      <View style={styles.premiumMetricHeader}>
-        <View style={[styles.premiumMetricIconWrap, { backgroundColor: `${Colors.primary}18` }]}>
-          <Ionicons name={icon} size={20} color={Colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.premiumMetricLabel, { color: theme.text }]}>{label}</Text>
-          {hint ? (
-            <Text style={[styles.premiumMetricHint, { color: theme.subtitle }]}>{hint}</Text>
-          ) : null}
-        </View>
-      </View>
-      <View style={[styles.premiumMetricInputRow, { borderColor: cardBorder }]}>
-        <TextInput
-          style={[styles.premiumMetricInput, { color: theme.text }]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={theme.subtitle}
-          keyboardType="decimal-pad"
-          maxLength={8}
-          returnKeyType="done"
-        />
-        <Text style={[styles.premiumMetricSuffix, { color: value ? theme.text : theme.subtitle }]}>m²</Text>
-      </View>
-    </View>
-  );
-}
-
 export default function Step3_Parameters({ theme }: { theme: any }) {
   const { t } = useI18n();
   const { draft, updateDraft, setCurrentStep } = useOfferStore();
@@ -175,9 +156,13 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const areaValue = String(draft.area ?? '');
   const plotAreaValue = String(draft.plotArea ?? '');
   const areaNum = parseDraftDimension(areaValue);
+  const plotAreaNum = parseDraftDimension(plotAreaValue);
   const isAreaFilled = areaNum > 0;
+  const isPlotAreaFilled = plotAreaNum > 0;
+  const isHouseParamsComplete = isAreaFilled && isPlotAreaFilled;
+  const isPrimaryParamsComplete = isPlot ? isAreaFilled : isHouse ? isHouseParamsComplete : isAreaFilled;
 
-  const isRoomsUnlocked = !isPlot && isAreaFilled;
+  const isRoomsUnlocked = !isPlot && isPrimaryParamsComplete;
   const isFloorUnlocked = needsFloor && isRoomsUnlocked && !!draft.rooms;
   const isYearUnlocked = isPlot
     ? false
@@ -193,12 +178,12 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
   const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
-  const detailsAnim = useRef(new Animated.Value(isAreaFilled ? 1 : 0)).current;
+  const detailsAnim = useRef(new Animated.Value(isPrimaryParamsComplete ? 1 : 0)).current;
   const amenitiesAnim = useRef(new Animated.Value(isAmenitiesUnlocked ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(detailsAnim, { toValue: isAreaFilled ? 1 : 0, duration: 400, useNativeDriver: false }).start();
-  }, [detailsAnim, isAreaFilled]);
+    Animated.timing(detailsAnim, { toValue: isPrimaryParamsComplete ? 1 : 0, duration: 400, useNativeDriver: false }).start();
+  }, [detailsAnim, isPrimaryParamsComplete]);
 
   useEffect(() => {
     Animated.timing(amenitiesAnim, {
@@ -249,16 +234,32 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
     [t],
   );
 
+  const areaSqmValues = useMemo(() => {
+    if (isPlot) return PLOT_AREA_SQM;
+    if (isHouse) return HOUSE_LIVING_AREA_SQM;
+    return UNIT_AREA_SQM;
+  }, [isHouse, isPlot]);
+
+  const areaOptions = useMemo(
+    () => sqmPickerOptions(areaSqmValues, areaValue, t),
+    [areaSqmValues, areaValue, t],
+  );
+
+  const housePlotAreaOptions = useMemo(
+    () => sqmPickerOptions(PLOT_AREA_SQM, plotAreaValue, t),
+    [plotAreaValue, t],
+  );
+
   useEffect(() => {
-    if (isAreaFilled && !wasDetailsUnlockedRef.current) {
+    if (isPrimaryParamsComplete && !wasDetailsUnlockedRef.current) {
       wasDetailsUnlockedRef.current = true;
       setTimeout(() => {
         const y = Math.max(0, detailsYRef.current - 24);
         scrollRef.current?.scrollTo({ y, animated: true });
       }, 480);
     }
-    if (!isAreaFilled) wasDetailsUnlockedRef.current = false;
-  }, [isAreaFilled]);
+    if (!isPrimaryParamsComplete) wasDetailsUnlockedRef.current = false;
+  }, [isPrimaryParamsComplete]);
 
   useEffect(() => {
     if (isAmenitiesUnlocked && !wasAmenitiesUnlockedRef.current) {
@@ -279,21 +280,22 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
     [draft, updateDraft],
   );
 
-  const handleAreaChange = useCallback(
-    (text: string) => {
-      const formatted = formatNumericInput(text);
+  const handleAreaPickerChange = useCallback(
+    (value: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (isPlot) {
-        updateDraft({ area: formatted, plotArea: formatted });
+        updateDraft({ area: value, plotArea: value });
         return;
       }
-      updateDraft({ area: formatted });
+      updateDraft({ area: value });
     },
     [isPlot, updateDraft],
   );
 
-  const handleHousePlotAreaChange = useCallback(
-    (text: string) => {
-      updateDraft({ plotArea: formatNumericInput(text) });
+  const handleHousePlotAreaPickerChange = useCallback(
+    (value: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      updateDraft({ plotArea: value });
     },
     [updateDraft],
   );
@@ -301,6 +303,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const areaSectionTitle = isPlot
     ? t('addOffer.step3.sections.plotArea')
     : t('addOffer.step3.sections.area');
+  const wheelHintLabel = t('addOffer.step3.wheelHint');
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
@@ -317,69 +320,37 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
 
         <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step3.header')}</Text>
 
-        {isPlot ? (
-          <PremiumMetricRow
-            label={areaSectionTitle}
-            hint={t('addOffer.step3.hints.plotArea')}
+        <View style={styles.areaPickerWrap}>
+          <AddOfferWheelPickerColumn
+            title={areaSectionTitle}
             value={areaValue}
-            onChangeText={handleAreaChange}
-            placeholder={t('addOffer.step3.placeholders.plotArea')}
+            options={areaOptions}
+            onChange={handleAreaPickerChange}
+            showScrollHint={!isAreaFilled}
+            scrollHintLabel={wheelHintLabel}
             theme={theme}
             cardBg={cardBg}
             cardBorder={cardBorder}
-            shadowOpacity={shadowOpacity}
-            icon="map-outline"
           />
-        ) : (
-          <>
-            <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{areaSectionTitle}</Text>
-            <View
-              style={[
-                styles.areaBox,
-                {
-                  backgroundColor: cardBg,
-                  borderColor: cardBorder,
-                  shadowColor: '#000',
-                  shadowOpacity,
-                  shadowRadius: 15,
-                  shadowOffset: { width: 0, height: 5 },
-                  elevation: 2,
-                },
-              ]}
-            >
-              <TextInput
-                style={[styles.areaInput, { color: theme.text }]}
-                placeholder={t('addOffer.step3.placeholders.area')}
-                placeholderTextColor={theme.subtitle}
-                value={areaValue}
-                onChangeText={handleAreaChange}
-                keyboardType="decimal-pad"
-                maxLength={8}
-                returnKeyType="done"
-              />
-              <Text style={[styles.areaUnit, { color: areaValue ? theme.text : theme.subtitle }]}>m²</Text>
-            </View>
-          </>
-        )}
+        </View>
 
         {isHouse ? (
-          <View style={{ marginTop: 24 }}>
-            <PremiumMetricRow
-              label={t('addOffer.step3.sections.housePlotArea')}
-              hint={t('addOffer.step3.hints.housePlotArea')}
+          <View style={[styles.areaPickerWrap, { marginTop: 24 }]}>
+            <AddOfferWheelPickerColumn
+              title={t('addOffer.step3.sections.housePlotArea')}
               value={plotAreaValue}
-              onChangeText={handleHousePlotAreaChange}
-              placeholder={t('addOffer.step3.placeholders.housePlotArea')}
+              options={housePlotAreaOptions}
+              onChange={handleHousePlotAreaPickerChange}
+              showScrollHint={isAreaFilled && !isPlotAreaFilled}
+              scrollHintLabel={wheelHintLabel}
               theme={theme}
               cardBg={cardBg}
               cardBorder={cardBorder}
-              shadowOpacity={shadowOpacity}
-              icon="trail-sign-outline"
             />
           </View>
         ) : null}
 
-        {!isPlot && isAreaFilled ? (
+        {!isPlot && isPrimaryParamsComplete ? (
           <View onLayout={(e) => { detailsYRef.current = e.nativeEvent.layout.y; }}>
             <Animated.View style={{ opacity: detailsAnim }}>
               <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.details')}</Text>
@@ -430,7 +401,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           </View>
         ) : null}
 
-        {!isPlot && isAreaFilled && isAmenitiesUnlocked ? (
+        {!isPlot && isPrimaryParamsComplete && isAmenitiesUnlocked ? (
           <View onLayout={(e) => { amenitiesYRef.current = e.nativeEvent.layout.y; }}>
             <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.amenities')}</Text>
             <View style={styles.heatingPickerWrap}>
@@ -447,7 +418,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           </View>
         ) : null}
 
-        {!isPlot && isAreaFilled ? (
+        {!isPlot && isPrimaryParamsComplete ? (
           <Animated.View
             style={{ opacity: amenitiesAnim }}
             pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
@@ -568,55 +539,8 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   header: { fontSize: 40, fontWeight: '800', marginBottom: 30, letterSpacing: -1.2 },
   sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 4 },
-  areaBox: { borderRadius: 28, borderWidth: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', height: 130, paddingBottom: 25 },
-  areaInput: { fontSize: 65, fontWeight: '800', textAlign: 'center', height: 85, minWidth: 100 },
-  areaUnit: { fontSize: 24, fontWeight: '700', marginBottom: 15, marginLeft: 5 },
-  premiumMetricCard: {
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 16,
-  },
-  premiumMetricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  premiumMetricIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  premiumMetricLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  premiumMetricHint: {
-    marginTop: 3,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '500',
-  },
-  premiumMetricInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    minHeight: 54,
-  },
-  premiumMetricInput: {
-    flex: 1,
-    fontSize: 22,
-    fontWeight: '800',
-    paddingVertical: 10,
-  },
-  premiumMetricSuffix: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 8,
+  areaPickerWrap: {
+    marginBottom: 8,
   },
   triplePickerWrapper: {
     flexDirection: 'row',

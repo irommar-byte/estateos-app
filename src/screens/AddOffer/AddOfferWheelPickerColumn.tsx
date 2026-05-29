@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as Haptics from 'expo-haptics';
 import type { AddOfferOption } from './AddOfferOptionField';
+import AddOfferWheelPickerHint from './AddOfferWheelPickerHint';
 
 type Props = {
   title: string;
@@ -13,6 +14,8 @@ type Props = {
   theme: { text: string; subtitle: string };
   cardBg: string;
   cardBorder: string;
+  showScrollHint?: boolean;
+  scrollHintLabel?: string;
 };
 
 /** Natywny bęben iOS — poza Animated/ScrollView hit-test; bez mode="dialog". */
@@ -25,7 +28,21 @@ export default function AddOfferWheelPickerColumn({
   theme,
   cardBg,
   cardBorder,
+  showScrollHint = false,
+  scrollHintLabel = '',
 }: Props) {
+  const [hintDismissed, setHintDismissed] = useState(false);
+
+  useEffect(() => {
+    if (showScrollHint) setHintDismissed(false);
+  }, [showScrollHint]);
+
+  const showHint = showScrollHint && !disabled && !hintDismissed;
+
+  const dismissHint = useCallback(() => {
+    setHintDismissed(true);
+  }, []);
+
   return (
     <View style={styles.column}>
       <Text style={[styles.title, { color: theme.subtitle }]}>{title}</Text>
@@ -39,11 +56,21 @@ export default function AddOfferWheelPickerColumn({
           disabled && styles.boxDisabled,
         ]}
         pointerEvents={disabled ? 'none' : 'auto'}
+        onStartShouldSetResponderCapture={() => {
+          if (showHint) dismissHint();
+          return false;
+        }}
       >
+        <AddOfferWheelPickerHint
+          visible={showHint}
+          label={scrollHintLabel}
+          maskColor={cardBg}
+        />
         <Picker
           selectedValue={value}
           onValueChange={(v) => {
             if (disabled) return;
+            dismissHint();
             Haptics.selectionAsync();
             onChange(String(v ?? ''));
           }}
@@ -51,6 +78,7 @@ export default function AddOfferWheelPickerColumn({
           dropdownIconColor={theme.text}
           style={[styles.picker, { color: theme.text }]}
           itemStyle={{ color: theme.text, height: 160, fontSize: 18, fontWeight: '700' }}
+          color={theme.subtitle}
         >
           {options.map((opt) => (
             <Picker.Item key={opt.value || '__empty__'} label={opt.label} value={opt.value} />

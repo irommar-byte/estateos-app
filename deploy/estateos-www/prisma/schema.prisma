@@ -146,7 +146,7 @@ model Offer {
   agentCommissionPercent Float?
   deposit         Float?
   area            Float
-  plotArea        Float?
+  plotArea        Float? /// Wymagane dla HOUSE i PLOT (walidacja aplikacji); nullable dla starszych rekordów.
   rooms           Int?
   floor           Int?
   totalFloors     Int?

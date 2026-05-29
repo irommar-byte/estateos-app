@@ -430,7 +430,7 @@ export const offer = {
     parameters: {
       sectionTitle: 'PARAMETRY NIERUCHOMOŚCI',
       area: 'Powierzchnia',
-      plotArea: 'Metraż działki (opcj.)',
+      plotArea: 'Metraż działki',
       rooms: 'Liczba pokoi',
       floor: 'Piętro',
       yearBuilt: 'Rok budowy',

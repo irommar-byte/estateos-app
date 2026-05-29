@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Location from 'expo-location';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './flow';
 import { resolvePlotAreaForSubmit } from './validation';
@@ -20,6 +21,8 @@ import {
   getDraftLocationPresentation,
   getLocationDraftRepairPatch,
   isPolandLocationDraft,
+  hasValidMapCoordinates,
+  resolvePinLocationFromGeocodedPlace,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
@@ -507,7 +510,32 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       rate: fxSnap.rate,
     });
 
-    const apiLocation = normalizeOfferLocationForApi(draft);
+    const apiLocation = await (async () => {
+      let publishDraft = draft;
+      if (hasValidMapCoordinates(draft.lat, draft.lng)) {
+        try {
+          const reverse = await Location.reverseGeocodeAsync({
+            latitude: Number(draft.lat),
+            longitude: Number(draft.lng),
+          });
+          if (reverse[0]) {
+            const resolution = resolvePinLocationFromGeocodedPlace(reverse[0]);
+            if (resolution.mode === 'locality') {
+              publishDraft = {
+                ...draft,
+                city: resolution.city,
+                district: resolution.district,
+                localityCountry: resolution.localityCountry,
+                localityCountryCode: resolution.localityCountryCode,
+              };
+            }
+          }
+        } catch {
+          // zostaw szkic — walidacja API i tak złapie rozjazd
+        }
+      }
+      return normalizeOfferLocationForApi(publishDraft);
+    })();
 
     const offerData = {
       userId: user.id,

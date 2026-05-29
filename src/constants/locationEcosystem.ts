@@ -639,6 +639,96 @@ export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
   [REST_OF_COUNTRY_CITY]: [],
 };
 
+export type GeocodedPlaceInput = {
+  city?: string | null;
+  subregion?: string | null;
+  name?: string | null;
+  region?: string | null;
+  district?: string | null;
+  isoCountryCode?: string | null;
+  country?: string | null;
+};
+
+function normalizeLocationMatch(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .trim();
+}
+
+/** Wykrywa strict city z pojedynczego pola geokodera (nie łączy subregion + city). */
+export function detectStrictCityFromGeocodeText(raw: string): string | null {
+  const cityInfo = normalizeLocationMatch(raw);
+  if (!cityInfo) return null;
+  if (cityInfo.includes('warszawa') || cityInfo.includes('warsaw')) return 'Warszawa';
+  if (cityInfo.includes('kraków') || cityInfo.includes('krakow') || cityInfo.includes('cracow')) return 'Kraków';
+  if (cityInfo.includes('łódź') || cityInfo.includes('lodz')) return 'Łódź';
+  if (cityInfo.includes('wrocław') || cityInfo.includes('wroclaw')) return 'Wrocław';
+  if (cityInfo.includes('poznań') || cityInfo.includes('poznan')) return 'Poznań';
+  if (cityInfo.includes('lublin')) return 'Lublin';
+  if (cityInfo.includes('zamość') || cityInfo.includes('zamosc')) return 'Zamość';
+  if (cityInfo.includes('gdańsk') || cityInfo.includes('gdansk')) return 'Gdańsk';
+  if (cityInfo.includes('gdynia')) return 'Gdynia';
+  if (cityInfo.includes('sopot')) return 'Sopot';
+  if (cityInfo.includes('katowice')) return 'Katowice';
+  if (cityInfo.includes('rybnik')) return 'Rybnik';
+  if (cityInfo.includes('białystok') || cityInfo.includes('bialystok')) return 'Białystok';
+  return null;
+}
+
+/** Czy pinezka faktycznie leży w mieście strict / jego dzielnicy (a nie np. Sitaniu przy Zamościu). */
+export function pinMatchesStrictCity(
+  strictCity: string,
+  pinLocality: string,
+  _placeDistrict?: string | null,
+): boolean {
+  if (!isStrictCityName(strictCity)) return false;
+  const districts = STRICT_CITY_DISTRICTS[strictCity] || [];
+  const normPin = normalizeLocationMatch(pinLocality);
+  const normCity = normalizeLocationMatch(strictCity);
+  if (!normPin || normPin === 'ogolna') return false;
+  if (normPin === normCity) return true;
+  return districts.some((d) => normalizeLocationMatch(d) === normPin);
+}
+
+export type PinLocationResolution =
+  | { mode: 'strict'; strictCity: string }
+  | {
+      mode: 'locality';
+      city: string;
+      district: string;
+      localityCountry: string;
+      localityCountryCode: string;
+    };
+
+/**
+ * Lokalizacja z reverse-geocode pinezki.
+ * Wieś obok miasta strict (np. Sitaniec przy Zamościu) → Reszta kraju + miejscowość.
+ */
+export function resolvePinLocationFromGeocodedPlace(place: GeocodedPlaceInput): PinLocationResolution {
+  const pinLocality = localityNameFromGeocodedPlace(place);
+  const countryFields = countryFieldsFromGeocodedPlace(place);
+
+  const strictFromCity = detectStrictCityFromGeocodeText(place.city || '');
+  if (strictFromCity && pinMatchesStrictCity(strictFromCity, pinLocality, place.district)) {
+    return { mode: 'strict', strictCity: strictFromCity };
+  }
+
+  const strictFromRegion = detectStrictCityFromGeocodeText(place.subregion || place.region || '');
+  if (strictFromRegion && pinMatchesStrictCity(strictFromRegion, pinLocality, place.district)) {
+    return { mode: 'strict', strictCity: strictFromRegion };
+  }
+
+  const locality = pinLocality && pinLocality !== 'Ogólna' ? pinLocality : 'Ogólna';
+  return {
+    mode: 'locality',
+    city: REST_OF_COUNTRY_CITY,
+    district: locality,
+    ...countryFields,
+  };
+}
+
 const cityKeys = Object.keys(STRICT_CITY_DISTRICTS);
 const missingInDistrictMap = STRICT_CITIES.filter((city) => !cityKeys.includes(city));
 const extraInDistrictMap = cityKeys.filter((city) => !STRICT_CITIES.includes(city as any));

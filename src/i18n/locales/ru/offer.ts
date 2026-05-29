@@ -414,7 +414,7 @@ export const offer = {
     parameters: {
       sectionTitle: 'ПАРАМЕТРЫ НЕДВИЖИМОСТИ',
       area: 'Область',
-      plotArea: 'Размер участка (опция)',
+      plotArea: 'Размер участка',
       rooms: 'Количество комнат',
       floor: 'Пол',
       yearBuilt: 'Год постройки',
