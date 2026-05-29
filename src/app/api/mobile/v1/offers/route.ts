@@ -24,8 +24,9 @@ import {
 import {
   activePublicationOfferIds,
   getPublicationQuote,
-  stageOfferPublicationForReview,
+  submitOfferActivation,
 } from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -267,23 +268,43 @@ export async function POST(req: Request) {
                 ? 'PLUS_PAID'
                 : 'PLUS_CREDIT';
 
-    const staged = await stageOfferPublicationForReview({
+    const bonusCouponId = pub?.bonusCouponId ? String(pub.bonusCouponId).trim() : '';
+
+    const staged = await submitOfferActivation({
       userId: authUserId,
       offerId: Number(offer.id),
       kind: activationKind,
-      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
+      onFreeFirstCouponUsed: markProfilePromoCardUsed,
     });
 
+    if (staged.alreadyActive) {
+      return NextResponse.json({
+        success: true,
+        offer: { ...offer, status: 'ACTIVE' },
+        publication: { status: 'ACTIVE', kind: activationKind },
+      });
+    }
+
+    const offerStatus = staged.status;
     return NextResponse.json({
       success: true,
-      offer: { ...offer, status: staged.status },
-      awaitingModeration: true,
+      awaitingModeration: staged.awaitingModeration,
+      offer: {
+        ...offer,
+        status: offerStatus,
+        ...(staged.endsAt ? { expiresAt: staged.endsAt.toISOString() } : {}),
+      },
       publication: {
         status: staged.status,
         kind: staged.kind,
+        endsAt: staged.endsAt?.toISOString?.() ?? null,
       },
+      message: staged.awaitingModeration
+        ? 'Oferta została przesłana do weryfikacji.'
+        : 'Oferta jest aktywna na rynku.',
     });
   } catch (e: unknown) {
     if (e instanceof OfferValidationError) {

@@ -55,6 +55,11 @@ export async function ensureOfferPendingPublicationColumns() {
     await addColumnIfMissing("Offer", "pendingBonusCouponId", "VARCHAR(64) NULL");
     await addColumnIfMissing("Offer", "pendingIapTransactionId", "VARCHAR(128) NULL");
     await addColumnIfMissing("Offer", "pendingPublicationCreatedAt", "DATETIME(3) NULL");
+    await addColumnIfMissing(
+      "Offer",
+      "pendingPublicationEntitlementConsumed",
+      "TINYINT(1) NOT NULL DEFAULT 0",
+    );
     ensured = true;
   })();
   try {
@@ -69,6 +74,7 @@ export async function setPendingPublication(params: {
   kind: PendingPublicationKind;
   bonusCouponId?: string | null;
   iapTransactionId?: string | null;
+  entitlementConsumed?: boolean;
 }) {
   await ensureOfferPendingPublicationColumns();
   await prisma.$executeRawUnsafe(
@@ -77,12 +83,14 @@ export async function setPendingPublication(params: {
       SET pendingPublicationKind = ?,
           pendingBonusCouponId = ?,
           pendingIapTransactionId = ?,
-          pendingPublicationCreatedAt = NOW(3)
+          pendingPublicationCreatedAt = NOW(3),
+          pendingPublicationEntitlementConsumed = ?
       WHERE id = ?
     `,
     params.kind,
     params.bonusCouponId ? String(params.bonusCouponId).slice(0, 64) : null,
     params.iapTransactionId ? String(params.iapTransactionId).slice(0, 128) : null,
+    params.entitlementConsumed ? 1 : 0,
     params.offerId,
   );
 }
@@ -95,7 +103,8 @@ export async function clearPendingPublication(offerId: number) {
       SET pendingPublicationKind = NULL,
           pendingBonusCouponId = NULL,
           pendingIapTransactionId = NULL,
-          pendingPublicationCreatedAt = NULL
+          pendingPublicationCreatedAt = NULL,
+          pendingPublicationEntitlementConsumed = 0
       WHERE id = ?
     `,
     offerId,
@@ -106,6 +115,7 @@ export async function readPendingPublication(offerId: number): Promise<{
   kind: PendingPublicationKind | null;
   bonusCouponId: string | null;
   iapTransactionId: string | null;
+  entitlementConsumed: boolean;
 } | null> {
   await ensureOfferPendingPublicationColumns();
   const rows = (await prisma.$queryRawUnsafe<
@@ -113,10 +123,12 @@ export async function readPendingPublication(offerId: number): Promise<{
       pendingPublicationKind: string | null;
       pendingBonusCouponId: string | null;
       pendingIapTransactionId: string | null;
+      pendingPublicationEntitlementConsumed: number | string | null;
     }>
   >(
     `
-      SELECT pendingPublicationKind, pendingBonusCouponId, pendingIapTransactionId
+      SELECT pendingPublicationKind, pendingBonusCouponId, pendingIapTransactionId,
+             pendingPublicationEntitlementConsumed
       FROM \`Offer\`
       WHERE id = ?
       LIMIT 1
@@ -126,6 +138,7 @@ export async function readPendingPublication(offerId: number): Promise<{
     pendingPublicationKind: string | null;
     pendingBonusCouponId: string | null;
     pendingIapTransactionId: string | null;
+    pendingPublicationEntitlementConsumed: number | string | null;
   }>;
   const row = rows[0];
   if (!row) return null;
@@ -139,6 +152,7 @@ export async function readPendingPublication(offerId: number): Promise<{
     kind,
     bonusCouponId: row.pendingBonusCouponId,
     iapTransactionId: row.pendingIapTransactionId,
+    entitlementConsumed: Number(row.pendingPublicationEntitlementConsumed ?? 0) > 0,
   };
 }
 

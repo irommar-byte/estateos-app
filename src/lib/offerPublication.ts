@@ -366,6 +366,7 @@ async function writePendingPublicationInTx(
     kind: PublicationKind;
     bonusCouponId?: string | null;
     iapTransactionId?: string | null;
+    entitlementConsumed?: boolean;
   },
 ) {
   await ensureOfferPendingPublicationColumns();
@@ -375,12 +376,14 @@ async function writePendingPublicationInTx(
       SET pendingPublicationKind = ?,
           pendingBonusCouponId = ?,
           pendingIapTransactionId = ?,
-          pendingPublicationCreatedAt = NOW(3)
+          pendingPublicationCreatedAt = NOW(3),
+          pendingPublicationEntitlementConsumed = ?
       WHERE id = ?
     `,
     params.kind,
     params.bonusCouponId ? String(params.bonusCouponId).slice(0, 64) : null,
     params.iapTransactionId ? String(params.iapTransactionId).slice(0, 128) : null,
+    params.entitlementConsumed ? 1 : 0,
     params.offerId,
   );
 }
@@ -486,37 +489,23 @@ export async function stageOfferPublicationForReview(params: {
     const concurrentActive = await activePublicationForOffer(tx, params.offerId);
     if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
-    if (params.kind === 'PLUS_CREDIT') {
-      const userRows = (await tx.$queryRawUnsafe(
-        'SELECT extraListings, plusExpiresAt FROM `User` WHERE id = ? LIMIT 1',
-        params.userId,
-      )) as Array<{ extraListings: number | null; plusExpiresAt: Date | string | null }>;
-      if (!hasPlusCreditOnUser(userRows[0] || {})) {
-        throw new Error('NO_PLUS_CREDIT_AVAILABLE');
-      }
-    }
+    const iapProductId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
 
-    if (params.kind === 'PLUS_PAID') {
-      const iapProductId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
-      const rows = (await tx.$queryRawUnsafe(
-        `
-          SELECT id FROM MobileIapPurchase
-          WHERE userId = ? AND transactionId = ? AND productId = ?
-            AND consumedAt IS NULL AND verifyStatus = 'VERIFIED'
-          LIMIT 1
-        `,
-        params.userId,
-        txId,
-        iapProductId,
-      )) as Array<{ id: unknown }>;
-      if (!rows.length) throw new Error('IAP_TRANSACTION_NOT_AVAILABLE');
-    }
+    await consumePublicationEntitlementInTx(tx, {
+      userId: params.userId,
+      offerId: params.offerId,
+      kind: params.kind,
+      iapTransactionId: params.iapTransactionId,
+      iapProductId,
+      consumeFreeFirst: true,
+    });
 
     await writePendingPublicationInTx(tx, {
       offerId: params.offerId,
       kind: params.kind,
       bonusCouponId: params.bonusCouponId,
       iapTransactionId: txId,
+      entitlementConsumed: true,
     });
 
     await tx.offer.update({
@@ -539,6 +528,7 @@ export async function activateOfferPublication(params: {
   kind: PublicationKind;
   iapTransactionId?: string | null;
   iapProductId?: string | null;
+  skipEntitlementConsume?: boolean;
   db?: DbClient;
 }) {
   const db = asDb(params.db);
@@ -563,14 +553,16 @@ export async function activateOfferPublication(params: {
     const concurrentActive = await activePublicationForOffer(tx, params.offerId);
     if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
-    await consumePublicationEntitlementInTx(tx, {
-      userId: params.userId,
-      offerId: params.offerId,
-      kind: params.kind,
-      iapTransactionId: params.iapTransactionId,
-      iapProductId: params.iapProductId,
-      consumeFreeFirst: true,
-    });
+    if (!params.skipEntitlementConsume) {
+      await consumePublicationEntitlementInTx(tx, {
+        userId: params.userId,
+        offerId: params.offerId,
+        kind: params.kind,
+        iapTransactionId: params.iapTransactionId,
+        iapProductId: params.iapProductId,
+        consumeFreeFirst: true,
+      });
+    }
 
     await tx.$executeRawUnsafe(
       `
@@ -732,6 +724,7 @@ export async function completeAdminOfferApproval(params: {
       kind: pending.kind,
       iapTransactionId: pending.kind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
+      skipEntitlementConsume: pending.entitlementConsumed,
     });
 
     if (pending.bonusCouponId && pending.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
