@@ -10,6 +10,7 @@ import {
   OfferStatus
 } from '@prisma/client';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
+import { assertCoordinatesMatchCity } from '@/lib/offerGeolocationValidate';
 import {
   attachVerificationMetaToDescription,
   buildOfferVerificationMeta,
@@ -27,6 +28,10 @@ import {
   getCanonicalOfferPricePln,
 } from '@/lib/money/offerPrice';
 import { resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
+import {
+  assertPlotAreaRequired,
+  resolvePlotAreaForPersistence,
+} from '@/lib/offerPlotAreaValidate';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -255,6 +260,7 @@ export async function createOffer(body: any) {
   }
 
   if (!userId) throw new Error('Brak ID użytkownika');
+  assertPlotAreaRequired(body);
   if (lat === undefined || lng === undefined || lat === null || lng === null) {
     throw new Error('Brak lokalizacji (lat/lng)');
   }
@@ -264,7 +270,6 @@ export async function createOffer(body: any) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
   }
 
-  const { assertCoordinatesMatchCity } = await import('@/lib/offerGeolocationValidate');
   await assertCoordinatesMatchCity({
     lat: Number(lat),
     lng: Number(lng),
@@ -303,7 +308,7 @@ export async function createOffer(body: any) {
       area: Number(body.area) || 0,
       adminFee: body.adminFee !== undefined && body.adminFee !== null ? Number(body.adminFee) : null,
       deposit: body.deposit !== undefined && body.deposit !== null ? Number(body.deposit) : null,
-      plotArea: body.plotArea !== undefined && body.plotArea !== null ? Number(body.plotArea) : null,
+      plotArea: resolvePlotAreaForPersistence(body),
       rooms: body.rooms !== undefined && body.rooms !== null ? Number(body.rooms) : null,
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
@@ -433,6 +438,12 @@ export async function updateOffer(body: any) {
     throw new Error('Brak uprawnień');
   }
 
+  assertPlotAreaRequired({
+    propertyType: body.propertyType ?? existing.propertyType,
+    plotArea: body.plotArea !== undefined ? body.plotArea : existing.plotArea,
+    area: body.area !== undefined ? body.area : existing.area,
+  });
+
   const shouldValidateLocation = body.city !== undefined || body.district !== undefined;
   const locationValidation = shouldValidateLocation
     ? validateCityDistrict(body.city ?? existing.city, body.district ?? existing.district)
@@ -455,7 +466,6 @@ export async function updateOffer(body: any) {
     Number.isFinite(nextLat) &&
     Number.isFinite(nextLng)
   ) {
-    const { assertCoordinatesMatchCity } = await import('@/lib/offerGeolocationValidate');
     await assertCoordinatesMatchCity({
       lat: nextLat,
       lng: nextLng,

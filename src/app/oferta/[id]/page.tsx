@@ -190,6 +190,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
+  const rawPlotAreaStr = String(offer.plotArea || '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const numericPlotArea = parseFloat(rawPlotAreaStr) || 0;
+  const propertyTypeRaw = String(offer.propertyType || '').toUpperCase();
   const dateLocale = locale === "pl" ? "pl" : "en";
   const cityRaw = String(offer.city || "").trim();
   const districtRaw = String(offer.district || "").trim();
@@ -273,17 +276,27 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
 
   const mainParams = [
-    { label: t.area, value: numericArea > 0 ? `${numericArea} m²` : null },
     {
-      label: t.pricePerSqm,
-      value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
+      label: propertyTypeRaw === 'PLOT' ? t.plotArea : t.area,
+      value: numericArea > 0 ? `${numericArea} m²` : null,
     },
-    { label: t.rooms, value: offer.rooms },
-    { label: t.floor, value: offer.floor },
-    {
-      label: t.standard,
-      value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
-    },
+    ...(propertyTypeRaw === 'HOUSE' && numericPlotArea > 0
+      ? [{ label: t.plotArea, value: `${numericPlotArea} m²` }]
+      : []),
+    ...(propertyTypeRaw === 'PLOT'
+      ? []
+      : [
+          {
+            label: t.pricePerSqm,
+            value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
+          },
+          { label: t.rooms, value: offer.rooms },
+          { label: t.floor, value: offer.floor },
+          {
+            label: t.standard,
+            value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
+          },
+        ]),
   ].filter((p) => p.value);
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
