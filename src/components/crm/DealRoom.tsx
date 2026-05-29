@@ -360,7 +360,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   };
 
   if (loading) return <div className="w-full h-[600px] flex justify-center items-center"><Loader2 className="animate-spin text-emerald-500" size={32} /></div>;
-  if (!deal) return <div className="text-center text-white/40 py-20 font-bold uppercase tracking-widest text-xs">Brak dostępu do pokoju.</div>;
+  if (!deal) return <div className="theme-aware-dashboard text-center text-[var(--eos-subtle)] py-20 font-bold uppercase tracking-widest text-xs">Brak dostępu do pokoju.</div>;
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
   const isBuyer = deal.buyerId === currentUserId;
@@ -498,16 +498,16 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   );
 
   return (
-    <div className="flex flex-col h-[750px] bg-[#080808] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.8),inset_0_0_80px_rgba(0,0,0,0.6)] relative isolate font-sans">
+    <div className="theme-aware-dashboard flex flex-col h-[750px] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.25)] relative isolate font-sans text-[var(--eos-text)]">
       
       {/* HEADER */}
-      <div className="relative z-10 flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02] backdrop-blur-xl">
+      <div className="relative z-10 flex items-center justify-between p-6 border-b border-[var(--eos-border)] bg-[var(--eos-bg)]/80 backdrop-blur-xl">
         <div className="flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-white/10 shrink-0">
+          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-[var(--eos-border)] shrink-0">
              <img src={(Array.isArray(deal.offer?.images) ? deal.offer.images[0] : typeof deal.offer?.images === 'string' && deal.offer.images.startsWith('[') ? JSON.parse(deal.offer.images)[0] : deal.offer?.images) || deal.offer?.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" />
           </div>
           <div className="flex flex-col">
-            <h3 className="text-white font-black text-lg">{deal.offer?.title || 'Transakcja'}</h3>
+            <h3 className="text-[var(--eos-text)] font-black text-lg">{deal.offer?.title || 'Transakcja'}</h3>
             <div className="flex items-center gap-3 mt-1 text-[10px] uppercase tracking-widest font-bold">
               <span className="text-emerald-500">{Number(String(deal.offer?.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</span>
               <span className="w-1 h-1 rounded-full bg-white/20"></span>

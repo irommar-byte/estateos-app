@@ -1430,7 +1430,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         <label className={labelPremium}>Nr Lokalu (opcjonalnie)</label>
                         <input
                           type="text"
-                          placeholder={data.propertyType === 'FLAT' ? "Np. 12" : "Dla mieszkań"}
+                          placeholder={data.propertyType === 'FLAT' ? ao.aptNumberPlaceholder : ao.apartmentPlaceholder}
                           disabled={data.propertyType !== 'FLAT'}
                           className={`${inputPremium} text-sm ${data.propertyType !== 'FLAT' ? 'opacity-50 cursor-not-allowed' : ''}`}
                           value={data.apartmentNumber || ''}
@@ -1442,7 +1442,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         <input
                           ref={landRegistryInputRef}
                           type="text"
-                          placeholder="Np. WA1M/00000000/0"
+                          placeholder={ao.landRegistryPlaceholder}
                           list="kw-court-suggestions"
                           maxLength={15}
                           autoCapitalize="characters"
@@ -1607,7 +1607,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <div>
                       <label className={labelPremium}>Czynsz administracyjny <span className="text-white/30 font-normal ml-1 text-[10px]">(Opcjonalnie)</span></label>
                       <div className="relative group">
-                        <input type="text" placeholder="Np. 1500" className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
+                        <input type="text" placeholder={ao.rentPlaceholder} className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">PLN</div>
                       </div>
                     </div>
@@ -1727,7 +1727,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       className="w-full h-64 p-6 outline-none text-[#f5f5f7] leading-relaxed overflow-y-auto"
                       style={{ minHeight: '16rem' }}
                       onInput={(e) => updateData({ description: e.currentTarget.innerHTML })}
-                      data-placeholder="Rozpocznij tworzenie luksusowego opisu..."
+                      data-placeholder={ao.descriptionPlaceholderAttr}
                     ></div>
                   </div>
                 </div>
@@ -1834,7 +1834,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   {data.advertiserType === 'agency' && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="md:col-span-2">
                       <label className={labelPremium}>Nazwa Agencji Nieruchomości *</label>
-                      <input type="text" className={inputPremium} onChange={(e) => updateData({ agencyName: e.target.value })} value={data.agencyName || ''} placeholder="Wpisz nazwę biura..." />
+                      <input type="text" className={inputPremium} onChange={(e) => updateData({ agencyName: e.target.value })} value={data.agencyName || ''} placeholder={ao.agencyNamePlaceholder} />
                     </motion.div>
                   )}
                   

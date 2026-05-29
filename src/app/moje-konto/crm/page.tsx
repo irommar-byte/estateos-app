@@ -811,7 +811,7 @@ export default function CRMDashboard() {
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.8 }} className="text-center">
                  <div className="flex items-center justify-center gap-3 mb-4">
                     <Loader2 size={16} className="text-[#D4AF37] animate-spin" />
-                    <span className="text-[10px] text-[#D4AF37] font-black uppercase tracking-[0.3em]">Inicjalizacja Systemów PRO</span>
+                    <span className="text-[10px] text-[#D4AF37] font-black uppercase tracking-[0.3em]">{c.boot.initLabel}</span>
                  </div>
                  
                  <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter max-w-2xl px-4 !leading-tight">
@@ -875,7 +875,7 @@ export default function CRMDashboard() {
       return c.deals.msgGeneric;
     }
     if (text.startsWith("[[DEAL_EVENT]]") || text.startsWith("[SYSTEM_BID:")) {
-      return "Aktualizacja przebiegu transakcji.";
+      return c.deals.msgGeneric;
     }
     return text;
   };
@@ -1072,7 +1072,7 @@ export default function CRMDashboard() {
                 <button onClick={() => setIsReviewsModalOpen(true)} className="mt-3 flex items-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/20 px-3 py-1.5 rounded-full transition-colors group cursor-pointer">
                    <Star size={14} className={`${reviewsData.totalReviews > 0 ? 'text-yellow-500 fill-yellow-500 group-hover:animate-pulse' : 'text-[var(--eos-subtle)]'}`} />
                    <span className="text-[10px] font-black text-yellow-500">
-                     {reviewsData.totalReviews > 0 ? `${reviewsData.averageRating.toFixed(1)} / 5.0` : 'Brak opinii'}
+                     {reviewsData.totalReviews > 0 ? `${reviewsData.averageRating.toFixed(1)} / 5.0` : c.reviewsNone}
                    </span>
                    {reviewsData.totalReviews > 0 ? (
                      <span className="text-[9px] text-yellow-500/50 uppercase tracking-widest border-l border-yellow-500/20 pl-2 ml-1">{c.seeProfile} ({reviewsData.totalReviews})</span>
@@ -1082,7 +1082,7 @@ export default function CRMDashboard() {
                   {verificationStatus === "verified" ? (
                     <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
                       <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-black">✓</span>
-                      {locale === "en" ? "Verified account" : "Konto zweryfikowane"}
+                      {c.verification.verifiedBadge}
                     </span>
                   ) : (
                     <Link
@@ -1093,12 +1093,8 @@ export default function CRMDashboard() {
                         !
                       </span>
                       {verificationStatus === "email"
-                        ? locale === "en"
-                          ? "Confirm email"
-                          : "Potwierdź e-mail"
-                        : locale === "en"
-                          ? "Confirm SMS phone"
-                          : "Potwierdź telefon SMS"}
+                        ? c.verification.confirmEmail
+                        : c.verification.confirmPhone}
                     </Link>
                   )}
                 </div>
@@ -1410,10 +1406,10 @@ export default function CRMDashboard() {
                        <Radar size={80} className="text-emerald-500 drop-shadow-[0_0_20px_#10b981]" strokeWidth={1} />
                     </motion.div>
                     <motion.h2 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="text-4xl md:text-7xl font-black text-white tracking-tighter text-center">
-                       Rekalibracja Radaru...
+                       {c.radar.recalibratingTitle}
                     </motion.h2>
                     <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="text-emerald-500 font-bold uppercase tracking-[0.5em] text-[11px] md:text-sm mt-8 animate-pulse text-center">
-                       Aktualizujemy kryteria • Przeszukujemy bazę ukrytych ofert
+                       {c.radar.recalibratingSub}
                     </motion.p>
                  </motion.div>
               )}
@@ -1436,7 +1432,7 @@ export default function CRMDashboard() {
                         </div>
                         <div className="flex gap-4 mb-4 relative z-10">
                            <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-emerald-500/30 bg-[#111]">
-                              <img src={thumb} className="w-full h-full object-cover" alt={offer.title || 'Oferta'} onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
+                              <img src={thumb} className="w-full h-full object-cover" alt={offer.title || c.offers.thumbAlt} onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
                               <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{txRent ? c.rent : c.sale}</span>
@@ -1449,8 +1445,8 @@ export default function CRMDashboard() {
                                     <>
                                         <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">{c.perMonth}</span></p>
                                         <p className="text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest mt-0.5 flex gap-1">
-                                            {offer.deposit && <span>Kaucja: {offer.deposit}</span>} 
-                                            {offer.rentAdminFee && <span>| Admin: {offer.rentAdminFee}</span>}
+                                            {offer.deposit && <span>{c.radar.deposit} {offer.deposit}</span>} 
+                                            {offer.rentAdminFee && <span>| {c.radar.adminFee} {offer.rentAdminFee}</span>}
                                         </p>
                                     </>
                                 ) : (
@@ -1493,7 +1489,7 @@ export default function CRMDashboard() {
                   )}
                 </div>
                 <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
-                  Ustaw kryteria Radaru — dopasowane oferty pojawią się tutaj. Jedno konto: szukasz i wystawiasz, jak w aplikacji mobilnej.
+                  {c.radar.emptyHint}
                 </p>
                 <div className="mt-6 flex gap-2">
                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -1528,7 +1524,7 @@ export default function CRMDashboard() {
                     offerSectionFilter === 'ACTIVE' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
-                  Aktywne ({offersBySection.ACTIVE.length})
+                  {fmtDict(c.offerFilter.active, { n: offersBySection.ACTIVE.length })}
                 </button>
                 <button
                   type="button"
@@ -1537,7 +1533,7 @@ export default function CRMDashboard() {
                     offerSectionFilter === 'PENDING' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
-                  Oczekujące ({offersBySection.PENDING.length})
+                  {fmtDict(c.offerFilter.pending, { n: offersBySection.PENDING.length })}
                 </button>
                 <button
                   type="button"
@@ -1546,7 +1542,7 @@ export default function CRMDashboard() {
                     offerSectionFilter === 'COMPLETED' ? 'text-emerald-400' : 'text-[var(--eos-subtle)] hover:text-white/80'
                   }`}
                 >
-                  Zakończone ({offersBySection.COMPLETED.length})
+                  {fmtDict(c.offerFilter.completed, { n: offersBySection.COMPLETED.length })}
                 </button>
               </div>
             </div>
@@ -1560,17 +1556,17 @@ export default function CRMDashboard() {
                   {isFavoritesTab
                     ? c.favoritesEmpty
                     : offerSectionFilter === 'ACTIVE'
-                      ? 'Brak aktywnych ogłoszeń.'
+                      ? c.offers.emptyActive
                       : offerSectionFilter === 'PENDING'
-                        ? 'Brak ogłoszeń oczekujących.'
-                        : 'Brak zakończonych ogłoszeń.'}
+                        ? c.offers.emptyPending
+                        : c.offers.emptyCompleted}
                 </p>
                 {isListingsTab && (
                   <motion.button
                     animate={{ scale: [1, 1.05, 1], boxShadow: ['0px 0px 0px rgba(59,130,246,0)', '0px 0px 30px rgba(59,130,246,0.3)', '0px 0px 0px rgba(59,130,246,0)'] }}
                     transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                     onClick={goToAddOffer} className="relative z-10 flex items-center gap-3 px-8 py-4 bg-blue-600/20 border border-blue-500/50 hover:bg-blue-600 hover:border-blue-500 text-white rounded-full font-black uppercase tracking-wider text-sm transition-all duration-300 shadow-[0_0_20px_rgba(37,99,235,0.4)] cursor-pointer group hover:shadow-[0_0_30px_rgba(37,99,235,0.6)]">
-                    <span className="text-xl leading-none text-blue-400 group-hover:text-white">+</span> DODAJ SWOJĄ NIERUCHOMOŚĆ
+                    <span className="text-xl leading-none text-blue-400 group-hover:text-white">+</span> {c.offers.addProperty}
                   </motion.button>
                 )}
                 {isFavoritesTab && (
@@ -1598,7 +1594,7 @@ export default function CRMDashboard() {
                     <div className="w-16 h-16 rounded-full border border-blue-400/40 group-hover:border-blue-300 flex items-center justify-center mb-4 transition-colors shadow-[0_0_18px_rgba(59,130,246,0.25)]">
                       <Plus size={28} className="text-blue-300 group-hover:text-blue-200 transition-colors" />
                     </div>
-                    <p className="text-white/75 font-bold uppercase tracking-widest text-xs group-hover:text-white transition-colors">Dodaj Kolejną</p>
+                    <p className="text-white/75 font-bold uppercase tracking-widest text-xs group-hover:text-white transition-colors">{c.offers.addAnother}</p>
                   </motion.button>
                 );
                 
@@ -1639,7 +1635,7 @@ export default function CRMDashboard() {
                          {offerPrimaryImage ? (
                            <img
                              src={offerPrimaryImage}
-                             alt={offer.title || 'Miniatura oferty'}
+                             alt={offer.title || c.offers.thumbAlt}
                              className="w-full h-full object-cover"
                              onError={(e) => {
                                e.currentTarget.style.display = 'none';
@@ -1661,26 +1657,26 @@ export default function CRMDashboard() {
                           
                           <div className="shrink-0">
                             {isArchived ? (
-                              <span className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-500/20">Wygasło</span>
+                              <span className="bg-red-500/10 text-red-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-red-500/20">{c.offers.badgeExpired}</span>
                             ) : isPending ? (
-                              <span className="bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.4)] animate-pulse">W Weryfikacji</span>
+                              <span className="bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.4)] animate-pulse">{c.offers.badgeInReview}</span>
                             ) : isNew ? (
-                              <span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.3)] animate-pulse">Nowe!</span>
+                              <span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.3)] animate-pulse">{c.offers.badgeNew}</span>
                             ) : (
-                              <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">Aktywne</span>
+                              <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-500/20">{c.offers.badgeActive}</span>
                             )}
                           </div>
                         </div>
                         
                           
-                          <span className={`self-start px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border mb-2 ${offer.transactionType === 'rent' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>{offer.transactionType === 'rent' ? 'Wynajem' : 'Sprzedaż'}</span>
+                          <span className={`self-start px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border mb-2 ${offer.transactionType === 'rent' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>{offer.transactionType === 'rent' ? c.rent : c.sale}</span>
                           <div className="flex flex-col mt-0.5">
                             {offer.transactionType === 'rent' ? (
                               <>
                                 <p className={`font-black text-xs ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-blue-400'}`}>{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString('pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">/ miesiąc</span></p>
                                 {!isArchived && (
                                   <div className="flex flex-col gap-0.5 mt-1 text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest">
-                                    {offer.deposit && <span>Kaucja: <span className="text-white/70">{offer.deposit} PLN</span></span>}
+                                    {offer.deposit && <span>{c.radar.deposit} <span className="text-white/70">{offer.deposit} PLN</span></span>}
                                     {offer.rentAdminFee && <span>Czynsz adm: <span className="text-white/70">{offer.rentAdminFee} PLN</span></span>}
                                     {offer.petsAllowed && <span className="text-emerald-500/80">Zwierzęta akceptowane</span>}
                                   </div>
@@ -1694,7 +1690,7 @@ export default function CRMDashboard() {
                     </div>
 
                     <div className={`rounded-2xl p-4 text-center border mb-6 relative overflow-hidden transition-colors duration-300 ${isArchived ? 'bg-black border-red-500/10' : 'bg-[#111] border-[var(--eos-border)] group-hover:border-emerald-500/20 group-hover:bg-[#111]/80'}`}>
-                      <p className="text-[10px] text-[var(--eos-subtle)] font-bold uppercase tracking-widest mb-1">Zasięg (Wyświetlenia)</p>
+                      <p className="text-[10px] text-[var(--eos-subtle)] font-bold uppercase tracking-widest mb-1">{c.offers.reach}</p>
                       <p className={`text-3xl font-black ${isArchived ? 'text-[var(--eos-subtle)]' : 'text-white'}`}>{offer.views || 0}</p>
                     </div>
 
@@ -1703,19 +1699,19 @@ export default function CRMDashboard() {
                     {offerBids.length > 0 && isListingsTab && !isArchived && (
                         <div className="mb-6 bg-gradient-to-br from-amber-500/10 to-amber-700/5 border border-amber-500/30 rounded-[1.5rem] p-4 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-[40px] pointer-events-none"></div>
-                            <h4 className="text-[10px] uppercase tracking-widest font-black text-amber-500 mb-3 flex items-center gap-2"><DollarSign size={14} /> Oczekujące Propozycje</h4>
+                            <h4 className="text-[10px] uppercase tracking-widest font-black text-amber-500 mb-3 flex items-center gap-2"><DollarSign size={14} /> {c.offers.bidsPendingTitle}</h4>
                             <div className="flex flex-col gap-3 relative z-10">
                                 {offerBids.map((bid: any) => (
                                     <div key={bid.id} className="bg-[var(--eos-bg)]/60 border border-[var(--eos-border)] rounded-xl p-4 flex flex-col gap-3 backdrop-blur-md hover:border-amber-500/30 transition-colors">
                                         <div className="flex justify-between items-center">
                                             <div>
                                                 <p className="text-lg font-black text-amber-400">{Number(bid.amount).toLocaleString('pl-PL')} PLN</p>
-                                                <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-bold">{bid.financing === 'CASH' ? '💰 Gotówka' : '🏦 Kredyt Bankowy'}</p>
+                                                <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-bold">{bid.financing === 'CASH' ? `💰 ${c.offers.bidCash}` : `🏦 ${c.offers.bidMortgage}`}</p>
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 mt-1">
-                                            <button onClick={(e) => handleBidResponse(e, bid, 'ACCEPT')} className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-500/30 text-emerald-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Akceptuj w Deal Room</button>
-                                            <button onClick={(e) => handleBidResponse(e, bid, 'REJECT')} className="py-2.5 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">Odrzuć</button>
+                                            <button onClick={(e) => handleBidResponse(e, bid, 'ACCEPT')} className="py-2.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black border border-emerald-500/30 text-emerald-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">{c.offers.bidAccept}</button>
+                                            <button onClick={(e) => handleBidResponse(e, bid, 'REJECT')} className="py-2.5 bg-red-500/10 hover:bg-red-500 hover:text-white border border-red-500/30 text-red-500 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all duration-300">{c.offers.bidReject}</button>
                                         </div>
                                     </div>
                                 ))}
@@ -1735,7 +1731,7 @@ export default function CRMDashboard() {
                           </div>
                           <RefreshCcw className={`text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] ${refreshingId === offer.id ? 'animate-spin' : 'group-hover:rotate-180'}`} size={18} />
                           <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                            {refreshingId === offer.id ? 'Przetwarzam...' : 'Odnów Ofertę (24 PLN)'}
+                            {refreshingId === offer.id ? c.offers.renewProcessing : c.offers.renewCta}
                           </span>
                         </button>
                       ) : (
@@ -1745,18 +1741,18 @@ export default function CRMDashboard() {
                             <div className="flex flex-col text-left">
                               {isPending ? (
                                 <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">Status publikacji</span>
-                                  <span className="block font-black text-xs text-yellow-500">Czeka na akceptację EstateOS™</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubStatus}</span>
+                                  <span className="block font-black text-xs text-yellow-500">{c.offers.pubAwaiting}</span>
                                 </>
                               ) : hasValidExpiry ? (
                                 <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">Ważne do: {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
-                                  <span className={`block font-black text-xs ${daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>Pozostało {daysLeft} dni</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubValidUntil} {new Date(expiresAtMs).toLocaleDateString('pl-PL')}</span>
+                                  <span className={`block font-black text-xs ${daysLeft != null && daysLeft <= 5 ? 'text-yellow-500' : 'text-emerald-500'}`}>{c.offers.pubDaysLeft.replace('{n}', String(daysLeft ?? 0))}</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="block text-[var(--eos-muted)] text-[8px]">Publikacja</span>
-                                  <span className="block font-black text-xs text-emerald-500">Aktywna na rynku</span>
+                                  <span className="block text-[var(--eos-muted)] text-[8px]">{c.offers.pubLabel}</span>
+                                  <span className="block font-black text-xs text-emerald-500">{c.offers.pubLive}</span>
                                 </>
                               )}
                             </div>
@@ -1767,14 +1763,14 @@ export default function CRMDashboard() {
                       <div className="grid grid-cols-2 gap-2 mt-2 relative z-20">
                         <div className="relative group/edit">
                           <Link href={`/edytuj-oferte/${offer.id}`} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-white/15 text-[10px] font-black uppercase tracking-widest text-white/80 flex items-center justify-center gap-2 hover:bg-white/10 hover:text-white transition-all">
-                             <Edit2 size={14} className="text-emerald-300" /> Edytuj
+                             <Edit2 size={14} className="text-emerald-300" /> {c.offers.edit}
                           </Link>
                           <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black/90 border border-yellow-500/30 text-[9px] text-yellow-500 px-3 py-1.5 rounded-lg opacity-0 group-hover/edit:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-[0_0_15px_rgba(234,179,8,0.2)] z-50">
-                             Edycja cofa do weryfikacji.
+                             {c.offers.editHint}
                           </div>
                         </div>
                         <button onClick={() => setOfferToArchive(offer)} className="w-full py-3 rounded-[1.5rem] bg-transparent border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-300 flex items-center justify-center gap-2 hover:bg-red-500/12 hover:text-red-200 transition-all cursor-pointer">
-                           <ArchiveX size={14} className="text-red-300" /> Wstrzymaj
+                           <ArchiveX size={14} className="text-red-300" /> {c.offers.pause}
                         </button>
                       </div>
 
@@ -1795,15 +1791,15 @@ export default function CRMDashboard() {
             onClick={() => setSelectedDealId(null)}
             className="mb-6 px-5 py-2.5 bg-[#111] border border-[var(--eos-border)] rounded-full text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-white hover:border-amber-500/50 transition-all flex items-center gap-2 w-fit shadow-[0_0_20px_rgba(0,0,0,0.5)]"
           >
-            ← Wróć do listy transakcji
+            {c.deals.back}
           </button>
           <DealRoom dealId={selectedDealId} currentUserId={currentUser?.id} />
         </div>
       ) : isolatedDeals.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-24 border border-dashed border-[var(--eos-border)] rounded-[2.5rem] bg-[var(--eos-bg-elevated)] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent to-amber-900/5 pointer-events-none" />
-                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-4 relative z-10">Brak aktywnych transakcji</p>
-                <p className="text-[var(--eos-subtle)] text-xs text-center max-w-sm relative z-10">Złóż ofertę zakupu lub zaakceptuj propozycję od kupca, aby otworzyć szyfrowany Deal Room.</p>
+                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-4 relative z-10">{c.deals.emptyTitle}</p>
+                <p className="text-[var(--eos-subtle)] text-xs text-center max-w-sm relative z-10">{c.deals.emptyDesc}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1813,18 +1809,18 @@ export default function CRMDashboard() {
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex gap-4 items-center min-w-0">
                           <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-[var(--eos-border)] group-hover:border-amber-500/50 transition-colors">
-                            <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || 'Oferta'} />
+                            <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || c.deals.fallbackTitle} />
                           </div>
                           <div className="flex flex-col justify-center min-w-0">
-                            <p className="text-white font-bold text-sm truncate">{deal.offer?.title || 'Nieruchomość'}</p>
+                            <p className="text-white font-bold text-sm truncate">{deal.offer?.title || c.deals.fallbackTitle}</p>
                             <p className="text-emerald-500 font-black text-xs">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} PLN</p>
-                            <p className="text-[9px] text-white/35 uppercase tracking-widest font-black mt-1">Deal #{deal.dealId}</p>
+                            <p className="text-[9px] text-white/35 uppercase tracking-widest font-black mt-1">{c.deals.dealId.replace('{id}', String(deal.dealId))}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {deal.unreadCount > 0 && (
                             <span className="px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                              +{deal.unreadCount} nieodczytane
+                              {c.deals.unread.replace('{n}', String(deal.unreadCount))}
                             </span>
                           )}
                           <button
@@ -1836,21 +1832,21 @@ export default function CRMDashboard() {
                                 : 'bg-white/5 border-[var(--eos-border)] text-[var(--eos-subtle)] hover:text-white/80'
                             }`}
                           >
-                            {pinnedDealIds.includes(Number(deal.dealId)) ? 'Przypięte' : 'Przypnij'}
+                            {pinnedDealIds.includes(Number(deal.dealId)) ? c.deals.pinned : c.deals.pin}
                           </button>
                         </div>
                       </div>
                       <div className="bg-black/50 rounded-xl p-4 border border-[var(--eos-border)] relative overflow-hidden">
                         <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50 group-hover:bg-amber-500 transition-colors" />
                         <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
-                          Ostatnia wiadomość {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
+                          {c.deals.lastMessage} {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
                         </p>
                         <p className="text-white/70 text-xs truncate ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
                         <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
                           <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                           {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (
                             <span className="text-emerald-400">
-                              {deal.pendingBidCount > 0 ? `${deal.pendingBidCount} oczek. ofert` : ''}{deal.pendingBidCount > 0 && deal.pendingAppointmentCount > 0 ? ' • ' : ''}{deal.pendingAppointmentCount > 0 ? `${deal.pendingAppointmentCount} oczek. terminów` : ''}
+                              {deal.pendingBidCount > 0 ? c.deals.pendingBids.replace('{n}', String(deal.pendingBidCount)) : ''}{deal.pendingBidCount > 0 && deal.pendingAppointmentCount > 0 ? ' • ' : ''}{deal.pendingAppointmentCount > 0 ? c.deals.pendingAppointments.replace('{n}', String(deal.pendingAppointmentCount)) : ''}
                             </span>
                           )}
                         </div>
@@ -1862,7 +1858,7 @@ export default function CRMDashboard() {
                             onClick={(e) => { e.stopPropagation(); openUserProfileModal(deal.otherParty); }}
                             className="text-[10px] uppercase tracking-widest font-black text-blue-300 hover:text-white transition-colors flex items-center gap-2"
                           >
-                            <span>Profil: {deal.otherParty.name}</span>
+                            <span>{c.deals.profile.replace('{name}', deal.otherParty.name)}</span>
                             <EliteStatusBadges subject={deal.otherParty} isDark compact />
                           </button>
                           <Link
@@ -1870,7 +1866,7 @@ export default function CRMDashboard() {
                             onClick={(e) => e.stopPropagation()}
                             className="text-[10px] uppercase tracking-widest font-black text-[var(--eos-muted)] hover:text-white transition-colors"
                           >
-                            Otwórz profil
+                            {c.deals.openProfile}
                           </Link>
                         </div>
                       )}
@@ -1908,7 +1904,7 @@ export default function CRMDashboard() {
                const isAccepted = statusUpper === 'ACCEPTED';
                const isPending = statusUpper === 'PENDING';
                const cp = enriched.counterpartyDisplay;
-               const cpLabel = cp?.name || (cp?.email ? String(cp.email).split('@')[0] : 'Kontrahent');
+               const cpLabel = cp?.name || (cp?.email ? String(cp.email).split('@')[0] : c.planning.counterparty);
                const refreshPlanning = () => { if (currentUser?.id) void fetchData(currentUser.id); };
 
                return (
@@ -1932,9 +1928,9 @@ export default function CRMDashboard() {
                              )}
                              <div>
                                 <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#fff', margin: 0, letterSpacing: '-0.05em' }}>
-                                    {isRescheduling ? (rescheduleStep === 1 ? 'Wybierz Dzień' : rescheduleStep === 2 ? 'Wybierz Godzinę' : 'Wyślij') : (isAccepted ? 'Zatwierdzone' : 'Propozycja Terminu')}
+                                    {isRescheduling ? (rescheduleStep === 1 ? c.planning.stepDay : rescheduleStep === 2 ? c.planning.stepTime : c.planning.stepSend) : (isAccepted ? c.planning.confirmed : c.planning.proposed)}
                                 </h3>
-                                <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: isAccepted ? '#10b981' : '#D4AF37', margin: '4px 0 0 0' }}>{isRescheduling ? `KROK ${rescheduleStep} Z 3` : enriched.offerTitle}</p>
+                                <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: isAccepted ? '#10b981' : '#D4AF37', margin: '4px 0 0 0' }}>{isRescheduling ? c.planning.stepOf.replace('{n}', String(rescheduleStep)) : enriched.offerTitle}</p>
                              </div>
                           </div>
                           <motion.button whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManagingApp(null); setIsRescheduling(false); setRescheduleStep(1); }} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: '14px', transition: 'background-color 0.2s' }}>✕</motion.button>
@@ -1944,27 +1940,27 @@ export default function CRMDashboard() {
                           {!isRescheduling && (
                              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, overflow: 'hidden' }} style={{ backgroundColor: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)' }}>Data i czas</span>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)' }}>{c.planning.dateTime}</span>
                                    <span style={{ fontSize: '18px', fontWeight: '900', color: '#fff' }}>{new Date(managingApp.proposedDate).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                                 </div>
                                 <div style={{ width: '100%', height: '1px', backgroundColor: 'rgba(255,255,255,0.05)', marginBottom: '16px' }}></div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Nieruchomość</span>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{c.planning.property}</span>
                                    <div style={{ textAlign: 'right', maxWidth: '70%' }}>
                                       <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{enriched.offerTitle}</span>
                                       <span style={{ fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.55)', display: 'block', marginTop: '4px' }}>
-                                        {isAccepted || enriched.offerAddress ? enriched.offerAddress || '—' : 'Adres widoczny po akceptacji terminu'}
+                                        {isAccepted || enriched.offerAddress ? enriched.offerAddress || '—' : c.planning.addressHidden}
                                       </span>
                                       {enriched.offer?.apartmentNumber ? (
-                                        <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>Nr lokalu: {enriched.offer.apartmentNumber}</span>
+                                        <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>{c.planning.unitNo} {enriched.offer.apartmentNumber}</span>
                                       ) : null}
                                       {enriched.offerId ? (
-                                        <span style={{ fontSize: '10px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '6px' }}>Oferta #{enriched.offerId}</span>
+                                        <span style={{ fontSize: '10px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '6px' }}>{c.planning.offerId.replace('{id}', String(enriched.offerId))}</span>
                                       ) : null}
                                    </div>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{enriched.needsMyResponse ? 'Propozycja od' : 'Kontrahent'}</span>
+                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{enriched.needsMyResponse ? c.planning.proposedBy : c.planning.counterparty}</span>
                                    <div style={{ textAlign: 'right' }}>
                                       <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{cpLabel}</span>
                                       {cp?.email ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', display: 'block', marginTop: '4px' }}>{cp.email}</span> : null}
@@ -1980,7 +1976,7 @@ export default function CRMDashboard() {
                           {isAccepted && !isRescheduling ? (
                              <motion.div key="accepted" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 <motion.button whileHover={{ scale: 1.02, backgroundColor: '#7f1d1d', borderColor: '#ef4444' }} whileTap={{ scale: 0.98 }} onClick={async () => {
-    if(!confirm('Czy na pewno chcesz odwołać to spotkanie? Druga strona otrzyma powiadomienie.')) return;
+    if(!confirm(c.confirms.cancelAppointment)) return;
     try {
         const res = await fetch('/api/appointments/respond', { credentials: 'include', 
             method: 'PUT',
@@ -1990,15 +1986,15 @@ export default function CRMDashboard() {
         if(res.ok) {
             setManagingApp(null);
             refreshPlanning();
-        } else alert('Błąd: Nie udało się odwołać spotkania.');
-    } catch(err) { alert('Błąd połączenia z serwerem.'); }
+        } else alert(c.alerts.cancelApptError);
+    } catch(err) { alert(c.alerts.network); }
 }} style={{ width: '100%', padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                    ⚠️ Odwołaj Prezentację
+                                    ⚠️ {c.planning.cancelPresentation}
                                 </motion.button>
                              </motion.div>
                           ) : enriched.waitingOnOther && !isRescheduling ? (
                              <motion.div key="waiting" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', textAlign: 'center' }}>
-                                <p style={{ color: '#eab308', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>Oczekujesz na odpowiedź kontrahenta</p>
+                                <p style={{ color: '#eab308', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>{c.planning.waiting}</p>
                              </motion.div>
                           ) : isPending && enriched.needsMyResponse && !isRescheduling ? (
                              <motion.div key="buttons" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', gap: '12px' }}>
@@ -2014,17 +2010,17 @@ export default function CRMDashboard() {
             const next = enrichAppointmentForUi({ ...managingApp, status: 'ACCEPTED' }, myId, crmData.contacts || []);
             setManagingApp(next);
             refreshPlanning();
-        } else alert('Błąd: Nie udało się zapisać w bazie.');
+        } else alert(c.alerts.saveError);
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
 }} style={{ flex: 1, padding: '16px', borderRadius: '12px', backgroundColor: '#10b981', color: '#000', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 10px 20px rgba(16,185,129,0.3)' }}>
-                                    ✓ POTWIERDŹ
+                                    ✓ {c.planning.confirm.toUpperCase()}
                                 </motion.button>
                                 <motion.button whileHover={{ scale: 1.03, backgroundColor: '#1a1a1a', borderColor: 'rgba(255,255,255,0.2)' }} whileTap={{ scale: 0.95 }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsRescheduling(true); setRescheduleStep(1); }} style={{ flex: 1, padding: '16px', borderRadius: '12px', backgroundColor: '#111', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', cursor: 'pointer' }}>
-                                    ZMIEŃ TERMIN
+                                    {c.planning.reschedule.toUpperCase()}
                                 </motion.button>
                              </motion.div>
                           ) : !isRescheduling ? (
-                             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>Brak dostępnych akcji dla tego wpisu.</motion.div>
+                             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>{c.planning.noActions}</motion.div>
                           ) : (
                              <motion.div key="calendar" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
                                 
@@ -2057,7 +2053,7 @@ export default function CRMDashboard() {
                                 {rescheduleStep === 3 && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                         <div style={{ backgroundColor: '#111', padding: '16px', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' }}>
-                                            <p style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', marginBottom: '8px' }}>Twój Nowy Termin</p>
+                                            <p style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', marginBottom: '8px' }}>{c.planning.newSlot}</p>
                                             <p style={{ color: '#10b981', fontSize: '18px', fontWeight: '900', margin: 0 }}>{new Date(newPropDate).toLocaleDateString('pl-PL')} o {newPropTime}</p>
                                         </div>
                                         <button onClick={async (e) => {
@@ -2079,12 +2075,12 @@ export default function CRMDashboard() {
             setIsRescheduling(false);
             setRescheduleStep(1);
             refreshPlanning();
-        } else alert('Błąd: Nie udało się wysłać propozycji.');
+        } else alert(c.alerts.proposalError);
     } catch(err) { alert('Błąd połączenia z serwerem.'); }
 }} className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-[var(--eos-bg-elevated)] hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]">
                                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"></div>
                                             <ShieldCheck size={18} className="relative z-10 transition-colors duration-300 text-emerald-500 group-hover:text-white" /> 
-                                            <span className="relative z-10 text-xs sm:text-sm font-black uppercase tracking-[0.2em] transition-colors duration-300 text-emerald-500 group-hover:text-white">Wyślij Kontrofertę</span>
+                                            <span className="relative z-10 text-xs sm:text-sm font-black uppercase tracking-[0.2em] transition-colors duration-300 text-emerald-500 group-hover:text-white">{c.planning.sendCounter}</span>
                                         </button>
                                     </div>
                                 )}
@@ -2128,11 +2124,11 @@ export default function CRMDashboard() {
                         <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{viewingProfile.name || viewingProfile.email?.split('@')[0]}</h3>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '100px', border: '1px solid rgba(16,185,129,0.2)' }}>
                             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 10px #10b981' }}></span>
-                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>Tożsamość Zweryfikowana</span>
+                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>{c.profile.verified}</span>
                         </div>
 
                         {viewingProfile.profileLoading ? (
-                          <div style={{ padding: '32px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 700 }}>Ładowanie profilu…</div>
+                          <div style={{ padding: '32px', color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 700 }}>{c.profile.loading}</div>
                         ) : (
                         <div onClick={() => setProfileReviewsOpen(true)} style={{ backgroundColor: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '24px', padding: '24px', width: '100%', marginBottom: '16px', cursor: 'pointer', transition: 'all 0.2s' }} onMouseOver={(e) => { e.currentTarget.style.borderColor = 'rgba(234,179,8,0.3)'; e.currentTarget.style.transform = 'scale(1.02)'; }} onMouseOut={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'scale(1)'; }}>
                             {(() => {
@@ -2145,7 +2141,7 @@ export default function CRMDashboard() {
                             <div style={{ display: 'flex', justifyContent: 'center', gap: '4px', marginBottom: '10px' }}>
                                 {[1,2,3,4,5].map(i => <span key={i} style={{ color: hasReviews && i <= Math.round(avg) ? '#eab308' : 'rgba(255,255,255,0.1)', fontSize: '18px' }}>★</span>)}
                             </div>
-                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: hasReviews ? '#eab308' : 'rgba(255,255,255,0.35)', fontWeight: '900' }}>{hasReviews ? `${rd.totalReviews} opinii • Zobacz szczegóły` : 'Brak opinii po transakcjach'}</span>
+                            <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: hasReviews ? '#eab308' : 'rgba(255,255,255,0.35)', fontWeight: '900' }}>{hasReviews ? c.profile.reviewsDetail.replace('{n}', String(rd.totalReviews)) : c.profile.reviewsEmpty}</span>
                                 </>
                               );
                             })()}
@@ -2156,11 +2152,11 @@ export default function CRMDashboard() {
                             <div style={{ textAlign: 'center', flex: 1 }}>
                                 <span style={{ display: 'block', fontSize: '14px', fontWeight: '900', color: '#fff' }}>{(() => {
                                   const pt = String(viewingProfile.planType || viewingProfile.buyerType || '').toUpperCase();
-                                  if (pt === 'AGENCY' || pt === 'AGENT') return 'Agencja';
-                                  if (pt.includes('PRO') || pt.includes('INVESTOR')) return 'PRO';
-                                  return 'Standard';
+                                  if (pt === 'AGENCY' || pt === 'AGENT') return c.profile.planAgency;
+                                  if (pt.includes('PRO') || pt.includes('INVESTOR')) return c.profile.planPro;
+                                  return c.profile.planStandard;
                                 })()}</span>
-                                <span style={{ display: 'block', fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.3)', marginTop: '4px', fontWeight: 'bold' }}>Typ Konta</span>
+                                <span style={{ display: 'block', fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.3)', marginTop: '4px', fontWeight: 'bold' }}>{c.profile.accountType}</span>
                             </div>
                             <div style={{ width: '1px', backgroundColor: 'rgba(255,255,255,0.05)' }}></div>
                             <div style={{ textAlign: 'center', flex: 1 }}>
@@ -2172,13 +2168,13 @@ export default function CRMDashboard() {
                                         return resolved.length > 0 ? Math.round(((resolved.length - canceled) / resolved.length) * 100) + '%' : '100%';
                                     })()}
                                 </span>
-                                <span style={{ display: 'block', fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.3)', marginTop: '4px', fontWeight: 'bold' }}>Stawiennictwo</span>
+                                <span style={{ display: 'block', fontSize: '8px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(255,255,255,0.3)', marginTop: '4px', fontWeight: 'bold' }}>{c.profile.attendance}</span>
                             </div>
                         </div>
 
                         {viewingProfile.publicOffers && viewingProfile.publicOffers.length > 0 && (
                             <div style={{ marginTop: '16px', width: '100%', backgroundColor: '#111', borderRadius: '16px', padding: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold', display: 'block', marginBottom: '12px' }}>Aktywne Oferty ({viewingProfile.publicOffers.length})</span>
+                                <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold', display: 'block', marginBottom: '12px' }}>{c.profile.activeOffers.replace('{n}', String(viewingProfile.publicOffers.length))}</span>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {viewingProfile.publicOffers.map((o:any) => (
                                         <a key={o.id} href={`/oferta/${o.id}`} target="_blank" rel="noreferrer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', textDecoration: 'none', color: '#fff', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.02)'}>
@@ -2206,7 +2202,7 @@ export default function CRMDashboard() {
               <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-[var(--eos-subtle)] hover:text-white transition-colors">
                 <X size={20} />
               </button>
-              <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || 'Profil użytkownika'}</h3>
+              <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || c.profileModal.title}</h3>
               <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-6">ID: {profileModalUser.id}</p>
               <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 
@@ -2216,7 +2212,7 @@ export default function CRMDashboard() {
                 <div className="space-y-5">
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Średnia ocen</p>
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">{c.profileModal.avgRating}</p>
                       <p className="text-lg font-black text-amber-300">
                         {Array.isArray(profileModalData.reviews) && profileModalData.reviews.length
                           ? (profileModalData.reviews.reduce((a: number, r: any) => a + Number(r.rating || 0), 0) / profileModalData.reviews.length).toFixed(1)
@@ -2224,30 +2220,30 @@ export default function CRMDashboard() {
                       </p>
                     </div>
                     <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Komentarze</p>
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">{c.profileModal.comments}</p>
                       <p className="text-lg font-black text-white">{Array.isArray(profileModalData.reviews) ? profileModalData.reviews.length : 0}</p>
                     </div>
                     <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
-                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">Inne oferty</p>
+                      <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">{c.profileModal.otherOffers}</p>
                       <p className="text-lg font-black text-emerald-400">{Array.isArray(profileModalData.offers) ? profileModalData.offers.length : 0}</p>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-4">
-                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">Ostatnie komentarze</p>
+                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">{c.profileModal.comments}</p>
                     <div className="space-y-2 max-h-40 overflow-auto">
                       {(profileModalData.reviews || []).slice(0, 5).map((r: any) => (
                         <div key={r.id} className="rounded-lg bg-black/40 border border-[var(--eos-border)] p-3">
                           <p className="text-xs text-amber-300 font-black">{Number(r.rating || 0)} ★</p>
-                          <p className="text-xs text-white/70">{r.comment || 'Bez komentarza'}</p>
+                          <p className="text-xs text-white/70">{r.comment || c.profileModal.noComment}</p>
                         </div>
                       ))}
-                      {(!profileModalData.reviews || profileModalData.reviews.length === 0) && <p className="text-xs text-white/35">Brak komentarzy.</p>}
+                      {(!profileModalData.reviews || profileModalData.reviews.length === 0) && <p className="text-xs text-white/35">{c.profileModal.noComments}</p>}
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-4">
-                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">Pozostałe oferty użytkownika</p>
+                    <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">{c.profileModal.otherOffers}</p>
                     <div className="space-y-2 max-h-40 overflow-auto">
                       {(profileModalData.offers || []).slice(0, 10).map((o: any) => (
                         <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-[var(--eos-border)] p-3 hover:border-emerald-500/30 transition-colors">
@@ -2255,12 +2251,12 @@ export default function CRMDashboard() {
                           <p className="text-[10px] text-emerald-400 font-black">{Number(String(o.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</p>
                         </Link>
                       ))}
-                      {(!profileModalData.offers || profileModalData.offers.length === 0) && <p className="text-xs text-white/35">Brak innych ofert.</p>}
+                      {(!profileModalData.offers || profileModalData.offers.length === 0) && <p className="text-xs text-white/35">{c.profileModal.noOffers}</p>}
                     </div>
                   </div>
                 </div>
               ) : (
-                <p className="text-[var(--eos-subtle)] text-sm">Nie udało się pobrać profilu.</p>
+                <p className="text-[var(--eos-subtle)] text-sm">{c.profileModal.loadFailed}</p>
               )}
             </motion.div>
           </motion.div>
@@ -2277,29 +2273,29 @@ export default function CRMDashboard() {
                  <ArchiveX size={24} className="text-red-500" />
               </div>
               
-              <h3 className="text-2xl font-black text-white mb-2 tracking-tighter">Wstrzymać Sprzedaż?</h3>
+              <h3 className="text-2xl font-black text-white mb-2 tracking-tighter">{c.archive.title}</h3>
               <p className="text-[var(--eos-muted)] text-xs mb-6 leading-relaxed">
-                 Ta akcja jest natychmiastowa. Ogłoszenie <br/><strong className="text-white text-sm">{offerToArchive.title}</strong><br/> zniknie z rynku i trafi do archiwum.
+                 {c.archive.body} <br/><strong className="text-white text-sm">{offerToArchive.title}</strong>
               </p>
               
               <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5 mb-8 text-left">
                  <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
-                    <p className="text-[10px] uppercase tracking-widest font-black text-red-500">Ważna Informacja</p>
+                    <p className="text-[10px] uppercase tracking-widest font-black text-red-500">{c.archive.warningTitle}</p>
                  </div>
                  <p className="text-xs text-[var(--eos-muted)] font-medium leading-relaxed">
-                   Obecny opłacony czas wyświetlania zostanie <span className="text-white font-bold">bezpowrotnie zakończony</span>. Aby przywrócić ofertę na mapę w przyszłości, konieczne będzie jej standardowe odnowienie (24 PLN).
+                   {c.archive.warningBody}
                  </p>
               </div>
               
               <div className="flex gap-3">
-                 <button onClick={() => setOfferToArchive(null)} className="flex-1 py-4 rounded-[1.5rem] border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:bg-white/5 hover:text-white transition-all cursor-pointer">Anuluj</button>
+                 <button onClick={() => setOfferToArchive(null)} className="flex-1 py-4 rounded-[1.5rem] border border-[var(--eos-border)] text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:bg-white/5 hover:text-white transition-all cursor-pointer">{c.archive.cancel}</button>
                  <button onClick={handleArchiveSubmit} className="flex-1 py-4 rounded-[1.5rem] bg-gradient-to-r from-red-600 to-red-500 text-[10px] font-black uppercase tracking-widest text-white hover:scale-[1.02] shadow-[0_10px_20px_rgba(239,68,68,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer">
-                    <ArchiveX size={14} /> Zdejmij z rynku
+                    <ArchiveX size={14} /> {c.archive.confirm}
                  </button>
               </div>
               <button onClick={handleDeleteOfferSubmit} className="mt-3 w-full py-3 rounded-[1.2rem] border border-red-500/35 text-[10px] font-black uppercase tracking-widest text-red-300 hover:bg-red-500/10 transition-all cursor-pointer">
-                Usuń ofertę trwale
+                {c.archive.deletePermanent}
               </button>
             </motion.div>
           </motion.div>

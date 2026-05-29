@@ -11,12 +11,11 @@ import {
   PUBLISH_CONTACT_REQUIREMENTS,
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
-import {
-  applyLegalStatusOverride,
-  legalStatusOverridesForOffers,
-} from '@/lib/offerLegalStatusOverlay';
+import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
+import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
+import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
+import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
 import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
@@ -145,24 +144,26 @@ export async function GET(req: Request) {
       });
     }
 
-    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
-      `
-        SELECT offerId, COUNT(*) AS total
-        FROM OfferViewLog
-        WHERE offerId IN (${offerIds.join(',')})
-        GROUP BY offerId
-      `
-    );
-    const viewsMap = new Map<number, number>(
-      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
-    );
+    const viewsMap = await loadOfferViewCounts(prisma, offerIds);
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
+    let listFxRate = DEFAULT_EUR_PLN_RATE;
+    let listFxDate: string | null = new Date().toISOString().slice(0, 10);
+    try {
+      const fx = await getNbpEurPlnRate();
+      listFxRate = fx.rate;
+      listFxDate = fx.date;
+    } catch {
+      /* fallback */
+    }
 
-    const normalizedOffers = visibleOffers.map((offer: any) => {
-      const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-      const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
-      return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });
-    });
+    const normalizedOffers = visibleOffers.map((offer: any) =>
+      shapePublicListOffer(offer, {
+        viewsCount: viewsMap.get(Number(offer.id)) || 0,
+        fx: { rate: listFxRate, date: listFxDate },
+        legalOverrides,
+        includeMobileLegalAliases: true,
+      }),
+    );
 
     return NextResponse.json({ success: true, offers: normalizedOffers }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },

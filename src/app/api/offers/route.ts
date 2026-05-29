@@ -1,18 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { createOffer } from '@/lib/services/offer.service';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { extractVerificationMeta } from '@/lib/offerVerification';
-import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
-import { computePublicLegalFields } from '@/lib/offerLegalPublicShape';
 import {
-  applyLegalStatusOverride,
   legalStatusOverridesForOffers,
 } from '@/lib/offerLegalStatusOverlay';
+import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
 import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
@@ -119,60 +115,21 @@ export async function GET() {
       /* fallback rate */
     }
 
-    const toPublicOffer = (offer: any, viewsCount: number) => {
-      const { user, ...rest } = offer;
-      const elite = resolveEliteBadges({ user });
-      const badges = {
-        ...elite,
-        isPartner: elite.isProgramPartner || elite.isAgent,
-      };
-      const { cleanDescription, verification } = extractVerificationMeta(rest.description);
-      const legal = computePublicLegalFields({
-        description: rest.description,
-        legalCheckStatus: rest.legalCheckStatus,
-        isLegalSafeVerified: rest.isLegalSafeVerified,
-      });
-      return enrichOfferMoneyFieldsWithRate(
-        {
-          ...rest,
-          imageUrl: resolveOfferPrimaryImage(rest),
-          description: cleanDescription,
-          apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',
-          landRegistryNumber: verification.landRegistryNumber || '',
-          ...legal,
-          badges,
-          views: viewsCount,
-          viewsCount,
-        },
-        listFxRate,
-        listFxDate,
-      );
-    };
-
     const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
-    if (!offerIds.length) {
-      return NextResponse.json(visibleOffers.map((o) => toPublicOffer(o, 0)));
-    }
-
-    const viewsRows = await prisma.$queryRawUnsafe<any[]>(
-      `
-        SELECT offerId, COUNT(*) AS total
-        FROM OfferViewLog
-        WHERE offerId IN (${offerIds.join(',')})
-        GROUP BY offerId
-      `
-    );
-
-    const viewsMap = new Map<number, number>(
-      viewsRows.map((row: any) => [Number(row.offerId), Number(row.total || 0)])
-    );
-    const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
+    const viewsMap = await loadOfferViewCounts(prisma, offerIds);
+    const legalOverrides = offerIds.length
+      ? await legalStatusOverridesForOffers(prisma, offerIds)
+      : null;
+    const fx = { rate: listFxRate, date: listFxDate };
 
     return NextResponse.json(
-      visibleOffers.map((offer: any) => {
-        const viewsCount = viewsMap.get(Number(offer.id)) || 0;
-        return toPublicOffer(applyLegalStatusOverride(offer, legalOverrides), viewsCount);
-      })
+      visibleOffers.map((offer: any) =>
+        shapePublicListOffer(offer, {
+          viewsCount: viewsMap.get(Number(offer.id)) || 0,
+          fx,
+          legalOverrides,
+        }),
+      ),
     );
 
   } catch (error) {
