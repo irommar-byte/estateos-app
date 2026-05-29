@@ -259,17 +259,18 @@ export async function createOffer(body: any) {
     throw new Error('Brak lokalizacji (lat/lng)');
   }
 
-  const { assertCoordinatesMatchCity } = await import('@/lib/offerGeolocationValidate');
-  await assertCoordinatesMatchCity({
-    lat: Number(lat),
-    lng: Number(lng),
-    city: String(body.city || ''),
-  });
-
   const locationValidation = validateCityDistrict(body.city, body.district);
   if (!locationValidation.valid) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
   }
+
+  const { assertCoordinatesMatchCity } = await import('@/lib/offerGeolocationValidate');
+  await assertCoordinatesMatchCity({
+    lat: Number(lat),
+    lng: Number(lng),
+    city: locationValidation.city,
+    district: locationValidation.district,
+  });
 
   const verificationMeta = buildOfferVerificationMeta({
     apartmentNumber: body.apartmentNumber,
@@ -449,15 +450,18 @@ export async function updateOffer(body: any) {
     body.lng !== undefined && body.lng !== null && body.lng !== ''
       ? Number(body.lng)
       : Number(existing.lng);
-  const nextCity = String(body.city ?? existing.city ?? '');
   if (
+    locationValidation &&
     Number.isFinite(nextLat) &&
-    Number.isFinite(nextLng) &&
-    nextCity &&
-    (body.lat !== undefined || body.lng !== undefined || body.city !== undefined)
+    Number.isFinite(nextLng)
   ) {
     const { assertCoordinatesMatchCity } = await import('@/lib/offerGeolocationValidate');
-    await assertCoordinatesMatchCity({ lat: nextLat, lng: nextLng, city: nextCity });
+    await assertCoordinatesMatchCity({
+      lat: nextLat,
+      lng: nextLng,
+      city: locationValidation.city,
+      district: locationValidation.district,
+    });
   }
 
   let agentCommissionPercent: number | null | undefined = undefined;
