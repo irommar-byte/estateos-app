@@ -16,7 +16,9 @@ import {
 } from 'lucide-react';
 import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 import DealRoomAppointmentPicker from '@/components/crm/DealRoomAppointmentPicker';
+import DealRoomPostSaleReview from '@/components/crm/DealRoomPostSaleReview';
 import PresentationFlowBanner from '@/components/presentation/PresentationFlowBanner';
+import { formatDealChatMessage } from '@/lib/dealroomReviewMessage';
 import {
   buildChatTimeline,
   buildNegotiationEvents,
@@ -699,7 +701,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <div className="space-y-4">
             <AnimatePresence initial={false}>
               {chatMessages.map((msg: any, i: number) => {
-                const msgContent = String(msg?.content || '');
+                const msgContent = formatDealChatMessage(String(msg?.content || ''));
+                if (!msgContent) return null;
                 const isMe = msg.senderId === currentUserId;
                 return (
                   <motion.div key={msg.id || i} initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -755,9 +758,33 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <div className="p-4 md:p-6 md:pb-8 relative z-20 bg-gradient-to-t from-[#080808] via-[#080808] to-transparent shrink-0 border-t border-white/5">
         {isFinalized ? (
-          <div className="relative max-w-4xl mx-auto rounded-[2rem] border border-white/10 bg-[#111] px-5 py-4 text-center">
-            <p className="text-[10px] uppercase tracking-[0.24em] font-black text-white/45">Tryb tylko do odczytu</p>
-            <p className="text-sm text-white/75 mt-1">Ten DealRoom jest zamknięty po finalizacji.</p>
+          <div className="relative max-w-4xl mx-auto space-y-4">
+            <DealRoomPostSaleReview
+              dealId={dealId}
+              currentUserId={currentUserId}
+              counterparty={{
+                id: Number(otherParty?.id || (isBuyer ? deal.sellerId : deal.buyerId)),
+                name: otherParty?.name,
+                email: otherParty?.email,
+              }}
+              myReviewSubmitted={Boolean(deal?.myReviewSubmitted)}
+              partnerReviewVisible={Boolean(deal?.partnerReviewVisible)}
+              partnerReview={
+                deal?.partnerReview
+                  ? {
+                      rating: Number(deal.partnerReview.rating || 0),
+                      comment: deal.partnerReview.comment,
+                    }
+                  : null
+              }
+              reviewRevealUnlocked={Boolean(deal?.reviewRevealUnlocked)}
+              authHeaders={authHeaders}
+              onUpdated={() => void refetchDealAndMessages()}
+            />
+            <div className="rounded-[2rem] border border-white/10 bg-[#111] px-5 py-4 text-center">
+              <p className="text-[10px] uppercase tracking-[0.24em] font-black text-white/45">Tryb tylko do odczytu</p>
+              <p className="text-sm text-white/75 mt-1">Ten DealRoom jest zamknięty po finalizacji — czat pozostaje archiwum rozmowy.</p>
+            </div>
           </div>
         ) : (
         <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">

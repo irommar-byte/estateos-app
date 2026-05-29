@@ -1,4 +1,5 @@
 export const EVENT_PREFIX = '[[DEAL_EVENT]]';
+export const DEAL_REVIEW_PREFIX = '[[DEAL_REVIEW]]';
 
 export function normalizeEventAction(action?: string): string {
   const raw = String(action || '').toUpperCase();
@@ -110,6 +111,7 @@ export function buildChatTimeline(deal: any): any[] {
     const content = String(msg?.content || '');
     if (!content || content.startsWith(EVENT_PREFIX)) return false;
     if (content.startsWith('[SYSTEM_BID:')) return false;
+    if (content.startsWith(DEAL_REVIEW_PREFIX)) return false;
     return true;
   });
 }
