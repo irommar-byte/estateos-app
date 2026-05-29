@@ -30,6 +30,7 @@ export type OfferPageCopy = {
   district: string;
   street: string;
   area: string;
+  plotArea: string;
   pricePerSqm: string;
   priceInEur: string;
   pricePerSqmEur: string;
