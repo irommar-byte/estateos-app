@@ -26,6 +26,10 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
+import {
+  resolveSellerDisplayName,
+  resolveSellerPersonName,
+} from '@/lib/sellerDisplay';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -186,8 +190,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       legalOffer as Record<string, unknown>,
     );
 
+    const offerUser = (legalOffer as { user?: Record<string, unknown> }).user;
+    const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
+    const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
+    const enrichedUser = offerUser
+      ? {
+          ...offerUser,
+          displayName: sellerDisplayName,
+          publicName: sellerDisplayName,
+          personName: sellerPersonName,
+        }
+      : offerUser;
+
     return NextResponse.json({
       ...moneyOffer,
+      user: enrichedUser,
+      sellerDisplayName,
+      sellerPersonName,
       description: cleanDescription,
       apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',

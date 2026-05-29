@@ -5,6 +5,7 @@ import { applyLegalStatusOverride, type LegalStatusOverride } from '@/lib/offerL
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { enrichOfferMoneyFieldsWithRate } from '@/lib/money/offerPrice';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
+import { resolveSellerDisplayName, resolveSellerPersonName } from '@/lib/sellerDisplay';
 
 export type PublicListOffer = Record<string, unknown> & {
   id: number;
@@ -39,6 +40,8 @@ export function shapePublicListOffer(
     : offer;
 
   const user = (withLegal as { user?: unknown }).user;
+  const sellerDisplayName = user ? resolveSellerDisplayName(user) : '';
+  const sellerPersonName = user ? resolveSellerPersonName(user) : null;
   const { user: _u, ...rest } = withLegal as Record<string, unknown> & { user?: unknown };
   const elite = resolveEliteBadges({ user });
   const badges = {
@@ -55,6 +58,8 @@ export function shapePublicListOffer(
 
   const base = {
     ...rest,
+    sellerDisplayName,
+    sellerPersonName,
     imageUrl: resolveOfferPrimaryImage(rest),
     description: cleanDescription,
     apartmentNumber: verification.apartmentNumber || rest.buildingNumber || '',

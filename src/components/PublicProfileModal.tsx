@@ -126,9 +126,11 @@ export default function PublicProfileModal({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-xl font-black tracking-tight leading-tight">{data.user.name}</h3>
-                {agencyName ? (
-                  <p className="text-sm font-bold text-blue-500/90 mt-0.5 truncate">{agencyName}</p>
+                <h3 className="text-xl font-black tracking-tight leading-tight truncate">
+                  {agencyName || data.user.displayName || data.user.publicName || data.user.name}
+                </h3>
+                {agencyName && data.user.name ? (
+                  <p className="text-sm font-medium text-[var(--eos-muted)] mt-0.5 truncate">{data.user.name}</p>
                 ) : null}
                 <EliteStatusBadges subject={data.user} compact className="mt-1.5" />
                 <p className="text-[11px] text-[var(--eos-muted)] mt-1">ID: {data.user.id}</p>

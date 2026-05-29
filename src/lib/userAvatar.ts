@@ -21,6 +21,7 @@ export function getBestUserAvatarUrl(userLike: unknown, origin = ''): string | n
 export function isAgencyUser(userLike: unknown): boolean {
   if (!userLike || typeof userLike !== 'object') return false;
   const u = userLike as Record<string, unknown>;
+  if (String(u.role ?? '').toUpperCase() === 'AGENT') return true;
   const type = String(u.type ?? u.planType ?? u.buyerType ?? '').toUpperCase();
   return type === 'AGENCY' || type === 'AGENT';
 }

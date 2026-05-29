@@ -277,6 +277,18 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, [initialUser?.email, initialUser?.name, initialUser?.phone]);
 
   useEffect(() => {
+    if (!initialUser?.isLoggedIn) return;
+    const role = String(initialUser.role || "").toUpperCase();
+    const company = String(initialUser.companyName || "").trim();
+    if (role !== "AGENT" && !company) return;
+    setData((prev: any) => ({
+      ...prev,
+      advertiserType: "agency",
+      agencyName: company || prev.agencyName || "",
+    }));
+  }, [initialUser?.isLoggedIn, initialUser?.role, initialUser?.companyName]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !draftHydratedRef.current) return;
     if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
     draftSaveTimerRef.current = window.setTimeout(() => {

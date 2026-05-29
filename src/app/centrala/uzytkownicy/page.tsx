@@ -20,8 +20,9 @@ import Link from "next/link";
 
 type TabType = "PRIVATE" | "AGENCIES" | "PARTNER";
 
-function classifyUser(u: { isPro?: boolean; planType?: string | null }) {
+function classifyUser(u: { isPro?: boolean; planType?: string | null; role?: string | null }) {
   if (u.isPro) return "PARTNER" as const;
+  if (String(u.role || "").toUpperCase() === "AGENT") return "AGENCIES" as const;
   if (String(u.planType || "").toUpperCase() === "AGENCY") return "AGENCIES" as const;
   return "PRIVATE" as const;
 }
@@ -324,6 +325,11 @@ export default function AdminUsers() {
                           {u.isPro && <Crown size={14} className="text-amber-500 shrink-0" />}
                         </div>
                         <p className="text-xs text-[var(--eos-muted)] truncate">{u.email}</p>
+                        {String(u.companyName || "").trim() ? (
+                          <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 truncate mt-0.5">
+                            {u.companyName}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-4 shrink-0">
@@ -386,6 +392,14 @@ export default function AdminUsers() {
                       <dt className="text-[var(--eos-muted)]">Segment</dt>
                       <dd className="font-semibold text-right capitalize">{classifyUser(selectedUser).toLowerCase()}</dd>
                     </div>
+                    {String(selectedUser.companyName || "").trim() ? (
+                      <div className="flex justify-between gap-3 px-4 py-3">
+                        <dt className="text-[var(--eos-muted)]">Biuro / firma</dt>
+                        <dd className="font-semibold text-right text-emerald-600 dark:text-emerald-400">
+                          {selectedUser.companyName}
+                        </dd>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between gap-3 px-4 py-3">
                       <dt className="text-[var(--eos-muted)]">Telefon</dt>
                       <dd className="font-semibold text-right">{selectedUser.phone || "—"}</dd>

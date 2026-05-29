@@ -94,7 +94,9 @@ export async function GET() {
         createdAt: true,
         updatedAt: true,
         userId: true,
-        user: { select: { role: true, planType: true, isPro: true } },
+        user: {
+          select: { role: true, planType: true, isPro: true, name: true, companyName: true },
+        },
       },
     });
 

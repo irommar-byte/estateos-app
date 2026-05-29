@@ -57,6 +57,7 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
       role: true,
       planType: true,
       isPro: true,
+      companyName: true,
     },
   },
 } as const;

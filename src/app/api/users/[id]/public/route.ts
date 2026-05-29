@@ -3,6 +3,11 @@ import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { computePresentationStats } from '@/lib/appointments/presentationFlow';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import {
+  resolveSellerDisplayName,
+  resolveSellerPersonName,
+  isAgentOrAgencySeller,
+} from '@/lib/sellerDisplay';
 
 async function loadReviews(revieweeId: number) {
   try {
@@ -92,12 +97,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const presentation = await loadPresentationStats(Number(user.id));
     const badges = resolveEliteBadges(user);
 
+    const displayName = resolveSellerDisplayName(
+      user,
+      user.name || (user.email ? user.email.split('@')[0] : 'Użytkownik'),
+    );
+    const personName = resolveSellerPersonName(user);
+
     return NextResponse.json({
       user: {
         id: user.id,
         name: user.name || (user.email ? user.email.split('@')[0] : 'Użytkownik'),
-        type: user.planType === 'AGENCY' ? 'agency' : 'private',
+        displayName,
+        publicName: displayName,
+        personName,
+        type: isAgentOrAgencySeller(user) || user.planType === 'AGENCY' ? 'agency' : 'private',
         planType: user.planType,
+        role: user.role,
         isPro: user.isPro,
         proExpiresAt: user.proExpiresAt,
         memberSince: user.createdAt,

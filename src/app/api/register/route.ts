@@ -98,6 +98,7 @@ export async function POST(req: Request) {
         role: dbRole,
         planType: userPlanType,
         companyName: companyNameTrimmed || null,
+        buyerType: dbRole === Role.AGENT ? "agency" : undefined,
       },
       select: MOBILE_USER_SELECT,
     });

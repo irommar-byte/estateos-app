@@ -24,6 +24,10 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
+import {
+  resolveSellerDisplayName,
+  resolveSellerPersonName,
+} from "@/lib/sellerDisplay";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
@@ -127,6 +131,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
   const sellerIsAgency = isAgencyUser(offer?.user);
+  const sellerLabel = resolveSellerDisplayName(
+    offer?.user,
+    offer?.user?.buyerType === "AGENCY" ? t.agency : t.privateOwner,
+  );
+  const sellerPersonLine = resolveSellerPersonName(offer?.user);
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -293,8 +302,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
   const commissionCompanyName =
     String(offer?.agencyName || "").trim() ||
+    String(offer?.user?.companyName || "").trim() ||
     String(offer?.user?.agencyName || "").trim() ||
-    String(offer?.user?.name || "").trim() ||
+    sellerLabel ||
     t.privateOwner;
 
   const costsParams = agentCommissionInfo
@@ -395,9 +405,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   
                   <div className="flex flex-col items-start leading-tight">
                       <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? t.agency : t.privateOwner)}</span>
+                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors max-w-[12rem] sm:max-w-[16rem] truncate">
+                            {sellerLabel}
+                          </span>
                           <span className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.5)] ${themeColors.primaryBg}`}></span>
                       </div>
+                      {sellerPersonLine ? (
+                        <span className="text-[8px] font-bold text-white/50 uppercase tracking-widest truncate max-w-[14rem]">
+                          {sellerPersonLine}
+                        </span>
+                      ) : null}
                       {(() => {
                         const total = Number(offer?.user?.reviewsData?.totalReviews ?? 0);
                         const avg = total > 0 ? Number(offer?.user?.reviewsData?.averageRating ?? 0) : 0;

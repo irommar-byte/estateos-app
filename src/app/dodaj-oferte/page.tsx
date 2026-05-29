@@ -38,6 +38,7 @@ export default async function AddOfferPage() {
           isLoggedIn: true, 
           id: realUser.id,
           name: realUser.name, 
+          companyName: realUser.companyName,
           phone: realUser.phone, 
           email: realUser.email,
           role: realUser.role,
