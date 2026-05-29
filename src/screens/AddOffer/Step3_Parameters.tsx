@@ -540,7 +540,7 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
               </>
             ) : null}
           </Animated.View>
-        )}
+        ) : null}
 
         <AddOfferStepFooterHint
           theme={theme}
