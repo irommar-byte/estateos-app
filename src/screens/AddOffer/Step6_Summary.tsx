@@ -20,6 +20,8 @@ import {
   stripHouseNumber,
   getDraftLocationPresentation,
   getLocationDraftRepairPatch,
+  locationDraftPatchHasChanges,
+  type LocationDraftFieldsPatch,
   isPolandLocationDraft,
   hasValidMapCoordinates,
   resolvePinLocationFromGeocodedPlace,
@@ -307,7 +309,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       }
       const currentDraft = store.draft;
       const repair = getLocationDraftRepairPatch(currentDraft);
-      if (repair) {
+      if (repair && locationDraftPatchHasChanges(currentDraft, repair)) {
         useOfferStore.getState().updateDraft(repair);
       }
       setCurrentStep(6);

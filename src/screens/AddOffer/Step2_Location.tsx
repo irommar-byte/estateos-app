@@ -23,6 +23,8 @@ import {
   normalizeLocalityCountryLabel,
   getLocationDraftRepairPatch,
   getDraftLocationPresentation,
+  locationDraftPatchHasChanges,
+  type LocationDraftFieldsPatch,
   localityNameFromGeocodedPlace,
   countryFieldsFromGeocodedPlace,
   resolveIsExactLocation,
@@ -717,8 +719,11 @@ const resolvePlaceToNormalizedLocation = (
   place: Location.LocationGeocodedAddress,
   lat: number,
   lng: number,
+  streetHint?: string,
 ) => {
-  const resolution = resolvePinLocationFromGeocodedPlace(place);
+  const resolution = resolvePinLocationFromGeocodedPlace(place, {
+    streetHint: streetHint ?? streetLineFromGeocodedPlace(place, ''),
+  });
   if (resolution.mode === 'strict') {
     return normalizeStrictLocation(
       resolution.strictCity,
@@ -757,6 +762,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const reverseGeocodeSeq = useRef(0);
   const geoInitStartedRef = useRef(false);
   const lastMapSyncKeyRef = useRef('');
+  const pinAlignSeqRef = useRef(0);
+
+  const applyLocationFieldsPatch = useCallback((patch: LocationDraftFieldsPatch | null) => {
+    if (!patch) return;
+    const latest = useOfferStore.getState().draft;
+    if (!locationDraftPatchHasChanges(latest, patch)) return;
+    useOfferStore.getState().updateDraft(patch);
+  }, []);
 
   const resolveMapExact = useCallback(
     (sourceDraft = draft) => resolveIsExactLocation(sourceDraft.isExactLocation ?? true),
@@ -765,33 +778,19 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       const store = useOfferStore.getState();
       if (store.currentStep !== 2) setCurrentStep(2);
 
       const currentDraft = store.draft;
-      const repair = getLocationDraftRepairPatch(currentDraft);
-      if (repair) {
-        const repairChanged = (Object.keys(repair) as (keyof typeof repair)[]).some(
-          (key) => currentDraft[key] !== repair[key],
-        );
-        if (repairChanged) store.updateDraft(repair);
-      }
+      applyLocationFieldsPatch(getLocationDraftRepairPatch(currentDraft));
 
       if (!resolveIsExactLocation(currentDraft.isExactLocation)) {
         store.updateDraft({ isExactLocation: true });
       }
 
-      const expectedExact = true;
-      const street = String(currentDraft.street || '').trim();
-      const normalizedStreet = street
-        ? expectedExact
-          ? street
-          : stripHouseNumber(street) || street
-        : '';
-      setStreetInput(normalizedStreet);
-      if (normalizedStreet && normalizedStreet !== street) {
-        store.updateDraft({ street: normalizedStreet });
-      }
+      const street = String(useOfferStore.getState().draft.street || '').trim();
+      setStreetInput(street);
 
       const lat = Number(currentDraft.lat);
       const lng = Number(currentDraft.lng);
@@ -799,6 +798,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
         Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
       if (!hasCoords) geoInitStartedRef.current = false;
 
+      const expectedExact = true;
       const syncKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${expectedExact ? 1 : 0}:${String(currentDraft.propertyType || '')}`;
       if (hasCoords && syncKey !== lastMapSyncKeyRef.current) {
         lastMapSyncKeyRef.current = syncKey;
@@ -815,16 +815,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
         }, 80);
       }
 
-      if (hasCoords && STRICT_CITY_SET.has(String(currentDraft.city || ''))) {
+      if (hasCoords) {
+        const seq = ++pinAlignSeqRef.current;
         void (async () => {
           try {
             const reverse = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-            if (!reverse[0]) return;
-            const normalized = resolvePlaceToNormalizedLocation(reverse[0], lat, lng);
-            if (normalized.city !== REST_OF_COUNTRY_CITY) return;
-            const latest = useOfferStore.getState().draft;
-            if (!STRICT_CITY_SET.has(String(latest.city || ''))) return;
-            useOfferStore.getState().updateDraft({
+            if (cancelled || seq !== pinAlignSeqRef.current || !reverse[0]) return;
+            const latestStreet = String(useOfferStore.getState().draft.street || '').trim();
+            const normalized = resolvePlaceToNormalizedLocation(reverse[0], lat, lng, latestStreet);
+            applyLocationFieldsPatch({
               city: normalized.city,
               district: normalized.district,
               localityCountry: normalized.localityCountry,
@@ -846,9 +845,10 @@ export default function Step2_Location({ theme }: { theme: any }) {
         return false;
       });
       return () => {
+        cancelled = true;
         setNavigationGate(null);
       };
-    }, [setCurrentStep, setNavigationGate]),
+    }, [applyLocationFieldsPatch, setCurrentStep, setNavigationGate]),
   );
 
   useEffect(() => {
@@ -1095,7 +1095,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
         const newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
 
-        const normalized = resolvePlaceToNormalizedLocation(place, region.latitude, region.longitude);
+        const normalized = resolvePlaceToNormalizedLocation(
+          place,
+          region.latitude,
+          region.longitude,
+          streetInput || draft.street || '',
+        );
         const finalCity = normalized.city;
         const finalDistrict = normalized.district;
         const shouldUpdate =
