@@ -42,33 +42,37 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     var title: String
 }
 
-/// Płynny obrót radaru (TimelineView + epoch) — niezależny od tickera napisów.
-private enum RadarSpinClock {
-    static let spinPeriod: Double = 2.4
+/// Sekwencyjny puls radaru: kropka → pierścień wewn. → środkowy → zewn. → powtórka.
+private enum RadarPulseClock {
+    static let pulsePeriod: Double = 3.2
+    static let stepCount = 4
 
     struct Sample {
         let phase: Double
-        let rotation: Double
-        let dotScale: Double
-        let dotOpacity: Double
-        let sweepOpacity: Double
+        let activeStep: Int
+        let stepProgress: Double
     }
 
     static func sample(at date: Date, epochMs: Int64, frozen: Bool = false) -> Sample {
         if frozen {
-            return Sample(phase: 0.38, rotation: -84 + 0.38 * 360, dotScale: 1.0, dotOpacity: 0.92, sweepOpacity: 0.82)
+            return Sample(phase: 0.25, activeStep: 0, stepProgress: 1.0)
         }
         let elapsed = max(0, date.timeIntervalSince1970 - Double(epochMs) / 1000.0)
-        let phase = elapsed.truncatingRemainder(dividingBy: spinPeriod) / spinPeriod
-        let rotation = phase * 360.0 - 84.0
-        let blink = 0.5 + 0.5 * sin(elapsed * 2.0 * .pi / 0.85)
-        return Sample(
-            phase: phase,
-            rotation: rotation,
-            dotScale: 0.78 + 0.32 * blink,
-            dotOpacity: 0.55 + 0.45 * blink,
-            sweepOpacity: 0.55 + 0.45 * phase
-        )
+        let cycle = elapsed.truncatingRemainder(dividingBy: pulsePeriod)
+        let phase = cycle / pulsePeriod
+        let stepDuration = pulsePeriod / Double(stepCount)
+        let activeStep = Int(cycle / stepDuration) % stepCount
+        let stepProgress = (cycle.truncatingRemainder(dividingBy: stepDuration)) / stepDuration
+        return Sample(phase: phase, activeStep: activeStep, stepProgress: stepProgress)
+    }
+
+    static func elementOpacity(step: Int, activeStep: Int, progress: Double) -> Double {
+        let dim = 0.15
+        let peak = 0.96
+        guard step == activeStep else { return dim }
+        let attack = min(1.0, progress / 0.32)
+        let eased = attack * attack * (3 - 2 * attack)
+        return dim + (peak - dim) * eased
     }
 }
 
@@ -110,18 +114,18 @@ private enum RadarDrumMotion {
 private struct RadarSmoothTimeline<Content: View>: View {
     let epochMs: Int64
     let frozen: Bool
-    let content: (RadarSpinClock.Sample) -> Content
+    let content: (RadarPulseClock.Sample) -> Content
 
     var body: some View {
         if frozen {
-            content(RadarSpinClock.sample(at: Date(), epochMs: epochMs, frozen: true))
+            content(RadarPulseClock.sample(at: Date(), epochMs: epochMs, frozen: true))
         } else if #available(iOS 17.0, *) {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-                content(RadarSpinClock.sample(at: timeline.date, epochMs: epochMs))
+                content(RadarPulseClock.sample(at: timeline.date, epochMs: epochMs))
             }
         } else {
             TimelineView(.periodic(from: Date(timeIntervalSince1970: Double(epochMs) / 1000.0), by: 1.0 / 30.0)) { timeline in
-                content(RadarSpinClock.sample(at: timeline.date, epochMs: epochMs))
+                content(RadarPulseClock.sample(at: timeline.date, epochMs: epochMs))
             }
         }
     }
@@ -294,7 +298,7 @@ struct EstateOSRadarLiveActivity: Widget {
         return parts.joined(separator: "   ◆   ")
     }
 
-    /// Duży glyph — płynny obrót (TimelineView), mrugająca kropka zsynchronizowana ze skanem.
+    /// Duży glyph — kropka + 3 pierścienie, sekwencyjne zapalanie (bez obracającej kreski).
     private struct LargeAnimatedRadarGlyph: View {
         let accent: Color
         let size: CGFloat
@@ -304,57 +308,79 @@ struct EstateOSRadarLiveActivity: Widget {
 
         var body: some View {
             RadarSmoothTimeline(epochMs: epochMs, frozen: isLuminanceReduced) { sample in
-                glyph(
-                    rotation: sample.rotation,
-                    dotScale: sample.dotScale,
-                    dotOpacity: sample.dotOpacity,
-                    sweepOpacity: sample.sweepOpacity
-                )
+                glyph(sample: sample)
             }
             .frame(width: size + 6, height: size + 6)
         }
 
         @ViewBuilder
-        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double, sweepOpacity: Double) -> some View {
-            let dotBase = max(6, size * 0.2)
+        private func glyph(sample: RadarPulseClock.Sample) -> some View {
+            let dotBase = max(6, size * 0.18)
+            let ringInner = size * 0.36
+            let ringMid = size * 0.64
+            let ringOuter = size * 0.92
+
             ZStack {
-                Circle()
-                    .stroke(accent.opacity(0.28), lineWidth: 2.2)
-                    .frame(width: size, height: size)
-
-                Circle()
-                    .stroke(accent.opacity(0.16), lineWidth: 1.4)
-                    .frame(width: size * 0.62, height: size * 0.62)
-
-                Circle()
-                    .trim(from: 0.0, to: 0.34)
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(colors: [
-                                accent.opacity(0.05),
-                                accent.opacity(0.35),
-                                accent.opacity(0.98),
-                                accent.opacity(0.55),
-                            ]),
-                            center: .center
-                        ),
-                        style: StrokeStyle(lineWidth: 3.4, lineCap: .round)
-                    )
-                    .frame(width: size, height: size)
-                    .rotationEffect(.degrees(rotation))
-                    .opacity(sweepOpacity)
-
-                Capsule(style: .continuous)
-                    .fill(accent.opacity(0.95))
-                    .frame(width: max(2, size * 0.055), height: size * 0.46)
-                    .offset(y: -size * 0.23)
-                    .rotationEffect(.degrees(rotation + 90))
-
-                Circle()
-                    .fill(accent.opacity(dotOpacity))
-                    .frame(width: dotBase * dotScale, height: dotBase * dotScale)
-                    .shadow(color: accent.opacity(0.85 * dotOpacity), radius: 3 + 4 * dotScale)
+                pulseRing(
+                    diameter: ringOuter,
+                    step: 3,
+                    sample: sample,
+                    idleWidth: 1.6,
+                    activeWidth: 2.6
+                )
+                pulseRing(
+                    diameter: ringMid,
+                    step: 2,
+                    sample: sample,
+                    idleWidth: 1.5,
+                    activeWidth: 2.4
+                )
+                pulseRing(
+                    diameter: ringInner,
+                    step: 1,
+                    sample: sample,
+                    idleWidth: 1.4,
+                    activeWidth: 2.2
+                )
+                pulseDot(
+                    base: dotBase,
+                    step: 0,
+                    sample: sample
+                )
             }
+        }
+
+        private func pulseRing(
+            diameter: CGFloat,
+            step: Int,
+            sample: RadarPulseClock.Sample,
+            idleWidth: CGFloat,
+            activeWidth: CGFloat
+        ) -> some View {
+            let active = sample.activeStep == step
+            let opacity = RadarPulseClock.elementOpacity(
+                step: step,
+                activeStep: sample.activeStep,
+                progress: sample.stepProgress
+            )
+            return Circle()
+                .stroke(accent.opacity(opacity), lineWidth: active ? activeWidth : idleWidth)
+                .frame(width: diameter, height: diameter)
+                .shadow(color: accent.opacity(active ? 0.55 : 0), radius: active ? 4 : 0)
+        }
+
+        private func pulseDot(base: CGFloat, step: Int, sample: RadarPulseClock.Sample) -> some View {
+            let active = sample.activeStep == step
+            let opacity = RadarPulseClock.elementOpacity(
+                step: step,
+                activeStep: sample.activeStep,
+                progress: sample.stepProgress
+            )
+            let scale = active ? 1.0 + 0.18 * sample.stepProgress : 0.88
+            return Circle()
+                .fill(accent.opacity(opacity))
+                .frame(width: base * scale, height: base * scale)
+                .shadow(color: accent.opacity(active ? 0.9 : 0.2), radius: active ? 5 : 2)
         }
     }
 
@@ -610,88 +636,23 @@ struct EstateOSRadarLiveActivity: Widget {
     }
 
     @ViewBuilder
-    private func radarGlyph(size: CGFloat, emphasized: Bool) -> some View {
-        ZStack {
-            Circle()
-                .stroke(accent.opacity(emphasized ? 0.33 : 0.2), lineWidth: emphasized ? 4 : 2)
-                .frame(width: size, height: size)
-
-            Circle()
-                .stroke(accent.opacity(emphasized ? 0.25 : 0.12), lineWidth: emphasized ? 2.5 : 1.4)
-                .frame(width: size * 0.62, height: size * 0.62)
-
-            Circle()
-                .trim(from: 0.04, to: 0.78)
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [accent.opacity(0.2), accent, accent.opacity(0.7)]),
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: emphasized ? 4 : 2.2, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-126))
-                .frame(width: size, height: size)
-
-            Circle()
-                .fill(accent)
-                .frame(width: emphasized ? 8 : 5, height: emphasized ? 8 : 5)
-                .shadow(color: accent.opacity(0.85), radius: emphasized ? 6 : 3)
-        }
+    private func radarGlyph(size: CGFloat, emphasized: Bool, epochMs: Int64 = 0) -> some View {
+        LargeAnimatedRadarGlyph(
+            accent: accent,
+            size: size,
+            epochMs: epochMs > 0 ? epochMs : Int64(Date().timeIntervalSince1970 * 1000)
+        )
         .padding(emphasized ? 3 : 2)
     }
 
-    /// Mini-glyph radaru z obracającym się skanerem i pulsującym środkiem.
+    /// Mini-glyph — ten sam puls co duży radar (kropka + 3 pierścienie).
     private struct MiniRadarGlyph: View {
         let accent: Color
-        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-
-        private let spinPeriod: Double = 1.4
-        private let blinkPeriod: Double = 1.0
-        private let tick: Double = 1.0 / 30.0
+        let epochMs: Int64
 
         var body: some View {
-            Group {
-                if isLuminanceReduced {
-                    glyph(rotation: -72, dotScale: 1.0, dotOpacity: 1.0)
-                } else {
-                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: tick)) { timeline in
-                        let t = timeline.date.timeIntervalSince1970
-                        let rotation = (t * (360.0 / spinPeriod)).truncatingRemainder(dividingBy: 360.0) - 72
-                        let blinkWave = 0.5 + 0.5 * sin((t * 2 * .pi) / blinkPeriod)
-                        let dotScale = 0.82 + 0.22 * blinkWave
-                        let dotOpacity = 0.6 + 0.4 * blinkWave
-                        glyph(rotation: rotation, dotScale: dotScale, dotOpacity: dotOpacity)
-                    }
-                }
-            }
-            .frame(width: 20, height: 20)
-        }
-
-        @ViewBuilder
-        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double) -> some View {
-            ZStack {
-                Circle()
-                    .stroke(accent.opacity(0.24), lineWidth: 1.0)
-                    .frame(width: 16, height: 16)
-
-                Circle()
-                    .stroke(accent.opacity(0.14), lineWidth: 0.9)
-                    .frame(width: 10.5, height: 10.5)
-
-                Circle()
-                    .trim(from: 0.04, to: 0.24)
-                    .stroke(
-                        accent.opacity(0.96),
-                        style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
-                    )
-                    .frame(width: 16, height: 16)
-                    .rotationEffect(.degrees(rotation))
-
-                Circle()
-                    .fill(accent.opacity(dotOpacity))
-                    .frame(width: 3.6 * dotScale, height: 3.6 * dotScale)
-                    .shadow(color: accent.opacity(0.9 * dotOpacity), radius: 2 + 2 * dotScale)
-            }
+            LargeAnimatedRadarGlyph(accent: accent, size: 16, epochMs: epochMs)
+                .frame(width: 20, height: 20)
         }
     }
 
