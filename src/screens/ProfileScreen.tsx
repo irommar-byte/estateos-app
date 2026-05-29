@@ -48,6 +48,7 @@ import {
 } from '../utils/profilePromoDismissStorage';
 import { buildBonusCouponStack } from '../utils/buildBonusCouponStack';
 import type { ProfilePromoCardRecord } from '../contracts/profilePromoContract';
+import { resolveReviewerLabel } from '../utils/reviewerDisplay';
 import {
   coalesceRadarPreferenceFromPayload,
   fetchAdminUserRadarPreference,
@@ -2875,6 +2876,10 @@ function ProfileScreenLoggedIn({
   const [isOwnPublicProfileOpen, setIsOwnPublicProfileOpen] = useState(false);
   const [ownPublicProfile, setOwnPublicProfile] = useState(null);
   const [ownPublicProfileLoading, setOwnPublicProfileLoading] = useState(false);
+  const [publicModalViewUserId, setPublicModalViewUserId] = useState<number | null>(null);
+  const [publicModalViewData, setPublicModalViewData] = useState(null);
+  const [publicModalViewLoading, setPublicModalViewLoading] = useState(false);
+  const [publicModalStack, setPublicModalStack] = useState<number[]>([]);
   // Case-insensitive — backend mógł zwrócić 'admin' / 'Admin' / 'ADMIN'.
   const isZarzad = String(user?.role || '').trim().toUpperCase() === 'ADMIN';
 
@@ -3112,6 +3117,59 @@ function ProfileScreenLoggedIn({
     } finally {
       setOwnPublicProfileLoading(false);
     }
+  };
+
+  const loadPublicModalView = async (userId: number) => {
+    if (!userId) return;
+    setPublicModalViewLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/users/${userId}/public`);
+      const data = await res.json();
+      if (res.ok && !data?.error) {
+        setPublicModalViewData(data);
+      }
+    } catch (_e) {
+      // noop
+    } finally {
+      setPublicModalViewLoading(false);
+    }
+  };
+
+  const openPublicProfileModal = (userId?: number) => {
+    const id = Number(userId || user?.id);
+    if (!id) return;
+    Haptics.selectionAsync();
+    setPublicModalStack([]);
+    setPublicModalViewUserId(id);
+    setPublicModalViewData(null);
+    setIsOwnPublicProfileOpen(true);
+    void loadPublicModalView(id);
+  };
+
+  const openReviewerInPublicModal = (reviewerId: number) => {
+    if (!reviewerId || reviewerId === publicModalViewUserId) return;
+    Haptics.selectionAsync();
+    setPublicModalStack((prev) => [...prev, Number(publicModalViewUserId)]);
+    setPublicModalViewUserId(reviewerId);
+    setPublicModalViewData(null);
+    void loadPublicModalView(reviewerId);
+  };
+
+  const goBackPublicModal = () => {
+    const prev = publicModalStack[publicModalStack.length - 1];
+    if (!prev) return;
+    Haptics.selectionAsync();
+    setPublicModalStack((s) => s.slice(0, -1));
+    setPublicModalViewUserId(prev);
+    setPublicModalViewData(null);
+    void loadPublicModalView(prev);
+  };
+
+  const closePublicProfileModal = () => {
+    setIsOwnPublicProfileOpen(false);
+    setPublicModalStack([]);
+    setPublicModalViewUserId(null);
+    setPublicModalViewData(null);
   };
 
   useEffect(() => {
@@ -3532,10 +3590,7 @@ function ProfileScreenLoggedIn({
             </View>
             <EliteStatusBadges subject={user} isDark={isDark} compact />
             <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setIsOwnPublicProfileOpen(true);
-              }}
+              onPress={() => openPublicProfileModal()}
               style={({ pressed }) => [styles.profileRatingBtn, pressed && { opacity: 0.75 }]}
             >
               <View style={styles.profileRatingStarsInline}>
@@ -3597,7 +3652,7 @@ function ProfileScreenLoggedIn({
                 } else if (!user?.isEmailVerified || hasPendingEmailChange) {
                   setIsEditEmailVisible(true);
                 } else {
-                  setIsOwnPublicProfileOpen(true);
+                  openPublicProfileModal();
                 }
               }}
             />
@@ -4181,51 +4236,82 @@ function ProfileScreenLoggedIn({
         isDark={isDark}
       />
 
-      <Modal visible={isOwnPublicProfileOpen} transparent animationType="fade" onRequestClose={() => setIsOwnPublicProfileOpen(false)}>
+      <Modal visible={isOwnPublicProfileOpen} transparent animationType="fade" onRequestClose={closePublicProfileModal}>
         <View style={styles.profileOverlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsOwnPublicProfileOpen(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={closePublicProfileModal} />
           <View style={styles.profileCard}>
             <View style={styles.profileHeaderRow}>
-              <Text style={styles.profileTitle}>{t('profile.publicProfile.title')}</Text>
-              <Pressable onPress={() => setIsOwnPublicProfileOpen(false)} style={styles.profileCloseBtn}>
+              {publicModalStack.length > 0 ? (
+                <Pressable onPress={goBackPublicModal} style={styles.profileCloseBtn}>
+                  <Ionicons name="chevron-back" size={18} color="#fff" />
+                </Pressable>
+              ) : (
+                <View style={{ width: 28 }} />
+              )}
+              <Text style={[styles.profileTitle, { flex: 1, textAlign: 'center' }]}>
+                {Number(publicModalViewUserId) === Number(user?.id)
+                  ? t('profile.publicProfile.title')
+                  : publicModalViewData?.user?.name || t('profile.publicProfile.title')}
+              </Text>
+              <Pressable onPress={closePublicProfileModal} style={styles.profileCloseBtn}>
                 <Ionicons name="close" size={18} color="#fff" />
               </Pressable>
             </View>
 
-            {ownPublicProfileLoading ? (
+            {publicModalViewLoading ? (
               <View style={styles.profileLoaderWrap}>
                 <ActivityIndicator color="#f59e0b" />
                 <Text style={styles.profileMuted}>{t('profile.publicProfile.loading')}</Text>
               </View>
             ) : (
               <>
+                {(() => {
+                  const modalReviews = Array.isArray(publicModalViewData?.reviews)
+                    ? publicModalViewData.reviews
+                    : [];
+                  const modalUser = publicModalViewData?.user;
+                  const isSelfModal = Number(publicModalViewUserId) === Number(user?.id);
+                  return (
+                    <>
                 <ProfilePublicHeader
                   user={{
-                    ...(ownPublicProfile?.user || user),
+                    ...(modalUser || user),
                     name:
-                      ownPublicProfile?.user?.name ||
-                      `${user?.firstName || ''} ${user?.lastName || ''}`.trim() ||
+                      modalUser?.name ||
+                      (isSelfModal
+                        ? `${user?.firstName || ''} ${user?.lastName || ''}`.trim()
+                        : '') ||
                       t('profile.publicProfile.userFallback'),
-                    image: ownPublicProfile?.user?.image || user?.image,
-                    companyName: ownPublicProfile?.user?.companyName || user?.companyName,
+                    image: modalUser?.image || (isSelfModal ? user?.image : null),
+                    companyName: modalUser?.companyName || (isSelfModal ? user?.companyName : null),
                   }}
-                  idLabel={t('profile.publicProfile.id', { id: user?.id || '-' })}
+                  idLabel={t('profile.publicProfile.id', { id: publicModalViewUserId || user?.id || '-' })}
                   isDark
                 />
                 <ProfileReputationBlock
-                  reviews={ownReviews}
+                  reviews={modalReviews}
                   reviewsCountLabel={(count) => t('profile.publicProfile.reviewsCount', { count })}
                   isDark
                 />
 
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
-                  {ownReviews.length === 0 ? (
+                  {modalReviews.length === 0 ? (
                     <Text style={styles.profileMuted}>{t('profile.publicProfile.noReviews')}</Text>
-                  ) : ownReviews.slice(0, 12).map((r: any) => (
+                  ) : modalReviews.slice(0, 12).map((r: any) => (
                     <View key={r.id} style={styles.reviewItem}>
                       <View style={styles.reviewTop}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.reviewAuthorText}>{r?.reviewerName || t('profile.publicProfile.reviewerFallback', { id: r?.reviewerId || '-' })}</Text>
+                          <Pressable
+                            onPress={() => openReviewerInPublicModal(Number(r?.reviewerId || 0))}
+                            style={({ pressed }) => [styles.reviewAuthorBtn, pressed && { opacity: 0.7 }]}
+                          >
+                            <Text style={styles.reviewAuthorText}>
+                              {resolveReviewerLabel(r, (id) =>
+                                t('profile.publicProfile.reviewerFallback', { id }),
+                              )}
+                            </Text>
+                            <Ionicons name="chevron-forward" size={12} color="#9ca3af" />
+                          </Pressable>
                           <View style={styles.reviewStars}>
                             {[1, 2, 3, 4, 5].map((s) => (
                               <Ionicons
@@ -4243,6 +4329,9 @@ function ProfileScreenLoggedIn({
                     </View>
                   ))}
                 </ScrollView>
+                    </>
+                  );
+                })()}
               </>
             )}
           </View>
@@ -4795,7 +4884,8 @@ const styles = StyleSheet.create({
   profileMuted: { color: '#9ca3af', fontSize: 12 },
   reviewItem: { borderWidth: 1, borderColor: '#1f2937', borderRadius: 12, padding: 10, marginBottom: 8, backgroundColor: 'rgba(255,255,255,0.02)' },
   reviewTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  reviewAuthorText: { color: '#e5e7eb', fontSize: 12, fontWeight: '700', marginBottom: 3 },
+  reviewAuthorBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginBottom: 3 },
+  reviewAuthorText: { color: '#e5e7eb', fontSize: 12, fontWeight: '700' },
   reviewStars: { flexDirection: 'row', gap: 2 },
   reviewDate: { color: '#9ca3af', fontSize: 10, marginLeft: 8 },
   reviewText: { color: '#d1d5db', fontSize: 13, lineHeight: 18 },
