@@ -14,6 +14,7 @@ import {
   ADD_OFFER_DESC_MIN,
   ADD_OFFER_TITLE_MAX,
   ADD_OFFER_TITLE_MIN,
+  resolvePlotAreaForSubmit,
 } from './validation';
 import {
   OFFER_MEDIA_MAX_IMAGES,
@@ -597,8 +598,15 @@ export default function Step5_Media({ theme }: { theme: any }) {
               : ai.propertyTypeLabels.flat;
       bullets += `\n${ai.bullets.propertyType} ${propertyTypeLabel}`;
     }
-    if (draft.area) bullets += `\n${ai.bullets.area} ${draft.area} m²`;
-    if (draft.plotArea) bullets += `\n${ai.bullets.plotArea} ${draft.plotArea} m²`;
+    const plotAreaForAi = resolvePlotAreaForSubmit(draft);
+    if (draft.propertyType === 'PLOT') {
+      if (plotAreaForAi) bullets += `\n${ai.bullets.plotArea} ${plotAreaForAi} m²`;
+    } else {
+      if (draft.area) bullets += `\n${ai.bullets.area} ${draft.area} m²`;
+      if (draft.propertyType === 'HOUSE' && plotAreaForAi) {
+        bullets += `\n${ai.bullets.plotArea} ${plotAreaForAi} m²`;
+      }
+    }
     if (draft.rooms) bullets += `\n${ai.bullets.rooms} ${draft.rooms}`;
     if (draft.floor) bullets += `\n${ai.bullets.floor} ${draft.floor}`;
     if (draft.totalFloors) bullets += `\n${ai.bullets.totalFloors} ${draft.totalFloors}`;

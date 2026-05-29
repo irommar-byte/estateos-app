@@ -8,7 +8,7 @@ import { useOfferStore } from '../../store/useOfferStore';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
 import { useI18n } from '../../i18n';
-import { defaultExactLocationForPropertyType } from '../../constants/locationEcosystem';
+import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -217,10 +217,29 @@ export default function Step1_Type({ theme }: { theme: any }) {
     }
 
     if (key === 'propertyType') {
+      const isPlot = value === 'PLOT';
+      const isHouse = value === 'HOUSE';
       updateDraft({
         propertyType: value,
         condition: null,
-        isExactLocation: defaultExactLocationForPropertyType(value),
+        isExactLocation: true,
+        ...(isPlot
+          ? {
+              rooms: '',
+              floor: '',
+              yearBuilt: '',
+              buildYear: '',
+              heating: '',
+              hasBalcony: false,
+              hasElevator: false,
+              hasStorage: false,
+              hasParking: false,
+              hasGarden: false,
+              isTwoLevel: false,
+              isFurnished: false,
+            }
+          : {}),
+        ...(!isHouse && !isPlot ? { plotArea: '' } : {}),
       });
       pendingScrollRef.current = value === 'PLOT' ? 'end' : 'section3';
       return;

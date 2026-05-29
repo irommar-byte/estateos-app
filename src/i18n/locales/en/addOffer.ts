@@ -223,14 +223,20 @@ export const addOffer = {
     header: 'Parameters',
     sections: {
       area: 'Floor area',
+      plotArea: 'Plot area',
       housePlotArea: 'Plot size (optional)',
       details: 'Details',
       amenities: 'Amenities (optional)',
       heating: 'Heating',
       landRegistry: 'Document verification (optional)',
     },
+    hints: {
+      plotArea: 'Enter the total plot size in square meters.',
+      housePlotArea: 'Optional — plot size for a detached house.',
+    },
     placeholders: {
       area: '0',
+      plotArea: 'e.g. 1200',
       housePlotArea: 'e.g. 850',
       apartmentNumber: 'Unit number',
       landRegistryNumber: 'Land registry number (e.g. WA4N/00012345/6)',

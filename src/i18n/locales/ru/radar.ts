@@ -204,7 +204,7 @@ export const radar = {
     priceFrom: 'Откуда ({{currency}})',
     priceTo: 'В ({{currency}})',
     areaSection: 'Площадь (м²)',
-    plotAreaSection: 'Площадь участка — дом (м²)',
+    plotAreaSection: 'Площадь участка — дом / участок (м²)',
     from: 'От',
     to: 'К',
     roomsSection: 'Комнаты (мин.)',

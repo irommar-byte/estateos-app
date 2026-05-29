@@ -223,14 +223,20 @@ export const addOffer = {
     header: 'Parametry',
     sections: {
       area: 'Metraż',
+      plotArea: 'Powierzchnia działki',
       housePlotArea: 'Metraż działki (opcjonalnie)',
       details: 'Szczegóły',
       amenities: 'Udogodnienia (Opcjonalne)',
       heating: 'Ogrzewanie',
       landRegistry: 'Weryfikacja dokumentów (opcjonalnie)',
     },
+    hints: {
+      plotArea: 'Podaj metraż całej działki w metrach kwadratowych.',
+      housePlotArea: 'Opcjonalnie — metraż działki przy domu jednorodzinnym.',
+    },
     placeholders: {
       area: '0',
+      plotArea: 'np. 1200',
       housePlotArea: 'np. 850',
       apartmentNumber: 'Numer mieszkania',
       landRegistryNumber: 'Numer księgi wieczystej (np. WA4N/00012345/6)',

@@ -204,7 +204,7 @@ export const radar = {
     priceFrom: 'From ({{currency}})',
     priceTo: 'To ({{currency}})',
     areaSection: 'Area (m²)',
-    plotAreaSection: 'Plot size — house (m²)',
+    plotAreaSection: 'Plot size — house / land (m²)',
     from: 'From',
     to: 'To',
     roomsSection: 'Rooms (min.)',

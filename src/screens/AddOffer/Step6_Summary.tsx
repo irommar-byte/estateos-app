@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './flow';
+import { resolvePlotAreaForSubmit } from './validation';
 import {
   REST_OF_COUNTRY_CITY,
   formatLocationLabel,
@@ -540,7 +541,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         ? parseLocaleNumber(draft.adminFee || draft.rent)
         : null,
       deposit: draft.deposit || null,
-      plotArea: draft.plotArea || null,
+      plotArea: resolvePlotAreaForSubmit(draft),
       rooms: draft.rooms || '0',        
       floor: normalizeFloorForCreate(draft.floor),
       totalFloors: draft.totalFloors || null,
@@ -975,6 +976,12 @@ export default function Step6_Summary({ theme }: { theme: any }) {
     draft.propertyType === 'PLOT' ? 'map-outline' :
     draft.propertyType === 'PREMISES' ? 'storefront-outline' :
     'business-outline';
+  const plotAreaSummary = resolvePlotAreaForSubmit(draft);
+  const areaBadgeLabel =
+    draft.propertyType === 'PLOT'
+      ? t('addOffer.step6.badges.plot')
+      : t('addOffer.step6.badges.area');
+  const areaBadgeValue = draft.area ? `${draft.area} m²` : '';
   const conditionIcon: React.ComponentProps<typeof Ionicons>['name'] =
     draft.condition === 'READY' ? 'sparkles-outline' :
     draft.condition === 'RENOVATION' ? 'construct-outline' :
@@ -1146,7 +1153,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             <Text style={[styles.sectionTitle, { color: colors.subtitle }]}>{t('addOffer.step6.sections.parameters')}</Text>
             <View style={styles.gridBox}>
               <InfoBadge label={t('addOffer.step6.badges.type')} value={propertyTypeLabel} icon={propertyTypeIcon} />
-              <InfoBadge label={t('addOffer.step6.badges.area')} value={draft.area ? `${draft.area} m²` : ''} icon="resize-outline" />
+              <InfoBadge label={areaBadgeLabel} value={areaBadgeValue} icon={draft.propertyType === 'PLOT' ? 'map-outline' : 'resize-outline'} />
               <InfoBadge
                 label={t('addOffer.step6.badges.rooms')}
                 value={draft.rooms ? t('addOffer.step6.badges.roomsValue', { count: draft.rooms }) : ''}
@@ -1158,7 +1165,11 @@ export default function Step6_Summary({ theme }: { theme: any }) {
               <InfoBadge label={t('addOffer.step6.badges.heating')} value={heatingSummaryLabel} icon="flame-outline" />
               <InfoBadge label={t('addOffer.step6.badges.furnished')} value={draft.isFurnished ? t('addOffer.common.yes') : t('addOffer.common.no')} icon="bed-outline" />
               <InfoBadge label={t('addOffer.step6.badges.totalFloors')} value={draft.totalFloors ? String(draft.totalFloors) : ''} icon="albums-outline" />
-              <InfoBadge label={t('addOffer.step6.badges.plot')} value={draft.plotArea ? `${draft.plotArea} m²` : ''} icon="trail-sign-outline" />
+              <InfoBadge
+                label={t('addOffer.step6.badges.plot')}
+                value={draft.propertyType === 'HOUSE' && plotAreaSummary ? `${plotAreaSummary} m²` : ''}
+                icon="trail-sign-outline"
+              />
               <InfoBadge label={t('addOffer.step6.badges.condition')} value={draft.propertyType !== 'PLOT' ? conditionLabel : ''} icon={conditionIcon} />
             </View>
             <Text style={[styles.sectionTitle, { marginTop: 18, color: colors.subtitle }]}>{t('addOffer.step6.sections.media')}</Text>

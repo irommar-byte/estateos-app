@@ -1,5 +1,4 @@
 import {
-  defaultExactLocationForPropertyType,
   getDraftLocationPresentation,
   hasValidMapCoordinates,
   isLocationStepComplete,
@@ -34,9 +33,31 @@ export type AddOfferRequirement = {
 };
 
 const isTruthyNumber = (value: unknown) => {
-  const num = Number(String(value ?? '').replace(/\s/g, '').replace(',', '.'));
+  const num = parseDraftDimension(value);
   return Number.isFinite(num) && num > 0;
 };
+
+/** Bezpieczne parsowanie metrażu z szkicu (string, number, null). */
+export function parseDraftDimension(value: unknown): number {
+  const raw = String(value ?? '').trim().replace(/\s/g, '').replace(',', '.');
+  const num = parseFloat(raw);
+  return Number.isFinite(num) ? num : 0;
+}
+
+/** Wartość `plotArea` wysyłana do API — dla działki bierze metraż z `area`. */
+export function resolvePlotAreaForSubmit(draft: {
+  propertyType?: unknown;
+  area?: unknown;
+  plotArea?: unknown;
+}): string | null {
+  const isPlot = String(draft?.propertyType || '').toUpperCase() === 'PLOT';
+  if (isPlot) {
+    const area = String(draft?.area ?? '').trim();
+    return area || null;
+  }
+  const plot = String(draft?.plotArea ?? '').trim();
+  return plot || null;
+}
 
 const trimLen = (value: unknown) => String(value ?? '').trim().length;
 
@@ -126,9 +147,7 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
   ];
 
   if (isPoland) {
-    const needsStreetNumber = resolveIsExactLocation(
-      draft?.isExactLocation ?? defaultExactLocationForPropertyType(draft?.propertyType),
-    );
+    const needsStreetNumber = resolveIsExactLocation(draft?.isExactLocation ?? true);
     items.push({
       id: 'street',
       label: needsStreetNumber
@@ -155,8 +174,8 @@ function getStep2Requirements(draft: any): AddOfferRequirement[] {
 
 function getStep3Requirements(draft: any): AddOfferRequirement[] {
   const isPlot = String(draft?.propertyType || '') === 'PLOT';
-  const areaNum = parseFloat(String(draft?.area || '').replace(',', '.'));
-  const hasArea = Number.isFinite(areaNum) && areaNum > 0;
+  const areaNum = parseDraftDimension(draft?.area);
+  const hasArea = areaNum > 0;
 
   if (isPlot) {
     return [
@@ -174,10 +193,9 @@ function getStep3Requirements(draft: any): AddOfferRequirement[] {
   const hasYear = !!String(yearRaw ?? '').trim();
   const needsFloor = String(draft?.propertyType || '') !== 'HOUSE';
   const isHouse = String(draft?.propertyType || '') === 'HOUSE';
-  const plotAreaNum = parseFloat(String(draft?.plotArea || '').replace(',', '.'));
+  const plotAreaNum = parseDraftDimension(draft?.plotArea);
   const hasPlotArea =
-    !String(draft?.plotArea || '').trim() ||
-    (Number.isFinite(plotAreaNum) && plotAreaNum > 0);
+    !String(draft?.plotArea || '').trim() || plotAreaNum > 0;
 
   const items = [
     {

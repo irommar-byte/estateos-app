@@ -21,7 +21,6 @@ import {
   resolveLocalityCountryFromPlace,
   localityCountryIso,
   normalizeLocalityCountryLabel,
-  defaultExactLocationForPropertyType,
   getLocationDraftRepairPatch,
   getDraftLocationPresentation,
   localityNameFromGeocodedPlace,
@@ -755,6 +754,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const allowStep3NavigationRef = useRef(false);
   const reverseGeocodeSeq = useRef(0);
   const geoInitStartedRef = useRef(false);
+  const lastMapSyncKeyRef = useRef('');
+
+  const resolveMapExact = useCallback(
+    (sourceDraft = draft) => resolveIsExactLocation(sourceDraft.isExactLocation ?? true),
+    [draft.isExactLocation],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -770,10 +775,20 @@ export default function Step2_Location({ theme }: { theme: any }) {
         if (repairChanged) store.updateDraft(repair);
       }
 
-      if (currentDraft.isExactLocation == null) {
-        store.updateDraft({
-          isExactLocation: defaultExactLocationForPropertyType(currentDraft.propertyType),
-        });
+      if (!resolveIsExactLocation(currentDraft.isExactLocation)) {
+        store.updateDraft({ isExactLocation: true });
+      }
+
+      const expectedExact = true;
+      const street = String(currentDraft.street || '').trim();
+      const normalizedStreet = street
+        ? expectedExact
+          ? street
+          : stripHouseNumber(street) || street
+        : '';
+      setStreetInput(normalizedStreet);
+      if (normalizedStreet && normalizedStreet !== street) {
+        store.updateDraft({ street: normalizedStreet });
       }
 
       const lat = Number(currentDraft.lat);
@@ -781,6 +796,22 @@ export default function Step2_Location({ theme }: { theme: any }) {
       const hasCoords =
         Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
       if (!hasCoords) geoInitStartedRef.current = false;
+
+      const syncKey = `${lat.toFixed(5)}:${lng.toFixed(5)}:${expectedExact ? 1 : 0}:${String(currentDraft.propertyType || '')}`;
+      if (hasCoords && syncKey !== lastMapSyncKeyRef.current) {
+        lastMapSyncKeyRef.current = syncKey;
+        setTimeout(() => {
+          isProgrammaticMove.current = true;
+          mapRef.current?.animateCamera({
+            center: { latitude: lat, longitude: lng },
+            pitch: expectedExact ? 75 : 30,
+            altitude: expectedExact ? 150 : 4000,
+            zoom: expectedExact ? 19.5 : 13.5,
+            heading: 0,
+          }, { duration: 1200 });
+          setTimeout(() => { isProgrammaticMove.current = false; }, 1300);
+        }, 80);
+      }
 
       setNavigationGate((targetStep: number) => {
         if (targetStep === 2) return true;
@@ -832,9 +863,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const streetTrim = String(streetInput || '').trim();
   const streetLen = streetTrim.length;
   const streetHasDigit = /\d/.test(streetTrim);
-  const currentIsExact = resolveIsExactLocation(
-    draft.isExactLocation ?? defaultExactLocationForPropertyType(draft.propertyType),
-  );
+  const currentIsExact = resolveIsExactLocation(draft.isExactLocation ?? true);
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
@@ -870,16 +899,20 @@ export default function Step2_Location({ theme }: { theme: any }) {
     syncStreetToDraft();
   }, [syncStreetToDraft]);
 
-  const flyTo = (targetLat: number, targetLng: number, isExact: boolean) => {
+  const flyTo = (targetLat: number | string | null | undefined, targetLng: number | string | null | undefined, isExact: boolean) => {
+    const lat = Number(targetLat);
+    const lng = Number(targetLng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    lastMapSyncKeyRef.current = `${lat.toFixed(5)}:${lng.toFixed(5)}:${isExact ? 1 : 0}:${String(draft.propertyType || '')}`;
     isProgrammaticMove.current = true;
-    mapRef.current?.animateCamera({ 
-      center: { latitude: targetLat, longitude: targetLng }, 
-      pitch: isExact ? 75 : 30, 
-      altitude: isExact ? 150 : 4000, 
-      zoom: isExact ? 19.5 : 13.5, 
-      heading: 0 
-    }, { duration: 2500 }); 
-    
+    mapRef.current?.animateCamera({
+      center: { latitude: lat, longitude: lng },
+      pitch: isExact ? 75 : 30,
+      altitude: isExact ? 150 : 4000,
+      zoom: isExact ? 19.5 : 13.5,
+      heading: 0,
+    }, { duration: 2500 });
+
     setTimeout(() => { isProgrammaticMove.current = false; }, 2600);
   };
 
@@ -928,9 +961,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
         newStreet = streetLineFromGeocodedPlace(place, '');
       }
       const d = useOfferStore.getState().draft;
-      const mapExact = resolveIsExactLocation(
-        d.isExactLocation ?? defaultExactLocationForPropertyType(d.propertyType),
-      );
+      const mapExact = resolveIsExactLocation(d.isExactLocation ?? true);
       if (newStreet && !String(streetInput || '').trim()) setStreetInput(newStreet);
       updateDraft({
         lat: latitude,
@@ -1107,7 +1138,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
       lat: coords.lat,
       lng: coords.lng,
     });
-    flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
+    flyTo(coords.lat, coords.lng, resolveMapExact());
   };
   
   const handleDistrictChange = async (district: string) => { 
@@ -1127,7 +1158,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
       await resolvePlaceCoords(normalized.district);
     if (coords) {
       updateDraft({ lat: coords.lat, lng: coords.lng });
-      flyTo(coords.lat, coords.lng, draft.isExactLocation ?? true);
+      flyTo(coords.lat, coords.lng, resolveMapExact());
     } else {
       Alert.alert(
         t('addOffer.step2.alerts.districtNotFound.title'),
@@ -1329,7 +1360,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
                     : trimmed;
                   if (nextStreet !== streetInput) setStreetInput(nextStreet);
                   updateDraft({ isExactLocation: val, ...(nextStreet ? { street: nextStreet } : {}) });
-                  if (draft.lat && draft.lng) flyTo(draft.lat, draft.lng, val);
+                  flyTo(draft.lat, draft.lng, val);
                 }}
                 trackColor={{ false: '#D1D1D6', true: '#10b981' }}
               />

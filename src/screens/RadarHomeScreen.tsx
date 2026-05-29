@@ -1811,8 +1811,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const plotFilterActive =
         advancedFilters.minPlotArea !== null || advancedFilters.maxPlotArea !== null;
       if (plotFilterActive) {
-        if (rawPropertyType !== 'HOUSE') return false;
-        const rawPlot = Number(String(offer.raw?.plotArea ?? '').replace(',', '.')) || 0;
+        let rawPlot = 0;
+        if (rawPropertyType === 'HOUSE') {
+          rawPlot = Number(String(offer.raw?.plotArea ?? '').replace(',', '.')) || 0;
+        } else if (rawPropertyType === 'PLOT') {
+          rawPlot =
+            Number(String(offer.raw?.plotArea ?? offer.raw?.area ?? '').replace(',', '.')) || 0;
+        } else {
+          return false;
+        }
         if (advancedFilters.minPlotArea !== null && rawPlot < advancedFilters.minPlotArea) return false;
         if (advancedFilters.maxPlotArea !== null && rawPlot > advancedFilters.maxPlotArea) return false;
       }

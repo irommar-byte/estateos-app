@@ -223,14 +223,20 @@ export const addOffer = {
     header: 'Параметры',
     sections: {
       area: 'Площадь пола',
+      plotArea: 'Площадь участка',
       housePlotArea: 'Размер участка (необязательно)',
       details: 'Подробности',
       amenities: 'Удобства (по желанию)',
       heating: 'Обогрев',
       landRegistry: 'Проверка документов (по желанию)',
     },
+    hints: {
+      plotArea: 'Укажите общую площадь участка в квадратных метрах.',
+      housePlotArea: 'Необязательно — площадь участка у частного дома.',
+    },
     placeholders: {
       area: '0',
+      plotArea: 'например 1200',
       housePlotArea: 'например 850',
       apartmentNumber: 'Номер устройства',
       landRegistryNumber: 'Номер земельного кадастра (например, WA4N/00012345/6)',
