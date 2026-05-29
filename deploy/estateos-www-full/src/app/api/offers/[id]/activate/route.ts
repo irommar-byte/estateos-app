@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
-import { getPublicationQuote, stageOfferPublicationForReview } from "@/lib/offerPublication";
+import { getPublicationQuote, submitOfferActivation } from "@/lib/offerPublication";
 import { markProfilePromoCardUsed } from "@/lib/profilePromoCards";
 
 type RouteContext = {
@@ -63,17 +63,36 @@ export async function POST(req: Request, context: RouteContext) {
               ? "PLUS_PAID"
               : "PLUS_CREDIT";
 
-    const staged = await stageOfferPublicationForReview({
+    const staged = await submitOfferActivation({
       userId,
       offerId,
       kind: activationKind,
       bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === "PLUS_PAID" ? txId : null,
       iapProductId: quote.productId,
+      onFreeFirstCouponUsed: markProfilePromoCardUsed,
     });
 
-    if (bonusCouponId && activationKind === "FREE_FIRST") {
-      await markProfilePromoCardUsed(userId, bonusCouponId);
+    if (staged.alreadyActive) {
+      return NextResponse.json({
+        success: true,
+        offerId,
+        publication: { status: "ACTIVE", kind: null },
+      });
+    }
+
+    if (!staged.awaitingModeration) {
+      return NextResponse.json({
+        success: true,
+        offerId,
+        awaitingModeration: false,
+        publication: {
+          status: staged.status,
+          kind: staged.kind,
+          endsAt: staged.endsAt?.toISOString?.() ?? null,
+        },
+        message: "Oferta jest aktywna na rynku.",
+      });
     }
 
     return NextResponse.json({

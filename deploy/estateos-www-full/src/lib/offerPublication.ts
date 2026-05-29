@@ -20,6 +20,11 @@ export type PublicationQuoteReason =
   | 'ALREADY_ACTIVE'
   | null;
 
+/** Republikacja z archiwum / po sprzedaży — bez ponownej moderacji admina. */
+export function publicationQuoteSkipsModeration(reason: PublicationQuoteReason): boolean {
+  return reason === 'REACTIVATION_AFTER_ARCHIVE' || reason === 'REACTIVATION_AFTER_SOLD';
+}
+
 type DbClient = typeof prisma;
 
 type OfferPublicationRow = {
@@ -384,6 +389,77 @@ async function writePendingPublicationInTx(
  * Rezerwuje płatność / kredyt i zapisuje oczekującą publikację.
  * Oferta pozostaje PENDING do akceptacji w panelu admina (wtedy activateOfferPublication).
  */
+export async function submitOfferActivation(params: {
+  userId: number;
+  offerId: number;
+  kind: PublicationKind;
+  bonusCouponId?: string | null;
+  iapTransactionId?: string | null;
+  iapProductId?: string | null;
+  onFreeFirstCouponUsed?: (userId: number, couponId: string) => Promise<unknown>;
+}): Promise<{
+  status: 'ACTIVE' | 'PENDING';
+  kind: PublicationKind;
+  awaitingModeration: boolean;
+  endsAt?: Date;
+  alreadyActive?: boolean;
+}> {
+  const quote = await getPublicationQuote({
+    userId: params.userId,
+    offerId: params.offerId,
+    action: 'ACTIVATE',
+  });
+  if (quote.reason === 'ALREADY_ACTIVE') {
+    return {
+      status: 'ACTIVE',
+      kind: params.kind,
+      awaitingModeration: false,
+      alreadyActive: true,
+    };
+  }
+
+  const productId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
+  const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
+
+  if (publicationQuoteSkipsModeration(quote.reason)) {
+    const activation = await activateOfferPublication({
+      userId: params.userId,
+      offerId: params.offerId,
+      kind: params.kind,
+      iapTransactionId: txId,
+      iapProductId: productId,
+    });
+    const bonusCouponId = String(params.bonusCouponId || '').trim();
+    if (bonusCouponId && params.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
+      await params.onFreeFirstCouponUsed(params.userId, bonusCouponId);
+    }
+    return {
+      status: 'ACTIVE',
+      kind: params.kind,
+      awaitingModeration: false,
+      endsAt: activation.endsAt,
+    };
+  }
+
+  const staged = await stageOfferPublicationForReview({
+    userId: params.userId,
+    offerId: params.offerId,
+    kind: params.kind,
+    bonusCouponId: params.bonusCouponId,
+    iapTransactionId: txId,
+    iapProductId: productId,
+  });
+  const bonusCouponId = String(params.bonusCouponId || '').trim();
+  if (bonusCouponId && params.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
+    await params.onFreeFirstCouponUsed(params.userId, bonusCouponId);
+  }
+  return {
+    status: staged.status,
+    kind: staged.kind,
+    awaitingModeration: true,
+  };
+}
+
 export async function stageOfferPublicationForReview(params: {
   userId: number;
   offerId: number;

@@ -1606,7 +1606,11 @@ export default function DealroomListScreen() {
               }
               const stillAfterWeb = stillMissing.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
               const results = await Promise.allSettled(
-                stillAfterWeb.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => r.ok ? r.json() : null)),
+                stillAfterWeb.map((id) =>
+                  fetch(`${API_URL}/api/mobile/v1/offers/${id}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  }).then((r) => (r.ok ? r.json() : null)),
+                ),
               );
               results.forEach((res, idx) => {
                 if (res.status !== 'fulfilled' || !res.value) return;
@@ -1617,6 +1621,21 @@ export default function DealroomListScreen() {
                 const url = raw ? normalizeMediaUrl(raw) : null;
                 if (url) patch[id] = url;
               });
+              const stillAfterMobile = stillAfterWeb.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
+              if (stillAfterMobile.length > 0) {
+                const publicResults = await Promise.allSettled(
+                  stillAfterMobile.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => (r.ok ? r.json() : null))),
+                );
+                publicResults.forEach((res, idx) => {
+                  if (res.status !== 'fulfilled' || !res.value) return;
+                  const id = stillAfterMobile[idx];
+                  const offer = res.value?.offer || res.value?.data || (res.value?.id ? res.value : null);
+                  if (!offer) return;
+                  const raw = pickFirstImageFromOfferLike(offer);
+                  const url = raw ? normalizeMediaUrl(raw) : null;
+                  if (url) patch[id] = url;
+                });
+              }
             } catch {
               // noop — placeholder pozostanie, bez awarii UI
             }

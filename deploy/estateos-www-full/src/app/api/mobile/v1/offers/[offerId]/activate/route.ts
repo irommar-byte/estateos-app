@@ -3,7 +3,8 @@ export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { getPublicationQuote, stageOfferPublicationForReview } from '@/lib/offerPublication';
+import { getPublicationQuote, submitOfferActivation } from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import {
   assertContactVerified,
   contactVerificationJson,
@@ -81,23 +82,38 @@ export async function POST(req: Request, context: RouteContext) {
               ? 'PLUS_PAID'
               : 'PLUS_CREDIT';
 
-    const staged = await stageOfferPublicationForReview({
+    const bonusCouponId = pub?.bonusCouponId ? String(pub.bonusCouponId).trim() : '';
+
+    const staged = await submitOfferActivation({
       userId,
       offerId,
       kind: activationKind,
-      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
+      onFreeFirstCouponUsed: markProfilePromoCardUsed,
     });
+
+    if (staged.alreadyActive) {
+      return NextResponse.json({
+        success: true,
+        offerId,
+        publication: { status: 'ACTIVE', kind: null, endReason: null },
+      });
+    }
 
     return NextResponse.json({
       success: true,
       offerId,
-      awaitingModeration: true,
+      awaitingModeration: staged.awaitingModeration,
       publication: {
         status: staged.status,
         kind: staged.kind,
+        endsAt: staged.endsAt?.toISOString?.() ?? null,
       },
+      message: staged.awaitingModeration
+        ? 'Oferta została przesłana do weryfikacji.'
+        : 'Oferta jest aktywna na rynku.',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
