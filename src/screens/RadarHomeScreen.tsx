@@ -18,6 +18,7 @@ import {
   InteractionManager,
   Dimensions,
   useColorScheme,
+  AppState,
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
 import MapViewCore, { Marker, Region, Circle } from 'react-native-maps';
@@ -2533,18 +2534,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   /**
-   * Heartbeat Live Activity co 15 s — wymusza re-emit snapshotu z nowym `updatedAtIso`,
-   * dzięki czemu iOS „odświeża" Activity i widzimy ruch (zegarek + kropka pulsu).
-   * Bez tego widget potrafi wyglądać na zamrożony, kiedy nic w filtrach się nie zmienia.
+   * Heartbeat Live Activity — tylko gdy aplikacja jest aktywna (nie w tle / na lock screen).
+   * Rzadszy interwał + `force` omija throttling w serwisie, żeby widget nadal „żył".
    */
   useEffect(() => {
     if (!isRadarActive) return;
     const interval = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
       const snap = liveActivitySnapshotRef.current;
       if (!snap) return;
-      // Wymuszamy nowy fingerprint przez świeży `updatedAtIso` (service i tak go nadpisuje).
-      void syncRadarLiveActivity(snap);
-    }, 15000);
+      void syncRadarLiveActivity(snap, { force: true });
+    }, 45_000);
     return () => clearInterval(interval);
   }, [isRadarActive]);
 

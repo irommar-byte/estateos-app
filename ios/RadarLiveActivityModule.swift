@@ -59,8 +59,6 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
 private enum RadarLiveActivityStore {
   static var activity: Activity<RadarLiveActivityAttributes>?
 
-  /// Kończy WSZYSTKIE aktywne Live Activities radaru (np. po restarcie aplikacji
-  /// pamięć modułu jest pusta, ale iOS nadal trzyma stare karty na lock screenie).
   static func endAllRadarActivities() async {
     for activity in Activity<RadarLiveActivityAttributes>.activities {
       await activity.end(dismissalPolicy: .immediate)
@@ -69,12 +67,57 @@ private enum RadarLiveActivityStore {
   }
 }
 
+/// Serializuje start/update Live Activity — równoległe wywołania z JS powodowały wyścigi i crashy.
+@available(iOS 16.1, *)
+private actor RadarLiveActivityCoordinator {
+  static let shared = RadarLiveActivityCoordinator()
+
+  func upsert(contentState: RadarLiveActivityAttributes.ContentState) async throws -> [String: Any] {
+    let systemActivities = Activity<RadarLiveActivityAttributes>.activities
+    if systemActivities.count > 1 {
+      await RadarLiveActivityStore.endAllRadarActivities()
+    }
+
+    if let existing = RadarLiveActivityStore.activity ?? systemActivities.first {
+      RadarLiveActivityStore.activity = existing
+      let state = existing.activityState
+      if state == .active {
+        await existing.update(using: contentState)
+        for orphan in Activity<RadarLiveActivityAttributes>.activities where orphan.id != existing.id {
+          await orphan.end(dismissalPolicy: .immediate)
+        }
+        return ["status": "updated"]
+      }
+
+      await existing.end(dismissalPolicy: .immediate)
+      RadarLiveActivityStore.activity = nil
+    }
+
+    await RadarLiveActivityStore.endAllRadarActivities()
+
+    let attributes = RadarLiveActivityAttributes(title: "Radar aktywny")
+    let activity = try Activity.request(
+      attributes: attributes,
+      contentState: contentState,
+      pushType: nil
+    )
+    RadarLiveActivityStore.activity = activity
+    return ["status": "started", "id": activity.id]
+  }
+
+  func stopAll() async {
+    await RadarLiveActivityStore.endAllRadarActivities()
+  }
+}
+
 @objc(RadarLiveActivityModule)
 final class RadarLiveActivityModule: NSObject {
 
+  private var upsertTask: Task<Void, Never>?
+
   @objc
   static func requiresMainQueueSetup() -> Bool {
-    false
+    true
   }
 
   @objc(startMonitoring:resolver:rejecter:)
@@ -101,13 +144,14 @@ final class RadarLiveActivityModule: NSObject {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     guard #available(iOS 16.1, *) else {
-      resolve(["status": "unsupported"])
+      DispatchQueue.main.async { resolve(["status": "unsupported"]) }
       return
     }
 
-    Task {
-      await RadarLiveActivityStore.endAllRadarActivities()
-      resolve(["status": "stopped"])
+    upsertTask?.cancel()
+    upsertTask = Task {
+      await RadarLiveActivityCoordinator.shared.stopAll()
+      DispatchQueue.main.async { resolve(["status": "stopped"]) }
     }
   }
 
@@ -117,16 +161,15 @@ final class RadarLiveActivityModule: NSObject {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     guard let data = snapshotJson.data(using: .utf8) else {
-      reject("bad_input", "Invalid UTF8", nil)
+      DispatchQueue.main.async { reject("bad_input", "Invalid UTF8", nil) }
       return
     }
 
     let snapshot: RadarLiveSnapshot
-
     do {
       snapshot = try JSONDecoder().decode(RadarLiveSnapshot.self, from: data)
     } catch {
-      reject("decode_failed", "Cannot decode snapshot", error)
+      DispatchQueue.main.async { reject("decode_failed", "Cannot decode snapshot", error) }
       return
     }
 
@@ -136,83 +179,41 @@ final class RadarLiveActivityModule: NSObject {
     }
 
     guard #available(iOS 16.1, *) else {
-      resolve(["status": "unsupported"])
+      DispatchQueue.main.async { resolve(["status": "unsupported"]) }
       return
     }
 
-    Task {
+    let contentState = RadarLiveActivityAttributes.ContentState(
+      transactionType: snapshot.transactionType,
+      city: snapshot.city,
+      localityCountry: snapshot.localityCountry ?? "Polska",
+      localityCountryCode: snapshot.localityCountryCode ?? "PL",
+      districts: snapshot.districts ?? [],
+      propertyType: snapshot.propertyType ?? "ALL",
+      maxPrice: snapshot.maxPrice ?? 0,
+      minArea: snapshot.minArea ?? 0,
+      minYear: snapshot.minYear ?? 0,
+      areaRadiusKm: snapshot.areaRadiusKm ?? 0,
+      minMatchThreshold: snapshot.minMatchThreshold,
+      activeMatchesCount: snapshot.activeMatchesCount,
+      newMatchesCount: snapshot.newMatchesCount ?? 0,
+      unreadDealroomMessagesCount: snapshot.unreadDealroomMessagesCount,
+      requireBalcony: snapshot.requireBalcony ?? false,
+      requireGarden: snapshot.requireGarden ?? false,
+      requireElevator: snapshot.requireElevator ?? false,
+      requireParking: snapshot.requireParking ?? false,
+      requireFurnished: snapshot.requireFurnished ?? false,
+      updatedAtIso: snapshot.updatedAtIso
+    )
+
+    upsertTask?.cancel()
+    upsertTask = Task {
       do {
-
-        let contentState = RadarLiveActivityAttributes.ContentState(
-          transactionType: snapshot.transactionType,
-          city: snapshot.city,
-          localityCountry: snapshot.localityCountry ?? "Polska",
-          localityCountryCode: snapshot.localityCountryCode ?? "PL",
-          districts: snapshot.districts ?? [],
-          propertyType: snapshot.propertyType ?? "ALL",
-          maxPrice: snapshot.maxPrice ?? 0,
-          minArea: snapshot.minArea ?? 0,
-          minYear: snapshot.minYear ?? 0,
-          areaRadiusKm: snapshot.areaRadiusKm ?? 0,
-          minMatchThreshold: snapshot.minMatchThreshold,
-          activeMatchesCount: snapshot.activeMatchesCount,
-          newMatchesCount: snapshot.newMatchesCount ?? 0,
-          unreadDealroomMessagesCount: snapshot.unreadDealroomMessagesCount,
-          requireBalcony: snapshot.requireBalcony ?? false,
-          requireGarden: snapshot.requireGarden ?? false,
-          requireElevator: snapshot.requireElevator ?? false,
-          requireParking: snapshot.requireParking ?? false,
-          requireFurnished: snapshot.requireFurnished ?? false,
-          updatedAtIso: snapshot.updatedAtIso
-        )
-
-        // Jedna karta na lock screen — zsynchronizuj z tym, co iOS faktycznie trzyma.
-        let systemActivities = Activity<RadarLiveActivityAttributes>.activities
-        if systemActivities.count > 1 {
-          NSLog("[RadarLiveActivity] Wykryto \(systemActivities.count) aktywnych kart — zamykam duplikaty.")
-          await RadarLiveActivityStore.endAllRadarActivities()
-        }
-
-        if let existing = RadarLiveActivityStore.activity ?? systemActivities.first {
-          RadarLiveActivityStore.activity = existing
-          let state = existing.activityState
-          if state == .active {
-            await existing.update(using: contentState)
-            // Zamknij ewentualne „sieroty" poza zapamiętaną instancją.
-            for orphan in Activity<RadarLiveActivityAttributes>.activities where orphan.id != existing.id {
-              await orphan.end(dismissalPolicy: .immediate)
-            }
-            resolve(["status": "updated"])
-            return
-          } else {
-            NSLog("[RadarLiveActivity] Istniejąca Activity jest \(state) — startuję świeżą.")
-            await existing.end(dismissalPolicy: .immediate)
-            RadarLiveActivityStore.activity = nil
-          }
-        }
-
-        await RadarLiveActivityStore.endAllRadarActivities()
-
-        let attributes = RadarLiveActivityAttributes(
-          title: "Radar aktywny"
-        )
-
-        let activity = try Activity.request(
-          attributes: attributes,
-          contentState: contentState,
-          pushType: nil
-        )
-
-        RadarLiveActivityStore.activity = activity
-
-        resolve([
-          "status": "started",
-          "id": activity.id
-        ])
-
+        let result = try await RadarLiveActivityCoordinator.shared.upsert(contentState: contentState)
+        DispatchQueue.main.async { resolve(result) }
       } catch {
-        NSLog("[RadarLiveActivity] Activity.request/update failed: \(error.localizedDescription)")
-        reject("activity_failed", "Cannot start activity", error)
+        NSLog("[RadarLiveActivity] upsert failed: \(error.localizedDescription)")
+        DispatchQueue.main.async { reject("activity_failed", "Cannot start activity", error) }
       }
     }
   }

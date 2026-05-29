@@ -1135,6 +1135,7 @@ export default function DealroomListScreen() {
   const [openingOfferId, setOpeningOfferId] = useState<number | null>(null);
   const [offerImageByOfferId, setOfferImageByOfferId] = useState<Record<number, string>>({});
   const [counterpartyNameById, setCounterpartyNameById] = useState<Record<number, string>>({});
+  const counterpartyNameByIdRef = useRef<Record<number, string>>({});
   const offerImageCacheRef = useRef<Record<number, string>>({});
   const [dealPhaseById, setDealPhaseById] = useState<Record<number, DealPhase>>({});
   const [dealMessagesById, setDealMessagesById] = useState<Record<number, any[]>>({});
@@ -1260,6 +1261,10 @@ export default function DealroomListScreen() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    counterpartyNameByIdRef.current = counterpartyNameById;
+  }, [counterpartyNameById]);
 
   useEffect(() => {
     offerImageCacheRef.current = offerImageByOfferId;
@@ -1539,118 +1544,105 @@ export default function DealroomListScreen() {
     return !inactiveStatuses.includes(status);
   };
 
-  useEffect(() => {
-    const fetchDeals = async () => {
-      if (!token) { setDeals([]); setLoading(false); return; }
-      try {
-        const res = await fetch(`${API_URL}/api/mobile/v1/deals`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const data = await res.json();
-        const activeDeals = normalizeDealsPayload(data).filter(isActiveDeal);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      let interval: ReturnType<typeof setInterval> | null = null;
 
-        // WAŻNE: nie pobieramy /messages z listy dealroomów.
-        // W wielu backendach samo wejście w endpoint wiadomości oznacza "seen/read",
-        // co psuło licznik nieprzeczytanych bez otwierania czatu.
-        const enrichedDeals = activeDeals;
-        setDeals(enrichedDeals);
+      const fetchDeals = async () => {
+        if (!token || cancelled) return;
+        try {
+          const res = await fetch(`${API_URL}/api/mobile/v1/deals`, { headers: { Authorization: `Bearer ${token}` } });
+          const data = await res.json();
+          const activeDeals = normalizeDealsPayload(data).filter(isActiveDeal);
+          if (cancelled) return;
+          setDeals(activeDeals);
 
-        const missingOfferIds = new Set<number>();
-        for (const d of enrichedDeals) {
-          const oid = extractOfferIdFromDeal(d);
-          if (!oid) continue;
-          if (extractOfferImageFromDeal(d)) continue;
-          if (!offerImageCacheRef.current[oid]) missingOfferIds.add(oid);
-        }
-        if (missingOfferIds.size > 0 && token) {
-          const patch: Record<number, string> = {};
-          // 1) Najtańszy strzał — single batch z mobile listingu (`includeAll=true`).
-          try {
-            const offersRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const offersJson = await offersRes.json().catch(() => ({}));
-            let offersList = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
-            if (!offersRes.ok) {
-              offersList = await fetchWebOffersArray();
-            }
-            for (const o of offersList) {
-              const id = Number(o?.id || 0);
-              if (!missingOfferIds.has(id)) continue;
-              const raw = pickFirstImageFromOfferLike(o);
-              const url = raw ? normalizeMediaUrl(raw) : null;
-              if (url) patch[id] = url;
-            }
-          } catch {
-            // noop — przejdziemy do fallbacku per-ID
+          const missingOfferIds = new Set<number>();
+          for (const d of activeDeals) {
+            const oid = extractOfferIdFromDeal(d);
+            if (!oid) continue;
+            if (extractOfferImageFromDeal(d)) continue;
+            if (!offerImageCacheRef.current[oid]) missingOfferIds.add(oid);
           }
-          /*
-           * 2) Fallback — dla każdego ID, którego nie pokrył listing (np. oferta
-           * agentowska/archiwalna/zamknięta, której endpoint `?includeAll=true`
-           * nie pokazuje), strzelamy do pojedynczego web endpointa `/api/offers/:id`.
-           * Ten sam wzór, którego używa `OfferDetail` do hydration zamkniętych ofert.
-           * Bez tego placeholder z ikoną pozostawał na zawsze.
-           */
-          const stillMissing: number[] = [];
-          missingOfferIds.forEach((id) => {
-            if (!patch[id] && !offerImageCacheRef.current[id]) stillMissing.push(id);
-          });
-          if (stillMissing.length > 0) {
+          if (missingOfferIds.size > 0 && token && !cancelled) {
+            const patch: Record<number, string> = {};
             try {
-              const webList = await fetchWebOffersArray();
-              for (const id of stillMissing) {
-                if (patch[id]) continue;
-                const offer = webList.find((o: any) => Number(o?.id || 0) === id);
-                if (!offer) continue;
-                const raw = pickFirstImageFromOfferLike(offer);
+              const offersRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const offersJson = await offersRes.json().catch(() => ({}));
+              let offersList = Array.isArray(offersJson?.offers) ? offersJson.offers : [];
+              if (!offersRes.ok) {
+                offersList = await fetchWebOffersArray();
+              }
+              for (const o of offersList) {
+                const id = Number(o?.id || 0);
+                if (!missingOfferIds.has(id)) continue;
+                const raw = pickFirstImageFromOfferLike(o);
                 const url = raw ? normalizeMediaUrl(raw) : null;
                 if (url) patch[id] = url;
               }
-              const stillAfterWeb = stillMissing.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
-              const results = await Promise.allSettled(
-                stillAfterWeb.map((id) =>
-                  fetch(`${API_URL}/api/mobile/v1/offers/${id}`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                  }).then((r) => (r.ok ? r.json() : null)),
-                ),
-              );
-              results.forEach((res, idx) => {
-                if (res.status !== 'fulfilled' || !res.value) return;
-                const id = stillAfterWeb[idx];
-                const offer = res.value?.offer || res.value?.data || (res.value?.id ? res.value : null);
-                if (!offer) return;
-                const raw = pickFirstImageFromOfferLike(offer);
-                const url = raw ? normalizeMediaUrl(raw) : null;
-                if (url) patch[id] = url;
-              });
-              const stillAfterMobile = stillAfterWeb.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
-              if (stillAfterMobile.length > 0) {
-                const publicResults = await Promise.allSettled(
-                  stillAfterMobile.map((id) => fetch(`${API_URL}/api/offers/${id}`).then((r) => (r.ok ? r.json() : null))),
+            } catch {
+              // noop
+            }
+            const stillMissing: number[] = [];
+            missingOfferIds.forEach((id) => {
+              if (!patch[id] && !offerImageCacheRef.current[id]) stillMissing.push(id);
+            });
+            if (stillMissing.length > 0 && !cancelled) {
+              try {
+                const webList = await fetchWebOffersArray();
+                for (const id of stillMissing) {
+                  if (patch[id]) continue;
+                  const offer = webList.find((o: any) => Number(o?.id || 0) === id);
+                  if (!offer) continue;
+                  const raw = pickFirstImageFromOfferLike(offer);
+                  const url = raw ? normalizeMediaUrl(raw) : null;
+                  if (url) patch[id] = url;
+                }
+                const stillAfterWeb = stillMissing.filter((id) => !patch[id] && !offerImageCacheRef.current[id]);
+                const results = await Promise.allSettled(
+                  stillAfterWeb.map((id) =>
+                    fetch(`${API_URL}/api/mobile/v1/offers/${id}`, {
+                      headers: { Authorization: `Bearer ${token}` },
+                    }).then((r) => (r.ok ? r.json() : null)),
+                  ),
                 );
-                publicResults.forEach((res, idx) => {
+                results.forEach((res, idx) => {
                   if (res.status !== 'fulfilled' || !res.value) return;
-                  const id = stillAfterMobile[idx];
+                  const id = stillAfterWeb[idx];
                   const offer = res.value?.offer || res.value?.data || (res.value?.id ? res.value : null);
                   if (!offer) return;
                   const raw = pickFirstImageFromOfferLike(offer);
                   const url = raw ? normalizeMediaUrl(raw) : null;
                   if (url) patch[id] = url;
                 });
+              } catch {
+                // noop
               }
-            } catch {
-              // noop — placeholder pozostanie, bez awarii UI
+            }
+            if (!cancelled && Object.keys(patch).length > 0) {
+              setOfferImageByOfferId((prev) => ({ ...prev, ...patch }));
             }
           }
-          if (Object.keys(patch).length > 0) {
-            setOfferImageByOfferId((prev) => ({ ...prev, ...patch }));
-          }
+        } catch {
+          if (!cancelled) setDeals((prev) => (prev.length ? prev : []));
+        } finally {
+          if (!cancelled) setLoading(false);
         }
-      } catch (e) { setDeals([]); } finally { setLoading(false); }
-    };
-    
-    fetchDeals();
-    const interval = setInterval(fetchDeals, 4000); // Szybszy polling
-    return () => clearInterval(interval);
-  }, [token, user?.id]);
+      };
+
+      setLoading(true);
+      void fetchDeals();
+      interval = setInterval(fetchDeals, 15_000);
+
+      return () => {
+        cancelled = true;
+        if (interval) clearInterval(interval);
+      };
+    }, [token, user?.id]),
+  );
 
   const getReadableDealTitle = (deal: any) => {
     const customTitle = deal?.offer?.title || deal?.title;
@@ -1717,7 +1709,7 @@ export default function DealroomListScreen() {
       if (!c.id) continue;
       const numberedPrefix = t('dealroom.user.numbered', { id: '' }).replace(/\d+$/, '');
       const hasConcreteName = c.name && c.name !== t('dealroom.user.noData') && !String(c.name).startsWith(numberedPrefix);
-      if (!hasConcreteName && !counterpartyNameById[c.id]) idsToResolve.add(c.id);
+      if (!hasConcreteName && !counterpartyNameByIdRef.current[c.id]) idsToResolve.add(c.id);
     }
 
     if (idsToResolve.size === 0) return;
@@ -1754,11 +1746,12 @@ export default function DealroomListScreen() {
     return () => {
       cancelled = true;
     };
-  }, [token, user?.id, deals, counterpartyNameById]);
+  }, [token, user?.id, deals, getCounterparty]);
 
-  const formatLastMessage = (msg?: string) => {
-    const raw = String(msg || '').trim();
-    if (!raw) return t('dealroom.lastMessage.empty');
+  const formatLastMessage = useCallback((msg?: string) => {
+    try {
+      const raw = String(msg || '').trim();
+      if (!raw) return t('dealroom.lastMessage.empty');
     const lower = raw.toLowerCase();
     if (raw.startsWith('[SYSTEM_FINALIZED]') || isDealSaleFinalizedMessage(raw)) {
       return t('dealroom.lastMessage.transactionFinalized');
@@ -1797,7 +1790,10 @@ export default function DealroomListScreen() {
     if (raw.startsWith('📅')) return raw;
     const preview = raw.replace(/\s+/g, ' ').slice(0, 52);
     return t('dealroom.lastMessage.preview', { preview: `${preview}${raw.length > 52 ? '…' : ''}` });
-  };
+    } catch {
+      return t('dealroom.activity.activeThread');
+    }
+  }, []);
 
   const togglePinForDeal = useCallback((dealId: number) => {
     const id = Number(dealId);

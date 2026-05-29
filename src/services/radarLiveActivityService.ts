@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { NativeModules, Platform } from 'react-native';
+import { AppState, NativeModules, Platform } from 'react-native';
 
 import {
   buildRadarLiveActivitySnapshot,
@@ -9,18 +9,22 @@ import {
 } from '../contracts/radarLiveActivityContract';
 
 const FALLBACK_NOTIFICATION_KEY = '@estateos_radar_live_activity_notification_id';
-/** Stały identyfikator — iOS podmienia to powiadomienie zamiast dokładać kolejne. */
 const FALLBACK_NOTIFICATION_IDENTIFIER = 'estateos-radar-live-activity-sticky';
 const FALLBACK_MIN_INTERVAL_MS = 45_000;
+/** Min. odstęp między natywnymi update Live Activity — zapobiega wyścigom bridge/Hermes. */
+const NATIVE_MIN_INTERVAL_MS = 12_000;
 
 let fallbackUpdateQueue: Promise<void> = Promise.resolve();
+let nativeSyncQueue: Promise<void> = Promise.resolve();
 let lastFallbackSignature = '';
 let lastFallbackAtMs = 0;
+let lastNativeSignature = '';
+let lastNativeAtMs = 0;
 
 type NativeRadarLiveActivityModuleShape = {
-  startMonitoring?: (snapshotJson: string) => Promise<void> | void;
-  updateMonitoring?: (snapshotJson: string) => Promise<void> | void;
-  stopMonitoring?: () => Promise<void> | void;
+  startMonitoring?: (snapshotJson: string) => Promise<unknown> | void;
+  updateMonitoring?: (snapshotJson: string) => Promise<unknown> | void;
+  stopMonitoring?: () => Promise<unknown> | void;
 };
 
 const NativeRadarLiveActivityModule = (NativeModules?.RadarLiveActivityModule || null) as NativeRadarLiveActivityModuleShape | null;
@@ -29,13 +33,6 @@ const hasNativeLiveActivityModule = Platform.OS === 'ios' && !!NativeRadarLiveAc
 
 const fallbackTitle = 'EstateOS™ · Radar';
 
-/**
- * Body sticky-notification: skupiamy się na konkretnej konfiguracji radaru
- * (tryb, lokalizacja, cena, metraż, próg, dopasowania, wymagania).
- * Linie z `formatRadarLiveActivityLines` rozdzielamy znakami nowej linii,
- * pomijając duplikat „Radar aktywny · skan rynku trwa" — tytuł i status
- * pokazuje już osobno powiadomienie (`subtitle` na iOS).
- */
 const formatFallbackBody = (snapshot: RadarLiveActivitySnapshot): string => {
   const lines = formatRadarLiveActivityLines(snapshot).slice(1);
   return lines.join('\n');
@@ -52,6 +49,30 @@ const fallbackContentSignature = (snapshot: RadarLiveActivitySnapshot): string =
     snapshot.propertyType,
     snapshot.minMatchThreshold,
     (snapshot.districts || []).join(','),
+  ].join('|');
+
+/** Sygnatura bez heartbeat `updatedAtIso` — throttling sensownych zmian. */
+const nativeContentSignature = (snapshot: RadarLiveActivitySnapshot): string =>
+  [
+    snapshot.enabled,
+    snapshot.newMatchesCount,
+    snapshot.activeMatchesCount,
+    snapshot.unreadDealroomMessagesCount,
+    snapshot.city,
+    snapshot.localityCountryCode,
+    snapshot.transactionType,
+    snapshot.propertyType,
+    snapshot.maxPrice,
+    snapshot.minArea,
+    snapshot.minYear,
+    snapshot.areaRadiusKm,
+    snapshot.minMatchThreshold,
+    (snapshot.districts || []).join(','),
+    snapshot.requireBalcony,
+    snapshot.requireGarden,
+    snapshot.requireElevator,
+    snapshot.requireParking,
+    snapshot.requireFurnished,
   ].join('|');
 
 const dismissFallbackNotification = async () => {
@@ -104,7 +125,7 @@ const updateFallbackNotification = async (snapshot: RadarLiveActivitySnapshot) =
 
 const callNative = async (
   method: 'startMonitoring' | 'updateMonitoring',
-  snapshot: RadarLiveActivitySnapshot
+  snapshot: RadarLiveActivitySnapshot,
 ) => {
   const fn = NativeRadarLiveActivityModule?.[method];
   if (!fn) return;
@@ -117,9 +138,21 @@ const stopNative = async () => {
   await Promise.resolve(fn());
 };
 
-export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivitySnapshot>) => {
-  // Zawsze stempel czasu „teraz" — chcemy, żeby widget wiedział, że dostał nowy update,
-  // nawet jeśli wszystkie inne pola pozostały takie same (heartbeat).
+const shouldSkipNativeSync = (snapshot: RadarLiveActivitySnapshot, force: boolean): boolean => {
+  if (force) return false;
+  if (AppState.currentState !== 'active') return true;
+  const signature = nativeContentSignature(snapshot);
+  const now = Date.now();
+  if (signature === lastNativeSignature && now - lastNativeAtMs < NATIVE_MIN_INTERVAL_MS) {
+    return true;
+  }
+  return false;
+};
+
+export const syncRadarLiveActivity = async (
+  incoming: Partial<RadarLiveActivitySnapshot>,
+  options?: { force?: boolean },
+) => {
   const snapshot = buildRadarLiveActivitySnapshot({
     ...incoming,
     updatedAtIso: new Date().toISOString(),
@@ -130,40 +163,57 @@ export const syncRadarLiveActivity = async (incoming: Partial<RadarLiveActivityS
   }
 
   if (hasNativeLiveActivityModule) {
-    try {
-      await callNative('updateMonitoring', snapshot);
-      // Live Activity działa — gasimy ewentualne stare sticky z fallbacku (inaczej zostają w centrum powiadomień).
-      await dismissFallbackNotification();
+    if (shouldSkipNativeSync(snapshot, Boolean(options?.force))) {
       return;
-    } catch (updateError) {
-      console.warn('[RadarLiveActivity] updateMonitoring failed — próbuję start:', updateError);
-      try {
-        // Stara Activity może być w niezgodnym ContentState (po przebudowie widgetu).
-        // Forsujemy stop + start, żeby uzyskać świeżą instancję.
-        await stopNative();
-      } catch {
-        // noop
-      }
-      try {
-        await callNative('startMonitoring', snapshot);
-        await dismissFallbackNotification();
-        return;
-      } catch (startError) {
-        console.warn('[RadarLiveActivity] startMonitoring failed — używam fallback notification:', startError);
-      }
     }
+
+    nativeSyncQueue = nativeSyncQueue
+      .then(async () => {
+        try {
+          await callNative('updateMonitoring', snapshot);
+          lastNativeSignature = nativeContentSignature(snapshot);
+          lastNativeAtMs = Date.now();
+          await dismissFallbackNotification();
+        } catch {
+          try {
+            await stopNative();
+          } catch {
+            // noop
+          }
+          try {
+            await callNative('startMonitoring', snapshot);
+            lastNativeSignature = nativeContentSignature(snapshot);
+            lastNativeAtMs = Date.now();
+            await dismissFallbackNotification();
+          } catch {
+            await updateFallbackNotification(snapshot);
+          }
+        }
+      })
+      .catch(() => undefined);
+
+    await nativeSyncQueue;
+    return;
   }
 
   await updateFallbackNotification(snapshot);
 };
 
 export const stopRadarLiveActivity = async () => {
+  lastNativeSignature = '';
+  lastNativeAtMs = 0;
+
   if (hasNativeLiveActivityModule) {
-    try {
-      await stopNative();
-    } catch (error) {
-      console.warn('[RadarLiveActivity] stopMonitoring failed:', error);
-    }
+    nativeSyncQueue = nativeSyncQueue
+      .then(async () => {
+        try {
+          await stopNative();
+        } catch {
+          // noop
+        }
+      })
+      .catch(() => undefined);
+    await nativeSyncQueue;
   }
   await dismissFallbackNotification();
 };
