@@ -49,12 +49,13 @@ export default function PublicProfileModal({
     if (isOpen && userId) {
       setLoading(true);
       setShowDistribution(false);
-      fetch(`/api/users/${userId}/public`)
-        .then((res) => res.json())
-        .then((d) => {
-          if (!d.error) setData(d);
+      fetch(`/api/users/${userId}/public`, { cache: "no-store" })
+        .then(async (res) => {
+          const d = await res.json();
+          if (res.ok && d?.user) setData(d);
+          else setData(null);
         })
-        .catch(() => {})
+        .catch(() => setData(null))
         .finally(() => setLoading(false));
     } else {
       setData(null);
