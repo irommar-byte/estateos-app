@@ -24,7 +24,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
-import { Picker } from '@react-native-picker/picker';
+import AddOfferOptionField, { type AddOfferOption } from './AddOffer/AddOfferOptionField';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -250,6 +250,15 @@ export default function EditOfferScreen({ route }: any) {
   const landRegistrySuggestions = getLandRegistryPrefixSuggestions(landRegistryRaw);
   const selectedCourt = getCourtByLandRegistryPrefix(landRegistryRaw);
 
+  const heatingOptions = useMemo<AddOfferOption[]>(
+    () =>
+      HEATING_OPTIONS.map((opt) => ({
+        value: opt.key,
+        label: t(opt.labelKey),
+      })),
+    [t],
+  );
+
   // -------- HELPERY ŚCIEŻEK ZDJĘĆ --------
   const toAbsoluteImageUrl = (img: string) => (img.startsWith('/uploads') ? `${API_URL}${img}` : img);
   const toServerPath = (img: string) => (img.startsWith(`${API_URL}/uploads`) ? img.replace(API_URL, '') : img);
@@ -299,7 +308,12 @@ export default function EditOfferScreen({ route }: any) {
             if (amt > 0) setAgentCommissionAmountDraft(String(amt));
           }
           setArea(offer.area?.toString() || '');
-          setPlotArea(offer.plotArea?.toString() || '');
+          const loadedPlotArea =
+            offer.plotArea?.toString() ||
+            (String(offer.propertyType || '').toUpperCase() === 'PLOT'
+              ? offer.area?.toString() || ''
+              : '');
+          setPlotArea(loadedPlotArea);
           setRooms(offer.rooms?.toString() || '');
           setFloor(offer.floor?.toString() || '');
           setYearBuilt(offer.yearBuilt?.toString() || offer.buildYear?.toString() || '');
@@ -743,7 +757,12 @@ export default function EditOfferScreen({ route }: any) {
       title: title.trim(),
       description: [description?.trim() || '', ...verifyTokens].filter(Boolean).join('\n\n'),
       area: area ? Number(area) : 0,
-      plotArea: plotArea.trim() ? Number(String(plotArea).replace(',', '.')) : null,
+      plotArea:
+        String(originalData?.propertyType || '').toUpperCase() === 'PLOT'
+          ? (area ? Number(String(area).replace(',', '.')) : null)
+          : plotArea.trim()
+            ? Number(String(plotArea).replace(',', '.'))
+            : null,
       rooms: rooms ? Number(rooms) : null,
       floor: floor !== '' ? Number(floor) : null,
       yearBuilt: yearBuilt ? Number(yearBuilt) : null,
@@ -1486,7 +1505,11 @@ export default function EditOfferScreen({ route }: any) {
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, ...cardShadow }]}>
             {/* Powierzchnia — TextInput bo zakres jest szeroki */}
             <View style={styles.inputRowPremium}>
-              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.area')}</Text>
+              <Text style={[styles.inputLabelPremium, { color: txtColor }]}>
+                {String(originalData?.propertyType || '').toUpperCase() === 'PLOT'
+                  ? t('offer.edit.parameters.plotArea')
+                  : t('offer.edit.parameters.area')}
+              </Text>
               <TextInput
                 style={[styles.inputRightPremium, { color: txtColor }]}
                 value={area}
@@ -2116,28 +2139,15 @@ export default function EditOfferScreen({ route }: any) {
             />
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
-              <Text style={[styles.switchSubtitle, { marginTop: 0, marginBottom: 6 }]}>{t('offer.edit.amenities.heating')}</Text>
-              <View
-                style={[
-                  styles.heatingPickerWrap,
-                  { borderColor, backgroundColor: isDark ? '#2C2C2E' : '#F6F6F8' },
-                ]}
-              >
-                <Picker
-                  selectedValue={heating}
-                  onValueChange={(v) => {
-                    Haptics.selectionAsync();
-                    setHeating(String(v || ''));
-                  }}
-                  mode="dialog"
-                  dropdownIconColor={txtColor}
-                  style={{ color: txtColor }}
-                >
-                  {HEATING_OPTIONS.map((opt) => (
-                    <Picker.Item key={opt.key || 'none'} label={t(opt.labelKey)} value={opt.key} />
-                  ))}
-                </Picker>
-              </View>
+              <AddOfferOptionField
+                title={t('offer.edit.amenities.heating')}
+                value={heating}
+                options={heatingOptions}
+                onChange={(v) => setHeating(String(v || ''))}
+                theme={{ text: txtColor, subtitle: subColor, glass: isDark ? 'dark' : 'light' }}
+                cardBg={isDark ? '#2C2C2E' : '#F6F6F8'}
+                cardBorder={borderColor}
+              />
             </View>
           </View>
 
@@ -3176,7 +3186,6 @@ const styles = StyleSheet.create({
   switchTitle: { fontSize: 16, fontWeight: '600', letterSpacing: -0.3 },
   switchSubtitle: { fontSize: 12.5, color: '#8E8E93', marginTop: 4, lineHeight: 17 },
 
-  heatingPickerWrap: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, overflow: 'hidden' },
 
   /* ===== STEPPER INLINE (pokoje, piętro) ===== */
   stepperInline: {
