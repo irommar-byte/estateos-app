@@ -9,11 +9,30 @@ type OfferVisibilityRow = {
   expiresAt?: Date | string | null;
 };
 
+/** Kupujący lub sprzedający w dowolnym dealu powiązanym z ofertą — wgląd prywatny po wycofaniu / SOLD. */
+export async function isDealParticipantForOffer(
+  db: PrismaClient,
+  offerId: number,
+  viewerId: number,
+): Promise<boolean> {
+  if (!Number.isFinite(viewerId) || viewerId <= 0 || !Number.isFinite(offerId) || offerId <= 0) {
+    return false;
+  }
+  const deal = await db.deal.findFirst({
+    where: {
+      offerId,
+      OR: [{ buyerId: viewerId }, { sellerId: viewerId }],
+    },
+    select: { id: true },
+  });
+  return Boolean(deal);
+}
+
 export async function resolveOfferDetailAccess(
   db: PrismaClient,
   offer: OfferVisibilityRow | null,
   viewer?: { userId?: number | null; role?: string | null },
-): Promise<{ allowed: boolean; notFound: boolean }> {
+): Promise<{ allowed: boolean; notFound: boolean; dealParticipant?: boolean }> {
   if (!offer) return { allowed: false, notFound: true };
 
   const activeIds = await activePublicationOfferIds([Number(offer.id)]);
@@ -24,6 +43,14 @@ export async function resolveOfferDetailAccess(
   const viewerId = Number(viewer?.userId);
   const isOwner = Number.isFinite(viewerId) && viewerId > 0 && Number(offer.userId) === viewerId;
   const isAdmin = String(viewer?.role || '').toUpperCase() === 'ADMIN';
+  const dealParticipant =
+    !isPublic && !isOwner && !isAdmin && Number.isFinite(viewerId)
+      ? await isDealParticipantForOffer(db, Number(offer.id), viewerId)
+      : false;
 
-  return { allowed: isPublic || isOwner || isAdmin, notFound: false };
+  return {
+    allowed: isPublic || isOwner || isAdmin || dealParticipant,
+    notFound: false,
+    dealParticipant,
+  };
 }

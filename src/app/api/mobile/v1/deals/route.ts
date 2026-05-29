@@ -41,6 +41,20 @@ export async function GET(req: Request) {
         ]
       },
       include: {
+        offer: {
+          select: {
+            id: true,
+            title: true,
+            images: true,
+            status: true,
+            price: true,
+            area: true,
+            transactionType: true,
+            district: true,
+            city: true,
+            propertyType: true,
+          },
+        },
         buyer: {
           select: { id: true, name: true, email: true, phone: true, image: true },
         },
@@ -98,7 +112,21 @@ export async function GET(req: Request) {
       return {
         id: deal.id,
         offerId: deal.offerId,
-        title: `Transakcja #${deal.offerId}`, // Jeśli masz relację do nazwy nieruchomości, można to tu wpiąć
+        title: deal.offer?.title?.trim() || `Transakcja #${deal.offerId}`,
+        offer: deal.offer
+          ? {
+              id: deal.offer.id,
+              title: deal.offer.title,
+              images: deal.offer.images,
+              status: deal.offer.status,
+              price: deal.offer.price,
+              area: deal.offer.area,
+              transactionType: deal.offer.transactionType,
+              district: deal.offer.district,
+              city: deal.offer.city,
+              propertyType: deal.offer.propertyType,
+            }
+          : null,
         status: deal.status,
         finalizationReady,
         finalized,
