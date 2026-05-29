@@ -7,6 +7,8 @@ import {
 
 const PUBLICATION_DURATION_DAYS = 30;
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
+/** Schema ensure + consume credit can exceed Prisma default 5s on cold deploy. */
+const PUBLICATION_TX_OPTIONS = { timeout: 15_000 } as const;
 
 export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
 export type PublicationEndReason = 'EXPIRED' | 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN';
@@ -369,7 +371,6 @@ async function writePendingPublicationInTx(
     entitlementConsumed?: boolean;
   },
 ) {
-  await ensureOfferPendingPublicationColumns();
   await tx.$executeRawUnsafe(
     `
       UPDATE \`Offer\`
@@ -474,6 +475,7 @@ export async function stageOfferPublicationForReview(params: {
 }) {
   const db = asDb(params.db);
   await ensureOfferPublicationSchema();
+  await ensureOfferPendingPublicationColumns();
 
   const offer = await readOfferOwnership(db, params.offerId);
   if (!offer || offer.userId !== params.userId) throw new Error('OFFER_NOT_FOUND_OR_FORBIDDEN');
@@ -519,7 +521,7 @@ export async function stageOfferPublicationForReview(params: {
       kind: params.kind,
       awaitingModeration: true,
     };
-  });
+  }, PUBLICATION_TX_OPTIONS);
 }
 
 export async function activateOfferPublication(params: {
@@ -533,6 +535,7 @@ export async function activateOfferPublication(params: {
 }) {
   const db = asDb(params.db);
   await ensureOfferPublicationSchema();
+  await ensureOfferPendingPublicationColumns();
 
   const offer = await readOfferOwnership(db, params.offerId);
   if (!offer || offer.userId !== params.userId) throw new Error('OFFER_NOT_FOUND_OR_FORBIDDEN');
@@ -592,7 +595,7 @@ export async function activateOfferPublication(params: {
       endsAt,
       publication,
     };
-  });
+  }, PUBLICATION_TX_OPTIONS);
 }
 
 export async function endOfferPublication(params: {
@@ -607,7 +610,7 @@ export async function endOfferPublication(params: {
 
   return db.$transaction(async (tx: any) => {
     return endOfferPublicationInTx(tx, params);
-  });
+  }, PUBLICATION_TX_OPTIONS);
 }
 
 export async function endOfferPublicationInTx(
