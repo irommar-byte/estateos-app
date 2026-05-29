@@ -288,6 +288,7 @@ export type Dictionary = {
     empty: string;
     discover: string;
     cardCaption: string;
+    resultSummary: string;
     sections: {
       all: string;
       sale: string;
@@ -637,15 +638,15 @@ const pl: Dictionary = {
     myOffersDesc: "Zarządzaj statusami, odnowieniami i statystykami swoich ofert.",
   },
   catalog: {
-    title: "Katalog nieruchomości",
+    title: "Katalog",
     subtitle: "EstateOS™",
-    lead:
-      "Galeria działów rynku: kup, wynajmij, najnowsze, przecenione i wyróżnione. Ten sam katalog co na mapie i w aplikacji.",
+    lead: "Oferty na sprzedaż i wynajem — ten sam zestaw co na mapie i w aplikacji mobilnej.",
     loading: "Ładowanie katalogu",
     retry: "Spróbuj ponownie",
     empty: "Brak aktywnych ofert w tym dziale.",
     discover: "Odkryj",
     cardCaption: "ofert",
+    resultSummary: "{n} ofert",
     sections: {
       all: "Wszystkie",
       sale: "Kup",
@@ -1002,15 +1003,15 @@ const en: Dictionary = {
     myOffersDesc: "Manage statuses, renewals, and listing statistics.",
   },
   catalog: {
-    title: "EstateOS™ Property Catalog",
+    title: "Catalog",
     subtitle: "EstateOS™",
-    lead:
-      "Market gallery: buy, rent, newest, discounted, and featured. Same catalog as the map and mobile app.",
+    lead: "Properties for sale and rent — the same set as on the map and in the mobile app.",
     loading: "Loading catalog",
     retry: "Try again",
     empty: "No active listings in this section.",
     discover: "Discover",
     cardCaption: "listings",
+    resultSummary: "{n} listings",
     sections: {
       all: "All",
       sale: "Buy",
