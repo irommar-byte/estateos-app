@@ -162,6 +162,57 @@ function mapboxContextText(item: MapboxContextItem | null | undefined): string {
   return String(item?.text_pl || item?.text || "").trim();
 }
 
+function mapboxContextByPrefix(context: MapboxContextItem[], prefix: string): string {
+  for (const item of context) {
+    if (String(item?.id || "").startsWith(prefix)) {
+      const t = mapboxContextText(item);
+      if (t) return t;
+    }
+  }
+  return "";
+}
+
+/** Obszar / gmina / powiat dla miejscowości spoza listy dzielnic (np. Kalwaria Zebrzydowska). */
+export function inferAreaLabelFromMapboxFeature(
+  canonicalCity: string,
+  feature: {
+    context?: MapboxContextItem[];
+    place_name?: string;
+    place_name_pl?: string;
+  } | null | undefined,
+): string {
+  if (!feature) return "";
+  if (canonicalCity && isStrictCity(canonicalCity)) {
+    return inferStrictDistrictFromMapboxFeature(canonicalCity, feature);
+  }
+
+  const context = Array.isArray(feature.context) ? feature.context : [];
+  const neighborhood = mapboxContextByPrefix(context, "neighborhood");
+  const district = mapboxContextByPrefix(context, "district");
+  const locality = mapboxContextByPrefix(context, "locality");
+
+  const pick =
+    (neighborhood && neighborhood !== canonicalCity ? neighborhood : "") ||
+    (district && !/województwo/i.test(district) ? district : "") ||
+    (locality && locality !== canonicalCity ? locality : "");
+
+  if (pick) return pick.trim();
+
+  const placeName = String(feature.place_name_pl || feature.place_name || "").trim();
+  if (!placeName || !canonicalCity) return "";
+  const segments = placeName.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const seg of segments) {
+    const cleaned = seg.replace(/^\d{2}-\d{3}\s+/i, "").trim();
+    if (!cleaned || cleaned === canonicalCity) continue;
+    if (/województwo|polska|poland|powiat/i.test(cleaned)) {
+      if (/powiat/i.test(cleaned)) return cleaned;
+      continue;
+    }
+    return cleaned;
+  }
+  return "";
+}
+
 /** Wyciąga nazwę miasta z odpowiedzi Geocoding API (forward / reverse). */
 export function inferCityFromMapboxFeature(feature: {
   context?: MapboxContextItem[];
@@ -170,9 +221,9 @@ export function inferCityFromMapboxFeature(feature: {
   text?: string;
 } | null | undefined): string {
   const context = Array.isArray(feature?.context) ? feature.context : [];
-  const placeItem = context.find((c) => String(c?.id || "").startsWith("place"));
-  const localityItem = context.find((c) => String(c?.id || "").startsWith("locality"));
-  const fromContext = mapboxContextText(placeItem) || mapboxContextText(localityItem);
+  const locality = mapboxContextByPrefix(context, "locality");
+  const place = mapboxContextByPrefix(context, "place");
+  const fromContext = locality || place;
   if (fromContext) {
     return canonicalizeCity(fromContext);
   }

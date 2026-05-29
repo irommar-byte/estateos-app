@@ -24,12 +24,19 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
+import {
+  resolveSellerDisplayName,
+  resolveSellerPersonName,
+  resolveServicingCompanyName,
+  isAgentOrAgencySeller,
+} from "@/lib/sellerDisplay";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
   resolveOfferDisplayAmount,
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
+import { isStrictCity } from "@/lib/location/locationCatalog";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -75,13 +82,23 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
 
-  const isArchived = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
+  const offerStatus = String(offer.status || '').toUpperCase();
+  const expiredByDate =
+    offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now();
+  const isArchived =
+    offerStatus === 'ARCHIVED' ||
+    offerStatus === 'SOLD' ||
+    (offerStatus !== 'ACTIVE' && Boolean(expiredByDate));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBiddingOpen, setIsBiddingOpen] = useState(false);
 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>({
+    name: locale === "pl" ? "Polska" : "Poland",
+    code: "PL",
+  });
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -122,6 +139,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
   const sellerIsAgency = isAgencyUser(offer?.user);
+  const sellerLabel = resolveSellerDisplayName(
+    offer?.user,
+    offer?.user?.buyerType === "AGENCY" ? t.agency : t.privateOwner,
+  );
+  const sellerPersonLine = resolveSellerPersonName(offer?.user);
 
   // 🔥 SILNIK FOMO: LOGIKA CZASU I BLOKADY 🔥
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -143,6 +165,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   // Ukrycie szczegółów do „premiery na szerokim rynku” (PRO i właściciel widzą od razu)
   const isLocked = timeLeft > 0 && !isPro && !isOwner;
+  const contentSuppressed = isLocked || isArchived;
 
   // Formatowanie zegara (HH:MM:SS)
   const h = Math.floor(timeLeft / (1000 * 60 * 60));
@@ -168,6 +191,27 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
   const dateLocale = locale === "pl" ? "pl" : "en";
+  const cityRaw = String(offer.city || "").trim();
+  const districtRaw = String(offer.district || "").trim();
+  const streetRaw = String(offer.street || offer.address || "").trim();
+  const addressNumberRaw = String(offer.buildingNumber || "").trim();
+  const streetLine = [streetRaw, addressNumberRaw].filter(Boolean).join(" ").trim();
+  const districtUpper = districtRaw.toUpperCase();
+  const districtSpecified =
+    districtRaw.length > 0 &&
+    !["OTHER", "INNE", "INNY OBSZAR", "BRAK", "-", "N/A"].includes(districtUpper);
+  const cityLooksGeneric = /reszta kraju|pozosta[ał]e|other|ca[łl]y kraj|polska/i.test(cityRaw);
+  const strictCity = isStrictCity(cityRaw);
+  const localityValue = isLocked
+    ? t.hiddenLocation
+    : !cityRaw || cityLooksGeneric
+      ? districtSpecified
+        ? districtRaw
+        : streetRaw || t.noData
+      : cityRaw;
+  const showDistrictField = !isLocked && strictCity && districtSpecified;
+  const districtValue = showDistrictField ? districtRaw : null;
+  const cityLabel = cityLooksGeneric || !cityRaw ? t.locality : t.city;
 
   const plnResolved =
     listingPrice.amount > 0
@@ -223,9 +267,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   };
 
   const locationParams = [
-    { label: t.city, value: offer.city || t.noData },
-    { label: t.district, value: isLocked ? t.hiddenLocation : offer.district },
-    { label: t.street, value: isLocked ? t.hiddenLocation : offer.address },
+    { label: cityLabel, value: localityValue || t.noData },
+    ...(districtValue ? [{ label: t.district, value: districtValue }] : []),
+    { label: t.street, value: isLocked ? t.hiddenLocation : streetLine || t.noData },
   ].filter((p) => p.value);
 
   const mainParams = [
@@ -264,14 +308,67 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         ? new Date(offer.availabilityDate).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
         : null,
     },
-    ...(agentCommissionLine ? [{ label: t.agentCommission, value: agentCommissionLine }] : []),
   ].filter((p) => p.value);
+  const servicingCompanyName = resolveServicingCompanyName(offer?.user, offer?.agencyName);
+  const showCommissionSection =
+    Boolean(servicingCompanyName) ||
+    Boolean(agentCommissionInfo) ||
+    isAgentOrAgencySeller(offer?.user);
+
+  const costsParams =
+    agentCommissionInfo && !agentCommissionInfo.isZero
+      ? [
+          {
+            label: t.commissionPercent,
+            value: agentCommissionInfo.percentLabel,
+          },
+          {
+            label: t.commissionAmount,
+            value: agentCommissionInfo.amountLabel,
+          },
+        ]
+      : [];
+
+  useEffect(() => {
+    if (!offer?.lat || !offer?.lng) return;
+    let cancelled = false;
+    fetch(`/api/location/reverse?lat=${encodeURIComponent(String(offer.lat))}&lng=${encodeURIComponent(String(offer.lng))}`, {
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const countryName = String(data.country || "").trim();
+        const countryCode = String(data.countryCode || "").trim().toUpperCase();
+        if (countryName) {
+          setResolvedCountry({
+            name: countryName,
+            code: countryCode || "PL",
+          });
+        }
+      })
+      .catch(() => {
+        /* noop */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.lat, offer?.lng]);
+
+  const countryFlag = resolvedCountry.code
+    ? String.fromCodePoint(
+        ...resolvedCountry.code
+          .slice(0, 2)
+          .split("")
+          .map((char) => 127397 + char.toUpperCase().charCodeAt(0)),
+      )
+    : "🌍";
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-32 font-sans text-[var(--eos-text)] selection:bg-emerald-500/20">
       
       <div ref={ref} className="relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
-        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center opacity-60 ${isLocked ? 'blur-xl' : ''} ${isArchived ? 'grayscale' : ''}`} />
+        <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
 
         <div
@@ -296,6 +393,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               />
             </div>
 
+            {!isArchived ? (
             <div
               className="pointer-events-auto w-full"
               onClick={(e) => e.stopPropagation()}
@@ -317,9 +415,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   
                   <div className="flex flex-col items-start leading-tight">
                       <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors">{offer?.user?.name || (offer?.user?.buyerType === 'AGENCY' ? t.agency : t.privateOwner)}</span>
+                          <span className="text-[10px] font-black tracking-widest text-white/90 uppercase group-hover:text-white transition-colors max-w-[12rem] sm:max-w-[16rem] truncate">
+                            {sellerLabel}
+                          </span>
                           <span className={`w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_8px_rgba(255,255,255,0.5)] ${themeColors.primaryBg}`}></span>
                       </div>
+                      {sellerPersonLine ? (
+                        <span className="text-[8px] font-bold text-white/50 uppercase tracking-widest truncate max-w-[14rem]">
+                          {sellerPersonLine}
+                        </span>
+                      ) : null}
                       {(() => {
                         const total = Number(offer?.user?.reviewsData?.totalReviews ?? 0);
                         const avg = total > 0 ? Number(offer?.user?.reviewsData?.averageRating ?? 0) : 0;
@@ -387,9 +492,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
               </div>
             </div>
+            ) : null}
           </div>
         </div>
 
+        {!isArchived && (
         <div
           onClick={() => !isLocked && openGallery(0)}
           className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
@@ -398,14 +505,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             {isLocked ? t.beforeLaunchTitle : offer.title}
           </h1>
         </div>
+        )}
         {isArchived && (
           <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none px-4">
-             <div className="bg-zinc-950/90 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center">
+             <div className="bg-zinc-950/95 backdrop-blur-3xl border border-white/10 p-8 sm:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(0,0,0,0.9)] text-center flex flex-col items-center max-w-lg w-full">
                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6 border border-white/10">
                    <ArchiveX size={32} className="text-zinc-500" />
                 </div>
-                <h2 className="text-3xl sm:text-5xl font-black text-white mb-2 uppercase tracking-tighter opacity-50">{t.archivedTitle}</h2>
-                <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest">{t.archivedSubtitle}</p>
+                <p className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-2">{t.archivedTitle}</p>
+                <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest mb-4">{t.archivedSubtitle}</p>
+                <h2 className="text-2xl sm:text-3xl font-light text-white mb-4 tracking-tight leading-snug [text-wrap:balance]">{offer.title}</h2>
+                <p className="text-4xl sm:text-5xl font-light text-white tracking-tighter">{priceFormatted.primary}</p>
+                {!isLocked && priceFormatted.secondary ? (
+                  <p className="mt-2 text-sm font-semibold text-zinc-400">{priceFormatted.secondary}</p>
+                ) : null}
              </div>
           </div>
         )}
@@ -440,6 +553,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         )}
 
         {/* ORYGINALNA ZAWARTOŚĆ (ZAMAZANA JEŚLI ZABLOKOWANA) */}
+        {isArchived ? (
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-30 pb-24" aria-hidden />
+        ) : (
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
@@ -494,13 +610,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     </div>
                   </div>
                 )}
-                {!isLocked && agentCommissionLine && (
+                {!isLocked && agentCommissionLine ? (
                   <div className="eos-offer-panel mb-8 px-4 py-3">
                     <p className="text-sm text-[var(--eos-text)]">{agentCommissionLine}</p>
                     <p className="eos-subtle-copy mt-1 text-[11px]">{t.listingPriceIncludesCommission}</p>
                   </div>
-                )}
-                
+                ) : null}
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
@@ -530,8 +645,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     className="relative w-full h-[400px] rounded-[2rem] overflow-hidden border border-white/10 cursor-pointer group bg-black"
                   >
                     <img src={offer.floorPlan} className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700" alt={t.floorPlan} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                       <span className="px-6 py-3 bg-black/60 backdrop-blur-xl rounded-full text-white font-bold text-[11px] uppercase tracking-[0.2em] border border-white/20 flex items-center gap-2 shadow-2xl">
+                    <div className="eos-on-media absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                       <span className="flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-6 py-3 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-2xl backdrop-blur-xl">
                          <Maximize2 size={14} /> {t.enlarge}
                        </span>
                     </div>
@@ -548,6 +663,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               <div className="space-y-8">
                 <div className="eos-offer-panel p-6">
                   <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
+                  <div className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.country}</span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] shadow-[0_8px_22px_rgba(0,0,0,0.16)]">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-white/55 text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_10px_rgba(0,0,0,0.15)]">
+                        {countryFlag}
+                      </span>
+                      {resolvedCountry.name}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-3">
                     {locationParams.map((param, idx) => (
                       <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
@@ -581,6 +705,55 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {showCommissionSection && !contentSuppressed && (
+                  <div className="eos-offer-panel p-6">
+                    <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.costsSection}</h4>
+                    {agentCommissionInfo?.isZero ? (
+                      <div className="mb-4 rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/15 px-4 py-6 text-center shadow-[0_0_40px_rgba(16,185,129,0.12)]">
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
+                          {t.commissionZeroBadge}
+                        </p>
+                        <p className="mt-2 text-3xl sm:text-4xl font-black uppercase tracking-tight text-emerald-400">
+                          {t.commissionZeroTitle}
+                        </p>
+                        <p className="mt-3 text-xs sm:text-sm leading-relaxed text-[var(--eos-muted)] max-w-md mx-auto">
+                          {t.commissionZeroSub}
+                        </p>
+                      </div>
+                    ) : costsParams.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        {costsParams.map((param, idx) => (
+                          <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
+                            <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
+                            <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {servicingCompanyName ? (
+                      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
+                        <button
+                          type="button"
+                          onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                          className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                        >
+                          {servicingCompanyName}
+                          <span className="text-[10px] uppercase tracking-wider text-[var(--eos-muted)]">{t.openCompanyProfile}</span>
+                        </button>
+                        {resolveSellerPersonName(offer?.user) ? (
+                          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
+                            {resolveSellerPersonName(offer?.user)}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {agentCommissionLine && !agentCommissionInfo?.isZero ? (
+                      <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -649,6 +822,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             </div>
           </div>
         </div>
+        )}
       </div>
       
       <AppointmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} offerId={offer.id || offer._id} sellerId={offer.userId || offer.user?.id || ""} />
@@ -683,12 +857,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center"
             onClick={() => setIsGalleryOpen(false)}
           >
-            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-50 bg-gradient-to-b from-black/80 to-transparent">
-              <div className="flex items-center gap-3 px-5 py-2.5 bg-white/10 rounded-full backdrop-blur-md border border-white/10 shadow-2xl">
+            <div className="eos-on-media absolute top-0 left-0 z-50 flex w-full items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-6">
+              <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/10 px-5 py-2.5 shadow-2xl backdrop-blur-md">
                 <ImageIcon size={16} className={themeColors.textActive} />
-                <span className="text-white font-black text-[10px] tracking-widest uppercase">{currentImageIndex + 1} / {images.length}</span>
+                <span className="font-black text-[10px] uppercase tracking-widest text-white">{currentImageIndex + 1} / {images.length}</span>
               </div>
-              <button onClick={() => setIsGalleryOpen(false)} className="p-4 bg-white/10 hover:bg-red-500 rounded-full text-white transition-all shadow-2xl group">
+              <button onClick={() => setIsGalleryOpen(false)} className="group rounded-full bg-white/10 p-4 text-white shadow-2xl transition-all hover:bg-red-500">
                 <X size={20} className="group-hover:rotate-90 transition-transform" />
               </button>
             </div>

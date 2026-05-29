@@ -6,13 +6,21 @@ import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, Gri
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
+import { isAgentCommissionAccount } from '@/lib/agentCommission';
+import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
+import { useLocale } from '@/contexts/LocaleContext';
 
 // --- LUKSUSOWE STYLE ---
 const inputWrapper = "relative group flex items-center";
-const inputPremium = "w-full bg-[#080808] border border-white/10 rounded-2xl text-white text-base md:text-lg py-4 pl-14 pr-5 focus:bg-[#0c0c0c] focus:border-emerald-500/50 outline-none transition-all duration-500 placeholder:text-zinc-600 shadow-[inset_0_2px_10px_rgba(0,0,0,0.8)]";
-const labelPremium = "block text-[10px] font-black text-zinc-400 uppercase tracking-[0.25em] mb-3 ml-1 drop-shadow-md";
-const glassPanel = "bg-[#050505]/60 backdrop-blur-3xl border border-white/5 rounded-[2.5rem] p-6 md:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.5),inset_0_1px_1px_rgba(255,255,255,0.05)] relative overflow-hidden transition-all duration-500";
-const iconGlow = "absolute left-4 text-zinc-500 group-focus-within:text-emerald-400 group-focus-within:drop-shadow-[0_0_10px_rgba(16,185,129,0.8)] transition-all duration-500";
+const inputPremium =
+  "w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 pl-14 pr-5 text-base text-[var(--eos-text)] outline-none transition-all duration-500 placeholder:text-[var(--eos-subtle)] focus:border-[var(--eos-accent)]/50 md:text-lg";
+const labelPremium =
+  "mb-3 ml-1 block text-[10px] font-black uppercase tracking-[0.25em] text-[var(--eos-muted)]";
+const glassPanel =
+  "eos-surface-card relative overflow-hidden rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl transition-all duration-500 md:p-10";
+const iconGlow =
+  "absolute left-4 text-[var(--eos-muted)] transition-all duration-500 group-focus-within:text-[var(--eos-accent)]";
 
 const AMENITIES_LIST = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 
@@ -36,15 +44,21 @@ const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url:
 };
 
 export default function UltraPremiumEditForm({ params }: { params: Promise<{ id: string }> }) {
+  const { dict } = useLocale();
+  const eo = dict.editOffer;
   const router = useRouter();
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
+  const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
+  const [floorPlanUploading, setFloorPlanUploading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [agentCommissionPercent, setAgentCommissionPercent] = useState('');
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
 
@@ -58,10 +72,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         const auth = await authRes.json();
         const offer = await offerRes.json();
 
-        if (!auth.loggedIn || offer.error) { setAuthError("Brak dostępu lub oferty."); setIsLoading(false); return; }
+        if (!auth.loggedIn || offer.error) { setAuthError(eo.noAccess); setIsLoading(false); return; }
+        setViewerRole(auth.user?.role ?? null);
         const isOwner = offer.user?.email === auth.user?.email;
         const isAdmin = auth.user?.role === 'ADMIN';
-        if (!isOwner && !isAdmin) { setAuthError("Brak uprawnień do edycji."); setIsLoading(false); return; }
+        if (!isOwner && !isAdmin) { setAuthError(eo.noPermission); setIsLoading(false); return; }
 
         const parsedImages = (() => {
           const raw = offer.images;
@@ -84,15 +99,21 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           area: String(offer.area || ''),
           rooms: String(offer.rooms || ''),
           floor: String(offer.floor || ''),
-          year: String(offer.year || offer.buildYear || ''),
+          year: String(offer.yearBuilt ?? offer.year ?? offer.buildYear ?? ''),
           plotArea: String(offer.plotArea || ''),
           amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
           apartmentNumber: offer.apartmentNumber || "",
-          propertyType: offer.propertyType || "Mieszkanie"
+          propertyType: offer.propertyType || "FLAT",
         });
+        const cp = offer.agentCommissionPercent;
+        setAgentCommissionPercent(
+          cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
+        );
         if (parsedImages.length) setImagesList(parsedImages);
+        const fp = String(offer.floorPlanUrl || offer.floorPlan || '').trim();
+        setFloorPlanUrl(fp || null);
         setIsLoading(false);
       } catch (e) { setAuthError("Błąd serwera."); setIsLoading(false); }
     };
@@ -136,6 +157,38 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
   const handleRemoveImage = (url: string) => { const n = imagesList.filter(u => u !== url); setImagesList(n); updateData({ images: n.join(","), imageUrl: n[0] || '' }); };
 
+  const handleFloorPlanUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !offerId) return;
+    setFloorPlanUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('offerId', offerId);
+      formData.append('isFloorPlan', 'true');
+      formData.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: formData, credentials: 'include' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'Upload rzutu nie powiódł się');
+      }
+      const d = await res.json();
+      if (d.url) {
+        setFloorPlanUrl(d.url);
+        updateData({ floorPlanUrl: d.url, floorPlan: d.url });
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Upload rzutu nie powiódł się.');
+    } finally {
+      setFloorPlanUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveFloorPlan = () => {
+    setFloorPlanUrl(null);
+    updateData({ floorPlanUrl: null, floorPlan: null });
+  };
+
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
@@ -150,7 +203,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const handleSave = async () => {
     setIsSubmitting(true);
     // Przed wysłaniem usuwamy spacje z ceny
-    const payload = { ...data, price: String(data.price || '').replace(/\s/g, ''), images: JSON.stringify(imagesList), buildYear: data.year };
+    const payload = {
+      ...data,
+      price: String(data.price || '').replace(/\s/g, ''),
+      images: JSON.stringify(imagesList),
+      floorPlanUrl: floorPlanUrl || null,
+      floorPlan: floorPlanUrl || null,
+      buildYear: data.year,
+      yearBuilt: data.year,
+      ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
+        ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
+        : {}),
+    };
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       setIsSuccess(true); 
@@ -167,11 +231,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     else updateData({ amenities: [...current, am].join(',') });
   };
 
-  if (isLoading) return <div className="min-h-screen bg-[#020202] flex flex-col items-center justify-center gap-6"><div className="w-16 h-16 relative"><div className="absolute inset-0 border-t-2 border-emerald-500 rounded-full animate-spin"></div><div className="absolute inset-2 border-r-2 border-emerald-400 rounded-full animate-[spin_1.5s_reverse_infinite]"></div></div><span className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Ładowanie Systemu</span></div>;
-  if (authError) return <div className="min-h-screen bg-[#020202] flex items-center justify-center text-red-500 font-bold uppercase tracking-widest">{authError}</div>;
+  if (isLoading) return <div className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center gap-6 bg-[var(--eos-bg)]"><Loader2 className="size-10 animate-spin text-[var(--eos-accent)]" /></div>;
+  if (authError) return <div className="theme-aware-dashboard flex min-h-screen items-center justify-center bg-[var(--eos-bg)] font-bold uppercase tracking-widest text-red-500">{authError}</div>;
 
   return (
-    <div className="min-h-screen bg-[#020202] text-[#f5f5f7] pb-40 font-sans selection:bg-emerald-500/30">
+    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-40 font-sans text-[var(--eos-text)] selection:bg-emerald-500/30">
       
       {/* Pasek Nawigacyjny */}
       <div className="sticky top-0 z-50 bg-[#020202]/80 backdrop-blur-2xl border-b border-white/5 p-4 md:p-6 flex items-center justify-between shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
@@ -227,6 +291,20 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 </div>
               </div>
             </div>
+            {isAgentCommissionAccount({ role: viewerRole }) ? (
+              <div className="pt-4 border-t border-white/5">
+                <AgentCommissionEditor
+                  priceRaw={String(data.price || '').replace(/\s/g, '')}
+                  percentValue={agentCommissionPercent}
+                  onPercentChange={setAgentCommissionPercent}
+                />
+              </div>
+            ) : null}
+            {data.propertyType ? (
+              <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-4">
+                Typ: {formatOfferPropertyType(data.propertyType, 'pl') || '—'}
+              </p>
+            ) : null}
           </div>
         </motion.div>
 
@@ -305,6 +383,42 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               </div>
             </SortableContext>
           </DndContext>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className={glassPanel}>
+          <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
+            <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-cyan-500/20 to-cyan-900/20 flex items-center justify-center border border-cyan-500/30">
+              <Map size={24} className="text-cyan-400" />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">Plan nieruchomości</h2>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Rzut lokalu dla kupujących</p>
+            </div>
+          </div>
+          {!floorPlanUrl ? (
+            <label className="w-full min-h-[88px] rounded-2xl border-2 border-dashed border-[#222] hover:border-cyan-500/50 bg-[#0a0a0a]/50 flex flex-col items-center justify-center cursor-pointer transition-all group">
+              {floorPlanUploading ? <Loader2 className="animate-spin text-cyan-400" size={28} /> : (
+                <>
+                  <Map size={28} className="text-zinc-600 group-hover:text-cyan-400 mb-2 transition-colors" />
+                  <span className="text-[10px] uppercase font-black text-zinc-600 group-hover:text-cyan-400 tracking-widest">Dodaj plan nieruchomości</span>
+                </>
+              )}
+              <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
+            </label>
+          ) : (
+            <div className="relative w-full max-w-md mx-auto rounded-2xl overflow-hidden border border-cyan-500/30 bg-black">
+              <img src={floorPlanUrl} alt="Plan nieruchomości" className="w-full h-56 object-contain opacity-90" />
+              <div className="flex gap-2 p-3 border-t border-white/5 bg-[#0a0a0a]">
+                <label className="flex-1 py-2.5 rounded-xl border border-white/10 text-center text-[10px] font-black uppercase tracking-widest text-cyan-400 cursor-pointer hover:bg-white/5">
+                  {floorPlanUploading ? 'Wgrywanie…' : 'Zmień plan'}
+                  <input type="file" accept="image/*" onChange={handleFloorPlanUpload} className="hidden" />
+                </label>
+                <button type="button" onClick={handleRemoveFloorPlan} className="flex-1 py-2.5 rounded-xl border border-red-500/30 text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-500/10">
+                  Usuń
+                </button>
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* --- OPIS --- */}

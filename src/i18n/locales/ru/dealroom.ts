@@ -57,6 +57,9 @@ export const dealroom = {
     priceProposed: 'Последнее в чате: ценовое предложение {{amount}} PLN',
     priceChange: 'Последние новости в чате: обновленная информация о ценовых переговорах',
     negotiationUpdate: 'Последнее в чате: новости о переговорах',
+    transactionFinalized: 'Последнее в чате: объект продан — поздравляем',
+    reviewSubmitted: 'Последнее в чате: оставлен отзыв о сделке ({{rating}}/5)',
+    reviewSubmittedGeneric: 'Последнее в чате: оставлен отзыв о сотрудничестве',
     preview: 'Последнее: «{{preview}}»',
   },
   list: {

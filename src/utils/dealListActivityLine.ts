@@ -1,5 +1,5 @@
 import { parseDealEvent, normalizeDealEvent } from './dealEventParse';
-import { isDealSaleFinalizedMessage } from '../contracts/parityContracts';
+import { DEAL_REVIEW_PREFIX, isDealSaleFinalizedMessage } from '../contracts/parityContracts';
 import { isMessageFromUser, isPositiveUserId } from './dealBidNegotiation';
 
 const shortPl = (iso: string) =>
@@ -191,7 +191,9 @@ export function buildDealListActivityLine(messages: any[], ctx: DealListActivity
           c.length > 0 &&
           !c.startsWith('[[DEAL_EVENT]]') &&
           !c.startsWith('[[deal_event]]') &&
-          !c.startsWith('[[DEAL_ATTACHMENT]]')
+          !c.startsWith('[[DEAL_ATTACHMENT]]') &&
+          !c.startsWith(DEAL_REVIEW_PREFIX) &&
+          !c.startsWith('[SYSTEM_FINALIZED]')
         );
       });
     if (lastPlain) {

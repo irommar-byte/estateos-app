@@ -18,6 +18,7 @@ import {
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import {
   enrichOfferMoneyFields,
   enrichOfferMoneyFieldsWithRate,
@@ -104,7 +105,9 @@ export async function GET() {
     const activeIds = await activePublicationOfferIds(
       offers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id))
     );
-    const visibleOffers = offers.filter((offer: any) => activeIds.has(Number(offer.id)));
+    const visibleOffers = offers.filter((offer: any) =>
+      canShowOfferOnPublicMarket(offer, activeIds),
+    );
 
     let listFxRate = DEFAULT_EUR_PLN_RATE;
     let listFxDate: string | null = new Date().toISOString().slice(0, 10);

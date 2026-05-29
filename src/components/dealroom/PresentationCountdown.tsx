@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
 import { useI18n } from '../../i18n';
 import { useThemeStore } from '../../store/useThemeStore';
 
@@ -36,6 +36,8 @@ function CountdownUnit({
   isDark,
   accent,
   glowAccent,
+  compact = false,
+  ultraCompact = false,
   pulsing = false,
 }: {
   value: string;
@@ -43,6 +45,8 @@ function CountdownUnit({
   isDark: boolean;
   accent: string;
   glowAccent: string;
+  compact?: boolean;
+  ultraCompact?: boolean;
   pulsing?: boolean;
 }) {
   const breathe = useRef(new Animated.Value(0)).current;
@@ -111,12 +115,16 @@ function CountdownUnit({
         style={[
           styles.tileValue,
           {
+            fontSize: ultraCompact ? 18 : compact ? 21 : 26,
+            letterSpacing: ultraCompact ? -0.2 : compact ? -0.6 : -1,
             color: isDark ? glowAccent : accent,
             textShadowColor: isDark ? `${glowAccent}AA` : 'transparent',
             textShadowRadius: isDark ? 12 : 8,
           },
         ]}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.45}
         allowFontScaling={false}
       >
         {value}
@@ -124,7 +132,11 @@ function CountdownUnit({
       <Text
         style={[
           styles.tileLabel,
-          { color: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.55)' },
+          {
+            fontSize: ultraCompact ? 7 : compact ? 8 : 9,
+            letterSpacing: ultraCompact ? 0.45 : compact ? 0.8 : 1.2,
+            color: isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.55)',
+          },
         ]}
         allowFontScaling={false}
       >
@@ -135,7 +147,7 @@ function CountdownUnit({
 }
 
 /** Dwukropek między kafelkami — delikatny puls. */
-function Sep({ isDark, accent }: { isDark: boolean; accent: string }) {
+function Sep({ isDark, accent, width = 14 }: { isDark: boolean; accent: string; width?: number }) {
   const blink = useRef(new Animated.Value(0.45)).current;
 
   useEffect(() => {
@@ -160,7 +172,7 @@ function Sep({ isDark, accent }: { isDark: boolean; accent: string }) {
   }, [blink]);
 
   return (
-    <View style={styles.sepCol}>
+    <View style={[styles.sepCol, { width }]}>
       <Animated.View
         style={[
           styles.dot,
@@ -183,6 +195,7 @@ export default function PresentationCountdown({
   variant = 'panel',
 }: Props) {
   const { t } = useI18n();
+  const { width: screenWidth } = useWindowDimensions();
   const countdownLabel = label ?? t('dealroom.countdown.label');
   const targetMs = useMemo(() => new Date(presentationIso).getTime(), [presentationIso]);
   const [tick, setTick] = useState(0);
@@ -220,6 +233,9 @@ export default function PresentationCountdown({
   const accent = variant === 'modal' ? (isDark ? '#9ca3af' : '#475569') : '#10b981';
   const glowAccent = variant === 'modal' ? (isDark ? '#cbd5e1' : '#475569') : isDark ? '#34d399' : '#10b981';
   const labelColor = isDark ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.55)';
+  const compact = screenWidth <= 390;
+  const ultraCompact = screenWidth <= 360;
+  const separatorWidth = ultraCompact ? 8 : compact ? 10 : 14;
 
   /*
    * Tło CAŁEGO bloku — w dark mode rozjaśniamy go subtelną zieloną aurą,
@@ -260,13 +276,13 @@ export default function PresentationCountdown({
         </Text>
       </View>
       <View style={styles.row}>
-        <CountdownUnit value={String(parts.days)} label={t('dealroom.countdown.days')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
-        <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.hours)} label={t('dealroom.countdown.hours')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
-        <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.minutes)} label={t('dealroom.countdown.minutes')} isDark={isDark} accent={accent} glowAccent={glowAccent} />
-        <Sep isDark={isDark} accent={glowAccent} />
-        <CountdownUnit value={pad2(parts.seconds)} label={t('dealroom.countdown.seconds')} isDark={isDark} accent={accent} glowAccent={glowAccent} pulsing />
+        <CountdownUnit value={String(parts.days)} label={t('dealroom.countdown.days')} isDark={isDark} accent={accent} glowAccent={glowAccent} compact={compact} ultraCompact={ultraCompact} />
+        <Sep isDark={isDark} accent={glowAccent} width={separatorWidth} />
+        <CountdownUnit value={pad2(parts.hours)} label={t('dealroom.countdown.hours')} isDark={isDark} accent={accent} glowAccent={glowAccent} compact={compact} ultraCompact={ultraCompact} />
+        <Sep isDark={isDark} accent={glowAccent} width={separatorWidth} />
+        <CountdownUnit value={pad2(parts.minutes)} label={t('dealroom.countdown.minutes')} isDark={isDark} accent={accent} glowAccent={glowAccent} compact={compact} ultraCompact={ultraCompact} />
+        <Sep isDark={isDark} accent={glowAccent} width={separatorWidth} />
+        <CountdownUnit value={pad2(parts.seconds)} label={t('dealroom.countdown.seconds')} isDark={isDark} accent={accent} glowAccent={glowAccent} compact={compact} ultraCompact={ultraCompact} pulsing />
       </View>
     </View>
   );
@@ -304,6 +320,7 @@ const styles = StyleSheet.create({
   },
   tile: {
     flex: 1,
+    minWidth: 0,
     minHeight: 60,
     paddingTop: 8,
     paddingBottom: 7,

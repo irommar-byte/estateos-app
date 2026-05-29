@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Lock, LocateFixed } from "lucide-react";
+import { Hand, Lock, LocateFixed, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
+import { useDisplayCurrency } from "@/contexts/DisplayCurrencyContext";
 import {
   normalizeTransactionType,
   transactionModeFromOffers,
@@ -54,11 +55,16 @@ const MAP_STYLE = {
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
   const { resolvedTheme } = useTheme();
-  const { formatPinLabel, preference, rate } = useFormatOfferPrice();
+  const { preference } = useDisplayCurrency();
+  const { formatPinLabel, rate } = useFormatOfferPrice();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const appliedMapTheme = useRef<"light" | "dark" | null>(null);
+  const autoRotateTimerRef = useRef<number | null>(null);
+  const lastInteractionAtRef = useRef<number>(Date.now());
+  const hoverFocusActiveRef = useRef(false);
+  const canHoverRef = useRef(false);
 
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
@@ -66,16 +72,46 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [transactionMode, setTransactionMode] = useState<"sale" | "rent">("sale");
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
+  const [priceMaxUi, setPriceMaxUi] = useState<number>(50_000_000);
+  const [priceMaxRentUi, setPriceMaxRentUi] = useState<number>(50_000);
 
   const [mapboxToken, setMapboxToken] = useState<string | null>(null);
   const [mapInitError, setMapInitError] = useState<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showTeaser, setShowTeaser] = useState(false);
+  const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
+  const [showMapGuide, setShowMapGuide] = useState(false);
 
   const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
   const maxPriceLabel =
     transactionMode === "rent" ? dict.map.maxRentLabel : dict.map.maxPriceLabel;
+  const isEurDisplay = preference === "EUR";
+  const safeRate = rate > 0 ? rate : 4.32;
+
+  const saleBounds = {
+    minPln: 100_000,
+    maxPln: 50_000_000,
+    stepPln: 100_000,
+  };
+  const rentBounds = {
+    minPln: 1_000,
+    maxPln: 100_000,
+    stepPln: 500,
+  };
+
+  const saleUiMin = isEurDisplay ? Math.round(saleBounds.minPln / safeRate) : saleBounds.minPln;
+  const saleUiMax = isEurDisplay ? Math.round(saleBounds.maxPln / safeRate) : saleBounds.maxPln;
+  const saleUiStep = Math.max(
+    1,
+    isEurDisplay ? Math.round(saleBounds.stepPln / safeRate) : saleBounds.stepPln,
+  );
+  const rentUiMin = isEurDisplay ? Math.round(rentBounds.minPln / safeRate) : rentBounds.minPln;
+  const rentUiMax = isEurDisplay ? Math.round(rentBounds.maxPln / safeRate) : rentBounds.maxPln;
+  const rentUiStep = Math.max(
+    1,
+    isEurDisplay ? Math.round(rentBounds.stepPln / safeRate) : rentBounds.stepPln,
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -85,6 +121,13 @@ export default function InteractiveMap({ immersive = false }: Props) {
         setShowTeaser(true);
     }
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    canHoverRef.current = window.matchMedia("(hover: hover)").matches;
+    const dismissed = window.localStorage.getItem("estateos_map_guide_dismissed");
+    setShowMapGuide(dismissed !== "1");
+  }, []);
 
   useEffect(() => {
     fetch("/api/user/profile", { credentials: "include" })
@@ -155,50 +198,42 @@ export default function InteractiveMap({ immersive = false }: Props) {
     setFilteredOffers(result);
   }, [transactionMode, priceMax, priceMaxRent, allOffers]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPriceMax(isEurDisplay ? Math.round(priceMaxUi * safeRate) : priceMaxUi);
+      setPriceMaxRent(isEurDisplay ? Math.round(priceMaxRentUi * safeRate) : priceMaxRentUi);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [priceMaxUi, priceMaxRentUi, isEurDisplay, safeRate]);
+
+  useEffect(() => {
+    if (isEurDisplay) {
+      setPriceMaxUi(Math.round(priceMax / safeRate));
+      setPriceMaxRentUi(Math.round(priceMaxRent / safeRate));
+      return;
+    }
+    setPriceMaxUi(priceMax);
+    setPriceMaxRentUi(priceMaxRent);
+  }, [isEurDisplay, priceMax, priceMaxRent, safeRate]);
+
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
     const newMarkers: Record<string, boolean> = {};
-    const features = map.current.queryRenderedFeatures({
-      layers: ["clustered-point", "unclustered-point"],
-    });
 
-    features.forEach((feature: any) => {
-      const coords = feature.geometry.coordinates as [number, number];
-      const isCluster = feature.properties.cluster;
-      const id = isCluster
-        ? `cluster-${feature.properties.cluster_id}`
-        : `offer-${feature.properties.id}`;
-      newMarkers[id] = true;
+    filteredOffers
+      .filter((offer) => offer.lng != null && offer.lat != null)
+      .forEach((offer) => {
+        const id = `offer-${offer.id}`;
+        const coords: [number, number] = [Number(offer.lng), Number(offer.lat)];
+        newMarkers[id] = true;
 
-      if (!markersRef.current[id]) {
-        const outerEl = document.createElement("div");
-        outerEl.className = "z-30 relative";
-        const innerEl = document.createElement("div");
-
-        if (isCluster) {
-          innerEl.className =
-            "w-10 h-10 backdrop-blur-2xl border rounded-full flex items-center justify-center font-black text-sm cursor-pointer hover:scale-110 transition-all duration-300 bg-white/10 border-white/20 text-white shadow-[0_10px_30px_rgba(0,0,0,0.5)]";
-          innerEl.innerText = feature.properties.point_count;
-          innerEl.onclick = (e) => {
-            e.stopPropagation();
-            const source = map.current!.getSource("offers") as mapboxgl.GeoJSONSource;
-            source.getClusterExpansionZoom(
-              feature.properties.cluster_id,
-              (err, zoom) => {
-                if (err || zoom == null) return;
-                map.current!.easeTo({ center: coords, zoom: zoom + 2, pitch: 60 });
-              },
-            );
-          };
-        } else {
-          const offer = filteredOffers.find(
-            (o) => String(o.id) === String(feature.properties.id),
-          );
-          const tx = normalizeTransactionType(feature.properties.transactionType);
-          innerEl.className = offerPinColorClasses(feature.properties.transactionType);
-          innerEl.innerText = offer
-            ? formatPinLabel(offer, tx === "rent")
-            : "—";
+        if (!markersRef.current[id]) {
+          const outerEl = document.createElement("div");
+          outerEl.className = "z-30 relative";
+          const innerEl = document.createElement("div");
+          const tx = normalizeTransactionType(offer.transactionType);
+          innerEl.className = offerPinColorClasses(offer.transactionType);
+          innerEl.innerText = formatPinLabel(offer, tx === "rent");
           innerEl.onclick = (e) => {
             e.stopPropagation();
             const win = window as Window & {
@@ -206,40 +241,87 @@ export default function InteractiveMap({ immersive = false }: Props) {
               triggerTeaser?: () => void;
             };
             if (win.isLoggedIn) {
-              window.location.href = `/oferta/${feature.properties.id}`;
+              window.location.href = `/oferta/${offer.id}`;
             } else {
               win.triggerTeaser?.();
             }
           };
-        }
+          innerEl.onmouseenter = () => {
+            if (!map.current || !canHoverRef.current) return;
+            const id = Number(offer.id);
+            if (!Number.isFinite(id)) return;
+            if (activeHoverPinId === id || map.current.isMoving()) return;
+            hoverFocusActiveRef.current = true;
+            setActiveHoverPinId(id);
+            lastInteractionAtRef.current = Date.now();
+            map.current.flyTo({
+              center: coords,
+              zoom: 16.2,
+              pitch: 58,
+              bearing: -12,
+              speed: 0.42,
+              curve: 1.42,
+              essential: true,
+            });
+          };
+          innerEl.onmouseleave = () => {
+            if (!canHoverRef.current) return;
+            hoverFocusActiveRef.current = false;
+            setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+          };
 
-        outerEl.appendChild(innerEl);
-        markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
-          .setLngLat(coords)
-          .addTo(map.current!);
-      } else if (!isCluster && markersRef.current[id]) {
-        const rootEl = markersRef.current[id].getElement();
-        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
-        if (pinEl) {
-          const offer = filteredOffers.find(
-            (o) => String(o.id) === String(feature.properties.id),
-          );
-          const tx = normalizeTransactionType(feature.properties.transactionType);
-          pinEl.className = offerPinColorClasses(feature.properties.transactionType);
-          pinEl.innerText = offer
-            ? formatPinLabel(offer, tx === "rent")
-            : "—";
+          outerEl.appendChild(innerEl);
+          markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
+            .setLngLat(coords)
+            .addTo(map.current!);
+        } else {
+          markersRef.current[id].setLngLat(coords);
+          const rootEl = markersRef.current[id].getElement();
+          const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+          if (pinEl) {
+            const tx = normalizeTransactionType(offer.transactionType);
+            pinEl.className = offerPinColorClasses(offer.transactionType);
+            pinEl.innerText = formatPinLabel(offer, tx === "rent");
+            pinEl.onmouseenter = () => {
+              if (!map.current || !canHoverRef.current) return;
+              const idNum = Number(offer.id);
+              if (!Number.isFinite(idNum)) return;
+              if (activeHoverPinId === idNum || map.current.isMoving()) return;
+              hoverFocusActiveRef.current = true;
+              setActiveHoverPinId(idNum);
+              lastInteractionAtRef.current = Date.now();
+              map.current.flyTo({
+                center: coords,
+                zoom: 16.2,
+                pitch: 58,
+                bearing: -12,
+                speed: 0.42,
+                curve: 1.42,
+                essential: true,
+              });
+            };
+            pinEl.onmouseleave = () => {
+              if (!canHoverRef.current) return;
+              hoverFocusActiveRef.current = false;
+              setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+            };
+          }
         }
-      }
-    });
+      });
 
     for (const id of Object.keys(markersRef.current)) {
       if (!newMarkers[id]) {
+        const rootEl = markersRef.current[id].getElement();
+        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+        if (pinEl) {
+          pinEl.onmouseenter = null;
+          pinEl.onmouseleave = null;
+        }
         markersRef.current[id].remove();
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, formatPinLabel, preference, rate]);
+  }, [filteredOffers, formatPinLabel, rate, activeHoverPinId]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current || map.current) return;
@@ -310,33 +392,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
       }
 
-      if (!map.current.getSource("offers")) {
-        map.current.addSource("offers", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-          cluster: true,
-          clusterMaxZoom: 14,
-          clusterRadius: 50,
-        });
-        map.current.addLayer({
-          id: "clustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["has", "point_count"],
-          /* Niewidoczne kółka — promień > 0, inaczej queryRenderedFeatures nie zwraca pinezek */
-          paint: { "circle-radius": 28, "circle-opacity": 0 },
-        });
-        map.current.addLayer({
-          id: "unclustered-point",
-          type: "circle",
-          source: "offers",
-          filter: ["!", ["has", "point_count"]],
-          paint: { "circle-radius": 28, "circle-opacity": 0 },
-        });
-      }
-
-      map.current.on("render", updateMarkers);
-      map.current.on("idle", updateMarkers);
+      updateMarkers();
       setMapLoaded(true);
     };
 
@@ -368,78 +424,65 @@ export default function InteractiveMap({ immersive = false }: Props) {
       map.current.setStyle(nextStyle);
       map.current.once("style.load", () => {
         if (!map.current) return;
-        if (!map.current.getSource("offers")) {
-          map.current.addSource("offers", {
-            type: "geojson",
-            data: { type: "FeatureCollection", features: [] },
-            cluster: true,
-            clusterMaxZoom: 14,
-            clusterRadius: 50,
-          });
-          map.current.addLayer({
-            id: "clustered-point",
-            type: "circle",
-            source: "offers",
-            filter: ["has", "point_count"],
-            paint: { "circle-radius": 28, "circle-opacity": 0 },
-          });
-          map.current.addLayer({
-            id: "unclustered-point",
-            type: "circle",
-            source: "offers",
-            filter: ["!", ["has", "point_count"]],
-            paint: { "circle-radius": 28, "circle-opacity": 0 },
-          });
-        }
-        const features = filteredOffers
-          .filter((o) => o.lng != null && o.lat != null)
-          .map((offer: any) => ({
-            type: "Feature" as const,
-            properties: {
-              id: offer.id,
-              price: offer.price ?? "",
-              transactionType: offer.transactionType,
-              isPartner: !!offer.badges?.isPartner,
-            },
-            geometry: {
-              type: "Point" as const,
-              coordinates: [Number(offer.lng), Number(offer.lat)],
-            },
-          }));
-        const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
-        source?.setData({ type: "FeatureCollection", features });
-        map.current.on("render", updateMarkers);
-        map.current.on("idle", updateMarkers);
         updateMarkers();
       });
     } catch {
       /* noop */
     }
-  }, [resolvedTheme, mapLoaded, filteredOffers, updateMarkers]);
+  }, [resolvedTheme, mapLoaded, updateMarkers]);
 
   useEffect(() => {
-    if (!map.current?.getSource("offers") || !map.current.isStyleLoaded()) return;
+    if (!mapLoaded) return;
+    updateMarkers();
+  }, [mapLoaded, updateMarkers]);
 
-    const features = filteredOffers
-      .filter((o) => o.lng != null && o.lat != null)
-      .map((offer: any) => ({
-        type: "Feature" as const,
-        properties: {
-          id: offer.id,
-          price: offer.price ?? "",
-          transactionType: offer.transactionType,
-          isPartner: !!offer.badges?.isPartner,
-        },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [Number(offer.lng), Number(offer.lat)],
-        },
-      }));
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const mapInstance = map.current;
 
-    const source = map.current.getSource("offers") as mapboxgl.GeoJSONSource;
-    source?.setData({ type: "FeatureCollection", features });
-    map.current.triggerRepaint();
-  }, [filteredOffers, mapLoaded, preference, rate]);
+    const markInteraction = () => {
+      lastInteractionAtRef.current = Date.now();
+    };
+
+    mapInstance.on("dragstart", markInteraction);
+    mapInstance.on("zoomstart", markInteraction);
+    mapInstance.on("rotatestart", markInteraction);
+    mapInstance.on("pitchstart", markInteraction);
+    mapInstance.on("mousedown", markInteraction);
+    mapInstance.on("touchstart", markInteraction);
+    mapInstance.on("wheel", markInteraction);
+
+    const tick = window.setInterval(() => {
+      if (!map.current) return;
+      if (hoverFocusActiveRef.current) return;
+      const now = Date.now();
+      const idleForMs = now - lastInteractionAtRef.current;
+      const zoom = map.current.getZoom();
+      if (idleForMs < 2200 || zoom > 4.8 || map.current.isMoving()) return;
+
+      map.current.easeTo({
+        bearing: map.current.getBearing() + 6,
+        duration: 2600,
+        easing: (t) => t,
+      });
+    }, 2800);
+
+    autoRotateTimerRef.current = tick;
+
+    return () => {
+      mapInstance.off("dragstart", markInteraction);
+      mapInstance.off("zoomstart", markInteraction);
+      mapInstance.off("rotatestart", markInteraction);
+      mapInstance.off("pitchstart", markInteraction);
+      mapInstance.off("mousedown", markInteraction);
+      mapInstance.off("touchstart", markInteraction);
+      mapInstance.off("wheel", markInteraction);
+      if (autoRotateTimerRef.current) {
+        window.clearInterval(autoRotateTimerRef.current);
+        autoRotateTimerRef.current = null;
+      }
+    };
+  }, [mapLoaded]);
 
   useEffect(() => {
     const el = mapContainer.current;
@@ -487,8 +530,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
   };
 
   const saleSliderPct =
-    ((priceMax - 100_000) / (50_000_000 - 100_000)) * 100;
-  const rentSliderPct = ((priceMaxRent - 1_000) / (100_000 - 1_000)) * 100;
+    ((priceMaxUi - saleUiMin) / Math.max(1, saleUiMax - saleUiMin)) * 100;
+  const rentSliderPct =
+    ((priceMaxRentUi - rentUiMin) / Math.max(1, rentUiMax - rentUiMin)) * 100;
   const sliderAccent = transactionMode === "rent" ? "#3b82f6" : "#10b981";
   const sliderPct = transactionMode === "rent" ? rentSliderPct : saleSliderPct;
 
@@ -502,7 +546,51 @@ export default function InteractiveMap({ immersive = false }: Props) {
     >
       <div ref={mapContainer} className="absolute inset-0 z-0 h-full w-full min-h-[280px]" />
 
+      <div className="interactive-map-galaxy pointer-events-none absolute inset-0 z-[1]" />
       <div className="interactive-map-vignette pointer-events-none absolute inset-0 z-[1]" />
+
+      {showMapGuide && (
+        <motion.aside
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute bottom-6 left-4 z-30 w-[min(92vw,360px)] rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-2xl sm:left-6 sm:p-5"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setShowMapGuide(false);
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("estateos_map_guide_dismissed", "1");
+              }
+            }}
+            className="absolute right-3 top-3 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+          >
+            OK
+          </button>
+          <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+            {dict.map.guideTitle}
+          </p>
+          <div className="space-y-2 text-xs text-[var(--eos-text)]/90">
+            <div className="flex items-center gap-2">
+              <Move className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guidePan}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Hand className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guidePinch}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <MousePointer2 className="h-4 w-4 text-emerald-400" />
+              <span>{dict.map.guideHoverZoom}</span>
+            </div>
+          </div>
+        </motion.aside>
+      )}
+
+      <div className="pointer-events-none absolute bottom-6 right-4 z-20 flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/80 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)] backdrop-blur-xl sm:right-6">
+        <ZoomIn className={`h-3.5 w-3.5 ${activeHoverPinId ? "text-emerald-400" : "text-[var(--eos-muted)]"}`} />
+        <span>{activeHoverPinId ? dict.map.hoverZoomActive : dict.map.hoverZoomHint}</span>
+      </div>
 
       {mapInitError && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
@@ -565,21 +653,21 @@ export default function InteractiveMap({ immersive = false }: Props) {
               <span className="text-xs font-black tracking-wider text-[var(--eos-text)]">
                 {new Intl.NumberFormat(priceLocale, {
                   style: "currency",
-                  currency: "PLN",
+                  currency: isEurDisplay ? "EUR" : "PLN",
                   maximumFractionDigits: 0,
-                }).format(transactionMode === "rent" ? priceMaxRent : priceMax)}
+                }).format(transactionMode === "rent" ? priceMaxRentUi : priceMaxUi)}
               </span>
             </div>
             <input
               type="range"
-              min={transactionMode === "rent" ? 1000 : 100_000}
-              max={transactionMode === "rent" ? 100_000 : 50_000_000}
-              step={transactionMode === "rent" ? 500 : 100_000}
-              value={transactionMode === "rent" ? priceMaxRent : priceMax}
+              min={transactionMode === "rent" ? rentUiMin : saleUiMin}
+              max={transactionMode === "rent" ? rentUiMax : saleUiMax}
+              step={transactionMode === "rent" ? rentUiStep : saleUiStep}
+              value={transactionMode === "rent" ? priceMaxRentUi : priceMaxUi}
               onChange={(e) =>
                 transactionMode === "rent"
-                  ? setPriceMaxRent(Number(e.target.value))
-                  : setPriceMax(Number(e.target.value))
+                  ? setPriceMaxRentUi(Number(e.target.value))
+                  : setPriceMaxUi(Number(e.target.value))
               }
               aria-label={maxPriceLabel}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"

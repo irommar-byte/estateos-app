@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
+import { readPendingPublication } from "@/lib/offerPendingPublication";
 
 export async function GET(req: Request) {
   try {
@@ -40,10 +41,17 @@ export async function GET(req: Request) {
       orderBy: { createdAt: 'desc' }
     });
 
-    const myOffers = myOffersRaw.map((offer) => ({
-      ...offer,
-      imageUrl: resolveOfferPrimaryImage(offer),
-    }));
+    const myOffers = await Promise.all(
+      myOffersRaw.map(async (offer) => {
+        const pending = await readPendingPublication(Number(offer.id));
+        return {
+          ...offer,
+          imageUrl: resolveOfferPrimaryImage(offer),
+          pendingPublicationKind: pending?.kind ?? null,
+          awaitingModeration: Boolean(pending?.kind),
+        };
+      }),
+    );
 
     // ==========================================
     // DEALS (🔥 KLUCZOWY FIX)

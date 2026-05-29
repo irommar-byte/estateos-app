@@ -32,7 +32,11 @@ import { findWebOfferById, fetchWebOffersArray } from '../utils/webOffersFallbac
 import { requestMobileDealDeletion } from '../utils/mobileDealDelete';
 import { buildDealListActivityLine } from '../utils/dealListActivityLine';
 import PresentationCountdown from '../components/dealroom/PresentationCountdown';
-import { isDealTransactionFinalized } from '../contracts/parityContracts';
+import {
+  isDealSaleFinalizedMessage,
+  isDealTransactionFinalized,
+  parseSharedDealReviewMessage,
+} from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { formatLocationLabel } from '../constants/locationEcosystem';
@@ -1737,6 +1741,16 @@ export default function DealroomListScreen() {
     const raw = String(msg || '').trim();
     if (!raw) return t('dealroom.lastMessage.empty');
     const lower = raw.toLowerCase();
+    if (raw.startsWith('[SYSTEM_FINALIZED]') || isDealSaleFinalizedMessage(raw)) {
+      return t('dealroom.lastMessage.transactionFinalized');
+    }
+    const review = parseSharedDealReviewMessage(raw);
+    if (review) {
+      return t('dealroom.lastMessage.reviewSubmitted', { rating: review.rating });
+    }
+    if (lower.startsWith('[[deal_review]]') || raw.startsWith('[[DEAL_REVIEW]]')) {
+      return t('dealroom.lastMessage.reviewSubmittedGeneric');
+    }
     if (lower.startsWith('[[deal_attachment]]') || raw.startsWith('[[DEAL_ATTACHMENT]]')) {
       return t('dealroom.lastMessage.attachment');
     }
@@ -2024,7 +2038,7 @@ export default function DealroomListScreen() {
                       : getReadableDealTitle(deal)}
                   </Text>
                 </Pressable>
-                <Text style={styles.activityDesc} numberOfLines={2}>
+                <Text style={styles.activityDesc}>
                   {activityLine}
                 </Text>
                 {showPresentationCountdown && presentationIsoForCountdown ? (
@@ -2052,10 +2066,8 @@ export default function DealroomListScreen() {
                   </Text>
                   <Text
                     style={[styles.userName, { flexShrink: 1 }]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
                     adjustsFontSizeToFit
-                    minimumFontScale={0.8}
+                    minimumFontScale={0.72}
                     allowFontScaling={false}
                   >
                     {counterparty.name}
@@ -2086,7 +2098,7 @@ export default function DealroomListScreen() {
                 />
                 <Text
                   style={[styles.lastMessageText, needsAttention && styles.lastMessageTextUnread]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
                   {formatLastMessage(deal.lastMessage)}
                 </Text>

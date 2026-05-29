@@ -25,6 +25,13 @@ import {
   getOfferSchemaCompatibilityMessage,
   isOfferSchemaCompatibilityError,
 } from '@/lib/offerSchemaErrors';
+import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
+import {
+  resolveSellerDisplayName,
+  resolveSellerPersonName,
+  resolveServicingCompanyName,
+} from '@/lib/sellerDisplay';
+import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -122,6 +129,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     
     if (!offer) return NextResponse.json({ error: "Nie znaleziono oferty" }, { status: 404 });
 
+    const currentUser = await resolveCurrentUser();
+    const offerRow = offer as unknown as {
+      id: number;
+      userId: number;
+      status: unknown;
+      expiresAt?: Date | null;
+    };
+    const access = await resolveOfferDetailAccess(prisma, offerRow, {
+      userId: currentUser?.id,
+      role: currentUser?.role,
+    });
+    if (!access.allowed) {
+      return NextResponse.json({ error: 'Oferta niedostępna' }, { status: 404 });
+    }
+
     let isRealPro = false;
     let loggedInEmail: string | null = null;
     const cookieStore = await cookies();
@@ -170,8 +192,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       legalOffer as Record<string, unknown>,
     );
 
+    const offerUser = (legalOffer as { user?: Record<string, unknown> }).user;
+    const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
+    const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
+    const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
+    const enrichedUser = offerUser
+      ? {
+          ...offerUser,
+          displayName: sellerDisplayName,
+          publicName: sellerDisplayName,
+          personName: sellerPersonName,
+          servicingCompanyName,
+        }
+      : offerUser;
+
     return NextResponse.json({
       ...moneyOffer,
+      user: enrichedUser,
+      sellerDisplayName,
+      sellerPersonName,
+      servicingCompanyName,
+      propertyTypeLabel: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'pl'),
+      propertyTypeLabelEn: formatOfferPropertyType((legalOffer as { propertyType?: unknown }).propertyType, 'en'),
+      conditionLabel: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'pl'),
+      conditionLabelEn: formatOfferCondition((legalOffer as { condition?: unknown }).condition, 'en'),
       description: cleanDescription,
       apartmentNumber: legalOffer.apartmentNumber || verification.apartmentNumber || legalOffer.buildingNumber || '',
       landRegistryNumber: legalOffer.landRegistryNumber || verification.landRegistryNumber || '',

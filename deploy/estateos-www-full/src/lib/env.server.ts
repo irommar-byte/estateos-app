@@ -62,3 +62,28 @@ export function getPasskeyOrigin(): string {
     (process.env.NODE_ENV === 'production' ? 'https://estateos.pl' : 'http://localhost:3000');
   return raw.replace(/\/$/, '');
 }
+
+/** Dozwolone origin przy weryfikacji WebAuthn (www + apex w produkcji). */
+export function getPasskeyExpectedOrigins(): string[] {
+  const primary = getPasskeyOrigin().replace(/\/$/, '');
+  const origins = new Set<string>([primary]);
+
+  try {
+    const url = new URL(primary);
+    const host = url.hostname;
+    if (host.startsWith('www.')) {
+      origins.add(`${url.protocol}//${host.slice(4)}`);
+    } else {
+      origins.add(`${url.protocol}//www.${host}`);
+    }
+  } catch {
+    // ignore malformed URL
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    origins.add('https://estateos.pl');
+    origins.add('https://www.estateos.pl');
+  }
+
+  return Array.from(origins);
+}

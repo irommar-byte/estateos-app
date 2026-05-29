@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
+import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
+import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 
 function parseUserIdFromAuthHeader(authHeader: string | null): number | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -71,6 +73,8 @@ export async function GET(req: Request) {
           hasBalcony: true,
           hasParking: true,
           isFurnished: true,
+          status: true,
+          expiresAt: true,
         },
       }),
     ]);
@@ -101,7 +105,7 @@ export async function GET(req: Request) {
     const qualityPenalty = Number(reasonStats.QUALITY_LOW || 0);
 
     const ranked = offers
-      .filter((offer) => activePublicationIds.has(Number(offer.id)))
+      .filter((offer) => canShowOfferOnPublicMarket(offer, activePublicationIds))
       .filter((o) => !likedOfferIds.has(Number(o.id)))
       .map((offer) => {
         let raw = 55;
@@ -117,7 +121,10 @@ export async function GET(req: Request) {
 
         if (cityAffinity > 0) reasons.push(`pasuje do miasta: ${offer.city}`);
         if (districtAffinity > 0) reasons.push(`zgodna dzielnica: ${offer.district}`);
-        if (typeAffinity > 0) reasons.push(`preferowany typ: ${offer.propertyType}`);
+        if (typeAffinity > 0) {
+          const typeLabel = formatOfferPropertyType(offer.propertyType, 'pl') || '';
+          if (typeLabel) reasons.push(`preferowany typ: ${typeLabel}`);
+        }
 
         if (dislikedOfferIds.has(Number(offer.id))) {
           raw -= 45;

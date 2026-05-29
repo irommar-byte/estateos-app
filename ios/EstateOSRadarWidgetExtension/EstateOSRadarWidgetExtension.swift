@@ -191,25 +191,54 @@ struct EstateOSRadarLiveActivity: Widget {
         return Array(all.dropFirst(1))
     }
 
-    /// Wszystkie parametry kalibracji jako jeden ciąg do paska newsów.
+    /// Wszystkie parametry kalibracji jako jeden ciąg do paska newsów (bez lokalizacji —
+    /// miasto i flaga są już w nagłówku nad tickerem).
     private func allCalibrationMarqueeText(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> String {
-        var parts: [String] = [headlineMessage(context)]
-        parts.append(contentsOf: rotatingParamItems(context))
+        var parts: [String] = rotatingParamItems(context)
         parts.append("Próg dopasowania: \(context.state.minMatchThreshold)%")
         if context.state.newMatchesCount > 0 {
             parts.append("NOWE dopasowania: \(context.state.newMatchesCount)")
         }
+        if parts.isEmpty {
+            parts.append("Skan rynku · sygnały rejestrowane")
+        }
         return parts.joined(separator: "   ◆   ")
     }
 
-    /// Duży glyph radaru (lewy górny róg) — obracający się skaner.
+    /// Duży glyph radaru (lewy górny róg) — obracający się skaner z mrugającym środkiem.
+    /// Live Activity nie obsługuje niezawodnie `@State` + `.repeatForever`, więc kąt
+    /// i puls wyliczamy z `TimelineView` (działa na ekranie blokady aż do AOD).
     private struct LargeAnimatedRadarGlyph: View {
         let accent: Color
         let size: CGFloat
-        @State private var spinning = false
+
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
+        private let spinPeriod: Double = 2.4
+        private let blinkPeriod: Double = 0.85
+        private let tick: Double = 1.0 / 30.0
+
         var body: some View {
+            Group {
+                if isLuminanceReduced {
+                    glyph(rotation: -84, dotScale: 1.0, dotOpacity: 1.0)
+                } else {
+                    TimelineView(.periodic(from: .now, by: tick)) { timeline in
+                        let t = timeline.date.timeIntervalSince1970
+                        let rotation = (t * (360.0 / spinPeriod)).truncatingRemainder(dividingBy: 360.0) - 84
+                        let blinkWave = 0.5 + 0.5 * sin((t * 2 * .pi) / blinkPeriod)
+                        let dotScale = 0.78 + 0.32 * blinkWave
+                        let dotOpacity = 0.55 + 0.45 * blinkWave
+                        glyph(rotation: rotation, dotScale: dotScale, dotOpacity: dotOpacity)
+                    }
+                }
+            }
+            .frame(width: size + 6, height: size + 6)
+        }
+
+        @ViewBuilder
+        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double) -> some View {
+            let dotBase = max(6, size * 0.2)
             ZStack {
                 Circle()
                     .stroke(accent.opacity(0.28), lineWidth: 2.2)
@@ -226,41 +255,37 @@ struct EstateOSRadarLiveActivity: Widget {
                         style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
                     )
                     .frame(width: size, height: size)
-                    .rotationEffect(.degrees(spinning && !isLuminanceReduced ? 360 : -84))
-                    .animation(
-                        isLuminanceReduced
-                            ? .default
-                            : .linear(duration: 2.4).repeatForever(autoreverses: false),
-                        value: spinning
-                    )
+                    .rotationEffect(.degrees(rotation))
 
                 Circle()
-                    .fill(accent)
-                    .frame(width: max(6, size * 0.2), height: max(6, size * 0.2))
-                    .shadow(color: accent.opacity(0.9), radius: 5)
-            }
-            .frame(width: size + 6, height: size + 6)
-            .onAppear {
-                spinning = !isLuminanceReduced
-            }
-            .onChange(of: isLuminanceReduced) { reduced in
-                spinning = !reduced
+                    .fill(accent.opacity(dotOpacity))
+                    .frame(width: dotBase * dotScale, height: dotBase * dotScale)
+                    .shadow(color: accent.opacity(0.85 * dotOpacity), radius: 3 + 4 * dotScale)
             }
         }
     }
 
-    /// Pasek informacyjny w stylu newsów — ciągły scroll wszystkich parametrów
-    /// kalibracji po rozjaśnieniu ekranu blokady (poza trybem AOD).
+    /// Pasek informacyjny w stylu newsów — ciągły scroll parametrów kalibracji.
+    /// `TimelineView(.periodic)` zamiast `.animation` / `@State` — stabilne na lock screen.
     private struct RadarNewsMarquee: View {
         let accent: Color
         let text: String
         var compact: Bool = false
 
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+        @State private var measuredLineWidth: CGFloat = 0
+
+        private var fontSize: CGFloat { compact ? 11 : 12 }
+        private var charEstimate: CGFloat { compact ? 6.0 : 6.6 }
+        private var scrollSpeed: CGFloat { compact ? 44 : 52 }
+        private var tick: Double { 1.0 / 24.0 }
 
         var body: some View {
             GeometryReader { geo in
                 let containerW = max(geo.size.width, 1)
+                let lineW = max(measuredLineWidth, CGFloat(max(text.count, 12)) * charEstimate + 24)
+                let loopSpan = lineW + containerW + 80
+
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
                         .fill(Color.white.opacity(0.08))
@@ -271,7 +296,7 @@ struct EstateOSRadarLiveActivity: Widget {
 
                     if isLuminanceReduced {
                         Text(text)
-                            .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: fontSize, weight: .semibold, design: .rounded))
                             .foregroundColor(.white)
                             .lineLimit(1)
                             .minimumScaleFactor(0.55)
@@ -279,14 +304,11 @@ struct EstateOSRadarLiveActivity: Widget {
                             .padding(.horizontal, 12)
                             .frame(width: containerW, alignment: .leading)
                     } else {
-                        TimelineView(.animation) { timeline in
-                            let speed: CGFloat = compact ? 46 : 54
-                            let t = CGFloat(timeline.date.timeIntervalSince1970)
-                            let estW = CGFloat(max(text.count, 24)) * (compact ? 5.4 : 6.0)
-                            let loop = estW + containerW + 56
-                            let offset = -(t * speed).truncatingRemainder(dividingBy: max(loop, 1))
+                        TimelineView(.periodic(from: .now, by: tick)) { timeline in
+                            let phase = CGFloat(timeline.date.timeIntervalSince1970) * scrollSpeed
+                            let offset = -(phase.truncatingRemainder(dividingBy: max(loopSpan, 1)))
 
-                            HStack(spacing: 56) {
+                            HStack(spacing: 80) {
                                 marqueeLine
                                 marqueeLine
                             }
@@ -297,14 +319,35 @@ struct EstateOSRadarLiveActivity: Widget {
             }
             .frame(height: compact ? 22 : 26)
             .clipped()
+            .overlay(alignment: .topLeading) {
+                marqueeLine
+                    .fixedSize(horizontal: true, vertical: false)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .preference(key: MarqueeLineWidthKey.self, value: proxy.size.width)
+                        }
+                    )
+                    .hidden()
+            }
+            .onPreferenceChange(MarqueeLineWidthKey.self) { width in
+                if width > 0 { measuredLineWidth = width }
+            }
         }
 
         private var marqueeLine: some View {
             Text(text)
-                .font(.system(size: compact ? 11 : 12, weight: .semibold, design: .rounded))
+                .font(.system(size: fontSize, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private struct MarqueeLineWidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
         }
     }
 
@@ -382,58 +425,57 @@ struct EstateOSRadarLiveActivity: Widget {
         .padding(emphasized ? 3 : 2)
     }
 
-    /// Mini-glyph radaru z obracającym się skanerem i pulsującym środkiem
-    /// (restored premium). Na AOD przechodzi w statyczny widok bez `repeatForever`.
+    /// Mini-glyph radaru z obracającym się skanerem i pulsującym środkiem.
     private struct MiniRadarGlyph: View {
         let accent: Color
-        @State private var spinning = false
-        @State private var pulse = false
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
+        private let spinPeriod: Double = 1.4
+        private let blinkPeriod: Double = 1.0
+        private let tick: Double = 1.0 / 30.0
+
         var body: some View {
-                ZStack {
+            Group {
+                if isLuminanceReduced {
+                    glyph(rotation: -72, dotScale: 1.0, dotOpacity: 1.0)
+                } else {
+                    TimelineView(.periodic(from: .now, by: tick)) { timeline in
+                        let t = timeline.date.timeIntervalSince1970
+                        let rotation = (t * (360.0 / spinPeriod)).truncatingRemainder(dividingBy: 360.0) - 72
+                        let blinkWave = 0.5 + 0.5 * sin((t * 2 * .pi) / blinkPeriod)
+                        let dotScale = 0.82 + 0.22 * blinkWave
+                        let dotOpacity = 0.6 + 0.4 * blinkWave
+                        glyph(rotation: rotation, dotScale: dotScale, dotOpacity: dotOpacity)
+                    }
+                }
+            }
+            .frame(width: 20, height: 20)
+        }
+
+        @ViewBuilder
+        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double) -> some View {
+            ZStack {
                 Circle()
                     .stroke(accent.opacity(0.24), lineWidth: 1.0)
                     .frame(width: 16, height: 16)
 
-                    Circle()
+                Circle()
                     .stroke(accent.opacity(0.14), lineWidth: 0.9)
                     .frame(width: 10.5, height: 10.5)
 
-                    Circle()
+                Circle()
                     .trim(from: 0.04, to: 0.24)
-                        .stroke(
+                    .stroke(
                         accent.opacity(0.96),
                         style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
                     )
                     .frame(width: 16, height: 16)
-                    .rotationEffect(.degrees(spinning && !isLuminanceReduced ? 360 : -72))
-                    .animation(
-                        isLuminanceReduced
-                            ? .default
-                            : .linear(duration: 1.4).repeatForever(autoreverses: false),
-                        value: spinning
-                    )
+                    .rotationEffect(.degrees(rotation))
 
                 Circle()
-                    .fill(accent)
-                    .frame(
-                        width: pulse && !isLuminanceReduced ? 4.4 : 3.6,
-                        height: pulse && !isLuminanceReduced ? 4.4 : 3.6
-                    )
-                    .shadow(color: accent.opacity(0.95), radius: pulse && !isLuminanceReduced ? 4 : 2.5)
-                    .animation(
-                        isLuminanceReduced
-                            ? .default
-                            : .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                        value: pulse
-                    )
-            }
-            .frame(width: 20, height: 20)
-            .onAppear {
-                guard !isLuminanceReduced else { return }
-                spinning = true
-                pulse = true
+                    .fill(accent.opacity(dotOpacity))
+                    .frame(width: 3.6 * dotScale, height: 3.6 * dotScale)
+                    .shadow(color: accent.opacity(0.9 * dotOpacity), radius: 2 + 2 * dotScale)
             }
         }
     }
@@ -444,7 +486,6 @@ struct EstateOSRadarLiveActivity: Widget {
     private struct MatchCountBadge: View {
         let accent: Color
         let count: Int
-        @State private var glow = false
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
         var body: some View {
@@ -455,35 +496,52 @@ struct EstateOSRadarLiveActivity: Widget {
                         Capsule(style: .continuous)
                             .stroke(accent.opacity(0.38), lineWidth: 1)
                     )
-                Text("\(count)")
-                    .foregroundColor(accent)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .scaleEffect(glow && !isLuminanceReduced ? 1.04 : 1.0)
-                    .opacity(glow && !isLuminanceReduced ? 1.0 : 0.92)
-                    .animation(
-                        isLuminanceReduced
-                            ? .default
-                            : .easeInOut(duration: 0.85).repeatForever(autoreverses: true),
-                        value: glow
-                    )
-                    .ifAvailableNumericTransition()
+                Group {
+                    if isLuminanceReduced {
+                        countLabel(scale: 1.0, opacity: 0.92)
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 1.0 / 24.0)) { timeline in
+                            let t = timeline.date.timeIntervalSince1970
+                            let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.85)
+                            countLabel(scale: 1.0 + 0.04 * wave, opacity: 0.92 + 0.08 * wave)
+                        }
+                    }
+                }
             }
             .frame(minWidth: 28, minHeight: 20)
-            .onAppear {
-                guard !isLuminanceReduced else { return }
-                glow = true
-            }
+        }
+
+        private func countLabel(scale: Double, opacity: Double) -> some View {
+            Text("\(count)")
+                .foregroundColor(accent)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .scaleEffect(scale)
+                .opacity(opacity)
+                .ifAvailableNumericTransition()
         }
     }
 
     /// Pulsujący wariant marki — restored premium.
     private struct BrandPulseBadge: View {
         let accent: Color
-        @State private var pulse = false
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
         var body: some View {
+            Group {
+                if isLuminanceReduced {
+                    badge(strokeOpacity: 0.4, scale: 1.0)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 1.0 / 24.0)) { timeline in
+                        let t = timeline.date.timeIntervalSince1970
+                        let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.95)
+                        badge(strokeOpacity: 0.4 + 0.32 * wave, scale: 1.0 + 0.04 * wave)
+                    }
+                }
+            }
+        }
+
+        private func badge(strokeOpacity: Double, scale: Double) -> some View {
             HStack(spacing: 0) {
                 Text("E").foregroundColor(.white)
                 Text("OS").foregroundColor(accent)
@@ -496,20 +554,10 @@ struct EstateOSRadarLiveActivity: Widget {
                     .fill(accent.opacity(0.14))
                     .overlay(
                         Capsule(style: .continuous)
-                            .stroke(accent.opacity(pulse && !isLuminanceReduced ? 0.72 : 0.4), lineWidth: 1)
+                            .stroke(accent.opacity(strokeOpacity), lineWidth: 1)
                     )
             )
-            .scaleEffect(pulse && !isLuminanceReduced ? 1.04 : 1.0)
-            .animation(
-                isLuminanceReduced
-                    ? .default
-                    : .easeInOut(duration: 0.95).repeatForever(autoreverses: true),
-                value: pulse
-            )
-            .onAppear {
-                guard !isLuminanceReduced else { return }
-                pulse = true
-            }
+            .scaleEffect(scale)
         }
     }
 
@@ -520,8 +568,9 @@ struct EstateOSRadarLiveActivity: Widget {
     /// w którym animacje i tak nie są widoczne.
     private struct EOSShineBadge: View {
         let accent: Color
-        @State private var shine = false
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        private let shinePeriod: Double = 1.2
 
         var body: some View {
             ZStack {
@@ -543,29 +592,27 @@ struct EstateOSRadarLiveActivity: Widget {
             .overlay(
                 Group {
                     if !isLuminanceReduced {
-                        GeometryReader { geo in
-                            let w = geo.size.width
-                            LinearGradient(
-                                colors: [Color.clear, Color.white.opacity(0.36), Color.clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(width: max(12, w * 0.3))
-                            .rotationEffect(.degrees(18))
-                            .offset(x: shine ? w : -w)
-                            .blendMode(.screen)
+                        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
+                            let t = timeline.date.timeIntervalSince1970
+                            let phase = (t.truncatingRemainder(dividingBy: shinePeriod)) / shinePeriod
+                            GeometryReader { geo in
+                                let w = max(geo.size.width, 1)
+                                LinearGradient(
+                                    colors: [Color.clear, Color.white.opacity(0.36), Color.clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                .frame(width: max(12, w * 0.3))
+                                .rotationEffect(.degrees(18))
+                                .offset(x: -w + phase * 2 * w)
+                                .blendMode(.screen)
+                            }
                         }
                         .clipShape(Capsule(style: .continuous))
                     }
                 }
             )
             .frame(minWidth: 52, minHeight: 24)
-            .onAppear {
-                guard !isLuminanceReduced else { return }
-                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                    shine = true
-                }
-            }
         }
     }
 

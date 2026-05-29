@@ -22,19 +22,40 @@ import { CSS } from "@dnd-kit/utilities";
 
 import {
   canonicalizeCity,
+  inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  isStrictCity,
   normalizeText,
 } from "@/lib/location/locationCatalog";
 import {
-  AGENT_COMMISSION_MAX,
+  buildForwardGeocodeSearchText,
+  mapboxForwardGeocodeUrl,
+  parseAddressSearchQuery,
+} from "@/lib/mapboxGeocodeClient";
+import {
   AGENT_COMMISSION_MIN_NONZERO,
-  AGENT_COMMISSION_STEP,
+  validateAgentCommissionPercent,
 } from "@/lib/agentCommission";
 import type { OfferPriceCurrency } from "@/lib/money/offerPrice";
 import { useFxRate } from "@/contexts/FxRateContext";
 import { convertBetweenCurrencies } from "@/lib/money/convert";
 import { formatApproxLine } from "@/lib/money/format";
+import AgentCommissionEditor from "@/components/offer/AgentCommissionEditor";
+import PublicationWalletPanel from "@/components/profile/PublicationWalletPanel";
+import type { PublicationRedemption, PublicationCouponOption } from "@/components/publication/PublicationChoiceModal";
+import { buildAddOfferSummarySections } from "@/lib/addOfferSummary";
+import {
+  defaultPublicationSelection,
+  publicationSelectionLabel,
+  publicationSelectionToRedemption,
+  type PublicationSelection,
+} from "@/lib/publicationSelection";
+import {
+  addressMentionsOtherCity,
+  formatOfferLocationLine,
+  formatShortStreetFromMapboxFeature,
+} from "@/lib/offerLocationDisplay";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -42,10 +63,38 @@ if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
 
 const inputPremium =
   "eos-field w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 px-5 text-base text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500 md:text-lg";
+const inputCompact =
+  "eos-field w-full min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-3 px-4 text-xs sm:text-sm leading-snug text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500";
 const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
 const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
+const KW_FULL_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
+const KW_SANITIZE_REGEX = /[^A-Za-z0-9/]/g;
+const KW_COURT_SUGGESTIONS = [
+  { prefix: "WA1M", court: "Warszawa-Mokotow" },
+  { prefix: "WA4M", court: "Warszawa-Wola" },
+  { prefix: "KR1P", court: "Krakow-Podgorze" },
+  { prefix: "KR1K", court: "Krakow-Srodmiescie" },
+  { prefix: "GD1G", court: "Gdansk-Polnoc" },
+  { prefix: "PO1P", court: "Poznan-Stare Miasto" },
+  { prefix: "WR1K", court: "Wroclaw-Krzyki" },
+  { prefix: "LU1I", court: "Lublin-Zachod" },
+];
+const ADD_OFFER_DRAFT_VERSION = 1;
+const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
+
+type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
+
+function normalizeLandRegistryInput(raw: string): string {
+  const cleaned = raw.toUpperCase().replace(KW_SANITIZE_REGEX, "").slice(0, 40);
+  const head = cleaned.slice(0, 4).replace(/[^A-Z0-9]/g, "");
+  const middle = cleaned.slice(4, 12).replace(/[^0-9]/g, "");
+  const tail = cleaned.slice(12, 13).replace(/[^0-9]/g, "");
+  if (cleaned.length <= 4) return head;
+  if (cleaned.length <= 12) return `${head}/${middle}`;
+  return `${head}/${middle}/${tail}`;
+}
 
 function buildPropertyTypes(ao: AddOfferDictionary) {
   return [
@@ -134,7 +183,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const CONDITION_TYPES = useMemo(() => buildConditionTypes(ao), [ao]);
   const AMENITIES = useMemo(() => buildAmenities(ao), [ao]);
   const HEATING_TYPES = useMemo(() => buildHeatingTypes(ao), [ao]);
-  const isAgentPublisher = String(initialUser?.role || '').toUpperCase() === 'AGENT';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const { rate: fxRate } = useFxRate();
   const [data, setData] = useState<any>({
@@ -162,6 +210,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [actionModal, setActionModal] = useState<"none" | "limit" | "success" | "error" | "otp" | "payment_success" | "oferta_plus" | "verify">("none");
   const [serverErrorMessage, setServerErrorMessage] = useState('');
+  const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
+  const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
+  const [walletPlusCredits, setWalletPlusCredits] = useState(0);
+  const [walletHasPlusCredit, setWalletHasPlusCredit] = useState(false);
+  const [walletPlusExpiresAt, setWalletPlusExpiresAt] = useState<string | null>(null);
+  const [publicationSelection, setPublicationSelection] = useState<PublicationSelection | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
   
   const [uploadProgress, setUploadProgress] = useState('');
   const [emailStatus, setEmailStatus] = useState('idle');
@@ -176,14 +231,97 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const orbitTimeoutRef = useRef<number | null>(null);
   const lastGeocodedAddressRef = useRef<string>("");
   const editorRef = useRef<HTMLDivElement>(null);
+  const landRegistryInputRef = useRef<HTMLInputElement>(null);
+  const agentCommissionInputRef = useRef<HTMLDivElement>(null);
+  const draftHydratedRef = useRef(false);
+  const draftSaveTimerRef = useRef<number | null>(null);
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
-  const cityOptions = strictCities.includes(data.city) ? strictCities : [data.city, ...strictCities].filter(Boolean);
-  const districtOptions = locationCatalog.strictCityDistricts[data.city] || [];
-  const isStrictCity = strictCities.includes(data.city);
+  const canonicalFormCity = canonicalizeCity(data.city) || String(data.city || "").trim();
+  const districtOptions = locationCatalog.strictCityDistricts[canonicalFormCity] || [];
+  const isStrictCityForm = isStrictCity(canonicalFormCity);
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || draftHydratedRef.current) return;
+    try {
+      const raw = window.localStorage.getItem(ADD_OFFER_DRAFT_KEY);
+      if (!raw) {
+        draftHydratedRef.current = true;
+        return;
+      }
+      const parsed = JSON.parse(raw) as {
+        version?: number;
+        data?: Record<string, unknown>;
+        currentStep?: number;
+        images?: string[];
+        floorPlan?: string | null;
+      };
+      if (!parsed || parsed.version !== ADD_OFFER_DRAFT_VERSION) {
+        draftHydratedRef.current = true;
+        return;
+      }
+      const persistedData = parsed.data || {};
+      setData((prev: any) => ({
+        ...prev,
+        ...persistedData,
+        // świeże dane sesji użytkownika mają priorytet nad draftem
+        contactName: initialUser?.name || (persistedData.contactName as string) || prev.contactName,
+        contactPhone: initialUser?.phone || (persistedData.contactPhone as string) || prev.contactPhone,
+        email: initialUser?.email || (persistedData.email as string) || prev.email,
+      }));
+      const safeStep = Number(parsed.currentStep || 1);
+      setCurrentStep(Number.isFinite(safeStep) ? Math.min(6, Math.max(1, safeStep)) : 1);
+      const persistedImages = Array.isArray(parsed.images) ? parsed.images.filter((v) => typeof v === "string" && v.trim()) : [];
+      if (persistedImages.length > 0) setImagesList(persistedImages);
+      const persistedFloorPlan = typeof parsed.floorPlan === "string" ? parsed.floorPlan : null;
+      if (persistedFloorPlan) setFloorPlan(persistedFloorPlan);
+    } catch {
+      // ignore draft parsing errors
+    } finally {
+      draftHydratedRef.current = true;
+    }
+  }, [initialUser?.email, initialUser?.name, initialUser?.phone]);
+
+  useEffect(() => {
+    if (!initialUser?.isLoggedIn) return;
+    const role = String(initialUser.role || "").toUpperCase();
+    const company = String(initialUser.companyName || "").trim();
+    if (role !== "AGENT" && !company) return;
+    setData((prev: any) => ({
+      ...prev,
+      advertiserType: "agency",
+      agencyName: company || prev.agencyName || "",
+    }));
+  }, [initialUser?.isLoggedIn, initialUser?.role, initialUser?.companyName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !draftHydratedRef.current) return;
+    if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      try {
+        const persistableImages = imagesList.filter((img) => typeof img === "string" && !img.startsWith("blob:"));
+        const persistableFloorPlan = floorPlan && !floorPlan.startsWith("blob:") ? floorPlan : null;
+        window.localStorage.setItem(
+          ADD_OFFER_DRAFT_KEY,
+          JSON.stringify({
+            version: ADD_OFFER_DRAFT_VERSION,
+            data,
+            currentStep,
+            images: persistableImages,
+            floorPlan: persistableFloorPlan,
+          }),
+        );
+      } catch {
+        // ignore storage errors
+      }
+    }, 250);
+    return () => {
+      if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [data, currentStep, imagesList, floorPlan]);
 
   const pickDistrictFromText = (city: string, text: string, allowedDistricts?: string[]) => {
     if (!city || !text) return "";
@@ -204,8 +342,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   const handleAddressSearch = async (value: string) => {
-    updateData({ address: value });
-    setAddressError('');
+    const parsed = parseAddressSearchQuery(value);
+    const patch: Record<string, unknown> = { address: value };
+    if (parsed.cityPart) {
+      patch.city = parsed.cityPart;
+    }
+    updateData(patch);
+    setAddressError("");
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!value || value.trim().length < 3 || !token) {
@@ -213,9 +356,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
 
+    const cityHint = parsed.cityPart || data.city;
+    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint);
+
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&autocomplete=true&limit=6&language=pl`,
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: true }),
       );
       const geo = await res.json();
       setAddressSuggestions(Array.isArray(geo?.features) ? geo.features : []);
@@ -227,84 +373,123 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const geocodeAddressFromInput = async (force = false, rawQuery?: string) => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const query = String(rawQuery ?? data.address ?? "").trim();
-    if (!token || query.length < 5) return;
+    if (!token || query.length < 3) return;
     if (!force && query === lastGeocodedAddressRef.current) return;
+
+    const parsed = parseAddressSearchQuery(query);
+    const cityHint = parsed.cityPart || data.city;
+    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint);
+
+    if (!cityHint && !parsed.cityPart && !query.includes(",")) {
+      setAddressError(
+        "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
+      );
+      return;
+    }
 
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=false&limit=1&language=pl`,
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 5, autocomplete: false }),
       );
       if (!res.ok) return;
       const geo = await res.json();
-      const feature = Array.isArray(geo?.features) ? geo.features[0] : null;
+      const features = Array.isArray(geo?.features) ? geo.features : [];
+      const preferredCityCanon = cityHint ? canonicalizeCity(cityHint) : "";
+      const feature =
+        (preferredCityCanon
+          ? features.find((f: { place_name?: string; place_name_pl?: string }) => {
+              const inferred = inferCityFromMapboxFeature(f);
+              return inferred === preferredCityCanon;
+            })
+          : null) || features[0];
       if (!feature) {
         setAddressError(ao.pinError);
         return;
       }
       lastGeocodedAddressRef.current = query;
       setAddressError("");
-      selectAddress(feature);
+      selectAddress(feature, cityHint || undefined);
     } catch {
       // no-op
     }
   };
 
-  const resolveLocationFromCoordinates = useCallback(async (lat: number, lng: number, fallbackAddress?: string) => {
-    try {
-      const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
-      if (!response.ok) return;
-      const reverse = await response.json();
+  const resolveLocationFromCoordinates = useCallback(
+    async (lat: number, lng: number, fallbackAddress?: string, preferredCity?: string) => {
+      try {
+        const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const reverse = await response.json();
 
-      setData((prev: any) => {
-        const reverseCity = reverse.city || prev.city;
-        const districtFallback =
-          reverse.district ||
-          pickDistrictFromText(reverseCity, reverse.addressLabel || fallbackAddress || prev.address, reverse.districtOptions);
-        const shouldKeepPrevDistrict = !reverse.strictCity;
-        const nextDistrict = districtFallback || (shouldKeepPrevDistrict ? (prev.district || "") : "");
+        setData((prev: any) => {
+          const reverseCity = canonicalizeCity(reverse.city || "") || String(reverse.city || "").trim();
+          const preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
+          const nextCity = preferred || reverseCity || prev.city;
+          const streetLine =
+            String(reverse.street || "").trim() ||
+            String(fallbackAddress || "").trim() ||
+            String(prev.address || "").split(",")[0]?.trim() ||
+            "";
+          const nextDistrict = reverse.strictCity
+            ? String(reverse.district || "").trim()
+            : String(reverse.district || prev.district || "").trim();
 
-        return ({
-        ...prev,
-        lat,
-        lng,
-        city: reverseCity,
-        district: nextDistrict,
-        address: reverse.addressLabel || fallbackAddress || prev.address,
-        street: reverse.street ?? prev.street ?? null,
-      });
-      });
-    } catch {
-      // no-op, manual selection still available
-    }
-  }, [locationCatalog.strictCityDistricts]);
+          return {
+            ...prev,
+            lat,
+            lng,
+            city: nextCity,
+            district: nextDistrict,
+            address: streetLine,
+            street: streetLine,
+          };
+        });
+      } catch {
+        // no-op, manual selection still available
+      }
+    },
+    [],
+  );
 
-  const selectAddress = (feature: any) => {
+  const selectAddress = (feature: any, cityOverride?: string) => {
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
     const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
+    const shortStreet = formatShortStreetFromMapboxFeature(feature);
 
+    const parsed = parseAddressSearchQuery(data.address || "");
     const cityFromFeature = inferCityFromMapboxFeature(feature);
-    const cityCanon = canonicalizeCity(cityFromFeature) || canonicalizeCity(data.city) || data.city;
-    const districtGuessByContext = cityCanon ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
-    const districtGuessByLabel = cityCanon
+    const overrideCanon =
+      canonicalizeCity(cityOverride || parsed.cityPart || "") ||
+      (cityOverride ? String(cityOverride).trim() : "");
+    const cityCanon =
+      overrideCanon ||
+      canonicalizeCity(cityFromFeature) ||
+      canonicalizeCity(data.city) ||
+      data.city;
+    const strict = isStrictCity(cityCanon);
+    const districtGuessByContext = strict ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
+    const districtGuessByLabel = strict
       ? pickDistrictFromText(cityCanon, feature?.place_name_pl || feature?.place_name || "")
       : "";
-    const districtGuess = districtGuessByContext || districtGuessByLabel;
-    const nextDistrictValue =
-      districtGuess ||
-      (locationCatalog.strictCities?.includes(cityCanon) ? "" : data.district);
+    const areaGuess = strict ? "" : inferAreaLabelFromMapboxFeature(cityCanon, feature);
+    const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
+    const nextDistrictValue = districtGuess || (strict ? "" : data.district);
 
+    lastGeocodedAddressRef.current = shortStreet;
     updateData({
-      address: feature?.place_name_pl || feature?.place_name || feature?.text || data.address,
+      address: shortStreet,
+      street: shortStreet,
       lng: nextLng,
       lat: nextLat,
       ...(cityCanon ? { city: cityCanon } : {}),
-      ...(cityCanon ? { district: nextDistrictValue } : {}),
+      district: nextDistrictValue,
     });
     setAddressSuggestions([]);
+    setAddressError("");
 
     if (nextLat && nextLng) {
-      void resolveLocationFromCoordinates(nextLat, nextLng, feature?.place_name_pl || feature?.place_name || feature?.text);
+      void resolveLocationFromCoordinates(nextLat, nextLng, shortStreet, cityCanon);
     }
   };
 
@@ -356,7 +541,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const handleGenerateAI = async () => {
     setIsGeneratingAI(true);
     try {
-      const hint = `${data.propertyType || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
+      const hint = `${propertyTypeLabel || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
       const generated = `Przedstawiamy wyjątkową ofertę: ${hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.`;
       updateData({ description: generated });
       if (editorRef.current) editorRef.current.innerHTML = generated;
@@ -399,9 +584,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         if (!response.ok) return;
         const catalog = await response.json();
         setLocationCatalog(catalog);
-        if (!data.city && Array.isArray(catalog?.strictCities) && catalog.strictCities.length > 0) {
-          updateData({ city: catalog.strictCities[0] });
-        }
       } catch {
         // fallback to manual text flow
       }
@@ -640,34 +822,25 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
     if (!canPublish) return;
+    if (initialUser?.isLoggedIn) {
+      if (!publicationSelection) {
+        setServerErrorMessage('Wybierz metodę publikacji: kupon, kredyt Plus lub zakup Pakietu Plus.');
+        setActionModal('error');
+        return;
+      }
+      const resolved = publicationSelectionToRedemption(publicationSelection);
+      if ('action' in resolved && resolved.action === 'buy_plus') {
+        await handlePlusPayment();
+        return;
+      }
+      await submitOfferWithRedemption(resolved as PublicationRedemption);
+      return;
+    }
     setIsSubmitting(true);
     setUploadProgress('Wysyłanie oferty...');
     try {
-      const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
-      const finalDesc = editorRef.current?.innerHTML || data.description || '';
-      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
-
-      const payload: Record<string, unknown> = {
-        ...data,
-        userId: initialUser?.id,
-        transactionType: data.transactionType,
-        propertyType: data.propertyType,
-        condition: dbCondition,
-        description: finalDesc,
-        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`,
-        price: cleanPriceValue,
-        priceCurrency: data.priceCurrency || 'PLN',
-        area: String(data.area).replace(',', '.'),
-        images: '[]',
-        imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
-        floorPlan: null,
-        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
-      };
-      if (isAgentPublisher && data.agentCommissionPercent !== '') {
-        payload.agentCommissionPercent = Number(
-          String(data.agentCommissionPercent).replace(',', '.')
-        );
-      }
+      const { payload } = buildOfferPayload();
+      if (!applyAgentCommissionToPayload(payload)) return;
 
       setUploadProgress('Tworzenie oferty...');
       const response = await fetch('/api/offers', {
@@ -712,6 +885,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
           }
         }
+        if (!responseData.requiresVerification && typeof window !== "undefined") {
+          window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
+        }
         setActionModal(responseData.requiresVerification ? 'otp' : 'success');
       } else if (responseData.errorCode === 'AUTH_REQUIRED' && responseData.redirect) {
         window.location.href = String(responseData.redirect);
@@ -720,13 +896,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
       ) {
         setServerErrorMessage(responseData.message || responseData.error);
+        setErrorFieldTarget(null);
         setActionModal('verify');
       } else {
-        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
+        const serverMessage = responseData.error || responseData.message || 'Odrzucono przez serwer';
+        setServerErrorMessage(serverMessage);
+        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
     } catch (_error) {
       setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setErrorFieldTarget(null);
       setActionModal('error');
     } finally {
       setIsSubmitting(false);
@@ -742,69 +922,134 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
     setIsProcessingPlus(true);
     try {
-      const cleanPrice = String(data.price || '').replace(/\D/g, "");
-      const finalDesc = editorRef.current?.innerHTML || data.description;
-      
-      const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+      await startPakietPlusCheckout();
+    } catch (error) {
+      setServerErrorMessage(error instanceof Error ? error.message : 'Błąd połączenia z kasą Stripe.');
+      setErrorFieldTarget(null);
+      setActionModal("error");
+    } finally {
+      setIsProcessingPlus(false);
+    }
+  };
 
-      const payload: Record<string, unknown> = { 
-        ...data, 
-        userId: initialUser?.id,
-        transactionType: data.transactionType,
-        propertyType: data.propertyType,
-        condition: dbCondition,
-        description: finalDesc,
-        title: data.title || `${data.propertyType} - ${data.district || 'Polska'}`, 
-        price: cleanPrice,
-        priceCurrency: data.priceCurrency || 'PLN',
-        area: String(data.area).replace(',', '.'),
-        images: finalImages.length > 0 ? JSON.stringify(finalImages) : null, 
-        imageUrl: finalImages[0] || "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop", 
-        floorPlan: finalFloorPlan,
-        amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities 
-      };
-      if (isAgentPublisher && data.agentCommissionPercent !== '') {
-        payload.agentCommissionPercent = Number(
-          String(data.agentCommissionPercent).replace(',', '.')
-        );
-      }
-
-      // TWARDA BLOKADA BLOBÓW - Zabezpieczenie przed utratą zdjęć
-      if (finalImages.some(img => img.startsWith('blob:'))) {
-        setServerErrorMessage('Błąd krytyczny: Zdjęcia nie zostały poprawnie przesłane na serwer. Spróbuj dodać je ponownie lub odśwież stronę.');
+  const submitOfferWithRedemption = async (redemption: PublicationRedemption) => {
+    if (isSubmitting) return;
+    if (addressMentionsOtherCity(data.address, data.city)) {
+      setServerErrorMessage('Adres wskazuje inne miasto niż wybrane w formularzu. Popraw lokalizację na mapie.');
+      setErrorFieldTarget(null);
+      setActionModal('error');
+      return;
+    }
+    setIsSubmitting(true);
+    setUploadProgress('Tworzenie oferty...');
+    try {
+      const { payload } = buildOfferPayload();
+      if (!applyAgentCommissionToPayload(payload)) return;
+      const createRes = await fetch('/api/offers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const createData = await createRes.json().catch(() => ({}));
+      if (!createRes.ok) {
+        const serverMessage = createData.error || createData.message || 'Nie udało się utworzyć oferty.';
+        setServerErrorMessage(serverMessage);
+        setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal("error");
-        setIsSubmitting(false);
         return;
       }
-      const response = await fetch('/api/offers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const responseData = await response.json().catch(() => ({}));
-      if (response.ok || response.status === 201 || response.status === 200) {
-        if (responseData.requiresVerification) {
-           setActionModal("otp");
-        } else {
-           setActionModal("success");
-        }
-      } else if (
-        responseData.errorCode === 'PHONE_VERIFICATION_REQUIRED' ||
-        responseData.errorCode === 'EMAIL_VERIFICATION_REQUIRED'
-      ) {
-        setServerErrorMessage(responseData.message || responseData.error);
-        setActionModal('verify');
-      } else {
-        setServerErrorMessage(responseData.error || responseData.message || 'Odrzucono przez serwer');
-        setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
+      const createdOfferId = Number(createData?.offer?.id || createData?.id);
+      if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
+        setServerErrorMessage('Oferta została utworzona, ale brak ID do aktywacji.');
+        setActionModal('error');
+        return;
       }
-    } catch (error) { 
-        setServerErrorMessage('Błąd połączenia z serwerem API.'); setActionModal("error"); 
-    } finally { setIsSubmitting(false); setUploadProgress(''); }
+      const uploadableImages = finalImages.filter((img) => filesMap[img]);
+      for (let i = 0; i < uploadableImages.length; i++) {
+        const blobKey = uploadableImages[i];
+        const file = filesMap[blobKey];
+        if (!file) continue;
+        setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+        const formData = new FormData();
+        formData.append('offerId', String(createdOfferId));
+        formData.append('file', file);
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+        if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+      }
+      if (floorPlanFile) {
+        setUploadProgress('Wysyłanie rzutu nieruchomości...');
+        const fpFormData = new FormData();
+        fpFormData.append('offerId', String(createdOfferId));
+        fpFormData.append('file', floorPlanFile);
+        fpFormData.append('isFloorPlan', 'true');
+        const fpRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: fpFormData,
+          credentials: 'include',
+        });
+        if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
+      }
+      const activationRes = await fetch(`/api/offers/${createdOfferId}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ publication: redemption }),
+      });
+      const activationData = await activationRes.json().catch(() => ({}));
+      if (!activationRes.ok) {
+        if (activationData?.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
+          setServerErrorMessage(activationData?.message || 'Do publikacji wymagany jest Pakiet Plus.');
+        } else {
+          setServerErrorMessage(activationData?.error || activationData?.message || 'Nie udało się aktywować publikacji.');
+        }
+        setActionModal('error');
+        return;
+      }
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(ADD_OFFER_DRAFT_KEY);
+      }
+      setActionModal('success');
+    } catch {
+      setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setActionModal('error');
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress('');
+    }
   };
 
   // --- Żelazna Walidacja Kroków ---
   const isTypeSelected = !!data.propertyType;
   
   const hasBuildingNumber = /\d/.test((data.address || '').split(',')[0]);
-  const districtRequirementMet = isStrictCity ? !!data.district : true;
-  const isLocationDone = !!data.lat && !!data.lng && !!data.city && districtRequirementMet && !addressError && hasBuildingNumber;
+  const locationAddressConflict = addressMentionsOtherCity(data.address, data.city);
+  const locationDisplayLine = formatOfferLocationLine({
+    address: data.address,
+    street: data.street,
+    city: data.city,
+    district: data.district,
+  });
+  const districtRequirementMet = isStrictCityForm ? !!data.district : true;
+  const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
+  const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
+  const landRegistryValid = !hasLandRegistryInput || KW_FULL_REGEX.test(normalizedLandRegistryNumber);
+  const isLocationDone =
+    !!data.lat &&
+    !!data.lng &&
+    !!data.city &&
+    districtRequirementMet &&
+    !addressError &&
+    hasBuildingNumber &&
+    !locationAddressConflict &&
+    landRegistryValid;
+
+  const propertyTypeLabel = PROPERTY_TYPES.find((t) => t.id === data.propertyType)?.label;
+  const conditionLabel = CONDITION_TYPES.find((c) => c.id === data.condition)?.label;
   
   const cleanPrice = String(data.price || '').replace(/\D/g, "");
   const cleanArea = String(data.area || '').replace(/[^0-9.]/g, "");
@@ -837,7 +1082,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     isTechDone &&
     isMediaDone &&
     isContactDone &&
-    publishContactOk;
+    publishContactOk &&
+    (!initialUser?.isLoggedIn || Boolean(publicationSelection));
   const totalSteps = initialUser?.isLoggedIn ? 5 : 6;
   const isStep1Done = isTypeSelected && (data.propertyType === 'PLOT' || !!data.condition);
   const isStep2Done = isLocationDone;
@@ -852,6 +1098,124 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (step === 4) return isStep4Done;
     if (step === 5) return isStep5Done;
     return true;
+  };
+
+  const focusFieldTarget = (target: FormFieldTarget) => {
+    if (!target) return;
+    const byTarget: Record<Exclude<FormFieldTarget, null>, { step: number; node: HTMLElement | null }> = {
+      landRegistryNumber: { step: 2, node: landRegistryInputRef.current },
+      agentCommissionPercent: { step: 3, node: agentCommissionInputRef.current },
+    };
+    const config = byTarget[target];
+    setCurrentStep(config.step);
+    window.setTimeout(() => {
+      if (!config.node) return;
+      config.node.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (target === "agentCommissionPercent") {
+        const input = config.node.querySelector("input");
+        if (input) (input as HTMLInputElement).focus();
+      } else {
+        (config.node as HTMLInputElement).focus();
+      }
+    }, 140);
+  };
+
+  const resolveErrorFieldTarget = (messageRaw: unknown): FormFieldTarget => {
+    const message = String(messageRaw || "").toLowerCase();
+    if (message.includes("księgi wieczystej") || message.includes("kw")) return "landRegistryNumber";
+    if (message.includes("agentcommissionpercent") || message.includes("prowiz")) return "agentCommissionPercent";
+    return null;
+  };
+
+  const applyAgentCommissionToPayload = (payload: Record<string, unknown>): boolean => {
+    const raw = String(data.agentCommissionPercent ?? "").trim();
+    if (!raw) {
+      // Jeśli użytkownik nie poda prowizji, zapisujemy jawnie 0% (bez prowizji).
+      payload.agentCommissionPercent = 0;
+      return true;
+    }
+    const validation = validateAgentCommissionPercent(raw);
+    if (!validation.ok) {
+      setServerErrorMessage(validation.message);
+      setErrorFieldTarget("agentCommissionPercent");
+      setActionModal("error");
+      return false;
+    }
+    payload.agentCommissionPercent = validation.value;
+    return true;
+  };
+
+  const buildOfferPayload = () => {
+    const cleanPriceValue = String(data.price || '').replace(/\D/g, "");
+    const finalDesc = editorRef.current?.innerHTML || data.description || '';
+    const dbCondition = data.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : (data.condition || 'READY');
+    const payload: Record<string, unknown> = {
+      ...data,
+      userId: initialUser?.id,
+      transactionType: data.transactionType,
+      propertyType: data.propertyType,
+      condition: dbCondition,
+      description: finalDesc,
+      title: data.title || `${propertyTypeLabel || data.propertyType} - ${data.district || data.city || 'Polska'}`,
+      price: cleanPriceValue,
+      priceCurrency: data.priceCurrency || 'PLN',
+      area: String(data.area).replace(',', '.'),
+      // Czynsz z WWW mapujemy na adminFee, żeby app mobilna widziała tę samą wartość.
+      adminFee: String(data.rent || '').trim() ? Number(String(data.rent).replace(/\D/g, '')) : null,
+      images: '[]',
+      imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
+      floorPlan: null,
+      amenities: Array.isArray(data.amenities) ? data.amenities.join(", ") : data.amenities,
+    };
+    return { payload, finalDesc };
+  };
+
+  const loadPublicationWallet = async () => {
+    setWalletLoading(true);
+    try {
+      const res = await fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(String(data?.error || data?.message || 'Nie udało się pobrać portfela publikacji.'));
+      }
+      const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+      setWalletCoupons(coupons);
+      setWalletPlusCredits(Number(data.plusCredits || 0));
+      setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
+      setWalletPlusExpiresAt(data.plusExpiresAt ? String(data.plusExpiresAt) : null);
+      setPublicationSelection((prev) =>
+        prev ??
+        defaultPublicationSelection({
+          couponIds: coupons.map((c: PublicationCouponOption) => c.id),
+          hasPlusCredit: Boolean(data.hasPlusCredit),
+        }),
+      );
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  const startPakietPlusCheckout = async () => {
+    const returnUrl = `${window.location.origin}/dodaj-oferte?plus=success`;
+    const cancelUrl = `${window.location.origin}/dodaj-oferte?plus=cancel`;
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'pakiet_plus', returnUrl, cancelUrl }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || !body?.url) {
+      throw new Error(String(body?.error || 'Nie udało się uruchomić płatności Pakiet Plus.'));
+    }
+    window.location.href = String(body.url);
+  };
+
+  const handleFixDataFromErrorModal = () => {
+    setActionModal("none");
+    if (errorFieldTarget) {
+      focusFieldTarget(errorFieldTarget);
+    }
+    setErrorFieldTarget(null);
   };
 
   const nextStep = () => {
@@ -872,6 +1236,32 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     exit: { opacity: 0, y: -8, filter: 'blur(4px)' },
     transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
   };
+
+  const summarySections = useMemo(
+    () =>
+      buildAddOfferSummarySections({
+        ao,
+        data,
+        descriptionText,
+        propertyTypeLabel,
+        conditionLabel,
+      }),
+    [ao, data, descriptionText, propertyTypeLabel, conditionLabel],
+  );
+
+  useEffect(() => {
+    if (!initialUser?.isLoggedIn || currentStep !== totalSteps) return;
+    loadPublicationWallet().catch(() => {
+      // panel pokaże błąd ładowania
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUser?.isLoggedIn, currentStep, totalSteps]);
+
+  const publishButtonLabel = useMemo(() => {
+    if (!initialUser?.isLoggedIn) return 'ZAKOŃCZ I OPUBLIKUJ';
+    if (!publicationSelection) return 'WYBIERZ METODĘ PUBLIKACJI';
+    return publicationSelectionLabel(publicationSelection).toUpperCase();
+  }, [initialUser?.isLoggedIn, publicationSelection]);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -1022,43 +1412,97 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     {data.address && !hasBuildingNumber && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {ao.buildingNumberRequired}</motion.div>
                     )}
+                    {locationAddressConflict && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1">
+                        <AlertCircle size={14} /> Adres wskazuje inne miasto niż wybrane. Wybierz adres z listy podpowiedzi lub zmień miasto.
+                      </motion.div>
+                    )}
                     {addressSuggestions.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 overflow-hidden divide-y divide-white/5">
                         {addressSuggestions.map((f, i) => (
-                          <div key={i} onClick={() => selectAddress(f)} className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors">
-                            {f.place_name_pl || f.text}
+                          <div
+                            key={i}
+                            onClick={() => selectAddress(f, parseAddressSearchQuery(data.address || "").cityPart || data.city)}
+                            className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors text-sm leading-snug"
+                          >
+                            {f.place_name_pl || f.place_name}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
                       <label className={labelPremium}>{ao.city}</label>
-                      <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.city || ''} onChange={(e) => updateData({ city: e.target.value, district: '' })}>
-                        {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
-                      </select>
+                      <input
+                        type="text"
+                        list="add-offer-city-suggestions"
+                        className={inputCompact}
+                        placeholder={ao.cityPlaceholder}
+                        value={data.city || ""}
+                        onChange={(e) => {
+                          const newCity = e.target.value;
+                          const patch: Record<string, unknown> = {
+                            city: newCity,
+                            district: isStrictCity(newCity) ? "" : data.district,
+                          };
+                          if (data.address && addressMentionsOtherCity(data.address, newCity)) {
+                            patch.address = "";
+                            patch.street = "";
+                            patch.lat = null;
+                            patch.lng = null;
+                          }
+                          updateData(patch);
+                        }}
+                        onBlur={() => {
+                          if (data.address && data.city) {
+                            void geocodeAddressFromInput(true, data.address);
+                          }
+                        }}
+                      />
+                      <datalist id="add-offer-city-suggestions">
+                        {strictCities.map((city) => (
+                          <option key={city} value={city} />
+                        ))}
+                      </datalist>
                     </div>
 
-                    <div>
-                      <label className={labelPremium}>{isStrictCity ? ao.district : ao.areaLabel}</label>
-                      {isStrictCity ? (
-                        <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
-                          <option value="" disabled>{ao.selectPlaceholder}</option>
-                          {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
+                    <div className="min-w-0">
+                      <label className={labelPremium}>{isStrictCityForm ? ao.district : ao.areaLabel}</label>
+                      {isStrictCityForm ? (
+                        <select
+                          className={`${inputCompact} appearance-none cursor-pointer`}
+                          value={data.district || ""}
+                          onChange={(e) => updateData({ district: e.target.value })}
+                        >
+                          <option value="" disabled>
+                            {ao.selectPlaceholder}
+                          </option>
+                          {districtOptions.map((district) => (
+                            <option key={district} value={district}>
+                              {district}
+                            </option>
+                          ))}
                         </select>
                       ) : (
                         <input
                           type="text"
-                          className={inputPremium}
+                          className={inputCompact}
                           placeholder={ao.areaPlaceholder}
-                          value={data.district || ''}
+                          value={data.district || ""}
                           onChange={(e) => updateData({ district: e.target.value })}
                         />
                       )}
                     </div>
                   </div>
+
+                  {data.city && data.address ? (
+                    <p className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/55">
+                      <span className="font-black uppercase tracking-widest text-[9px] text-emerald-400/90">Podgląd lokalizacji · </span>
+                      {locationDisplayLine}
+                    </p>
+                  ) : null}
 
                   <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 md:p-5">
                     <div className="mb-3 flex items-center gap-2">
@@ -1072,7 +1516,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         <label className={labelPremium}>Nr Lokalu (opcjonalnie)</label>
                         <input
                           type="text"
-                          placeholder={data.propertyType === 'FLAT' ? "Np. 12" : "Dla mieszkań"}
+                          placeholder={data.propertyType === 'FLAT' ? ao.aptNumberPlaceholder : ao.apartmentPlaceholder}
                           disabled={data.propertyType !== 'FLAT'}
                           className={`${inputPremium} text-sm ${data.propertyType !== 'FLAT' ? 'opacity-50 cursor-not-allowed' : ''}`}
                           value={data.apartmentNumber || ''}
@@ -1082,12 +1526,33 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       <div>
                         <label className={labelPremium}>Numer księgi wieczystej (opcjonalnie)</label>
                         <input
+                          ref={landRegistryInputRef}
                           type="text"
-                          placeholder="Np. WA1M/00000000/0"
-                          className={`${inputPremium} text-sm uppercase`}
+                          placeholder={ao.landRegistryPlaceholder}
+                          list="kw-court-suggestions"
+                          maxLength={15}
+                          autoCapitalize="characters"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          className={`${inputPremium} text-sm uppercase ${hasLandRegistryInput && !landRegistryValid ? 'border-red-500/50 focus:border-red-400' : ''}`}
                           value={data.landRegistryNumber || ''}
-                          onChange={(e) => updateData({ landRegistryNumber: e.target.value.toUpperCase() })}
+                          onChange={(e) => updateData({ landRegistryNumber: normalizeLandRegistryInput(e.target.value) })}
                         />
+                        <datalist id="kw-court-suggestions">
+                          {KW_COURT_SUGGESTIONS.map((entry) => (
+                            <option key={entry.prefix} value={`${entry.prefix}/00000000/0`}>
+                              {entry.prefix} - Sad Rejonowy {entry.court}
+                            </option>
+                          ))}
+                        </datalist>
+                        <p className="mt-2 text-[10px] text-zinc-400">
+                          Podpowiedz: wybierz prefiks sadu (np. WA1M), potem numer i cyfre kontrolna.
+                        </p>
+                        {hasLandRegistryInput && !landRegistryValid ? (
+                          <p className="mt-2 text-[10px] text-red-400 font-bold">
+                            Nieprawidlowy format KW. Wymagany: 4 znaki, "/", 8 cyfr, "/", 1 cyfra (np. WA1M/00012345/9).
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <p className="mt-3 text-[11px] text-zinc-300/90 leading-snug flex items-start gap-2">
@@ -1228,34 +1693,30 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <div>
                       <label className={labelPremium}>Czynsz administracyjny <span className="text-white/30 font-normal ml-1 text-[10px]">(Opcjonalnie)</span></label>
                       <div className="relative group">
-                        <input type="text" placeholder="Np. 1500" className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
+                        <input type="text" placeholder={ao.rentPlaceholder} className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">PLN</div>
                       </div>
                     </div>
                   </>
                 )}
 
-                {isAgentPublisher ? (
-                  <div className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
-                    <label className={labelPremium}>Prowizja agenta (% od ceny oferty)</label>
-                    <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                      Jak w aplikacji: 0% (bez prowizji) albo {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co {AGENT_COMMISSION_STEP}%.
-                      Kwota prowizji jest informacją dla kupującego — rozliczenie poza platformą.
-                    </p>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className={inputPremium}
-                      placeholder="np. 2,5 lub 0"
-                      value={data.agentCommissionPercent ?? ''}
-                      onChange={(e) =>
-                        updateData({
-                          agentCommissionPercent: e.target.value.replace(/[^0-9.,]/g, ''),
-                        })
-                      }
-                    />
-                  </div>
-                ) : null}
+                <div ref={agentCommissionInputRef} className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
+                  <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
+                  <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                    Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
+                    {AGENT_COMMISSION_MIN_NONZERO}% wzwyż. Cena ogłoszenia pozostaje finalną kwotą brutto dla
+                    klienta, a prowizja jest rozliczana poza platformą.
+                  </p>
+                  <AgentCommissionEditor
+                    priceRaw={data.price || 0}
+                    percentValue={String(data.agentCommissionPercent ?? "")}
+                    onPercentChange={(value) =>
+                      updateData({
+                        agentCommissionPercent: value,
+                      })
+                    }
+                  />
+                </div>
                 
                 {/* AI Monitor Przelicznik */}
                 {(() => {
@@ -1352,7 +1813,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       className="w-full h-64 p-6 outline-none text-[#f5f5f7] leading-relaxed overflow-y-auto"
                       style={{ minHeight: '16rem' }}
                       onInput={(e) => updateData({ description: e.currentTarget.innerHTML })}
-                      data-placeholder="Rozpocznij tworzenie luksusowego opisu..."
+                      data-placeholder={ao.descriptionPlaceholderAttr}
                     ></div>
                   </div>
                 </div>
@@ -1459,7 +1920,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   {data.advertiserType === 'agency' && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="md:col-span-2">
                       <label className={labelPremium}>Nazwa Agencji Nieruchomości *</label>
-                      <input type="text" className={inputPremium} onChange={(e) => updateData({ agencyName: e.target.value })} value={data.agencyName || ''} placeholder="Wpisz nazwę biura..." />
+                      <input type="text" className={inputPremium} onChange={(e) => updateData({ agencyName: e.target.value })} value={data.agencyName || ''} placeholder={ao.agencyNamePlaceholder} />
                     </motion.div>
                   )}
                   
@@ -1501,6 +1962,117 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
             {/* FINAŁOWY PRZYCISK APPLE LUXURY */}
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
+              <div className="mb-6 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 md:p-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-3">
+                  Podsumowanie publikacji
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Tytuł</p>
+                    <p className="text-white font-semibold">{String(data.title || '').trim() || '-'}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ / Transakcja</p>
+                    <p className="text-white font-semibold">
+                      {propertyTypeLabel || '—'} / {data.transactionType === 'RENT' ? ao.rent : ao.sell}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Cena / Metraż</p>
+                    <p className="text-white font-semibold">
+                      {String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '-'}
+                      {" · "}
+                      {String(data.area || '').trim() ? `${String(data.area).trim()} m²` : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Lokalizacja</p>
+                    <p className="text-white font-semibold">{locationDisplayLine}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Parametry</p>
+                    <p className="text-white/80">
+                      Pokoje: {data.rooms || '-'} · Piętro: {data.floor || '-'} · Rok: {data.buildYear || '-'}
+                    </p>
+                    <p className="text-white/60 mt-1">
+                      Ogrzewanie: {data.heating || '-'} · Umeblowane: {data.isFurnished === true ? 'tak' : data.isFurnished === false ? 'nie' : '-'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Koszty i prowizja</p>
+                    <p className="text-white/80">
+                      Czynsz: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
+                    </p>
+                    <p className="text-white/60 mt-1">
+                      Prowizja: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'Bez prowizji (0%)'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">Udogodnienia i media</p>
+                  <p className="text-white/80 mb-2">
+                    {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : 'Brak wybranych udogodnień'}
+                  </p>
+                  <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
+                    Zdjęcia: {finalImages.length} {finalFloorPlan ? '· Rzut: 1' : '· Rzut: 0'}
+                  </div>
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                    {finalImages.length > 0 ? finalImages.map((img, idx) => (
+                      <img key={`${img}-${idx}`} src={img} alt={`Podgląd zdjęcia ${idx + 1}`} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
+                    )) : (
+                      <div className="col-span-full rounded-lg border border-dashed border-white/20 px-3 py-2 text-[11px] text-white/50">
+                        Brak zdjęć w podsumowaniu — dodaj zdjęcia w kroku mediów.
+                      </div>
+                    )}
+                    {finalFloorPlan ? (
+                      <img src={finalFloorPlan} alt="Podgląd rzutu" className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
+                    ) : null}
+                  </div>
+                </div>
+
+                {summarySections.map((section) => (
+                  <div key={section.title} className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
+                    <p className="text-white/40 uppercase tracking-[0.18em] text-[10px] font-black mb-3">
+                      {section.title}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+                      {section.rows.map((row) => (
+                        <div key={`${section.title}-${row.label}`} className="rounded-lg border border-white/10 bg-black/30 px-3 py-2.5">
+                          <p className="text-white/45 text-[10px] font-semibold tracking-wide">{row.label}</p>
+                          <p className="text-white/90 break-words mt-1 leading-relaxed">{row.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {initialUser?.isLoggedIn ? (
+                <PublicationWalletPanel
+                  selectable
+                  selection={publicationSelection ?? undefined}
+                  onSelectionChange={setPublicationSelection}
+                  walletOverride={{
+                    coupons: walletCoupons.map((c) => ({
+                      id: c.id,
+                      kind: c.kind,
+                      title: c.title,
+                      subtitle: c.subtitle,
+                      pillLabel: c.pillLabel,
+                    })),
+                    plusCredits: walletPlusCredits,
+                    hasPlusCredit: walletHasPlusCredit,
+                    plusExpiresAt: walletPlusExpiresAt,
+                  }}
+                  onBuyPlus={handlePlusPayment}
+                  buyingPlus={isProcessingPlus || walletLoading}
+                />
+              ) : null}
+
               {initialUser?.isLoggedIn && !publishContactOk ? (
                 <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">Weryfikacja konta</p>
@@ -1529,7 +2101,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               >
                 <span className="relative z-10 flex items-center gap-3 text-xl md:text-2xl font-black uppercase tracking-[0.2em]">
                   {isSubmitting ? <Loader2 className="animate-spin" size={28} /> : (!canPublish ? <Lock size={24} /> : <Crown size={32} className="group-hover:animate-bounce" />)}
-                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : 'ZAKOŃCZ I OPUBLIKUJ')}
+                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : publishButtonLabel)}
                 </span>
               </button>
             </div>
@@ -1606,7 +2178,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <>
                   <div className="w-24 h-24 bg-[#10b981]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#10b981]/30 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><CheckCircle className="text-[#10b981]" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">Gotowe!</h2>
-                  <p className="text-zinc-400 mb-8 leading-relaxed">Ekskluzywna oferta została dodana do bazy i oczekuje na weryfikację.</p>
+                  <p className="text-zinc-400 mb-8 leading-relaxed">
+                    Oferta została zapisana i przesłana do akceptacji EstateOS™. Do czasu zatwierdzenia nie pojawi się na mapie ani na rynku — zobaczysz ją w zakładce „Oczekujące” w panelu.
+                  </p>
                   <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Panel Zarządzania</button>
                 </>
               )}
@@ -1616,7 +2190,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
                   <h2 className="text-3xl font-black text-white mb-4">Odrzucono</h2>
                   <p className="text-[var(--eos-muted)] mb-8 leading-relaxed">{serverErrorMessage || ao.serverErrorHint}</p>
-                  <button onClick={() => setActionModal("none")} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
+                  <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
                 </>
               )}
 
@@ -1825,6 +2399,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           </AnimatePresence>
         </div>
       )}
+
     </main>
   );
 }

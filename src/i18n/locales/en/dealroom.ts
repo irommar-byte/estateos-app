@@ -57,6 +57,9 @@ export const dealroom = {
     priceProposed: 'Latest in chat: price proposal {{amount}} PLN',
     priceChange: 'Latest in chat: price negotiation update',
     negotiationUpdate: 'Latest in chat: negotiation update',
+    transactionFinalized: 'Latest in chat: property sold — congratulations',
+    reviewSubmitted: 'Latest in chat: transaction review submitted ({{rating}}/5)',
+    reviewSubmittedGeneric: 'Latest in chat: cooperation review submitted',
     preview: 'Latest: “{{preview}}”',
   },
   list: {

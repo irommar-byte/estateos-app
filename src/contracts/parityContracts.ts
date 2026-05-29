@@ -183,6 +183,16 @@ export function isDealTransactionFinalized(params: {
  * - review: string (optional, max 1000 chars)
  * - senderId: number dodatni albo null
  */
+export function parseSharedDealReviewMessage(content?: string): SharedDealReviewPayload | null {
+  const raw = String(content || '').trim();
+  if (!raw.startsWith(DEAL_REVIEW_PREFIX)) return null;
+  try {
+    return validateSharedDealReviewPayload(JSON.parse(raw.slice(DEAL_REVIEW_PREFIX.length)));
+  } catch {
+    return null;
+  }
+}
+
 export function validateSharedDealReviewPayload(raw: AnyObj): SharedDealReviewPayload | null {
   const dealId = parsePositiveInt(raw?.dealId);
   const targetId = parsePositiveInt(raw?.targetId);

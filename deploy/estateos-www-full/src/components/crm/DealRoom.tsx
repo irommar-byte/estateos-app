@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 import DealRoomAppointmentPicker from '@/components/crm/DealRoomAppointmentPicker';
+import DealRoomPostSaleReview from '@/components/crm/DealRoomPostSaleReview';
+import PresentationFlowBanner from '@/components/presentation/PresentationFlowBanner';
+import { formatDealChatMessage } from '@/lib/dealroomReviewMessage';
 import {
   buildChatTimeline,
   buildNegotiationEvents,
@@ -360,7 +363,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   };
 
   if (loading) return <div className="w-full h-[600px] flex justify-center items-center"><Loader2 className="animate-spin text-emerald-500" size={32} /></div>;
-  if (!deal) return <div className="text-center text-white/40 py-20 font-bold uppercase tracking-widest text-xs">Brak dostępu do pokoju.</div>;
+  if (!deal) return <div className="theme-aware-dashboard text-center text-[var(--eos-subtle)] py-20 font-bold uppercase tracking-widest text-xs">Brak dostępu do pokoju.</div>;
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
   const isBuyer = deal.buyerId === currentUserId;
@@ -498,16 +501,18 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   );
 
   return (
-    <div className="flex flex-col h-[750px] bg-[#080808] border border-white/10 rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.8),inset_0_0_80px_rgba(0,0,0,0.6)] relative isolate font-sans">
-      
+    <div className="theme-aware-dashboard flex flex-col h-[750px] bg-[var(--eos-bg-elevated)] border border-[var(--eos-border)] rounded-[2.5rem] overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.25)] relative isolate font-sans text-[var(--eos-text)]">
+      <div className="px-4 pt-4 shrink-0">
+        <PresentationFlowBanner variant="dealroom" />
+      </div>
       {/* HEADER */}
-      <div className="relative z-10 flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.02] backdrop-blur-xl">
+      <div className="relative z-10 flex items-center justify-between p-6 border-b border-[var(--eos-border)] bg-[var(--eos-bg)]/80 backdrop-blur-xl">
         <div className="flex items-center gap-5">
-          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-white/10 shrink-0">
+          <div className="w-14 h-14 rounded-2xl overflow-hidden border border-[var(--eos-border)] shrink-0">
              <img src={(Array.isArray(deal.offer?.images) ? deal.offer.images[0] : typeof deal.offer?.images === 'string' && deal.offer.images.startsWith('[') ? JSON.parse(deal.offer.images)[0] : deal.offer?.images) || deal.offer?.imageUrl || '/placeholder.jpg'} className="w-full h-full object-cover" />
           </div>
           <div className="flex flex-col">
-            <h3 className="text-white font-black text-lg">{deal.offer?.title || 'Transakcja'}</h3>
+            <h3 className="text-[var(--eos-text)] font-black text-lg">{deal.offer?.title || 'Transakcja'}</h3>
             <div className="flex items-center gap-3 mt-1 text-[10px] uppercase tracking-widest font-bold">
               <span className="text-emerald-500">{Number(String(deal.offer?.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</span>
               <span className="w-1 h-1 rounded-full bg-white/20"></span>
@@ -696,7 +701,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <div className="space-y-4">
             <AnimatePresence initial={false}>
               {chatMessages.map((msg: any, i: number) => {
-                const msgContent = String(msg?.content || '');
+                const msgContent = formatDealChatMessage(String(msg?.content || ''));
+                if (!msgContent) return null;
                 const isMe = msg.senderId === currentUserId;
                 return (
                   <motion.div key={msg.id || i} initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -752,9 +758,33 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <div className="p-4 md:p-6 md:pb-8 relative z-20 bg-gradient-to-t from-[#080808] via-[#080808] to-transparent shrink-0 border-t border-white/5">
         {isFinalized ? (
-          <div className="relative max-w-4xl mx-auto rounded-[2rem] border border-white/10 bg-[#111] px-5 py-4 text-center">
-            <p className="text-[10px] uppercase tracking-[0.24em] font-black text-white/45">Tryb tylko do odczytu</p>
-            <p className="text-sm text-white/75 mt-1">Ten DealRoom jest zamknięty po finalizacji.</p>
+          <div className="relative max-w-4xl mx-auto space-y-4">
+            <DealRoomPostSaleReview
+              dealId={dealId}
+              currentUserId={currentUserId}
+              counterparty={{
+                id: Number(otherParty?.id || (isBuyer ? deal.sellerId : deal.buyerId)),
+                name: otherParty?.name,
+                email: otherParty?.email,
+              }}
+              myReviewSubmitted={Boolean(deal?.myReviewSubmitted)}
+              partnerReviewVisible={Boolean(deal?.partnerReviewVisible)}
+              partnerReview={
+                deal?.partnerReview
+                  ? {
+                      rating: Number(deal.partnerReview.rating || 0),
+                      comment: deal.partnerReview.comment,
+                    }
+                  : null
+              }
+              reviewRevealUnlocked={Boolean(deal?.reviewRevealUnlocked)}
+              authHeaders={authHeaders}
+              onUpdated={() => void refetchDealAndMessages()}
+            />
+            <div className="rounded-[2rem] border border-white/10 bg-[#111] px-5 py-4 text-center">
+              <p className="text-[10px] uppercase tracking-[0.24em] font-black text-white/45">Tryb tylko do odczytu</p>
+              <p className="text-sm text-white/75 mt-1">Ten DealRoom jest zamknięty po finalizacji — czat pozostaje archiwum rozmowy.</p>
+            </div>
           </div>
         ) : (
         <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">
@@ -811,10 +841,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {bidActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
             <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl">
-              <h4 className="text-white font-black text-lg mb-2">Decyzja negocjacyjna — cena</h4>
-              <p className="text-white/50 text-sm mb-4">
+              <h4 className="text-white font-black text-lg mb-2 leading-tight">Decyzja negocjacyjna — cena</h4>
+              <p className="text-white/70 text-sm leading-relaxed mb-4">
                 {bidActionModal.action === 'ACCEPT' && isFinalizationReady && `Sfinalizujesz sprzedaż za ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Oferta zostanie zdjęta z rynku.`}
                 {bidActionModal.action === 'ACCEPT' && ownerNeedsFinalDecision && `Potwierdzasz ostateczną sprzedaż za ${Number(activeBid?.amount || finalAcceptanceContext?.amount || 0).toLocaleString('pl-PL')} PLN.`}
                 {bidActionModal.action === 'ACCEPT' && !isFinalizationReady && !ownerNeedsFinalDecision && isBuyer && `Zgadzasz się na ${Number(activeBid?.amount || 0).toLocaleString('pl-PL')} PLN. Właściciel musi jeszcze potwierdzić sprzedaż.`}
@@ -872,9 +902,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <AnimatePresence>
         {appointmentActionModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
             <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.96, y: 12 }} className={`w-full rounded-3xl border border-white/10 bg-[#0b0b0d] p-6 shadow-2xl ${appointmentActionModal.action === 'RESCHEDULE' ? 'max-w-lg' : 'max-w-md'}`}>
-              <h4 className="text-white font-black text-lg mb-2">Decyzja negocjacyjna — termin</h4>
+              <h4 className="text-white font-black text-lg mb-2 leading-tight">Decyzja negocjacyjna — termin</h4>
               {appointmentActionModal.action === 'RESCHEDULE' ? (
                 <DealRoomAppointmentPicker
                   loading={!!actionLoading}
@@ -889,7 +919,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                 />
               ) : (
                 <>
-                  <p className="text-white/50 text-sm mb-4">
+                  <p className="text-white/70 text-sm leading-relaxed mb-4">
                     {appointmentActionModal.action === 'ACCEPT' && `Akceptujesz termin: ${activeAppointment?.proposedDate ? new Date(activeAppointment.proposedDate).toLocaleString('pl-PL') : '-'}.`}
                     {appointmentActionModal.action === 'DECLINE' && 'Odrzucasz zaproponowany termin.'}
                   </p>

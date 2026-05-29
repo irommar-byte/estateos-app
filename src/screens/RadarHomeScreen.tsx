@@ -2965,13 +2965,16 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
       await setRadarActive(filtersToApply.pushNotifications);
       await syncRadarPreferencesToBackend(filtersToApply);
-      await saveRadarCommittedState({
-        userId: Number(user?.id || 0),
-        filters: filtersToApply,
-        mapBounds: mapSnap,
-        areaSummary: summarySnap,
-        committedAtIso: new Date().toISOString(),
-      });
+      const ownerId = Number(user?.id || 0);
+      if (ownerId > 0) {
+        await saveRadarCommittedState({
+          userId: ownerId,
+          filters: filtersToApply,
+          mapBounds: mapSnap,
+          areaSummary: summarySnap,
+          committedAtIso: new Date().toISOString(),
+        });
+      }
       logRadarCalibrationSearch({
         token,
         userId: user?.id,

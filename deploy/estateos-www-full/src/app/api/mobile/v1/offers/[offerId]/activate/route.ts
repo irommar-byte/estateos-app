@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { activateOfferPublication, getPublicationQuote } from '@/lib/offerPublication';
+import { getPublicationQuote, stageOfferPublicationForReview } from '@/lib/offerPublication';
 import {
   assertContactVerified,
   contactVerificationJson,
@@ -81,10 +81,11 @@ export async function POST(req: Request, context: RouteContext) {
               ? 'PLUS_PAID'
               : 'PLUS_CREDIT';
 
-    const activation = await activateOfferPublication({
+    const staged = await stageOfferPublicationForReview({
       userId,
       offerId,
       kind: activationKind,
+      bonusCouponId: pub?.bonusCouponId ? String(pub.bonusCouponId) : null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
     });
@@ -92,10 +93,10 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({
       success: true,
       offerId,
+      awaitingModeration: true,
       publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+        status: staged.status,
+        kind: staged.kind,
       },
     });
   } catch (error) {
