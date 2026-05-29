@@ -3,7 +3,8 @@ import {
   canonicalizeCity,
   canonicalizeDistrict,
   getDistrictsForCity,
-  inferStrictDistrictFromMapboxFeature,
+  inferAreaLabelFromMapboxFeature,
+  inferCityFromMapboxFeature,
   isStrictCity,
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN." }, { status: 500 });
   }
 
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&types=address,place,locality,neighborhood`;
+  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&country=pl&types=address,place,locality,neighborhood,district`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -39,22 +40,18 @@ export async function GET(req: Request) {
     const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
     const context = Array.isArray(feature?.context) ? feature.context : [];
 
-    const cityRaw =
-      getContextText(context, "place") ||
-      getContextText(context, "locality") ||
-      String(feature?.text || "").trim();
     const country = getContextText(context, "country") || "Polska";
     const countryCode = getContextShortCode(context, "country") || "PL";
-    const legacyDistrictRaw =
-      getContextText(context, "neighborhood") ||
-      getContextText(context, "district") ||
-      getContextText(context, "locality");
     const streetRaw = String(feature?.text || "").trim();
     const numberRaw = String(feature?.address || "").trim();
     const primaryAddressLabel = String(feature?.place_name || "").split(',')[0]?.trim();
 
-    const city = canonicalizeCity(cityRaw);
-    const inferredDistrict = inferStrictDistrictFromMapboxFeature(city, feature);
+    const city = inferCityFromMapboxFeature(feature);
+    const inferredDistrict = inferAreaLabelFromMapboxFeature(city, feature);
+    const legacyDistrictRaw =
+      getContextText(context, "neighborhood") ||
+      getContextText(context, "district") ||
+      getContextText(context, "locality");
     const districtMerged = inferredDistrict || legacyDistrictRaw;
     const district = canonicalizeDistrict(city, districtMerged);
     const strictCity = isStrictCity(city);

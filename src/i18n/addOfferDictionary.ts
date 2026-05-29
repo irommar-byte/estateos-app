@@ -22,6 +22,7 @@ export type AddOfferDictionary = {
   locationVisibilityBody: string;
   searchAddress: string;
   searchAddressPlaceholder: string;
+  cityPlaceholder: string;
   buildingNumberRequired: string;
   city: string;
   district: string;
@@ -113,7 +114,8 @@ const pl: AddOfferDictionary = {
   locationVisibilityBody:
     "Przy Dokładnej lokalizacji wyświetlimy nazwę ulicy (i nr budynku dla mieszkań). Przy Przybliżonej pokazujemy jedynie orientacyjny obszar dzielnicy.",
   searchAddress: "Wyszukaj Adres *",
-  searchAddressPlaceholder: "Np. Główna 12...",
+  searchAddressPlaceholder: "Np. Bernardyńska 8, Kalwaria Zebrzydowska",
+  cityPlaceholder: "Np. Kraków lub Kalwaria Zebrzydowska",
   buildingNumberRequired: "Wymagany numer budynku przed przecinkiem.",
   city: "Miasto *",
   district: "Dzielnica *",
@@ -205,7 +207,8 @@ const en: AddOfferDictionary = {
   locationVisibilityBody:
     "With exact location we show the street name (and building no. for flats). With approximate we show only the district area.",
   searchAddress: "Search address *",
-  searchAddressPlaceholder: "e.g. Main St 12…",
+  searchAddressPlaceholder: "e.g. Main St 12, Kalwaria Zebrzydowska",
+  cityPlaceholder: "e.g. Kraków or Kalwaria Zebrzydowska",
   buildingNumberRequired: "Building number required before the comma.",
   city: "City *",
   district: "District *",

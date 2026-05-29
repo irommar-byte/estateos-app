@@ -22,10 +22,17 @@ import { CSS } from "@dnd-kit/utilities";
 
 import {
   canonicalizeCity,
+  inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  isStrictCity,
   normalizeText,
 } from "@/lib/location/locationCatalog";
+import {
+  buildForwardGeocodeSearchText,
+  mapboxForwardGeocodeUrl,
+  parseAddressSearchQuery,
+} from "@/lib/mapboxGeocodeClient";
 import {
   AGENT_COMMISSION_MIN_NONZERO,
   validateAgentCommissionPercent,
@@ -56,6 +63,8 @@ if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
 
 const inputPremium =
   "eos-field w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 px-5 text-base text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500 md:text-lg";
+const inputCompact =
+  "eos-field w-full min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-3 px-4 text-xs sm:text-sm leading-snug text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500";
 const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
 const glassPanel =
@@ -229,9 +238,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
   const updateData = (newData: any) => setData((prev: any) => ({ ...prev, ...newData }));
   const strictCities = locationCatalog.strictCities || [];
-  const cityOptions = strictCities.includes(data.city) ? strictCities : [data.city, ...strictCities].filter(Boolean);
-  const districtOptions = locationCatalog.strictCityDistricts[data.city] || [];
-  const isStrictCity = strictCities.includes(data.city);
+  const canonicalFormCity = canonicalizeCity(data.city) || String(data.city || "").trim();
+  const districtOptions = locationCatalog.strictCityDistricts[canonicalFormCity] || [];
+  const isStrictCityForm = isStrictCity(canonicalFormCity);
   const finalImages = imagesList.filter((img) => typeof img === 'string' && img.length > 0);
   const finalFloorPlan = floorPlan;
 
@@ -333,8 +342,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   const handleAddressSearch = async (value: string) => {
-    updateData({ address: value });
-    setAddressError('');
+    const parsed = parseAddressSearchQuery(value);
+    const patch: Record<string, unknown> = { address: value };
+    if (parsed.cityPart) {
+      patch.city = parsed.cityPart;
+    }
+    updateData(patch);
+    setAddressError("");
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!value || value.trim().length < 3 || !token) {
@@ -342,9 +356,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
 
+    const cityHint = parsed.cityPart || data.city;
+    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint);
+
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&autocomplete=true&limit=6&language=pl`,
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: true }),
       );
       const geo = await res.json();
       setAddressSuggestions(Array.isArray(geo?.features) ? geo.features : []);
@@ -356,76 +373,108 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const geocodeAddressFromInput = async (force = false, rawQuery?: string) => {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     const query = String(rawQuery ?? data.address ?? "").trim();
-    if (!token || query.length < 5) return;
+    if (!token || query.length < 3) return;
     if (!force && query === lastGeocodedAddressRef.current) return;
+
+    const parsed = parseAddressSearchQuery(query);
+    const cityHint = parsed.cityPart || data.city;
+    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint);
+
+    if (!cityHint && !parsed.cityPart && !query.includes(",")) {
+      setAddressError(
+        "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
+      );
+      return;
+    }
 
     try {
       const res = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&autocomplete=false&limit=1&language=pl`,
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 5, autocomplete: false }),
       );
       if (!res.ok) return;
       const geo = await res.json();
-      const feature = Array.isArray(geo?.features) ? geo.features[0] : null;
+      const features = Array.isArray(geo?.features) ? geo.features : [];
+      const preferredCityCanon = cityHint ? canonicalizeCity(cityHint) : "";
+      const feature =
+        (preferredCityCanon
+          ? features.find((f: { place_name?: string; place_name_pl?: string }) => {
+              const inferred = inferCityFromMapboxFeature(f);
+              return inferred === preferredCityCanon;
+            })
+          : null) || features[0];
       if (!feature) {
         setAddressError(ao.pinError);
         return;
       }
       lastGeocodedAddressRef.current = query;
       setAddressError("");
-      selectAddress(feature);
+      selectAddress(feature, cityHint || undefined);
     } catch {
       // no-op
     }
   };
 
-  const resolveLocationFromCoordinates = useCallback(async (lat: number, lng: number, fallbackAddress?: string) => {
-    try {
-      const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
-      if (!response.ok) return;
-      const reverse = await response.json();
+  const resolveLocationFromCoordinates = useCallback(
+    async (lat: number, lng: number, fallbackAddress?: string, preferredCity?: string) => {
+      try {
+        const response = await fetch(`/api/location/reverse?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const reverse = await response.json();
 
-      setData((prev: any) => {
-        const reverseCity = reverse.city || prev.city;
-        const streetLine =
-          String(reverse.street || "").trim() ||
-          String(fallbackAddress || "").trim() ||
-          String(prev.address || "").split(",")[0]?.trim() ||
-          "";
-        const nextDistrict = reverse.strictCity
-          ? String(reverse.district || "").trim()
-          : String(reverse.district || prev.district || "").trim();
+        setData((prev: any) => {
+          const reverseCity = canonicalizeCity(reverse.city || "") || String(reverse.city || "").trim();
+          const preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
+          const nextCity = preferred || reverseCity || prev.city;
+          const streetLine =
+            String(reverse.street || "").trim() ||
+            String(fallbackAddress || "").trim() ||
+            String(prev.address || "").split(",")[0]?.trim() ||
+            "";
+          const nextDistrict = reverse.strictCity
+            ? String(reverse.district || "").trim()
+            : String(reverse.district || prev.district || "").trim();
 
-        return {
-          ...prev,
-          lat,
-          lng,
-          city: reverseCity,
-          district: nextDistrict,
-          address: streetLine,
-          street: streetLine,
-        };
-      });
-    } catch {
-      // no-op, manual selection still available
-    }
-  }, [locationCatalog.strictCityDistricts]);
+          return {
+            ...prev,
+            lat,
+            lng,
+            city: nextCity,
+            district: nextDistrict,
+            address: streetLine,
+            street: streetLine,
+          };
+        });
+      } catch {
+        // no-op, manual selection still available
+      }
+    },
+    [],
+  );
 
-  const selectAddress = (feature: any) => {
+  const selectAddress = (feature: any, cityOverride?: string) => {
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
     const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
     const shortStreet = formatShortStreetFromMapboxFeature(feature);
 
+    const parsed = parseAddressSearchQuery(data.address || "");
     const cityFromFeature = inferCityFromMapboxFeature(feature);
-    const cityCanon = canonicalizeCity(cityFromFeature) || canonicalizeCity(data.city) || data.city;
-    const districtGuessByContext = cityCanon ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
-    const districtGuessByLabel = cityCanon
+    const overrideCanon =
+      canonicalizeCity(cityOverride || parsed.cityPart || "") ||
+      (cityOverride ? String(cityOverride).trim() : "");
+    const cityCanon =
+      overrideCanon ||
+      canonicalizeCity(cityFromFeature) ||
+      canonicalizeCity(data.city) ||
+      data.city;
+    const strict = isStrictCity(cityCanon);
+    const districtGuessByContext = strict ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
+    const districtGuessByLabel = strict
       ? pickDistrictFromText(cityCanon, feature?.place_name_pl || feature?.place_name || "")
       : "";
-    const districtGuess = districtGuessByContext || districtGuessByLabel;
-    const nextDistrictValue =
-      districtGuess ||
-      (locationCatalog.strictCities?.includes(cityCanon) ? "" : data.district);
+    const areaGuess = strict ? "" : inferAreaLabelFromMapboxFeature(cityCanon, feature);
+    const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
+    const nextDistrictValue = districtGuess || (strict ? "" : data.district);
 
     lastGeocodedAddressRef.current = shortStreet;
     updateData({
@@ -434,13 +483,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       lng: nextLng,
       lat: nextLat,
       ...(cityCanon ? { city: cityCanon } : {}),
-      ...(cityCanon ? { district: nextDistrictValue } : {}),
+      district: nextDistrictValue,
     });
     setAddressSuggestions([]);
     setAddressError("");
 
     if (nextLat && nextLng) {
-      void resolveLocationFromCoordinates(nextLat, nextLng, shortStreet);
+      void resolveLocationFromCoordinates(nextLat, nextLng, shortStreet, cityCanon);
     }
   };
 
@@ -535,9 +584,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         if (!response.ok) return;
         const catalog = await response.json();
         setLocationCatalog(catalog);
-        if (!data.city && Array.isArray(catalog?.strictCities) && catalog.strictCities.length > 0) {
-          updateData({ city: catalog.strictCities[0] });
-        }
       } catch {
         // fallback to manual text flow
       }
@@ -988,7 +1034,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     city: data.city,
     district: data.district,
   });
-  const districtRequirementMet = isStrictCity ? !!data.district : true;
+  const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
   const landRegistryValid = !hasLandRegistryInput || KW_FULL_REGEX.test(normalizedLandRegistryNumber);
@@ -1374,23 +1420,33 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     {addressSuggestions.length > 0 && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50 overflow-hidden divide-y divide-white/5">
                         {addressSuggestions.map((f, i) => (
-                          <div key={i} onClick={() => selectAddress(f)} className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors">
-                            {f.place_name_pl || f.text}
+                          <div
+                            key={i}
+                            onClick={() => selectAddress(f, parseAddressSearchQuery(data.address || "").cityPart || data.city)}
+                            className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors text-sm leading-snug"
+                          >
+                            {f.place_name_pl || f.place_name}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
                       <label className={labelPremium}>{ao.city}</label>
-                      <select
-                        className={`${inputPremium} appearance-none cursor-pointer text-sm`}
-                        value={data.city || ''}
+                      <input
+                        type="text"
+                        list="add-offer-city-suggestions"
+                        className={inputCompact}
+                        placeholder={ao.cityPlaceholder}
+                        value={data.city || ""}
                         onChange={(e) => {
                           const newCity = e.target.value;
-                          const patch: Record<string, unknown> = { city: newCity, district: "" };
+                          const patch: Record<string, unknown> = {
+                            city: newCity,
+                            district: isStrictCity(newCity) ? "" : data.district,
+                          };
                           if (data.address && addressMentionsOtherCity(data.address, newCity)) {
                             patch.address = "";
                             patch.street = "";
@@ -1399,24 +1455,42 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                           }
                           updateData(patch);
                         }}
-                      >
-                        {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
-                      </select>
+                        onBlur={() => {
+                          if (data.address && data.city) {
+                            void geocodeAddressFromInput(true, data.address);
+                          }
+                        }}
+                      />
+                      <datalist id="add-offer-city-suggestions">
+                        {strictCities.map((city) => (
+                          <option key={city} value={city} />
+                        ))}
+                      </datalist>
                     </div>
 
-                    <div>
-                      <label className={labelPremium}>{isStrictCity ? ao.district : ao.areaLabel}</label>
-                      {isStrictCity ? (
-                        <select className={`${inputPremium} appearance-none cursor-pointer text-sm`} value={data.district || ''} onChange={(e) => updateData({ district: e.target.value })}>
-                          <option value="" disabled>{ao.selectPlaceholder}</option>
-                          {districtOptions.map((district) => <option key={district} value={district}>{district}</option>)}
+                    <div className="min-w-0">
+                      <label className={labelPremium}>{isStrictCityForm ? ao.district : ao.areaLabel}</label>
+                      {isStrictCityForm ? (
+                        <select
+                          className={`${inputCompact} appearance-none cursor-pointer`}
+                          value={data.district || ""}
+                          onChange={(e) => updateData({ district: e.target.value })}
+                        >
+                          <option value="" disabled>
+                            {ao.selectPlaceholder}
+                          </option>
+                          {districtOptions.map((district) => (
+                            <option key={district} value={district}>
+                              {district}
+                            </option>
+                          ))}
                         </select>
                       ) : (
                         <input
                           type="text"
-                          className={inputPremium}
+                          className={inputCompact}
                           placeholder={ao.areaPlaceholder}
-                          value={data.district || ''}
+                          value={data.district || ""}
                           onChange={(e) => updateData({ district: e.target.value })}
                         />
                       )}
