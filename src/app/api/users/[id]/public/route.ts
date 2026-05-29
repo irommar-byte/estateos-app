@@ -8,6 +8,7 @@ import {
   resolveSellerPersonName,
   isAgentOrAgencySeller,
 } from '@/lib/sellerDisplay';
+import { shapePublicReviewForApi } from '@/lib/shapePublicReviews';
 
 async function loadReviews(revieweeId: number) {
   try {
@@ -93,7 +94,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       imageUrl: resolveOfferPrimaryImage(o),
     }));
 
-    const reviews = await loadReviews(Number(user.id));
+    const reviewsRaw = await loadReviews(Number(user.id));
+    const reviews = reviewsRaw.map((row) => shapePublicReviewForApi(row));
     const presentation = await loadPresentationStats(Number(user.id));
     const badges = resolveEliteBadges(user);
 

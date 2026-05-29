@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { ensureOfferPendingPublicationColumns } from '@/lib/offerPendingPublication';
+import {
+  clearPendingPublication,
+  ensureOfferPendingPublicationColumns,
+  readPendingPublication,
+} from '@/lib/offerPendingPublication';
 
 const PUBLICATION_DURATION_DAYS = 30;
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
@@ -599,5 +603,69 @@ export async function activePublicationOfferIds(offerIds: number[]) {
     ...safeIds
   );
   return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
+}
+
+export type AdminOfferApprovalResult =
+  | { ok: true; endsAt: Date; alreadyOnMarket: boolean }
+  | { ok: false; code: 'NO_PENDING_PUBLICATION' | 'ACTIVATION_FAILED'; message: string };
+
+/**
+ * Po akceptacji admina: uruchamia oczekującą publikację (30 dni) i ustawia expiresAt.
+ * Bez tego oferta ma status ACTIVE, ale wygasłe expiresAt → „nieaktualna” na rynku.
+ */
+export async function completeAdminOfferApproval(params: {
+  offerId: number;
+  ownerUserId: number;
+  onFreeFirstCouponUsed?: (userId: number, couponId: string) => Promise<unknown>;
+}): Promise<AdminOfferApprovalResult> {
+  await ensureOfferPublicationSchema();
+  const offerId = params.offerId;
+
+  const active = await activePublicationForOffer(prisma, offerId);
+  if (active) {
+    const endsAt = new Date(active.endsAt);
+    await prisma.offer.update({
+      where: { id: offerId },
+      data: { status: 'ACTIVE', expiresAt: endsAt, updatedAt: new Date() },
+    });
+    await clearPendingPublication(offerId);
+    return { ok: true, endsAt, alreadyOnMarket: true };
+  }
+
+  const pending = await readPendingPublication(offerId);
+  if (!pending?.kind) {
+    return {
+      ok: false,
+      code: 'NO_PENDING_PUBLICATION',
+      message:
+        'Brak zarezerwowanej publikacji. Sprzedawca musi ponownie opłacić wrzucenie oferty na rynek przed akceptacją.',
+    };
+  }
+
+  try {
+    const quote = await getPublicationQuote({
+      userId: params.ownerUserId,
+      offerId,
+      action: 'ACTIVATE',
+    });
+    const txId =
+      pending.kind === 'PLUS_PAID' ? String(pending.iapTransactionId || '').trim() : '';
+    const activation = await activateOfferPublication({
+      userId: params.ownerUserId,
+      offerId,
+      kind: pending.kind,
+      iapTransactionId: pending.kind === 'PLUS_PAID' ? txId : null,
+      iapProductId: quote.productId,
+    });
+
+    if (pending.bonusCouponId && pending.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
+      await params.onFreeFirstCouponUsed(params.ownerUserId, pending.bonusCouponId);
+    }
+    await clearPendingPublication(offerId);
+    return { ok: true, endsAt: activation.endsAt, alreadyOnMarket: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, code: 'ACTIVATION_FAILED', message };
+  }
 }
 

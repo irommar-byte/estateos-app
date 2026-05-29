@@ -82,7 +82,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
 
-  const isArchived = offer.status === 'ARCHIVED' || (offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now());
+  const offerStatus = String(offer.status || '').toUpperCase();
+  const expiredByDate =
+    offer.expiresAt && new Date(offer.expiresAt).getTime() < Date.now();
+  const isArchived =
+    offerStatus === 'ARCHIVED' ||
+    offerStatus === 'SOLD' ||
+    (offerStatus !== 'ACTIVE' && Boolean(expiredByDate));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBiddingOpen, setIsBiddingOpen] = useState(false);
 

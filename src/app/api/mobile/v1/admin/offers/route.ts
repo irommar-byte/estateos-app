@@ -3,6 +3,8 @@ import { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
+import { completeAdminOfferApproval } from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
 
@@ -41,18 +43,43 @@ export async function POST(req: Request) {
     }
 
     const existing = await prisma.offer.findUnique({ where: { id: Number(offerId) } });
+    if (!existing) {
+      return NextResponse.json({ success: false, message: 'Oferta nie istnieje.' }, { status: 404 });
+    }
+
+    const normalizedStatus = String(newStatus || '').trim().toUpperCase();
+
+    if (normalizedStatus === 'ACTIVE') {
+      const approval = await completeAdminOfferApproval({
+        offerId: Number(offerId),
+        ownerUserId: Number(existing.userId),
+        onFreeFirstCouponUsed: markProfilePromoCardUsed,
+      });
+
+      if (!approval.ok) {
+        return NextResponse.json(
+          { success: false, message: approval.message, code: approval.code },
+          { status: 409 },
+        );
+      }
+
+      const offer = await prisma.offer.update({
+        where: { id: Number(offerId) },
+        data: { status: 'ACTIVE', expiresAt: approval.endsAt },
+      });
+
+      if (String(existing.status).toUpperCase() !== 'ACTIVE') {
+        const { radarService } = await import('@/lib/services/radar.service');
+        await radarService.matchNewOffer(offer);
+      }
+
+      return NextResponse.json({ success: true, offer });
+    }
 
     const offer = await prisma.offer.update({
       where: { id: Number(offerId) },
-      data: { status: newStatus }
+      data: { status: newStatus },
     });
-
-    console.log("MOBILE STATUS CHECK:", { before: existing?.status, after: newStatus });
-
-    if (existing?.status !== 'ACTIVE' && newStatus === 'ACTIVE') {
-      const { radarService } = await import("@/lib/services/radar.service");
-      await radarService.matchNewOffer(offer);
-    }
 
     return NextResponse.json({ success: true, offer });
   } catch (error: any) {

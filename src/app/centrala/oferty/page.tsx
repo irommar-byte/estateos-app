@@ -75,16 +75,22 @@ export default function OfertyAdmin() {
   };
 
   const handleUpdateStatus = async (id: string, status: string, verificationStatus?: string) => {
-    await fetch(`/api/admin/offers`, {
+    const res = await fetch(`/api/admin/offers`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status, verificationStatus })
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      alert(data?.error || "Nie udało się zaktualizować oferty.");
+      return;
+    }
     fetchOffers();
     if (selectedOffer?.id === id) {
       setSelectedOffer({
         ...selectedOffer,
-        status,
+        status: data.offer?.status ?? status,
+        expiresAt: data.offer?.expiresAt ?? selectedOffer.expiresAt,
         ...(verificationStatus ? { verificationStatus } : {}),
       });
     }
