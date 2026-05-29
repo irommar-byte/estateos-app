@@ -71,7 +71,7 @@ export async function POST(req: Request) {
       await prisma.$executeRawUnsafe(
         `
           INSERT INTO PageVisitLog (visitorHash, ip, country, path, userAgent, createdAt)
-          VALUES (?, ?, ?, ?, ?, NOW(3))
+          VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
         `,
         visitorHash,
         ip,

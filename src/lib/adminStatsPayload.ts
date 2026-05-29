@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { serializeDbDateTime } from '@/lib/datetime/warsaw';
 
 export async function getAdminStatsPayload() {
   await prisma.$executeRawUnsafe(`
@@ -43,7 +44,8 @@ export async function getAdminStatsPayload() {
   });
 
   const visitsRaw = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT ip, country, path, createdAt
+    SELECT ip, country, path,
+      DATE_FORMAT(createdAt, '%Y-%m-%dT%H:%i:%s') AS createdAt
     FROM PageVisitLog
     ORDER BY createdAt DESC
     LIMIT 5000
@@ -72,10 +74,10 @@ export async function getAdminStatsPayload() {
         ip: v.ip,
         country: v.country,
         path: v.path,
-        createdAt: v.createdAt instanceof Date ? v.createdAt.toISOString() : String(v.createdAt),
+        createdAt: serializeDbDateTime(v.createdAt) ?? String(v.createdAt),
       })),
       users: usersTimelineRaw.map((u) => ({
-        createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
+        createdAt: serializeDbDateTime(u.createdAt) ?? String(u.createdAt),
         isBuyer: true,
         isSeller: true,
         role: u.role,
