@@ -12,30 +12,113 @@ import SwiftUI
  */
 struct RadarLiveActivityAttributes: ActivityAttributes {
 
-    public struct ContentState: Codable, Hashable {
-        var transactionType: String
-        var city: String
-        var localityCountry: String
-        var localityCountryCode: String
-        var districts: [String]
-        var propertyType: String
-        var maxPrice: Double
-        var minArea: Double
-        var minYear: Double
-        var areaRadiusKm: Double
-        var minMatchThreshold: Int
-        var activeMatchesCount: Int
-        var newMatchesCount: Int
-        var unreadDealroomMessagesCount: Int
-        var requireBalcony: Bool
-        var requireGarden: Bool
-        var requireElevator: Bool
-        var requireParking: Bool
-        var requireFurnished: Bool
-        var updatedAtIso: String
-    }
+  public struct ContentState: Codable, Hashable {
+    var transactionType: String
+    var city: String
+    var localityCountry: String
+    var localityCountryCode: String
+    var districts: [String]
+    var propertyType: String
+    var maxPrice: Double
+    var minArea: Double
+    var minYear: Double
+    var areaRadiusKm: Double
+    var minMatchThreshold: Int
+    var activeMatchesCount: Int
+    var newMatchesCount: Int
+    var unreadDealroomMessagesCount: Int
+    var requireBalcony: Bool
+    var requireGarden: Bool
+    var requireElevator: Bool
+    var requireParking: Bool
+    var requireFurnished: Bool
+    var updatedAtIso: String
+    /// Inkrementowany przez natywny heartbeat (~4×/s) — wymusza odświeżenie UI (Uber-style).
+    var animationTick: Int
+    /// Ms epoch startu animacji — stabilny punkt odniesienia cykli.
+    var animationEpochMs: Int64
+  }
 
     var title: String
+}
+
+/// Płynny obrót radaru (TimelineView + epoch) — niezależny od tickera napisów.
+private enum RadarSpinClock {
+    static let spinPeriod: Double = 2.4
+
+    struct Sample {
+        let phase: Double
+        let rotation: Double
+        let dotScale: Double
+        let dotOpacity: Double
+        let sweepOpacity: Double
+    }
+
+    static func sample(at date: Date, epochMs: Int64, frozen: Bool = false) -> Sample {
+        if frozen {
+            return Sample(phase: 0.38, rotation: -84 + 0.38 * 360, dotScale: 1.0, dotOpacity: 0.92, sweepOpacity: 0.82)
+        }
+        let elapsed = max(0, date.timeIntervalSince1970 - Double(epochMs) / 1000.0)
+        let phase = elapsed.truncatingRemainder(dividingBy: spinPeriod) / spinPeriod
+        let rotation = phase * 360.0 - 84.0
+        let blink = 0.5 + 0.5 * sin(elapsed * 2.0 * .pi / 0.85)
+        return Sample(
+            phase: phase,
+            rotation: rotation,
+            dotScale: 0.78 + 0.32 * blink,
+            dotOpacity: 0.55 + 0.45 * blink,
+            sweepOpacity: 0.55 + 0.45 * phase
+        )
+    }
+}
+
+/// Bęben napisów — tylko heartbeat (co 2 s), bez wpływu na obrót radaru.
+private enum RadarDrumMotion {
+    static let tickInterval: Double = 1.0
+    static let drumPeriod: Double = 2.0
+    static let ticksPerStep: Int = 2
+
+    struct Frame {
+        let drumIndex: Int
+        let drumNextIndex: Int
+        let drumBlend: Double
+    }
+
+    static func frame(tick: Int, itemCount: Int) -> Frame {
+        let count = max(itemCount, 1)
+        let elapsed = Double(max(tick, 0)) * tickInterval
+        let drumIndex = (max(tick, 0) / ticksPerStep) % count
+        let drumNextIndex = (drumIndex + 1) % count
+        let drumElapsed = elapsed.truncatingRemainder(dividingBy: drumPeriod)
+        let drumBlend = drumElapsed >= drumPeriod - 0.35
+            ? (drumElapsed - (drumPeriod - 0.35)) / 0.35
+            : 0.0
+        return Frame(
+            drumIndex: drumIndex,
+            drumNextIndex: drumNextIndex,
+            drumBlend: min(1, max(0, drumBlend))
+        )
+    }
+}
+
+private struct RadarSmoothTimeline<Content: View>: View {
+    let epochMs: Int64
+    let frozen: Bool
+    let content: (RadarSpinClock.Sample) -> Content
+
+    var body: some View {
+        if frozen {
+            content(RadarSpinClock.sample(at: Date(), epochMs: epochMs, frozen: true))
+        } else if #available(iOS 17.0, *) {
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+                content(RadarSpinClock.sample(at: timeline.date, epochMs: epochMs))
+            }
+        } else {
+            TimelineView(.periodic(from: Date(timeIntervalSince1970: Double(epochMs) / 1000.0), by: 1.0 / 30.0)) { timeline in
+                content(RadarSpinClock.sample(at: timeline.date, epochMs: epochMs))
+            }
+        }
+    }
 }
 
 struct EstateOSRadarLiveActivity: Widget {
@@ -205,39 +288,28 @@ struct EstateOSRadarLiveActivity: Widget {
         return parts.joined(separator: "   ◆   ")
     }
 
-    /// Duży glyph radaru (lewy górny róg) — obracający się skaner z mrugającym środkiem.
-    /// Live Activity nie obsługuje niezawodnie `@State` + `.repeatForever`, więc kąt
-    /// i puls wyliczamy z `TimelineView` (działa na ekranie blokady aż do AOD).
+    /// Duży glyph — płynny obrót (TimelineView), mrugająca kropka zsynchronizowana ze skanem.
     private struct LargeAnimatedRadarGlyph: View {
         let accent: Color
         let size: CGFloat
+        let epochMs: Int64
 
         @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
-        private let spinPeriod: Double = 2.4
-        private let blinkPeriod: Double = 0.85
-        private let tick: Double = 1.0 / 30.0
-
         var body: some View {
-            Group {
-                if isLuminanceReduced {
-                    glyph(rotation: -84, dotScale: 1.0, dotOpacity: 1.0)
-                } else {
-                    TimelineView(.periodic(from: .now, by: tick)) { timeline in
-                        let t = timeline.date.timeIntervalSince1970
-                        let rotation = (t * (360.0 / spinPeriod)).truncatingRemainder(dividingBy: 360.0) - 84
-                        let blinkWave = 0.5 + 0.5 * sin((t * 2 * .pi) / blinkPeriod)
-                        let dotScale = 0.78 + 0.32 * blinkWave
-                        let dotOpacity = 0.55 + 0.45 * blinkWave
-                        glyph(rotation: rotation, dotScale: dotScale, dotOpacity: dotOpacity)
-                    }
-                }
+            RadarSmoothTimeline(epochMs: epochMs, frozen: isLuminanceReduced) { sample in
+                glyph(
+                    rotation: sample.rotation,
+                    dotScale: sample.dotScale,
+                    dotOpacity: sample.dotOpacity,
+                    sweepOpacity: sample.sweepOpacity
+                )
             }
             .frame(width: size + 6, height: size + 6)
         }
 
         @ViewBuilder
-        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double) -> some View {
+        private func glyph(rotation: Double, dotScale: Double, dotOpacity: Double, sweepOpacity: Double) -> some View {
             let dotBase = max(6, size * 0.2)
             ZStack {
                 Circle()
@@ -249,13 +321,28 @@ struct EstateOSRadarLiveActivity: Widget {
                     .frame(width: size * 0.62, height: size * 0.62)
 
                 Circle()
-                    .trim(from: 0.03, to: 0.28)
+                    .trim(from: 0.0, to: 0.34)
                     .stroke(
-                        accent.opacity(0.96),
-                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                accent.opacity(0.05),
+                                accent.opacity(0.35),
+                                accent.opacity(0.98),
+                                accent.opacity(0.55),
+                            ]),
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 3.4, lineCap: .round)
                     )
                     .frame(width: size, height: size)
                     .rotationEffect(.degrees(rotation))
+                    .opacity(sweepOpacity)
+
+                Capsule(style: .continuous)
+                    .fill(accent.opacity(0.95))
+                    .frame(width: max(2, size * 0.055), height: size * 0.46)
+                    .offset(y: -size * 0.23)
+                    .rotationEffect(.degrees(rotation + 90))
 
                 Circle()
                     .fill(accent.opacity(dotOpacity))
@@ -265,103 +352,201 @@ struct EstateOSRadarLiveActivity: Widget {
         }
     }
 
-    /// Pasek informacyjny w stylu newsów — ciągły scroll parametrów kalibracji.
-    /// `TimelineView(.periodic)` zamiast `.animation` / `@State` — stabilne na lock screen.
-    private struct RadarNewsMarquee: View {
+    /// 10-segmentowy pasek — ten sam zegar co radar (TimelineView, płynnie).
+    private struct RadarSyncedScanBar: View {
         let accent: Color
-        let text: String
+        let epochMs: Int64
+        let frozen: Bool
         var compact: Bool = false
 
-        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-        @State private var measuredLineWidth: CGFloat = 0
-
-        private var fontSize: CGFloat { compact ? 11 : 12 }
-        private var charEstimate: CGFloat { compact ? 6.0 : 6.6 }
-        private var scrollSpeed: CGFloat { compact ? 44 : 52 }
-        private var tick: Double { 1.0 / 24.0 }
+        private static let segmentIndices: [Int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        private static let segmentCount: Double = 10
 
         var body: some View {
-            GeometryReader { geo in
-                let containerW = max(geo.size.width, 1)
-                let lineW = max(measuredLineWidth, CGFloat(max(text.count, 12)) * charEstimate + 24)
-                let loopSpan = lineW + containerW + 80
-
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(accent.opacity(0.22), lineWidth: 0.7)
-                        )
-
-                    if isLuminanceReduced {
-                        Text(text)
-                            .font(.system(size: fontSize, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.55)
-                            .truncationMode(.tail)
-                            .padding(.horizontal, 12)
-                            .frame(width: containerW, alignment: .leading)
-                    } else {
-                        TimelineView(.periodic(from: .now, by: tick)) { timeline in
-                            let phase = CGFloat(timeline.date.timeIntervalSince1970) * scrollSpeed
-                            let offset = -(phase.truncatingRemainder(dividingBy: max(loopSpan, 1)))
-
-                            HStack(spacing: 80) {
-                                marqueeLine
-                                marqueeLine
-                            }
-                            .offset(x: offset)
-                        }
+            RadarSmoothTimeline(epochMs: epochMs, frozen: frozen) { sample in
+                HStack(spacing: 2) {
+                    ForEach(Self.segmentIndices, id: \.self) { i in
+                        animatedSegment(at: i, phase: sample.phase)
                     }
                 }
             }
+            .frame(width: compact ? 64 : 78)
+        }
+
+        private func animatedSegment(at i: Int, phase: Double) -> some View {
+            let segStart = Double(i) / Self.segmentCount
+            let segEnd = Double(i + 1) / Self.segmentCount
+            let isLeading = phase >= segStart && phase < segEnd
+            let opacity = segmentOpacity(phase: phase, segStart: segStart, segEnd: segEnd)
+            return RoundedRectangle(cornerRadius: 1.4, style: .continuous)
+                .fill(accent)
+                .frame(width: compact ? 2.4 : 2.8, height: compact ? 8 : 10)
+                .opacity(opacity)
+                .scaleEffect(isLeading ? 1.18 : 1.0, anchor: .center)
+                .shadow(color: accent.opacity(isLeading ? 0.85 : 0), radius: isLeading ? 3 : 0)
+        }
+
+        private func segmentOpacity(phase: Double, segStart: Double, segEnd: Double) -> Double {
+            if phase < segStart { return 0.16 }
+            if phase < segEnd {
+                let local = (phase - segStart) / (segEnd - segStart)
+                return 0.16 + 0.84 * local
+            }
+            return 1.0
+        }
+    }
+
+    /// Bęben parametrów — co 2 s (heartbeat), bez scrolla.
+    private struct RadarParamDrum: View {
+        let accent: Color
+        let items: [String]
+        let drum: RadarDrumMotion.Frame
+        var compact: Bool = false
+
+        private var fontSize: CGFloat { compact ? 11 : 12 }
+
+        var body: some View {
+            let safeItems = items.isEmpty ? ["Skan rynku · sygnały rejestrowane"] : items
+            let current = safeItems[drum.drumIndex % safeItems.count]
+            let next = safeItems[drum.drumNextIndex % safeItems.count]
+            let blend = drum.drumBlend
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(accent.opacity(0.22), lineWidth: 0.7)
+                    )
+
+                Text(current)
+                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .opacity(1 - blend)
+                    .blur(radius: blend * 1.4)
+                    .offset(y: blend * 2)
+
+                Text(next)
+                    .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 12)
+                    .opacity(blend)
+                    .blur(radius: (1 - blend) * 1.4)
+                    .offset(y: (1 - blend) * -2)
+            }
             .frame(height: compact ? 22 : 26)
             .clipped()
-            .overlay(alignment: .topLeading) {
-                marqueeLine
-                    .fixedSize(horizontal: true, vertical: false)
-                    .background(
-                        GeometryReader { proxy in
-                            Color.clear
-                                .preference(key: MarqueeLineWidthKey.self, value: proxy.size.width)
-                        }
-                    )
-                    .hidden()
+        }
+    }
+
+    /// Tryb uśpienia (AOD) — statyczny komunikat zamiast rotacji parametrów.
+    private struct RadarLiveScanActiveBanner: View {
+        let accent: Color
+        var compact: Bool = false
+
+        var body: some View {
+            HStack(spacing: compact ? 5 : 7) {
+                Text("||")
+                    .font(.system(size: compact ? 9 : 10, weight: .black, design: .monospaced))
+                    .foregroundColor(accent.opacity(0.45))
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: compact ? 4 : 5, height: compact ? 4 : 5)
+                    Text("LIVE SCANNER ACTIVE")
+                        .font(.system(size: compact ? 9.5 : 10.5, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.92))
+                        .tracking(compact ? 0.6 : 1.0)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Circle()
+                        .fill(accent.opacity(0.55))
+                        .frame(width: compact ? 4 : 5, height: compact ? 4 : 5)
+                }
+                Text("||")
+                    .font(.system(size: compact ? 9 : 10, weight: .black, design: .monospaced))
+                    .foregroundColor(accent.opacity(0.45))
             }
-            .onPreferenceChange(MarqueeLineWidthKey.self) { width in
-                if width > 0 { measuredLineWidth = width }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, compact ? 8 : 10)
+            .padding(.vertical, compact ? 4 : 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.07))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(accent.opacity(0.28), lineWidth: 0.8)
+                    )
+            )
+        }
+    }
+
+    /// Dolna linia: typ + pasek skanera + bęben LUB banner w trybie uśpienia.
+    private struct RadarUnifiedTicker: View {
+        let accent: Color
+        let staticLabel: String
+        let paramItems: [String]
+        let epochMs: Int64
+        let animationTick: Int
+        var compact: Bool = false
+
+        @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+        var body: some View {
+            let frozen = isLuminanceReduced
+            let drum = RadarDrumMotion.frame(tick: animationTick, itemCount: paramItems.count)
+
+            HStack(spacing: 8) {
+                staticPill
+                    .layoutPriority(0)
+                if frozen {
+                    RadarLiveScanActiveBanner(accent: accent, compact: compact)
+                        .layoutPriority(1)
+                } else {
+                    RadarSyncedScanBar(accent: accent, epochMs: epochMs, frozen: false, compact: compact)
+                    RadarParamDrum(accent: accent, items: paramItems, drum: drum, compact: compact)
+                        .layoutPriority(1)
+                }
             }
         }
 
-        private var marqueeLine: some View {
-            Text(text)
-                .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+        private var staticPill: some View {
+            Text(staticLabel)
+                .font(.system(size: compact ? 11 : 12.5, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.10))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(accent.opacity(0.42), lineWidth: 0.9)
+                        )
+                )
         }
     }
 
-    private struct MarqueeLineWidthKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-            value = max(value, nextValue())
-        }
+    /// Stary anchor dla pozostałych dekoracji (badge pulse) — główna animacja idzie przez heartbeat.
+    private enum RadarAnimationClock {
+        static let anchor = Date(timeIntervalSince1970: 1_700_000_000)
     }
 
-    /// nad zieloną skalą postępu. Statyczna „Mieszkanie / Dom / Lokal" idzie
-    /// osobnym pillem po lewej i tu się NIE pojawia.
-    /// Każdy element to jeden „slajd" — staramy się logicznie grupować
-    /// parametry, żeby było ich ~3–6 (nie kilkadziesiąt jednoznakowych pip).
+    /// Slajdy bębna parametrów kalibracji (co 2 s).
     private func rotatingParamItems(_ context: ActivityViewContext<RadarLiveActivityAttributes>) -> [String] {
         let state = context.state
         var items: [String] = []
 
-        // 1. metraż + cena razem — ta sama linia, którą użytkownik widział
-        //    wcześniej („od 31 m² · do 18 150 zł"), żeby nie cierpiał ten
-        //    najczęstszy slajd.
         var areaPrice: [String] = []
         if state.minArea > 0 { areaPrice.append("od \(Int(state.minArea.rounded())) m²") }
         if state.maxPrice > 0 {
@@ -369,19 +554,16 @@ struct EstateOSRadarLiveActivity: Widget {
         }
         if !areaPrice.isEmpty { items.append(areaPrice.joined(separator: " · ")) }
 
-        // 2. lokalizacja (obszar mapy LUB dzielnice)
         if state.areaRadiusKm > 0 {
             items.append("Obszar mapy: \(radiusValueLabel(state.areaRadiusKm))")
         } else if !state.districts.isEmpty {
             items.append("Dzielnice: \(districtsLabel(state.districts))")
         }
 
-        // 3. rok budowy
         if state.minYear > 0 {
             items.append("Rok budowy: od \(Int(state.minYear.rounded())) r.")
         }
 
-        // 4. wymagania (jeden slajd, oddzielone przecinkami)
         var reqs: [String] = []
         if state.requireBalcony { reqs.append("balkon") }
         if state.requireGarden { reqs.append("ogród") }
@@ -389,6 +571,11 @@ struct EstateOSRadarLiveActivity: Widget {
         if state.requireParking { reqs.append("parking") }
         if state.requireFurnished { reqs.append("umeblowane") }
         if !reqs.isEmpty { items.append("Wymagania: \(reqs.joined(separator: ", "))") }
+
+        items.append("Próg dopasowania: \(state.minMatchThreshold)%")
+        if state.newMatchesCount > 0 {
+            items.append("NOWE dopasowania: \(state.newMatchesCount)")
+        }
 
         if items.isEmpty { items.append("Skan rynku · sygnały rejestrowane") }
         return items
@@ -439,7 +626,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     glyph(rotation: -72, dotScale: 1.0, dotOpacity: 1.0)
                 } else {
-                    TimelineView(.periodic(from: .now, by: tick)) { timeline in
+                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: tick)) { timeline in
                         let t = timeline.date.timeIntervalSince1970
                         let rotation = (t * (360.0 / spinPeriod)).truncatingRemainder(dividingBy: 360.0) - 72
                         let blinkWave = 0.5 + 0.5 * sin((t * 2 * .pi) / blinkPeriod)
@@ -500,7 +687,7 @@ struct EstateOSRadarLiveActivity: Widget {
                     if isLuminanceReduced {
                         countLabel(scale: 1.0, opacity: 0.92)
                     } else {
-                        TimelineView(.periodic(from: .now, by: 1.0 / 24.0)) { timeline in
+                        TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 24.0)) { timeline in
                             let t = timeline.date.timeIntervalSince1970
                             let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.85)
                             countLabel(scale: 1.0 + 0.04 * wave, opacity: 0.92 + 0.08 * wave)
@@ -532,7 +719,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     badge(strokeOpacity: 0.4, scale: 1.0)
                 } else {
-                    TimelineView(.periodic(from: .now, by: 1.0 / 24.0)) { timeline in
+                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 24.0)) { timeline in
                         let t = timeline.date.timeIntervalSince1970
                         let wave = 0.5 + 0.5 * sin((t * 2 * .pi) / 0.95)
                         badge(strokeOpacity: 0.4 + 0.32 * wave, scale: 1.0 + 0.04 * wave)
@@ -592,7 +779,7 @@ struct EstateOSRadarLiveActivity: Widget {
             .overlay(
                 Group {
                     if !isLuminanceReduced {
-                        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
+                        TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 1.0 / 30.0)) { timeline in
                             let t = timeline.date.timeIntervalSince1970
                             let phase = (t.truncatingRemainder(dividingBy: shinePeriod)) / shinePeriod
                             GeometryReader { geo in
@@ -640,7 +827,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     content(pulse: 0)
                 } else {
-                    TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
                         content(pulse: computePulse(at: timeline.date))
                     }
                 }
@@ -702,7 +889,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 if isLuminanceReduced {
                     pill(red: red, fillOpacity: 1.0, glow: 0.5)
                 } else {
-                    TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                    TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
                         let t = timeline.date.timeIntervalSince1970
                         let phase = t.truncatingRemainder(dividingBy: 1.0)
                         let pulse = 0.55 + 0.45 * (1.0 - cos(2 * .pi * phase)) / 2
@@ -733,41 +920,6 @@ struct EstateOSRadarLiveActivity: Widget {
         }
     }
 
-    /// Dolna linia: statyczny typ + pasek newsów z pełną kalibracją radaru.
-    private struct RadarUnifiedTicker: View {
-        let accent: Color
-        let staticLabel: String
-        let marqueeText: String
-        var compact: Bool = false
-
-        var body: some View {
-            HStack(spacing: 8) {
-                staticPill
-                    .layoutPriority(1)
-                RadarNewsMarquee(accent: accent, text: marqueeText, compact: compact)
-            }
-        }
-
-        private var staticPill: some View {
-            Text(staticLabel)
-                .font(.system(size: compact ? 11 : 12.5, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.10))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .stroke(accent.opacity(0.42), lineWidth: 0.9)
-                        )
-                )
-        }
-    }
-
     /// Premium rotacja linijek konfiguracji radaru — jedna linia widoczna,
     /// gładki blur-replace crossfade w stylu Apple.
     ///
@@ -794,7 +946,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 TickerLineView(text: safeLines[0], accent: accent, compact: compact)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                TimelineView(.periodic(from: .now, by: 0.08)) { timeline in
+                TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.08)) { timeline in
                     let t = timeline.date.timeIntervalSince1970
                     let cycle = t / rotationSeconds
                     let currentIdx = Int(floor(cycle)) % safeLines.count
@@ -906,7 +1058,7 @@ struct EstateOSRadarLiveActivity: Widget {
                 // AOD: statyczny pasek 30%-fill, bez TimelineView.
                 staticBar(progress: 0.3)
             } else {
-                TimelineView(.periodic(from: .now, by: 0.06)) { timeline in
+                TimelineView(.periodic(from: RadarAnimationClock.anchor, by: 0.06)) { timeline in
                     let t = timeline.date.timeIntervalSince1970
                     let phase = t.truncatingRemainder(dividingBy: cycleSeconds) / cycleSeconds
                     animatedBar(phase: phase)
@@ -1116,11 +1268,17 @@ struct EstateOSRadarLiveActivity: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RadarLiveActivityAttributes.self) { context in
+            let paramItems = rotatingParamItems(context)
+            let epochMs = context.state.animationEpochMs
+            let animationTick = context.state.animationTick
+
             VStack(spacing: 8) {
-                // GÓRNY WIERSZ — wszystko POZA „Mieszkanie / parametry"
-                // mieści się tutaj w jednej linii (żadnego wrapu pionowego).
                 HStack(spacing: 12) {
-                    LargeAnimatedRadarGlyph(accent: accent, size: 32)
+                    LargeAnimatedRadarGlyph(
+                        accent: accent,
+                        size: 32,
+                        epochMs: epochMs
+                    )
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 0) {
@@ -1129,7 +1287,7 @@ struct EstateOSRadarLiveActivity: Widget {
                             Text("™").foregroundColor(textMain)
                         }
                         .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .fontWeight(.bold)
+                        .fontWeight(.bold)
                         .lineLimit(1)
 
                         HStack(spacing: 6) {
@@ -1158,12 +1316,12 @@ struct EstateOSRadarLiveActivity: Widget {
                     )
                 }
 
-                // POŁĄCZONA DOLNA LINIA
-                // [Mieszkanie] [— zielona skala z rotującym co 15 s parametrem —]
                 RadarUnifiedTicker(
                     accent: accent,
                     staticLabel: propertyTypeLabel(context.state.propertyType),
-                    marqueeText: allCalibrationMarqueeText(context)
+                    paramItems: paramItems,
+                    epochMs: epochMs,
+                    animationTick: animationTick
                 )
             }
             .padding(.horizontal, 18)
@@ -1223,10 +1381,13 @@ struct EstateOSRadarLiveActivity: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
+                    let paramItems = rotatingParamItems(context)
                     RadarUnifiedTicker(
                         accent: accent,
                         staticLabel: propertyTypeLabel(context.state.propertyType),
-                        marqueeText: allCalibrationMarqueeText(context),
+                        paramItems: paramItems,
+                        epochMs: context.state.animationEpochMs,
+                        animationTick: context.state.animationTick,
                         compact: true
                     )
                     .padding(.top, 3)

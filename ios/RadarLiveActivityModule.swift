@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import React
 import ActivityKit
 
@@ -50,6 +51,8 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     var requireParking: Bool
     var requireFurnished: Bool
     var updatedAtIso: String
+    var animationTick: Int
+    var animationEpochMs: Int64
   }
 
   var title: String
@@ -67,6 +70,119 @@ private enum RadarLiveActivityStore {
   }
 }
 
+/// Odświeża Live Activity co 0,25 s (jak odliczanie Uber) — TimelineView na lock screen
+/// nie animuje niezawodnie, więc stan musi się zmieniać z natywnego timera.
+@available(iOS 16.1, *)
+private final class RadarLiveActivityHeartbeat {
+  static let shared = RadarLiveActivityHeartbeat()
+
+  /// 1 Hz — zgodnie z limitem Apple dla Live Activity (jak odliczanie Uber).
+  private let tickInterval: TimeInterval = 1.0
+  private var timer: DispatchSourceTimer?
+  private var baseState: RadarLiveActivityAttributes.ContentState?
+  private var currentTick: Int = 0
+  private var epochMs: Int64 = 0
+  private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+
+  private func refreshBackgroundRuntime() {
+    if backgroundTask != .invalid {
+      UIApplication.shared.endBackgroundTask(backgroundTask)
+    }
+    backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "RadarLiveActivityHeartbeat") { [weak self] in
+      guard let self else { return }
+      if self.backgroundTask != .invalid {
+        UIApplication.shared.endBackgroundTask(self.backgroundTask)
+        self.backgroundTask = .invalid
+      }
+    }
+  }
+
+  func applySnapshot(_ state: RadarLiveActivityAttributes.ContentState, resetEpoch: Bool) {
+    if resetEpoch || epochMs == 0 {
+      epochMs = Int64(Date().timeIntervalSince1970 * 1000)
+      currentTick = 0
+    }
+    var merged = state
+    merged.animationEpochMs = epochMs
+    merged.animationTick = currentTick
+    baseState = merged
+    startTimerIfNeeded()
+    Task { await pushState(merged) }
+  }
+
+  func stop() {
+    timer?.cancel()
+    timer = nil
+    baseState = nil
+    currentTick = 0
+    epochMs = 0
+    if backgroundTask != .invalid {
+      UIApplication.shared.endBackgroundTask(backgroundTask)
+      backgroundTask = .invalid
+    }
+  }
+
+  private func startTimerIfNeeded() {
+    guard timer == nil else { return }
+
+    let source = DispatchSource.makeTimerSource(queue: DispatchQueue.main)
+    source.schedule(deadline: .now() + tickInterval, repeating: tickInterval)
+    source.setEventHandler { [weak self] in
+      self?.fireTick()
+    }
+    source.resume()
+    timer = source
+  }
+
+  private func pushState(_ state: RadarLiveActivityAttributes.ContentState) async {
+    refreshBackgroundRuntime()
+    let activity =
+      RadarLiveActivityStore.activity
+      ?? Activity<RadarLiveActivityAttributes>.activities.first
+    guard let activity else { return }
+    guard activity.activityState == .active else { return }
+    RadarLiveActivityStore.activity = activity
+    if #available(iOS 16.2, *) {
+      let stale = Date().addingTimeInterval(tickInterval * 2)
+      let content = ActivityContent(state: state, staleDate: stale)
+      await activity.update(content)
+    } else {
+      await activity.update(using: state)
+    }
+  }
+
+  private func fireTick() {
+    Task {
+      guard var state = baseState else {
+        stop()
+        return
+      }
+
+      let activity =
+        RadarLiveActivityStore.activity
+        ?? Activity<RadarLiveActivityAttributes>.activities.first
+
+      guard let activity else {
+        stop()
+        return
+      }
+
+      guard activity.activityState == .active else {
+        stop()
+        return
+      }
+
+      RadarLiveActivityStore.activity = activity
+      currentTick += 1
+      state.animationTick = currentTick
+      state.animationEpochMs = epochMs
+      state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
+      baseState = state
+      await pushState(state)
+    }
+  }
+}
+
 /// Serializuje start/update Live Activity — równoległe wywołania z JS powodowały wyścigi i crashy.
 @available(iOS 16.1, *)
 private actor RadarLiveActivityCoordinator {
@@ -78,19 +194,24 @@ private actor RadarLiveActivityCoordinator {
       await RadarLiveActivityStore.endAllRadarActivities()
     }
 
+    var resetEpoch = false
+
     if let existing = RadarLiveActivityStore.activity ?? systemActivities.first {
       RadarLiveActivityStore.activity = existing
       let state = existing.activityState
       if state == .active {
-        await existing.update(using: contentState)
         for orphan in Activity<RadarLiveActivityAttributes>.activities where orphan.id != existing.id {
           await orphan.end(dismissalPolicy: .immediate)
         }
+        RadarLiveActivityHeartbeat.shared.applySnapshot(contentState, resetEpoch: false)
         return ["status": "updated"]
       }
 
       await existing.end(dismissalPolicy: .immediate)
       RadarLiveActivityStore.activity = nil
+      resetEpoch = true
+    } else {
+      resetEpoch = true
     }
 
     await RadarLiveActivityStore.endAllRadarActivities()
@@ -102,10 +223,12 @@ private actor RadarLiveActivityCoordinator {
       pushType: nil
     )
     RadarLiveActivityStore.activity = activity
+    RadarLiveActivityHeartbeat.shared.applySnapshot(contentState, resetEpoch: resetEpoch)
     return ["status": "started", "id": activity.id]
   }
 
   func stopAll() async {
+    RadarLiveActivityHeartbeat.shared.stop()
     await RadarLiveActivityStore.endAllRadarActivities()
   }
 }
@@ -183,6 +306,7 @@ final class RadarLiveActivityModule: NSObject {
       return
     }
 
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
     let contentState = RadarLiveActivityAttributes.ContentState(
       transactionType: snapshot.transactionType,
       city: snapshot.city,
@@ -203,7 +327,9 @@ final class RadarLiveActivityModule: NSObject {
       requireElevator: snapshot.requireElevator ?? false,
       requireParking: snapshot.requireParking ?? false,
       requireFurnished: snapshot.requireFurnished ?? false,
-      updatedAtIso: snapshot.updatedAtIso
+      updatedAtIso: snapshot.updatedAtIso,
+      animationTick: 0,
+      animationEpochMs: nowMs
     )
 
     upsertTask?.cancel()
