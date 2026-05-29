@@ -7,6 +7,7 @@ import {
   isLocationStepComplete,
   localityNameFromGeocodedPlace,
   localityCountryIso,
+  normalizeOfferLocationForApi,
   REST_OF_COUNTRY_CITY,
 } from '../../src/constants/locationEcosystem';
 
@@ -100,5 +101,17 @@ describe('locationEcosystem international', () => {
       }),
       true,
     );
+  });
+
+  it('normalizeOfferLocationForApi maps rest-of-country to real locality for API', () => {
+    const api = normalizeOfferLocationForApi({
+      city: REST_OF_COUNTRY_CITY,
+      district: 'Raszyn',
+      localityCountry: 'Polska',
+      localityCountryCode: 'PL',
+    });
+    assert.equal(api.city, 'Raszyn');
+    assert.equal(api.district, 'Inny obszar');
+    assert.equal(api.localityCountryCode, 'PL');
   });
 });

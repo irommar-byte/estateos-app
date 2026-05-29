@@ -2556,6 +2556,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return () => clearInterval(interval);
   }, [isRadarActive]);
 
+  /** Po wybudzeniu telefonu — odśwież Live Activity (dane + animacja pierścieni). */
+  useEffect(() => {
+    if (!isRadarActive) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const snap = liveActivitySnapshotRef.current;
+      if (!snap) return;
+      void syncRadarLiveActivity(snap, { force: true });
+    });
+    return () => sub.remove();
+  }, [isRadarActive]);
+
   const focusMapToBounds = useCallback((bounds: { centerLat: number; centerLng: number; radiusKm: number }) => {
     if (!mapRef.current) return;
     mapRef.current.animateToRegion(regionForMapBounds(bounds), 650);

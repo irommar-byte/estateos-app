@@ -14,15 +14,16 @@ import { getStepBlockMessage, hasAddOfferDraftProgress, isStepValid } from './fl
 import { resolvePlotAreaForSubmit } from './validation';
 import {
   REST_OF_COUNTRY_CITY,
+  normalizeOfferLocationForApi,
   formatLocationLabel,
   stripHouseNumber,
   getDraftLocationPresentation,
   getLocationDraftRepairPatch,
+  isPolandLocationDraft,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { getPublicMapPresentation } from '../../utils/publicLocationPrivacy';
 import { isValidLandRegistryNumber } from '../../utils/landRegistry';
-import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { submitOwnerLegalVerification } from '../../services/legalVerificationService';
 import {
   allowsMultipleCountableListings,
@@ -506,6 +507,8 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       rate: fxSnap.rate,
     });
 
+    const apiLocation = normalizeOfferLocationForApi(draft);
+
     const offerData = {
       userId: user.id,
       activateOnCreate: true,
@@ -524,10 +527,10 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       propertyType: draft.propertyType,
       transactionType: draft.transactionType,
       condition: draft.condition || 'READY',
-      city: draft.city || t('addOffer.step6.defaultTitle.defaultCity'),
-      district: draft.district || t('addOffer.step6.defaultTitle.defaultDistrict'),
-      localityCountry: draft.localityCountry || t('addOffer.step6.defaultTitle.defaultCountry'),
-      localityCountryCode: draft.localityCountryCode || 'PL',
+      city: apiLocation.city,
+      district: apiLocation.district,
+      localityCountry: apiLocation.localityCountry,
+      localityCountryCode: apiLocation.localityCountryCode,
       street: draft.street || '',
       buildingNumber: draft.buildingNumber || '',
       isExactLocation: draft.isExactLocation !== undefined ? draft.isExactLocation : true,

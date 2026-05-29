@@ -7,7 +7,8 @@ import { useOfferStore } from '../../store/useOfferStore';
 import AppleHover from '../../components/AppleHover';
 import AddOfferStepper from '../../components/AddOfferStepper';
 import AddOfferStepFooterHint from '../../components/AddOfferStepFooterHint';
-import AddOfferOptionField, { type AddOfferOption } from './AddOfferOptionField';
+import AddOfferWheelPickerColumn from './AddOfferWheelPickerColumn';
+import type { AddOfferOption } from './AddOfferOptionField';
 import {
   applyLandRegistryPrefix,
   getCourtByLandRegistryPrefix,
@@ -379,73 +380,78 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
         ) : null}
 
         {!isPlot && isAreaFilled ? (
-          <Animated.View
-            onLayout={(e) => { detailsYRef.current = e.nativeEvent.layout.y; }}
-            style={{ opacity: detailsAnim }}
-          >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.details')}</Text>
-            <AddOfferOptionField
-              title={t('addOffer.step3.pickers.rooms')}
-              value={draft.rooms || ''}
-              options={roomOptions}
-              disabled={!isRoomsUnlocked}
-              onChange={(v) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                updateDraft({ rooms: v });
-              }}
-              theme={theme}
-              cardBg={cardBg}
-              cardBorder={cardBorder}
-            />
-            {needsFloor ? (
-              <AddOfferOptionField
-                title={t('addOffer.step3.pickers.floor')}
-                value={draft.floor || ''}
-                options={floorOptions}
-                disabled={!isFloorUnlocked}
+          <View onLayout={(e) => { detailsYRef.current = e.nativeEvent.layout.y; }}>
+            <Animated.View style={{ opacity: detailsAnim }}>
+              <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.details')}</Text>
+            </Animated.View>
+            <View style={styles.triplePickerWrapper}>
+              <AddOfferWheelPickerColumn
+                title={t('addOffer.step3.pickers.rooms')}
+                value={draft.rooms || ''}
+                options={roomOptions}
+                disabled={!isRoomsUnlocked}
                 onChange={(v) => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  updateDraft({ floor: v });
+                  updateDraft({ rooms: v });
                 }}
                 theme={theme}
                 cardBg={cardBg}
                 cardBorder={cardBorder}
               />
-            ) : null}
-            <AddOfferOptionField
-              title={t('addOffer.step3.pickers.year')}
-              value={draft.yearBuilt || draft.buildYear || ''}
-              options={yearOptions}
-              disabled={!isYearUnlocked}
-              onChange={(v) => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                updateDraft({ buildYear: v, yearBuilt: v });
-              }}
-              theme={theme}
-              cardBg={cardBg}
-              cardBorder={cardBorder}
-            />
-          </Animated.View>
+              {needsFloor ? (
+                <AddOfferWheelPickerColumn
+                  title={t('addOffer.step3.pickers.floor')}
+                  value={draft.floor || ''}
+                  options={floorOptions}
+                  disabled={!isFloorUnlocked}
+                  onChange={(v) => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    updateDraft({ floor: v });
+                  }}
+                  theme={theme}
+                  cardBg={cardBg}
+                  cardBorder={cardBorder}
+                />
+              ) : null}
+              <AddOfferWheelPickerColumn
+                title={t('addOffer.step3.pickers.year')}
+                value={draft.yearBuilt || draft.buildYear || ''}
+                options={yearOptions}
+                disabled={!isYearUnlocked}
+                onChange={(v) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  updateDraft({ buildYear: v, yearBuilt: v });
+                }}
+                theme={theme}
+                cardBg={cardBg}
+                cardBorder={cardBorder}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {!isPlot && isAreaFilled && isAmenitiesUnlocked ? (
+          <View onLayout={(e) => { amenitiesYRef.current = e.nativeEvent.layout.y; }}>
+            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.amenities')}</Text>
+            <View style={styles.heatingPickerWrap}>
+              <AddOfferWheelPickerColumn
+                title={t('addOffer.step3.sections.heating')}
+                value={draft.heating || ''}
+                options={heatingOptions}
+                onChange={(v) => updateDraft({ heating: v })}
+                theme={theme}
+                cardBg={cardBg}
+                cardBorder={cardBorder}
+              />
+            </View>
+          </View>
         ) : null}
 
         {!isPlot && isAreaFilled ? (
           <Animated.View
-            onLayout={(e) => { amenitiesYRef.current = e.nativeEvent.layout.y; }}
             style={{ opacity: amenitiesAnim }}
             pointerEvents={isAmenitiesUnlocked ? 'auto' : 'none'}
           >
-            <Text style={[styles.sectionTitle, { color: theme.subtitle, marginTop: 40 }]}>{t('addOffer.step3.sections.amenities')}</Text>
-            <AddOfferOptionField
-              title={t('addOffer.step3.sections.heating')}
-              value={draft.heating || ''}
-              options={heatingOptions}
-              disabled={!isAmenitiesUnlocked}
-              onChange={(v) => updateDraft({ heating: v })}
-              theme={theme}
-              cardBg={cardBg}
-              cardBorder={cardBorder}
-            />
-
             <AppleHover
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -611,6 +617,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8,
+  },
+  triplePickerWrapper: {
+    flexDirection: 'row',
+    gap: 12,
+    height: Platform.OS === 'ios' ? 200 : 80,
+    marginBottom: 8,
+  },
+  heatingPickerWrap: {
+    marginBottom: 16,
   },
   premiumRow: {
     borderRadius: 18,

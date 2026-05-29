@@ -24,7 +24,8 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Image } from 'expo-image';
-import AddOfferOptionField, { type AddOfferOption } from './AddOffer/AddOfferOptionField';
+import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
+import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useNavigation } from '@react-navigation/native';
@@ -2139,7 +2140,7 @@ export default function EditOfferScreen({ route }: any) {
             />
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
-              <AddOfferOptionField
+              <AddOfferWheelPickerColumn
                 title={t('offer.edit.amenities.heating')}
                 value={heating}
                 options={heatingOptions}

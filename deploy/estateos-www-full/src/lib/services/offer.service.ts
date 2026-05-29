@@ -10,6 +10,7 @@ import {
   OfferStatus
 } from '@prisma/client';
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
+import { assertCoordinatesMatchCity } from '@/lib/offerGeolocationValidate';
 import {
   attachVerificationMetaToDescription,
   buildOfferVerificationMeta,
@@ -264,6 +265,13 @@ export async function createOffer(body: any) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
   }
 
+  await assertCoordinatesMatchCity({
+    lat: Number(lat),
+    lng: Number(lng),
+    city: locationValidation.city,
+    district: locationValidation.district,
+  });
+
   const verificationMeta = buildOfferVerificationMeta({
     apartmentNumber: body.apartmentNumber,
     landRegistryNumber: body.landRegistryNumber,
@@ -432,6 +440,27 @@ export async function updateOffer(body: any) {
 
   if (locationValidation && !locationValidation.valid) {
     throw new Error(locationValidation.message || 'Nieprawidłowa lokalizacja');
+  }
+
+  const nextLat =
+    body.lat !== undefined && body.lat !== null && body.lat !== ''
+      ? Number(body.lat)
+      : Number(existing.lat);
+  const nextLng =
+    body.lng !== undefined && body.lng !== null && body.lng !== ''
+      ? Number(body.lng)
+      : Number(existing.lng);
+  if (
+    locationValidation &&
+    Number.isFinite(nextLat) &&
+    Number.isFinite(nextLng)
+  ) {
+    await assertCoordinatesMatchCity({
+      lat: nextLat,
+      lng: nextLng,
+      city: locationValidation.city,
+      district: locationValidation.district,
+    });
   }
 
   let agentCommissionPercent: number | null | undefined = undefined;

@@ -1,4 +1,6 @@
-import { canonicalizeCity } from "@/lib/location/locationCatalog";
+import { canonicalizeCity, normalizeText } from "@/lib/location/locationCatalog";
+
+const REST_OF_COUNTRY_LABEL = "Reszta kraju";
 
 function getContextText(context: unknown[], idPrefix: string): string {
   if (!Array.isArray(context)) return "";
@@ -33,6 +35,7 @@ export async function assertCoordinatesMatchCity(params: {
   lat: number;
   lng: number;
   city: string;
+  district?: string | null;
 }): Promise<void> {
   const selected = canonicalizeCity(params.city);
   if (!selected) return;
@@ -40,9 +43,16 @@ export async function assertCoordinatesMatchCity(params: {
   const resolved = await resolveCityAtCoordinates(params.lat, params.lng);
   if (!resolved) return;
 
-  if (resolved !== selected) {
+  const isRestOfCountry = normalizeText(selected) === normalizeText(REST_OF_COUNTRY_LABEL);
+  const compareTarget = isRestOfCountry
+    ? canonicalizeCity(params.district || "") || selected
+    : selected;
+
+  if (!compareTarget) return;
+
+  if (normalizeText(resolved) !== normalizeText(compareTarget)) {
     throw new Error(
-      `Pinezka na mapie wskazuje ${resolved}, a wybrane miasto to ${selected}. Przesuń pinezkę lub zmień miasto.`,
+      `Pinezka na mapie wskazuje ${resolved}, a wybrane miasto to ${isRestOfCountry ? compareTarget : selected}. Przesuń pinezkę lub zmień miasto.`,
     );
   }
 }

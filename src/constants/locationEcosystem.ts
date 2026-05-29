@@ -508,6 +508,47 @@ export function isPolandLocationDraft(draft: {
   return pres.countryIso === DEFAULT_LOCALITY_COUNTRY_CODE;
 }
 
+/**
+ * Payload `city`/`district` dla API — bez „Reszta kraju” w polu miasta,
+ * żeby geowalidacja pinezki nie odrzucała Raszyna, Kiszyniowa itd.
+ */
+export function normalizeOfferLocationForApi(draft: {
+  city?: unknown;
+  district?: unknown;
+  localityCountry?: unknown;
+  localityCountryCode?: unknown;
+}): {
+  city: string;
+  district: string;
+  localityCountry: string;
+  localityCountryCode: string;
+} {
+  const pres = getDraftLocationPresentation({
+    city: String(draft?.city ?? ''),
+    district: String(draft?.district ?? ''),
+    localityCountry: String(draft?.localityCountry ?? ''),
+    localityCountryCode: String(draft?.localityCountryCode ?? ''),
+  });
+
+  let city = pres.city;
+  let district = pres.district;
+
+  if (city === REST_OF_COUNTRY_CITY) {
+    const locality = String(district).trim();
+    if (locality && locality !== 'Ogólna') {
+      city = locality;
+      district = 'Inny obszar';
+    }
+  }
+
+  return {
+    city,
+    district: district || 'Inny obszar',
+    localityCountry: pres.countryLabelPl,
+    localityCountryCode: pres.countryIso,
+  };
+}
+
 export function isLocationStepComplete(draft: {
   lat?: unknown;
   lng?: unknown;

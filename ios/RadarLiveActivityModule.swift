@@ -131,15 +131,27 @@ private final class RadarLiveActivityHeartbeat {
     isAppActive = false
     timer?.cancel()
     timer = nil
+    Task {
+      guard var state = baseState else { return }
+      state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
+      baseState = state
+      await pushState(state)
+    }
   }
 
   private func resumeForForeground() {
     isAppActive = true
     guard baseState != nil else { return }
+    epochMs = Int64(Date().timeIntervalSince1970 * 1000)
+    currentTick = 0
     syncTickToWallClock()
     startTimerIfNeeded()
     Task {
-      guard let state = baseState else { return }
+      guard var state = baseState else { return }
+      state.animationEpochMs = epochMs
+      state.animationTick = currentTick
+      state.updatedAtIso = ISO8601DateFormatter().string(from: Date())
+      baseState = state
       await pushState(state)
     }
   }
@@ -177,7 +189,8 @@ private final class RadarLiveActivityHeartbeat {
     guard activity.activityState == .active else { return }
     RadarLiveActivityStore.activity = activity
     if #available(iOS 16.2, *) {
-      let stale = Date().addingTimeInterval(tickInterval * 2)
+      // Długi staleDate — krótki powodował zatrzymanie TimelineView po zablokowaniu telefonu.
+      let stale = Date().addingTimeInterval(6 * 3600)
       let content = ActivityContent(state: state, staleDate: stale)
       await activity.update(content)
     } else {
