@@ -23,10 +23,11 @@ import {
   toPublicOfferErrorMessage,
 } from '@/lib/offerSchemaErrors';
 import {
-  activateOfferPublication,
   activePublicationOfferIds,
   getPublicationQuote,
+  submitOfferActivation,
 } from '@/lib/offerPublication';
+import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
 type PendingCreate = { createdAt: number; promise: Promise<any> };
@@ -251,22 +252,43 @@ export async function POST(req: Request) {
                 ? 'PLUS_PAID'
                 : 'PLUS_CREDIT';
 
-    const activation = await activateOfferPublication({
+    const bonusCouponId = pub?.bonusCouponId ? String(pub.bonusCouponId).trim() : '';
+
+    const staged = await submitOfferActivation({
       userId: authUserId,
       offerId: Number(offer.id),
       kind: activationKind,
+      bonusCouponId: bonusCouponId || null,
       iapTransactionId: activationKind === 'PLUS_PAID' ? txId : null,
       iapProductId: quote.productId,
+      onFreeFirstCouponUsed: markProfilePromoCardUsed,
     });
 
+    if (staged.alreadyActive) {
+      return NextResponse.json({
+        success: true,
+        offer: { ...offer, status: 'ACTIVE' },
+        publication: { status: 'ACTIVE', kind: activationKind },
+      });
+    }
+
+    const offerStatus = staged.status;
     return NextResponse.json({
       success: true,
-      offer: { ...offer, status: 'ACTIVE', expiresAt: activation.endsAt.toISOString() },
-      publication: {
-        status: activation.status,
-        kind: activation.kind,
-        endsAt: activation.endsAt.toISOString(),
+      awaitingModeration: staged.awaitingModeration,
+      offer: {
+        ...offer,
+        status: offerStatus,
+        ...(staged.endsAt ? { expiresAt: staged.endsAt.toISOString() } : {}),
       },
+      publication: {
+        status: staged.status,
+        kind: staged.kind,
+        endsAt: staged.endsAt?.toISOString?.() ?? null,
+      },
+      message: staged.awaitingModeration
+        ? 'Oferta została przesłana do weryfikacji.'
+        : 'Oferta jest aktywna na rynku.',
     });
   } catch (e: unknown) {
     if (e instanceof OfferValidationError) {
