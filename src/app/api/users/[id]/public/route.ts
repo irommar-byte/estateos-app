@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
 import { computePresentationStats } from '@/lib/appointments/presentationFlow';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 
 async function loadReviews(revieweeId: number) {
   try {
@@ -69,7 +70,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     if (!user) return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
 
-    const offers = await prisma.offer.findMany({
+    const offersRaw = await prisma.offer.findMany({
       where: { userId: user.id, status: 'ACTIVE' },
       select: {
         id: true,
@@ -82,6 +83,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         buildingNumber: true,
       },
     });
+    const offers = offersRaw.map((o) => ({
+      ...o,
+      imageUrl: resolveOfferPrimaryImage(o),
+    }));
 
     const reviews = await loadReviews(Number(user.id));
     const presentation = await loadPresentationStats(Number(user.id));

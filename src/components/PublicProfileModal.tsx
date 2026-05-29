@@ -24,6 +24,7 @@ import {
   getPresentationFlowDictionary,
   fmtPresentation,
 } from "@/i18n/presentationFlowDictionary";
+import { resolveOfferPrimaryImage } from "@/lib/offers/primaryImage";
 
 export default function PublicProfileModal({
   isOpen,
@@ -248,18 +249,28 @@ export default function PublicProfileModal({
                   {fmtPresentation(p.otherOffers, { n: data.offers.length })}
                 </h4>
                 <div className="flex flex-col gap-2">
-                  {data.offers.map((o: any) => (
+                  {data.offers.map((o: any) => {
+                    const thumb = o.imageUrl || resolveOfferPrimaryImage(o);
+                    return (
                     <Link
                       key={o.id}
                       href={`/oferta/${o.id}`}
                       className="flex items-center gap-3 p-2.5 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)] hover:border-emerald-500/30 transition-all group"
                     >
                       <div className="w-14 h-14 rounded-lg overflow-hidden relative shrink-0 bg-[var(--eos-bg-elevated)]">
-                        {o.images?.[0] ? (
-                          <img src={o.images[0]} alt="" className="w-full h-full object-cover opacity-90 group-hover:opacity-100" />
-                        ) : (
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt=""
+                            className="w-full h-full object-cover opacity-90 group-hover:opacity-100"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : null}
+                        {!thumb ? (
                           <Home className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[var(--eos-subtle)]" size={20} />
-                        )}
+                        ) : null}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h5 className="text-xs font-bold truncate">{o.title || `ID ${o.id}`}</h5>
@@ -267,7 +278,8 @@ export default function PublicProfileModal({
                       </div>
                       <Eye size={14} className="text-emerald-500/70 shrink-0" />
                     </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
