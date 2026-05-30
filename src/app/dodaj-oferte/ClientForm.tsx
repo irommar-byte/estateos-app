@@ -1630,28 +1630,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       {locationDisplayLine}
                     </p>
                   ) : null}
-
-                  <AddOfferDocVerificationPanel
-                    ao={ao}
-                    inputPremium={inputPremium}
-                    labelPremium={labelPremium}
-                    propertyType={data.propertyType}
-                    apartmentNumber={String(data.apartmentNumber || "")}
-                    landRegistryNumber={String(data.landRegistryNumber || "")}
-                    landRegistryValid={landRegistryValid}
-                    hasLandRegistryInput={hasLandRegistryInput}
-                    onApartmentChange={(value) => updateData({ apartmentNumber: value })}
-                    onLandRegistryChange={(value) =>
-                      updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
-                    }
-                    landRegistryInputRef={landRegistryInputRef}
-                  />
                 </div>
 
                 <div className="relative w-full min-h-[420px] h-[clamp(360px,48svh,560px)] lg:min-h-[440px] rounded-[2rem] overflow-hidden bg-[#111] border border-white/10 shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] isolate">
                   <div ref={mapContainerRef} className="absolute inset-0 h-full w-full min-h-[420px]" />
                 </div>
               </div>
+
+              <AddOfferDocVerificationPanel
+                ao={ao}
+                inputPremium={inputPremium}
+                labelPremium={labelPremium}
+                propertyType={data.propertyType}
+                apartmentNumber={String(data.apartmentNumber || "")}
+                landRegistryNumber={String(data.landRegistryNumber || "")}
+                landRegistryValid={landRegistryValid}
+                hasLandRegistryInput={hasLandRegistryInput}
+                onApartmentChange={(value) => updateData({ apartmentNumber: value })}
+                onLandRegistryChange={(value) =>
+                  updateData({ landRegistryNumber: normalizeLandRegistryInput(value) })
+                }
+                landRegistryInputRef={landRegistryInputRef}
+              />
             </section>
 
             {/* KROK 3: PARAMETRY I FINANSE */}

@@ -106,6 +106,7 @@ export type AddOfferDictionary = {
   docVerificationPreviewKicker: string;
   docVerificationPreviewBody: string;
   docVerificationBadgeLabel: string;
+  docVerificationBadgeInactiveLabel: string;
   docVerificationBadgeSublabel: string;
   docVerificationPreviewTrust: string;
   rentPlaceholder: string;
@@ -225,7 +226,8 @@ const pl: AddOfferDictionary = {
   docVerificationPreviewKicker: "Twój znaczek po weryfikacji",
   docVerificationPreviewBody:
     "Tak będzie wyglądać tarcza przy Twojej ofercie — widoczna dla kupujących szukających potwierdzonej własności.",
-  docVerificationBadgeLabel: "KW zweryfikowane",
+  docVerificationBadgeLabel: "ZWERYFIKOWANE",
+  docVerificationBadgeInactiveLabel: "NIEZWERYFIKOWANE",
   docVerificationBadgeSublabel: "EstateOS Quality Shield",
   docVerificationPreviewTrust: "Widoczne tylko po pozytywnej weryfikacji",
   rentPlaceholder: "Np. 1500",
@@ -345,7 +347,8 @@ const en: AddOfferDictionary = {
   docVerificationPreviewKicker: "Your badge after verification",
   docVerificationPreviewBody:
     "This is how the shield appears on your listing — visible to buyers seeking verified ownership.",
-  docVerificationBadgeLabel: "Registry verified",
+  docVerificationBadgeLabel: "VERIFIED",
+  docVerificationBadgeInactiveLabel: "UNVERIFIED",
   docVerificationBadgeSublabel: "EstateOS Quality Shield",
   docVerificationPreviewTrust: "Shown only after successful verification",
   rentPlaceholder: "e.g. 1500",

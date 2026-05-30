@@ -10,6 +10,7 @@ export type OfferPageCopy = {
   verified: string;
   verifiedHint: string;
   legalVerifiedKw: string;
+  legalUnverifiedKw: string;
   newOfferBadge: string;
   pendingReview: string;
   pendingHint: string;
@@ -83,7 +84,8 @@ const PL: OfferPageCopy = {
   privateOwner: "Właściciel prywatny",
   verified: "Zweryfikowana",
   verifiedHint: "Odznaka jakości EstateOS",
-  legalVerifiedKw: "zweryfikowane",
+  legalVerifiedKw: "ZWERYFIKOWANE",
+  legalUnverifiedKw: "NIEZWERYFIKOWANE",
   newOfferBadge: "NOWA OFERTA",
   pendingReview: "Weryfikacja w toku",
   pendingHint: "Sprawdzamy dokumenty",
@@ -160,7 +162,8 @@ const EN: OfferPageCopy = {
   privateOwner: "Private owner",
   verified: "Verified",
   verifiedHint: "EstateOS quality badge",
-  legalVerifiedKw: "verified",
+  legalVerifiedKw: "VERIFIED",
+  legalUnverifiedKw: "UNVERIFIED",
   newOfferBadge: "NEW LISTING",
   pendingReview: "Verification in progress",
   pendingHint: "We are reviewing documents",
