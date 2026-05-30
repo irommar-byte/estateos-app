@@ -1,19 +1,29 @@
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 
+import { extractTrailingHouseNumber } from "@/lib/mapboxGeocodeClient";
+
 /** Ulica + numer z wyniku Mapbox (bez miasta, kodu i kraju). */
-export function formatShortStreetFromMapboxFeature(feature: {
-  text?: string;
-  address?: string;
-  place_name?: string;
-  place_name_pl?: string;
-} | null | undefined): string {
+export function formatShortStreetFromMapboxFeature(
+  feature: {
+    text?: string;
+    address?: string;
+    place_name?: string;
+    place_name_pl?: string;
+  } | null | undefined,
+  userQuery?: string,
+): string {
   const street = String(feature?.text || "").trim();
   const number = String(feature?.address || "").trim();
   if (street && number) return `${street} ${number}`.trim();
   const head = String(feature?.place_name_pl || feature?.place_name || "")
     .split(",")[0]
     ?.trim();
-  return head || street;
+  const base = head || street;
+  const houseFromQuery = extractTrailingHouseNumber(String(userQuery || ""));
+  if (base && houseFromQuery && !number) {
+    return `${base} ${houseFromQuery}`.trim();
+  }
+  return base;
 }
 
 /** Czy w tekście adresu jest inne miasto niż wybrane w formularzu. */

@@ -30,8 +30,11 @@ import {
 } from "@/lib/location/locationCatalog";
 import {
   buildForwardGeocodeSearchText,
+  extractVillageLocalityFromStreet,
+  isAdministrativeAreaLabel,
   mapboxForwardGeocodeUrl,
   parseAddressSearchQuery,
+  pickBestGeocodeFeature,
 } from "@/lib/mapboxGeocodeClient";
 import {
   AGENT_COMMISSION_MIN_NONZERO,
@@ -356,8 +359,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
 
-    const cityHint = parsed.cityPart || data.city;
-    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint);
+    const cityHintRaw = parsed.cityPart || data.city;
+    const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? "" : cityHintRaw;
+    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint || parsed.cityPart);
 
     try {
       const res = await fetch(
@@ -377,10 +381,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (!force && query === lastGeocodedAddressRef.current) return;
 
     const parsed = parseAddressSearchQuery(query);
-    const cityHint = parsed.cityPart || data.city;
+    const cityHintRaw = parsed.cityPart || data.city;
+    const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? parsed.cityPart || "" : cityHintRaw;
     const searchText = buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint);
 
-    if (!cityHint && !parsed.cityPart && !query.includes(",")) {
+    const villageHint = extractVillageLocalityFromStreet(query);
+    if (!cityHint && !parsed.cityPart && !query.includes(",") && !villageHint) {
       setAddressError(
         "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
       );
@@ -389,19 +395,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     try {
       const res = await fetch(
-        mapboxForwardGeocodeUrl(searchText, token, { limit: 5, autocomplete: false }),
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: false }),
       );
       if (!res.ok) return;
       const geo = await res.json();
       const features = Array.isArray(geo?.features) ? geo.features : [];
-      const preferredCityCanon = cityHint ? canonicalizeCity(cityHint) : "";
-      const feature =
-        (preferredCityCanon
-          ? features.find((f: { place_name?: string; place_name_pl?: string }) => {
-              const inferred = inferCityFromMapboxFeature(f);
-              return inferred === preferredCityCanon;
-            })
-          : null) || features[0];
+      const feature = pickBestGeocodeFeature(features, query, cityHint || villageHint);
       if (!feature) {
         setAddressError(ao.pinError);
         return;
@@ -425,11 +424,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           const reverseCity = canonicalizeCity(reverse.city || "") || String(reverse.city || "").trim();
           const preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
           const nextCity = preferred || reverseCity || prev.city;
-          const streetLine =
-            String(reverse.street || "").trim() ||
-            String(fallbackAddress || "").trim() ||
-            String(prev.address || "").split(",")[0]?.trim() ||
-            "";
+          const reverseStreet = String(reverse.street || "").trim();
+          const fallback = String(fallbackAddress || "").trim();
+          const prevStreet = String(prev.address || "").split(",")[0]?.trim() || "";
+          const preserveUserStreet =
+            Boolean(fallback && /\d/.test(fallback)) &&
+            Boolean(reverseStreet) &&
+            normalizeText(reverseStreet) !== normalizeText(fallback);
+          const streetLine = preserveUserStreet
+            ? fallback
+            : reverseStreet || fallback || prevStreet;
           const nextDistrict = reverse.strictCity
             ? String(reverse.district || "").trim()
             : String(reverse.district || prev.district || "").trim();
@@ -452,18 +456,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   );
 
   const selectAddress = (feature: any, cityOverride?: string) => {
+    const userQuery = String(data.address || "").trim();
     const coords = feature?.center;
     const nextLng = Array.isArray(coords) ? Number(coords[0]) : data.lng;
     const nextLat = Array.isArray(coords) ? Number(coords[1]) : data.lat;
-    const shortStreet = formatShortStreetFromMapboxFeature(feature);
+    const shortStreet = formatShortStreetFromMapboxFeature(feature, userQuery);
 
-    const parsed = parseAddressSearchQuery(data.address || "");
+    const parsed = parseAddressSearchQuery(userQuery);
     const cityFromFeature = inferCityFromMapboxFeature(feature);
+    const overrideRaw = cityOverride || parsed.cityPart || "";
     const overrideCanon =
-      canonicalizeCity(cityOverride || parsed.cityPart || "") ||
-      (cityOverride ? String(cityOverride).trim() : "");
+      canonicalizeCity(isAdministrativeAreaLabel(overrideRaw) ? "" : overrideRaw) ||
+      (overrideRaw && !isAdministrativeAreaLabel(overrideRaw) ? String(overrideRaw).trim() : "");
+    const villageFromQuery = extractVillageLocalityFromStreet(userQuery);
     const cityCanon =
       overrideCanon ||
+      (villageFromQuery && !isStrictCity(cityFromFeature) ? villageFromQuery : "") ||
       canonicalizeCity(cityFromFeature) ||
       canonicalizeCity(data.city) ||
       data.city;
@@ -474,7 +482,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       : "";
     const areaGuess = strict ? "" : inferAreaLabelFromMapboxFeature(cityCanon, feature);
     const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
-    const nextDistrictValue = districtGuess || (strict ? "" : data.district);
+    const nextDistrictValue =
+      districtGuess ||
+      (strict ? "" : villageFromQuery && villageFromQuery !== cityCanon ? villageFromQuery : data.district);
 
     lastGeocodedAddressRef.current = shortStreet;
     updateData({
@@ -1425,7 +1435,14 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         {addressSuggestions.map((f, i) => (
                           <div
                             key={i}
-                            onClick={() => selectAddress(f, parseAddressSearchQuery(data.address || "").cityPart || data.city)}
+                            onClick={() =>
+                              selectAddress(
+                                f,
+                                parseAddressSearchQuery(data.address || "").cityPart ||
+                                  extractVillageLocalityFromStreet(data.address || "") ||
+                                  (isAdministrativeAreaLabel(data.city) ? "" : data.city),
+                              )
+                            }
                             className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors text-sm leading-snug"
                           >
                             {f.place_name_pl || f.place_name}

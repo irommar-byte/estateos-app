@@ -2,11 +2,38 @@
  * Wspólne zapytania Mapbox Geocoding (forward) — Polska, miasto z formularza lub z przecinka w adresie.
  */
 
+import { normalizeText } from "@/lib/location/locationCatalog";
+
 export type ParsedAddressQuery = {
   streetPart: string;
   cityPart: string;
   fullQuery: string;
 };
+
+/** Czy etykieta to jednostka administracyjna (powiat/gmina/województwo), a nie miejscowość. */
+export function isAdministrativeAreaLabel(value: unknown): boolean {
+  return /^(powiat|gmina|województwo)\s/i.test(String(value || "").trim());
+}
+
+/** Numer domu z końca wpisu, np. „Sitaniec 464" → „464". */
+export function extractTrailingHouseNumber(raw: string): string {
+  const match = String(raw || "")
+    .trim()
+    .match(/\s+(\d+[a-zA-Z]?(?:\/\d+[a-zA-Z]?)?)$/u);
+  return match ? match[1] : "";
+}
+
+/** Miejscowość z wpisu typu „Sitaniec 464" (bez ul./al.). */
+export function extractVillageLocalityFromStreet(streetInput: unknown): string {
+  const street = String(streetInput ?? "").trim();
+  if (!street || /^(ul\.?|al\.?|pl\.?|os\.?|ulica|aleja|plac|osiedle)\s/i.test(street)) {
+    return "";
+  }
+  const match = street.match(
+    /^([A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\-]+(?:\s+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\-]+)?)\s+\d+/u,
+  );
+  return match?.[1]?.trim() || "";
+}
 
 /** Rozdziela „ulica nr, miasto” lub „ulica nr, miasto, Polska”. */
 export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
@@ -17,7 +44,12 @@ export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
 
   const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) {
-    return { streetPart: trimmed, cityPart: "", fullQuery: trimmed };
+    const village = extractVillageLocalityFromStreet(trimmed);
+    return {
+      streetPart: trimmed,
+      cityPart: village,
+      fullQuery: buildForwardGeocodeSearchText(trimmed, village),
+    };
   }
 
   let cityIndex = parts.length - 1;
@@ -40,10 +72,52 @@ export function buildForwardGeocodeSearchText(street: string, city?: string): st
   const s = String(street || "").trim();
   const c = String(city || "").trim();
   if (!s) return c ? `${c}, Polska` : "";
-  if (!c) return s;
+  if (!c) return /polska|poland/i.test(s) ? s : `${s}, Polska`;
   const norm = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (norm(s).includes(norm(c))) return s;
   return `${s}, ${c}, Polska`;
+}
+
+/** Wybiera wynik geokodowania najbliższy temu, co wpisał użytkownik. */
+export function pickBestGeocodeFeature(
+  features: any[],
+  query: string,
+  cityHint?: string,
+): any | null {
+  if (!features.length) return null;
+  const houseNumber = extractTrailingHouseNumber(query);
+  const village = extractVillageLocalityFromStreet(query);
+  const preferredCity = String(cityHint || village || "").trim();
+  const preferredNorm = preferredCity ? normalizeText(preferredCity) : "";
+  const queryNorm = normalizeText(query.split(",")[0] || query);
+
+  let best = features[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const feature of features) {
+    let score = 0;
+    const types = Array.isArray(feature?.place_type) ? feature.place_type : [];
+    const text = normalizeText(String(feature?.text || ""));
+    const featureNumber = String(feature?.address || "").trim();
+
+    if (types.includes("address")) score += 4;
+    if (types.includes("locality")) score += 2;
+    if (houseNumber && featureNumber === houseNumber) score += 12;
+    if (queryNorm && text && queryNorm.includes(text)) score += 6;
+    if (queryNorm && text && text.includes(queryNorm.split(/\s+/)[0] || "")) score += 4;
+    if (preferredNorm && text === preferredNorm) score += 8;
+    if (preferredNorm && normalizeText(String(feature?.place_name || "")).includes(preferredNorm)) {
+      score += 3;
+    }
+    if (houseNumber && !featureNumber && types.includes("locality")) score += 1;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = feature;
+    }
+  }
+
+  return best;
 }
 
 export function mapboxForwardGeocodeUrl(

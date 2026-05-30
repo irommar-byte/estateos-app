@@ -219,12 +219,24 @@ export function inferCityFromMapboxFeature(feature: {
   place_name?: string;
   place_name_pl?: string;
   text?: string;
+  place_type?: string[];
 } | null | undefined): string {
+  const placeTypes = Array.isArray(feature?.place_type) ? feature.place_type : [];
+  const featureText = String(feature?.text || "").trim();
+  if (
+    featureText &&
+    (placeTypes.includes("locality") || placeTypes.includes("place")) &&
+    !/^(powiat|gmina|województwo)\s/i.test(featureText)
+  ) {
+    const direct = canonicalizeCity(featureText);
+    if (direct) return direct;
+  }
+
   const context = Array.isArray(feature?.context) ? feature.context : [];
   const locality = mapboxContextByPrefix(context, "locality");
   const place = mapboxContextByPrefix(context, "place");
   const fromContext = locality || place;
-  if (fromContext) {
+  if (fromContext && !/^(powiat|gmina|województwo)\s/i.test(fromContext)) {
     return canonicalizeCity(fromContext);
   }
 
@@ -234,13 +246,13 @@ export function inferCityFromMapboxFeature(feature: {
     for (let i = parts.length - 1; i >= 0; i--) {
       const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
       if (!segment) continue;
-      if (/województwo|polska|poland|^pl$/i.test(segment)) continue;
+      if (/województwo|polska|poland|^pl$|^(powiat|gmina)\s/i.test(segment)) continue;
       const c = canonicalizeCity(segment);
       if (c) return c;
     }
   }
 
-  return canonicalizeCity(String(feature?.text || "").trim());
+  return canonicalizeCity(featureText);
 }
 
 /**
