@@ -1,13 +1,14 @@
 export const offer = {
   offMarket: {
-    title: 'Внерыночный листинг',
-    subtitle:
-      'This exclusive listing just debuted in the system. It will unlock for regular users in:',
-    countdownHours: 'HRS',
-    countdownMinutes: 'MIN',
-    countdownSeconds: 'SEC',
-    investorProInfo: 'О Инвесторе Про',
-    waitPatiently: "I'll wait patiently",
+    title: 'Скоро на рынке',
+    subtitle: 'Это объявление появится на рынке через:',
+    proHint:
+      'Хотите увидеть его раньше, сделать предложение или записаться на просмотр уже сейчас? Узнайте об Investor Pro.',
+    countdownHours: 'Ч',
+    countdownMinutes: 'МИН',
+    countdownSeconds: 'СЕК',
+    investorProInfo: 'О Investor Pro',
+    waitPatiently: 'Вернусь позже',
   },
   guestGate: {
     createAccountTitle: 'Создать бесплатную учетную запись',

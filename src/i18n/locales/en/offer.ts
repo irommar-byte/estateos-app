@@ -1,13 +1,14 @@
 export const offer = {
   offMarket: {
-    title: 'Off-Market Listing',
-    subtitle:
-      'This exclusive listing just debuted in the system. It will unlock for regular users in:',
+    title: 'Coming to market soon',
+    subtitle: 'This listing will appear on the market in:',
+    proHint:
+      'Want to preview it sooner, make an offer, or schedule a viewing now? Learn about Investor Pro.',
     countdownHours: 'HRS',
     countdownMinutes: 'MIN',
     countdownSeconds: 'SEC',
     investorProInfo: 'About Investor Pro',
-    waitPatiently: "I'll wait patiently",
+    waitPatiently: "I'll come back later",
   },
   guestGate: {
     createAccountTitle: 'Create a free account',

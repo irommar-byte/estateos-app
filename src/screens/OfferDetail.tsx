@@ -226,7 +226,12 @@ export default function OfferDetail({ route, navigation }: any) {
     [offer]
   );
   const isOffMarketLocked = Boolean(
-    unlockAtMs && Date.now() < unlockAtMs && !isProUser && !isOwner && !isPartnerListing
+    unlockAtMs &&
+      Date.now() < unlockAtMs &&
+      !isGuest &&
+      !isProUser &&
+      !isOwner &&
+      !isPartnerListing
   );
 
   useEffect(() => {
@@ -286,8 +291,8 @@ export default function OfferDetail({ route, navigation }: any) {
           const mobileRes = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true`, { headers });
           if (mobileRes.ok) {
             const mobileJson = await mobileRes.json();
-            const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
-            candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
+          const offers = Array.isArray(mobileJson?.offers) ? mobileJson.offers : [];
+          candidate = offers.find((o: any) => Number(o?.id || 0) === id) || null;
           }
         }
 
@@ -919,51 +924,51 @@ export default function OfferDetail({ route, navigation }: any) {
       return;
     }
     if (isOwner) {
-      setDealNegotiationState(null);
-      return;
-    }
-    setDealSyncLoading(true);
-    try {
-      const dealsRes = await fetch(`${API_URL}/api/mobile/v1/deals`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const dealsJson = await dealsRes.json();
-      const deals = Array.isArray(dealsJson)
-        ? dealsJson
-        : Array.isArray(dealsJson?.deals)
-          ? dealsJson.deals
-          : Array.isArray(dealsJson?.items)
-            ? dealsJson.items
-            : Array.isArray(dealsJson?.data?.deals)
-              ? dealsJson.data.deals
-              : Array.isArray(dealsJson?.data?.items)
-                ? dealsJson.data.items
-                : [];
+        setDealNegotiationState(null);
+        return;
+      }
+      setDealSyncLoading(true);
+      try {
+        const dealsRes = await fetch(`${API_URL}/api/mobile/v1/deals`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dealsJson = await dealsRes.json();
+        const deals = Array.isArray(dealsJson)
+          ? dealsJson
+          : Array.isArray(dealsJson?.deals)
+            ? dealsJson.deals
+            : Array.isArray(dealsJson?.items)
+              ? dealsJson.items
+              : Array.isArray(dealsJson?.data?.deals)
+                ? dealsJson.data.deals
+                : Array.isArray(dealsJson?.data?.items)
+                  ? dealsJson.data.items
+                  : [];
       const matchingDeal = deals.find(
         (d: any) =>
           Number(d?.offerId || d?.offer?.id || d?.listingId || d?.propertyId || 0) === Number(offer.id),
       );
-      if (!matchingDeal?.id) {
-        setDealNegotiationState(null);
-        return;
-      }
-      const existingDealId = Number(matchingDeal.id);
-      setDealId(existingDealId);
+        if (!matchingDeal?.id) {
+          setDealNegotiationState(null);
+          return;
+        }
+        const existingDealId = Number(matchingDeal.id);
+        setDealId(existingDealId);
       const messagesRes = await fetch(
         `${API_URL}/api/mobile/v1/deals/${existingDealId}/messages?t=${Date.now()}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
-      const messagesJson = await messagesRes.json();
-      const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
-      const eventMessages = messages
-        .map((msg: any) => {
-          const event = parseDealEvent(msg?.content);
-          return event ? { ...event, senderId: msg?.senderId, createdAt: msg?.createdAt } : null;
-        })
-        .filter(Boolean);
-      const bidHistory = eventMessages.filter((e: any) => e.entity === 'BID');
-      const appointmentHistory = eventMessages.filter((e: any) => e.entity === 'APPOINTMENT');
-      const latestBid = bidHistory.length > 0 ? bidHistory[bidHistory.length - 1] : null;
+        const messagesJson = await messagesRes.json();
+        const messages = Array.isArray(messagesJson?.messages) ? messagesJson.messages : [];
+        const eventMessages = messages
+          .map((msg: any) => {
+            const event = parseDealEvent(msg?.content);
+            return event ? { ...event, senderId: msg?.senderId, createdAt: msg?.createdAt } : null;
+          })
+          .filter(Boolean);
+        const bidHistory = eventMessages.filter((e: any) => e.entity === 'BID');
+        const appointmentHistory = eventMessages.filter((e: any) => e.entity === 'APPOINTMENT');
+        const latestBid = bidHistory.length > 0 ? bidHistory[bidHistory.length - 1] : null;
       const latestAppointment =
         appointmentHistory.length > 0 ? appointmentHistory[appointmentHistory.length - 1] : null;
       const presentation = deriveOfferDealPresentation({
@@ -971,19 +976,19 @@ export default function OfferDetail({ route, navigation }: any) {
         dealStatus: matchingDeal?.status ?? matchingDeal?.dealStatus,
         acceptedBidId: matchingDeal?.acceptedBidId ?? matchingDeal?.acceptedBid?.id,
       });
-      setDealNegotiationState({
-        dealId: existingDealId,
-        bidHistory,
-        appointmentHistory,
-        latestBid,
-        latestAppointment,
+        setDealNegotiationState({
+          dealId: existingDealId,
+          bidHistory,
+          appointmentHistory,
+          latestBid,
+          latestAppointment,
         presentation,
-      });
-    } catch {
-      // noop
-    } finally {
-      setDealSyncLoading(false);
-    }
+        });
+      } catch {
+        // noop
+      } finally {
+        setDealSyncLoading(false);
+      }
   }, [token, offer?.id, isOwner]);
 
   useEffect(() => {
@@ -1287,7 +1292,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   ? t('offer.detail.views.count', { count: viewsCount.toLocaleString(dateLocale) })
                   : t('offer.detail.views.countZero')}
               </Text>
-            </View>
+          </View>
             {isLegalSafeVerified ? (
               <View style={styles.topMetaCenterBadge}>
                 <LegalVerifiedShieldBadge isDark={isDark} compact />
@@ -1471,7 +1476,7 @@ export default function OfferDetail({ route, navigation }: any) {
                 dealPresentation.priceNegotiation.tone === 'finalized'
                   ? styles.negotiationMemoryBoxFinalized
                   : dealPresentation.priceNegotiation.tone === 'confirmed'
-                    ? styles.negotiationMemoryBoxConfirmed
+                  ? styles.negotiationMemoryBoxConfirmed
                     : styles.negotiationMemoryBoxPending,
               ]}
             >
@@ -1658,8 +1663,8 @@ export default function OfferDetail({ route, navigation }: any) {
                 ) : null}
               </View>
             ) : (
-              <Pressable
-                onPress={openOwnerProfileModal}
+              <Pressable 
+                onPress={openOwnerProfileModal} 
                 style={({ pressed }) => [
                   styles.ownerCompactPill,
                   isDark && { backgroundColor: 'rgba(28,28,30,0.72)' },
@@ -1706,7 +1711,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   </View>
                   <Text style={[styles.ownerPillSecondary, isDark && { color: '#9ca3af' }]} numberOfLines={1}>
                     {ownerSummarySecondary}
-                  </Text>
+                    </Text>
                   {agentCommissionInfo ? (
                     <Text
                       numberOfLines={1}
@@ -1725,7 +1730,7 @@ export default function OfferDetail({ route, navigation }: any) {
                           })}
                     </Text>
                   ) : null}
-                </View>
+                  </View>
                 <ChevronRight size={14} color={isDark ? '#9ca3af' : '#9ca3af'} style={styles.ownerPillChevron} />
               </Pressable>
             )}
@@ -1908,9 +1913,9 @@ export default function OfferDetail({ route, navigation }: any) {
         FooterComponent={({ imageIndex }) => (
           <View style={styles.galleryHeader}>
             <Text style={styles.galleryCounter}>{t('offer.detail.gallery.counter', { current: (imageIndex ?? galleryCurrentIndex) + 1, total: imagesToShow.length })}</Text>
-          </View>
-        )}
-      />
+              </View>
+            )}
+          />
 
       <Modal
         visible={isLocationPreviewOpen}
@@ -2093,7 +2098,7 @@ export default function OfferDetail({ route, navigation }: any) {
       </Modal>
 
       {/* --- OFF MARKET: BLOKADA 24H DLA NIE-PRO --- */}
-      <Modal visible={isOffMarketLocked} transparent animationType="fade">
+      <Modal visible={isOffMarketLocked && !isGuest} transparent animationType="fade">
         <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill}>
           <View style={styles.offMarketBackdrop} />
           <View style={styles.offMarketOverlay}>
@@ -2122,6 +2127,9 @@ export default function OfferDetail({ route, navigation }: any) {
                   <Text style={styles.countdownLabelAccent}>{t('offer.offMarket.countdownSeconds')}</Text>
                 </View>
               </View>
+              <Text style={styles.offMarketProHint}>
+                {t('offer.offMarket.proHint')}
+              </Text>
               <TouchableOpacity activeOpacity={0.9} style={styles.offMarketPrimaryButton} onPress={handleBecomePro}>
                 <Crown color="#0a0a0a" size={16} />
                 <Text style={styles.offMarketPrimaryButtonText}>{t('offer.offMarket.investorProInfo')}</Text>
@@ -2135,7 +2143,7 @@ export default function OfferDetail({ route, navigation }: any) {
       </Modal>
 
       {/* --- GUEST GATE: DOSTĘP DO OFERTY DLA NIEZALOGOWANYCH --- */}
-      <Modal visible={isGuestGateVisible} transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
+      <Modal visible={isGuest && isGuestGateVisible} transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
         <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
           <View style={styles.guestGateBackdrop} />
           <View style={styles.offMarketOverlay}>
@@ -2716,7 +2724,7 @@ const styles = StyleSheet.create({
   roiPillCardBelowIdentity: {
     marginTop: 10,
   },
-
+  
   ownerCompactPill: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -2812,6 +2820,7 @@ const styles = StyleSheet.create({
   offMarketIconWrap: { width: 62, height: 62, borderRadius: 31, marginTop: 6, marginBottom: 18, backgroundColor: 'rgba(212,175,55,0.12)', borderWidth: 1, borderColor: 'rgba(212,175,55,0.35)', alignItems: 'center', justifyContent: 'center' },
   offMarketTitle: { color: '#fff', fontSize: 30, fontWeight: '900', marginBottom: 10, textAlign: 'center', letterSpacing: -0.5 },
   offMarketSub: { color: 'rgba(255,255,255,0.52)', fontSize: 14, textAlign: 'center', lineHeight: 21, marginBottom: 30, paddingHorizontal: 4 },
+  offMarketProHint: { color: 'rgba(255,255,255,0.52)', fontSize: 14, textAlign: 'center', lineHeight: 21, marginBottom: 24, paddingHorizontal: 4 },
   countdownRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'center', marginBottom: 28 },
   countdownUnit: { alignItems: 'center', minWidth: 72 },
   countdownValue: { color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: 0.2 },
