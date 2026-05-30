@@ -390,6 +390,42 @@ export function extractVillageLocalityFromStreet(
   return candidate;
 }
 
+/** Adres wiejski: jedno słowo + numer (np. „Sitaniec 464") — to miejscowość, nie ulica w mieście. */
+export function isVillageStyleAddress(streetInput: unknown, villageName?: unknown): boolean {
+  const street = String(streetInput ?? '').trim();
+  if (!street || /^(ul\.?|al\.?|pl\.?|os\.?|ulica|aleja|plac|osiedle)\s/i.test(street)) {
+    return false;
+  }
+  const match = street.match(/^(.+?)\s+\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:\/\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?)?/u);
+  if (!match) return false;
+  const word = match[1].trim();
+  if (!word || word.split(/\s+/).length !== 1) return false;
+  if (villageName) {
+    return normalizeLocationMatch(word) === normalizeLocationMatch(String(villageName));
+  }
+  return true;
+}
+
+/** Czy nazwa to osobna miejscowość (nie miasto strict ani jego dzielnica). */
+export function isLikelyStandaloneVillage(villageName: unknown): boolean {
+  const norm = normalizeLocationMatch(String(villageName ?? '').trim());
+  if (!norm) return false;
+  for (const city of STRICT_CITIES) {
+    if (city === REST_OF_COUNTRY_CITY) continue;
+    if (normalizeLocationMatch(city) === norm) return false;
+    const districts = STRICT_CITY_DISTRICTS[city] || [];
+    if (districts.some((d) => normalizeLocationMatch(d) === norm)) return false;
+  }
+  return true;
+}
+
+/** Adres wiejski z potwierdzoną nazwą miejscowości (np. Sitaniec 464, nie Zamość 13 w Kielcach). */
+export function isStandaloneVillageAddress(streetInput: unknown, villageName: unknown): boolean {
+  const village = String(villageName ?? '').trim();
+  if (!village || !isVillageStyleAddress(streetInput, village)) return false;
+  return isLikelyStandaloneVillage(village);
+}
+
 export type LocationDraftFieldsPatch = {
   city: string;
   district: string;
@@ -787,13 +823,19 @@ function geocodeTokenMatchesStreet(
 ): boolean {
   const normToken = normalizeLocationMatch(token);
   if (!normToken) return false;
-  const streetNorm = normalizeLocationMatch(String(place.street ?? streetHint ?? ''));
+  if (isVillageStyleAddress(streetHint, token)) return false;
+  const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
   const hintNorm = normalizeLocationMatch(streetHint);
-  if (streetNorm && (normToken === streetNorm || streetNorm.includes(normToken) || normToken.includes(streetNorm))) {
-    return true;
+  const hintStreetName = normalizeLocationMatch(streetHint.split(/\s+\d/)[0] || '');
+  if (streetNorm && streetNorm !== hintStreetName) {
+    if (normToken === streetNorm || streetNorm.includes(normToken) || normToken.includes(streetNorm)) {
+      return true;
+    }
   }
-  if (hintNorm && (normToken === hintNorm || hintNorm.includes(normToken) || normToken.includes(hintNorm))) {
-    return true;
+  if (hintStreetName && hintStreetName.split(/\s+/).length > 1) {
+    if (normToken === hintStreetName || hintStreetName.includes(normToken) || normToken.includes(hintStreetName)) {
+      return true;
+    }
   }
   return false;
 }
@@ -843,12 +885,14 @@ export function resolvePinLocationFromGeocodedPlace(
   const strictCandidate = strictFromCity || strictFromPlace;
   const villageFromStreet = extractVillageLocalityFromStreet(streetHint, strictCandidate);
   const nameToken = String(place.name ?? '').trim();
+  const villageStyleQuery = isStandaloneVillageAddress(streetHint, villageFromStreet);
   const villageLooksLikeStreet =
-    geocodeTokenMatchesStreet(villageFromStreet, place, streetHint) ||
-    geocodeTokenMatchesStreet(nameToken, place, streetHint);
+    !villageStyleQuery &&
+    (geocodeTokenMatchesStreet(villageFromStreet, place, streetHint) ||
+      geocodeTokenMatchesStreet(nameToken, place, streetHint));
 
   const adminFalseStrictMatch = (strictCity: string): boolean => {
-    if (!strictCity) return false;
+    if (!strictCity || villageStyleQuery) return false;
     return (
       normalizeLocationMatch(localityNameFromGeocodedPlace(place)) ===
       normalizeLocationMatch(strictCity)
@@ -862,6 +906,7 @@ export function resolvePinLocationFromGeocodedPlace(
     !villageLooksLikeStreet
   ) {
     const corroborated =
+      villageStyleQuery ||
       (nameToken &&
         !geocodeTokenMatchesStreet(nameToken, place, streetHint) &&
         (normalizeLocationMatch(nameToken) === normalizeLocationMatch(villageFromStreet) ||
@@ -892,7 +937,7 @@ export function resolvePinLocationFromGeocodedPlace(
     return { mode: 'strict', strictCity: strictFromPlace };
   }
 
-  if (strictFromCity) {
+  if (strictFromCity && pinMatchesStrictCity(strictFromCity, pinLocality, place.district)) {
     return { mode: 'strict', strictCity: strictFromCity };
   }
 

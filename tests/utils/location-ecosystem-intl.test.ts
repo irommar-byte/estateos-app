@@ -7,6 +7,8 @@ import {
   getDraftLocationPresentation,
   hasValidMapCoordinates,
   isLocationStepComplete,
+  isVillageStyleAddress,
+  isStandaloneVillageAddress,
   localityNameFromGeocodedPlace,
   localityCountryIso,
   normalizeOfferLocationForApi,
@@ -195,6 +197,29 @@ describe('locationEcosystem international', () => {
     if (resolution.mode === 'locality') {
       assert.equal(resolution.city, REST_OF_COUNTRY_CITY);
       assert.equal(resolution.district, 'Sitaniec');
+    }
+  });
+
+  it('does not treat Zamość street number in another city as village address', () => {
+    assert.equal(isStandaloneVillageAddress('Zamość 13', 'Zamość'), false);
+    assert.equal(isStandaloneVillageAddress('Sitaniec 464', 'Sitaniec'), true);
+  });
+
+  it('treats Sitaniec 464 as village even when geocoder returns Zamość district', () => {
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Zamość',
+        district: 'Karolówka',
+        name: 'Artis',
+        street: 'Sitaniec',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Sitaniec 464' },
+    );
+    assert.equal(resolution.mode, 'locality');
+    if (resolution.mode === 'locality') {
+      assert.equal(resolution.district, 'Sitaniec');
+      assert.equal(resolution.city, REST_OF_COUNTRY_CITY);
     }
   });
 });
