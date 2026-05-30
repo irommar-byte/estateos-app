@@ -28,8 +28,8 @@ function parseDistricts(pref: { districts?: unknown }): string[] {
 }
 
 function offerCoords(offer: Record<string, unknown>): { lat: number; lng: number } | null {
-  const lat = Number(offer.latitude ?? offer.lat);
-  const lng = Number(offer.longitude ?? offer.lng);
+  const lat = Number(offer.lat ?? offer.latitude);
+  const lng = Number(offer.lng ?? offer.longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   return { lat, lng };
 }

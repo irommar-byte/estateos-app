@@ -3,11 +3,26 @@ import { sendNotification } from '@/lib/core/notification.core';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
 
+export type RadarMatchContext = {
+  /** Id bieżącej sesji publikacji — każde wejście na rynek = nowy push. */
+  publicationId?: number | string | bigint | null;
+};
+
+function radarIdempotencyKey(
+  offerId: number,
+  userId: number,
+  publicationId?: number | string | bigint | null,
+): string {
+  const pub = publicationId != null && String(publicationId).trim() !== '' ? String(publicationId) : 'legacy';
+  return `radar_match:offer:${offerId}:pub:${pub}:user:${userId}`;
+}
+
 export const radarService = {
-  async matchNewOffer(offer: Record<string, unknown>) {
+  async matchNewOffer(offer: Record<string, unknown>, context: RadarMatchContext = {}) {
     const offerId = Number(offer.id);
     const ownerId = Number(offer.userId);
-    console.log(`[RADAR] Matching for offer ${offerId} (${offer.title})`);
+    const publicationId = context.publicationId ?? null;
+    console.log(`[RADAR] Matching for offer ${offerId} (${offer.title}) pub=${publicationId ?? 'n/a'}`);
 
     const prefs = await prisma.radarPreference.findMany({
       where: { pushNotifications: true },
@@ -50,7 +65,7 @@ export const radarService = {
             route: 'OfferDetail',
             deeplink: `estateos://offer/${offerId}`,
           },
-          idempotencyKey: `radar_match:offer:${offerId}:user:${userId}`,
+          idempotencyKey: radarIdempotencyKey(offerId, userId, publicationId),
         });
 
         matchCount++;
@@ -60,5 +75,11 @@ export const radarService = {
     }
 
     console.log(`[RADAR] Processed. Total matches sent: ${matchCount}`);
+  },
+
+  async notifyRadarForMarketEntry(offerId: number, publicationId?: number | string | bigint | null) {
+    const fullOffer = await prisma.offer.findUnique({ where: { id: offerId } });
+    if (!fullOffer || String(fullOffer.status).toUpperCase() !== 'ACTIVE') return;
+    await this.matchNewOffer(fullOffer as Record<string, unknown>, { publicationId });
   },
 };

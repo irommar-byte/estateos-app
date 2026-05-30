@@ -55,10 +55,19 @@ export async function sendNotification(params: SendNotificationParams) {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     ) {
-      console.log(`🧠 CORE → ${type} → user ${userId} (duplicate idempotency, skip)`);
-      return;
+      const existing = await prisma.notification.findFirst({
+        where: { userId, idempotencyKey },
+        select: { id: true, status: true },
+      });
+      if (existing?.status === 'FAILED') {
+        notification = existing;
+      } else {
+        console.log(`🧠 CORE → ${type} → user ${userId} (duplicate idempotency, skip)`);
+        return;
+      }
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   try {
