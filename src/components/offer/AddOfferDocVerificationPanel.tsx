@@ -47,7 +47,7 @@ export default function AddOfferDocVerificationPanel({
   const isFlat = propertyType === "FLAT";
   const readyForReview = Boolean(apartmentNumber.trim() && landRegistryNumber.trim() && landRegistryValid);
 
-  const kwInputClass = `${inputPremium} min-w-0 w-full font-mono uppercase tracking-[0.06em] text-sm sm:text-base md:text-lg leading-tight py-3.5 sm:py-4 px-4 sm:px-5`;
+  const kwInputClass = `${inputPremium} min-w-0 w-full font-mono text-sm uppercase tracking-[0.08em] sm:text-base`;
 
   return (
     <section
@@ -121,6 +121,7 @@ export default function AddOfferDocVerificationPanel({
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
+                maxLength={15}
                 className={`${kwInputClass} ${
                   hasLandRegistryInput && !landRegistryValid ? "border-red-500/50 focus:border-red-400" : ""
                 }`}

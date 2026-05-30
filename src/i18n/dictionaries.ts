@@ -52,6 +52,12 @@ export type Dictionary = {
     messages: string;
     close: string;
   };
+  webNotifications: {
+    promptTitle: string;
+    promptBody: string;
+    enable: string;
+    later: string;
+  };
   welcomeGate: {
     seekerTitle: string;
     seekerTitleMuted: string;
@@ -395,6 +401,13 @@ const pl: Dictionary = {
     markAllRead: "Oznacz jako przeczytane",
     messages: "wiadomości",
     close: "Zamknij",
+  },
+  webNotifications: {
+    promptTitle: "Powiadomienia w przeglądarce",
+    promptBody:
+      "Włącz alerty systemowe — gdy coś pojawi się w dzwoneczku (Deal Room, oferty, wizyty), dostaniesz też powiadomienie na pulpicie.",
+    enable: "Włącz powiadomienia",
+    later: "Później",
   },
   welcomeGate: {
     seekerTitle: "Szukam",
@@ -760,6 +773,13 @@ const en: Dictionary = {
     markAllRead: "Mark all as read",
     messages: "messages",
     close: "Close",
+  },
+  webNotifications: {
+    promptTitle: "Browser notifications",
+    promptBody:
+      "Enable desktop alerts — when something appears in the bell (Deal Room, offers, visits), you will also get a browser notification.",
+    enable: "Enable notifications",
+    later: "Later",
   },
   welcomeGate: {
     seekerTitle: "I am looking",

@@ -13,7 +13,7 @@ import { Home,
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
   LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check,
-  Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck
+  Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck, LocateFixed
 } from "lucide-react";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -71,6 +71,7 @@ import {
   sanitizeNonStrictAreaLabel,
 } from "@/lib/location/localityDisplay";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
+import { normalizeLandRegistryInput, isValidLandRegistryNumber } from "@/lib/landRegistryInput";
 
 if (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
   mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -86,20 +87,8 @@ const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
 const ADD_OFFER_DRAFT_VERSION = 1;
 const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
-const KW_FULL_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
-const KW_SANITIZE_REGEX = /[^A-Za-z0-9/]/g;
 
 type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
-
-function normalizeLandRegistryInput(raw: string): string {
-  const cleaned = raw.toUpperCase().replace(KW_SANITIZE_REGEX, "").slice(0, 15);
-  const head = cleaned.slice(0, 4).replace(/[^A-Z0-9]/g, "");
-  const middle = cleaned.slice(4, 12).replace(/[^0-9]/g, "");
-  const tail = cleaned.slice(12, 13).replace(/[^0-9]/g, "");
-  if (cleaned.length <= 4) return head;
-  if (cleaned.length <= 12) return `${head}/${middle}`;
-  return `${head}/${middle}/${tail}`;
-}
 
 function buildPropertyTypes(ao: AddOfferDictionary) {
   return [
@@ -205,6 +194,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
   const [addressError, setAddressError] = useState('');
+  const [locatingUser, setLocatingUser] = useState(false);
   
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [uploadStats, setUploadStats] = useState<{[key: string]: {progress: number, error: boolean, sizeMB: number}}>({});
@@ -480,6 +470,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     },
     [],
   );
+
+  const handleUseMyLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      window.alert(ao.myLocationUnsupported);
+      return;
+    }
+    setLocatingUser(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = Number(position.coords.latitude.toFixed(6));
+        const lng = Number(position.coords.longitude.toFixed(6));
+        setData((prev: any) => ({ ...prev, lat, lng }));
+        void resolveLocationFromCoordinates(lat, lng, String(data.address || "").trim() || undefined);
+        setLocatingUser(false);
+      },
+      () => {
+        setLocatingUser(false);
+        window.alert(ao.myLocationDenied);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  }, [ao.myLocationDenied, ao.myLocationUnsupported, data.address, resolveLocationFromCoordinates]);
 
   const selectAddress = (feature: any, cityOverride?: string) => {
     const userQuery = String(data.address || "").trim();
@@ -1107,7 +1119,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
-  const landRegistryValid = !hasLandRegistryInput || KW_FULL_REGEX.test(normalizedLandRegistryNumber);
+  const landRegistryValid = !hasLandRegistryInput || isValidLandRegistryNumber(normalizedLandRegistryNumber);
   const isLocationDone =
     !!data.lat &&
     !!data.lng &&
@@ -1466,22 +1478,38 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                   <div className="relative z-50">
                     <label className={labelPremium}>{ao.searchAddress}</label>
-                    <input
-                      type="text"
-                      placeholder={ao.searchAddressPlaceholder}
-                      className={inputPremium}
-                      onChange={(e) => handleAddressSearch(e.target.value)}
-                      onBlur={(e) => {
-                        void geocodeAddressFromInput(false, e.currentTarget.value);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void geocodeAddressFromInput(true, (e.target as HTMLInputElement).value);
-                        }
-                      }}
-                      value={data.address || ''}
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder={ao.searchAddressPlaceholder}
+                        className={`${inputPremium} pr-14`}
+                        onChange={(e) => handleAddressSearch(e.target.value)}
+                        onBlur={(e) => {
+                          void geocodeAddressFromInput(false, e.currentTarget.value);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void geocodeAddressFromInput(true, (e.target as HTMLInputElement).value);
+                          }
+                        }}
+                        value={data.address || ''}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleUseMyLocation}
+                        disabled={locatingUser}
+                        title={ao.myLocationLabel}
+                        aria-label={ao.myLocationLabel}
+                        className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 transition-all hover:border-emerald-400/50 hover:bg-emerald-500/20 disabled:opacity-50"
+                      >
+                        {locatingUser ? (
+                          <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                          <LocateFixed size={18} />
+                        )}
+                      </button>
+                    </div>
                     {data.address && !hasBuildingNumber && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {ao.buildingNumberRequired}</motion.div>
                     )}

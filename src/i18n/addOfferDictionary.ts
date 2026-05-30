@@ -22,6 +22,9 @@ export type AddOfferDictionary = {
   locationVisibilityBody: string;
   searchAddress: string;
   searchAddressPlaceholder: string;
+  myLocationLabel: string;
+  myLocationDenied: string;
+  myLocationUnsupported: string;
   cityPlaceholder: string;
   buildingNumberRequired: string;
   city: string;
@@ -139,6 +142,9 @@ const pl: AddOfferDictionary = {
     "Przy Dokładnej lokalizacji wyświetlimy nazwę ulicy (i nr budynku dla mieszkań). Przy Przybliżonej pokazujemy jedynie orientacyjny obszar dzielnicy.",
   searchAddress: "Wyszukaj Adres *",
   searchAddressPlaceholder: "Np. Bernardyńska 8, Kalwaria Zebrzydowska",
+  myLocationLabel: "Moja lokalizacja",
+  myLocationDenied: "Brak dostępu do lokalizacji. Zezwól w ustawieniach przeglądarki.",
+  myLocationUnsupported: "Twoja przeglądarka nie obsługuje geolokalizacji.",
   cityPlaceholder: "Np. Kraków lub Kalwaria Zebrzydowska",
   buildingNumberRequired: "Wymagany numer budynku przed przecinkiem.",
   city: "Miasto *",
@@ -260,6 +266,9 @@ const en: AddOfferDictionary = {
     "With exact location we show the street name (and building no. for flats). With approximate we show only the district area.",
   searchAddress: "Search address *",
   searchAddressPlaceholder: "e.g. Main St 12, Kalwaria Zebrzydowska",
+  myLocationLabel: "My location",
+  myLocationDenied: "Location access denied. Allow it in your browser settings.",
+  myLocationUnsupported: "Your browser does not support geolocation.",
   cityPlaceholder: "e.g. Kraków or Kalwaria Zebrzydowska",
   buildingNumberRequired: "Building number required before the comma.",
   city: "City *",

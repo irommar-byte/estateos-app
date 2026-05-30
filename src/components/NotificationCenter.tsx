@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/contexts/LocaleContext";
+import { showWebNotification } from "@/lib/webNotifications";
 
 type NotificationItem = {
   id: string | number;
@@ -36,13 +37,36 @@ export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const router = useRouter();
   const panelRef = useRef<HTMLDivElement>(null);
+  const shownNotificationIdsRef = useRef<Set<string>>(new Set());
+  const notificationsBootstrappedRef = useRef(false);
 
   const fetchNotifications = async () => {
     try {
       const res = await fetch("/api/notifications", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(Array.isArray(data) ? data : []);
+        const list: NotificationItem[] = Array.isArray(data) ? data : [];
+        setNotifications(list);
+
+        if (!notificationsBootstrappedRef.current) {
+          for (const notification of list) {
+            shownNotificationIdsRef.current.add(String(notification.id));
+          }
+          notificationsBootstrappedRef.current = true;
+          return;
+        }
+
+        for (const notification of list) {
+          if (notification.isRead) continue;
+          const id = String(notification.id);
+          if (shownNotificationIdsRef.current.has(id)) continue;
+          shownNotificationIdsRef.current.add(id);
+          showWebNotification(notification.title || dict.notifications.title, {
+            body: notification.message,
+            tag: notification.groupKey ? String(notification.groupKey) : id,
+            onClickPath: notification.link || "/moje-konto/crm",
+          });
+        }
       }
     } catch {
       /* keep previous notifications */
@@ -82,7 +106,7 @@ export default function NotificationCenter() {
       window.clearInterval(interval);
       window.removeEventListener("refreshNotifications", fetchNotifications);
     };
-  }, []);
+  }, [dict.notifications.title]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
