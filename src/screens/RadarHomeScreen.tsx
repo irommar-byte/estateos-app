@@ -43,7 +43,7 @@ import {
   pushRadarRecentArea,
   type RadarRecentSavedArea,
 } from '../utils/radarRecentAreas';
-import { syncPushDevicePreferences } from '../hooks/usePushNotifications';
+import { registerPushNotifications, syncPushDevicePreferences } from '../hooks/usePushNotifications';
 import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
 import {
   fetchRadarPreferenceForUser,
@@ -3124,6 +3124,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       }
     await setRadarActive(filtersToApply.pushNotifications);
     await syncRadarPreferencesToBackend(filtersToApply);
+    if (filtersToApply.pushNotifications && token) {
+      void registerPushNotifications(token, { showPrompt: true });
+    }
       const ownerId = Number(user?.id || 0);
       if (ownerId > 0) {
         await saveRadarCommittedState({
