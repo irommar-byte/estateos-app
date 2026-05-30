@@ -552,7 +552,7 @@ export async function activateOfferPublication(params: {
 
   const iapProductId = String(params.iapProductId || PAKIET_PLUS_PRODUCT_ID).slice(0, 64);
 
-  return db.$transaction(async (tx: any) => {
+  const result = await db.$transaction(async (tx: any) => {
     const concurrentActive = await activePublicationForOffer(tx, params.offerId);
     if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
@@ -596,6 +596,18 @@ export async function activateOfferPublication(params: {
       publication,
     };
   }, PUBLICATION_TX_OPTIONS);
+
+  try {
+    const fullOffer = await prisma.offer.findUnique({ where: { id: params.offerId } });
+    if (fullOffer && String(fullOffer.status).toUpperCase() === 'ACTIVE') {
+      const { radarService } = await import('@/lib/services/radar.service');
+      await radarService.matchNewOffer(fullOffer as Record<string, unknown>);
+    }
+  } catch (radarErr) {
+    console.warn('[RADAR] post-activation match failed', radarErr);
+  }
+
+  return result;
 }
 
 export async function endOfferPublication(params: {

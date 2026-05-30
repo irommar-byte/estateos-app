@@ -10,6 +10,7 @@ import {
   saveDealAttachmentForDealRoom,
 } from '@/lib/upload/offerMediaUpload';
 import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
+import { shouldSkipDealroomMessagePush } from '@/lib/dealroomPushContent';
 
 const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
 
@@ -254,34 +255,37 @@ export async function POST(
 
     const receiverId = deal.buyerId === senderId ? deal.sellerId : deal.buyerId;
     const senderUser = await prisma.user.findUnique({ where: { id: senderId }, select: { name: true } });
+    const skipPush = shouldSkipDealroomMessagePush(content);
     const shortPreview = content.slice(0, 120) || 'Nowa wiadomość';
 
-    await prisma.notification.create({
-      data: {
-        userId: receiverId,
-        title: 'Nowa wiadomość w Dealroom',
-        body: shortPreview,
-        type: 'DEAL_UPDATE',
-        targetType: 'DEAL',
-        targetId: String(dealId),
-      },
-    });
-
-    try {
-      await notificationService.sendPushToUser(receiverId, {
-        title: 'Nowa wiadomość w Dealroom',
-        body: shortPreview,
+    if (!skipPush) {
+      await prisma.notification.create({
         data: {
+          userId: receiverId,
+          title: 'Nowa wiadomość w Dealroom',
+          body: shortPreview,
+          type: 'DEAL_UPDATE',
           targetType: 'DEAL',
           targetId: String(dealId),
-          dealId: String(dealId),
-          kind: 'deal_message',
-          senderId: String(senderId),
-          senderName: senderUser?.name || 'Użytkownik',
         },
       });
-    } catch (pushError) {
-      console.warn('[DEAL MESSAGE PUSH WARN]', pushError);
+
+      try {
+        await notificationService.sendPushToUser(receiverId, {
+          title: 'Nowa wiadomość w Dealroom',
+          body: shortPreview,
+          data: {
+            targetType: 'DEAL',
+            targetId: String(dealId),
+            dealId: String(dealId),
+            kind: 'deal_message',
+            senderId: String(senderId),
+            senderName: senderUser?.name || 'Użytkownik',
+          },
+        });
+      } catch (pushError) {
+        console.warn('[DEAL MESSAGE PUSH WARN]', pushError);
+      }
     }
 
     if (globalAny.sseClients) {

@@ -119,11 +119,6 @@ export async function PUT(req: Request) {
         },
       });
 
-      if (String(existing.status).toUpperCase() !== 'ACTIVE') {
-        const { radarService } = await import('@/lib/services/radar.service');
-        await radarService.matchNewOffer(updated);
-      }
-
       return NextResponse.json({ success: true, offer: updated });
     }
 

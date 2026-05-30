@@ -68,11 +68,6 @@ export async function POST(req: Request) {
         data: { status: 'ACTIVE', expiresAt: approval.endsAt },
       });
 
-      if (String(existing.status).toUpperCase() !== 'ACTIVE') {
-        const { radarService } = await import('@/lib/services/radar.service');
-        await radarService.matchNewOffer(offer);
-      }
-
       return NextResponse.json({ success: true, offer });
     }
 
