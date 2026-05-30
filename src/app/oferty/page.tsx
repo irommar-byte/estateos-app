@@ -18,6 +18,8 @@ import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
 import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { getOfferPageCopy } from "@/content/offerPageCopy";
 
 type CatalogOffer = {
   id: number;
@@ -34,6 +36,7 @@ type CatalogOffer = {
   featured?: boolean | null;
   previousPrice?: unknown;
   oldPrice?: unknown;
+  isLegalSafeVerified?: boolean | null;
   badges?: { isPartner?: boolean; isPro?: boolean } | null;
 };
 
@@ -82,8 +85,9 @@ const sectionIcons: Record<GallerySection, typeof LayoutGrid> = {
 };
 
 export default function CatalogPage() {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const labels = dict.catalog;
+  const offerCopy = getOfferPageCopy(locale);
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -295,6 +299,15 @@ export default function CatalogPage() {
                     transition={{ delay: Math.min(i * 0.05, 0.35), duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                   >
                     <div className="relative mb-5 aspect-[4/3] w-full overflow-hidden rounded-2xl md:rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]">
+                      {offer.isLegalSafeVerified === true ? (
+                        <LegalVerifiedShieldBadge
+                          variant="card"
+                          active
+                          label={offerCopy.legalVerifiedKw}
+                          sublabel={offerCopy.legalVerifiedKwSublabel}
+                          className="absolute left-3 top-3 z-10"
+                        />
+                      ) : null}
                       <OfferFavoriteButton
                         offerId={offer.id}
                         variant="icon"

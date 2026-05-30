@@ -38,6 +38,8 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
   buildingNumber: true,
   lat: true,
   lng: true,
+  localityCountry: true,
+  localityCountryCode: true,
   isExactLocation: true,
   images: true,
   videoUrl: true,

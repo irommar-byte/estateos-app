@@ -165,6 +165,8 @@ model Offer {
   buildingNumber  String?
   lat             Float?
   lng             Float?
+  localityCountry     String         @default("Polska") @db.VarChar(64)
+  localityCountryCode String         @default("PL") @db.VarChar(8)
   isExactLocation Boolean        @default(true)
   images          String?        @db.Text
   videoUrl        String?

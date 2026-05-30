@@ -41,10 +41,22 @@ export function isOfferAlterPrivilegeError(error: unknown): boolean {
   ) || /alter command denied/i.test(message) || /command denied to user/i.test(message);
 }
 
+export function isOfferLocalityColumnMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '');
+  const localityColumnsPattern = /(localitycountry|localitycountrycode)/i;
+  return (
+    /offer\.localitycountry/i.test(message) ||
+    /offer\.localitycountrycode/i.test(message) ||
+    (/unknown column/i.test(message) && localityColumnsPattern.test(message)) ||
+    (/does not exist/i.test(message) && localityColumnsPattern.test(message))
+  );
+}
+
 export function isOfferSchemaCompatibilityError(error: unknown): boolean {
   return (
     isOfferLegalColumnMissingError(error) ||
     isOfferMoneyColumnMissingError(error) ||
+    isOfferLocalityColumnMissingError(error) ||
     isOfferAlterPrivilegeError(error)
   );
 }

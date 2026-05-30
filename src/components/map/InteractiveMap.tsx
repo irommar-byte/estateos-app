@@ -212,10 +212,10 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const lastInteractionAtRef = useRef<number>(Date.now());
   const hoverFocusActiveRef = useRef(false);
   const canHoverRef = useRef(false);
-
+  
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
-
+  
   const [transactionMode, setTransactionMode] = useState<"sale" | "rent">("sale");
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
@@ -440,8 +440,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const tx = normalizeTransactionType(offer.transactionType);
         innerEl.className = offerPinColorClasses(offer.transactionType);
         innerEl.innerText = formatPinLabel(offer, tx === "rent");
-        innerEl.onclick = (e) => {
-          e.stopPropagation();
+          innerEl.onclick = (e) => {
+            e.stopPropagation();
           const win = window as Window & {
             isLoggedIn?: boolean;
             triggerTeaser?: () => void;
@@ -467,7 +467,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         markersRef.current[markerId] = new mapboxgl.Marker({ element: outerEl })
           .setLngLat(coords)
           .addTo(mapInstance);
-      } else {
+        } else {
         markersRef.current[markerId].setLngLat(coords);
         const rootEl = markersRef.current[markerId].getElement();
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
@@ -773,16 +773,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
             <div className="flex items-center gap-2">
               <Move className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guidePan}</span>
-            </div>
+                </div>
             <div className="flex items-center gap-2">
               <Hand className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guidePinch}</span>
-            </div>
+              </div>
             <div className="flex items-center gap-2">
               <MousePointer2 className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guideHoverZoom}</span>
-            </div>
-          </div>
+                </div>
+              </div>
         </motion.aside>
       )}
 
@@ -801,7 +801,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
       {mapInitError && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
           <p className="max-w-md text-sm leading-relaxed text-[var(--eos-muted)]">{mapInitError}</p>
-        </div>
+                </div>
       )}
 
       {!mapboxToken && !mapInitError && (
@@ -809,7 +809,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)]">
             {dict.addOffer.mapLoading}
           </p>
-        </div>
+              </div>
       )}
 
       <div className="absolute left-1/2 top-4 z-30 flex w-[92%] max-w-lg -translate-x-1/2 flex-col items-center gap-3 sm:top-6 sm:gap-4">
@@ -831,8 +831,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
             )}
             <span className="relative z-10">{dict.map.forSale}</span>
           </button>
-          <button
-            type="button"
+                          <button
+                            type="button"
             onClick={() => setTransactionMode("rent")}
             className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
               transactionMode === "rent"
@@ -847,8 +847,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
               />
             )}
             <span className="relative z-10">{dict.map.forRent}</span>
-          </button>
-        </div>
+                    </button>
+                </div>
 
         <div className="interactive-map-controls flex w-full items-center gap-4 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl sm:p-5">
           <div className="flex flex-1 flex-col gap-3">
@@ -901,18 +901,18 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
           <div className="mx-1 h-10 w-px bg-[var(--eos-border)]" />
 
-          <button
-            type="button"
+            <button
+              type="button"
             onClick={locateUser}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] transition-all hover:border-emerald-500/40 hover:bg-[var(--eos-surface-strong)] active:scale-95"
             title={dict.map.locateMe}
             aria-label={dict.map.locateMe}
           >
             <LocateFixed className="h-5 w-5 text-[var(--eos-text)]" />
-          </button>
+            </button>
         </div>
       </div>
-
+    
       <AnimatePresence>
         {showTeaser && (
           <motion.div
@@ -939,7 +939,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
               <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-3xl border border-emerald-500/20 bg-emerald-500/10 shadow-[inset_0_0_20px_rgba(16,185,129,0.2)]">
                 <Lock className="text-emerald-500" size={32} />
               </div>
-
+              
               <h2 className="mb-4 text-3xl font-black tracking-tighter text-white">
                 <span className="text-emerald-400">{dict.map.teaserTitleHighlight}</span>{" "}
                 {dict.map.teaserTitle}

@@ -30,7 +30,7 @@ const SIZE: Record<
 };
 
 export default function EstateOS3DVerifiedShield({
-  label = "ZWERYFIKOWANE",
+  label = "Zweryfikowany",
   sublabel,
   size = "md",
   tilt = true,
@@ -39,7 +39,7 @@ export default function EstateOS3DVerifiedShield({
   className = "",
 }: Props) {
   const s = SIZE[size];
-  const displayLabel = String(label || (active ? "ZWERYFIKOWANE" : "NIEZWERYFIKOWANE")).toUpperCase();
+  const displayLabel = String(label || (active ? "Zweryfikowany" : "Niezweryfikowany"));
 
   const shellClass = active
     ? "border-emerald-300/50 bg-gradient-to-br from-emerald-300 via-emerald-500 to-emerald-800 shadow-[0_12px_40px_rgba(16,185,129,0.45),inset_0_2px_0_rgba(255,255,255,0.45),inset_0_-8px_16px_rgba(6,78,59,0.55)]"
@@ -110,14 +110,14 @@ export default function EstateOS3DVerifiedShield({
       {showLabel ? (
         <div className="max-w-[14rem] text-center">
           <p
-            className={`font-semibold uppercase tracking-[0.14em] ${s.label} ${
+            className={`font-semibold tracking-tight ${s.label} ${
               active ? "text-emerald-300" : "text-zinc-400"
             }`}
           >
             {displayLabel}
           </p>
           {sublabel ? (
-            <p className={`mt-1 font-medium leading-snug text-zinc-500 ${s.sub}`}>{sublabel}</p>
+            <p className={`mt-0.5 font-medium leading-snug ${s.sub} ${active ? "text-emerald-400/70" : "text-zinc-500"}`}>{sublabel}</p>
           ) : null}
         </div>
       ) : null}

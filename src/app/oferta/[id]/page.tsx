@@ -457,7 +457,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   <LegalVerifiedShieldBadge
                     active={isLegalKwVerified}
                     label={isLegalKwVerified ? t.legalVerifiedKw : t.legalUnverifiedKw}
-                    compact
+                    sublabel={t.legalVerifiedKwSublabel}
+                    variant="bar"
                   />
 
                   {isNewListing ? (
@@ -531,9 +532,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 {t.lockBody}
               </p>
               
-              <div className={`text-4xl sm:text-6xl font-mono font-black mb-10 tracking-widest relative z-10 flex items-center justify-center gap-4 ${themeColors.textActive} ${themeColors.glowActive}`}>
-                <Timer size={36} className="opacity-50" />
-                {timeString}
+              <div className="relative z-10 mb-10 inline-flex items-center justify-center gap-3 sm:gap-4 rounded-2xl border border-white/[0.08] bg-black/25 px-5 sm:px-8 py-3.5 sm:py-4 backdrop-blur-md">
+                <Timer size={28} className={`shrink-0 opacity-45 ${themeColors.textActive}`} aria-hidden />
+                <span
+                  className={`text-[2rem] sm:text-[3.25rem] font-semibold tabular-nums tracking-[0.12em] leading-none ${themeColors.textActive}`}
+                  style={{ fontFeatureSettings: '"tnum" 1', WebkitFontSmoothing: "antialiased" }}
+                  aria-live="polite"
+                >
+                  {timeString.replace(/:/g, " : ")}
+                </span>
               </div>
               
               <Link href="/cennik" className={`block w-full py-5 sm:py-6 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-widest relative z-10 transition-colors ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryHover} ${themeColors.primaryShadow}`}>

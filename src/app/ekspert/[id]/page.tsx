@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck, Star, MapPin, Award, Phone, Mail, CheckCircle, Crown, Loader2, ShieldAlert } from "lucide-react";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 
 export default function ExpertProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -71,6 +72,9 @@ export default function ExpertProfilePage({ params }: { params: Promise<{ id: st
                 <div className="h-48 overflow-hidden relative">
                    <img src={o.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                    <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-[9px] font-black uppercase tracking-widest text-orange-500 flex items-center gap-1.5"><Crown size={10}/> Premium</div>
+                   {o.isLegalSafeVerified === true ? (
+                     <LegalVerifiedShieldBadge variant="card" active className="absolute left-4 top-[3.25rem] z-10" />
+                   ) : null}
                 </div>
                 <div className="p-6">
                    <h3 className="font-bold text-lg mb-1 truncate group-hover:text-orange-400 transition-colors">{o.title}</h3>

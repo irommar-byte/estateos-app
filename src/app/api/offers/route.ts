@@ -15,6 +15,7 @@ import {
 } from '@/lib/offerSchemaErrors';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
+import { ensureOfferLocalityCountryColumns } from '@/lib/services/offer.service';
 import {
   enrichOfferMoneyFields,
   enrichOfferMoneyFieldsWithRate,
@@ -29,6 +30,7 @@ export const dynamic = 'force-dynamic';
 // =======================
 export async function GET() {
   try {
+    await ensureOfferLocalityCountryColumns();
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,
@@ -84,6 +86,8 @@ export async function GET() {
         buildingNumber: true,
         lat: true,
         lng: true,
+        localityCountry: true,
+        localityCountryCode: true,
         isExactLocation: true,
         images: true,
         videoUrl: true,

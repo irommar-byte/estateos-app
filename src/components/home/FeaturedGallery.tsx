@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
@@ -21,6 +23,7 @@ type Offer = {
   imageUrl?: string | null;
   images?: unknown;
   transactionType?: string | null;
+  isLegalSafeVerified?: boolean | null;
   badges?: {
     isPartner?: boolean;
     isInvestorPro?: boolean;
@@ -151,6 +154,8 @@ export default function FeaturedGallery() {
             const hasActiveDealRoom = negotiatingOfferIds.has(Number(offer.id));
             const priceInfo = formatOffer(offer);
             const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
+            const offerCopy = getOfferPageCopy(locale);
+            const isKwVerified = offer.isLegalSafeVerified === true;
             return (
               <motion.article
                 key={offer.id}
@@ -175,6 +180,15 @@ export default function FeaturedGallery() {
                       ? (locale === "en" ? "Rent" : "Wynajem")
                       : (locale === "en" ? "Sale" : "Sprzedaż")}
                   </div>
+                  {isKwVerified ? (
+                    <LegalVerifiedShieldBadge
+                      variant="card"
+                      active
+                      label={offerCopy.legalVerifiedKw}
+                      sublabel={offerCopy.legalVerifiedKwSublabel}
+                      className="absolute left-5 top-[3.25rem] z-10"
+                    />
+                  ) : null}
                   <OfferFavoriteButton
                     offerId={offer.id}
                     variant="icon"
