@@ -32,6 +32,7 @@ import {
   streetLineFromGeocodedPlace,
   resolvePinLocationFromGeocodedPlace,
   preserveVillageStreetHint,
+  detectSatelliteMunicipalityFromCoordinates,
   detectStrictCityFromCoordinates,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
@@ -930,15 +931,22 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const currentIsExact = resolveIsExactLocation(draft.isExactLocation ?? true);
   const latN = Number(draft.lat);
   const lngN = Number(draft.lng);
-  const coordStrictCity =
+  const satelliteMunicipality =
     hasCoords && isPolandLocation && Number.isFinite(latN) && Number.isFinite(lngN)
+      ? detectSatelliteMunicipalityFromCoordinates(latN, lngN)
+      : null;
+  const coordStrictCity =
+    hasCoords && isPolandLocation && !satelliteMunicipality && Number.isFinite(latN) && Number.isFinite(lngN)
       ? detectStrictCityFromCoordinates(latN, lngN)
       : null;
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
-    if (coordStrictCity) return coordStrictCity;
+    if (satelliteMunicipality || rawDraftCity === REST_OF_COUNTRY_CITY) {
+      return REST_OF_COUNTRY_CITY;
+    }
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
     if (rawDraftCity) return REST_OF_COUNTRY_CITY;
+    if (coordStrictCity) return coordStrictCity;
     if (hasCoords) return REST_OF_COUNTRY_CITY;
     return DEFAULT_STRICT_CITY;
   })();
@@ -963,36 +971,6 @@ export default function Step2_Location({ theme }: { theme: any }) {
     if (!showPolishCityPicker) return;
     scrollSelectedCityIntoView(safeDraftCity);
   }, [safeDraftCity, showPolishCityPicker, scrollSelectedCityIntoView]);
-
-  useEffect(() => {
-    if (!coordStrictCity || !isPolandLocation) return;
-    const lat = Number(draft.lat);
-    const lng = Number(draft.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const currentCity = String(draft.city || '').trim();
-    const allowed = DISTRICTS_DATA[coordStrictCity as keyof typeof DISTRICTS_DATA] || [];
-    const district = String(draft.district || '').trim();
-    const districtInvalid = district && allowed.length > 0 && !allowed.includes(district);
-    if (currentCity === coordStrictCity && !districtInvalid) return;
-    if (currentCity !== coordStrictCity || districtInvalid) {
-      applyLocationFieldsPatch({
-        city: coordStrictCity,
-        district: districtInvalid || !district ? getClosestDistrict(lat, lng, coordStrictCity, null) : district,
-        localityCountry: safeDraftLocalityCountry,
-        localityCountryCode: safeDraftLocalityCountryIso,
-      });
-    }
-  }, [
-    coordStrictCity,
-    draft.city,
-    draft.district,
-    draft.lat,
-    draft.lng,
-    isPolandLocation,
-    applyLocationFieldsPatch,
-    safeDraftLocalityCountry,
-    safeDraftLocalityCountryIso,
-  ]);
 
   const syncStreetToDraft = useCallback(() => {
     const trimmedStreet = String(streetInput || '').trim();

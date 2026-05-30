@@ -234,8 +234,8 @@ export function localityNameFromGeocodedPlace(
   const lat = Number(options?.lat);
   const lng = Number(options?.lng);
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    const strictFromCoords = detectStrictCityFromCoordinates(lat, lng);
-    if (strictFromCoords) return strictFromCoords;
+    const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
+    if (satellite) return satellite;
   }
 
   const streetHint = String(options?.streetHint ?? '').trim();
@@ -1458,6 +1458,12 @@ function resolveLocalityOutsideStrictEnvelope(
 
   const independent = extractIndependentMunicipalityFromGeocodedPlace(place);
   if (independent && !pinMatchesStrictCity(envelopeCity, independent, place.district)) {
+    const normIndep = normalizeLocationMatch(independent);
+    const normDistrict = normalizeLocationMatch(String(place.district ?? ''));
+    // Osiedle w granicach miasta strict (np. Altanowa w Zamościu) — nie traktuj jako osobna gmina.
+    if (normIndep === normDistrict && isPinWithinStrictCityEnvelope(envelopeCity, lat, lng)) {
+      return null;
+    }
     return {
       mode: 'locality',
       city: REST_OF_COUNTRY_CITY,
@@ -1537,6 +1543,9 @@ export function resolvePinLocationFromGeocodedPlace(
         countryFields,
       );
       if (outside) return outside;
+      if (isPinWithinStrictCityEnvelope(envelopeCity, lat, lng)) {
+        return { mode: 'strict', strictCity: envelopeCity };
+      }
     }
   }
 
