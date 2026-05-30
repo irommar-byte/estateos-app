@@ -23,8 +23,36 @@ export function extractTrailingHouseNumber(raw: string): string {
   return match ? match[1] : "";
 }
 
-/** Miejscowość z wpisu typu „Sitaniec 464" (bez ul./al.). */
-export function extractVillageLocalityFromStreet(streetInput: unknown): string {
+/** Czy wynik Mapbox to adres ulicy (ulica + numer), a nie miejscowość. */
+export function isStreetAddressMapboxFeature(
+  feature: { place_type?: string[] } | null | undefined,
+): boolean {
+  const types = Array.isArray(feature?.place_type) ? feature.place_type : [];
+  return types.includes("address");
+}
+
+/** Czy wynik Mapbox to miejscowość (wieś), bez konkretnej ulicy. */
+export function isLocalityMapboxFeature(
+  feature: { place_type?: string[] } | null | undefined,
+): boolean {
+  const types = Array.isArray(feature?.place_type) ? feature.place_type : [];
+  return types.includes("locality") || types.includes("place");
+}
+
+/** Miejscowość z wpisu typu „Sitaniec 464" — tylko gdy wynik geokodowania to locality, nie ulica. */
+export function extractVillageLocalityHint(
+  streetInput: unknown,
+  feature?: { place_type?: string[]; text?: string } | null,
+): string {
+  const village = extractVillageLocalityFromStreet(streetInput);
+  if (!village) return "";
+  if (!feature) return village;
+  if (isStreetAddressMapboxFeature(feature)) return "";
+  if (!isLocalityMapboxFeature(feature)) return "";
+  return village;
+}
+
+function extractVillageLocalityFromStreet(streetInput: unknown): string {
   const street = String(streetInput ?? "").trim();
   if (!street || /^(ul\.?|al\.?|pl\.?|os\.?|ulica|aleja|plac|osiedle)\s/i.test(street)) {
     return "";
@@ -44,11 +72,10 @@ export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
 
   const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) {
-    const village = extractVillageLocalityFromStreet(trimmed);
     return {
       streetPart: trimmed,
-      cityPart: village,
-      fullQuery: buildForwardGeocodeSearchText(trimmed, village),
+      cityPart: "",
+      fullQuery: buildForwardGeocodeSearchText(trimmed, ""),
     };
   }
 
@@ -86,7 +113,13 @@ export function pickBestGeocodeFeature(
 ): any | null {
   if (!features.length) return null;
   const houseNumber = extractTrailingHouseNumber(query);
-  const village = extractVillageLocalityFromStreet(query);
+  const hasAddressMatch = features.some((feature) => {
+    if (!isStreetAddressMapboxFeature(feature)) return false;
+    const text = normalizeText(String(feature?.text || ""));
+    const queryStreet = normalizeText(String(query.split(/\s+\d/)[0] || "").trim());
+    return Boolean(queryStreet && text && (text === queryStreet || queryStreet.includes(text)));
+  });
+  const village = hasAddressMatch ? "" : extractVillageLocalityFromStreet(query);
   const preferredCity = String(cityHint || village || "").trim();
   const preferredNorm = preferredCity ? normalizeText(preferredCity) : "";
   const queryNorm = normalizeText(query.split(",")[0] || query);

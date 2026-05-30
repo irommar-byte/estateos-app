@@ -30,8 +30,9 @@ import {
 } from "@/lib/location/locationCatalog";
 import {
   buildForwardGeocodeSearchText,
-  extractVillageLocalityFromStreet,
+  extractVillageLocalityHint,
   isAdministrativeAreaLabel,
+  isStreetAddressMapboxFeature,
   mapboxForwardGeocodeUrl,
   parseAddressSearchQuery,
   pickBestGeocodeFeature,
@@ -347,7 +348,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const handleAddressSearch = async (value: string) => {
     const parsed = parseAddressSearchQuery(value);
     const patch: Record<string, unknown> = { address: value };
-    if (parsed.cityPart) {
+    if (parsed.cityPart && value.includes(",")) {
       patch.city = parsed.cityPart;
     }
     updateData(patch);
@@ -385,14 +386,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? parsed.cityPart || "" : cityHintRaw;
     const searchText = buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint);
 
-    const villageHint = extractVillageLocalityFromStreet(query);
-    if (!cityHint && !parsed.cityPart && !query.includes(",") && !villageHint) {
-      setAddressError(
-        "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
-      );
-      return;
-    }
-
     try {
       const res = await fetch(
         mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: false }),
@@ -400,14 +393,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       if (!res.ok) return;
       const geo = await res.json();
       const features = Array.isArray(geo?.features) ? geo.features : [];
-      const feature = pickBestGeocodeFeature(features, query, cityHint || villageHint);
+      const feature = pickBestGeocodeFeature(features, query, cityHint);
       if (!feature) {
-        setAddressError(ao.pinError);
+        if (!query.includes(",") && !cityHint) {
+          setAddressError(
+            "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
+          );
+        } else {
+          setAddressError(ao.pinError);
+        }
         return;
       }
       lastGeocodedAddressRef.current = query;
       setAddressError("");
-      selectAddress(feature, cityHint || undefined);
+      const explicitCity = query.includes(",") ? parsed.cityPart : "";
+      selectAddress(feature, explicitCity || cityHint || undefined);
     } catch {
       // no-op
     }
@@ -422,7 +422,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
         setData((prev: any) => {
           const reverseCity = canonicalizeCity(reverse.city || "") || String(reverse.city || "").trim();
-          const preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
+          let preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
+          const fallbackStreetToken = normalizeText(
+            String(fallbackAddress || "").split(/\s+\d/)[0] || "",
+          );
+          if (preferred && fallbackStreetToken && normalizeText(preferred) === fallbackStreetToken) {
+            preferred = "";
+          }
           const nextCity = preferred || reverseCity || prev.city;
           const reverseStreet = String(reverse.street || "").trim();
           const fallback = String(fallbackAddress || "").trim();
@@ -464,17 +470,26 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     const parsed = parseAddressSearchQuery(userQuery);
     const cityFromFeature = inferCityFromMapboxFeature(feature);
-    const overrideRaw = cityOverride || parsed.cityPart || "";
+    const isAddress = isStreetAddressMapboxFeature(feature);
+    const explicitCityRaw = userQuery.includes(",")
+      ? parsed.cityPart
+      : isAdministrativeAreaLabel(cityOverride || "")
+        ? ""
+        : String(cityOverride || "").trim();
     const overrideCanon =
-      canonicalizeCity(isAdministrativeAreaLabel(overrideRaw) ? "" : overrideRaw) ||
-      (overrideRaw && !isAdministrativeAreaLabel(overrideRaw) ? String(overrideRaw).trim() : "");
-    const villageFromQuery = extractVillageLocalityFromStreet(userQuery);
-    const cityCanon =
-      overrideCanon ||
-      (villageFromQuery && !isStrictCity(cityFromFeature) ? villageFromQuery : "") ||
-      canonicalizeCity(cityFromFeature) ||
-      canonicalizeCity(data.city) ||
-      data.city;
+      canonicalizeCity(isAdministrativeAreaLabel(explicitCityRaw) ? "" : explicitCityRaw) ||
+      (explicitCityRaw && !isAdministrativeAreaLabel(explicitCityRaw) ? explicitCityRaw : "");
+    const villageFromQuery = extractVillageLocalityHint(userQuery, feature);
+    const cityCanon = isAddress
+      ? canonicalizeCity(cityFromFeature) ||
+        overrideCanon ||
+        canonicalizeCity(data.city) ||
+        data.city
+      : overrideCanon ||
+        (villageFromQuery && !isStrictCity(cityFromFeature) ? villageFromQuery : "") ||
+        canonicalizeCity(cityFromFeature) ||
+        canonicalizeCity(data.city) ||
+        data.city;
     const strict = isStrictCity(cityCanon);
     const districtGuessByContext = strict ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
     const districtGuessByLabel = strict
@@ -1438,9 +1453,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                             onClick={() =>
                               selectAddress(
                                 f,
-                                parseAddressSearchQuery(data.address || "").cityPart ||
-                                  extractVillageLocalityFromStreet(data.address || "") ||
-                                  (isAdministrativeAreaLabel(data.city) ? "" : data.city),
+                                data.address.includes(",")
+                                  ? parseAddressSearchQuery(data.address || "").cityPart
+                                  : isAdministrativeAreaLabel(data.city)
+                                    ? ""
+                                    : data.city,
                               )
                             }
                             className="p-4 hover:bg-[#10b981]/20 cursor-pointer text-zinc-300 hover:text-white font-medium transition-colors text-sm leading-snug"
