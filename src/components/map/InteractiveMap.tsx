@@ -32,6 +32,115 @@ function getOfferFilterPrice(offer: { pricePln?: unknown; price?: unknown }): nu
 const OFFER_PIN_BASE =
   "px-4 py-2 backdrop-blur-2xl border text-[11px] font-black tracking-widest rounded-full cursor-pointer transition-all duration-300 ease-out";
 
+const OFFERS_SOURCE_ID = "offers";
+const CLUSTER_LAYER_ID = "clustered-point";
+const UNCLUSTER_LAYER_ID = "unclustered-point";
+
+function clusterBubbleDimensions(points: number) {
+  if (points >= 50) return { diameter: 64, halo: 82, fontSize: 19 };
+  if (points >= 25) return { diameter: 58, halo: 76, fontSize: 18 };
+  if (points >= 15) return { diameter: 54, halo: 72, fontSize: 17 };
+  if (points >= 10) return { diameter: 50, halo: 68, fontSize: 17 };
+  if (points >= 8) return { diameter: 46, halo: 62, fontSize: 16 };
+  if (points >= 4) return { diameter: 42, halo: 56, fontSize: 16 };
+  return { diameter: 38, halo: 52, fontSize: 15 };
+}
+
+function formatClusterCount(n: number) {
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
+
+function clusterAccentHex(mode: "sale" | "rent") {
+  return mode === "rent" ? "#2563eb" : "#10b981";
+}
+
+function buildClusterMarkerElement(
+  count: number,
+  accent: string,
+  onActivate: () => void,
+): HTMLDivElement {
+  const { diameter, halo, fontSize } = clusterBubbleDimensions(count);
+  const outer = document.createElement("div");
+  outer.className = "relative z-30 flex items-center justify-center cursor-pointer";
+  outer.style.width = `${halo}px`;
+  outer.style.height = `${halo}px`;
+
+  const haloEl = document.createElement("div");
+  haloEl.className = "absolute rounded-full";
+  haloEl.style.width = `${halo}px`;
+  haloEl.style.height = `${halo}px`;
+  haloEl.style.background = `radial-gradient(circle, ${accent}66 0%, ${accent}22 55%, transparent 72%)`;
+
+  const disk = document.createElement("div");
+  disk.className =
+    "relative flex items-center justify-center rounded-full border-2 border-white/90 font-black text-white tabular-nums transition-transform duration-300 hover:scale-110 active:scale-95";
+  disk.style.width = `${diameter}px`;
+  disk.style.height = `${diameter}px`;
+  disk.style.fontSize = `${fontSize}px`;
+  disk.style.background = `linear-gradient(145deg, ${accent} 0%, ${accent}dd 100%)`;
+  disk.style.boxShadow = `0 8px 28px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.35)`;
+  disk.textContent = formatClusterCount(count);
+  disk.onclick = (e) => {
+    e.stopPropagation();
+    onActivate();
+  };
+
+  outer.appendChild(haloEl);
+  outer.appendChild(disk);
+  return outer;
+}
+
+function ensureOffersClusterLayers(mapInstance: mapboxgl.Map) {
+  if (!mapInstance.getSource(OFFERS_SOURCE_ID)) {
+    mapInstance.addSource(OFFERS_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 56,
+    });
+  }
+  if (!mapInstance.getLayer(CLUSTER_LAYER_ID)) {
+    mapInstance.addLayer({
+      id: CLUSTER_LAYER_ID,
+      type: "circle",
+      source: OFFERS_SOURCE_ID,
+      filter: ["has", "point_count"],
+      paint: { "circle-radius": 0, "circle-opacity": 0 },
+    });
+  }
+  if (!mapInstance.getLayer(UNCLUSTER_LAYER_ID)) {
+    mapInstance.addLayer({
+      id: UNCLUSTER_LAYER_ID,
+      type: "circle",
+      source: OFFERS_SOURCE_ID,
+      filter: ["!", ["has", "point_count"]],
+      paint: { "circle-radius": 0, "circle-opacity": 0 },
+    });
+  }
+}
+
+function syncOffersGeoJson(mapInstance: mapboxgl.Map, offers: any[]) {
+  const source = mapInstance.getSource(OFFERS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+  if (!source) return;
+  const features = offers
+    .filter((offer) => offer.lng != null && offer.lat != null)
+    .map((offer) => ({
+      type: "Feature" as const,
+      properties: {
+        id: offer.id,
+        transactionType: offer.transactionType,
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [Number(offer.lng), Number(offer.lat)] as [number, number],
+      },
+    }));
+  source.setData({ type: "FeatureCollection", features });
+}
+
 function offerPinColorClasses(transactionType: unknown) {
   const tx = normalizeTransactionType(transactionType);
 
@@ -274,74 +383,111 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
-    const newMarkers: Record<string, boolean> = {};
+    if (!map.current.getLayer(CLUSTER_LAYER_ID)) return;
+
+    const mapInstance = map.current;
+    const offerById = new Map(filteredOffers.map((offer) => [String(offer.id), offer]));
     const distributed = distributeOverlappingPins(filteredOffers);
+    const newMarkers: Record<string, boolean> = {};
+    const accent = clusterAccentHex(transactionMode);
 
-    filteredOffers
-      .filter((offer) => offer.lng != null && offer.lat != null)
-      .forEach((offer) => {
-        const id = `offer-${offer.id}`;
-        const coords: [number, number] =
-          distributed.get(Number(offer.id)) || [Number(offer.lng), Number(offer.lat)];
-        newMarkers[id] = true;
+    const rendered = mapInstance.queryRenderedFeatures({
+      layers: [CLUSTER_LAYER_ID, UNCLUSTER_LAYER_ID],
+    });
 
-        if (!markersRef.current[id]) {
-          const outerEl = document.createElement("div");
-          outerEl.className = "z-30 relative";
-          const innerEl = document.createElement("div");
+    for (const feature of rendered) {
+      if (feature.geometry.type !== "Point") continue;
+      const renderCoords = feature.geometry.coordinates as [number, number];
+      const props = feature.properties ?? {};
+      const isCluster = Boolean(props.cluster);
+      const markerId = isCluster ? `cluster-${props.cluster_id}` : `offer-${props.id}`;
+      if (newMarkers[markerId]) continue;
+      newMarkers[markerId] = true;
+
+      if (isCluster) {
+        const count = Number(props.point_count) || 0;
+        if (!markersRef.current[markerId]) {
+          const clusterEl = buildClusterMarkerElement(count, accent, () => {
+            const source = mapInstance.getSource(OFFERS_SOURCE_ID) as mapboxgl.GeoJSONSource;
+            source.getClusterExpansionZoom(Number(props.cluster_id), (err, zoom) => {
+              if (err || !map.current) return;
+              mapInstance.easeTo({ center: renderCoords, zoom: zoom + 0.5, duration: 650, essential: true });
+            });
+          });
+          markersRef.current[markerId] = new mapboxgl.Marker({ element: clusterEl })
+            .setLngLat(renderCoords)
+            .addTo(mapInstance);
+        } else {
+          markersRef.current[markerId].setLngLat(renderCoords);
+          const disk = markersRef.current[markerId].getElement()?.lastElementChild as
+            | HTMLElement
+            | undefined;
+          if (disk) disk.textContent = formatClusterCount(count);
+        }
+        continue;
+      }
+
+      const offer = offerById.get(String(props.id));
+      if (!offer) continue;
+
+      const coords: [number, number] =
+        distributed.get(Number(offer.id)) || [Number(offer.lng), Number(offer.lat)];
+
+      if (!markersRef.current[markerId]) {
+        const outerEl = document.createElement("div");
+        outerEl.className = "z-30 relative";
+        const innerEl = document.createElement("div");
+        const tx = normalizeTransactionType(offer.transactionType);
+        innerEl.className = offerPinColorClasses(offer.transactionType);
+        innerEl.innerText = formatPinLabel(offer, tx === "rent");
+        innerEl.onclick = (e) => {
+          e.stopPropagation();
+          const win = window as Window & {
+            isLoggedIn?: boolean;
+            triggerTeaser?: () => void;
+          };
+          if (win.isLoggedIn) {
+            window.location.href = `/oferta/${offer.id}`;
+          } else {
+            win.triggerTeaser?.();
+          }
+        };
+        innerEl.onmouseenter = () => {
+          if (sliderChangingRef.current) return;
+          focusPin(Number(offer.id), coords);
+        };
+        innerEl.onmouseover = innerEl.onmouseenter;
+        innerEl.onmouseleave = () => {
+          if (!canHoverRef.current) return;
+          hoverFocusActiveRef.current = false;
+          setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+        };
+
+        outerEl.appendChild(innerEl);
+        markersRef.current[markerId] = new mapboxgl.Marker({ element: outerEl })
+          .setLngLat(coords)
+          .addTo(mapInstance);
+      } else {
+        markersRef.current[markerId].setLngLat(coords);
+        const rootEl = markersRef.current[markerId].getElement();
+        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+        if (pinEl) {
           const tx = normalizeTransactionType(offer.transactionType);
-          innerEl.className = offerPinColorClasses(offer.transactionType);
-          innerEl.innerText = formatPinLabel(offer, tx === "rent");
-          innerEl.onclick = (e) => {
-            e.stopPropagation();
-            const win = window as Window & {
-              isLoggedIn?: boolean;
-              triggerTeaser?: () => void;
-            };
-            if (win.isLoggedIn) {
-              window.location.href = `/oferta/${offer.id}`;
-            } else {
-              win.triggerTeaser?.();
-            }
-          };
-          innerEl.onmouseenter = () => {
+          pinEl.className = offerPinColorClasses(offer.transactionType);
+          pinEl.innerText = formatPinLabel(offer, tx === "rent");
+          pinEl.onmouseenter = () => {
             if (sliderChangingRef.current) return;
-            const id = Number(offer.id);
-            focusPin(id, coords);
+            focusPin(Number(offer.id), coords);
           };
-          innerEl.onmouseover = innerEl.onmouseenter;
-          innerEl.onmouseleave = () => {
+          pinEl.onmouseover = pinEl.onmouseenter;
+          pinEl.onmouseleave = () => {
             if (!canHoverRef.current) return;
             hoverFocusActiveRef.current = false;
             setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
           };
-
-          outerEl.appendChild(innerEl);
-          markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
-            .setLngLat(coords)
-            .addTo(map.current!);
-        } else {
-          markersRef.current[id].setLngLat(coords);
-          const rootEl = markersRef.current[id].getElement();
-          const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
-          if (pinEl) {
-            const tx = normalizeTransactionType(offer.transactionType);
-            pinEl.className = offerPinColorClasses(offer.transactionType);
-            pinEl.innerText = formatPinLabel(offer, tx === "rent");
-            pinEl.onmouseenter = () => {
-              if (sliderChangingRef.current) return;
-              const idNum = Number(offer.id);
-              focusPin(idNum, coords);
-            };
-            pinEl.onmouseover = pinEl.onmouseenter;
-            pinEl.onmouseleave = () => {
-              if (!canHoverRef.current) return;
-              hoverFocusActiveRef.current = false;
-              setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
-            };
-          }
         }
-      });
+      }
+    }
 
     for (const id of Object.keys(markersRef.current)) {
       if (!newMarkers[id]) {
@@ -356,7 +502,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, focusPin, formatPinLabel, rate]);
+  }, [filteredOffers, focusPin, formatPinLabel, transactionMode]);
 
   useEffect(() => {
     updateMarkersRef.current = updateMarkers;
@@ -431,6 +577,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
         /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
       }
 
+      ensureOffersClusterLayers(map.current);
+      syncOffersGeoJson(map.current, filteredOffers);
       setMapLoaded(true);
     };
 
@@ -462,16 +610,32 @@ export default function InteractiveMap({ immersive = false }: Props) {
       map.current.setStyle(nextStyle);
       map.current.once("style.load", () => {
         if (!map.current) return;
+        ensureOffersClusterLayers(map.current);
+        syncOffersGeoJson(map.current, filteredOffers);
         updateMarkersRef.current();
       });
     } catch {
       /* noop */
     }
-  }, [resolvedTheme, mapLoaded]);
+  }, [resolvedTheme, mapLoaded, filteredOffers]);
 
   useEffect(() => {
-    if (!mapLoaded) return;
-    updateMarkers();
+    if (!map.current || !mapLoaded) return;
+    ensureOffersClusterLayers(map.current);
+    syncOffersGeoJson(map.current, filteredOffers);
+    map.current.triggerRepaint();
+  }, [filteredOffers, mapLoaded]);
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const handler = () => updateMarkersRef.current();
+    map.current.on("render", handler);
+    map.current.on("idle", handler);
+    handler();
+    return () => {
+      map.current?.off("render", handler);
+      map.current?.off("idle", handler);
+    };
   }, [mapLoaded, updateMarkers]);
 
   useEffect(() => {
