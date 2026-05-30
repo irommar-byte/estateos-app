@@ -57,7 +57,11 @@ export async function POST(req: Request) {
     }
 
     const body = await readJsonBody(req);
-    const targetUserId = Number(body?.userId ?? (body?.user as { id?: number })?.id);
+    const nested = body?.filters as Record<string, unknown> | undefined;
+    const flat = nested && typeof nested === 'object' ? nested : {};
+    const pick = (key: string) => body?.[key] ?? flat?.[key];
+
+    const targetUserId = Number(body?.userId ?? (body?.user as { id?: number })?.id ?? flat?.userId);
 
     if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
       return NextResponse.json({ success: false, message: 'Brak lub nieprawidłowy userId' }, { status: 400 });
@@ -75,10 +79,10 @@ export async function POST(req: Request) {
     }
 
     const location = body?.location as { city?: unknown; districts?: unknown } | undefined;
-    const cityRaw = body?.city ?? location?.city;
+    const cityRaw = pick('city') ?? location?.city;
     const normalizedCity = cityRaw ? canonicalizeCity(String(cityRaw)) : null;
     const strictCity = isStrictCity(normalizedCity);
-    const districtsInput = body?.selectedDistricts ?? body?.districts ?? location?.districts;
+    const districtsInput = pick('selectedDistricts') ?? pick('districts') ?? location?.districts;
     const normalizedDistricts = Array.isArray(districtsInput)
       ? districtsInput
           .map((district: unknown) =>
@@ -102,22 +106,22 @@ export async function POST(req: Request) {
       data: {
         userId: targetUserId,
         eventType: String(body?.eventType || 'RADAR_SEARCH').trim().slice(0, 64) || 'RADAR_SEARCH',
-        transactionType: parseEnumValue<TransactionType>(body?.transactionType, TRANSACTION_TYPES),
-        propertyType: parseEnumValue<PropertyType>(body?.propertyType, PROPERTY_TYPES),
+        transactionType: parseEnumValue<TransactionType>(pick('transactionType'), TRANSACTION_TYPES),
+        propertyType: parseEnumValue<PropertyType>(pick('propertyType'), PROPERTY_TYPES),
         city: normalizedCity,
         districts: normalizedDistricts,
-        maxPrice: body?.maxPrice != null && body.maxPrice !== '' ? Number(body.maxPrice) : null,
-        minArea: body?.minArea != null && body.minArea !== '' ? Number(body.minArea) : null,
-        minYear: body?.minYear != null && body.minYear !== '' ? Math.trunc(Number(body.minYear)) : null,
-        requireBalcony: !!body?.requireBalcony,
-        requireGarden: !!body?.requireGarden,
-        requireElevator: !!body?.requireElevator,
-        requireParking: !!body?.requireParking,
-        requireFurnished: !!body?.requireFurnished,
+        maxPrice: pick('maxPrice') != null && pick('maxPrice') !== '' ? Number(pick('maxPrice')) : null,
+        minArea: pick('minArea') != null && pick('minArea') !== '' ? Number(pick('minArea')) : null,
+        minYear: pick('minYear') != null && pick('minYear') !== '' ? Math.trunc(Number(pick('minYear'))) : null,
+        requireBalcony: !!pick('requireBalcony'),
+        requireGarden: !!pick('requireGarden'),
+        requireElevator: !!pick('requireElevator'),
+        requireParking: !!pick('requireParking'),
+        requireFurnished: !!pick('requireFurnished'),
         matchCount: Number.isFinite(matchCount as number) ? matchCount : null,
-        lat: body?.lat != null && body.lat !== '' ? Number(body.lat) : null,
-        lng: body?.lng != null && body.lng !== '' ? Number(body.lng) : null,
-        radius: body?.radius != null && body.radius !== '' ? Number(body.radius) : null,
+        lat: pick('lat') != null && pick('lat') !== '' ? Number(pick('lat')) : null,
+        lng: pick('lng') != null && pick('lng') !== '' ? Number(pick('lng')) : null,
+        radius: pick('radius') != null && pick('radius') !== '' ? Number(pick('radius')) : null,
         queryText:
           typeof body?.query === 'string'
             ? body.query.trim().slice(0, 512)
