@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
-import ReviewPrompt from "@/components/ReviewPrompt";
+import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
+import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useUserMode } from "@/contexts/UserModeContext";
@@ -151,7 +152,12 @@ export default function Navbar() {
         )}
 
         <div className="hidden min-w-0 items-center justify-end gap-1.5 lg:flex xl:gap-2 2xl:gap-3">
-          {user && <NotificationCenter />}
+          {user && (
+            <>
+              <PublicationWalletNavButton />
+              <NotificationCenter />
+            </>
+          )}
 
           {user ? (
             <div className="ml-0.5 flex min-w-0 items-center gap-1 lg:gap-1.5 xl:gap-2">
@@ -189,7 +195,12 @@ export default function Navbar() {
         </div>
 
         <div className="relative z-40 flex min-w-0 items-center justify-end gap-2 lg:hidden">
-          {user && <NotificationCenter />}
+          {user && (
+            <>
+              <PublicationWalletNavButton />
+              <NotificationCenter />
+            </>
+          )}
           <button
             type="button"
             onClick={() => setIsOpen((open) => !open)}
@@ -271,7 +282,7 @@ export default function Navbar() {
         )}
       </AnimatePresence>
 
-      <ReviewPrompt />
+      <PresentationFlowOrchestrator />
 
       <style jsx>{`
         .eos-nav-link {
