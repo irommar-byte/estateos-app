@@ -45,6 +45,8 @@ const STRICT_CITY_DISTRICTS: DistrictCatalog = {
   "Zamość": ["Stare Miasto", "Nowe Miasto", "Planty", "Janowice", "Karolówka", "Promyk", "Powiatowa", "Rataja", "Zamczysko", "Słoneczny Stok"],
 };
 
+export const REST_OF_COUNTRY_CITY = "Reszta kraju";
+
 const CITY_ALIASES: Record<string, string> = {
   trojmiasto: "Gdańsk",
   "trojmiasto gdańsk": "Gdańsk",

@@ -29,6 +29,9 @@ import {
   normalizeText,
 } from "@/lib/location/locationCatalog";
 import {
+  resolveStrictDistrictForForm,
+} from "@/lib/location/strictDistrictFromPin";
+import {
   buildForwardGeocodeSearchText,
   extractVillageLocalityHint,
   isAdministrativeAreaLabel,
@@ -347,6 +350,14 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
   const handleAddressSearch = async (value: string) => {
     const parsed = parseAddressSearchQuery(value);
+    const trimmed = value.trim();
+    if (trimmed.length < 3) {
+      updateData({ address: value, city: "", district: "", lat: null, lng: null, street: "" });
+      setAddressSuggestions([]);
+      setAddressError("");
+      return;
+    }
+
     const patch: Record<string, unknown> = { address: value };
     if (parsed.cityPart && value.includes(",")) {
       patch.city = parsed.cityPart;
@@ -441,7 +452,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             ? fallback
             : reverseStreet || fallback || prevStreet;
           const nextDistrict = reverse.strictCity
-            ? String(reverse.district || "").trim()
+            ? String(reverse.district || "").trim() ||
+              resolveStrictDistrictForForm(nextCity, lat, lng, [
+                String(prev.district || "").trim(),
+              ])
             : String(reverse.district || prev.district || "").trim();
 
           return {
@@ -497,9 +511,18 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       : "";
     const areaGuess = strict ? "" : inferAreaLabelFromMapboxFeature(cityCanon, feature);
     const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
-    const nextDistrictValue =
+    let nextDistrictValue =
       districtGuess ||
       (strict ? "" : villageFromQuery && villageFromQuery !== cityCanon ? villageFromQuery : data.district);
+
+    if (strict && nextLat && nextLng) {
+      nextDistrictValue =
+        resolveStrictDistrictForForm(cityCanon, nextLat, nextLng, [
+          nextDistrictValue,
+          districtGuessByContext,
+          districtGuessByLabel,
+        ]) || nextDistrictValue;
+    }
 
     lastGeocodedAddressRef.current = shortStreet;
     updateData({
@@ -1059,6 +1082,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     city: data.city,
     district: data.district,
   });
+  const hasGeocodedLocation =
+    Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lng));
+  const showLocationMeta = (data.address || "").trim().length >= 3 && hasGeocodedLocation;
+  const showStrictCityDistrict = showLocationMeta && isStrictCityForm;
+  const showRestLocality = showLocationMeta && !isStrictCityForm;
+  const restLocalityLabel = String(data.district || data.city || "").trim();
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
@@ -1469,72 +1498,94 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="min-w-0">
-                      <label className={labelPremium}>{ao.city}</label>
-                      <input
-                        type="text"
-                        list="add-offer-city-suggestions"
-                        className={inputCompact}
-                        placeholder={ao.cityPlaceholder}
-                        value={data.city || ""}
-                        onChange={(e) => {
-                          const newCity = e.target.value;
-                          const patch: Record<string, unknown> = {
-                            city: newCity,
-                            district: isStrictCity(newCity) ? "" : data.district,
-                          };
-                          if (data.address && addressMentionsOtherCity(data.address, newCity)) {
-                            patch.address = "";
-                            patch.street = "";
-                            patch.lat = null;
-                            patch.lng = null;
-                          }
-                          updateData(patch);
-                        }}
-                        onBlur={() => {
-                          if (data.address && data.city) {
-                            void geocodeAddressFromInput(true, data.address);
-                          }
-                        }}
-                      />
-                      <datalist id="add-offer-city-suggestions">
-                        {strictCities.map((city) => (
-                          <option key={city} value={city} />
-                        ))}
-                      </datalist>
-                    </div>
-
-                    <div className="min-w-0">
-                      <label className={labelPremium}>{isStrictCityForm ? ao.district : ao.areaLabel}</label>
-                      {isStrictCityForm ? (
-                        <select
-                          className={`${inputCompact} appearance-none cursor-pointer`}
-                          value={data.district || ""}
-                          onChange={(e) => updateData({ district: e.target.value })}
-                        >
-                          <option value="" disabled>
-                            {ao.selectPlaceholder}
-                          </option>
-                          {districtOptions.map((district) => (
-                            <option key={district} value={district}>
-                              {district}
+                  <AnimatePresence>
+                    {showStrictCityDistrict ? (
+                      <motion.div
+                        key="strict-location"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+                      >
+                        <div className="min-w-0">
+                          <label className={labelPremium}>{ao.city}</label>
+                          <select
+                            className={`${inputCompact} appearance-none cursor-pointer`}
+                            value={data.city || ""}
+                            onChange={(e) => {
+                              const newCity = e.target.value;
+                              const patch: Record<string, unknown> = {
+                                city: newCity,
+                                district: "",
+                              };
+                              if (
+                                data.lat != null &&
+                                data.lng != null &&
+                                isStrictCity(newCity)
+                              ) {
+                                patch.district = resolveStrictDistrictForForm(
+                                  newCity,
+                                  Number(data.lat),
+                                  Number(data.lng),
+                                  [String(data.district || "")],
+                                );
+                              }
+                              updateData(patch);
+                            }}
+                          >
+                            <option value="" disabled>
+                              {ao.selectPlaceholder}
                             </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          className={inputCompact}
-                          placeholder={ao.areaPlaceholder}
-                          value={data.district || ""}
-                          onChange={(e) => updateData({ district: e.target.value })}
-                        />
-                      )}
-                    </div>
-                  </div>
+                            {strictCities.map((city) => (
+                              <option key={city} value={city}>
+                                {city}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                  {data.city && data.address ? (
+                        <div className="min-w-0">
+                          <label className={labelPremium}>{ao.district}</label>
+                          <select
+                            className={`${inputCompact} appearance-none cursor-pointer`}
+                            value={data.district || ""}
+                            onChange={(e) => updateData({ district: e.target.value })}
+                          >
+                            <option value="" disabled>
+                              {ao.selectPlaceholder}
+                            </option>
+                            {districtOptions.map((district) => (
+                              <option key={district} value={district}>
+                                {district}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </motion.div>
+                    ) : null}
+
+                    {showRestLocality ? (
+                      <motion.div
+                        key="rest-locality"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                      >
+                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-400/90 mb-1">
+                          {ao.areaLabel}
+                        </p>
+                        <p className="text-base font-semibold text-[var(--eos-text)]">
+                          {restLocalityLabel || "—"}
+                        </p>
+                        <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+                          Miejscowość ustalona automatycznie na podstawie adresu i pinezki na mapie.
+                        </p>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+
+                  {showLocationMeta && data.city && data.address ? (
                     <p className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/55">
                       <span className="font-black uppercase tracking-widest text-[9px] text-emerald-400/90">Podgląd lokalizacji · </span>
                       {locationDisplayLine}

@@ -8,6 +8,7 @@ import {
   isStrictCity,
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
+import { resolveStrictDistrictFromPin } from "@/lib/location/strictDistrictFromPin";
 
 function getContextText(context: any[], idPrefix: string): string {
   const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
@@ -53,8 +54,13 @@ export async function GET(req: Request) {
       getContextText(context, "district") ||
       getContextText(context, "locality");
     const districtMerged = inferredDistrict || legacyDistrictRaw;
-    const district = canonicalizeDistrict(city, districtMerged);
+    let district = canonicalizeDistrict(city, districtMerged);
     const strictCity = isStrictCity(city);
+    if (strictCity) {
+      district =
+        resolveStrictDistrictFromPin(city, lat, lng, legacyDistrictRaw, feature) ||
+        district;
+    }
     const validation = validateCityDistrict(city, district);
     const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || '';
 
