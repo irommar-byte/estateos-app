@@ -5,7 +5,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { extractVerificationMeta, setVerificationStatusInDescription, type OfferVerificationStatus } from '@/lib/offerVerification';
-import { completeAdminOfferApproval } from '@/lib/offerPublication';
+import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
 
@@ -92,9 +92,46 @@ export async function PUT(req: Request) {
       ? setVerificationStatusInDescription(existing?.description || '', normalizedVerificationStatus)
       : undefined;
 
+    if (normalizedStatus === 'ARCHIVED') {
+      if (!existing) {
+        return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
+      }
+
+      await adminForceArchiveOffer(Number(id));
+
+      const updated = await prisma.offer.findUnique({ where: { id: Number(id) } });
+      return NextResponse.json({ success: true, offer: updated });
+    }
+
     if (normalizedStatus === 'ACTIVE') {
       if (!existing) {
         return NextResponse.json({ success: false, error: 'Oferta nie istnieje.' }, { status: 404 });
+      }
+
+      const wasArchived = String(existing.status).toUpperCase() === 'ARCHIVED';
+
+      if (wasArchived) {
+        const reactivation = await adminReactivateArchivedOffer({
+          offerId: Number(id),
+          ownerUserId: Number(existing.userId),
+        });
+        if (!reactivation.ok) {
+          return NextResponse.json(
+            { success: false, error: reactivation.message, code: reactivation.code },
+            { status: 409 },
+          );
+        }
+
+        const updated = await prisma.offer.update({
+          where: { id: Number(id) },
+          data: {
+            status: 'ACTIVE',
+            expiresAt: reactivation.endsAt,
+            ...(nextDescription !== undefined ? { description: nextDescription } : {}),
+          },
+        });
+
+        return NextResponse.json({ success: true, offer: updated });
       }
 
       const approval = await completeAdminOfferApproval({

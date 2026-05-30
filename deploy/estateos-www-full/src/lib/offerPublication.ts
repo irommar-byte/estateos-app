@@ -691,6 +691,86 @@ export type AdminOfferApprovalResult =
   | { ok: true; endsAt: Date; alreadyOnMarket: boolean }
   | { ok: false; code: 'NO_PENDING_PUBLICATION' | 'ACTIVATION_FAILED'; message: string };
 
+export type AdminReactivateResult =
+  | { ok: true; endsAt: Date; publicationId: number | string | bigint | null }
+  | { ok: false; code: 'ACTIVATION_FAILED'; message: string };
+
+/** Centrala: wymuszenie archiwum — kończy publikację (wcześniej zostawiała wiszącą sesję ACTIVE). */
+export async function adminForceArchiveOffer(offerId: number) {
+  await ensureOfferPublicationSchema();
+  const offer = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { id: true },
+  });
+  if (!offer) throw new Error('OFFER_NOT_FOUND');
+
+  const active = await activePublicationForOffer(prisma, offerId);
+  if (active) {
+    await endOfferPublication({
+      offerId,
+      endReason: 'ADMIN',
+      offerStatus: 'ARCHIVED',
+    });
+    return;
+  }
+
+  await prisma.offer.update({
+    where: { id: offerId },
+    data: { status: 'ARCHIVED', updatedAt: new Date() },
+  });
+}
+
+/** Centrala: ponowne wejście z archiwum — nowa sesja publikacji + push radaru. */
+export async function adminReactivateArchivedOffer(params: {
+  offerId: number;
+  ownerUserId: number;
+}): Promise<AdminReactivateResult> {
+  await ensureOfferPublicationSchema();
+
+  const offer = await prisma.offer.findUnique({
+    where: { id: params.offerId },
+    select: { id: true, userId: true },
+  });
+  if (!offer || offer.userId !== params.ownerUserId) {
+    return { ok: false, code: 'ACTIVATION_FAILED', message: 'OFFER_NOT_FOUND_OR_FORBIDDEN' };
+  }
+
+  const staleActive = await activePublicationForOffer(prisma, params.offerId);
+  if (staleActive) {
+    await prisma.$executeRawUnsafe(
+      `
+        UPDATE OfferPublication
+        SET status = 'ENDED', endedAt = NOW(3), endReason = 'ADMIN'
+        WHERE offerId = ? AND status = 'ACTIVE'
+      `,
+      params.offerId,
+    );
+  }
+
+  const last = await lastPublicationForOffer(prisma, params.offerId);
+  const kind: PublicationKind =
+    last?.kind === 'FREE_FIRST' || last?.kind === 'PLUS_PAID' || last?.kind === 'PLUS_CREDIT'
+      ? last.kind
+      : 'PLUS_CREDIT';
+
+  try {
+    const activation = await activateOfferPublication({
+      userId: params.ownerUserId,
+      offerId: params.offerId,
+      kind,
+      skipEntitlementConsume: true,
+    });
+    return {
+      ok: true,
+      endsAt: activation.endsAt,
+      publicationId: activation.publication?.id ?? null,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, code: 'ACTIVATION_FAILED', message };
+  }
+}
+
 /**
  * Po akceptacji admina: uruchamia oczekującą publikację (30 dni) i ustawia expiresAt.
  * Bez tego oferta ma status ACTIVE, ale wygasłe expiresAt → „nieaktualna” na rynku.
