@@ -57,10 +57,11 @@ function extractVillageLocalityFromStreet(streetInput: unknown): string {
   if (!street || /^(ul\.?|al\.?|pl\.?|os\.?|ulica|aleja|plac|osiedle)\s/i.test(street)) {
     return "";
   }
-  const match = street.match(
-    /^([A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\-]+(?:\s+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż\-]+)?)\s+\d+/u,
-  );
-  return match?.[1]?.trim() || "";
+  const match = street.match(/^(.+?)\s+\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:\/\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?)?\s*$/u);
+  if (!match) return "";
+  const candidate = match[1].trim();
+  if (!candidate || candidate.split(/\s+/).length !== 1) return "";
+  return candidate;
 }
 
 /** Rozdziela „ulica nr, miasto” lub „ulica nr, miasto, Polska”. */

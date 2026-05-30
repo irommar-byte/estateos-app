@@ -9,6 +9,7 @@ import {
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
 import { resolveStrictDistrictFromPin } from "@/lib/location/strictDistrictFromPin";
+import { sanitizeNonStrictAreaLabel } from "@/lib/location/localityDisplay";
 
 function getContextText(context: any[], idPrefix: string): string {
   const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
@@ -63,6 +64,9 @@ export async function GET(req: Request) {
     }
     const validation = validateCityDistrict(city, district);
     const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || '';
+    if (!strictCity) {
+      district = sanitizeNonStrictAreaLabel(district, city, street);
+    }
 
     return NextResponse.json({
       city,

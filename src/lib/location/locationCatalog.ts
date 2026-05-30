@@ -181,6 +181,9 @@ export function inferAreaLabelFromMapboxFeature(
     context?: MapboxContextItem[];
     place_name?: string;
     place_name_pl?: string;
+    text?: string;
+    address?: string;
+    place_type?: string[];
   } | null | undefined,
 ): string {
   if (!feature) return "";
@@ -188,31 +191,50 @@ export function inferAreaLabelFromMapboxFeature(
     return inferStrictDistrictFromMapboxFeature(canonicalCity, feature);
   }
 
+  const streetHint = [String(feature.text || "").trim(), String(feature.address || "").trim()]
+    .filter(Boolean)
+    .join(" ");
+
   const context = Array.isArray(feature.context) ? feature.context : [];
   const neighborhood = mapboxContextByPrefix(context, "neighborhood");
   const district = mapboxContextByPrefix(context, "district");
   const locality = mapboxContextByPrefix(context, "locality");
 
-  const pick =
-    (neighborhood && neighborhood !== canonicalCity ? neighborhood : "") ||
-    (district && !/województwo/i.test(district) ? district : "") ||
-    (locality && locality !== canonicalCity ? locality : "");
-
-  if (pick) return pick.trim();
+  const candidates = [neighborhood, district, locality].filter(Boolean) as string[];
+  for (const raw of candidates) {
+    if (/województwo/i.test(raw)) continue;
+    if (normalizeText(raw) === normalizeText(canonicalCity)) continue;
+    if (looksLikeStreetSegment(raw, streetHint, canonicalCity)) continue;
+    return raw.trim();
+  }
 
   const placeName = String(feature.place_name_pl || feature.place_name || "").trim();
   if (!placeName || !canonicalCity) return "";
   const segments = placeName.split(",").map((s) => s.trim()).filter(Boolean);
   for (const seg of segments) {
     const cleaned = seg.replace(/^\d{2}-\d{3}\s+/i, "").trim();
-    if (!cleaned || cleaned === canonicalCity) continue;
+    if (!cleaned || normalizeText(cleaned) === normalizeText(canonicalCity)) continue;
     if (/województwo|polska|poland|powiat/i.test(cleaned)) {
       if (/powiat/i.test(cleaned)) return cleaned;
       continue;
     }
+    if (looksLikeStreetSegment(cleaned, streetHint, canonicalCity)) continue;
     return cleaned;
   }
   return "";
+}
+
+function looksLikeStreetSegment(segment: string, streetHint: string, city: string): boolean {
+  const seg = String(segment || "").trim();
+  if (!seg) return true;
+  if (/\s+\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:\/\d+)?\s*$/u.test(seg)) return true;
+  const segNorm = normalizeText(seg.split(/\s+\d/)[0] || seg);
+  const hintNorm = normalizeText(String(streetHint || "").split(/\s+\d/)[0] || streetHint);
+  if (hintNorm && segNorm && (segNorm === hintNorm || hintNorm.includes(segNorm) || segNorm.includes(hintNorm))) {
+    return true;
+  }
+  if (city && segNorm === normalizeText(city)) return true;
+  return false;
 }
 
 /** Wyciąga nazwę miasta z odpowiedzi Geocoding API (forward / reverse). */
@@ -249,9 +271,14 @@ export function inferCityFromMapboxFeature(feature: {
       const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
       if (!segment) continue;
       if (/województwo|polska|poland|^pl$|^(powiat|gmina)\s/i.test(segment)) continue;
+      if (looksLikeStreetSegment(segment, featureText, "")) continue;
       const c = canonicalizeCity(segment);
       if (c) return c;
     }
+  }
+
+  if (placeTypes.includes("address")) {
+    return "";
   }
 
   return canonicalizeCity(featureText);

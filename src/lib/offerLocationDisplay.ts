@@ -1,6 +1,11 @@
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 
 import { extractTrailingHouseNumber } from "@/lib/mapboxGeocodeClient";
+import {
+  looksLikeStreetAddress,
+  sanitizeNonStrictAreaLabel,
+  tokenMatchesStreetHint,
+} from "@/lib/location/localityDisplay";
 
 /** Ulica + numer z wyniku Mapbox (bez miasta, kodu i kraju). */
 export function formatShortStreetFromMapboxFeature(
@@ -49,8 +54,9 @@ export function formatOfferLocationLine(input: {
   district?: unknown;
 }): string {
   const city = String(input.city || "").trim();
-  const district = String(input.district || "").trim();
   let street = String(input.street || input.address || "").trim();
+  const districtRaw = String(input.district || "").trim();
+  const district = sanitizeNonStrictAreaLabel(districtRaw, city, street);
 
   if (street && city && addressMentionsOtherCity(street, city)) {
     street = street.split(",")[0]?.trim() || street;
@@ -58,9 +64,14 @@ export function formatOfferLocationLine(input: {
 
   if (street) {
     const streetLower = street.toLowerCase();
-    if (district && streetLower.includes(district.toLowerCase())) {
+    if (district && (streetLower.includes(district.toLowerCase()) || tokenMatchesStreetHint(district, street))) {
       street = street
         .replace(new RegExp(`,?\\s*${district.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"), "")
+        .trim();
+    }
+    if (districtRaw && districtRaw !== district && streetLower.includes(districtRaw.toLowerCase())) {
+      street = street
+        .replace(new RegExp(`,?\\s*${districtRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i"), "")
         .trim();
     }
     if (city && streetLower.includes(city.toLowerCase())) {
@@ -70,7 +81,10 @@ export function formatOfferLocationLine(input: {
     }
   }
 
-  const locality = [district, city].filter(Boolean).join(", ");
+  const localityParts = [district, city].filter(
+    (part, index, arr) => Boolean(part) && arr.indexOf(part) === index && !looksLikeStreetAddress(part),
+  );
+  const locality = localityParts.join(", ");
   if (street && locality) return `${street}, ${locality}`;
   return locality || street || "—";
 }
