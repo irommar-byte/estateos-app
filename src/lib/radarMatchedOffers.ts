@@ -72,7 +72,6 @@ const MATCHED_OFFER_SELECT = {
   hasGarden: true,
   hasStorage: true,
   isFurnished: true,
-  isTwoLevel: true,
   yearBuilt: true,
   lat: true,
   lng: true,
