@@ -3,7 +3,7 @@ import { OfferStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireMobileAdmin } from '@/lib/mobileAdminAuth';
 import { deleteOfferCompletely } from '@/lib/deleteOfferCompletely';
-import { completeAdminOfferApproval } from '@/lib/offerPublication';
+import { completeAdminOfferApproval, adminForceArchiveOffer, adminReactivateArchivedOffer } from '@/lib/offerPublication';
 import { markProfilePromoCardUsed } from '@/lib/profilePromoCards';
 
 const OFFER_ADMIN_STATUSES: OfferStatus[] = ['PENDING', 'ACTIVE', 'ARCHIVED', 'REJECTED', 'SOLD', 'IN_DEAL'];
@@ -49,7 +49,35 @@ export async function POST(req: Request) {
 
     const normalizedStatus = String(newStatus || '').trim().toUpperCase();
 
+    if (normalizedStatus === 'ARCHIVED') {
+      await adminForceArchiveOffer(Number(offerId));
+      const offer = await prisma.offer.findUnique({ where: { id: Number(offerId) } });
+      return NextResponse.json({ success: true, offer });
+    }
+
     if (normalizedStatus === 'ACTIVE') {
+      const wasArchived = String(existing.status).toUpperCase() === 'ARCHIVED';
+
+      if (wasArchived) {
+        const reactivation = await adminReactivateArchivedOffer({
+          offerId: Number(offerId),
+          ownerUserId: Number(existing.userId),
+        });
+        if (!reactivation.ok) {
+          return NextResponse.json(
+            { success: false, message: reactivation.message, code: reactivation.code },
+            { status: 409 },
+          );
+        }
+
+        const offer = await prisma.offer.update({
+          where: { id: Number(offerId) },
+          data: { status: 'ACTIVE', expiresAt: reactivation.endsAt },
+        });
+
+        return NextResponse.json({ success: true, offer });
+      }
+
       const approval = await completeAdminOfferApproval({
         offerId: Number(offerId),
         ownerUserId: Number(existing.userId),

@@ -82,6 +82,13 @@ function amenityScore(offer: Record<string, unknown>, pref: Record<string, unkno
   return clampScore((present / required.length) * 100);
 }
 
+function citiesMatch(prefCity: unknown, offerCity: unknown): boolean {
+  const a = normalizeText(canonicalizeCity(String(prefCity || '')) || String(prefCity || '').trim());
+  const b = normalizeText(canonicalizeCity(String(offerCity || '')) || String(offerCity || '').trim());
+  if (!a || !b) return true;
+  return a === b;
+}
+
 function locationScore(
   pref: Record<string, unknown>,
   offer: Record<string, unknown>,
@@ -99,9 +106,7 @@ function locationScore(
   }
 
   if (pref.city && offer.city) {
-    const prefCity = canonicalizeCity(String(pref.city));
-    const offerCity = canonicalizeCity(String(offer.city));
-    if (prefCity && offerCity && prefCity !== offerCity) return 0;
+    if (!citiesMatch(pref.city, offer.city)) return 0;
   }
 
   const districts = parseDistricts(pref);
@@ -125,9 +130,7 @@ function passesLocationGate(pref: Record<string, unknown>, offer: Record<string,
   }
 
   if (pref.city && offer.city) {
-    const prefCity = canonicalizeCity(String(pref.city));
-    const offerCity = canonicalizeCity(String(offer.city));
-    if (prefCity && offerCity && prefCity !== offerCity) return false;
+    if (!citiesMatch(pref.city, offer.city)) return false;
   }
 
   const districts = parseDistricts(pref);
