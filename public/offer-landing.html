@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0c" />
+  <meta name="apple-itunes-app" content="app-id=6762899098" id="smartBannerMeta" />
   <title>EstateOS — oferta</title>
   <style>
     :root {
@@ -283,26 +284,64 @@
     return;
   }
 
+  var APP_STORE_URL = 'https://apps.apple.com/app/id6762899098';
+  var PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=pl.estateos.app';
   var appSchemeUrl = 'estateos://o/' + id;
-  var openAppLink = document.getElementById('openApp');
-  openAppLink.href = canonicalHttps;
-  openAppLink.addEventListener('click', function (e) {
-    e.preventDefault();
-    var toast = document.getElementById('toast');
-    var ua = navigator.userAgent || '';
-    var isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+  var androidIntentUrl =
+    'intent://o/' + id +
+    '#Intent;scheme=estateos;package=pl.estateos.app;S.browser_fallback_url=' +
+    encodeURIComponent(PLAY_STORE_URL) + ';end';
 
-    if (!isMobile) {
-      toast.textContent = 'Otwórz ten link na telefonie, aby przejść bezpośrednio do aplikacji EstateOS™.';
-      toast.className = 'toast';
+  function isIOS() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  }
+  function isAndroid() {
+    return /Android/i.test(navigator.userAgent || '');
+  }
+  function isMobile() {
+    return isIOS() || isAndroid();
+  }
+
+  var smartBannerMeta = document.getElementById('smartBannerMeta');
+  if (smartBannerMeta) {
+    smartBannerMeta.setAttribute('content', 'app-id=6762899098, app-argument=' + canonicalHttps);
+  }
+
+  var openAppLink = document.getElementById('openApp');
+  if (isIOS()) {
+    openAppLink.href = appSchemeUrl;
+  } else if (isAndroid()) {
+    openAppLink.href = androidIntentUrl;
+  } else {
+    openAppLink.href = APP_STORE_URL;
+    openAppLink.target = '_blank';
+    openAppLink.rel = 'noopener noreferrer';
+  }
+
+  openAppLink.addEventListener('click', function (e) {
+    var toast = document.getElementById('toast');
+
+    if (isIOS()) {
+      // Natywny href estateos:// — nie blokuj domyślnej nawigacji (Safari wymaga user gesture).
+      toast.textContent = 'Otwieranie aplikacji EstateOS™…';
+      toast.className = 'toast ok';
+      setTimeout(function () {
+        toast.textContent =
+          'Jeśli aplikacja się nie otworzyła, zainstaluj EstateOS z App Store i spróbuj ponownie.';
+        toast.className = 'toast';
+      }, 1800);
       return;
     }
 
-    window.location.href = appSchemeUrl;
-    setTimeout(function () {
-      toast.textContent = 'Jeśli aplikacja się nie otworzyła, zaktualizuj ją i spróbuj ponownie z linku https://estateos.pl/o/' + id;
-      toast.className = 'toast';
-    }, 900);
+    if (isAndroid()) {
+      e.preventDefault();
+      window.location.href = androidIntentUrl;
+      return;
+    }
+
+    // Desktop — App Store w nowej karcie (href już ustawiony).
+    toast.textContent = 'Pobierz aplikację EstateOS™ na iPhone — lub otwórz ten link na telefonie.';
+    toast.className = 'toast';
   });
 
   document.getElementById('copyLink').addEventListener('click', async function () {
