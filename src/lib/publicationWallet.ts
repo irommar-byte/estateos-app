@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { listProfilePromoCardsForUser } from "@/lib/profilePromoCards";
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
 import { ensureOfferPublicationSchema } from "@/lib/offerPublication";
+import {
+  buildInvestorProCreditsBackfillData,
+  shouldBackfillInvestorProCredits,
+} from "@/lib/investorProGrant";
 
 function hasPlusCredit(user: { extraListings?: number | null; plusExpiresAt?: Date | string | null }) {
   const credits = Number(user?.extraListings ?? 0);
@@ -17,11 +21,27 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
     where: { id: userId },
     select: {
       id: true,
+      isPro: true,
+      proExpiresAt: true,
       extraListings: true,
       plusExpiresAt: true,
     },
   });
   if (!user) throw new Error("USER_NOT_FOUND");
+
+  if (
+    shouldBackfillInvestorProCredits({
+      isPro: user.isPro,
+      proExpiresAt: user.proExpiresAt,
+      extraListings: user.extraListings,
+      plusExpiresAt: user.plusExpiresAt,
+    })
+  ) {
+    const backfill = buildInvestorProCreditsBackfillData({ proExpiresAt: user.proExpiresAt! });
+    await prisma.user.update({ where: { id: userId }, data: backfill });
+    user.extraListings = backfill.extraListings;
+    user.plusExpiresAt = backfill.plusExpiresAt;
+  }
 
   const firstFreeRows = (await prisma.$queryRawUnsafe<Array<{ firstFreePublicationUsed: number }>>(
     "SELECT firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1",

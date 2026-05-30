@@ -6,12 +6,11 @@ import PublicationWalletModal from "@/components/wallet/PublicationWalletModal";
 
 type WalletSnapshot = {
   plusCredits: number;
-  couponCount: number;
 };
 
 function computeDisplayCredits(wallet: WalletSnapshot | null): number | null {
   if (!wallet) return null;
-  return Math.max(0, wallet.plusCredits + wallet.couponCount);
+  return Math.max(0, wallet.plusCredits);
 }
 
 export default function PublicationWalletNavButton() {
@@ -33,7 +32,6 @@ export default function PublicationWalletNavButton() {
       }
       setWallet({
         plusCredits: Number(data.plusCredits || 0),
-        couponCount: Number(data.couponCount || 0),
       });
     } catch {
       setWallet(null);
@@ -78,7 +76,7 @@ export default function PublicationWalletNavButton() {
         onFocus={() => setIsHovered(true)}
         onBlur={() => setIsHovered(false)}
         aria-label={`Kredyty publikacji: ${loading ? "ładowanie" : displayCredits ?? 0}`}
-        className="group relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1.5 shadow-[var(--eos-shadow-soft)] transition-all hover:border-amber-500/35 hover:shadow-[0_8px_28px_rgba(251,191,36,0.18)]"
+        className="group relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1.5 transition-colors hover:border-amber-600/25"
       >
         <EosCreditCoin count={displayCredits} loading={loading} spinning={isHovered} />
       </button>

@@ -106,7 +106,6 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
     wallet?.plusExpiresAt && hasPlusCredit
       ? new Date(wallet.plusExpiresAt).toLocaleDateString("pl-PL")
       : null;
-  const totalAvailable = plusCredits + coupons.length;
 
   return (
     <AnimatePresence>
@@ -133,7 +132,7 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
                 <p className="mt-2 text-sm text-white/50 leading-relaxed">
                   {loading
                     ? "Ładowanie salda…"
-                    : `${totalAvailable} ${totalAvailable === 1 ? "dostępna publikacja" : "dostępnych publikacji"} na koncie`}
+                    : `${plusCredits} kredytów Plus · ${coupons.length} ${coupons.length === 1 ? "kupon" : "kupony"} bonusowe`}
                 </p>
               </div>
               <button
