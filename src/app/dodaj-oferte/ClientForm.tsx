@@ -22,6 +22,8 @@ import { CSS } from "@dnd-kit/utilities";
 
 import {
   canonicalizeCity,
+  getStrictCities,
+  getStrictDistrictCatalog,
   inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
@@ -65,6 +67,7 @@ import {
 } from "@/lib/offerLocationDisplay";
 import {
   flagEmojiFromIso2,
+  isStandaloneVillageAddress,
   sanitizeNonStrictAreaLabel,
 } from "@/lib/location/localityDisplay";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
@@ -497,7 +500,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       canonicalizeCity(isAdministrativeAreaLabel(explicitCityRaw) ? "" : explicitCityRaw) ||
       (explicitCityRaw && !isAdministrativeAreaLabel(explicitCityRaw) ? explicitCityRaw : "");
     const villageFromQuery = extractVillageLocalityHint(userQuery, feature);
-    const cityCanon = isAddress
+    let cityCanon = isAddress
       ? canonicalizeCity(cityFromFeature) ||
         overrideCanon ||
         canonicalizeCity(data.city) ||
@@ -507,6 +510,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         canonicalizeCity(cityFromFeature) ||
         canonicalizeCity(data.city) ||
         data.city;
+    if (
+      villageFromQuery &&
+      isStandaloneVillageAddress(userQuery, villageFromQuery) &&
+      normalizeText(villageFromQuery) !== normalizeText(String(cityCanon || ""))
+    ) {
+      cityCanon = villageFromQuery;
+    }
     const strict = isStrictCity(cityCanon);
     const districtGuessByContext = strict ? inferStrictDistrictFromMapboxFeature(cityCanon, feature) : "";
     const districtGuessByLabel = strict
