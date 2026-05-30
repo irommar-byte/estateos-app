@@ -12,9 +12,9 @@ import SwiftUI
  */
 struct RadarLiveActivityAttributes: ActivityAttributes {
 
-  public struct ContentState: Codable, Hashable {
-    var transactionType: String
-    var city: String
+    public struct ContentState: Codable, Hashable {
+        var transactionType: String
+        var city: String
     var localityCountry: String
     var localityCountryCode: String
     var districts: [String]
@@ -23,8 +23,8 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     var minArea: Double
     var minYear: Double
     var areaRadiusKm: Double
-    var minMatchThreshold: Int
-    var activeMatchesCount: Int
+        var minMatchThreshold: Int
+        var activeMatchesCount: Int
     var newMatchesCount: Int
     var unreadDealroomMessagesCount: Int
     var requireBalcony: Bool
@@ -32,12 +32,12 @@ struct RadarLiveActivityAttributes: ActivityAttributes {
     var requireElevator: Bool
     var requireParking: Bool
     var requireFurnished: Bool
-    var updatedAtIso: String
+        var updatedAtIso: String
     /// Inkrementowany przez natywny heartbeat (~4×/s) — wymusza odświeżenie UI (Uber-style).
     var animationTick: Int
     /// Ms epoch startu animacji — stabilny punkt odniesienia cykli.
     var animationEpochMs: Int64
-  }
+    }
 
     var title: String
 }
@@ -317,7 +317,7 @@ struct EstateOSRadarLiveActivity: Widget {
             let ringMid = size * 0.64
             let ringOuter = size * 0.92
 
-            ZStack {
+                ZStack {
                 pulseRing(
                     diameter: ringOuter,
                     step: 3,
@@ -737,7 +737,7 @@ struct EstateOSRadarLiveActivity: Widget {
                             .stroke(accent.opacity(0.5), lineWidth: 1.1)
                     )
 
-                HStack(spacing: 0) {
+                    HStack(spacing: 0) {
                     Text("E").foregroundColor(.white)
                     Text("OS").foregroundColor(accent)
                 }
@@ -1256,7 +1256,7 @@ struct EstateOSRadarLiveActivity: Widget {
                             Text("™").foregroundColor(textMain)
                         }
                         .font(.system(size: 22, weight: .bold, design: .rounded))
-                        .fontWeight(.bold)
+                    .fontWeight(.bold)
                         .lineLimit(1)
 
                         HStack(spacing: 6) {

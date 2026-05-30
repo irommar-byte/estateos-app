@@ -522,7 +522,7 @@ function DealPhasePill({ phase, colors }: { phase: DealPhase; colors: ReturnType
       : phase === 'active'
         ? { bg: colors.greenDimmed, border: 'rgba(50,215,75,0.28)', fg: colors.green }
         : { bg: colors.purpleDimmed, border: 'rgba(191,90,242,0.45)', fg: colors.purple };
-
+  
   return (
     <Animated.View
       style={[
@@ -1538,7 +1538,7 @@ export default function DealroomListScreen() {
 
   const isActiveDeal = (deal: any) => {
     const status = String(deal?.status || '').toUpperCase();
-    if (!status) return true;
+    if (!status) return true; 
     // DONE/CLOSED często ustawiane po uzgodnieniu ceny lub terminu — dealroom ma pozostać na liście.
     const inactiveStatuses = ['ARCHIVED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
     return !inactiveStatuses.includes(status);
@@ -1549,12 +1549,12 @@ export default function DealroomListScreen() {
       let cancelled = false;
       let interval: ReturnType<typeof setInterval> | null = null;
 
-      const fetchDeals = async () => {
+    const fetchDeals = async () => {
         if (!token || cancelled) return;
-        try {
+      try {
           const res = await fetch(`${API_URL}/api/mobile/v1/deals`, { headers: { Authorization: `Bearer ${token}` } });
-          const data = await res.json();
-          const activeDeals = normalizeDealsPayload(data).filter(isActiveDeal);
+        const data = await res.json();
+        const activeDeals = normalizeDealsPayload(data).filter(isActiveDeal);
           if (cancelled) return;
           setDeals(activeDeals);
 
@@ -1750,7 +1750,7 @@ export default function DealroomListScreen() {
 
   const formatLastMessage = useCallback((msg?: string) => {
     try {
-      const raw = String(msg || '').trim();
+    const raw = String(msg || '').trim();
       if (!raw) return t('dealroom.lastMessage.empty');
     const lower = raw.toLowerCase();
     if (raw.startsWith('[SYSTEM_FINALIZED]') || isDealSaleFinalizedMessage(raw)) {
@@ -1909,15 +1909,15 @@ export default function DealroomListScreen() {
       try {
         const web = await findWebOfferById(offerId);
         navigation.navigate('OfferDetail', web ? { offer: web } : { id: offerId });
-      } catch {
-        navigation.navigate('OfferDetail', { id: offerId });
+    } catch {
+      navigation.navigate('OfferDetail', { id: offerId });
       }
     } finally { setOpeningOfferId(null); }
   };
 
   const renderDealCard = (deal: any, animDelayIndex: number, listPhase: DealPhase) => {
-    const counterparty = getCounterparty(deal);
-    const unreadCount = Number(deal.unread || 0);
+            const counterparty = getCounterparty(deal);
+            const unreadCount = Number(deal.unread || 0);
     const offerIdNum = extractOfferIdFromDeal(deal);
     const thumbUrl =
       extractOfferImageFromDeal(deal) || (offerIdNum ? offerImageByOfferId[offerIdNum] : null);
@@ -1944,9 +1944,9 @@ export default function DealroomListScreen() {
     const canDeleteSwipe = phasesReady && listPhase === 'started';
     const needsAttention = Boolean(dealNeedsAttentionById[dealNumericId]);
 
-    return (
-      <Animated.View
-        key={deal.id}
+            return (
+              <Animated.View 
+                key={deal.id} 
         style={[styles.cardContainer, needsAttention && styles.cardContainerElevated]}
       >
         <Swipeable
@@ -1988,11 +1988,11 @@ export default function DealroomListScreen() {
                 )
               : undefined
           }
-        >
-          <Pressable
-            style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              >
+                <Pressable 
+                  style={({ pressed }) => [pressed && { transform: [{ scale: 0.97 }] }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               navigation.navigate('DealroomChat', {
                 dealId: deal.id,
                 offerId: extractOfferIdFromDeal(deal),
@@ -2025,22 +2025,22 @@ export default function DealroomListScreen() {
               end={{ x: 0, y: 1 }}
               style={[StyleSheet.absoluteFill, { borderRadius: 24 }]}
             />
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderLeft}>
-                <Text style={styles.dealId}>TX-{deal?.id || '-'}</Text>
+                    <View style={styles.cardHeader}>
+                      <View style={styles.cardHeaderLeft}>
+                        <Text style={styles.dealId}>TX-{deal?.id || '-'}</Text>
                 <DealPhasePill phase={listPhase} colors={COLORS} />
-              </View>
-              <Text style={styles.timeText}>{deal.time}</Text>
-            </View>
+                      </View>
+                      <Text style={styles.timeText}>{deal.time}</Text>
+                    </View>
             {/*
               Pinezka jest renderowana POZA tą kartą — w `cardContainer`
               (Animated.View) na końcu wątku, tak żeby nie wpadała pod
               `overflow: 'hidden'` Swipeable i nie zakrywała zegara.
             */}
 
-            <View style={styles.cardBody}>
-              <View style={styles.cardInfo}>
-                <Pressable onPress={(e) => { e.stopPropagation(); openOfferPreview(deal); }} hitSlop={10}>
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardInfo}>
+                        <Pressable onPress={(e) => { e.stopPropagation(); openOfferPreview(deal); }} hitSlop={10}>
                   <Text
                     style={styles.offerTitle}
                     numberOfLines={1}
@@ -2051,8 +2051,8 @@ export default function DealroomListScreen() {
                     {openingOfferId === Number(extractOfferIdFromDeal(deal) || 0)
                       ? t('dealroom.list.opening')
                       : getReadableDealTitle(deal)}
-                  </Text>
-                </Pressable>
+                          </Text>
+                        </Pressable>
                 <Text style={styles.activityDesc}>
                   {activityLine}
                 </Text>
@@ -2061,12 +2061,12 @@ export default function DealroomListScreen() {
                     <PresentationCountdown presentationIso={presentationIsoForCountdown} variant="panel" />
                   </View>
                 ) : null}
-
-                <Pressable
-                  style={styles.userRow}
+                        
+                        <Pressable 
+                          style={styles.userRow} 
                   onPress={(e) => { e.stopPropagation(); openCounterpartyProfile(counterparty.id, deal); }}
-                  hitSlop={10}
-                >
+                          hitSlop={10}
+                        >
                   <View style={styles.userAvatar}>
                     <User size={12} color={COLORS.gold} strokeWidth={2.5} />
                   </View>
@@ -2087,25 +2087,25 @@ export default function DealroomListScreen() {
                   >
                     {counterparty.name}
                   </Text>
-                </Pressable>
-              </View>
+                        </Pressable>
+                      </View>
 
               <View style={styles.thumbColumn}>
-                <View style={styles.thumbWrapper}>
+                      <View style={styles.thumbWrapper}>
                   <DealOfferThumb uri={thumbUrl} colors={COLORS} />
-                </View>
+                          </View>
                 {unreadCount > 0 ? (
                   <UnreadBadge count={unreadCount} colors={COLORS} />
                 ) : needsAttention ? (
                   <View style={styles.reactionBadgeWrap}>
                     <AttentionBadge colors={COLORS} compact />
-                  </View>
+                          </View>
                 ) : null}
-              </View>
-            </View>
+                      </View>
+                    </View>
 
-            <View style={styles.cardFooter}>
-              <View style={styles.messagePreviewRow}>
+                    <View style={styles.cardFooter}>
+                      <View style={styles.messagePreviewRow}>
                 <MessageCircle
                   size={15}
                   color={needsAttention ? COLORS.gold : COLORS.textMuted}
@@ -2115,11 +2115,11 @@ export default function DealroomListScreen() {
                   style={[styles.lastMessageText, needsAttention && styles.lastMessageTextUnread]}
                   numberOfLines={2}
                 >
-                  {formatLastMessage(deal.lastMessage)}
-                </Text>
-              </View>
-              <ChevronRight size={18} color={COLORS.textMuted} />
-            </View>
+                          {formatLastMessage(deal.lastMessage)}
+                        </Text>
+                      </View>
+                      <ChevronRight size={18} color={COLORS.textMuted} />
+                    </View>
           </View>
         </Pressable>
         </Swipeable>
@@ -2296,11 +2296,11 @@ export default function DealroomListScreen() {
                   {/* Pinezka jest renderowana POZA tym kafelkiem (na zewnątrz Swipeable),
                       aby nie zakrywała zawartości stosu. */}
                 </View>
-              </Pressable>
+                </Pressable>
             </Swipeable>
             {isPinnedStack ? <Pin3DBadge /> : null}
-          </Animated.View>
-        );
+              </Animated.View>
+            );
         animIndex += 1;
         return node;
       }
@@ -2656,7 +2656,7 @@ export default function DealroomListScreen() {
                         fallbackIso="PL"
                         size={28}
                       />
-                    </View>
+                  </View>
                   </View>
                   <Text style={styles.profileName}>{selectedProfile?.user?.name || t('dealroom.user.numbered', { id: selectedProfileId })}</Text>
                   <EliteStatusBadges subject={selectedProfile?.user || selectedProfile} isDark={isDark} compact />
@@ -3233,7 +3233,7 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   offerTitle: { color: colors.textMain, fontSize: 19, fontWeight: '700', letterSpacing: 0.2, marginBottom: 4 },
   activityDesc: { color: colors.textSec, fontSize: 13, fontWeight: '500', lineHeight: 18 },
   countdownInCard: { marginTop: 6, alignSelf: 'stretch' },
-
+  
   userRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, alignSelf: 'flex-start', maxWidth: '100%', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: colors.border, borderRadius: 12 },
   userAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: colors.goldDimmed, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   userLabel: { color: colors.textSec, fontSize: 12, fontWeight: '500' },

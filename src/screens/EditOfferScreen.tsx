@@ -166,7 +166,7 @@ export default function EditOfferScreen({ route }: any) {
   const { user, token } = useAuthStore() as any;
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
-
+  
   // --- APPLE COLOR PALETTE ---
   const isDark = themeMode === 'dark' || (themeMode === 'auto' && systemScheme === 'dark');
   const bgColor = isDark ? '#000000' : '#F2F2F7';
@@ -279,7 +279,7 @@ export default function EditOfferScreen({ route }: any) {
       }
 
       if (!offer) {
-        const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user?.id || ''}`, {
+      const res = await fetch(`${API_URL}/api/mobile/v1/offers?includeAll=true&userId=${user?.id || ''}`, {
           headers,
         });
         const data = await res.json().catch(() => ({}));
@@ -287,7 +287,7 @@ export default function EditOfferScreen({ route }: any) {
         offer = offers.find((o: any) => Number(o?.id) === Number(offerId)) || null;
       }
 
-      if (offer) {
+        if (offer) {
           setOriginalData(offer);
           setTitle(offer.title || '');
           const { clean: cleanDesc, tokens } = extractVerifyTokens(offer.description || '');
@@ -334,7 +334,7 @@ export default function EditOfferScreen({ route }: any) {
           let parsedImages: string[] = [];
           if (offer.images) {
             try {
-              parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
+             parsedImages = typeof offer.images === 'string' ? JSON.parse(offer.images) : offer.images;
             } catch {
               parsedImages = [];
             }
@@ -363,11 +363,11 @@ export default function EditOfferScreen({ route }: any) {
           }
 
           setAmenities({
-            hasBalcony: isTrue(offer.hasBalcony),
-            hasParking: isTrue(offer.hasParking),
+            hasBalcony: isTrue(offer.hasBalcony), 
+            hasParking: isTrue(offer.hasParking), 
             hasStorage: isTrue(offer.hasStorage),
-            hasElevator: isTrue(offer.hasElevator),
-            hasGarden: isTrue(offer.hasGarden),
+            hasElevator: isTrue(offer.hasElevator), 
+            hasGarden: isTrue(offer.hasGarden), 
             isTwoLevel: isTrue(offer.isTwoLevel),
             isFurnished: isTrue(offer.isFurnished),
           });
@@ -660,7 +660,7 @@ export default function EditOfferScreen({ route }: any) {
   const handleSave = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSaving(true);
-
+    
     if (!token?.trim()) {
       Alert.alert(t('offer.edit.alerts.sessionTitle'), t('offer.edit.alerts.sessionLogin'));
       setSaving(false);
@@ -1328,7 +1328,7 @@ export default function EditOfferScreen({ route }: any) {
                 <Ionicons name="camera" size={26} color={primaryColor} />
                 <Text style={[styles.addImageText, { color: primaryColor }]}>{t('offer.edit.gallery.add')}</Text>
               </Pressable>
-
+              
               {images.map((img, index) => {
                 const isFirst = index === 0;
                 const isLast = index === images.length - 1;
@@ -1348,11 +1348,11 @@ export default function EditOfferScreen({ route }: any) {
                       hitSlop={8}
                     >
                       <Ionicons name="close" size={14} color="#FFF" />
-                    </Pressable>
+                  </Pressable>
 
                     {/* Cover badge */}
                     {isFirst ? (
-                      <View style={styles.mainPhotoBadge}>
+                    <View style={styles.mainPhotoBadge}>
                         <Ionicons name="star" size={9} color="#FFD60A" />
                         <Text style={styles.mainPhotoText}>{t('offer.edit.gallery.cover')}</Text>
                       </View>
@@ -1379,8 +1379,8 @@ export default function EditOfferScreen({ route }: any) {
                       ) : (
                         <View style={[styles.imageActionBtn, styles.imageActionBtnDisabled]}>
                           <Ionicons name="star" size={13} color="#FFD60A" />
-                        </View>
-                      )}
+                    </View>
+                  )}
                       <Pressable
                         disabled={isLast}
                         onPress={() => moveImage(index, 1)}
@@ -1389,11 +1389,11 @@ export default function EditOfferScreen({ route }: any) {
                       >
                         <Ionicons name="chevron-forward" size={14} color={isLast ? '#888' : '#FFF'} />
                       </Pressable>
-                    </View>
-                  </View>
+                </View>
+            </View>
                 );
               })}
-            </View>
+          </View>
           </View>
           <Text style={styles.sectionFooter}>
             {t('offer.edit.gallery.footer')}
@@ -1456,7 +1456,7 @@ export default function EditOfferScreen({ route }: any) {
                 </Text>
               </View>
             </View>
-            <TextInput
+            <TextInput 
               style={[
                 styles.titleInputPremium,
                 {
@@ -1484,7 +1484,7 @@ export default function EditOfferScreen({ route }: any) {
                 </Text>
               </View>
             </View>
-            <TextInput
+            <TextInput 
               style={[
                 styles.textAreaPremium,
                 {
@@ -1522,10 +1522,10 @@ export default function EditOfferScreen({ route }: any) {
               <Text style={styles.inputSuffix}>m²</Text>
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
-
+            
             {String(originalData?.propertyType || '').toUpperCase() === 'HOUSE' ? (
               <>
-                <View style={styles.inputRowPremium}>
+            <View style={styles.inputRowPremium}>
                   <Text style={[styles.inputLabelPremium, { color: txtColor }]}>
                     {t('offer.edit.parameters.plotArea')}
                   </Text>
@@ -1538,8 +1538,8 @@ export default function EditOfferScreen({ route }: any) {
                     placeholderTextColor={subColor}
                   />
                   <Text style={styles.inputSuffix}>m²</Text>
-                </View>
-                <View style={[styles.divider, { backgroundColor: borderColor }]} />
+            </View>
+            <View style={[styles.divider, { backgroundColor: borderColor }]} />
               </>
             ) : null}
 
@@ -1601,7 +1601,7 @@ export default function EditOfferScreen({ route }: any) {
                 {floor === '0' && (
                   <Text style={{ fontSize: 11, color: subColor, marginTop: 1 }}>{t('offer.shared.floorGroundLabel')}</Text>
                 )}
-              </View>
+            </View>
               <View style={styles.stepperInline}>
                 <Pressable
                   hitSlop={8}
@@ -1646,7 +1646,7 @@ export default function EditOfferScreen({ route }: any) {
                 >
                   <Ionicons name="add" size={16} color={primaryColor} />
                 </Pressable>
-              </View>
+          </View>
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
 
@@ -1871,7 +1871,7 @@ export default function EditOfferScreen({ route }: any) {
                     <View style={styles.commissionModeRow}>
                       {(['percent', 'amount'] as const).map((m) => {
                         const active = commissionInputMode === m;
-                        return (
+                return (
                           <Pressable
                             key={m}
                             onPress={() => {
@@ -1895,9 +1895,9 @@ export default function EditOfferScreen({ route }: any) {
                             <Text style={{ color: active ? commissionAccent : subColor, fontWeight: '800', fontSize: 11 }}>
                               {m === 'percent' ? '%' : 'PLN'}
                             </Text>
-                          </Pressable>
-                        );
-                      })}
+                  </Pressable>
+                );
+              })}
                     </View>
                     <View style={styles.commissionRow}>
                       <View style={styles.commissionInputCol}>
@@ -2003,8 +2003,8 @@ export default function EditOfferScreen({ route }: any) {
                             ? t('offer.edit.commission.amountHintZero')
                             : t('offer.edit.commission.amountHintDefault')}
                         </Text>
-                      </View>
-                    </View>
+            </View>
+          </View>
 
                     {showCommissionRangeWarning ? (
                       <View style={styles.commissionWarn}>
@@ -2015,7 +2015,7 @@ export default function EditOfferScreen({ route }: any) {
                             max: formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT),
                           })}
                         </Text>
-                      </View>
+            </View>
                     ) : null}
                   </View>
                 )}
@@ -2194,7 +2194,7 @@ export default function EditOfferScreen({ route }: any) {
                   size={28}
                   color={isLandRegistryValid ? '#34C759' : subColor}
                 />
-              </View>
+            </View>
               <View style={{ flex: 1, marginLeft: 14 }}>
                 <View style={styles.shieldBadgeRow}>
                   <View
@@ -2245,7 +2245,7 @@ export default function EditOfferScreen({ route }: any) {
                     color={isLandRegistryValid ? '#34C759' : subColor}
                   />
                   <Text style={[styles.shieldBenefitText, { color: subColor }]}>{item.text}</Text>
-                </View>
+            </View>
               ))}
             </View>
           </View>
@@ -2275,11 +2275,11 @@ export default function EditOfferScreen({ route }: any) {
                 <View style={styles.kwLockBadge}>
                   <Ionicons name="lock-closed" size={10} color="#34C759" />
                   <Text style={styles.kwLockText}>{t('offer.edit.kw.encrypted')}</Text>
-                </View>
+            </View>
                 <Text style={[styles.inputLabelPremium, { color: txtColor, flex: 1, marginLeft: 8 }]}>
                   {t('offer.edit.kw.landRegistryLabel')}
                 </Text>
-              </View>
+          </View>
               <Text style={[styles.kwFormatHint, { color: subColor }]}>
                 {t('offer.edit.kw.formatHint')} <Text style={{ fontWeight: '800', color: txtColor, letterSpacing: 1 }}>XXXX / XXXXXXXX / X</Text>
                 {'  '}{t('offer.edit.kw.formatExample')} <Text style={{ fontWeight: '700' }}>WA4N/00012345/6</Text>
@@ -3155,7 +3155,7 @@ const styles = StyleSheet.create({
   inputRightPremium: { flex: 1, fontSize: 17, textAlign: 'right', letterSpacing: -0.3 },
   inputSuffix: { fontSize: 15, color: '#8E8E93', marginLeft: 6, fontWeight: '500' },
   divider: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
-
+  
   /* ===== SEGMENT ===== */
   segmentContainer: {
     flexDirection: 'row',

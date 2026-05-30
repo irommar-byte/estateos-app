@@ -27,19 +27,18 @@ function buildEventBody(params: {
   mapContext?: { lat?: number; lng?: number; radius?: number };
 }) {
   const { userId, source, filters, mapContext } = params;
+  const lat = mapContext?.lat ?? filters.lat;
+  const lng = mapContext?.lng ?? filters.lng;
+  const radius = mapContext?.radius ?? filters.radius;
   return {
     userId,
     source,
-    savedAt: new Date().toISOString(),
-    filters,
-    mapBounds:
-      mapContext?.lat != null && mapContext?.lng != null
-        ? {
-            lat: mapContext.lat,
-            lng: mapContext.lng,
-            radius: mapContext.radius ?? null,
-          }
-        : null,
+    eventType: 'RADAR_SEARCH',
+    searchedAt: new Date().toISOString(),
+    ...filters,
+    ...(lat != null && lng != null
+      ? { lat: Number(lat), lng: Number(lng), radius: radius != null ? Number(radius) : null }
+      : {}),
   };
 }
 

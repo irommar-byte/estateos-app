@@ -13,6 +13,8 @@ import RadarStatus from '../components/RadarStatus';
 import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import { API_URL } from '../config/network';
 import { logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
+import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts';
+import { postRadarPreferencesToBackend } from '../utils/radarPreferenceSync';
 import { localeToDateFormat, useI18n } from '../i18n';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -245,33 +247,12 @@ export default function Radar({ theme, route }: any) {
   };
 
   const syncRadarPreferencesToBackend = async (payload: any) => {
-    if (!user || !user.id) return;
-    try {
-      const body = {
-        userId: user.id,
-        transactionType: payload.transactionType,
-        propertyType: payload.propertyType === "ALL" ? null : payload.propertyType,
-        city: payload.city,
-        selectedDistricts: payload.selectedDistricts || [],
-        maxPrice: payload.maxPrice ?? null,
-        minArea: payload.minArea ?? null,
-        minYear: payload.minYear ?? null,
-        requireBalcony: !!payload.requireBalcony,
-        requireGarden: !!payload.requireGarden,
-        requireElevator: !!payload.requireElevator,
-        requireParking: !!payload.requireParking,
-        requireFurnished: !!payload.requireFurnished,
-        pushNotifications: payload.pushNotifications !== false,
-        minMatchThreshold: payload.matchThreshold // 🔥 Wysyłamy próg na serwer
-      };
-      await fetch(`${API_URL}/api/radar/preferences`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      });
-    } catch (e) {
-      if (__DEV__) console.warn('Błąd zapisu preferencji radaru', e);
-    }
+    if (!user?.id || !token) return;
+    const dto = buildCanonicalRadarPreferencesDto({
+      userId: Number(user.id),
+      filters: payload,
+    });
+    await postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
   };
 
   const applyCalibration = () => {

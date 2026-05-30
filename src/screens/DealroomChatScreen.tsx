@@ -201,8 +201,8 @@ function parseDealAttachmentFromContent(content?: string): Record<string, any> |
         // noop
       }
     }
-  }
-  return null;
+      }
+      return null;
 }
 
 function pickUrlFromAttachmentPayload(obj: any): string | null {
@@ -216,8 +216,8 @@ function pickUrlFromAttachmentPayload(obj: any): string | null {
       if (nested) return nested;
     }
   }
-  return null;
-}
+      return null;
+    }
 
 type DealroomResolvedAttachment = { url: string; name: string; mimeType: string; size: number; };
 
@@ -496,7 +496,7 @@ export default function DealroomChatScreen() {
         ? buyerId
         : sellerId > 0 && sellerId !== meId
           ? sellerId
-          : null;
+      : null;
     const counterpartLabel =
       buyerId > 0 && buyerId !== meId
         ? buyerName
@@ -545,7 +545,7 @@ export default function DealroomChatScreen() {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && !data?.error) setCounterpartyPublicProfile(data);
-    } catch {
+      } catch {
       // noop
     } finally {
       setCounterpartyProfileLoading(false);
@@ -786,16 +786,16 @@ export default function DealroomChatScreen() {
           let directSuccess = false;
           let directErrText = '';
           for (const directField of directAttempts) {
-            const msgForm = new FormData();
+          const msgForm = new FormData();
             msgForm.append('content', content || t('dealroom.chat.attachmentFallback', { name: baseFile.name }));
-            msgForm.append('offerId', String(uploadIdentifier));
-            msgForm.append('dealId', String(dealId));
+          msgForm.append('offerId', String(uploadIdentifier));
+          msgForm.append('dealId', String(dealId));
             msgForm.append(directField, baseFile);
-            const directRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
-              method: 'POST',
+          const directRes = await fetch(`${API_URL}/api/mobile/v1/deals/${dealId}/messages`, {
+            method: 'POST',
               headers: { Authorization: `Bearer ${token}` },
-              body: msgForm,
-            });
+            body: msgForm,
+          });
             if (directRes.ok) {
               directSuccess = true;
               break;
@@ -842,8 +842,8 @@ export default function DealroomChatScreen() {
           const errBody = await textRes.text();
           Alert.alert(t('dealroom.chat.alerts.sendError'), errBody || t('dealroom.chat.errors.sendMessage'));
           setMessage(content);
-          return;
-        }
+        return;
+      }
       }
       fetchMessages();
     } catch (e) {
@@ -1716,8 +1716,8 @@ export default function DealroomChatScreen() {
         <View style={styles.loaderCenter}><ActivityIndicator color={COLORS.primary} /></View>
       ) : (
         <>
-          <ScrollView
-            ref={scrollViewRef}
+        <ScrollView 
+          ref={scrollViewRef}
             style={styles.chatScrollView}
             contentContainerStyle={styles.chatScrollContent}
             showsVerticalScrollIndicator
@@ -1785,7 +1785,7 @@ export default function DealroomChatScreen() {
                         ? new Date(entry.event.proposedDate).toLocaleString('pl-PL')
                         : t('dealroom.chat.noDate');
                       const noteText = String(firstDefined(entry.event?.note, entry.event?.message, '') || '').trim();
-                      return (
+              return (
                         <View key={`appt-${entry.msg?.id || idx}`} style={styles.timelineRow}>
                           <View style={styles.timelineRail}>
                             <View style={styles.timelineDot} />
@@ -1796,13 +1796,13 @@ export default function DealroomChatScreen() {
                             {noteText ? <Text style={styles.timelineNoteText}>„{noteText}”</Text> : null}
                             <Text style={styles.timelineMetaText}>
                               {new Date(entry.msg?.createdAt || Date.now()).toLocaleString('pl-PL')}
-                            </Text>
+                  </Text>
                           </View>
                         </View>
                       );
                     })}
-                  </View>
-                )}
+                    </View>
+                  )}
                 {appointmentStatus === 'ACCEPTED' && (
                   <View style={styles.royalSealWrap}>
                     <View style={styles.royalSealOuter}>
@@ -1834,9 +1834,9 @@ export default function DealroomChatScreen() {
                 ) : null}
                 {latestActionableAppointmentFromOther && !isWaitingForOtherOnAppointment && !isAppointmentProposalLocked && appointmentStatus !== 'ACCEPTED' && !transactionFinalized && (
                   <View style={styles.actionRow}>
-                    <Pressable
+                      <Pressable
                       style={[styles.actionBtn, styles.actionPrimary]}
-                      onPress={() => {
+                        onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         void handleAcceptAppointment(latestActionableAppointmentFromOther.event);
                       }}
@@ -1853,9 +1853,9 @@ export default function DealroomChatScreen() {
                       }}
                     >
                       <Text style={styles.actionSecondaryTxt}>{t('dealroom.chat.change')}</Text>
-                    </Pressable>
-                  </View>
-                )}
+                      </Pressable>
+                    </View>
+                  )}
               </View>
             )}
 
@@ -1878,7 +1878,7 @@ export default function DealroomChatScreen() {
                   size={16}
                   color={priceStatus === 'IDLE' ? '#8E8E93' : priceStatus === 'PENDING' ? '#FFD60A' : COLORS.primary}
                 />
-              </Animated.View>
+                </Animated.View>
               <View style={styles.negotiationTextWrap}>
                 <Text style={styles.negotiationTitle}>{t('dealroom.chat.priceSection')}</Text>
                 <Text style={styles.negotiationState}>{priceStatusText}</Text>
@@ -1905,7 +1905,7 @@ export default function DealroomChatScreen() {
                         ? `${Number(entry.event.amount).toLocaleString('pl-PL')} PLN`
                         : 'brak kwoty';
                       const noteText = String(firstDefined(entry.event?.note, entry.event?.message, '') || '').trim();
-                      return (
+              return (
                         <View key={`bid-${entry.msg?.id || idx}`} style={styles.timelineRow}>
                           <View style={styles.timelineRail}>
                             <View style={styles.timelineDot} />
@@ -1916,13 +1916,13 @@ export default function DealroomChatScreen() {
                             {noteText ? <Text style={styles.timelineNoteText}>„{noteText}”</Text> : null}
                             <Text style={styles.timelineMetaText}>
                               {new Date(entry.msg?.createdAt || Date.now()).toLocaleString('pl-PL')}
-                            </Text>
+                  </Text>
                           </View>
                         </View>
                       );
                     })}
-                  </View>
-                )}
+                    </View>
+                  )}
                 {priceStatus === 'ACCEPTED' && (
                   <View style={styles.royalSealWrap}>
                     <View style={styles.royalSealOuter}>
@@ -1988,10 +1988,10 @@ export default function DealroomChatScreen() {
                       }}
                     >
                       <Text style={styles.actionPrimaryTxt}>{t('dealroom.chat.agree')}</Text>
-                    </Pressable>
-                    <Pressable
+                      </Pressable>
+                      <Pressable
                       style={[styles.actionBtn, styles.actionSecondary]}
-                      onPress={() => {
+                        onPress={() => {
                         const bidId = resolveEventBidId(actionableBidContext.event) ?? bidNegotiationSnapshot?.respondToBidId;
                         setSelectedBidEvent({
                           ...actionableBidContext.event,
@@ -2004,9 +2004,9 @@ export default function DealroomChatScreen() {
                       }}
                     >
                       <Text style={styles.actionSecondaryTxt}>{t('dealroom.chat.counter')}</Text>
-                    </Pressable>
-                  </View>
-                )}
+                      </Pressable>
+                    </View>
+                  )}
               </View>
             )}
           </View>
@@ -2016,7 +2016,7 @@ export default function DealroomChatScreen() {
               <BlurView intensity={50} tint="dark" style={styles.reserveAfterPresentationInner}>
                 <Text style={styles.reserveAfterPresentationTitle}>{t('dealroom.chat.postPresentation.title')}</Text>
                 <Text style={styles.reserveAfterPresentationBody}>{t('dealroom.chat.postPresentation.body')}</Text>
-                <Pressable
+                      <Pressable
                   style={({ pressed }) => [styles.reserveAfterPresentationBtn, pressed && { opacity: 0.92 }]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2026,7 +2026,7 @@ export default function DealroomChatScreen() {
                   <Text style={styles.reserveAfterPresentationBtnTxt}>{t('dealroom.chat.postPresentation.cta')}</Text>
                 </Pressable>
               </BlurView>
-            </View>
+                          </View>
           ) : null}
 
             {transactionFinalized ? (
@@ -2043,8 +2043,8 @@ export default function DealroomChatScreen() {
                     <View style={styles.reviewSuccessStamp}>
                       <Text style={styles.reviewSuccessStampIcon}>✓</Text>
                       <Text style={styles.reviewSuccessStampText}>{t('dealroom.chat.finalized.reviewSuccess')}</Text>
-                    </View>
-                  ) : (
+                          </View>
+                        ) : (
                     <>
                       <View style={styles.ratingRow}>
                         {[1, 2, 3, 4, 5].map((star) => (
@@ -2106,11 +2106,11 @@ export default function DealroomChatScreen() {
               if (dealEvent?.entity === 'BID' || dealEvent?.entity === 'APPOINTMENT') return null;
               if (String(msg?.content || '').trim().startsWith(DEAL_REVIEW_PREFIX)) return null;
               
-              const attachment = resolveAttachmentFromMessage(msg);
+                    const attachment = resolveAttachmentFromMessage(msg);
               const visibleText = stripChatAttachmentDecorations(msg.content, attachment);
               const kind = attachment ? getAttachmentKind(attachment) : null;
 
-              return (
+                    return (
                 <Animated.View key={msg.id} entering={FadeInDown.delay(index * 15).springify()} style={[styles.msgWrapper, isMe ? styles.msgMe : styles.msgThem]}>
                   <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleThem]}>
                     {visibleText ? <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{visibleText}</Text> : null}
@@ -2125,35 +2125,35 @@ export default function DealroomChatScreen() {
                       >
                         <View style={[styles.attachmentIconBox, kind === 'pdf' ? styles.pdfBg : styles.fileBg]}>
                           {kind === 'pdf' ? <FileText size={16} color="#FFF" /> : kind === 'audio' ? <Paperclip size={16} color="#FFF" /> : <Paperclip size={16} color="#FFF" />}
-                        </View>
+                </View>
                         <View style={styles.attachmentInfo}>
                           <Text style={styles.attachmentName} numberOfLines={1}>{attachment.name}</Text>
                           <Text style={styles.attachmentMeta}>{formatBytes(attachment.size)}</Text>
-                        </View>
+                    </View>
                         {kind === 'audio' && (
                           <Pressable onPress={(e) => { e.stopPropagation(); handleToggleAudioPreview(attachment.url); }} style={styles.audioBtn}>
                             {playingAudioUrl === attachment.url ? <Pause size={14} color="#fff" /> : <Play size={14} color="#fff" />}
                           </Pressable>
                         )}
                       </Pressable>
-                    )}
-                  </View>
+                  )}
+                </View>
                   <View style={styles.msgFooter}>
                     <Text style={styles.msgTime}>{new Date(msg.createdAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</Text>
                     {isMe && <View style={{marginLeft: 4}}>{msg.isRead ? <CheckCheck size={14} color={COLORS.primary} /> : <Check size={14} color={COLORS.textMuted} />}</View>}
                   </View>
-                </Animated.View>
-              );
-            })}
-
-            {isPartnerTyping && (
+              </Animated.View>
+            );
+          })}
+          
+          {isPartnerTyping && (
               <Animated.View entering={FadeIn} style={[styles.msgWrapper, styles.msgThem]}>
                 <View style={[styles.msgBubble, styles.msgBubbleThem, styles.typingBubble]}>
-                  <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
-                </View>
-              </Animated.View>
-            )}
-          </ScrollView>
+                <TypingDot delay={0} /><TypingDot delay={150} /><TypingDot delay={300} />
+              </View>
+            </Animated.View>
+          )}
+        </ScrollView>
         </>
       )}
 
@@ -2165,7 +2165,7 @@ export default function DealroomChatScreen() {
               <View style={styles.pendingInfo}>
                 <Paperclip size={14} color={COLORS.primary} style={{marginRight: 6}} />
                 <Text style={styles.pendingText} numberOfLines={1}>{pendingAttachment.name}</Text>
-              </View>
+            </View>
               {isUploadingAttachment ? (
                 <ActivityIndicator size="small" color={COLORS.primary} />
               ) : (
@@ -2181,13 +2181,13 @@ export default function DealroomChatScreen() {
               <Paperclip size={22} color={pendingAttachment ? COLORS.primary : COLORS.textMuted} />
             </Pressable>
             
-            <TextInput
-              style={styles.textInput}
+          <TextInput
+            style={styles.textInput}
               placeholder={t('dealroom.chat.messagePlaceholder')}
               placeholderTextColor={COLORS.textMuted}
-              value={message}
-              onChangeText={handleTyping}
-              multiline
+            value={message}
+            onChangeText={handleTyping}
+            multiline
               returnKeyType="send"
               blurOnSubmit={false}
               submitBehavior="submit"
@@ -2205,9 +2205,9 @@ export default function DealroomChatScreen() {
               disabled={isUploadingAttachment}
             >
               {isUploadingAttachment ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color={(message.trim() || pendingAttachment) ? '#fff' : 'rgba(255,255,255,0.4)'} />}
-            </Pressable>
+          </Pressable>
           </View>
-      </BlurView>
+        </BlurView>
 
       {/* Modals */}
       <BidActionModal
@@ -2313,7 +2313,7 @@ export default function DealroomChatScreen() {
                     </Pressable>
                     <Text style={styles.reviewItemStars}>{'★'.repeat(Number(r?.rating || 0))}{'☆'.repeat(5 - Number(r?.rating || 0))}</Text>
                     <Text style={styles.reviewItemBody}>{r?.comment || r?.review || t('dealroom.chat.reviewModal.noComment')}</Text>
-                  </View>
+    </View>
                 ))}
                 {(!Array.isArray(counterpartyPublicProfile?.reviews) || counterpartyPublicProfile.reviews.length === 0) ? (
                   <Text style={styles.reviewModalEmpty}>{t('dealroom.chat.reviewModal.empty')}</Text>

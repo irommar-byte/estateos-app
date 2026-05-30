@@ -48,6 +48,7 @@ import { buildCanonicalRadarPreferencesDto } from '../contracts/parityContracts'
 import {
   fetchRadarPreferenceForUser,
   mapContextForCanonicalDto,
+  postRadarPreferencesToBackend,
   radarFiltersFromApiPreference,
 } from '../utils/radarPreferenceSync';
 import { loadRadarCommittedState, saveRadarCommittedState } from '../utils/radarCommittedStorage';
@@ -1091,6 +1092,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         } else if (!isRadarFactoryDefaults(committed.filters)) {
           setMapUsesRadarFilters(true);
           setAreaSummary(committed.areaSummary || '');
+        }
+        if (token) {
+          const dto = buildCanonicalRadarPreferencesDto({
+            userId,
+            filters: committed.filters,
+            mapContext: mapContextForCanonicalDto(committed.filters, committed.mapBounds),
+          });
+          void postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
         }
         radarPreferencesHydratedRef.current = true;
         return;
@@ -3094,21 +3103,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
 
   const syncRadarPreferencesToBackend = async (payload: typeof radarFilters) => {
-    if (!user?.id) return;
-    try {
-      const dto = buildCanonicalRadarPreferencesDto({
-        userId: Number(user.id),
-        filters: payload,
-        mapContext: mapContextForCanonicalDto(payload, radarMapBounds),
-      });
-      await fetch(`${API_URL}/api/radar/preferences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dto),
-      });
-    } catch {
-      // noop
-    }
+    if (!user?.id || !token) return;
+    const dto = buildCanonicalRadarPreferencesDto({
+      userId: Number(user.id),
+      filters: payload,
+      mapContext: mapContextForCanonicalDto(payload, radarMapBounds),
+    });
+    await postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
   };
 
   const commitRadarCalibrationState = useCallback(
@@ -3173,22 +3174,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     setIsFavoritesRadarEnabled(filtersToApply.pushNotifications);
     // Preferencje Ulubionych → backend (może ignorować nieznane pola; ważne, by kontrakt nie blokował).
     void (async () => {
-      try {
-        if (user?.id) {
-          const dto = buildCanonicalRadarPreferencesDto({
-            userId: Number(user.id),
-            filters: filtersToApply,
-            mapContext: mapContextForCanonicalDto(filtersToApply, radarMapBounds),
-          });
-          await fetch(`${API_URL}/api/radar/preferences`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dto),
-          });
-        }
-    } catch {
-      // noop
-    }
+      if (user?.id && token) {
+        const dto = buildCanonicalRadarPreferencesDto({
+          userId: Number(user.id),
+          filters: filtersToApply,
+          mapContext: mapContextForCanonicalDto(filtersToApply, radarMapBounds),
+        });
+        await postRadarPreferencesToBackend({ apiUrl: API_URL, token, dto });
+      }
     })();
 
     // Preferencje push per-device (produkcyjnie: backend może upsert po expoPushToken).

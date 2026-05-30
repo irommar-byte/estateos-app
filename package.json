@@ -10,6 +10,9 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "test:contracts": "tsx --test tests/contracts/*.test.ts",
+    "verify:ios-release": "node scripts/embed-git-sha.mjs && node scripts/verify-ios-release-bundle.mjs export",
+    "verify:ios-archive": "node scripts/verify-ios-release-bundle.mjs archive",
+    "prearchive:ios": "npm run verify:ios-release",
     "eas:ios": "eas build --platform ios --profile production",
     "eas:ios:submit": "eas submit --platform ios --latest",
     "eas:ios:all": "eas build --platform ios --profile production --auto-submit"

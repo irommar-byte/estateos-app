@@ -880,7 +880,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
               );
             }
 
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             clearReactivateLock(offerId);
             const archivedOffer = extractMobileOfferJson(body);
             setOffers((prev) =>
@@ -892,7 +892,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
             );
             setSelectedOffer(null);
             setActiveTab('ARCHIVED');
-            await fetchMyOffers();
+              await fetchMyOffers();
             Alert.alert(
               t('profile.myOffers.alerts.withdrawnTitle'),
               t('profile.myOffers.alerts.withdrawnBody', { title: offerTitle }),
@@ -1455,7 +1455,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
       });
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        fetchUserDetails();
+        fetchUserDetails(); 
       } else {
         const errData = await res.json().catch(() => ({}));
         Alert.alert('Błąd', String(errData?.error || errData?.message || 'Zmiana statusu nie powiodła się.'));
@@ -1545,16 +1545,16 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
           );
         })()}
         <View style={{ flex: 1 }}>
-          <Text style={[styles.offerTitle, { color: theme.text, flex: 1 }]} numberOfLines={1}>{item.title}</Text>
+        <Text style={[styles.offerTitle, { color: theme.text, flex: 1 }]} numberOfLines={1}>{item.title}</Text>
           {(() => {
             const statusMeta = getAdminStatusMeta(item?.status);
             return (
               <View style={[styles.adminStatusPill, { backgroundColor: statusMeta.bg, borderColor: statusMeta.border, alignSelf: 'flex-start', marginTop: 4 }]}>
                 <Text style={[styles.adminStatusPillText, { color: statusMeta.text }]}>{statusMeta.label}</Text>
-              </View>
+        </View>
             );
           })()}
-        </View>
+      </View>
       </Pressable>
       <Text style={styles.offerSubtitle} numberOfLines={2}>
         {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
@@ -1594,7 +1594,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
             <View style={[styles.adminInlineError, { borderColor: 'rgba(255,59,48,0.35)', backgroundColor: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.08)' }]}>
               <Ionicons name="alert-circle" size={22} color="#FF3B30" />
               <Text style={[styles.adminInlineErrorText, { color: theme.text }]}>{fetchError}</Text>
-            </View>
+              </View>
             <Pressable
               onPress={() => void fetchUserDetails()}
               style={({ pressed }) => [styles.adminRetryBtn, pressed && { opacity: 0.88 }]}
@@ -1602,7 +1602,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
               <Ionicons name="refresh" size={18} color="#fff" />
               <Text style={styles.adminRetryBtnText}>Spróbuj ponownie</Text>
             </Pressable>
-          </View>
+              </View>
         ) : userData ? (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 42 }}>
             {!!fetchError && (
@@ -1611,7 +1611,7 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
                 <Text style={[styles.adminInlineErrorText, { color: theme.text }]}>
                   Nie udało się odświeżyć pełnej karty z serwera. Pokazuję dane z listy.
                 </Text>
-              </View>
+            </View>
             )}
             <View style={[styles.adminProfileHeroCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]}>
               <View style={styles.adminProfileAvatarWrap}>
@@ -1757,7 +1757,7 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
       setFetchError('Brak połączenia z serwerem.');
       setOffers([]);
     } finally {
-      setLoading(false);
+    setLoading(false);
     }
   };
 
@@ -1855,7 +1855,7 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     const imageUri = extractOfferCardImage(item);
     const txBadge = getOfferTransactionBadge(item);
     return (
-      <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+    <View style={[styles.offerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
         <Pressable onPress={() => openOfferPreview(item)} style={({ pressed }) => [styles.adminOfferHeaderRow, pressed && { opacity: 0.75 }]}>
           <View style={styles.adminPreviewWrap}>
             {imageUri ? (
@@ -1886,26 +1886,26 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
         <Text style={styles.offerSubtitle} numberOfLines={2}>
           {formatOffer(item).primary} • {formatOfferLocationLine(item) || item.city || '—'}
         </Text>
-        <Text style={styles.offerUser}>Autor: {item.user?.email}</Text>
+      <Text style={styles.offerUser}>Autor: {item.user?.email}</Text>
         <View style={styles.adminActionRow}>
-          {activeTab === 'PENDING' && (
-            <>
+        {activeTab === 'PENDING' && (
+          <>
               <AdminActionButton icon="checkmark-circle" label="Akceptuj" tint="#34C759" fill="rgba(52,199,89,0.12)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
               <AdminActionButton icon="close-circle" label="Odrzuć" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => changeStatus(item.id, 'REJECTED')} />
-            </>
-          )}
-          {activeTab === 'ACTIVE' && (
+          </>
+        )}
+        {activeTab === 'ACTIVE' && (
             <AdminActionButton icon="archive" label="Archiwizuj" tint="#FF9F0A" fill="rgba(255,159,10,0.14)" onPress={() => changeStatus(item.id, 'ARCHIVED')} />
-          )}
-          {activeTab === 'ARCHIVED' && (
+        )}
+        {activeTab === 'ARCHIVED' && (
             <>
               <AdminActionButton icon="refresh-circle" label="Przywróć" tint="#0A84FF" fill="rgba(10,132,255,0.14)" onPress={() => changeStatus(item.id, 'ACTIVE')} />
               <AdminActionButton icon="trash" label="Usuń" tint="#FF3B30" fill="rgba(255,59,48,0.12)" onPress={() => deleteOfferPermanently(item)} />
             </>
-          )}
-        </View>
+        )}
       </View>
-    );
+    </View>
+  );
   };
 
   const filteredOffers = offers.filter((item) => {
@@ -2118,9 +2118,9 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
         text: 'Usuń',
         style: 'destructive',
         onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/admin/users`, {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            try {
+              const res = await fetch(`${API_URL}/api/mobile/v1/admin/users`, {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ userId }),
@@ -2343,54 +2343,54 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
     return (
       <Pressable
       onPress={() => { Haptics.selectionAsync(); onOpenUser(item); }}
-        style={({ pressed }) => [
-          styles.userCard,
-          {
-            backgroundColor: isDark ? '#1C1C1E' : '#FFF',
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
+      style={({ pressed }) => [
+        styles.userCard,
+        {
+          backgroundColor: isDark ? '#1C1C1E' : '#FFF',
+          borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)',
             transform: [{ scale: pressed ? 0.992 : 1 }],
             opacity: pressed ? 0.96 : 1,
           },
-        ]}
-      >
-        <View style={styles.userRowTop}>
-          {item.image ? (
-            <Image source={{ uri: item.image }} style={styles.userAvatar} />
-          ) : (
-            <View style={[styles.userAvatarPlaceholder, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-              <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
-                {(item?.name || item?.email || '?').trim().slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
-          )}
+      ]}
+    >
+      <View style={styles.userRowTop}>
+        {item.image ? (
+          <Image source={{ uri: item.image }} style={styles.userAvatar} />
+        ) : (
+          <View style={[styles.userAvatarPlaceholder, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+            <Text style={{ color: theme.text, fontWeight: '900', fontSize: 16 }}>
+              {(item?.name || item?.email || '?').trim().slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+        )}
 
-          <View style={styles.userMain}>
-            <View style={styles.userTitleRow}>
-              <Text style={[styles.userName, { color: theme.text }]} numberOfLines={1}>
-                {item.name || 'Użytkownik'}
-              </Text>
-              <View style={styles.badgeRow}>
-                {item.role === 'ADMIN' && <View style={[styles.badge, { backgroundColor: 'rgba(255,45,85,0.12)', borderColor: 'rgba(255,45,85,0.25)' }]}><Text style={[styles.badgeText, { color: '#FF2D55' }]}>ADMIN</Text></View>}
-                {item.role === 'AGENT' && <View style={[styles.badge, { backgroundColor: 'rgba(255,159,10,0.12)', borderColor: 'rgba(255,159,10,0.25)' }]}><Text style={[styles.badgeText, { color: '#FF9F0A' }]}>AGENT</Text></View>}
+        <View style={styles.userMain}>
+          <View style={styles.userTitleRow}>
+            <Text style={[styles.userName, { color: theme.text }]} numberOfLines={1}>
+              {item.name || 'Użytkownik'}
+            </Text>
+            <View style={styles.badgeRow}>
+              {item.role === 'ADMIN' && <View style={[styles.badge, { backgroundColor: 'rgba(255,45,85,0.12)', borderColor: 'rgba(255,45,85,0.25)' }]}><Text style={[styles.badgeText, { color: '#FF2D55' }]}>ADMIN</Text></View>}
+              {item.role === 'AGENT' && <View style={[styles.badge, { backgroundColor: 'rgba(255,159,10,0.12)', borderColor: 'rgba(255,159,10,0.25)' }]}><Text style={[styles.badgeText, { color: '#FF9F0A' }]}>AGENT</Text></View>}
                 {verified && <View style={[styles.badge, { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.25)' }]}><Text style={[styles.badgeText, { color: '#10b981' }]}>ZWERYF.</Text></View>}
               </View>
             </View>
             <View style={styles.userPresenceRow}>
               <View style={[styles.userPresenceDot, { backgroundColor: presence.color }]} />
               <Text style={[styles.userPresenceText, { color: presence.color }]} numberOfLines={1}>{presence.label}</Text>
-            </View>
-            <Text style={styles.userEmail} numberOfLines={1}>{item.email}</Text>
-            <Text style={styles.userRole} numberOfLines={1}>{item.phone || 'Brak telefonu'}</Text>
           </View>
-
-          <Pressable
-            onPress={(e) => { e.stopPropagation(); deleteUser(item.id, item.email); }}
-            style={({ pressed }) => [styles.iconDangerBtn, pressed && { opacity: 0.8 }]}
-            hitSlop={10}
-          >
-            <Ionicons name="trash" size={18} color="#FF3B30" />
-          </Pressable>
+          <Text style={styles.userEmail} numberOfLines={1}>{item.email}</Text>
+          <Text style={styles.userRole} numberOfLines={1}>{item.phone || 'Brak telefonu'}</Text>
         </View>
+
+        <Pressable
+          onPress={(e) => { e.stopPropagation(); deleteUser(item.id, item.email); }}
+          style={({ pressed }) => [styles.iconDangerBtn, pressed && { opacity: 0.8 }]}
+          hitSlop={10}
+        >
+          <Ionicons name="trash" size={18} color="#FF3B30" />
+        </Pressable>
+      </View>
 
         <View style={styles.userSignalRow}>
           <View style={styles.userSignalItem}>
@@ -2403,39 +2403,39 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
           </View>
         </View>
 
-        <View style={styles.userStatsRow}>
-          <View style={styles.statPill}>
-            <Text style={[styles.statValue, { color: theme.text }]}>{item._count?.offers || 0}</Text>
-            <Text style={styles.statLabel}>Ofert</Text>
-          </View>
-          <View style={styles.statPill}>
+      <View style={styles.userStatsRow}>
+        <View style={styles.statPill}>
+          <Text style={[styles.statValue, { color: theme.text }]}>{item._count?.offers || 0}</Text>
+          <Text style={styles.statLabel}>Ofert</Text>
+        </View>
+        <View style={styles.statPill}>
             <Text style={[styles.statValue, { color: theme.text }]}>{verified ? 'Tak' : 'Nie'}</Text>
-            <Text style={styles.statLabel}>Weryfikacja</Text>
-          </View>
-          <View style={styles.statPill}>
+          <Text style={styles.statLabel}>Weryfikacja</Text>
+        </View>
+        <View style={styles.statPill}>
             <Text style={[styles.statValue, { color: theme.text }]}>{item.role || 'USER'}</Text>
-            <Text style={styles.statLabel}>Rola</Text>
-          </View>
+          <Text style={styles.statLabel}>Rola</Text>
         </View>
+      </View>
 
-        <View style={styles.userActionBar}>
-          <Pressable
+      <View style={styles.userActionBar}>
+        <Pressable
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenUser(item); }}
-            style={({ pressed }) => [styles.primaryActionBtn, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
-          >
-            <Ionicons name="eye" size={18} color="#fff" />
-            <Text style={styles.primaryActionText}>Otwórz profil</Text>
-          </Pressable>
-          <View style={styles.actionDivider} />
-          <Pressable
-            onPress={() => { Haptics.selectionAsync(); fetchUsers('reset'); }}
-            style={({ pressed }) => [styles.secondaryActionBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Ionicons name="refresh" size={18} color={isDark ? '#fff' : '#1d1d1f'} />
-          </Pressable>
-        </View>
-      </Pressable>
-    );
+          style={({ pressed }) => [styles.primaryActionBtn, pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 }]}
+        >
+          <Ionicons name="eye" size={18} color="#fff" />
+          <Text style={styles.primaryActionText}>Otwórz profil</Text>
+        </Pressable>
+        <View style={styles.actionDivider} />
+        <Pressable
+          onPress={() => { Haptics.selectionAsync(); fetchUsers('reset'); }}
+          style={({ pressed }) => [styles.secondaryActionBtn, pressed && { opacity: 0.85 }]}
+        >
+          <Ionicons name="refresh" size={18} color={isDark ? '#fff' : '#1d1d1f'} />
+        </Pressable>
+      </View>
+    </Pressable>
+  );
   };
 
   return (
@@ -2445,7 +2445,7 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
           <Text style={[styles.modalTitle, { color: theme.text }]}>Centrum Użytkowników</Text>
           <Pressable onPress={onClose} hitSlop={8}>
             <Ionicons name="close-circle" size={32} color={theme.subtitle} />
-          </Pressable>
+            </Pressable>
         </View>
 
         {loading && users.length === 0 ? (
@@ -2514,7 +2514,7 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
       setData(null);
       setFetchError('Brak połączenia z serwerem.');
     } finally {
-      setLoading(false);
+    setLoading(false);
     }
   };
 
@@ -2601,8 +2601,8 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
               {thresholdRows.map((row, idx) => (
                 <View key={idx} style={{ paddingVertical: 10, borderBottomWidth: idx === thresholdRows.length - 1 ? 0 : StyleSheet.hairlineWidth, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
-                    <Text style={{ color: theme.subtitle, fontWeight: '700' }}>{row.label}</Text>
-                    <Text style={{ color: theme.text, fontWeight: '900' }}>{row.value}</Text>
+                  <Text style={{ color: theme.subtitle, fontWeight: '700' }}>{row.label}</Text>
+                  <Text style={{ color: theme.text, fontWeight: '900' }}>{row.value}</Text>
                   </View>
                   <View style={{ height: 7, borderRadius: 999, backgroundColor: isDark ? '#2C2C2E' : '#ECECEC', overflow: 'hidden' }}>
                     <View style={{ height: '100%', width: `${Math.max(2, (row.value / thresholdMax) * 100)}%`, borderRadius: 999, backgroundColor: row.color }} />
@@ -2618,8 +2618,8 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
               ) : cityRows.map((row, idx) => (
                 <View key={idx} style={{ paddingVertical: 10, borderBottomWidth: idx === (cityRows.length - 1) ? 0 : StyleSheet.hairlineWidth, borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
-                    <Text style={{ color: theme.text, fontWeight: '800' }}>{row.city}</Text>
-                    <Text style={{ color: theme.subtitle, fontWeight: '900' }}>{row.count}</Text>
+                  <Text style={{ color: theme.text, fontWeight: '800' }}>{row.city}</Text>
+                  <Text style={{ color: theme.subtitle, fontWeight: '900' }}>{row.count}</Text>
                   </View>
                   <View style={{ height: 7, borderRadius: 999, backgroundColor: isDark ? '#2C2C2E' : '#ECECEC', overflow: 'hidden' }}>
                     <View style={{ height: '100%', width: `${Math.max(2, (Number(row?.count || 0) / cityMax) * 100)}%`, borderRadius: 999, backgroundColor: '#30B0C7' }} />
@@ -2935,7 +2935,7 @@ function ProfileScreenLoggedIn({
         if (__DEV__) console.warn('Błąd weryfikacji statusu klucza:', e);
       }
     };
-
+    
     checkServerPasskeyStatus();
   }, [user?.id, token]);
 
@@ -3076,10 +3076,10 @@ function ProfileScreenLoggedIn({
               if (outcome === 'unknown') {
                 if (__DEV__) console.warn('[Passkey] Nie udało się odczytać statusu po revoke — zakładam sukces operacji.');
               }
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setIsPasskeyActive(false);
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setIsPasskeyActive(false);
               await clearPasskeyLocalForUser(user.id);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (err: any) {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
               Alert.alert(
@@ -3419,7 +3419,7 @@ function ProfileScreenLoggedIn({
         const finalUrl = /^https?:\/\//i.test(rel) ? rel : rel.startsWith('/') ? `${API_URL}${rel}` : `${API_URL}/${rel}`;
         await updateAvatar?.(finalUrl);
         await refreshUser?.();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (e) {
         Alert.alert(t('common.error'), t('profile.session.alerts.avatarProblem'));
       }
@@ -3568,7 +3568,7 @@ function ProfileScreenLoggedIn({
               >
                 {user?.firstName || user?.email} {user?.lastName || ''}
               </Text>
-              <Pressable
+            <Pressable
                 onPress={handleHeaderEditName}
                 hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
                 style={({ pressed }) => [
@@ -3660,7 +3660,7 @@ function ProfileScreenLoggedIn({
         </View>
 
         {hasActiveInvestorProMembership(user) ? (
-          <View style={styles.section}>
+        <View style={styles.section}>
             <ProfileProExtrasSection user={user} isDark={isDark} />
           </View>
         ) : null}

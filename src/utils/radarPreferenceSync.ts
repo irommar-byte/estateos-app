@@ -136,6 +136,35 @@ export function mapContextForCanonicalDto(
   };
 }
 
+function normalizeBearerToken(token: string | null | undefined): string | null {
+  const trimmed = String(token || '').trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/^Bearer\s+/i, '').trim() || null;
+}
+
+/** Zapis preferencji radaru — backend wymaga Bearer (anonimowe POST są odrzucane). */
+export async function postRadarPreferencesToBackend(params: {
+  apiUrl: string;
+  token: string | null | undefined;
+  dto: CanonicalRadarPreferencesDto;
+}): Promise<boolean> {
+  const bearer = normalizeBearerToken(params.token);
+  if (!bearer || !params.dto?.userId) return false;
+  try {
+    const res = await fetch(`${params.apiUrl}/api/radar/preferences`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bearer}`,
+      },
+      body: JSON.stringify(params.dto),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchRadarPreferenceForUser(
   apiUrl: string,
   userId: number,

@@ -42,7 +42,12 @@ import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
+import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
 import AppleHover from './src/components/AppleHover';
+
+/** W Release bundle — sprawdź: npm run verify:ios-release / verify:ios-archive */
+(globalThis as typeof globalThis & { __EOS_RELEASE_BUILD_FINGERPRINT?: string }).__EOS_RELEASE_BUILD_FINGERPRINT =
+  RELEASE_BUILD_FINGERPRINT;
 
 import Radar from './src/screens/Radar';
 import RadarHomeScreen from './src/screens/RadarHomeScreen';

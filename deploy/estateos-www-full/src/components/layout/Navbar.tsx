@@ -125,21 +125,21 @@ export default function Navbar() {
           <span className="flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-xs font-black text-[var(--eos-accent)] shadow-[var(--eos-shadow-soft)]">
             EOS
           </span>
-          <span className="hidden text-xl font-black uppercase italic tracking-tighter sm:block">
+          <span className="hidden min-w-0 truncate text-lg font-black uppercase italic tracking-tighter sm:block xl:text-xl">
             <span className="text-[var(--eos-accent)]">E</span>state
             <span className="text-[var(--eos-accent)]">OS</span>
             <sup className="ml-0.5 text-[0.48em] not-italic text-[var(--eos-muted)]">TM</sup>
           </span>
         </button>
 
-        <div className="hidden min-w-0 items-center justify-center gap-1 xl:flex 2xl:gap-2">
-          <button type="button" onClick={() => handleNavClick("/odkryj-mape", true)} className="eos-nav-link">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-hidden lg:flex xl:gap-1 2xl:gap-2">
+          <button type="button" onClick={() => handleNavClick("/odkryj-mape", true)} className="eos-nav-link shrink min-w-0">
             {dict.nav.discoverMap}
           </button>
-          <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link">
+          <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link shrink min-w-0">
             {dict.nav.market}
           </button>
-          <button type="button" onClick={() => handleNavClick("/cennik")} className="eos-nav-link text-amber-500">
+          <button type="button" onClick={() => handleNavClick("/cennik")} className="eos-nav-link shrink min-w-0 text-amber-500">
             {dict.nav.elite}
           </button>
         </div>
@@ -150,19 +150,19 @@ export default function Navbar() {
           </div>
         )}
 
-        <div className="hidden min-w-0 items-center justify-end gap-2 lg:flex 2xl:gap-3">
+        <div className="hidden min-w-0 items-center justify-end gap-1.5 lg:flex xl:gap-2 2xl:gap-3">
           {user && <NotificationCenter />}
 
           {user ? (
-            <div className="ml-1 flex items-center gap-2">
-              <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link">
+            <div className="ml-0.5 flex min-w-0 items-center gap-1 lg:gap-1.5 xl:gap-2">
+              <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link eos-nav-link-profile shrink min-w-0">
                 {dict.nav.profile}
               </button>
               {isAdmin && (
                 <button
                   type="button"
                   onClick={() => router.push("/centrala")}
-                  className="rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black"
+                  className="eos-nav-admin shrink rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:px-5 xl:py-2.5 xl:text-[10px] xl:tracking-[0.18em]"
                 >
                   {manageLabel}
                 </button>
@@ -180,7 +180,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => router.push("/login")}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)]"
+              className="inline-flex shrink items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-text)] transition-all hover:border-[var(--eos-accent)]/40 hover:text-[var(--eos-accent)] xl:px-5 xl:py-2.5 xl:text-[10px] xl:tracking-[0.18em]"
             >
               {dict.nav.login}
               <LogIn className="size-4" />
@@ -276,13 +276,25 @@ export default function Navbar() {
       <style jsx>{`
         .eos-nav-link {
           border-radius: 999px;
-          padding: 0.65rem 0.85rem;
+          padding: 0.42rem 0.45rem;
           color: var(--eos-muted);
-          font-size: 10px;
+          font-size: clamp(7px, 0.62vw, 10px);
           font-weight: 900;
-          letter-spacing: 0.16em;
+          letter-spacing: clamp(0.06em, 0.11vw, 0.16em);
+          line-height: 1.2;
           text-transform: uppercase;
           transition: color 0.2s ease, background-color 0.2s ease;
+          white-space: nowrap;
+        }
+        @media (min-width: 1280px) {
+          .eos-nav-link {
+            padding: 0.55rem 0.65rem;
+          }
+        }
+        @media (min-width: 1536px) {
+          .eos-nav-link {
+            padding: 0.65rem 0.85rem;
+          }
         }
         .eos-nav-link:hover {
           background: var(--eos-input);
