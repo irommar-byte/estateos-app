@@ -180,6 +180,9 @@ export const addOffer = {
       title: 'Przesuń mapę, by ustawić pinezkę',
       subtitle: 'Szczypcami przybliżysz. Pinezka musi wskazywać dokładny punkt nieruchomości.',
     },
+    myLocation: {
+      a11y: 'Moja lokalizacja',
+    },
     footerHint: {
       poland:
         'Najważniejsza jest zgodność pinezki na mapie z faktycznym miejscem nieruchomości. W Polsce możesz doprecyzować miasto i dzielnicę z listy — adres powinien odpowiadać pinezce. Poza głównymi aglomeracjami nazwa miejscowości pochodzi z geokodowania.',
@@ -215,6 +218,14 @@ export const addOffer = {
       districtNotFound: {
         title: 'Nie znaleziono dzielnicy',
         message: 'Nie udało się zlokalizować: {{district}}, {{city}}.',
+      },
+      locationDenied: {
+        title: 'Brak dostępu do lokalizacji',
+        message: 'Włącz lokalizację w ustawieniach telefonu, aby wrócić do swojej pozycji na mapie.',
+      },
+      locationFailed: {
+        title: 'Nie udało się ustalić lokalizacji',
+        message: 'Spróbuj ponownie za chwilę lub ustaw pinezkę ręcznie na mapie.',
       },
     },
   },

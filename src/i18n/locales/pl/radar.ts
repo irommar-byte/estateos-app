@@ -192,6 +192,10 @@ export const radar = {
     mapAreaGlobalHint: 'Koło na mapie może obejmować region poza Polską.',
     citySection: 'Miasto',
     allCities: 'Wszystkie',
+    countrySection: 'Państwo',
+    allCountries: 'Wszystkie',
+    polandScopeHint:
+      'Polska bez wybranego miasta = cały kraj. Konkretne miasto zawęża wyniki tylko do tej aglomeracji.',
     districtSection: 'Dzielnica',
     clearDistricts: 'Wyczyść dzielnice',
     pickMapArea: 'Otwórz mapę i zaznacz obszar',
@@ -210,6 +214,7 @@ export const radar = {
     roomsSection: 'Pokoje (min.)',
     roomsAny: 'Dowolnie',
     apply: 'Zastosuj filtry',
+    applyWithCount: 'Zastosuj filtry ({{count}})',
   },
   calibration: {
     radarLabel: 'EstateOS™ Live Radar',

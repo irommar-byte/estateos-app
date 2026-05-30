@@ -1,6 +1,21 @@
 /** Oferty spoza listy głównych aglomeracji — miejscowość trzymamy w `district` (np. „Przemyśl”). */
 export const REST_OF_COUNTRY_CITY = 'Reszta kraju' as const;
 
+/** Miejscowości podmiejskie często błędnie przypisywane do miast strict (np. Sitaniec → Zamość). */
+const KNOWN_STANDALONE_LOCALITIES = new Set([
+  'sitaniec',
+  'skaraszewice',
+  'labunie',
+  'niemirow',
+  'radecznica',
+  'sitno',
+]);
+
+function isKnownStandaloneLocality(name: unknown): boolean {
+  const norm = normalizeLocationMatch(String(name ?? '').trim());
+  return norm.length > 0 && KNOWN_STANDALONE_LOCALITIES.has(norm);
+}
+
 export const DEFAULT_LOCALITY_COUNTRY = 'Polska';
 export const DEFAULT_LOCALITY_COUNTRY_CODE = 'PL';
 
@@ -174,22 +189,65 @@ export function localityCountryIso(code?: string | null, labelPl?: string | null
 }
 
 /** Miejscowość z wyniku reverse-geocode — pomija kody kraju, skróty stanów USA i nazwy ulic. */
-export function localityNameFromGeocodedPlace(place: {
-  city?: string | null;
-  subregion?: string | null;
-  name?: string | null;
-  region?: string | null;
-  district?: string | null;
-  street?: string | null;
-  isoCountryCode?: string | null;
-  country?: string | null;
-}): string {
+export function localityNameFromGeocodedPlace(
+  place: {
+    city?: string | null;
+    subregion?: string | null;
+    name?: string | null;
+    region?: string | null;
+    district?: string | null;
+    street?: string | null;
+    isoCountryCode?: string | null;
+    country?: string | null;
+  },
+  options?: { streetHint?: string | null; lat?: number | null; lng?: number | null },
+): string {
+  const lat = Number(options?.lat);
+  const lng = Number(options?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const strictFromCoords = detectStrictCityFromCoordinates(lat, lng);
+    if (strictFromCoords) return strictFromCoords;
+  }
+
+  const streetHint = String(options?.streetHint ?? '').trim();
   const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
   const nameNorm = normalizeLocationMatch(String(place.name ?? ''));
+  const hintStreetNorm = normalizeLocationMatch(streetHint.split(/\s+\d/)[0] || '');
+
+  const villageFromHint = extractVillageLocalityFromStreet(streetHint);
+  if (villageFromHint && isLikelyStandaloneVillage(villageFromHint)) {
+    if (geocoderNamesStandaloneSettlement(place, villageFromHint)) {
+      return villageFromHint;
+    }
+    const strictFromCity = detectStrictCityFromGeocodeText(String(place.city ?? ''));
+    if (
+      strictFromCity &&
+      streetNorm === normalizeLocationMatch(villageFromHint) &&
+      !pinMatchesStrictCity(strictFromCity, villageFromHint, place.district)
+    ) {
+      if (nameNorm === normalizeLocationMatch(villageFromHint)) {
+        return villageFromHint;
+      }
+    }
+  }
+
   const nameIsStreet =
     Boolean(streetNorm) &&
     Boolean(nameNorm) &&
     (nameNorm === streetNorm || streetNorm.includes(nameNorm) || nameNorm.includes(streetNorm));
+
+  const isStreetLikeLocality = (token: string): boolean => {
+    const tokenNorm = normalizeLocationMatch(token);
+    if (!tokenNorm) return true;
+    if (hintStreetNorm && tokenNorm === hintStreetNorm) return true;
+    if (streetNorm && tokenNorm === streetNorm) return true;
+    if (streetHint && geocodeTokenMatchesStreet(token, place, streetHint)) return true;
+    if (streetNorm && tokenNorm !== streetNorm && !detectStrictCityFromGeocodeText(token)) {
+      const adminFromSubregion = detectStrictCityFromGeocodeText(String(place.subregion ?? ''));
+      if (adminFromSubregion && !token.includes(' ')) return true;
+    }
+    return false;
+  };
 
   const candidates = [place.city];
   if (place.name && !nameIsStreet) {
@@ -201,6 +259,7 @@ export function localityNameFromGeocodedPlace(place: {
     const token = String(raw || '').trim();
     if (!token) continue;
     if (/powiat|gmina|województwo|wojewodztwo/i.test(token)) continue;
+    if (isStreetLikeLocality(token)) continue;
     if (/^[A-Za-z]{2}$/i.test(token)) {
       const upper = token.toUpperCase();
       if (isKnownCountryIso(upper)) continue;
@@ -310,17 +369,44 @@ export function getDraftLocationPresentation(draft: {
 }
 
 /** Patch do `updateDraft`, gdy lokalizacja w szkicu jest w starym / błędnym kształcie. */
-export function getLocationDraftRepairPatch(draft: {
-  city?: string;
-  district?: string;
-  localityCountry?: string;
-  localityCountryCode?: string;
-}): {
+export function getLocationDraftRepairPatch(
+  draft: {
+    city?: string;
+    district?: string;
+    localityCountry?: string;
+    localityCountryCode?: string;
+  },
+  coords?: { lat?: number; lng?: number } | null,
+): {
   city: string;
   district: string;
   localityCountry: string;
   localityCountryCode: string;
 } | null {
+  const lat = Number(coords?.lat);
+  const lng = Number(coords?.lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const countryIso = localityCountryIso(draft.localityCountryCode, draft.localityCountry);
+
+  if (hasCoords && countryIso === DEFAULT_LOCALITY_COUNTRY_CODE) {
+    const strictFromPin = detectStrictCityFromCoordinates(lat, lng);
+    const city = String(draft.city ?? '').trim();
+    if (strictFromPin) {
+      const inStrictEnvelope = isPinWithinStrictCityEnvelope(strictFromPin, lat, lng);
+      if (
+        inStrictEnvelope &&
+        (city === REST_OF_COUNTRY_CITY || (city && !isStrictCityName(city)))
+      ) {
+        return {
+          city: strictFromPin,
+          district: '',
+          localityCountry: normalizeLocalityCountryLabel(draft.localityCountry),
+          localityCountryCode: countryIso,
+        };
+      }
+    }
+  }
+
   const fixed = getDraftLocationPresentation(draft);
   const city = String(draft.city ?? '').trim();
   const district = String(draft.district ?? '').trim();
@@ -345,10 +431,10 @@ export function getLocationDraftRepairPatch(draft: {
   if (isStrictCityName(fixed.city) && fixed.city !== REST_OF_COUNTRY_CITY) {
     const allowed = STRICT_CITY_DISTRICTS[fixed.city] || [];
     if (allowed.length > 0 && district && !allowed.includes(district)) {
-      // Miejscowość spoza listy dzielnic (np. Sitaniec przy Zamościu) — nie resetuj do allowed[0].
+      // Ulica z geokodera (np. Łochowska) — nie demotuj do „Reszta kraju”.
       return {
-        city: REST_OF_COUNTRY_CITY,
-        district,
+        city: fixed.city,
+        district: '',
         localityCountry: fixed.countryLabelPl,
         localityCountryCode: fixed.countryIso,
       };
@@ -547,6 +633,26 @@ export function formatPublicAddress(
 
 /** Jedna linia na listę ofert (Profil, admin): miejscowość + kraj + opcjonalnie ulica. Bez „Reszta kraju”. */
 /** Adres z wyniku reverse-geocode (Apple Maps). W USA `streetNumber` bywa puste — bierzemy też `name`. */
+/** Zachowaj pełny adres użytkownika (np. „Sitaniec 454"), gdy geokoder zwraca samą nazwę wsi bez numeru. */
+export function preserveVillageStreetHint(userStreet: unknown, geocodedStreet: unknown): string {
+  const user = String(userStreet ?? '').trim();
+  const geocoded = String(geocodedStreet ?? '').trim();
+  if (!user) return geocoded;
+  if (!geocoded) return user;
+  const villageFromUser = extractVillageLocalityFromStreet(user);
+  if (!villageFromUser || !isStandaloneVillageAddress(user, villageFromUser)) {
+    return geocoded;
+  }
+  if (extractVillageLocalityFromStreet(geocoded)) {
+    return geocoded;
+  }
+  const geocodedHead = geocoded.split(/\s+/)[0] || geocoded;
+  if (normalizeLocationMatch(geocodedHead) === normalizeLocationMatch(villageFromUser)) {
+    return user;
+  }
+  return geocoded;
+}
+
 export function streetLineFromGeocodedPlace(
   place: { street?: string | null; streetNumber?: string | null; name?: string | null } | null | undefined,
   fallback = '',
@@ -726,6 +832,9 @@ export const STRICT_CITIES = [
   REST_OF_COUNTRY_CITY,
 ] as const;
 
+/** Metropolie na filtrach wyszukiwania (bez „Reszta kraju”). */
+export const METRO_STRICT_CITIES = STRICT_CITIES.filter((c) => c !== REST_OF_COUNTRY_CITY);
+
 export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
   Warszawa: ['Bemowo', 'Białołęka', 'Bielany', 'Mokotów', 'Ochota', 'Praga-Południe', 'Praga-Północ', 'Rembertów', 'Śródmieście', 'Targówek', 'Ursus', 'Ursynów', 'Wawer', 'Wesoła', 'Wilanów', 'Włochy', 'Wola', 'Żoliborz'],
   Kraków: ['Stare Miasto', 'Grzegórzki', 'Prądnik Czerwony', 'Prądnik Biały', 'Krowodrza', 'Bronowice', 'Zwierzyniec', 'Dębniki', 'Łagiewniki-Borek Fałęcki', 'Swoszowice', 'Podgórze Duchackie', 'Bieżanów-Prokocim', 'Podgórze', 'Czyżyny', 'Mistrzejowice', 'Bieńczyce', 'Wzgórza Krzesławickie', 'Nowa Huta'],
@@ -742,6 +851,206 @@ export const STRICT_CITY_DISTRICTS: Record<string, string[]> = {
   Zamość: ['Stare Miasto', 'Nowe Miasto', 'Planty', 'Janowice', 'Karolówka', 'Promyk', 'Powiatowa', 'Rataja', 'Zamczysko', 'Słoneczny Stok'],
   [REST_OF_COUNTRY_CITY]: [],
 };
+
+/** Centrum miasta strict — pinezka w promieniu = miasto, poza = miejscowość (niezależnie od szumu geokodera). */
+const STRICT_CITY_CENTERS: Record<string, { lat: number; lng: number }> = {
+  Warszawa: { lat: 52.2297, lng: 21.0122 },
+  Kraków: { lat: 50.0614, lng: 19.9366 },
+  Wrocław: { lat: 51.1079, lng: 17.0385 },
+  Poznań: { lat: 52.4064, lng: 16.9252 },
+  Łódź: { lat: 51.7592, lng: 19.4560 },
+  Lublin: { lat: 51.2465, lng: 22.5684 },
+  Gdańsk: { lat: 54.3520, lng: 18.6466 },
+  Gdynia: { lat: 54.5189, lng: 18.5305 },
+  Sopot: { lat: 54.4416, lng: 18.5601 },
+  Katowice: { lat: 50.2649, lng: 19.0238 },
+  Rybnik: { lat: 50.0971, lng: 18.5418 },
+  Białystok: { lat: 53.1325, lng: 23.1688 },
+  Zamość: { lat: 50.7231, lng: 23.2519 },
+};
+
+/** Promień (km) wokół centrum — wewnątrz = miasto strict. Zamość 5.5 km wyklucza Sitiniec (~5.6 km). */
+const STRICT_CITY_ENVELOPE_KM: Record<string, number> = {
+  Warszawa: 22,
+  Kraków: 14,
+  Wrocław: 12,
+  Poznań: 12,
+  Łódź: 12,
+  Lublin: 10,
+  Gdańsk: 10,
+  Gdynia: 8,
+  Sopot: 4,
+  Katowice: 10,
+  Rybnik: 6,
+  Białystok: 8,
+  Zamość: 5.5,
+};
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** Czy współrzędne leżą w granicach miasta strict. */
+export function isPinWithinStrictCityEnvelope(city: string, lat: number, lng: number): boolean {
+  if (!isStrictCityName(city) || city === REST_OF_COUNTRY_CITY) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  const center = STRICT_CITY_CENTERS[city];
+  if (!center) return false;
+  const maxKm = STRICT_CITY_ENVELOPE_KM[city] ?? 10;
+  return haversineKm(lat, lng, center.lat, center.lng) <= maxKm;
+}
+
+/** Najbliższe miasto strict dla pinezki — null gdy poza wszystkimi obwiedniami. */
+export function detectStrictCityFromCoordinates(lat: number, lng: number): string | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let bestCity: string | null = null;
+  let bestKm = Infinity;
+  for (const city of STRICT_CITIES) {
+    if (city === REST_OF_COUNTRY_CITY) continue;
+    const center = STRICT_CITY_CENTERS[city];
+    if (!center) continue;
+    const km = haversineKm(lat, lng, center.lat, center.lng);
+    const maxKm = STRICT_CITY_ENVELOPE_KM[city] ?? 10;
+    if (km <= maxKm && km < bestKm) {
+      bestKm = km;
+      bestCity = city;
+    }
+  }
+  return bestCity;
+}
+
+/** Dopasowanie filtra miasta — tylko konkretna aglomeracja (bez „Reszta kraju”). */
+export function offerMatchesCityFilter(raw: Record<string, unknown>, selectedCity: string): boolean {
+  const sel = normalizeLocationMatch(String(selectedCity || '').trim());
+  if (!sel) return true;
+  const rawCity = normalizeLocationMatch(String(raw.city ?? '').trim());
+  if (rawCity === sel) return true;
+  return false;
+}
+
+/** ISO kraju oferty na liście / w filtrach — z pól API, współrzędnych lub nazwy miasta. */
+export function offerListingCountryIso(raw: Record<string, unknown>): string {
+  const explicitCode = String(raw.localityCountryCode ?? '').trim().toUpperCase();
+  const explicitLabel = normalizeLocalityCountryLabel(String(raw.localityCountry ?? ''));
+
+  const lat = Number(raw.lat);
+  const lng = Number(raw.lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+
+  if (hasCoords) {
+    if (isCoordinatesInPoland(lat, lng)) return DEFAULT_LOCALITY_COUNTRY_CODE;
+    const fromCoords = inferCountryIsoFromCoordinates(lat, lng);
+    if (fromCoords) return fromCoords;
+  }
+
+  if (/^[A-Z]{2}$/.test(explicitCode) && explicitCode !== DEFAULT_LOCALITY_COUNTRY_CODE) {
+    return explicitCode;
+  }
+  const labelIso = explicitLabel ? PL_COUNTRY_TO_ISO[explicitLabel] : undefined;
+  if (labelIso && labelIso !== DEFAULT_LOCALITY_COUNTRY_CODE) return labelIso;
+  if (explicitLabel && !/^polska$/i.test(explicitLabel)) {
+    const fromEn = ENGLISH_COUNTRY_TO_PL[explicitLabel.toLowerCase()];
+    if (fromEn) {
+      const fromEnIso = PL_COUNTRY_TO_ISO[fromEn];
+      if (fromEnIso && fromEnIso !== DEFAULT_LOCALITY_COUNTRY_CODE) return fromEnIso;
+    }
+  }
+
+  const city = String(raw.city ?? '').trim();
+  const fromCity = inferCountryIsoFromCityName(city);
+  if (fromCity) return fromCity;
+
+  if (/^[A-Z]{2}$/.test(explicitCode)) return explicitCode;
+  if (labelIso) return labelIso;
+  if (hasCoords) {
+    // Współrzędne poza PL, bez rozpoznanego kraju — nie przypisuj na siłę Polski.
+    return '';
+  }
+  return DEFAULT_LOCALITY_COUNTRY_CODE;
+}
+
+/** Polska nazwa kraju oferty (do filtra państw). */
+export function offerListingCountryLabel(raw: Record<string, unknown>): string {
+  const iso = offerListingCountryIso(raw);
+  if (!iso) return '';
+  return countryLabelPlFromIso(iso) || iso;
+}
+
+type CountryBBox = {
+  iso: string;
+  latMin: number;
+  latMax: number;
+  lngMin: number;
+  lngMax: number;
+};
+
+const LISTING_COUNTRY_BBOXES: CountryBBox[] = [
+  { iso: 'DE', latMin: 47.2, latMax: 55.2, lngMin: 5.8, lngMax: 15.1 },
+  { iso: 'CZ', latMin: 48.5, latMax: 51.1, lngMin: 12.0, lngMax: 18.9 },
+  { iso: 'SK', latMin: 47.7, latMax: 49.6, lngMin: 16.8, lngMax: 22.6 },
+  { iso: 'UA', latMin: 44.3, latMax: 52.4, lngMin: 22.1, lngMax: 40.2 },
+  { iso: 'BY', latMin: 51.2, latMax: 56.2, lngMin: 23.0, lngMax: 32.8 },
+  { iso: 'LT', latMin: 53.8, latMax: 56.5, lngMin: 20.9, lngMax: 26.9 },
+  { iso: 'AT', latMin: 46.3, latMax: 49.1, lngMin: 9.5, lngMax: 17.2 },
+];
+
+function inferCountryIsoFromCoordinates(lat: number, lng: number): string | null {
+  const hits: string[] = [];
+  for (const box of LISTING_COUNTRY_BBOXES) {
+    if (lat >= box.latMin && lat <= box.latMax && lng >= box.lngMin && lng <= box.lngMax) {
+      hits.push(box.iso);
+    }
+  }
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) return hits[0];
+  return null;
+}
+
+const KNOWN_FOREIGN_CITY_ISO: Record<string, string> = {
+  berlin: 'DE',
+  hamburg: 'DE',
+  munchen: 'DE',
+  muenchen: 'DE',
+  frankfurt: 'DE',
+  koln: 'DE',
+  cologne: 'DE',
+  dresden: 'DE',
+  wien: 'AT',
+  vienna: 'AT',
+  praha: 'CZ',
+  prague: 'CZ',
+  bratislava: 'SK',
+  kyiv: 'UA',
+  kiev: 'UA',
+  lviv: 'UA',
+  london: 'GB',
+  paris: 'FR',
+  amsterdam: 'NL',
+  brussels: 'BE',
+  bruxelles: 'BE',
+  rome: 'IT',
+  roma: 'IT',
+  madrid: 'ES',
+  lisbon: 'PT',
+  lisboa: 'PT',
+  newyork: 'US',
+  losangeles: 'US',
+};
+
+function inferCountryIsoFromCityName(city: string): string | null {
+  const norm = normalizeLocationMatch(city);
+  if (!norm) return null;
+  if (detectStrictCityFromGeocodeText(city)) return DEFAULT_LOCALITY_COUNTRY_CODE;
+  if (KNOWN_FOREIGN_CITY_ISO[norm]) return KNOWN_FOREIGN_CITY_ISO[norm];
+  return null;
+}
 
 export type GeocodedPlaceInput = {
   city?: string | null;
@@ -823,7 +1132,9 @@ function geocodeTokenMatchesStreet(
 ): boolean {
   const normToken = normalizeLocationMatch(token);
   if (!normToken) return false;
-  if (isVillageStyleAddress(streetHint, token)) return false;
+  if (isVillageStyleAddress(streetHint, token) && geocoderNamesStandaloneSettlement(place, token)) {
+    return false;
+  }
   const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
   const hintNorm = normalizeLocationMatch(streetHint);
   const hintStreetName = normalizeLocationMatch(streetHint.split(/\s+\d/)[0] || '');
@@ -840,6 +1151,130 @@ function geocodeTokenMatchesStreet(
   return false;
 }
 
+/** Geokoder zwrócił prawdziwą wieś — nie ulicę, której nazwa trafiła też do pola city. */
+function geocoderNamesStandaloneSettlement(
+  place: GeocodedPlaceInput,
+  settlementName: string,
+): boolean {
+  const norm = normalizeLocationMatch(settlementName);
+  if (!norm) return false;
+  const city = normalizeLocationMatch(String(place.city ?? ''));
+  const street = normalizeLocationMatch(String(place.street ?? ''));
+  const name = normalizeLocationMatch(String(place.name ?? ''));
+  if (city === norm && street === norm) return false;
+  if (city === norm) return true;
+  if (name === norm && name !== street) return true;
+  if (street === norm && city !== norm && isKnownStandaloneLocality(settlementName)) {
+    return true;
+  }
+  return false;
+}
+
+function geocoderConfirmsStrictCity(
+  strictCity: string,
+  place: GeocodedPlaceInput,
+  streetHint = '',
+): boolean {
+  if (detectStrictCityFromGeocodeText(String(place.city ?? '')) === strictCity) {
+    const word = extractVillageLocalityFromStreet(streetHint);
+    const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
+    const villageNorm = word ? normalizeLocationMatch(word) : '';
+    if (villageNorm && streetNorm === villageNorm) {
+      if (isMislabeledStreetAsCity(streetHint, place)) {
+        return false;
+      }
+      // Geokoder: city=Zamość, street=Sitaniec — znana wieś podmiejska, nie strict city.
+      if (word && isKnownStandaloneLocality(word) && !pinMatchesStrictCity(strictCity, villageNorm, place.district)) {
+        return false;
+      }
+      const pinNorm = normalizeLocationMatch(
+        localityNameFromGeocodedPlace(place, { streetHint }),
+      );
+      if (!pinMatchesStrictCity(strictCity, pinNorm, place.district)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  const normDistrict = normalizeLocationMatch(String(place.district ?? ''));
+  const districts = STRICT_CITY_DISTRICTS[strictCity] || [];
+  if (!districts.some((d) => normalizeLocationMatch(d) === normDistrict)) {
+    return false;
+  }
+  const word = extractVillageLocalityFromStreet(streetHint);
+  const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
+  const villageNorm = word ? normalizeLocationMatch(word) : '';
+  // Błędna dzielnica miasta przy wsi (np. Karolówka + street Sitaniec przy Sitaniu).
+  if (
+    villageNorm &&
+    streetNorm === villageNorm &&
+    !detectStrictCityFromGeocodeText(String(place.city ?? '')) &&
+    !pinMatchesStrictCity(strictCity, villageNorm, place.district)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isMislabeledStreetAsCity(streetHint: string, place: GeocodedPlaceInput): boolean {
+  const streetWord = extractVillageLocalityFromStreet(streetHint);
+  if (!streetWord) return false;
+  const wordNorm = normalizeLocationMatch(streetWord);
+  const cityNorm = normalizeLocationMatch(String(place.city ?? ''));
+  const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
+  return cityNorm === wordNorm && streetNorm === wordNorm;
+}
+
+/** Adres „X 5" jako wieś tylko gdy geokoder/pinezka potwierdzają miejscowość, nie ulicę w mieście strict. */
+function shouldResolveAsStandaloneVillage(
+  streetHint: string,
+  villageFromStreet: string,
+  place: GeocodedPlaceInput,
+  strictCandidate: string | null,
+): boolean {
+  if (!villageFromStreet || !isStandaloneVillageAddress(streetHint, villageFromStreet)) {
+    return false;
+  }
+  if (geocoderNamesStandaloneSettlement(place, villageFromStreet)) {
+    return true;
+  }
+  const strictFromPlace = strictCandidate || detectStrictCityFromGeocodedPlace(place);
+  const villageNorm = normalizeLocationMatch(villageFromStreet);
+  const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
+  if (
+    isKnownStandaloneLocality(villageFromStreet) &&
+    streetNorm === villageNorm &&
+    strictFromPlace &&
+    !pinMatchesStrictCity(strictFromPlace, villageNorm, place.district)
+  ) {
+    return true;
+  }
+  if (strictFromPlace && geocoderConfirmsStrictCity(strictFromPlace, place, streetHint) && streetNorm === villageNorm) {
+    return false;
+  }
+  // Geokoder często zwraca tylko miasto macierzyste + dzielnicę (np. Zamość/Karolówka)
+  // bez street/name — wtedy ufamy wzorcowi adresu „Sitaniec 454" z hintu użytkownika.
+  if (
+    strictFromPlace &&
+    geocoderConfirmsStrictCity(strictFromPlace, place, streetHint) &&
+    streetNorm !== villageNorm &&
+    villageNorm !== normalizeLocationMatch(strictFromPlace) &&
+    !pinMatchesStrictCity(strictFromPlace, villageFromStreet, place.district)
+  ) {
+    return true;
+  }
+  if (isMislabeledStreetAsCity(streetHint, place)) {
+    return false;
+  }
+  const pinLocality = localityNameFromGeocodedPlace(place, { streetHint });
+  const pinNorm = normalizeLocationMatch(pinLocality);
+  if (pinNorm === villageNorm) return true;
+  if (strictFromPlace && !pinMatchesStrictCity(strictFromPlace, pinNorm, place.district)) {
+    return true;
+  }
+  return false;
+}
+
 /** Czy pinezka faktycznie leży w mieście strict / jego dzielnicy (a nie np. Sitaniu przy Zamościu). */
 export function pinMatchesStrictCity(
   strictCity: string,
@@ -851,8 +1286,20 @@ export function pinMatchesStrictCity(
   const normPin = normalizeLocationMatch(pinLocality);
   const normCity = normalizeLocationMatch(strictCity);
   const normDistrict = normalizeLocationMatch(String(placeDistrict ?? ''));
-  if (normDistrict === normCity) return true;
+
+  // Inna miejscowość niż miasto i jego dzielnice (np. Sitaniec przy Zamościu).
+  if (normPin && normPin !== 'ogolna' && normPin !== normCity) {
+    const pinIsDistrict = districts.some((d) => normalizeLocationMatch(d) === normPin);
+    if (!pinIsDistrict) return false;
+  }
+
+  if (normDistrict === normCity) {
+    return normPin === normCity || normPin === 'ogolna' || districts.some((d) => normalizeLocationMatch(d) === normPin);
+  }
   if (normDistrict && districts.some((d) => normalizeLocationMatch(d) === normDistrict)) {
+    if (normPin && normPin !== 'ogolna' && normPin !== normCity && !districts.some((d) => normalizeLocationMatch(d) === normPin)) {
+      return false;
+    }
     return true;
   }
   if (!normPin || normPin === 'ogolna') return false;
@@ -872,58 +1319,57 @@ export type PinLocationResolution =
 
 /**
  * Lokalizacja z reverse-geocode pinezki.
- * Wieś obok miasta strict (np. Sitaniec przy Zamościu) → Reszta kraju + miejscowość.
+ * Wieś podmiejska (np. Sitaniec przy Zamościu) → Reszta kraju + miejscowość, nie dzielnica miasta.
  */
 export function resolvePinLocationFromGeocodedPlace(
   place: GeocodedPlaceInput,
-  options?: { streetHint?: string | null },
+  options?: {
+    streetHint?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    /** Gdy user już wybrał miasto strict — trzymaj je, dopóki pinezka jest w jego obwiedni. */
+    anchorStrictCity?: string | null;
+  },
 ): PinLocationResolution {
   const countryFields = countryFieldsFromGeocodedPlace(place);
   const streetHint = String(options?.streetHint ?? place.street ?? '').trim();
+  const lat = Number(options?.lat);
+  const lng = Number(options?.lng);
+  const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+  const anchorStrictCity = String(options?.anchorStrictCity ?? '').trim();
   const strictFromCity = detectStrictCityFromGeocodeText(place.city || '');
   const strictFromPlace = detectStrictCityFromGeocodedPlace(place);
   const strictCandidate = strictFromCity || strictFromPlace;
   const villageFromStreet = extractVillageLocalityFromStreet(streetHint, strictCandidate);
-  const nameToken = String(place.name ?? '').trim();
-  const villageStyleQuery = isStandaloneVillageAddress(streetHint, villageFromStreet);
-  const villageLooksLikeStreet =
-    !villageStyleQuery &&
-    (geocodeTokenMatchesStreet(villageFromStreet, place, streetHint) ||
-      geocodeTokenMatchesStreet(nameToken, place, streetHint));
 
-  const adminFalseStrictMatch = (strictCity: string): boolean => {
-    if (!strictCity || villageStyleQuery) return false;
-    return (
-      normalizeLocationMatch(localityNameFromGeocodedPlace(place)) ===
-      normalizeLocationMatch(strictCity)
-    );
-  };
-
-  if (
-    villageFromStreet &&
-    strictCandidate &&
-    !pinMatchesStrictCity(strictCandidate, villageFromStreet) &&
-    !villageLooksLikeStreet
-  ) {
-    const corroborated =
-      villageStyleQuery ||
-      (nameToken &&
-        !geocodeTokenMatchesStreet(nameToken, place, streetHint) &&
-        (normalizeLocationMatch(nameToken) === normalizeLocationMatch(villageFromStreet) ||
-          normalizeLocationMatch(nameToken).includes(normalizeLocationMatch(villageFromStreet)) ||
-          normalizeLocationMatch(villageFromStreet).includes(normalizeLocationMatch(nameToken)))) ||
-      adminFalseStrictMatch(strictCandidate);
-    if (corroborated) {
-      return {
-        mode: 'locality',
-        city: REST_OF_COUNTRY_CITY,
-        district: villageFromStreet,
-        ...countryFields,
-      };
+  // Pinezka w granicach miasta strict → zawsze miasto (nie ulica/osiedle z geokodera).
+  if (hasCoords) {
+    const coordCity =
+      anchorStrictCity && isPinWithinStrictCityEnvelope(anchorStrictCity, lat, lng)
+        ? anchorStrictCity
+        : detectStrictCityFromCoordinates(lat, lng);
+    if (coordCity) {
+      return { mode: 'strict', strictCity: coordCity };
     }
   }
 
-  const pinLocality = localityNameFromGeocodedPlace(place);
+  if (
+    villageFromStreet &&
+    shouldResolveAsStandaloneVillage(streetHint, villageFromStreet, place, strictCandidate)
+  ) {
+    return {
+      mode: 'locality',
+      city: REST_OF_COUNTRY_CITY,
+      district: villageFromStreet,
+      ...countryFields,
+    };
+  }
+
+  if (isMislabeledStreetAsCity(streetHint, place) && strictFromPlace) {
+    return { mode: 'strict', strictCity: strictFromPlace };
+  }
+
+  const pinLocality = localityNameFromGeocodedPlace(place, { streetHint, lat, lng });
 
   if (strictFromCity && pinMatchesStrictCity(strictFromCity, pinLocality, place.district)) {
     return { mode: 'strict', strictCity: strictFromCity };
@@ -937,11 +1383,18 @@ export function resolvePinLocationFromGeocodedPlace(
     return { mode: 'strict', strictCity: strictFromPlace };
   }
 
+  if (strictFromCity && geocodeTokenMatchesStreet(pinLocality, place, streetHint)) {
+    return { mode: 'strict', strictCity: strictFromCity };
+  }
+
   if (strictFromCity && pinMatchesStrictCity(strictFromCity, pinLocality, place.district)) {
     return { mode: 'strict', strictCity: strictFromCity };
   }
 
-  const locality = pinLocality && pinLocality !== 'Ogólna' ? pinLocality : 'Ogólna';
+  const locality =
+    pinLocality && pinLocality !== 'Ogólna' && !geocodeTokenMatchesStreet(pinLocality, place, streetHint)
+      ? pinLocality
+      : 'Ogólna';
   return {
     mode: 'locality',
     city: REST_OF_COUNTRY_CITY,

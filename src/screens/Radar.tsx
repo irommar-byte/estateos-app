@@ -10,7 +10,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RadarStatus from '../components/RadarStatus';
-import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import { API_URL } from '../config/network';
 import { logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import { localeToDateFormat, useI18n } from '../i18n';
@@ -26,7 +26,7 @@ const BaseColors = { dark: '#1C1C1E', light: '#FFFFFF', subtitle: '#8E8E93', dan
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' };
 
 const CITY_DISTRICTS: Record<string, string[]> = STRICT_CITY_DISTRICTS;
-const CITIES = [...STRICT_CITIES];
+const CITIES = [...METRO_STRICT_CITIES];
 
 const formatPriceMarker = (price: string | number) => {
   const num = typeof price === 'string' ? parseFloat(price) : price;

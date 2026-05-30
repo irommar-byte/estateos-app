@@ -180,6 +180,9 @@ export const addOffer = {
       title: 'Move the map to place the pin',
       subtitle: 'Pinch to zoom in. The pin must mark the exact property point.',
     },
+    myLocation: {
+      a11y: 'My location',
+    },
     footerHint: {
       poland:
         'The pin on the map must match the actual property location. In Poland you can refine city and district from the list — the address should match the pin. Outside major agglomerations the locality name comes from geocoding.',
@@ -215,6 +218,14 @@ export const addOffer = {
       districtNotFound: {
         title: 'District not found',
         message: 'Could not locate: {{district}}, {{city}}.',
+      },
+      locationDenied: {
+        title: 'Location access denied',
+        message: 'Enable location in your phone settings to return to your position on the map.',
+      },
+      locationFailed: {
+        title: 'Could not determine location',
+        message: 'Try again in a moment or place the pin manually on the map.',
       },
     },
   },

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager, Modal } from 'react-native';
+import { View, Text, StyleSheet, Switch, TextInput, KeyboardAvoidingView, Platform, ScrollView, Alert, Animated, Easing, Pressable, LayoutAnimation, UIManager, Modal, ActivityIndicator } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -31,6 +31,8 @@ import {
   stripHouseNumber,
   streetLineFromGeocodedPlace,
   resolvePinLocationFromGeocodedPlace,
+  preserveVillageStreetHint,
+  detectStrictCityFromCoordinates,
 } from '../../constants/locationEcosystem';
 import { flagEmojiFromIso2 } from '../../utils/phoneRegions';
 import { coordKeyForCityDistrict } from './districtCoordKeys';
@@ -129,6 +131,7 @@ const DISTRICTS_DATA: Record<string, string[]> = {
   ...STRICT_CITY_DISTRICTS,
 };
 const STRICT_CITY_SET = new Set<string>(STRICT_CITIES as unknown as string[]);
+const POLISH_STRICT_CITIES = STRICT_CITIES.filter((c) => c !== REST_OF_COUNTRY_CITY);
 const DEFAULT_STRICT_CITY = STRICT_CITIES[0];
 
 /**
@@ -720,9 +723,16 @@ const resolvePlaceToNormalizedLocation = (
   lat: number,
   lng: number,
   streetHint?: string,
+  anchorStrictCity?: string | null,
 ) => {
+  const hint = streetHint ?? streetLineFromGeocodedPlace(place, '');
+  const anchor =
+    anchorStrictCity && STRICT_CITY_SET.has(anchorStrictCity) ? anchorStrictCity : null;
   const resolution = resolvePinLocationFromGeocodedPlace(place, {
-    streetHint: streetHint ?? streetLineFromGeocodedPlace(place, ''),
+    streetHint: hint,
+    lat,
+    lng,
+    anchorStrictCity: anchor,
   });
   if (resolution.mode === 'strict') {
     return normalizeStrictLocation(
@@ -753,6 +763,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
   // widocznością `MapInteractionTip` — po pierwszej interakcji tip zanika,
   // żeby nie zaśmiecać widoku po tym, jak user zrozumiał zasadę.
   const [userInteractedWithMap, setUserInteractedWithMap] = useState(false);
+  const [locatingDevice, setLocatingDevice] = useState(false);
   const mapRef = useRef<MapView>(null);
   const navigation = useNavigation<any>();
   
@@ -763,12 +774,44 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const geoInitStartedRef = useRef(false);
   const lastMapSyncKeyRef = useRef('');
   const pinAlignSeqRef = useRef(0);
+  const cityScrollRef = useRef<ScrollView>(null);
+  const cityChipLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+  const cityScrollWidthRef = useRef(0);
+  const pendingCityScrollRef = useRef<string | null>(null);
+
+  const scrollSelectedCityIntoView = useCallback((city: string, animated = true) => {
+    if (!city || city === REST_OF_COUNTRY_CITY) return;
+    const layout = cityChipLayoutsRef.current[city];
+    if (!layout || !cityScrollRef.current) {
+      pendingCityScrollRef.current = city;
+      return;
+    }
+    pendingCityScrollRef.current = null;
+    const viewport = cityScrollWidthRef.current || 320;
+    const targetX = Math.max(0, layout.x + layout.width / 2 - viewport / 2);
+    cityScrollRef.current.scrollTo({ x: targetX, animated });
+  }, []);
 
   const applyLocationFieldsPatch = useCallback((patch: LocationDraftFieldsPatch | null) => {
     if (!patch) return;
     const latest = useOfferStore.getState().draft;
-    if (!locationDraftPatchHasChanges(latest, patch)) return;
-    useOfferStore.getState().updateDraft(patch);
+    let merged: LocationDraftFieldsPatch = { ...patch };
+    const lat = Number(latest.lat);
+    const lng = Number(latest.lng);
+    const iso = localityCountryIso(merged.localityCountryCode ?? latest.localityCountryCode, merged.localityCountry ?? latest.localityCountry);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && iso === DEFAULT_LOCALITY_COUNTRY_CODE) {
+      const strictCity = detectStrictCityFromCoordinates(lat, lng);
+      if (strictCity && STRICT_CITY_SET.has(strictCity)) {
+        merged = { ...merged, city: strictCity };
+        const allowed = DISTRICTS_DATA[strictCity as keyof typeof DISTRICTS_DATA] || [];
+        const district = String(merged.district ?? latest.district ?? '').trim();
+        if (!district || (allowed.length > 0 && !allowed.includes(district))) {
+          merged.district = getClosestDistrict(lat, lng, strictCity, null);
+        }
+      }
+    }
+    if (!locationDraftPatchHasChanges(latest, merged)) return;
+    useOfferStore.getState().updateDraft(merged);
   }, []);
 
   const resolveMapExact = useCallback(
@@ -783,7 +826,12 @@ export default function Step2_Location({ theme }: { theme: any }) {
       if (store.currentStep !== 2) setCurrentStep(2);
 
       const currentDraft = store.draft;
-      applyLocationFieldsPatch(getLocationDraftRepairPatch(currentDraft));
+      applyLocationFieldsPatch(
+        getLocationDraftRepairPatch(currentDraft, {
+          lat: Number(currentDraft.lat),
+          lng: Number(currentDraft.lng),
+        }),
+      );
 
       if (!resolveIsExactLocation(currentDraft.isExactLocation)) {
         store.updateDraft({ isExactLocation: true });
@@ -822,7 +870,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
             const reverse = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
             if (cancelled || seq !== pinAlignSeqRef.current || !reverse[0]) return;
             const latestStreet = String(useOfferStore.getState().draft.street || '').trim();
-            const normalized = resolvePlaceToNormalizedLocation(reverse[0], lat, lng, latestStreet);
+            const latestCity = String(useOfferStore.getState().draft.city || '').trim();
+            const normalized = resolvePlaceToNormalizedLocation(
+              reverse[0],
+              lat,
+              lng,
+              latestStreet,
+              latestCity,
+            );
             applyLocationFieldsPatch({
               city: normalized.city,
               district: normalized.district,
@@ -887,8 +942,15 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const streetLen = streetTrim.length;
   const streetHasDigit = /\d/.test(streetTrim);
   const currentIsExact = resolveIsExactLocation(draft.isExactLocation ?? true);
+  const latN = Number(draft.lat);
+  const lngN = Number(draft.lng);
+  const coordStrictCity =
+    hasCoords && isPolandLocation && Number.isFinite(latN) && Number.isFinite(lngN)
+      ? detectStrictCityFromCoordinates(latN, lngN)
+      : null;
   const safeDraftCity = (() => {
     if (!isPolandLocation) return REST_OF_COUNTRY_CITY;
+    if (coordStrictCity) return coordStrictCity;
     if (STRICT_CITY_SET.has(rawDraftCity)) return rawDraftCity;
     if (rawDraftCity) return REST_OF_COUNTRY_CITY;
     if (hasCoords) return REST_OF_COUNTRY_CITY;
@@ -910,6 +972,41 @@ export default function Step2_Location({ theme }: { theme: any }) {
       ? String(draft.district)
       : (safeDraftDistricts[0] || '');
   const localityCountryFlag = flagEmojiFromIso2(safeDraftLocalityCountryIso);
+
+  useEffect(() => {
+    if (!showPolishCityPicker) return;
+    scrollSelectedCityIntoView(safeDraftCity);
+  }, [safeDraftCity, showPolishCityPicker, scrollSelectedCityIntoView]);
+
+  useEffect(() => {
+    if (!coordStrictCity || !isPolandLocation) return;
+    const lat = Number(draft.lat);
+    const lng = Number(draft.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const currentCity = String(draft.city || '').trim();
+    const allowed = DISTRICTS_DATA[coordStrictCity as keyof typeof DISTRICTS_DATA] || [];
+    const district = String(draft.district || '').trim();
+    const districtInvalid = district && allowed.length > 0 && !allowed.includes(district);
+    if (currentCity === coordStrictCity && !districtInvalid) return;
+    if (currentCity !== coordStrictCity || districtInvalid) {
+      applyLocationFieldsPatch({
+        city: coordStrictCity,
+        district: districtInvalid || !district ? getClosestDistrict(lat, lng, coordStrictCity, null) : district,
+        localityCountry: safeDraftLocalityCountry,
+        localityCountryCode: safeDraftLocalityCountryIso,
+      });
+    }
+  }, [
+    coordStrictCity,
+    draft.city,
+    draft.district,
+    draft.lat,
+    draft.lng,
+    isPolandLocation,
+    applyLocationFieldsPatch,
+    safeDraftLocalityCountry,
+    safeDraftLocalityCountryIso,
+  ]);
 
   const syncStreetToDraft = useCallback(() => {
     const trimmedStreet = String(streetInput || '').trim();
@@ -951,47 +1048,99 @@ export default function Step2_Location({ theme }: { theme: any }) {
     return coords;
   }, [draft.localityCountry]);
 
+  const applyDeviceGpsLocation = useCallback(
+    async (options: { updateStreetOnlyIfEmpty?: boolean; showErrors?: boolean } = {}) => {
+      const { updateStreetOnlyIfEmpty = false, showErrors = false } = options;
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') {
+          if (showErrors) {
+            Alert.alert(
+              t('addOffer.step2.alerts.locationDenied.title'),
+              t('addOffer.step2.alerts.locationDenied.message'),
+            );
+          }
+          return false;
+        }
+        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
+        let finalCity: string = DEFAULT_STRICT_CITY;
+        let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
+        let finalCountry = DEFAULT_LOCALITY_COUNTRY;
+        let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
+        let newStreet = '';
+        if (reverse.length > 0) {
+          const place = reverse[0];
+          const streetHint = String(streetInput || useOfferStore.getState().draft.street || '').trim();
+          const rawStreet = streetLineFromGeocodedPlace(place, streetHint);
+          newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
+          const normalized = resolvePlaceToNormalizedLocation(
+            place,
+            latitude,
+            longitude,
+            streetHint || newStreet,
+            useOfferStore.getState().draft.city,
+          );
+          finalCity = normalized.city;
+          finalDistrict = normalized.district;
+          finalCountry = normalized.localityCountry;
+          finalCountryCode = normalized.localityCountryCode;
+        }
+        const mapExact = resolveIsExactLocation(useOfferStore.getState().draft.isExactLocation ?? true);
+        if (newStreet && (!updateStreetOnlyIfEmpty || !String(streetInput || '').trim())) {
+          setStreetInput(newStreet);
+        }
+        updateDraft({
+          lat: latitude,
+          lng: longitude,
+          city: finalCity,
+          district: finalDistrict,
+          localityCountry: finalCountry,
+          localityCountryCode: finalCountryCode,
+          ...(newStreet ? { street: newStreet } : {}),
+        });
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        flyTo(latitude, longitude, mapExact);
+        return true;
+      } catch (_e) {
+        if (showErrors) {
+          Alert.alert(
+            t('addOffer.step2.alerts.locationFailed.title'),
+            t('addOffer.step2.alerts.locationFailed.message'),
+          );
+        }
+        return false;
+      }
+    },
+    [streetInput, updateDraft, currentIsExact, t],
+  );
+
   const initFromDeviceLocation = useCallback(async () => {
     if (geoInitStartedRef.current) return;
     geoInitStartedRef.current = true;
+    const lat = Number(draft.lat);
+    const lng = Number(draft.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) return;
+    const ok = await applyDeviceGpsLocation({ updateStreetOnlyIfEmpty: true, showErrors: false });
+    if (!ok) geoInitStartedRef.current = false;
+  }, [applyDeviceGpsLocation, draft.lat, draft.lng]);
+
+  const handleMyLocationPress = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLocatingDevice(true);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') return;
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const latitude = position.coords.latitude;
-      const longitude = position.coords.longitude;
-      const reverse = await Location.reverseGeocodeAsync({ latitude, longitude });
-      let finalCity: string = DEFAULT_STRICT_CITY;
-      let finalDistrict: string = (DISTRICTS_DATA[DEFAULT_STRICT_CITY] || [])[0] || '';
-      let finalCountry = DEFAULT_LOCALITY_COUNTRY;
-      let finalCountryCode = DEFAULT_LOCALITY_COUNTRY_CODE;
-      let newStreet = '';
-      if (reverse.length > 0) {
-        const place = reverse[0];
-        const normalized = resolvePlaceToNormalizedLocation(place, latitude, longitude);
-        finalCity = normalized.city;
-        finalDistrict = normalized.district;
-        finalCountry = normalized.localityCountry;
-        finalCountryCode = normalized.localityCountryCode;
-        newStreet = streetLineFromGeocodedPlace(place, '');
+      const ok = await applyDeviceGpsLocation({ showErrors: true });
+      if (ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
-      const d = useOfferStore.getState().draft;
-      const mapExact = resolveIsExactLocation(d.isExactLocation ?? true);
-      if (newStreet && !String(streetInput || '').trim()) setStreetInput(newStreet);
-      updateDraft({
-        lat: latitude,
-        lng: longitude,
-        city: finalCity,
-        district: finalDistrict,
-        localityCountry: finalCountry,
-        localityCountryCode: finalCountryCode,
-        ...(newStreet ? { street: newStreet } : {}),
-      });
-      flyTo(latitude, longitude, mapExact);
-    } catch (_e) {
-      geoInitStartedRef.current = false;
+    } finally {
+      setLocatingDevice(false);
     }
-  }, [streetInput, updateDraft]);
+  }, [applyDeviceGpsLocation]);
 
   useEffect(() => {
     const lat = Number(draft.lat);
@@ -1028,7 +1177,13 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
         if (reverse.length > 0) {
           const place = reverse[0];
-          const normalized = resolvePlaceToNormalizedLocation(place, latitude, longitude);
+          const normalized = resolvePlaceToNormalizedLocation(
+            place,
+            latitude,
+            longitude,
+            streetInput,
+            draft.city,
+          );
           finalCity = normalized.city;
           finalDistrict = normalized.district;
           finalCountry = normalized.localityCountry;
@@ -1093,13 +1248,16 @@ export default function Step2_Location({ theme }: { theme: any }) {
         const place = reverse[0];
         
         const rawStreet = streetLineFromGeocodedPlace(place, streetInput);
-        const newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
+        let newStreet = currentIsExact ? rawStreet : stripHouseNumber(rawStreet) || rawStreet;
+        newStreet = preserveVillageStreetHint(streetInput || draft.street || '', newStreet);
 
+        const streetHint = String(streetInput || draft.street || newStreet).trim();
         const normalized = resolvePlaceToNormalizedLocation(
           place,
           region.latitude,
           region.longitude,
-          streetInput || draft.street || '',
+          streetHint,
+          draft.city,
         );
         const finalCity = normalized.city;
         const finalDistrict = normalized.district;
@@ -1258,9 +1416,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
         <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step2.header')}</Text>
         
         <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.searchAddress')}</Text>
-        <View style={[styles.insetSlot, { backgroundColor: inputBg, borderColor }, shadow]}>
+        <View style={[styles.insetSlot, styles.addressInputRow, { backgroundColor: inputBg, borderColor }, shadow]}>
           <TextInput
-            style={[styles.input, { color: theme.text }]}
+            style={[styles.input, styles.addressInput, { color: theme.text }]}
             placeholder={t('addOffer.step2.placeholders.street')}
             placeholderTextColor={theme.subtitle}
             value={streetInput}
@@ -1273,6 +1431,20 @@ export default function Step2_Location({ theme }: { theme: any }) {
             returnKeyType="search"
             selectionColor="#dc2626"
           />
+          <Pressable
+            onPress={() => void handleMyLocationPress()}
+            disabled={locatingDevice}
+            style={({ pressed }) => [styles.myLocationBtn, pressed && { opacity: 0.65 }]}
+            accessibilityRole="button"
+            accessibilityLabel={t('addOffer.step2.myLocation.a11y')}
+            hitSlop={8}
+          >
+            {locatingDevice ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Ionicons name="locate" size={22} color={Colors.primary} />
+            )}
+          </Pressable>
         </View>
         {isPolandLocation ? (
           <AddOfferFieldHint current={streetLen} min={ADD_OFFER_STREET_MIN} />
@@ -1312,9 +1484,34 @@ export default function Step2_Location({ theme }: { theme: any }) {
         {showPolishCityPicker ? (
           <View pointerEvents="auto">
             <Text style={[styles.sectionTitle, { color: theme.subtitle }]}>{t('addOffer.step2.sections.city')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 20 }}>
-              {STRICT_CITIES.filter((c) => c !== REST_OF_COUNTRY_CITY).map((c) => (
-                <Pressable key={c} onPress={() => handleCityChange(c)} style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}>
+            <ScrollView
+              ref={cityScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 10, paddingBottom: 20, paddingHorizontal: 2 }}
+              onLayout={(event) => {
+                cityScrollWidthRef.current = event.nativeEvent.layout.width;
+              }}
+              onContentSizeChange={() => {
+                const city = pendingCityScrollRef.current || safeDraftCity;
+                scrollSelectedCityIntoView(city, !pendingCityScrollRef.current);
+              }}
+            >
+              {POLISH_STRICT_CITIES.map((c) => (
+                <Pressable
+                  key={c}
+                  onPress={() => handleCityChange(c)}
+                  onLayout={(event) => {
+                    cityChipLayoutsRef.current[c] = {
+                      x: event.nativeEvent.layout.x,
+                      width: event.nativeEvent.layout.width,
+                    };
+                    if (c === safeDraftCity) {
+                      scrollSelectedCityIntoView(c, false);
+                    }
+                  }}
+                  style={[styles.pillBtn, safeDraftCity === c && { backgroundColor: Colors.primary, borderColor: Colors.primary }]}
+                >
                   <Text style={[styles.pillText, safeDraftCity === c && { color: '#FFF' }]}>{c}</Text>
                 </Pressable>
               ))}
@@ -1453,6 +1650,16 @@ const styles = StyleSheet.create({
   label: { fontSize: 17, fontWeight: '700' }, subLabel: { fontSize: 13, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '800', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1.5 },
   input: { height: 55, paddingHorizontal: 20, fontSize: 17, fontWeight: '600' },
+  addressInputRow: { flexDirection: 'row', alignItems: 'center' },
+  addressInput: { flex: 1, paddingRight: 4 },
+  myLocationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
   restLocalityCard: {
     borderRadius: 22,
     borderWidth: 1,

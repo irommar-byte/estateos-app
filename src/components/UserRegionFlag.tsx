@@ -59,28 +59,29 @@ export default function UserRegionFlag({
   const borderGlass = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.65)';
   const veil = isDark ? 'rgba(15,23,42,0.18)' : 'rgba(255,255,255,0.14)';
 
+  const faceStyle = {
+    width: size,
+    height: size,
+    borderRadius: radius,
+    overflow: 'hidden' as const,
+    borderColor: borderGlass,
+    ...(animated
+      ? {
+          transform: [
+            { rotateZ: rotateZ },
+            { translateY: translateY },
+            { scale: scale },
+          ],
+        }
+      : {}),
+  };
+
+  const FlagFace = animated ? Animated.View : View;
+
   return (
     <View style={[styles.wrap, { width: size + 6, height: size + 6 }]} pointerEvents="none">
       <View style={[styles.perspective, { width: size + 6, height: size + 6 }]}>
-        <Animated.View
-          style={[
-            styles.flagFace,
-            {
-              width: size,
-              height: size,
-              borderRadius: radius,
-              overflow: 'hidden',
-              borderColor: borderGlass,
-              transform: animated
-                ? ([
-                    { rotateZ: rotateZ as any },
-                    { translateY: translateY as any },
-                    { scale: scale as any },
-                  ] as const)
-                : undefined,
-            },
-          ]}
-        >
+        <FlagFace style={[styles.flagFace, faceStyle]}>
           <BlurView
             intensity={Platform.OS === 'ios' ? (isDark ? 42 : 36) : 28}
             tint={blurTint}
@@ -93,7 +94,7 @@ export default function UserRegionFlag({
           <Text style={[styles.emoji, { fontSize, lineHeight: fontSize + 2 }]} allowFontScaling={false}>
             {emoji}
           </Text>
-        </Animated.View>
+        </FlagFace>
       </View>
     </View>
   );

@@ -192,6 +192,10 @@ export const radar = {
     mapAreaGlobalHint: 'The circle on the map can cover regions outside Poland.',
     citySection: 'City',
     allCities: 'All',
+    countrySection: 'Country',
+    allCountries: 'All',
+    polandScopeHint:
+      'Poland with no city selected = entire country. A specific city narrows results to that metro only.',
     districtSection: 'District',
     clearDistricts: 'Clear districts',
     pickMapArea: 'Open map and mark area',
@@ -210,6 +214,7 @@ export const radar = {
     roomsSection: 'Rooms (min.)',
     roomsAny: 'Any',
     apply: 'Apply filters',
+    applyWithCount: 'Apply filters ({{count}})',
   },
   calibration: {
     radarLabel: 'EstateOS™ Live Radar',

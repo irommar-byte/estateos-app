@@ -72,6 +72,21 @@ export function countryLabelInOwnLanguage(iso: CountryCode): string {
   }
 }
 
+/** Nazwa kraju w języku tego państwa, wielkimi literami (np. POLSKA, DEUTSCHLAND). */
+export function countryLabelInOwnLanguageUpper(iso: string): string {
+  const code = String(iso || '')
+    .trim()
+    .toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return code;
+  const label = countryLabelInOwnLanguage(code as CountryCode);
+  const locale = `${code.toLowerCase()}-${code}`;
+  try {
+    return label.toLocaleUpperCase(locale);
+  } catch {
+    return label.toUpperCase();
+  }
+}
+
 /** Etykieta do sortowania listy (polski — stabilne sortowanie dla użytkownika PL). */
 export function countryLabelSortPl(iso: CountryCode): string {
   try {

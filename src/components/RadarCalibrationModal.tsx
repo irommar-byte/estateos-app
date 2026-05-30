@@ -25,7 +25,7 @@ import Animated, {
 
 // Zależności z Twojego projektu:
 import RadarCalibrationRitualOverlay from './RadarCalibrationRitualOverlay';
-import { STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
+import { METRO_STRICT_CITIES, STRICT_CITY_DISTRICTS } from '../constants/locationEcosystem';
 import type { RadarRecentSavedArea } from '../utils/radarRecentAreas';
 import { localeToDateFormat, useI18n } from '../i18n';
 import PolandScopeNote from './PolandScopeNote';
@@ -38,7 +38,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // === TWOJE ORYGINALNE STAŁE I LIMITY ===
 const CITY_DISTRICTS: Record<string, string[]> = STRICT_CITY_DISTRICTS;
-const CITIES = [...STRICT_CITIES];
+const CITIES = [...METRO_STRICT_CITIES];
 const ThemeColors = { RENT: '#0A84FF', SELL: '#34C759' } as const;
 const LiveRadarGold = '#D4AF37';
 

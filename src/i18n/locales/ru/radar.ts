@@ -210,6 +210,7 @@ export const radar = {
     roomsSection: 'Комнаты (мин.)',
     roomsAny: 'Любой',
     apply: 'Применить фильтры',
+    applyWithCount: 'Применить фильтры ({{count}})',
   },
   calibration: {
     radarLabel: 'EstateOS™ Живой радар',

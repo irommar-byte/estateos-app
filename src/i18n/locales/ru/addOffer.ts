@@ -180,6 +180,9 @@ export const addOffer = {
       title: 'Переместите карту, чтобы разместить булавку',
       subtitle: 'Сведите пальцы для увеличения. Булавка должна отмечать точную точку свойства.',
     },
+    myLocation: {
+      a11y: 'Моё местоположение',
+    },
     footerHint: {
       poland:
         'The pin on the map must match the actual property location. In Poland you can refine city and district from the list — the address should match the pin. Outside major agglomerations the locality name comes from geocoding.',
@@ -215,6 +218,14 @@ export const addOffer = {
       districtNotFound: {
         title: 'Район не найден',
         message: 'Не удалось найти: {{district}}, {{city}}.',
+      },
+      locationDenied: {
+        title: 'Нет доступа к геолокации',
+        message: 'Включите геолокацию в настройках телефона, чтобы вернуться к своей позиции на карте.',
+      },
+      locationFailed: {
+        title: 'Не удалось определить местоположение',
+        message: 'Попробуйте снова через минуту или установите булавку вручную на карте.',
       },
     },
   },
