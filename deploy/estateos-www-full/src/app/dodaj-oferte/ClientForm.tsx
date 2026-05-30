@@ -12,8 +12,8 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Home, 
   Building2, Rows, Castle, Briefcase, Map as MapIcon, MapPin, 
   Sparkles, Loader2, CheckCircle, Crown, Key, Upload, Trash2, 
-  LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check, Shield,
-  Navigation, EyeOff, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck
+  LayoutTemplate, X, Lock, User, Phone, Mail, Flame, AlertCircle, Check,
+  Navigation, Bold, Italic, Underline, Heading, AlignLeft, ShieldCheck
 } from "lucide-react";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
@@ -69,32 +69,10 @@ const labelPremium =
   "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
 const glassPanel =
   "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
-const KW_FULL_REGEX = /^[A-Z]{2}[0-9A-Z]{2}\/[0-9]{8}\/[0-9]$/;
-const KW_SANITIZE_REGEX = /[^A-Za-z0-9/]/g;
-const KW_COURT_SUGGESTIONS = [
-  { prefix: "WA1M", court: "Warszawa-Mokotow" },
-  { prefix: "WA4M", court: "Warszawa-Wola" },
-  { prefix: "KR1P", court: "Krakow-Podgorze" },
-  { prefix: "KR1K", court: "Krakow-Srodmiescie" },
-  { prefix: "GD1G", court: "Gdansk-Polnoc" },
-  { prefix: "PO1P", court: "Poznan-Stare Miasto" },
-  { prefix: "WR1K", court: "Wroclaw-Krzyki" },
-  { prefix: "LU1I", court: "Lublin-Zachod" },
-];
 const ADD_OFFER_DRAFT_VERSION = 1;
 const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
 
-type FormFieldTarget = "landRegistryNumber" | "agentCommissionPercent" | null;
-
-function normalizeLandRegistryInput(raw: string): string {
-  const cleaned = raw.toUpperCase().replace(KW_SANITIZE_REGEX, "").slice(0, 40);
-  const head = cleaned.slice(0, 4).replace(/[^A-Z0-9]/g, "");
-  const middle = cleaned.slice(4, 12).replace(/[^0-9]/g, "");
-  const tail = cleaned.slice(12, 13).replace(/[^0-9]/g, "");
-  if (cleaned.length <= 4) return head;
-  if (cleaned.length <= 12) return `${head}/${middle}`;
-  return `${head}/${middle}/${tail}`;
-}
+type FormFieldTarget = "agentCommissionPercent" | null;
 
 function buildPropertyTypes(ao: AddOfferDictionary) {
   return [
@@ -188,7 +166,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const [data, setData] = useState<any>({
     transactionType: 'SELL', rentAdminFee: '', deposit: '', rentMinPeriod: '', rentAvailableFrom: '', petsAllowed: false, rentType: '',
     propertyType: '', title: '', 
-    condition: '', locationType: 'exact', address: '', city: '', lng: null, lat: null, district: '', apartmentNumber: '', landRegistryNumber: '',
+    condition: '', locationType: 'exact', address: '', city: '', lng: null, lat: null, district: '',
     price: '', priceCurrency: 'PLN' as OfferPriceCurrency, agentCommissionPercent: '',
     area: '', rooms: '', floor: '', buildYear: '', plotArea: '', heating: '', furnished: '', rent: '', 
     amenities: [], description: '', 
@@ -231,7 +209,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const orbitTimeoutRef = useRef<number | null>(null);
   const lastGeocodedAddressRef = useRef<string>("");
   const editorRef = useRef<HTMLDivElement>(null);
-  const landRegistryInputRef = useRef<HTMLInputElement>(null);
   const agentCommissionInputRef = useRef<HTMLDivElement>(null);
   const draftHydratedRef = useRef(false);
   const draftSaveTimerRef = useRef<number | null>(null);
@@ -1035,9 +1012,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     district: data.district,
   });
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
-  const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
-  const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
-  const landRegistryValid = !hasLandRegistryInput || KW_FULL_REGEX.test(normalizedLandRegistryNumber);
   const isLocationDone =
     !!data.lat &&
     !!data.lng &&
@@ -1045,8 +1019,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     districtRequirementMet &&
     !addressError &&
     hasBuildingNumber &&
-    !locationAddressConflict &&
-    landRegistryValid;
+    !locationAddressConflict;
 
   const propertyTypeLabel = PROPERTY_TYPES.find((t) => t.id === data.propertyType)?.label;
   const conditionLabel = CONDITION_TYPES.find((c) => c.id === data.condition)?.label;
@@ -1106,7 +1079,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const focusFieldTarget = (target: FormFieldTarget) => {
     if (!target) return;
     const byTarget: Record<Exclude<FormFieldTarget, null>, { step: number; node: HTMLElement | null }> = {
-      landRegistryNumber: { step: 2, node: landRegistryInputRef.current },
       agentCommissionPercent: { step: 3, node: agentCommissionInputRef.current },
     };
     const config = byTarget[target];
@@ -1117,15 +1089,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       if (target === "agentCommissionPercent") {
         const input = config.node.querySelector("input");
         if (input) (input as HTMLInputElement).focus();
-      } else {
-        (config.node as HTMLInputElement).focus();
       }
     }, 140);
   };
 
   const resolveErrorFieldTarget = (messageRaw: unknown): FormFieldTarget => {
     const message = String(messageRaw || "").toLowerCase();
-    if (message.includes("księgi wieczystej") || message.includes("kw")) return "landRegistryNumber";
     if (message.includes("agentcommissionpercent") || message.includes("prowiz")) return "agentCommissionPercent";
     return null;
   };
@@ -1506,64 +1475,6 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       {locationDisplayLine}
                     </p>
                   ) : null}
-
-                  <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 md:p-5">
-                    <div className="mb-3 flex items-center gap-2">
-                      <Shield size={15} className="text-emerald-400" />
-                      <h3 className="text-[11px] font-black uppercase tracking-[0.14em] text-emerald-300">
-                        Weryfikacja dokumentów (opcjonalnie)
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className={labelPremium}>Nr Lokalu (opcjonalnie)</label>
-                        <input
-                          type="text"
-                          placeholder={data.propertyType === 'FLAT' ? ao.aptNumberPlaceholder : ao.apartmentPlaceholder}
-                          disabled={data.propertyType !== 'FLAT'}
-                          className={`${inputPremium} text-sm ${data.propertyType !== 'FLAT' ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          value={data.apartmentNumber || ''}
-                          onChange={(e) => updateData({ apartmentNumber: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelPremium}>Numer księgi wieczystej (opcjonalnie)</label>
-                        <input
-                          ref={landRegistryInputRef}
-                          type="text"
-                          placeholder={ao.landRegistryPlaceholder}
-                          list="kw-court-suggestions"
-                          maxLength={15}
-                          autoCapitalize="characters"
-                          autoCorrect="off"
-                          spellCheck={false}
-                          className={`${inputPremium} text-sm uppercase ${hasLandRegistryInput && !landRegistryValid ? 'border-red-500/50 focus:border-red-400' : ''}`}
-                          value={data.landRegistryNumber || ''}
-                          onChange={(e) => updateData({ landRegistryNumber: normalizeLandRegistryInput(e.target.value) })}
-                        />
-                        <datalist id="kw-court-suggestions">
-                          {KW_COURT_SUGGESTIONS.map((entry) => (
-                            <option key={entry.prefix} value={`${entry.prefix}/00000000/0`}>
-                              {entry.prefix} - Sad Rejonowy {entry.court}
-                            </option>
-                          ))}
-                        </datalist>
-                        <p className="mt-2 text-[10px] text-zinc-400">
-                          Podpowiedz: wybierz prefiks sadu (np. WA1M), potem numer i cyfre kontrolna.
-                        </p>
-                        {hasLandRegistryInput && !landRegistryValid ? (
-                          <p className="mt-2 text-[10px] text-red-400 font-bold">
-                            Nieprawidlowy format KW. Wymagany: 4 znaki, "/", 8 cyfr, "/", 1 cyfra (np. WA1M/00012345/9).
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    <p className="mt-3 text-[11px] text-zinc-300/90 leading-snug flex items-start gap-2">
-                      <EyeOff size={14} className="shrink-0 mt-0.5 text-zinc-400" />
-                      Chronimy te dane i nie udostępniamy ich publicznie. Jeśli podasz oba pola, oferta otrzyma status
-                      „weryfikacja w toku”, a po potwierdzeniu zgodności dokumentów i braku obciążeń pokażemy znaczek jakości.
-                    </p>
-                  </div>
                 </div>
 
                 <div className="relative w-full min-h-[420px] h-[clamp(360px,48svh,560px)] lg:min-h-[440px] rounded-[2rem] overflow-hidden bg-[#111] border border-white/10 shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] isolate">
