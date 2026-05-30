@@ -996,6 +996,17 @@ html.light .pricing-dark-stage {
   color: #f8fafc !important;
 }
 
+/* Radar CRM widget — zawsze ciemna scena; napisy niezależne od motywu strony */
+.eos-radar-widget .eos-radar-label {
+  color: rgba(255, 255, 255, 0.68) !important;
+}
+.eos-radar-widget .eos-radar-value {
+  color: #ffffff !important;
+}
+.eos-radar-widget .eos-radar-budget-label {
+  color: rgba(110, 231, 183, 0.82) !important;
+}
+
 html.light .pricing-dark-stage .text-white,
 html.light .pricing-dark-stage [class*="text-white"] {
   color: #f8fafc !important;

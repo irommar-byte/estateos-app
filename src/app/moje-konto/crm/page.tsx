@@ -1308,7 +1308,7 @@ export default function CRMDashboard() {
           <div className="flex flex-col gap-8 mb-12">
             
             <>
-            <div className="relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
+            <div className="relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)] eos-radar-widget">
               <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen transition-opacity duration-1000 group-hover:opacity-100 opacity-50" />
               <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
               
@@ -1362,28 +1362,32 @@ export default function CRMDashboard() {
                 </button>
               </div>
 
-              <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.location}</span>
+              <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
+                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.propertyType}</span>
+                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Przeznaczenie</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.transactionType}</span>
                  </div>
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.minArea}</span>
+                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
-                 <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
+                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.minArea}</span>
+                 </div>
+                 <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price col-span-2 md:col-span-1">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
-                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
-                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
+                    <span className="eos-radar-budget-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
+                    <span className="text-emerald-400 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
-                <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
+                <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
                 <span className="rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
                   {radarSummary.threshold}
                 </span>
@@ -1438,15 +1442,15 @@ export default function CRMDashboard() {
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
                               <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{txRent ? c.rent : c.sale}</span>
-                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-white text-sm truncate hover:text-emerald-400 transition-colors">
+                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-[var(--eos-text)] text-sm truncate hover:text-emerald-400 transition-colors">
                                  {offer.title}
                               </a>
                               
                               <div className="flex flex-col mt-1">
                                 {txRent ? (
                                     <>
-                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">{c.perMonth}</span></p>
-                                        <p className="text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest mt-0.5 flex gap-1">
+                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-muted)]">{c.perMonth}</span></p>
+                                        <p className="text-[8px] font-bold text-[var(--eos-muted)] uppercase tracking-widest mt-0.5 flex gap-1">
                                             {offer.deposit && <span>{c.radar.deposit} {offer.deposit}</span>} 
                                             {offer.rentAdminFee && <span>| {c.radar.adminFee} {offer.rentAdminFee}</span>}
                                         </p>
@@ -1458,7 +1462,7 @@ export default function CRMDashboard() {
                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || 'Warszawa'}</span>
+                           <span className="bg-[var(--eos-input)] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || offer.city || '—'}</span>
                            <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><Target size={12}/> {offer.area} m²</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
@@ -1490,7 +1494,7 @@ export default function CRMDashboard() {
                     </motion.div>
                   )}
                 </div>
-                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
+                <p className="text-[var(--eos-muted)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
                   {c.radar.emptyHint}
                 </p>
                 <div className="mt-6 flex gap-2">

@@ -196,6 +196,7 @@ export function formatRadarSummary(filters: WebRadarFilters): {
   minArea: string;
   maxBudget: string;
   propertyType: string;
+  transactionType: string;
   threshold: string;
 } {
   const location =
@@ -205,6 +206,13 @@ export function formatRadarSummary(filters: WebRadarFilters): {
         ? `${filters.selectedDistricts.length} dzielnic · ${filters.city}`
         : `Całe ${filters.city}`;
 
+  const txLabel =
+    filters.transactionType === 'RENT'
+      ? 'Wynajem'
+      : filters.transactionType === 'SELL'
+        ? 'Kupno'
+        : '—';
+
   return {
     location,
     minArea: filters.minArea > 0 ? `Od ${filters.minArea} m²` : 'Dowolny metraż',
@@ -212,7 +220,17 @@ export function formatRadarSummary(filters: WebRadarFilters): {
       filters.maxPrice > 0
         ? `Do ${new Intl.NumberFormat('pl-PL').format(filters.maxPrice)} PLN`
         : 'Bez limitu',
-    propertyType: filters.propertyType || 'Wszystkie',
+    propertyType:
+      filters.propertyType === 'FLAT'
+        ? 'Mieszkanie'
+        : filters.propertyType === 'HOUSE'
+          ? 'Dom'
+          : filters.propertyType === 'PLOT'
+            ? 'Działka'
+            : filters.propertyType === 'COMMERCIAL'
+              ? 'Lokal'
+              : filters.propertyType || 'Wszystkie',
+    transactionType: txLabel,
     threshold: `${filters.matchThreshold}% dopasowania`,
   };
 }

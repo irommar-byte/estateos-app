@@ -19,6 +19,7 @@ import {
   radarIntelligenceLabel,
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
+import { isWebRadarCalibrationReady } from "@/lib/radarMatchedOffers";
 import CrmRadarAreaPicker from "@/components/crm/CrmRadarAreaPicker";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
 
@@ -95,6 +96,11 @@ export default function CrmRadarCalibrationModal({
   const districts =
     catalog.strictCityDistricts?.[draft.city] || catalog.strictCityDistricts?.[canonicalizeCity(draft.city) || ""] || [];
 
+  const calibrationReady = useMemo(
+    () => isWebRadarCalibrationReady(draft, districts),
+    [draft, districts],
+  );
+
   const toggleDistrict = (d: string) => {
     setDraft((prev) => ({
       ...prev,
@@ -108,21 +114,7 @@ export default function CrmRadarCalibrationModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      draft.pushNotifications &&
-      draft.calibrationMode === "CITY" &&
-      draft.selectedDistricts.length === 0 &&
-      districts.length > 0
-    ) {
-      return;
-    }
-    if (
-      draft.pushNotifications &&
-      draft.calibrationMode === "MAP" &&
-      (draft.lat == null || draft.lng == null || !draft.radiusKm)
-    ) {
-      return;
-    }
+    if (!calibrationReady) return;
     await onSave(draft);
   };
 
@@ -297,7 +289,7 @@ export default function CrmRadarCalibrationModal({
                   ) : (
                     <>
                       <div>
-                        <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
+                        <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/65">
                           Metropolia
                         </label>
                         <div className="flex flex-wrap gap-2">
@@ -325,8 +317,11 @@ export default function CrmRadarCalibrationModal({
                       </div>
 
                       <div>
-                        <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
+                        <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-white/65">
                           Dzielnice · {draft.city}
+                          <span className="ml-2 font-medium normal-case tracking-normal text-white/45">
+                            (opcjonalnie — puste = całe miasto)
+                          </span>
                         </label>
                         <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-white/10 bg-[#111] p-2">
                           {districts.map((d) => (
@@ -360,8 +355,8 @@ export default function CrmRadarCalibrationModal({
                           ))}
                         </div>
                         {districts.length > 0 && draft.selectedDistricts.length === 0 ? (
-                          <p className="mt-2 text-[11px] font-bold text-amber-400/90">
-                            Wybierz co najmniej jedną dzielnicę (jak w aplikacji).
+                          <p className="mt-2 text-[11px] font-medium text-white/45">
+                            Bez zaznaczenia dzielnic radar obejmuje całe {draft.city}.
                           </p>
                         ) : null}
                       </div>
@@ -497,17 +492,12 @@ export default function CrmRadarCalibrationModal({
 
               <button
                 type="submit"
-                disabled={
-                  saving ||
-                  (radarAwake &&
-                    draft.calibrationMode === "CITY" &&
-                    districts.length > 0 &&
-                    draft.selectedDistricts.length === 0) ||
-                  (radarAwake &&
-                    draft.calibrationMode === "MAP" &&
-                    (draft.lat == null || draft.lng == null || !draft.radiusKm))
-                }
-                className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-xl border border-emerald-300/50 bg-gradient-to-r from-emerald-500 to-emerald-400 py-5 font-black uppercase tracking-[0.2em] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={saving || !calibrationReady}
+                className={`group relative mt-2 w-full cursor-pointer overflow-hidden rounded-xl border py-5 font-black uppercase tracking-[0.2em] transition-all ${
+                  calibrationReady && !saving
+                    ? "border-emerald-300/50 bg-gradient-to-r from-emerald-500 to-emerald-400 text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:scale-[1.02]"
+                    : "border-white/10 bg-white/5 text-white/35 cursor-not-allowed"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className="relative z-10 flex items-center justify-center gap-3">
                   <Radar size={20} className={saving ? "animate-spin" : ""} />

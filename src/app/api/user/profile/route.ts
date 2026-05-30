@@ -10,6 +10,11 @@ import type { RadarPreference } from '@prisma/client';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { shapeMatchedOfferForCrm } from '@/lib/crmMatchedOffer';
+import {
+  buildRadarScoreInputFromUser,
+  MATCHED_OFFER_SELECT,
+  scoreOffersForRadarPreference,
+} from '@/lib/radarMatchedOffers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -146,7 +151,34 @@ export async function GET() {
     }
 
     let matchedOffers: Array<Record<string, unknown>> = [];
-    if (user.searchType) {
+    let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(
+      'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null,
+      user.searchAmenities,
+    );
+    if (!radarPreference) {
+      try {
+        const pref = await prisma.radarPreference.findUnique({ where: { userId: user.id } });
+        radarPreference = shapeRadarPreference(pref, user.searchAmenities);
+      } catch {
+        radarPreference = null;
+      }
+    }
+
+    const radarScoreInput = buildRadarScoreInputFromUser(user, radarPreference);
+    if (radarScoreInput) {
+      const allActiveOffers = await prisma.offer.findMany({
+        where: {
+          status: 'ACTIVE',
+          NOT: { userId: user.id },
+        },
+        select: MATCHED_OFFER_SELECT,
+      });
+
+      matchedOffers = scoreOffersForRadarPreference(
+        allActiveOffers as Array<Record<string, unknown>>,
+        radarScoreInput,
+      );
+    } else if (user.searchType) {
       const allActiveOffers = await prisma.offer.findMany({
         where: {
           status: 'ACTIVE',
@@ -179,6 +211,15 @@ export async function GET() {
       matchedOffers = allActiveOffers.filter((offer) => {
         if (user.searchType && normalizeForSearch(user.searchType) !== normalizeForSearch(offer.propertyType)) {
           return false;
+        }
+
+        const txPref = String(user.searchTransactionType || 'all').toLowerCase();
+        const txOffer = String(offer.transactionType || '').toUpperCase();
+        if (txPref !== 'all' && txPref !== '') {
+          const wantsRent = txPref === 'rent' || txPref === 'wynajem';
+          const wantsSell = txPref === 'sale' || txPref === 'sell' || txPref === 'kupno';
+          if (wantsRent && txOffer !== 'RENT') return false;
+          if (wantsSell && txOffer !== 'SELL') return false;
         }
 
         const offerPrice = getCanonicalOfferPricePln(offer);
@@ -215,7 +256,7 @@ export async function GET() {
       });
 
       matchedOffers = matchedOffers.map((offer) =>
-        shapeMatchedOfferForCrm(offer as Record<string, unknown>),
+        shapeMatchedOfferForCrm({ ...offer, matchScore: 100 } as Record<string, unknown>),
       );
     }
 
@@ -223,20 +264,6 @@ export async function GET() {
     const shaped = { ...shapeMobileUser(user), hasPasskey: passkeyCount > 0 };
     const elite = resolveEliteBadges(user);
     const badges = { ...elite, isPartner: elite.isProgramPartner };
-    const userRadarPref =
-      'radarPreference' in user ? (user.radarPreference as RadarPreference | null) : null;
-    let radarPreference: RadarPreferenceDto | null = shapeRadarPreference(
-      userRadarPref,
-      user.searchAmenities,
-    );
-    if (!radarPreference) {
-      try {
-        const pref = await prisma.radarPreference.findUnique({ where: { userId: user.id } });
-        radarPreference = shapeRadarPreference(pref, user.searchAmenities);
-      } catch {
-        radarPreference = null;
-      }
-    }
 
     return NextResponse.json(
       {
