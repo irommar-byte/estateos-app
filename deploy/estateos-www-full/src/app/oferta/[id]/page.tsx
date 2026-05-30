@@ -128,13 +128,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const [negotiatorsCount, setNegotiatorsCount] = useState(0);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
-  const verificationStatus = String(offer.verificationStatus || "UNVERIFIED");
-  const verificationUi =
-    verificationStatus === "VERIFIED"
-      ? { label: t.verified, hint: t.verifiedHint, cls: "text-emerald-300 bg-emerald-500/12 border-emerald-500/35" }
-      : verificationStatus === "PENDING_REVIEW"
-        ? { label: t.pendingReview, hint: t.pendingHint, cls: "text-amber-300 bg-amber-500/12 border-amber-500/35" }
-        : { label: t.notVerified, hint: t.notVerifiedHint, cls: "text-zinc-300 bg-white/5 border-white/15" };
   const isLegalKwVerified = isOfferLegallyVerified(offer);
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
@@ -411,10 +404,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
               className="pointer-events-auto w-full"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex w-full flex-nowrap items-center justify-start gap-2 overflow-x-auto rounded-3xl border border-white/10 bg-zinc-950/80 px-3 py-2 shadow-2xl backdrop-blur-3xl sm:justify-center sm:gap-4 sm:px-5 sm:py-2.5 sm:rounded-full hover:border-white/20 transition-all duration-300">
+              <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2.5 rounded-3xl border border-white/10 bg-zinc-950/85 px-3 py-3 shadow-2xl backdrop-blur-3xl sm:gap-x-4 sm:gap-y-3 sm:px-5 sm:py-3.5 hover:border-white/20 transition-all duration-300">
                 <button 
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPublicProfileId(String(offer?.user?.id || offer?.userId)); }} 
-                  className="flex items-center gap-3 shrink-0 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 rounded-full px-4 py-2 transition-all duration-300 group cursor-pointer shadow-inner"
+                  className="flex max-w-full items-center gap-3 rounded-full border border-white/5 bg-white/5 px-4 py-2 shadow-inner transition-all duration-300 group cursor-pointer hover:border-white/10 hover:bg-white/10 sm:max-w-[min(100%,20rem)]"
                 >
                   <div className={`flex items-center justify-center w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:border-white/30 transition-colors ${themeColors.textActive}`}>
                      {sellerAvatar ? (
@@ -452,10 +445,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 </button>
 
-                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
-                
-                <div className="flex items-center justify-center gap-2 sm:gap-3 shrink-0 min-w-0 px-1">
-                  <div className="flex flex-col items-center justify-center shrink-0">
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
+                  <div className="flex flex-col items-center justify-center">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.views}</span>
                       <div className="flex items-center gap-1.5">
                           <Eye size={12} className="text-zinc-400" />
@@ -463,9 +454,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       </div>
                   </div>
 
-                  {isLegalKwVerified ? (
-                    <LegalVerifiedShieldBadge label={t.legalVerifiedKw} compact />
-                  ) : null}
+                  <LegalVerifiedShieldBadge
+                    active={isLegalKwVerified}
+                    label={isLegalKwVerified ? t.legalVerifiedKw : t.legalUnverifiedKw}
+                    compact
+                  />
 
                   {isNewListing ? (
                     <motion.span
@@ -476,31 +469,16 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       {t.newOfferBadge}
                     </motion.span>
                   ) : null}
-                </div>
 
-                <span className="w-px h-6 bg-white/10 shrink-0 hidden sm:block"></span>
-
-                <div className="flex items-center gap-2 sm:gap-4 shrink-0 px-1">
                   <div className="flex flex-col items-center justify-center">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.offerId}</span>
                       <span className={`text-[11px] font-black tracking-[0.2em] px-2 py-0.5 rounded-md border ${themeColors.textActive} ${themeColors.bgActiveSoft} ${themeColors.borderActive}`}>{offer?.id || offer?._id}</span>
                   </div>
 
-                  <span className="w-px h-6 bg-white/10 hidden sm:block"></span>
-
-                  <div className="flex flex-col items-center justify-center hidden sm:flex">
+                  <div className="flex flex-col items-center justify-center">
                       <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
                       <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
                   </div>
-
-                  {!isLegalKwVerified ? (
-                    <div className={`shrink-0 rounded-full border px-3 py-2 ${verificationUi.cls}`}>
-                      <div className="flex items-center gap-1.5">
-                        <Shield size={12} />
-                        <span className="text-[9px] font-black uppercase tracking-[0.14em]">{verificationUi.label}</span>
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
 
               </div>

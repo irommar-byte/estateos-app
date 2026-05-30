@@ -1,41 +1,66 @@
 "use client";
 
-import { motion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 
 type Props = {
   label?: string;
   compact?: boolean;
+  /** true = zielony znaczek KW; false = szary, bez połysku */
+  active?: boolean;
 };
 
 export default function LegalVerifiedShieldBadge({
-  label = "zweryfikowane",
+  label,
   compact = false,
+  active = true,
 }: Props) {
+  const displayLabel = String(
+    label || (active ? "ZWERYFIKOWANE" : "NIEZWERYFIKOWANE"),
+  ).toUpperCase();
+
+  if (!active) {
+    return (
+      <div
+        className={`inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.04] ${
+          compact ? "px-2.5 py-1" : "px-3 py-1.5"
+        }`}
+        aria-label={displayLabel}
+      >
+        <ShieldCheck
+          size={compact ? 13 : 15}
+          className="shrink-0 text-zinc-500"
+          strokeWidth={2.2}
+        />
+        <span
+          className={`font-semibold uppercase tracking-[0.12em] text-zinc-400 ${
+            compact ? "text-[8px] sm:text-[9px]" : "text-[9px] sm:text-[10px]"
+          }`}
+        >
+          {displayLabel}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <motion.div
-      className={`inline-flex items-center gap-1.5 rounded-full border border-emerald-500/45 bg-emerald-500/12 ${
+    <div
+      className={`inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-500/10 ${
         compact ? "px-2.5 py-1" : "px-3 py-1.5"
       }`}
-      animate={{ boxShadow: ["0 0 0 rgba(16,185,129,0)", "0 0 18px rgba(16,185,129,0.35)", "0 0 0 rgba(16,185,129,0)"] }}
-      transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      aria-label={displayLabel}
     >
-      <motion.span
-        animate={{ scale: [1, 1.08, 1], opacity: [0.85, 1, 0.85] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-        className="inline-flex"
-      >
-        <ShieldCheck size={compact ? 14 : 16} className="text-emerald-400" strokeWidth={2.4} />
-      </motion.span>
-      <motion.span
-        className={`font-black lowercase tracking-wide text-emerald-300/95 ${
-          compact ? "text-[9px]" : "text-[10px]"
+      <ShieldCheck
+        size={compact ? 13 : 15}
+        className="shrink-0 text-emerald-400"
+        strokeWidth={2.2}
+      />
+      <span
+        className={`font-semibold uppercase tracking-[0.12em] text-emerald-300/95 ${
+          compact ? "text-[8px] sm:text-[9px]" : "text-[9px] sm:text-[10px]"
         }`}
-        animate={{ opacity: [0.72, 1, 0.72] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
       >
-        {label}
-      </motion.span>
-    </motion.div>
+        {displayLabel}
+      </span>
+    </div>
   );
 }
