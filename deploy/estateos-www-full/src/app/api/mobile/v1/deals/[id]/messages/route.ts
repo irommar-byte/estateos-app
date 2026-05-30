@@ -10,6 +10,7 @@ import {
   saveDealAttachmentForDealRoom,
 } from '@/lib/upload/offerMediaUpload';
 import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
+import { shouldSkipDealroomMessagePush } from '@/lib/dealroomPushContent';
 import { getDealNegotiationSnapshot } from '@/lib/dealBidNegotiation';
 
 export const dynamic = 'force-dynamic';
@@ -255,29 +256,32 @@ export async function POST(req: Request) {
     await prisma.deal.update({ where: { id: dealIdInt }, data: { updatedAt: new Date() } });
 
     const receiverId = deal.buyerId === userId ? deal.sellerId : deal.buyerId;
+    const skipPush = shouldSkipDealroomMessagePush(content);
     const shortPreview = content.slice(0, 120) || 'Nowa wiadomość';
 
-    let shouldSendPush = true;
-    try {
-      await prisma.notification.create({
-        data: {
-          userId: receiverId,
-          idempotencyKey: `deal_msg:deal:${dealIdInt}:msg:${newMessage.id}`,
-          title: 'Nowa wiadomość w Dealroom',
-          body: shortPreview,
-          type: 'DEAL_UPDATE',
-          targetType: 'DEAL',
-          targetId: String(dealIdInt),
-        },
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        shouldSendPush = false;
-      } else {
-        throw error;
+    let shouldSendPush = !skipPush;
+    if (!skipPush) {
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: receiverId,
+            idempotencyKey: `deal_msg:deal:${dealIdInt}:msg:${newMessage.id}`,
+            title: 'Nowa wiadomość w Dealroom',
+            body: shortPreview,
+            type: 'DEAL_UPDATE',
+            targetType: 'DEAL',
+            targetId: String(dealIdInt),
+          },
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          shouldSendPush = false;
+        } else {
+          throw error;
+        }
       }
     }
 

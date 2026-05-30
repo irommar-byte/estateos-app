@@ -49,11 +49,6 @@ export async function POST(req: Request) {
 
     console.log("MOBILE STATUS CHECK:", { before: existing?.status, after: newStatus });
 
-    if (existing?.status !== 'ACTIVE' && newStatus === 'ACTIVE') {
-      const { radarService } = await import("@/lib/services/radar.service");
-      await radarService.matchNewOffer(offer);
-    }
-
     return NextResponse.json({ success: true, offer });
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 });

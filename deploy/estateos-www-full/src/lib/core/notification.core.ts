@@ -1,6 +1,6 @@
 import { notificationService } from '@/lib/services/notification.service';
 import { prisma } from '@/lib/prisma';
-import { NotificationType as PrismaNotificationType } from '@prisma/client';
+import { NotificationType as PrismaNotificationType, Prisma } from '@prisma/client';
 
 export type NotificationType =
   | 'NEW_OFFER'
@@ -14,9 +14,9 @@ interface SendNotificationParams {
   title: string;
   body: string;
   data?: any;
+  idempotencyKey?: string;
 }
 
-// 🔥 MAPOWANIE CORE → PRISMA (adapter)
 function mapTypeToDb(type: NotificationType): PrismaNotificationType {
   switch (type) {
     case 'RADAR_MATCH':
@@ -33,30 +33,41 @@ function mapTypeToDb(type: NotificationType): PrismaNotificationType {
 }
 
 export async function sendNotification(params: SendNotificationParams) {
-  const { userId, type, title, body, data } = params;
+  const { userId, type, title, body, data, idempotencyKey } = params;
 
   console.log(`🧠 CORE → ${type} → user ${userId}`);
 
-  // 1. zapis do DB (z mapowaniem)
-  const notification = await prisma.notification.create({
-    data: {
-      userId,
-      title,
-      body,
-      type: mapTypeToDb(type),
-      status: 'PENDING',
-    },
-  });
+  let notification;
+  try {
+    notification = await prisma.notification.create({
+      data: {
+        userId,
+        title,
+        body,
+        type: mapTypeToDb(type),
+        status: 'PENDING',
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      },
+    });
+  } catch (error) {
+    if (
+      idempotencyKey &&
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      console.log(`🧠 CORE → ${type} → user ${userId} (duplicate idempotency, skip)`);
+      return;
+    }
+    throw error;
+  }
 
   try {
-    // 2. push
     await notificationService.sendPushToUser(userId, {
       title,
       body,
       data,
     });
 
-    // 3. update status
     await prisma.notification.update({
       where: { id: notification.id },
       data: {
@@ -66,7 +77,6 @@ export async function sendNotification(params: SendNotificationParams) {
     });
 
     console.log(`🚀 PUSH SENT: ${notification.id}`);
-
   } catch (e: any) {
     console.error('❌ PUSH ERROR:', e?.message || e);
 
