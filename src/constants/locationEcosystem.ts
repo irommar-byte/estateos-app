@@ -233,10 +233,6 @@ export function localityNameFromGeocodedPlace(
 ): string {
   const lat = Number(options?.lat);
   const lng = Number(options?.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
-    if (satellite) return satellite;
-  }
 
   const streetHint = String(options?.streetHint ?? '').trim();
   const streetNorm = normalizeLocationMatch(String(place.street ?? ''));
@@ -421,7 +417,11 @@ export function getLocationDraftRepairPatch(
     const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
     const city = String(draft.city ?? '').trim();
     const district = String(draft.district ?? '').trim();
-    if (satellite && city !== REST_OF_COUNTRY_CITY) {
+    const envelopeCity = detectStrictCityFromCoordinates(lat, lng);
+    const cityIsMetro =
+      envelopeCity &&
+      (city === envelopeCity || detectStrictCityFromGeocodeText(city) === envelopeCity);
+    if (satellite && cityIsMetro) {
       return {
         city: REST_OF_COUNTRY_CITY,
         district: satellite,
@@ -429,9 +429,14 @@ export function getLocationDraftRepairPatch(
         localityCountryCode: countryIso,
       };
     }
+    const districtLooksLikeMetroArtifact =
+      !district ||
+      district === 'Ogólna' ||
+      Boolean(envelopeCity && isStrictCityDistrictName(envelopeCity, district));
     if (
       satellite &&
       city === REST_OF_COUNTRY_CITY &&
+      districtLooksLikeMetroArtifact &&
       normalizeLocationMatch(district) !== normalizeLocationMatch(satellite)
     ) {
       return {
@@ -975,6 +980,89 @@ export function detectSatelliteMunicipalityFromCoordinates(lat: number, lng: num
   return best?.name ?? null;
 }
 
+function isStrictCityDistrictName(strictCity: string, district: string): boolean {
+  const norm = normalizeLocationMatch(String(district ?? '').trim());
+  if (!norm) return false;
+  const districts = STRICT_CITY_DISTRICTS[strictCity] || [];
+  return districts.some((d) => normalizeLocationMatch(d) === norm);
+}
+
+/** Geokoder podał inną gminę niż promień satelity (np. Grodzisk ≠ Milanówek) — ufaj geokoderowi. */
+function geocoderNamesDistinctMunicipality(place: GeocodedPlaceInput, satellite: string): boolean {
+  const independent = extractIndependentMunicipalityFromGeocodedPlace(place);
+  if (!independent) return false;
+  return normalizeLocationMatch(independent) !== normalizeLocationMatch(satellite);
+}
+
+/**
+ * Satelita z promienia tylko gdy geokoder błędnie przypisuje metropolię (Warszawa/Ursus zamiast Pruszków).
+ * Nie nadpisuj jawnej miejscowości z reverse-geocode pinezki.
+ */
+function shouldUseSatelliteOverGeocoder(
+  place: GeocodedPlaceInput,
+  satellite: string,
+  streetHint: string,
+  lat: number,
+  lng: number,
+): boolean {
+  const envelopeCity = detectStrictCityFromCoordinates(lat, lng);
+  if (!envelopeCity) return false;
+  if (geocoderNamesDistinctMunicipality(place, satellite)) return false;
+
+  const geoCity = String(place.city ?? '').trim();
+  const geoStrict = detectStrictCityFromGeocodeText(geoCity);
+  if (
+    !geoStrict &&
+    geoCity &&
+    normalizeLocationMatch(geoCity) === normalizeLocationMatch(satellite)
+  ) {
+    return false;
+  }
+
+  if (geoStrict === envelopeCity) return true;
+  if (geocoderConfirmsStrictCity(envelopeCity, place, streetHint)) return true;
+  const district = String(place.district ?? '').trim();
+  if (district && isStrictCityDistrictName(envelopeCity, district)) return true;
+  return false;
+}
+
+/** Ufaj polu city z reverse-geocode zamiast promienia satelity — tylko gdy to realna gmina, nie osiedle/ulica w mieście strict. */
+function shouldTrustGeocoderMunicipalityOverCoords(
+  geoMunicipality: string,
+  place: GeocodedPlaceInput,
+  streetHint: string,
+  lat: number,
+  lng: number,
+  satellite: string | null,
+): boolean {
+  if (
+    satellite &&
+    normalizeLocationMatch(geoMunicipality) === normalizeLocationMatch(satellite)
+  ) {
+    return false;
+  }
+
+  const envelopeCity = detectStrictCityFromCoordinates(lat, lng);
+  if (!envelopeCity) return true;
+
+  if (!isPinWithinStrictCityEnvelope(envelopeCity, lat, lng)) return true;
+
+  const normGeo = normalizeLocationMatch(geoMunicipality);
+  const normDistrict = normalizeLocationMatch(String(place.district ?? ''));
+  if (normGeo === normDistrict) return false;
+  if (isStrictCityDistrictName(envelopeCity, geoMunicipality)) return false;
+  if (isMislabeledStreetAsCity(streetHint, place)) return false;
+  if (geocoderConfirmsStrictCity(envelopeCity, place, streetHint)) return false;
+  if (pinMatchesStrictCity(envelopeCity, geoMunicipality, place.district)) return false;
+  if (detectStrictCityFromGeocodeText(String(place.subregion ?? '')) === envelopeCity) {
+    return false;
+  }
+  if (detectStrictCityFromGeocodeText(String(place.region ?? '')) === envelopeCity) {
+    return false;
+  }
+  return true;
+}
+
 /** Dopasowanie filtra miasta — tylko konkretna aglomeracja (bez „Reszta kraju”). */
 export function offerMatchesCityFilter(raw: Record<string, unknown>, selectedCity: string): boolean {
   const sel = normalizeLocationMatch(String(selectedCity || '').trim());
@@ -1447,7 +1535,7 @@ function resolveLocalityOutsideStrictEnvelope(
   countryFields: { localityCountry: string; localityCountryCode: string },
 ): PinLocationResolution | null {
   const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
-  if (satellite) {
+  if (satellite && shouldUseSatelliteOverGeocoder(place, satellite, streetHint, lat, lng)) {
     return {
       mode: 'locality',
       city: REST_OF_COUNTRY_CITY,
@@ -1517,7 +1605,27 @@ export function resolvePinLocationFromGeocodedPlace(
   // Pinezka w granicach miasta strict — tylko gdy geokoder / miejscowość to potwierdzają.
   if (hasCoords) {
     const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
-    if (satellite) {
+    const geoMunicipality = extractIndependentMunicipalityFromGeocodedPlace(place);
+    if (
+      geoMunicipality &&
+      shouldTrustGeocoderMunicipalityOverCoords(
+        geoMunicipality,
+        place,
+        streetHint,
+        lat,
+        lng,
+        satellite,
+      )
+    ) {
+      return {
+        mode: 'locality',
+        city: REST_OF_COUNTRY_CITY,
+        district: geoMunicipality,
+        ...countryFields,
+      };
+    }
+
+    if (satellite && shouldUseSatelliteOverGeocoder(place, satellite, streetHint, lat, lng)) {
       return {
         mode: 'locality',
         city: REST_OF_COUNTRY_CITY,

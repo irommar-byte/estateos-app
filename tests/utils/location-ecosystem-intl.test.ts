@@ -427,6 +427,34 @@ describe('locationEcosystem international', () => {
     }
   });
 
+  it('Grodzisk Mazowiecki pin uses geocoder locality, not overlapping Milanówek satellite circle', () => {
+    const lat = 52.104;
+    const lng = 20.629;
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Grodzisk Mazowiecki',
+        street: 'Cicha',
+        name: 'Cicha 7',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Cicha 7', lat, lng },
+    );
+    assert.equal(resolution.mode, 'locality');
+    if (resolution.mode === 'locality') {
+      assert.equal(resolution.city, REST_OF_COUNTRY_CITY);
+      assert.equal(normLoc(resolution.district), normLoc('Grodzisk Mazowiecki'));
+    }
+    assert.equal(
+      normLoc(
+        localityNameFromGeocodedPlace(
+          { city: 'Grodzisk Mazowiecki', street: 'Cicha', isoCountryCode: 'PL' },
+          { streetHint: 'Cicha 7', lat, lng },
+        ),
+      ),
+      normLoc('Grodzisk Mazowiecki'),
+    );
+  });
+
   it('repair patch fixes Warszawa/Ursus to Pruszków when pin is in Pruszków', () => {
     const patch = getLocationDraftRepairPatch(
       {
