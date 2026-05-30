@@ -43,14 +43,28 @@ export default function PublicProfileModal({
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showDistribution, setShowDistribution] = useState(false);
+  const [viewUserId, setViewUserId] = useState<string | null>(userId);
+  const [profileStack, setProfileStack] = useState<string[]>([]);
 
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (isOpen && userId) {
+      setViewUserId(userId);
+      setProfileStack([]);
+      setShowDistribution(false);
+    } else if (!isOpen) {
+      setViewUserId(null);
+      setProfileStack([]);
+      setData(null);
+    }
+  }, [isOpen, userId]);
+
+  useEffect(() => {
+    if (isOpen && viewUserId) {
       setLoading(true);
       setShowDistribution(false);
-      fetch(`/api/users/${userId}/public`, { cache: "no-store" })
+      fetch(`/api/users/${viewUserId}/public`, { cache: "no-store" })
         .then(async (res) => {
           const d = await res.json();
           if (res.ok && d?.user) setData(d);
@@ -58,10 +72,32 @@ export default function PublicProfileModal({
         })
         .catch(() => setData(null))
         .finally(() => setLoading(false));
-    } else {
+    } else if (!viewUserId) {
       setData(null);
     }
-  }, [isOpen, userId]);
+  }, [isOpen, viewUserId]);
+
+  const openReviewerProfile = (reviewerId: number | string | null | undefined) => {
+    const nextId = String(reviewerId ?? "").trim();
+    if (!nextId || nextId === viewUserId) return;
+    setProfileStack((prev) => (viewUserId ? [...prev, viewUserId] : prev));
+    setViewUserId(nextId);
+  };
+
+  const goBackProfile = () => {
+    setProfileStack((prev) => {
+      const stack = [...prev];
+      const previousId = stack.pop();
+      if (previousId) setViewUserId(previousId);
+      return stack;
+    });
+  };
+
+  const handleClose = () => {
+    setProfileStack([]);
+    setViewUserId(null);
+    onClose();
+  };
 
   if (!mounted || !isOpen) return null;
 
@@ -82,7 +118,7 @@ export default function PublicProfileModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={handleClose}
         className="absolute inset-0 bg-black/50 backdrop-blur-md"
       />
 
@@ -97,7 +133,7 @@ export default function PublicProfileModal({
 
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-5 right-5 z-20 w-9 h-9 rounded-full border border-[var(--eos-border)] bg-[var(--eos-bg)] flex items-center justify-center text-[var(--eos-muted)] hover:text-[var(--eos-text)] transition-colors"
           aria-label="Close"
         >
@@ -105,7 +141,19 @@ export default function PublicProfileModal({
         </button>
 
         <div className="px-5 pt-5 pb-2 border-b border-[var(--eos-border)] relative z-10">
-          <h3 className="text-lg font-black tracking-tight">{p.title}</h3>
+          <div className="flex items-center gap-2 pr-10">
+            {profileStack.length > 0 ? (
+              <button
+                type="button"
+                onClick={goBackProfile}
+                className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-500 transition-colors shrink-0"
+              >
+                ← {p.backToProfile}
+              </button>
+            ) : (
+              <h3 className="text-lg font-black tracking-tight">{p.title}</h3>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -292,25 +340,44 @@ export default function PublicProfileModal({
                   {p.reviewsSection}
                 </h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-                  {reviews.slice(0, 8).map((r: any) => (
+                  {reviews.slice(0, 8).map((r: any) => {
+                    const reviewerLabel =
+                      String(r.reviewerName ?? "").trim() ||
+                      fmtPresentation(p.reviewerFallback, { id: r.reviewerId ?? "?" });
+                    const canOpenReviewer = Boolean(r.reviewerId);
+                    return (
                     <div key={r.id} className="p-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)]">
-                      <div className="flex justify-between items-start mb-1.5">
-                        <div className="flex gap-0.5">
-                          {[1, 2, 3, 4, 5].map((i) => (
-                            <Star
-                              key={i}
-                              size={10}
-                              className={i <= r.rating ? "text-amber-500 fill-amber-500" : "text-[var(--eos-border)]"}
-                            />
-                          ))}
+                      <div className="flex justify-between items-start gap-2 mb-1.5">
+                        <div className="flex-1 min-w-0">
+                          {canOpenReviewer ? (
+                            <button
+                              type="button"
+                              onClick={() => openReviewerProfile(r.reviewerId)}
+                              className="text-xs font-bold text-[var(--eos-text)] hover:text-emerald-600 transition-colors text-left truncate block max-w-full mb-1"
+                            >
+                              {reviewerLabel}
+                            </button>
+                          ) : (
+                            <p className="text-xs font-bold text-[var(--eos-text)] mb-1 truncate">{reviewerLabel}</p>
+                          )}
+                          <div className="flex gap-0.5">
+                            {[1, 2, 3, 4, 5].map((i) => (
+                              <Star
+                                key={i}
+                                size={10}
+                                className={i <= r.rating ? "text-amber-500 fill-amber-500" : "text-[var(--eos-border)]"}
+                              />
+                            ))}
+                          </div>
                         </div>
-                        <span className="text-[8px] text-[var(--eos-subtle)] uppercase tracking-widest">
+                        <span className="text-[8px] text-[var(--eos-subtle)] uppercase tracking-widest shrink-0">
                           {new Date(r.createdAt).toLocaleDateString(locale === "en" ? "en-GB" : "pl-PL")}
                         </span>
                       </div>
                       <p className="text-xs text-[var(--eos-muted)] leading-relaxed">{r.comment || p.reviewNoComment}</p>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (

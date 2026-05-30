@@ -17,6 +17,8 @@ export type PresentationFlowDictionary = {
     reviewsSection: string;
     noReviewsUser: string;
     reviewNoComment: string;
+    reviewerFallback: string;
+    backToProfile: string;
   };
   outcome: {
     badge: string;
@@ -83,6 +85,8 @@ const pl: PresentationFlowDictionary = {
     reviewsSection: 'Opinie po prezentacjach',
     noReviewsUser: 'Brak opinii dla tego użytkownika.',
     reviewNoComment: 'Bez komentarza',
+    reviewerFallback: 'Użytkownik #{id}',
+    backToProfile: 'Wróć do poprzedniego profilu',
   },
   outcome: {
     badge: 'Podsumowanie wizyty',
@@ -151,6 +155,8 @@ const en: PresentationFlowDictionary = {
     reviewsSection: 'Reviews after viewings',
     noReviewsUser: 'No reviews for this user yet.',
     reviewNoComment: 'No comment',
+    reviewerFallback: 'User #{id}',
+    backToProfile: 'Back to previous profile',
   },
   outcome: {
     badge: 'Viewing summary',
