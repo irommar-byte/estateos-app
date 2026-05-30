@@ -410,7 +410,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           const clusterEl = buildClusterMarkerElement(count, accent, () => {
             const source = mapInstance.getSource(OFFERS_SOURCE_ID) as mapboxgl.GeoJSONSource;
             source.getClusterExpansionZoom(Number(props.cluster_id), (err, zoom) => {
-              if (err || !map.current) return;
+              if (err || !map.current || zoom == null) return;
               mapInstance.easeTo({ center: renderCoords, zoom: zoom + 0.5, duration: 650, essential: true });
             });
           });
