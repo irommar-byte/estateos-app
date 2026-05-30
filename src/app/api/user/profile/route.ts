@@ -27,6 +27,7 @@ const PROFILE_SELECT = {
   searchRooms: true,
   searchDistricts: true,
   searchAmenities: true,
+  searchTransactionType: true,
   /** Pola JSON są na modelu `DiscoveryProfile`, nie na `User` — select na User powodował P2019 runtime. */
   discoveryProfile: {
     select: {
