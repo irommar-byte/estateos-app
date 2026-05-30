@@ -795,21 +795,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
   const applyLocationFieldsPatch = useCallback((patch: LocationDraftFieldsPatch | null) => {
     if (!patch) return;
     const latest = useOfferStore.getState().draft;
-    let merged: LocationDraftFieldsPatch = { ...patch };
-    const lat = Number(latest.lat);
-    const lng = Number(latest.lng);
-    const iso = localityCountryIso(merged.localityCountryCode ?? latest.localityCountryCode, merged.localityCountry ?? latest.localityCountry);
-    if (Number.isFinite(lat) && Number.isFinite(lng) && iso === DEFAULT_LOCALITY_COUNTRY_CODE) {
-      const strictCity = detectStrictCityFromCoordinates(lat, lng);
-      if (strictCity && STRICT_CITY_SET.has(strictCity)) {
-        merged = { ...merged, city: strictCity };
-        const allowed = DISTRICTS_DATA[strictCity as keyof typeof DISTRICTS_DATA] || [];
-        const district = String(merged.district ?? latest.district ?? '').trim();
-        if (!district || (allowed.length > 0 && !allowed.includes(district))) {
-          merged.district = getClosestDistrict(lat, lng, strictCity, null);
-        }
-      }
-    }
+    const merged: LocationDraftFieldsPatch = { ...patch };
     if (!locationDraftPatchHasChanges(latest, merged)) return;
     useOfferStore.getState().updateDraft(merged);
   }, []);

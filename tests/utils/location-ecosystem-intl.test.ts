@@ -23,6 +23,14 @@ import {
   REST_OF_COUNTRY_CITY,
 } from '../../src/constants/locationEcosystem';
 
+function normLoc(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .trim();
+}
+
 describe('locationEcosystem international', () => {
   it('does not treat US state abbrev as country code in district', () => {
     const pres = getDraftLocationPresentation({
@@ -377,6 +385,61 @@ describe('locationEcosystem international', () => {
     if (resolution.mode === 'strict') {
       assert.equal(resolution.strictCity, 'Warszawa');
     }
+  });
+
+  it('Pruszków pin is not classified as Warszawa (Wiśniowa area)', () => {
+    const lat = 52.1617;
+    const lng = 20.8101;
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Pruszków',
+        street: 'Wiśniowa',
+        district: 'Ursus',
+        subregion: 'Pruszków',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Wiśniowa 79', lat, lng },
+    );
+    assert.equal(resolution.mode, 'locality');
+    if (resolution.mode === 'locality') {
+      assert.equal(resolution.city, REST_OF_COUNTRY_CITY);
+      assert.equal(normLoc(resolution.district), normLoc('Pruszków'));
+    }
+  });
+
+  it('Pruszków pin with wrong geocoder Warszawa/Ursus still resolves to Pruszków', () => {
+    const lat = 52.1617;
+    const lng = 20.8101;
+    const resolution = resolvePinLocationFromGeocodedPlace(
+      {
+        city: 'Warszawa',
+        street: 'Wiśniowa',
+        district: 'Ursus',
+        subregion: 'Warszawa',
+        isoCountryCode: 'PL',
+      },
+      { streetHint: 'Wiśniowa 79', lat, lng },
+    );
+    assert.equal(resolution.mode, 'locality');
+    if (resolution.mode === 'locality') {
+      assert.equal(resolution.city, REST_OF_COUNTRY_CITY);
+      assert.equal(normLoc(resolution.district), normLoc('Pruszków'));
+    }
+  });
+
+  it('repair patch fixes Warszawa/Ursus to Pruszków when pin is in Pruszków', () => {
+    const patch = getLocationDraftRepairPatch(
+      {
+        city: 'Warszawa',
+        district: 'Ursus',
+        localityCountry: 'Polska',
+        localityCountryCode: 'PL',
+      },
+      { lat: 52.1617, lng: 20.8101 },
+    );
+    assert.ok(patch);
+    assert.equal(patch?.city, REST_OF_COUNTRY_CITY);
+    assert.equal(normLoc(patch?.district ?? ''), normLoc('Pruszków'));
   });
 
   it('repair patch does not demote Warszawa to Reszta when district is street name', () => {

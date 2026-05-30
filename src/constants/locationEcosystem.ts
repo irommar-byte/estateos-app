@@ -11,6 +11,35 @@ const KNOWN_STANDALONE_LOCALITIES = new Set([
   'sitno',
 ]);
 
+/** Gminy/miasta satelickie wokół metropolii — pinezka w promieniu ≠ dzielnica macierzystego miasta. */
+const METRO_SATELLITE_MUNICIPALITIES: Array<{
+  name: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}> = [
+  { name: 'Pruszków', lat: 52.161, lng: 20.812, radiusKm: 7 },
+  { name: 'Piaseczno', lat: 52.081, lng: 21.024, radiusKm: 7 },
+  { name: 'Legionowo', lat: 52.401, lng: 20.926, radiusKm: 6 },
+  { name: 'Otwock', lat: 52.105, lng: 21.261, radiusKm: 7 },
+  { name: 'Marki', lat: 52.321, lng: 21.106, radiusKm: 5 },
+  { name: 'Ząbki', lat: 52.292, lng: 21.111, radiusKm: 4 },
+  { name: 'Piastów', lat: 52.184, lng: 20.839, radiusKm: 4 },
+  { name: 'Raszyn', lat: 52.156, lng: 20.882, radiusKm: 5 },
+  { name: 'Konstancin-Jeziorna', lat: 52.091, lng: 21.117, radiusKm: 6 },
+  { name: 'Józefów', lat: 52.137, lng: 21.236, radiusKm: 5 },
+  { name: 'Sulejówek', lat: 52.244, lng: 21.269, radiusKm: 4 },
+  { name: 'Wołomin', lat: 52.348, lng: 21.242, radiusKm: 6 },
+  { name: 'Łomianki', lat: 52.335, lng: 20.896, radiusKm: 4 },
+  { name: 'Milanówek', lat: 52.118, lng: 20.671, radiusKm: 4 },
+  { name: 'Brwinów', lat: 52.142, lng: 20.699, radiusKm: 4 },
+  { name: 'Nadarzyn', lat: 52.095, lng: 20.817, radiusKm: 5 },
+  { name: 'Wieliczka', lat: 49.987, lng: 20.065, radiusKm: 7 },
+  { name: 'Skawina', lat: 49.976, lng: 19.828, radiusKm: 6 },
+  { name: 'Zielonki', lat: 50.115, lng: 19.932, radiusKm: 5 },
+  { name: 'Mogilany', lat: 49.938, lng: 19.889, radiusKm: 5 },
+];
+
 function isKnownStandaloneLocality(name: unknown): boolean {
   const norm = normalizeLocationMatch(String(name ?? '').trim());
   return norm.length > 0 && KNOWN_STANDALONE_LOCALITIES.has(norm);
@@ -389,21 +418,28 @@ export function getLocationDraftRepairPatch(
   const countryIso = localityCountryIso(draft.localityCountryCode, draft.localityCountry);
 
   if (hasCoords && countryIso === DEFAULT_LOCALITY_COUNTRY_CODE) {
-    const strictFromPin = detectStrictCityFromCoordinates(lat, lng);
+    const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
     const city = String(draft.city ?? '').trim();
-    if (strictFromPin) {
-      const inStrictEnvelope = isPinWithinStrictCityEnvelope(strictFromPin, lat, lng);
-      if (
-        inStrictEnvelope &&
-        (city === REST_OF_COUNTRY_CITY || (city && !isStrictCityName(city)))
-      ) {
-        return {
-          city: strictFromPin,
-          district: '',
-          localityCountry: normalizeLocalityCountryLabel(draft.localityCountry),
-          localityCountryCode: countryIso,
-        };
-      }
+    const district = String(draft.district ?? '').trim();
+    if (satellite && city !== REST_OF_COUNTRY_CITY) {
+      return {
+        city: REST_OF_COUNTRY_CITY,
+        district: satellite,
+        localityCountry: normalizeLocalityCountryLabel(draft.localityCountry),
+        localityCountryCode: countryIso,
+      };
+    }
+    if (
+      satellite &&
+      city === REST_OF_COUNTRY_CITY &&
+      normalizeLocationMatch(district) !== normalizeLocationMatch(satellite)
+    ) {
+      return {
+        city: REST_OF_COUNTRY_CITY,
+        district: satellite,
+        localityCountry: normalizeLocalityCountryLabel(draft.localityCountry),
+        localityCountryCode: countryIso,
+      };
     }
   }
 
@@ -926,6 +962,19 @@ export function detectStrictCityFromCoordinates(lat: number, lng: number): strin
   return bestCity;
 }
 
+/** Pinezka w gminie satelickiej metropolii (np. Pruszków przy Warszawie). */
+export function detectSatelliteMunicipalityFromCoordinates(lat: number, lng: number): string | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  let best: { name: string; km: number } | null = null;
+  for (const sat of METRO_SATELLITE_MUNICIPALITIES) {
+    const km = haversineKm(lat, lng, sat.lat, sat.lng);
+    if (km <= sat.radiusKm && (!best || km < best.km)) {
+      best = { name: sat.name, km };
+    }
+  }
+  return best?.name ?? null;
+}
+
 /** Dopasowanie filtra miasta — tylko konkretna aglomeracja (bez „Reszta kraju”). */
 export function offerMatchesCityFilter(raw: Record<string, unknown>, selectedCity: string): boolean {
   const sel = normalizeLocationMatch(String(selectedCity || '').trim());
@@ -1096,6 +1145,18 @@ export function detectStrictCityFromGeocodeText(raw: string): string | null {
 export function detectStrictCityFromGeocodedPlace(place: GeocodedPlaceInput): string | null {
   const fromCity = detectStrictCityFromGeocodeText(place.city || '');
   if (fromCity) return fromCity;
+
+  const independent = extractIndependentMunicipalityFromGeocodedPlace(place);
+  const metroFromRegion = detectStrictCityFromGeocodeText(
+    [place.subregion, place.region].filter(Boolean).join(' '),
+  );
+  if (
+    independent &&
+    !metroFromRegion &&
+    normalizeLocationMatch(independent) === normalizeLocationMatch(String(place.city ?? ''))
+  ) {
+    return null;
+  }
 
   const districtToken = String(place.district ?? '').trim();
   if (districtToken) {
@@ -1317,6 +1378,111 @@ export type PinLocationResolution =
       localityCountryCode: string;
     };
 
+/** Osobna gmina/miejscowość z geokodera — nie miasto strict ani jego dzielnica. */
+export function extractIndependentMunicipalityFromGeocodedPlace(place: GeocodedPlaceInput): string | null {
+  for (const raw of [place.city, place.subregion]) {
+    const token = String(raw ?? '').trim();
+    if (!token) continue;
+    if (/powiat|gmina|województwo|wojewodztwo/i.test(token)) continue;
+    if (/^(ul\.?|al\.?|pl\.?|os\.?|ulica|aleja|plac|osiedle)\s/i.test(token)) continue;
+    if (detectStrictCityFromGeocodeText(token)) continue;
+    const street = String(place.street ?? '').trim();
+    if (street && normalizeLocationMatch(token) === normalizeLocationMatch(street)) continue;
+    const norm = normalizeLocationMatch(token);
+    let isDistrict = false;
+    for (const city of STRICT_CITIES) {
+      if (city === REST_OF_COUNTRY_CITY) continue;
+      const districts = STRICT_CITY_DISTRICTS[city] || [];
+      if (districts.some((d) => normalizeLocationMatch(d) === norm)) {
+        isDistrict = true;
+        break;
+      }
+    }
+    if (isDistrict) continue;
+    return token;
+  }
+  return null;
+}
+
+function coordStrictCityConfirmedByGeocoder(
+  strictCity: string,
+  place: GeocodedPlaceInput,
+  streetHint: string,
+  lat: number,
+  lng: number,
+): boolean {
+  if (detectSatelliteMunicipalityFromCoordinates(lat, lng)) return false;
+
+  const geocodeStrict = detectStrictCityFromGeocodeText(String(place.city ?? ''));
+  if (geocodeStrict === strictCity) return true;
+
+  const regionStrict = detectStrictCityFromGeocodeText(
+    [place.subregion, place.region].filter(Boolean).join(' '),
+  );
+  if (regionStrict === strictCity && isPinWithinStrictCityEnvelope(strictCity, lat, lng)) {
+    const cityOnlyIndependent = extractIndependentMunicipalityFromGeocodedPlace({ city: place.city });
+    if (cityOnlyIndependent) {
+      const norm = normalizeLocationMatch(cityOnlyIndependent);
+      const isSatellite = METRO_SATELLITE_MUNICIPALITIES.some(
+        (s) => normalizeLocationMatch(s.name) === norm,
+      );
+      if (isSatellite || isKnownStandaloneLocality(cityOnlyIndependent)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const pinLocality = localityNameFromGeocodedPlace(place, { streetHint, lat, lng });
+  if (pinMatchesStrictCity(strictCity, pinLocality, place.district)) return true;
+  return geocoderConfirmsStrictCity(strictCity, place, streetHint);
+}
+
+function resolveLocalityOutsideStrictEnvelope(
+  place: GeocodedPlaceInput,
+  streetHint: string,
+  lat: number,
+  lng: number,
+  envelopeCity: string,
+  countryFields: { localityCountry: string; localityCountryCode: string },
+): PinLocationResolution | null {
+  const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
+  if (satellite) {
+    return {
+      mode: 'locality',
+      city: REST_OF_COUNTRY_CITY,
+      district: satellite,
+      ...countryFields,
+    };
+  }
+
+  const independent = extractIndependentMunicipalityFromGeocodedPlace(place);
+  if (independent && !pinMatchesStrictCity(envelopeCity, independent, place.district)) {
+    return {
+      mode: 'locality',
+      city: REST_OF_COUNTRY_CITY,
+      district: independent,
+      ...countryFields,
+    };
+  }
+
+  const pinLocality = localityNameFromGeocodedPlace(place, { streetHint, lat, lng });
+  if (
+    pinLocality &&
+    pinLocality !== 'Ogólna' &&
+    !pinMatchesStrictCity(envelopeCity, pinLocality, place.district)
+  ) {
+    return {
+      mode: 'locality',
+      city: REST_OF_COUNTRY_CITY,
+      district: pinLocality,
+      ...countryFields,
+    };
+  }
+
+  return null;
+}
+
 /**
  * Lokalizacja z reverse-geocode pinezki.
  * Wieś podmiejska (np. Sitaniec przy Zamościu) → Reszta kraju + miejscowość, nie dzielnica miasta.
@@ -1342,14 +1508,35 @@ export function resolvePinLocationFromGeocodedPlace(
   const strictCandidate = strictFromCity || strictFromPlace;
   const villageFromStreet = extractVillageLocalityFromStreet(streetHint, strictCandidate);
 
-  // Pinezka w granicach miasta strict → zawsze miasto (nie ulica/osiedle z geokodera).
+  // Pinezka w granicach miasta strict — tylko gdy geokoder / miejscowość to potwierdzają.
   if (hasCoords) {
-    const coordCity =
+    const satellite = detectSatelliteMunicipalityFromCoordinates(lat, lng);
+    if (satellite) {
+      return {
+        mode: 'locality',
+        city: REST_OF_COUNTRY_CITY,
+        district: satellite,
+        ...countryFields,
+      };
+    }
+
+    const envelopeCity =
       anchorStrictCity && isPinWithinStrictCityEnvelope(anchorStrictCity, lat, lng)
         ? anchorStrictCity
         : detectStrictCityFromCoordinates(lat, lng);
-    if (coordCity) {
-      return { mode: 'strict', strictCity: coordCity };
+    if (envelopeCity) {
+      if (coordStrictCityConfirmedByGeocoder(envelopeCity, place, streetHint, lat, lng)) {
+        return { mode: 'strict', strictCity: envelopeCity };
+      }
+      const outside = resolveLocalityOutsideStrictEnvelope(
+        place,
+        streetHint,
+        lat,
+        lng,
+        envelopeCity,
+        countryFields,
+      );
+      if (outside) return outside;
     }
   }
 
