@@ -687,6 +687,34 @@ export async function activePublicationOfferIds(offerIds: number[]) {
   return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
 }
 
+/** Data bieżącej sesji na rynku; `marketRenewedAt` gdy oferta wróciła z archiwum. */
+export async function getOfferMarketListingMeta(offerId: number): Promise<{
+  marketListedAt: string | null;
+  marketRenewedAt: string | null;
+}> {
+  await ensureOfferPublicationSchema();
+  const active = await activePublicationForOffer(prisma, offerId);
+  if (!active) {
+    return { marketListedAt: null, marketRenewedAt: null };
+  }
+
+  const endedRows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
+    `
+      SELECT COUNT(*) AS total
+      FROM OfferPublication
+      WHERE offerId = ? AND status = 'ENDED'
+    `,
+    offerId,
+  )) as Array<{ total: number | bigint }>;
+  const endedCount = Number(endedRows[0]?.total ?? 0);
+  const startedAtIso = new Date(active.startedAt).toISOString();
+
+  return {
+    marketListedAt: startedAtIso,
+    marketRenewedAt: endedCount > 0 ? startedAtIso : null,
+  };
+}
+
 export type AdminOfferApprovalResult =
   | { ok: true; endsAt: Date; alreadyOnMarket: boolean }
   | { ok: false; code: 'NO_PENDING_PUBLICATION' | 'ACTIVATION_FAILED'; message: string };

@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { enrichMobileUserWithPublicationFlags } from '@/lib/userPublicationFlags';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 import {
   buildPhoneLookupVariants,
@@ -60,7 +61,9 @@ async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
 
   return NextResponse.json({
     success: true,
-    user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
+    user: fullUser
+      ? await enrichMobileUserWithPublicationFlags({ ...shapeMobileUser(fullUser), hasPasskey })
+      : null,
     token,
   });
 }
@@ -87,7 +90,10 @@ export async function GET(req: Request) {
     }
 
     const hasPasskey = await userHasRegisteredPasskey(userId);
-    return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey } });
+    return NextResponse.json({
+      success: true,
+      user: await enrichMobileUserWithPublicationFlags({ ...shapeMobileUser(user), hasPasskey }),
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     return NextResponse.json({ success: false, message }, { status: 500 });

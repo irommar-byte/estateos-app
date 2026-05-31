@@ -11,6 +11,8 @@ import {
   normalizePhoneE164,
 } from '@/lib/phoneE164';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
+import { enrichMobileUserWithPublicationFlags } from '@/lib/userPublicationFlags';
+import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
 
 const normalizeEmail = (value: unknown) => String(value || '').toLowerCase().trim();
 
@@ -109,11 +111,17 @@ export async function POST(req: Request) {
       html: buildWelcomeEmailHtml({ userName: user.name }),
     });
 
+    try {
+      await ensureWelcomePromoCardForUser(user.id);
+    } catch (welcomeErr) {
+      console.warn('[register] welcome promo card', welcomeErr);
+    }
+
     const session = encryptSession({ id: user.id, email: user.email, role: user.role || 'USER' });
 
     (await cookies()).set('estateos_session', session, { httpOnly: true, path: '/' });
 
-    const shapedUser = shapeMobileUser(user);
+    const shapedUser = await enrichMobileUserWithPublicationFlags(shapeMobileUser(user));
 
     return NextResponse.json({
       success: true,

@@ -29,7 +29,7 @@ type Props = {
   onWalletChange?: () => void;
 };
 
-export default function PublicationWalletModal({ isOpen, onClose, onWalletChange }: Props) {
+export default function PublicationWalletModal({ isOpen, onClose }: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -40,14 +40,14 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
     setMounted(true);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setLoadError(null);
     try {
       const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store", credentials: "include" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        setWallet(null);
+        if (!opts?.silent) setWallet(null);
         setLoadError(String(data?.error || data?.message || "Nie udało się załadować portfela."));
         return;
       }
@@ -58,14 +58,14 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
         coupons: Array.isArray(data.coupons) ? data.coupons : [],
         couponCount: Number(data.couponCount || 0),
       });
-      onWalletChange?.();
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  }, [onWalletChange]);
+  }, []);
 
   useEffect(() => {
-    if (isOpen) void load();
+    if (!isOpen) return;
+    void load();
   }, [isOpen, load]);
 
   useEffect(() => {

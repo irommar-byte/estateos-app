@@ -50,10 +50,8 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
   const firstFreeUsed = Number(firstFreeRows[0]?.firstFreePublicationUsed ?? 0) > 0;
 
   const promoCards = await listProfilePromoCardsForUser(userId);
-  // UI parity with mobile coupon section: show all active (unused) bonus cards.
   const allVisibleCoupons = promoCards.filter((c) => !c.couponUsed);
 
-  // Publication parity with mobile publication flow: only redeemable publication coupons.
   const publicationCoupons = promoCards.filter((c) => {
     if (c.couponUsed) return false;
     if (c.purpose === "off_market_preview") return false;
@@ -66,8 +64,11 @@ export async function getPublicationWallet(userId: number, locale: "pl" | "en" =
   });
 
   const coupons = [...allVisibleCoupons];
+  const welcomeUsedOnServer =
+    firstFreeUsed ||
+    promoCards.some((c) => c.kind === "welcome_coupon" && c.couponUsed);
 
-  if (!firstFreeUsed && !coupons.some((c) => c.kind === "welcome_coupon")) {
+  if (!welcomeUsedOnServer && !coupons.some((c) => c.kind === "welcome_coupon")) {
     coupons.unshift({
       id: `welcome_${userId}`,
       kind: "welcome_coupon",

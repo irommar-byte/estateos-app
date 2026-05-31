@@ -5,6 +5,7 @@ export type OfferPageCopy = {
   offerId: string;
   views: string;
   listedSince: string;
+  renewedOn: string;
   agency: string;
   privateOwner: string;
   verified: string;
@@ -81,6 +82,7 @@ const PL: OfferPageCopy = {
   offerId: "ID Oferty",
   views: "Odsłony",
   listedSince: "Dodano",
+  renewedOn: "Odnowiono",
   agency: "Agencja",
   privateOwner: "Właściciel prywatny",
   verified: "Zweryfikowana",
@@ -160,6 +162,7 @@ const EN: OfferPageCopy = {
   offerId: "Listing ID",
   views: "Views",
   listedSince: "Listed",
+  renewedOn: "Renewed",
   agency: "Agency",
   privateOwner: "Private owner",
   verified: "Verified",

@@ -161,16 +161,58 @@ export async function createProfilePromoCard(
 
 export async function markProfilePromoCardUsed(userId: number, cardId: string): Promise<boolean> {
   await ensureProfilePromoCardTable();
+  const normalizedId = String(cardId).slice(0, 64);
   const result = await prisma.$executeRawUnsafe(
     `
       UPDATE MobileProfilePromoCard
       SET couponUsed = 1, updatedAt = NOW(3)
       WHERE id = ? AND userId = ?
     `,
-    String(cardId).slice(0, 64),
+    normalizedId,
     userId,
   );
-  return Number(result || 0) > 0;
+  if (Number(result || 0) > 0) return true;
+
+  const welcomeId = `welcome_${userId}`;
+  if (normalizedId === welcomeId || normalizedId.startsWith('welcome_')) {
+    await ensureWelcomePromoCardForUser(userId);
+    const retry = await prisma.$executeRawUnsafe(
+      `
+        UPDATE MobileProfilePromoCard
+        SET couponUsed = 1, updatedAt = NOW(3)
+        WHERE id = ? AND userId = ?
+      `,
+      welcomeId,
+      userId,
+    );
+    return Number(retry || 0) > 0;
+  }
+
+  return false;
+}
+
+/** Kupon powitalny w DB — przetrwa reinstalację aplikacji. */
+export async function ensureWelcomePromoCardForUser(userId: number) {
+  await ensureProfilePromoCardTable();
+  const id = `welcome_${userId}`;
+  const existing = await getProfilePromoCardForUser(userId, id);
+  if (existing) return existing;
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO MobileProfilePromoCard
+        (id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
+         templateId, grantsFreeListing, couponUsed, purpose, birthdayYear, expiresAt)
+      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny',
+        'Jedna darmowa publikacja pierwszej oferty',
+        'Gotowy do wykorzystania przy pierwszym wystawieniu.',
+        '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, 0, 'publication', NULL, NULL)
+    `,
+    id,
+    userId,
+  );
+
+  return getProfilePromoCardForUser(userId, id);
 }
 
 export async function getProfilePromoCardForUser(userId: number, cardId: string) {

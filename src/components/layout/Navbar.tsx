@@ -16,6 +16,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
+import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -25,7 +26,10 @@ type CurrentUser = {
   id?: string | number;
   role?: string;
   plan?: string;
-  user?: { id?: string | number };
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  user?: { id?: string | number; name?: string | null; firstName?: string | null; lastName?: string | null };
 };
 
 export default function Navbar() {
@@ -161,9 +165,7 @@ export default function Navbar() {
 
           {user ? (
             <div className="ml-0.5 flex min-w-0 items-center gap-1 lg:gap-1.5 xl:gap-2">
-              <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link eos-nav-link-profile shrink min-w-0">
-                {dict.nav.profile}
-              </button>
+              <NavbarProfileChip user={user} />
               {isAdmin && (
                 <button
                   type="button"

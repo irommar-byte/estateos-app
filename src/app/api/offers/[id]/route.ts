@@ -32,6 +32,7 @@ import {
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
+import { getOfferMarketListingMeta } from '@/lib/offerPublication';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -197,6 +198,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
     const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
     const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
+    const marketListing = await getOfferMarketListingMeta(Number(resolvedParams.id));
     const enrichedUser = offerUser
       ? {
           ...offerUser,
@@ -225,6 +227,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYear,
       year: yearBuilt,
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
+      marketListedAt: marketListing.marketListedAt,
+      marketRenewedAt: marketListing.marketRenewedAt,
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,

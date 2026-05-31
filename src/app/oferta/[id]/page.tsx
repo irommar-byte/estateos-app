@@ -127,6 +127,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
   const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
   
+  const offerListingLabel = offer?.marketRenewedAt ? t.renewedOn : t.listedSince;
+  const offerListingDateRaw = offer?.marketRenewedAt || offer?.marketListedAt || offer?.createdAt;
+  const offerListingDateFormatted = offerListingDateRaw
+    ? new Date(offerListingDateRaw).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
+    : t.noData;
   const unlockTime = offerPremarketUnlockMs(offer.createdAt);
 
   useEffect(() => {
@@ -464,8 +469,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
 
                   <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
-                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{offerListingLabel}</span>
+                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offerListingDateFormatted}</span>
                   </div>
                 </div>
 
