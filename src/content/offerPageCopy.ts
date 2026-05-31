@@ -65,6 +65,7 @@ export type OfferPageCopy = {
   commissionAmount: string;
   commissionCompany: string;
   openCompanyProfile: string;
+  photoGalleryCount: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -144,6 +145,7 @@ const PL: OfferPageCopy = {
   commissionAmount: "Kwota prowizji",
   commissionCompany: "Firma obsługująca",
   openCompanyProfile: "Otwórz wizytówkę",
+  photoGalleryCount: "Galeria · {n} zdjęć",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -223,6 +225,7 @@ const EN: OfferPageCopy = {
   commissionAmount: "Commission amount",
   commissionCompany: "Handling company",
   openCompanyProfile: "Open profile card",
+  photoGalleryCount: "Gallery · {n} photos",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

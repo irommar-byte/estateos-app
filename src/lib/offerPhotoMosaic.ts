@@ -1,4 +1,4 @@
-/** Układ miniatur na siatce 4×2 — wypełnia prostokąt bez pustych przerw. */
+/** Układ galerii oferty — duże zdjęcie główne + mniejsze kafle (styl premium / Apple). */
 
 export type MosaicCell = { colSpan: number; rowSpan: number };
 
@@ -26,21 +26,15 @@ const LAYOUTS: Record<number, MosaicCell[]> = {
     { colSpan: 1, rowSpan: 1 },
     { colSpan: 1, rowSpan: 1 },
   ],
-  6: [
-    { colSpan: 2, rowSpan: 1 },
-    { colSpan: 2, rowSpan: 1 },
-    { colSpan: 2, rowSpan: 1 },
-    { colSpan: 2, rowSpan: 1 },
-    { colSpan: 2, rowSpan: 1 },
-    { colSpan: 2, rowSpan: 1 },
-  ],
 };
 
+/** Maks. 5 zdjęć w siatce głównej — reszta w poziomej taśmie poniżej. */
+export const OFFER_GALLERY_GRID_MAX = 5;
+
 export function offerPhotoMosaicCells(count: number): MosaicCell[] {
-  const n = Math.max(0, Math.min(count, 6));
+  const n = Math.max(0, Math.min(count, OFFER_GALLERY_GRID_MAX));
   if (n === 0) return [];
-  if (LAYOUTS[n]) return LAYOUTS[n];
-  return LAYOUTS[6];
+  return LAYOUTS[n] ?? LAYOUTS[5];
 }
 
 export function mosaicCellClass(cell: MosaicCell): string {

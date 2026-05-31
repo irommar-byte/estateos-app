@@ -19,6 +19,7 @@ import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
+import OfferPhotoGallery from "@/components/offer/OfferPhotoGallery";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
@@ -38,7 +39,6 @@ import {
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 import { isStrictCity } from "@/lib/location/locationCatalog";
-import { mosaicCellClass, offerPhotoMosaicCells } from "@/lib/offerPhotoMosaic";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -83,9 +83,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawImages = (() => { if (!offer.images) return []; try { const p = JSON.parse(offer.images); return Array.isArray(p) ? p : offer.images.split(','); } catch(e) { return offer.images.split(','); } })();
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
-  const thumbImages = images.slice(1);
-  const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
-  const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
 
   const offerStatus = String(offer.status || '').toUpperCase();
   const expiredByDate =
@@ -549,33 +546,12 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
-            {thumbImages.length > 0 && (
-              <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
-                {thumbImages.slice(0, mosaicCells.length).map((src, idx) => (
-                  <div
-                    key={`${idx}-${src}`}
-                    className={`${mosaicCellClass(mosaicCells[idx])} relative overflow-hidden bg-zinc-950`}
-                  >
-                    <img
-                      onClick={() => openGallery(idx + 1)}
-                      src={src}
-                      alt=""
-                      className="h-full w-full cursor-pointer object-cover transition-transform duration-500 hover:scale-[1.03]"
-                      style={{ filter: "contrast(1.04) saturate(1.08) brightness(1.02)" }}
-                    />
-                    {hiddenThumbCount > 0 && idx === mosaicCells.length - 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => openGallery(idx + 1)}
-                        className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-black text-white backdrop-blur-[2px] sm:text-2xl"
-                      >
-                        +{hiddenThumbCount}
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
+            <OfferPhotoGallery
+              images={images}
+              onOpen={openGallery}
+              isArchived={isArchived}
+              galleryLabel={t.photoGalleryCount}
+            />
 
             <div>
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
