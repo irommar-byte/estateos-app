@@ -132,6 +132,15 @@ export type Dictionary = {
     dealsTitle: string;
     dealsBody: string;
   };
+  radarLive: {
+    eyebrow: string;
+    joinSuffix: string;
+    newJoin: string;
+    subtitle: string;
+    hint: string;
+    collapse: string;
+    expand: string;
+  };
   homePremium: {
     loading: string;
     emptyTitle: string;
@@ -510,6 +519,15 @@ const pl: Dictionary = {
     dealsTitle: "Deal Room",
     dealsBody:
       "Prywatne pokoje transakcyjne: wiadomości, oferty cenowe i dokumenty w jednym miejscu.",
+  },
+  radarLive: {
+    eyebrow: "Radar · na żywo",
+    joinSuffix: "inwestorów aktywnie czeka na dopasowania",
+    newJoin: "Ktoś właśnie włączył Radar!",
+    subtitle: "Rosnąca społeczność łowców okazji — dołącz, zanim pojawią się na rynku.",
+    hint: "Licznik rośnie w czasie rzeczywistym wraz z aktywacjami Radaru.",
+    collapse: "Zwiń panel",
+    expand: "Pokaż aktywnych inwestorów",
   },
   homePremium: {
     loading: "Wczytywanie...",
@@ -904,6 +922,15 @@ const en: Dictionary = {
     dealsTitle: "Deal Room",
     dealsBody:
       "Private deal rooms: messages, price offers, and documents in one workflow.",
+  },
+  radarLive: {
+    eyebrow: "Radar · live",
+    joinSuffix: "investors actively waiting for matches",
+    newJoin: "Someone just turned on Radar!",
+    subtitle: "A growing community of deal hunters — join before listings hit the open market.",
+    hint: "The counter grows in real time as investors activate Radar.",
+    collapse: "Collapse panel",
+    expand: "Show active investors",
   },
   homePremium: {
     loading: "Loading...",

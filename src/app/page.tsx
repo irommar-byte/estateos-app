@@ -2,6 +2,7 @@
 import { useEffect } from "react";
 import HeroDepthEffect from "@/components/hero3d/HeroDepthEffect";
 import HomeAppPitch from "@/components/home/HomeAppPitch";
+import RadarLiveCounter from "@/components/home/RadarLiveCounter";
 import InteractiveMap from "@/components/map/InteractiveMap";
 import CinematicLoader from "@/components/ui/CinematicLoader";
 import SmoothScroll from "@/components/layout/SmoothScroll";
@@ -30,6 +31,7 @@ export default function Home() {
         <main className="premium-home-shell theme-aware-dashboard relative min-h-screen overflow-hidden bg-[var(--eos-bg)] text-[var(--eos-text)] selection:bg-emerald-500/30">
           <MarketPulseBar />
           <HeroDepthEffect />
+          <RadarLiveCounter />
           <HomeAppPitch />
 
           <div className="mt-8 sm:mt-12">
