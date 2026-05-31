@@ -106,7 +106,7 @@ function mapTransactionType(raw: unknown): OtodomImportDraft['transactionType'] 
 }
 
 function extractAdPayload(html: string): RawAd {
-  const scriptMatch = html.match(/<script[^>]*>(\{"props".*?)<\/script>/s);
+  const scriptMatch = html.match(/<script[^>]*>(\{"props"[\s\S]*?)<\/script>/);
   if (!scriptMatch) {
     throw new Error('Nie znaleziono danych ogłoszenia w HTML OtoDom.');
   }
