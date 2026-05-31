@@ -4,8 +4,9 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
-import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { verifyMobileToken } from '@/lib/jwtMobile';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import { findUniqueMobileListOffer } from '@/lib/offers/mobileOfferListQuery';
 import { OfferValidationError, updateOffer } from '@/lib/services/offer.service';
 import {
   applyLegalStatusOverride,
@@ -50,10 +51,7 @@ export async function GET(req: Request, context: RouteContext) {
       viewerRole = viewer?.role ?? null;
     }
 
-    const offer = await prisma.offer.findUnique({
-      where: { id: offerId },
-      select: MOBILE_OFFER_PRISMA_SELECT as any,
-    });
+    const offer = await findUniqueMobileListOffer(offerId);
 
     const access = await resolveOfferDetailAccess(prisma, offer as any, {
       userId: authUserId,
@@ -68,8 +66,20 @@ export async function GET(req: Request, context: RouteContext) {
 
     const legalOverrides = await legalStatusOverridesForOffers(prisma, [offerId]);
     const legalOffer = applyLegalStatusOverride(offer as any, legalOverrides);
+    const localityResolved = resolvePersistedLocalityFields({
+      localityCountry: legalOffer.localityCountry,
+      localityCountryCode: legalOffer.localityCountryCode,
+      city: legalOffer.city,
+      lat: legalOffer.lat,
+      lng: legalOffer.lng,
+    });
+    const shapedOffer = {
+      ...legalOffer,
+      localityCountry: localityResolved.localityCountry,
+      localityCountryCode: localityResolved.localityCountryCode,
+    };
 
-    return NextResponse.json({ success: true, offer: enrichOfferWithLegalAliases(legalOffer) }, {
+    return NextResponse.json({ success: true, offer: enrichOfferWithLegalAliases(shapedOffer) }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },
     });
   } catch (error) {

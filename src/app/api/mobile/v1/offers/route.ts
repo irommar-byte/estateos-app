@@ -11,8 +11,8 @@ import {
   PUBLISH_CONTACT_REQUIREMENTS,
 } from '@/lib/contactVerification';
 import { verifyMobileToken } from '@/lib/jwtMobile';
-import { MOBILE_OFFER_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
 import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
+import { findManyMobileListOffers } from '@/lib/offers/mobileOfferListQuery';
 import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
 import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
 import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
@@ -119,11 +119,7 @@ export async function GET(req: Request) {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
-    const offers = await prisma.offer.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: MOBILE_OFFER_PRISMA_SELECT as any,
-    });
+    const offers = await findManyMobileListOffers(where);
 
     const publicVisibleIds =
       userId || includeAll
