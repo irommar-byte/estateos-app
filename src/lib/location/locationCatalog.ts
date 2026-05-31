@@ -247,19 +247,42 @@ export function inferCityFromMapboxFeature(feature: {
 } | null | undefined): string {
   const placeTypes = Array.isArray(feature?.place_type) ? feature.place_type : [];
   const featureText = String(feature?.text || "").trim();
+  const context = Array.isArray(feature?.context) ? feature.context : [];
+  const placeFromContext = mapboxContextByPrefix(context, "place");
+  const localityFromContext = mapboxContextByPrefix(context, "locality");
+
+  if (placeFromContext) {
+    const placeCity = canonicalizeCity(placeFromContext);
+    if (
+      placeCity &&
+      featureText &&
+      normalizeText(featureText) !== normalizeText(placeCity) &&
+      (placeTypes.includes("address") ||
+        placeTypes.includes("neighborhood") ||
+        placeTypes.includes("district") ||
+        placeTypes.includes("locality") ||
+        placeTypes.includes("poi"))
+    ) {
+      return placeCity;
+    }
+  }
+
   if (
     featureText &&
     (placeTypes.includes("locality") || placeTypes.includes("place")) &&
     !/^(powiat|gmina|województwo)\s/i.test(featureText)
   ) {
     const direct = canonicalizeCity(featureText);
-    if (direct) return direct;
+    if (direct) {
+      const contextPlace = canonicalizeCity(placeFromContext || localityFromContext);
+      if (contextPlace && normalizeText(direct) !== normalizeText(contextPlace)) {
+        return contextPlace;
+      }
+      return direct;
+    }
   }
 
-  const context = Array.isArray(feature?.context) ? feature.context : [];
-  const locality = mapboxContextByPrefix(context, "locality");
-  const place = mapboxContextByPrefix(context, "place");
-  const fromContext = locality || place;
+  const fromContext = localityFromContext || placeFromContext;
   if (fromContext && !/^(powiat|gmina|województwo)\s/i.test(fromContext)) {
     return canonicalizeCity(fromContext);
   }
