@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Gift, ShoppingBag, Sparkles, Ticket, X } from "lucide-react";
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
@@ -33,6 +34,11 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [buyingPlus, setBuyingPlus] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +103,7 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const coupons = wallet?.coupons ?? [];
   const plusCredits = Number(wallet?.plusCredits || 0);
@@ -106,25 +112,28 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
     wallet?.plusExpiresAt && hasPlusCredit
       ? new Date(wallet.plusExpiresAt).toLocaleDateString("pl-PL")
       : null;
-  const totalAvailable = plusCredits + coupons.length;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[999998] flex items-end justify-center bg-black/70 p-4 backdrop-blur-xl sm:items-center"
+        className="fixed inset-0 z-[999999] overflow-y-auto overscroll-contain bg-black/72 backdrop-blur-xl"
         onClick={onClose}
       >
-        <motion.div
-          initial={{ y: 40, scale: 0.98 }}
-          animate={{ y: 0, scale: 1 }}
-          exit={{ y: 40, scale: 0.98 }}
-          onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-[0_30px_80px_rgba(0,0,0,0.65)]"
+        <div
+          className="flex min-h-full items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+          onClick={onClose}
         >
-          <div className="relative overflow-hidden border-b border-white/5 p-6">
+        <motion.div
+          initial={{ y: 24, scale: 0.98 }}
+          animate={{ y: 0, scale: 1 }}
+          exit={{ y: 24, scale: 0.98 }}
+          onClick={(e) => e.stopPropagation()}
+          className="flex max-h-[min(90dvh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-[0_30px_80px_rgba(0,0,0,0.65)]"
+        >
+          <div className="relative shrink-0 overflow-hidden border-b border-white/5 p-6">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-emerald-500/10" />
             <div className="relative flex items-start justify-between gap-4">
               <div>
@@ -133,7 +142,7 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
                 <p className="mt-2 text-sm text-white/50 leading-relaxed">
                   {loading
                     ? "Ładowanie salda…"
-                    : `${totalAvailable} ${totalAvailable === 1 ? "dostępna publikacja" : "dostępnych publikacji"} na koncie`}
+                    : `${plusCredits} kredytów Plus · ${coupons.length} ${coupons.length === 1 ? "kupon" : "kupony"} bonusowe`}
                 </p>
               </div>
               <button
@@ -147,7 +156,7 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
             </div>
           </div>
 
-          <div className="max-h-[58vh] overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
             {loadError ? (
               <p className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-center text-xs text-red-200/90">{loadError}</p>
             ) : null}
@@ -237,7 +246,7 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
             </div>
           </div>
 
-          <div className="border-t border-white/5 p-6">
+          <div className="shrink-0 border-t border-white/5 p-6">
             <button
               type="button"
               onClick={onClose}
@@ -247,7 +256,9 @@ export default function PublicationWalletModal({ isOpen, onClose, onWalletChange
             </button>
           </div>
         </motion.div>
+        </div>
       </motion.div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
