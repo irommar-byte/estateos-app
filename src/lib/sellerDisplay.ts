@@ -37,8 +37,6 @@ export function resolveSellerPersonName(userLike: unknown): string | null {
   if (!userLike || typeof userLike !== "object") return null;
   const u = userLike as Record<string, unknown>;
   if (!isAgentOrAgencySeller(u)) return null;
-  const company = String(u.companyName ?? u.agencyName ?? "").trim();
-  const person = String(u.name ?? "").trim();
-  if (company && person) return person;
-  return null;
+  const person = String(u.name ?? u.contactName ?? "").trim();
+  return person || null;
 }

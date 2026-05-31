@@ -3,7 +3,7 @@ import PublicProfileModal from "@/components/PublicProfileModal";
 import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 } from "lucide-react";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
@@ -18,6 +18,7 @@ import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
@@ -37,6 +38,7 @@ import {
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 import { isStrictCity } from "@/lib/location/locationCatalog";
+import { mosaicCellClass, offerPhotoMosaicCells } from "@/lib/offerPhotoMosaic";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -81,6 +83,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawImages = (() => { if (!offer.images) return []; try { const p = JSON.parse(offer.images); return Array.isArray(p) ? p : offer.images.split(','); } catch(e) { return offer.images.split(','); } })();
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
+  const thumbImages = images.slice(1);
+  const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
+  const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
 
   const offerStatus = String(offer.status || '').toUpperCase();
   const expiredByDate =
@@ -100,30 +105,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     code: "PL",
   });
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isGalleryOpen) return;
-      if (e.key === 'Escape') setIsGalleryOpen(false);
-      if (e.key === 'ArrowRight') setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-      if (e.key === 'ArrowLeft') setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isGalleryOpen, images.length]);
-
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
     setIsGalleryOpen(true);
-  };
-
-  const nextImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-  };
-
-  const prevImage = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
 
   const [negotiatorsCount, setNegotiatorsCount] = useState(0);
@@ -316,6 +300,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     },
   ].filter((p) => p.value);
   const servicingCompanyName = resolveServicingCompanyName(offer?.user, offer?.agencyName);
+  const agentPersonName = resolveSellerPersonName(offer?.user);
+  const showServicingCompanyBlock =
+    isAgentOrAgencySeller(offer?.user) && Boolean(servicingCompanyName || agentPersonName);
   const showCommissionSection =
     Boolean(servicingCompanyName) ||
     Boolean(agentCommissionInfo) ||
@@ -557,14 +544,31 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
-            {images.length > 1 && (
-              <div className={`grid grid-cols-4 gap-2 sm:gap-3 md:gap-4 auto-rows-[80px] sm:auto-rows-[120px] md:auto-rows-[180px] rounded-[2rem] sm:rounded-[2.5rem] overflow-hidden bg-black/20 p-2 sm:p-3 border border-white/5 backdrop-blur-3xl shadow-2xl ${isArchived ? 'grayscale opacity-50' : ''}`}>
-                {images[1] && <div className="col-span-4 row-span-2 md:row-span-3 rounded-[1.2rem] sm:rounded-[1.8rem] overflow-hidden"><img onClick={() => openGallery(1)} src={images[1]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
-                {images[2] && <div className="col-span-2 row-span-1 md:row-span-2 rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden"><img onClick={() => openGallery(2)} src={images[2]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
-                {images[3] && <div className="col-span-2 row-span-1 md:row-span-1 rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden"><img onClick={() => openGallery(3)} src={images[3]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
-                {images[4] && <div className="col-span-1 row-span-1 rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden"><img onClick={() => openGallery(4)} src={images[4]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
-                {images[5] && <div className="col-span-1 row-span-1 rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden"><img onClick={() => openGallery(5)} src={images[5]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
-                {images[6] && <div className="col-span-2 row-span-1 rounded-[1rem] sm:rounded-[1.5rem] overflow-hidden"><img onClick={() => openGallery(6)} src={images[6]} className="cursor-pointer w-full h-full object-cover hover:scale-105 transition-transform duration-500" /></div>}
+            {thumbImages.length > 0 && (
+              <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
+                {thumbImages.slice(0, mosaicCells.length).map((src, idx) => (
+                  <div
+                    key={`${idx}-${src}`}
+                    className={`${mosaicCellClass(mosaicCells[idx])} relative overflow-hidden bg-zinc-950`}
+                  >
+                    <img
+                      onClick={() => openGallery(idx + 1)}
+                      src={src}
+                      alt=""
+                      className="h-full w-full cursor-pointer object-cover transition-transform duration-500 hover:scale-[1.03]"
+                      style={{ filter: "contrast(1.04) saturate(1.08) brightness(1.02)" }}
+                    />
+                    {hiddenThumbCount > 0 && idx === mosaicCells.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => openGallery(idx + 1)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-black text-white backdrop-blur-[2px] sm:text-2xl"
+                      >
+                        +{hiddenThumbCount}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -731,22 +735,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         ))}
                       </div>
                     ) : null}
-                    {servicingCompanyName ? (
+                    {showServicingCompanyBlock ? (
                       <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.commissionCompany}</p>
+                        {servicingCompanyName ? (
+                          <p className="mt-2 text-base font-bold leading-snug text-[var(--eos-text)] sm:text-lg">
+                            {servicingCompanyName}
+                          </p>
+                        ) : null}
+                        {agentPersonName ? (
+                          <p className={`text-sm font-medium text-[var(--eos-muted)] ${servicingCompanyName ? "mt-1" : "mt-2"}`}>
+                            {agentPersonName}
+                          </p>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
-                          className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                          className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[var(--eos-text)] transition-colors hover:text-emerald-400"
                         >
-                          {servicingCompanyName}
-                          <span className="text-[10px] uppercase tracking-wider text-[var(--eos-muted)]">{t.openCompanyProfile}</span>
+                          {t.openCompanyProfile}
                         </button>
-                        {resolveSellerPersonName(offer?.user) ? (
-                          <p className="mt-2 text-[11px] text-[var(--eos-muted)]">
-                            {resolveSellerPersonName(offer?.user)}
-                          </p>
-                        ) : null}
                       </div>
                     ) : null}
                     {agentCommissionLine && !agentCommissionInfo?.isZero ? (
@@ -846,69 +854,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         )}
       </AnimatePresence>
 
-    
-      {/* 🔥 GALERIA ZDJĘĆ LIGHTBOX 🔥 */}
-      <AnimatePresence>
-        {isGalleryOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-xl flex flex-col items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center"
-            onClick={() => setIsGalleryOpen(false)}
-          >
-            <div className="eos-on-media absolute top-0 left-0 z-50 flex w-full items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-6">
-              <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/10 px-5 py-2.5 shadow-2xl backdrop-blur-md">
-                <ImageIcon size={16} className={themeColors.textActive} />
-                <span className="font-black text-[10px] uppercase tracking-widest text-white">{currentImageIndex + 1} / {images.length}</span>
-              </div>
-              <button onClick={() => setIsGalleryOpen(false)} className="group rounded-full bg-white/10 p-4 text-white shadow-2xl transition-all hover:bg-red-500">
-                <X size={20} className="group-hover:rotate-90 transition-transform" />
-              </button>
-            </div>
-
-            {images.length > 1 && (
-              <>
-                <button onClick={prevImage} className={`absolute left-4 sm:left-8 p-4 sm:p-5 bg-black/50 ${themeColors.primaryHover} border border-white/10 rounded-full text-white ${themeColors.primaryText} transition-all hover:scale-110 z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.8)]`}>
-                  <ChevronLeft size={24} strokeWidth={3} />
-                </button>
-                <button onClick={nextImage} className={`absolute right-4 sm:right-8 p-4 sm:p-5 bg-black/50 ${themeColors.primaryHover} border border-white/10 rounded-full text-white ${themeColors.primaryText} transition-all hover:scale-110 z-50 backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.8)]`}>
-                  <ChevronRight size={24} strokeWidth={3} />
-                </button>
-              </>
-            )}
-
-            <div className="w-full h-full flex items-center justify-center p-4 sm:p-20 pb-32 sm:pb-40" onClick={(e) => e.stopPropagation()}>
-              <AnimatePresence mode="wait">
-                <motion.img 
-                  key={currentImageIndex}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 1.05 }}
-                  transition={{ duration: 0.2 }}
-                  src={images[currentImageIndex]} 
-                  className="max-w-full max-h-full object-contain drop-shadow-[0_0_50px_rgba(0,0,0,0.8)] rounded-2xl" 
-                  alt="Galeria" 
-                />
-              </AnimatePresence>
-            </div>
-
-            {images.length > 1 && (
-              <div className="absolute bottom-6 w-full flex justify-center px-4 z-50">
-                <div className="flex gap-2 p-2 bg-black/60 backdrop-blur-xl rounded-2xl border border-white/10 overflow-x-auto max-w-2xl w-full custom-scrollbar shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                  {images.map((img, idx) => (
-                    <div 
-                      key={idx} 
-                      onClick={() => setCurrentImageIndex(idx)} 
-                      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden cursor-pointer shrink-0 border-2 transition-all duration-300 ${currentImageIndex === idx ? `${themeColors.borderActive} scale-105 ${themeColors.glowActive} brightness-110` : 'border-transparent opacity-40 hover:opacity-100 hover:scale-95'}`}
-                    >
-                      <img src={img} className="w-full h-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <OfferGalleryLightbox
+        images={images}
+        index={currentImageIndex}
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+        onIndexChange={setCurrentImageIndex}
+        accentClass={themeColors.textActive}
+        primaryHoverClass={themeColors.primaryHover}
+        borderActiveClass={themeColors.borderActive}
+        glowActiveClass={themeColors.glowActive}
+      />
 
     
       <PublicProfileModal 
