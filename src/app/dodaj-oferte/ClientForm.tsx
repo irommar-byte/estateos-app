@@ -367,7 +367,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     try {
       const res = await fetch(
-        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: true }),
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: true, cityHint }),
       );
       const geo = await res.json();
       setAddressSuggestions(Array.isArray(geo?.features) ? geo.features : []);
@@ -389,7 +389,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     try {
       const res = await fetch(
-        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: false }),
+        mapboxForwardGeocodeUrl(searchText, token, { limit: 8, autocomplete: false, cityHint }),
       );
       if (!res.ok) return;
       const geo = await res.json();

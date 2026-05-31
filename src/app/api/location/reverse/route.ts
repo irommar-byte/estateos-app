@@ -10,21 +10,17 @@ import {
 } from "@/lib/location/locationCatalog";
 import { resolveStrictDistrictFromPin } from "@/lib/location/strictDistrictFromPin";
 import { sanitizeNonStrictAreaLabel } from "@/lib/location/localityDisplay";
-
-function getContextText(context: any[], idPrefix: string): string {
-  const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
-  return String(hit?.text || hit?.text_pl || "").trim();
-}
-
-function getContextShortCode(context: any[], idPrefix: string): string {
-  const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
-  return String(hit?.short_code || "").trim().toUpperCase();
-}
+import {
+  getMapboxContextText,
+  mapboxReverseGeocodeUrl,
+  resolveCountryFromMapboxFeature,
+} from "@/lib/mapboxReverseGeocode";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
+  const cityHint = String(url.searchParams.get("city") || "").trim();
   const token = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -34,7 +30,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN." }, { status: 500 });
   }
 
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&country=pl&types=address,place,locality,neighborhood,district`;
+  const endpoint = mapboxReverseGeocodeUrl(lng, lat, token, { language: "pl" });
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -42,18 +38,18 @@ export async function GET(req: Request) {
     const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
     const context = Array.isArray(feature?.context) ? feature.context : [];
 
-    const country = getContextText(context, "country") || "Polska";
-    const countryCode = getContextShortCode(context, "country") || "PL";
+    const { country, countryCode } = resolveCountryFromMapboxFeature(feature, lat, lng, cityHint);
+
     const streetRaw = String(feature?.text || "").trim();
     const numberRaw = String(feature?.address || "").trim();
-    const primaryAddressLabel = String(feature?.place_name || "").split(',')[0]?.trim();
+    const primaryAddressLabel = String(feature?.place_name || "").split(",")[0]?.trim();
 
-    const city = inferCityFromMapboxFeature(feature);
+    const city = inferCityFromMapboxFeature(feature) || canonicalizeCity(cityHint);
     const inferredDistrict = inferAreaLabelFromMapboxFeature(city, feature);
     const legacyDistrictRaw =
-      getContextText(context, "neighborhood") ||
-      getContextText(context, "district") ||
-      getContextText(context, "locality");
+      getMapboxContextText(context, "neighborhood") ||
+      getMapboxContextText(context, "district") ||
+      getMapboxContextText(context, "locality");
     const districtMerged = inferredDistrict || legacyDistrictRaw;
     let district = canonicalizeDistrict(city, districtMerged);
     const strictCity = isStrictCity(city);
@@ -63,7 +59,7 @@ export async function GET(req: Request) {
         district;
     }
     const validation = validateCityDistrict(city, district);
-    const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || '';
+    const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || "";
     if (!strictCity) {
       district = sanitizeNonStrictAreaLabel(district, city, street);
     }
@@ -85,4 +81,3 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error?.message || "Błąd reverse geocoding." }, { status: 500 });
   }
 }
-

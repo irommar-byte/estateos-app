@@ -1,8 +1,9 @@
 /**
- * Wspólne zapytania Mapbox Geocoding (forward) — Polska, miasto z formularza lub z przecinka w adresie.
+ * Wspólne zapytania Mapbox Geocoding (forward) — z kontekstem kraju z miasta / adresu.
  */
 
 import { normalizeText } from "@/lib/location/locationCatalog";
+import { countryLabelFromIso, inferCountryIsoFromCity } from "@/lib/offerLocalityCountry";
 
 export type ParsedAddressQuery = {
   streetPart: string;
@@ -99,11 +100,35 @@ export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
 export function buildForwardGeocodeSearchText(street: string, city?: string): string {
   const s = String(street || "").trim();
   const c = String(city || "").trim();
-  if (!s) return c ? `${c}, Polska` : "";
-  if (!c) return /polska|poland/i.test(s) ? s : `${s}, Polska`;
+  const cityIso = inferCountryIsoFromCity(c);
+  const countrySuffix =
+    cityIso && cityIso !== "PL" ? countryLabelFromIso(cityIso) : "Polska";
+
+  if (!s) return c ? `${c}, ${countrySuffix}` : "";
+  if (!c) {
+    if (/polska|poland|niemcy|germany|deutschland/i.test(s)) return s;
+    return `${s}, Polska`;
+  }
   const norm = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (norm(s).includes(norm(c))) return s;
-  return `${s}, ${c}, Polska`;
+  return `${s}, ${c}, ${countrySuffix}`;
+}
+
+function inferCountryIsoFromQuery(query: string, cityHint?: string): string | null {
+  const fromCity = inferCountryIsoFromCity(String(cityHint || ""));
+  if (fromCity) return fromCity;
+
+  const parsed = parseAddressSearchQuery(query);
+  const fromParsedCity = inferCountryIsoFromCity(parsed.cityPart);
+  if (fromParsedCity) return fromParsedCity;
+
+  const lower = String(query || "").toLowerCase();
+  if (/\b(niemcy|germany|deutschland)\b/.test(lower)) return "DE";
+  if (/\b(polska|poland)\b/.test(lower)) return "PL";
+  if (/\b(czechy|czechia)\b/.test(lower)) return "CZ";
+  if (/\b(słowacja|slovakia)\b/.test(lower)) return "SK";
+  if (/\b(austria|österreich)\b/.test(lower)) return "AT";
+  return null;
 }
 
 /** Wybiera wynik geokodowania najbliższy temu, co wpisał użytkownik. */
@@ -157,17 +182,20 @@ export function pickBestGeocodeFeature(
 export function mapboxForwardGeocodeUrl(
   query: string,
   token: string,
-  options?: { limit?: number; autocomplete?: boolean },
+  options?: { limit?: number; autocomplete?: boolean; cityHint?: string },
 ): string {
   const limit = options?.limit ?? 6;
   const autocomplete = options?.autocomplete ?? true;
+  const countryIso = inferCountryIsoFromQuery(query, options?.cityHint);
   const params = new URLSearchParams({
     access_token: token,
     language: "pl",
-    country: "pl",
     limit: String(limit),
     autocomplete: autocomplete ? "true" : "false",
     types: "address,place,locality",
   });
+  if (countryIso) {
+    params.set("country", countryIso.toLowerCase());
+  }
   return `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`;
 }

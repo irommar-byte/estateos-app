@@ -1,6 +1,6 @@
 "use client";
 import PublicProfileModal from "@/components/PublicProfileModal";
-import { useEffect, useState, useRef, use } from "react";
+import { useEffect, useState, useRef, use, useMemo } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 } from "lucide-react";
@@ -39,6 +39,7 @@ import {
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 import { isStrictCity } from "@/lib/location/locationCatalog";
+import { resolveOfferDisplayCountry } from "@/lib/offerLocalityCountry";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -97,10 +98,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>({
-    name: locale === "pl" ? "Polska" : "Poland",
-    code: "PL",
-  });
+  const resolvedCountry = useMemo(
+    () => resolveOfferDisplayCountry(offer, locale === "en" ? "en" : "pl"),
+    [offer, locale],
+  );
 
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
@@ -323,32 +324,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           },
         ]
       : [];
-
-  useEffect(() => {
-    if (!offer?.lat || !offer?.lng) return;
-    let cancelled = false;
-    fetch(`/api/location/reverse?lat=${encodeURIComponent(String(offer.lat))}&lng=${encodeURIComponent(String(offer.lng))}`, {
-      cache: "no-store",
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        const countryName = String(data.country || "").trim();
-        const countryCode = String(data.countryCode || "").trim().toUpperCase();
-        if (countryName) {
-          setResolvedCountry({
-            name: countryName,
-            code: countryCode || "PL",
-          });
-        }
-      })
-      .catch(() => {
-        /* noop */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [offer?.lat, offer?.lng]);
 
   const countryFlag = resolvedCountry.code
     ? String.fromCodePoint(

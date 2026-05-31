@@ -118,6 +118,14 @@ function normalizeMatch(value: string): string {
     .trim();
 }
 
+export function isDefaultCountryPlaceholder(code: unknown, label: unknown): boolean {
+  const iso = String(code || '').trim().toUpperCase();
+  const lbl = normalizeMatch(String(label || ''));
+  const isoIsDefault = !iso || iso === DEFAULT_COUNTRY_CODE;
+  const lblIsDefault = !lbl || lbl === 'polska' || lbl === 'poland';
+  return isoIsDefault && lblIsDefault;
+}
+
 export function countryLabelFromIso(iso: string): string {
   const code = String(iso || '').trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(code)) return DEFAULT_COUNTRY_LABEL;
@@ -127,6 +135,19 @@ export function countryLabelFromIso(iso: string): string {
   } catch {
     const fromMap = Object.entries(PL_COUNTRY_TO_ISO).find(([, v]) => v === code)?.[0];
     return fromMap || code;
+  }
+}
+
+export function countryLabelForLocale(iso: string, locale: 'pl' | 'en' = 'pl'): string {
+  const code = String(iso || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return locale === 'en' ? 'Poland' : DEFAULT_COUNTRY_LABEL;
+  }
+  try {
+    const dn = new Intl.DisplayNames([locale === 'en' ? 'en-US' : 'pl-PL'], { type: 'region' });
+    return dn.of(code) || countryLabelFromIso(code);
+  } catch {
+    return countryLabelFromIso(code);
   }
 }
 
@@ -143,7 +164,8 @@ function inferCountryIsoFromCoordinates(lat: number, lng: number): string | null
   return null;
 }
 
-function inferCountryIsoFromCity(city: string): string | null {
+/** Publiczne — do geokodowania forward (np. Berlin → DE). */
+export function inferCountryIsoFromCity(city: string): string | null {
   const norm = normalizeMatch(city);
   if (!norm) return null;
   if (METRO_PL_CITIES.has(norm) || [...METRO_PL_CITIES].some((c) => norm.includes(c))) {
@@ -159,7 +181,7 @@ function labelFromExplicit(code: string, label: string): { code: string; label: 
   if (/^[A-Z]{2}$/.test(iso) && iso !== DEFAULT_COUNTRY_CODE) {
     return { code: iso, label: lbl || countryLabelFromIso(iso) };
   }
-  if (lbl && !/^polska$/i.test(lbl)) {
+  if (lbl && !/^polska$/i.test(lbl) && !/^poland$/i.test(lbl)) {
     const fromPl = PL_COUNTRY_TO_ISO[lbl];
     if (fromPl && fromPl !== DEFAULT_COUNTRY_CODE) {
       return { code: fromPl, label: lbl };
@@ -189,11 +211,6 @@ export function resolvePersistedLocalityFields(input: LocalityPersistInput): {
   localityCountry: string;
   localityCountryCode: string;
 } {
-  const explicit = labelFromExplicit(
-    String(input.localityCountryCode ?? ''),
-    String(input.localityCountry ?? ''),
-  );
-
   const lat = Number(input.lat);
   const lng = Number(input.lng);
   const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
@@ -208,14 +225,37 @@ export function resolvePersistedLocalityFields(input: LocalityPersistInput): {
     }
   }
 
-  if (explicit) return { localityCountry: explicit.label, localityCountryCode: explicit.code };
-
   const fromCity = inferCountryIsoFromCity(String(input.city ?? ''));
   if (fromCity) {
     return { localityCountry: countryLabelFromIso(fromCity), localityCountryCode: fromCity };
   }
 
+  const explicit = labelFromExplicit(
+    String(input.localityCountryCode ?? ''),
+    String(input.localityCountry ?? ''),
+  );
+  if (explicit && !isDefaultCountryPlaceholder(input.localityCountryCode, input.localityCountry)) {
+    return { localityCountry: explicit.label, localityCountryCode: explicit.code };
+  }
+
   return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
+}
+
+export function resolveOfferDisplayCountry(
+  raw: Record<string, unknown>,
+  locale: 'pl' | 'en' = 'pl',
+): { name: string; code: string } {
+  const resolved = resolvePersistedLocalityFields({
+    localityCountry: raw.localityCountry,
+    localityCountryCode: raw.localityCountryCode,
+    city: raw.city,
+    lat: raw.lat,
+    lng: raw.lng,
+  });
+  return {
+    code: resolved.localityCountryCode,
+    name: countryLabelForLocale(resolved.localityCountryCode, locale),
+  };
 }
 
 /** Odczyt kraju oferty z API (z fallbackiem na współrzędne). */

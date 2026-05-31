@@ -31,6 +31,7 @@ import {
   resolveSellerPersonName,
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { getOfferMarketListingMeta } from '@/lib/offerPublication';
 
@@ -199,6 +200,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
     const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
     const marketListing = await getOfferMarketListingMeta(Number(resolvedParams.id));
+    const localityResolved = resolvePersistedLocalityFields({
+      localityCountry: (legalOffer as { localityCountry?: string }).localityCountry,
+      localityCountryCode: (legalOffer as { localityCountryCode?: string }).localityCountryCode,
+      city: legalOffer.city,
+      lat: legalOffer.lat,
+      lng: legalOffer.lng,
+    });
     const enrichedUser = offerUser
       ? {
           ...offerUser,
@@ -229,6 +237,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
       marketListedAt: marketListing.marketListedAt,
       marketRenewedAt: marketListing.marketRenewedAt,
+      localityCountry: localityResolved.localityCountry,
+      localityCountryCode: localityResolved.localityCountryCode,
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,

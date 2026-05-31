@@ -7,6 +7,7 @@ import { enrichOfferMoneyFieldsWithRate } from '@/lib/money/offerPrice';
 import { enrichOfferWithLegalAliases } from '@/lib/mobileOfferLegalPayload';
 import { resolveSellerDisplayName, resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
 
 export type PublicListOffer = Record<string, unknown> & {
   id: number;
@@ -57,8 +58,18 @@ export function shapePublicListOffer(
     isLegalSafeVerified: rest.isLegalSafeVerified as boolean | null | undefined,
   });
 
+  const localityResolved = resolvePersistedLocalityFields({
+    localityCountry: rest.localityCountry,
+    localityCountryCode: rest.localityCountryCode,
+    city: rest.city,
+    lat: rest.lat,
+    lng: rest.lng,
+  });
+
   const base = {
     ...rest,
+    localityCountry: localityResolved.localityCountry,
+    localityCountryCode: localityResolved.localityCountryCode,
     sellerDisplayName,
     sellerPersonName,
     propertyTypeLabel: formatOfferPropertyType(rest.propertyType, 'pl'),
