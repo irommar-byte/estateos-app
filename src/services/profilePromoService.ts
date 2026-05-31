@@ -200,12 +200,26 @@ export async function fetchUserProfilePromoCards(
     firstFreePublicationUsed?: boolean | null;
   },
 ): Promise<ProfilePromoCardRecord[]> {
-  await ensureWelcomeCouponForUser(userId, {
-    email: opts?.email,
-    firstFreePublicationUsed: opts?.firstFreePublicationUsed,
-  });
-  const local = await loadLocalProfilePromoCards(userId);
   const remote = await fetchRemoteProfilePromoCards(token, userId);
+  const remoteWelcome = remote?.find((card) => isWelcomeCouponRecord(card));
+  const firstFreeUsed =
+    opts?.firstFreePublicationUsed === true || remoteWelcome?.couponUsed === true;
+
+  if (!firstFreeUsed) {
+    await ensureWelcomeCouponForUser(userId, {
+      email: opts?.email,
+      firstFreePublicationUsed: firstFreeUsed ? true : opts?.firstFreePublicationUsed,
+    });
+  }
+
+  const local = await loadLocalProfilePromoCards(userId);
+  if (firstFreeUsed) {
+    const patched = patchPromoCardCouponUsed(local, welcomeCouponIdForUser(userId));
+    if (patched !== local) {
+      await AsyncStorage.setItem(localKey(userId), JSON.stringify(patched));
+    }
+  }
+
   const merged = remote != null ? mergeProfilePromoCards(remote, local) : local;
   return merged.filter(
     (card) => !isWelcomeCouponRecord(card) || card.id === welcomeCouponIdForUser(userId),

@@ -337,10 +337,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const grantUser = get().user;
       if (grantUser?.id) {
         const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
-        const legacyUsed = readUserFirstFreePublicationUsed(grantUser) === true;
         await ensureWelcomeCouponForUser(grantUser.id, {
           email: loginEmail,
-          firstFreePublicationUsed: legacyUsed ? true : false,
+          firstFreePublicationUsed: readUserFirstFreePublicationUsed(grantUser),
         });
       }
       return true;
@@ -474,10 +473,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const grantUser = get().user;
         if (grantUser?.id) {
           const { ensureWelcomeCouponForUser } = await import('../services/welcomeCouponService');
-          const legacyUsed = readUserFirstFreePublicationUsed(grantUser) === true;
           await ensureWelcomeCouponForUser(grantUser.id, {
             email: hintEmail || grantUser.email,
-            firstFreePublicationUsed: legacyUsed ? true : false,
+            firstFreePublicationUsed: readUserFirstFreePublicationUsed(grantUser),
           });
         }
         return true; 

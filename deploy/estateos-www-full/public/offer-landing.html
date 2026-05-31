@@ -330,6 +330,78 @@
       letter-spacing: 0.04em;
     }
     .platform-links a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+    .platform-badges {
+      margin-top: 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge-shell {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      background: rgba(0, 0, 0, 0.9);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      text-decoration: none;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      overflow: hidden;
+    }
+    .badge-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.35);
+      opacity: 0.8;
+    }
+    .badge-shell:hover {
+      transform: translateY(-1px);
+      border-color: #fff;
+      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.55), 0 0 28px rgba(16, 185, 129, 0.18);
+    }
+    .badge-shell img { height: 28px; width: auto; display: block; }
+    .badge-shell.www {
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .badge-shell.www svg {
+      width: 18px;
+      height: 18px;
+      stroke: currentColor;
+      fill: none;
+      flex-shrink: 0;
+    }
+    .badge-soon {
+      opacity: 0.62;
+      cursor: default;
+      pointer-events: none;
+    }
+    .badge-soon .soon-label {
+      position: absolute;
+      right: 6px;
+      bottom: 5px;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fff;
+      background: rgba(184, 146, 46, 0.92);
+      padding: 2px 6px;
+      border-radius: 999px;
+      line-height: 1.2;
+    }
+    .qr-frame img.qr-img { display: block; width: 128px; height: 128px; }
     .err {
       margin-top: 16px;
       padding: 14px;
@@ -414,16 +486,25 @@
             Pierwszą nieruchomość możesz wystawić <span class="highlight">bezpłatnie</span>.
             Warto mieć aplikację — bo rynek nie czeka, a dobre oferty znikają szybko.
           </p>
-          <div class="platform-links">
-            <a href="https://estateos.pl">estateos.pl</a>
-            <a href="https://apps.apple.com/app/id6762899098" rel="noopener noreferrer">App Store</a>
+          <div class="platform-badges" aria-label="Linki do platformy">
+            <a href="https://estateos.pl" class="badge-shell www" aria-label="Przejdź na stronę estateos.pl">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.6"/><path d="M3 12h18M12 3c2.8 3.1 4.2 6.4 4.2 9s-1.4 5.9-4.2 9M12 3C9.2 6.1 7.8 9.4 7.8 12s1.4 5.9 4.2 9" stroke-width="1.6"/></svg>
+              <span>WWW</span>
+            </a>
+            <a href="https://apps.apple.com/app/id6762899098" class="badge-shell" rel="noopener noreferrer" aria-label="Pobierz EstateOS w App Store">
+              <img src="/badges/app-store-pl-official.png" alt="Pobierz w App Store" width="120" height="28" loading="lazy" />
+            </a>
+            <span class="badge-shell badge-soon" aria-label="Google Play — wkrótce">
+              <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="" width="120" height="28" loading="lazy" />
+              <span class="soon-label">Wkrótce</span>
+            </span>
           </div>
         </footer>
       </div>
     </article>
     <div id="fatal" class="err" style="display:none"></div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js" crossorigin="anonymous"></script>
   <script>
 (function () {
   var ORIGIN = window.location.origin;
@@ -561,13 +642,42 @@
     var label = document.getElementById('qrUrlLabel');
     if (label) label.textContent = canonicalHttps;
     var canvas = document.getElementById('qrCanvas');
-    if (!canvas || typeof QRCode === 'undefined') return;
-    QRCode.toCanvas(canvas, canonicalHttps, {
+    if (!canvas) return;
+
+    function mountQrImage(src) {
+      var img = document.createElement('img');
+      img.className = 'qr-img';
+      img.alt = 'Kod QR — otwórz ofertę w aplikacji EstateOS';
+      img.width = 128;
+      img.height = 128;
+      img.src = src;
+      if (canvas.parentNode) canvas.parentNode.replaceChild(img, canvas);
+    }
+
+    function fallbackQrImage() {
+      mountQrImage(
+        'https://api.qrserver.com/v1/create-qr-code/?size=128x128&margin=1&bgcolor=ffffff&color=141416&data=' +
+        encodeURIComponent(canonicalHttps)
+      );
+    }
+
+    if (typeof QRCode === 'undefined') {
+      fallbackQrImage();
+      return;
+    }
+
+    QRCode.toDataURL(canonicalHttps, {
       width: 128,
       margin: 1,
       color: { dark: '#141416', light: '#ffffff' },
       errorCorrectionLevel: 'M',
-    }, function () {});
+    }, function (err, url) {
+      if (err || !url) {
+        fallbackQrImage();
+        return;
+      }
+      mountQrImage(url);
+    });
   }
 
   function updateShareMeta(title, description, imageUrl) {
