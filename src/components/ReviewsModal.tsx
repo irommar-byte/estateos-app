@@ -2,9 +2,12 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Star } from "lucide-react";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
+import { resolveProfileHeadlines } from "@/lib/sellerDisplay";
 
 export default function ReviewsModal({ isOpen, onClose, reviewsData, userName, subject }: { isOpen: boolean, onClose: () => void, reviewsData: any, userName: string, subject?: any }) {
   if (!isOpen || !reviewsData) return null;
+
+  const headlines = resolveProfileHeadlines(subject ?? { name: userName });
 
   const totalReviews = Number(reviewsData.totalReviews || 0);
   const averageRating = totalReviews > 0 ? Number(reviewsData.averageRating || 0) : 0;
@@ -32,7 +35,10 @@ export default function ReviewsModal({ isOpen, onClose, reviewsData, userName, s
            <div className="p-6 md:p-8 border-b border-white/5 flex justify-between items-start relative z-10">
               <div>
                  <h3 className="text-3xl font-black text-white tracking-tighter mb-1">Opinie o Tobie</h3>
-                 <p className="text-white/40 font-bold uppercase tracking-widest text-[10px]">{userName}</p>
+                 <p className="text-white/70 font-bold text-sm">{headlines.primary}</p>
+                 {headlines.secondary ? (
+                   <p className="text-white/40 font-bold uppercase tracking-widest text-[10px] mt-0.5">{headlines.secondary}</p>
+                 ) : null}
                  <EliteStatusBadges subject={subject} isDark compact className="mt-2" />
               </div>
               <button onClick={onClose} className="p-3 bg-white/5 hover:bg-red-500 hover:text-white rounded-full transition-colors text-white/50"><X size={20}/></button>

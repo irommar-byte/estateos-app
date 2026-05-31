@@ -80,7 +80,7 @@ export default async function RootLayout({
   const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value);
 
   return (
-    <html suppressHydrationWarning lang={locale} className="light" data-theme="light">
+    <html suppressHydrationWarning lang={locale} className="dark" data-theme="dark">
       <body suppressHydrationWarning className={inter.className}>
         <ThemeInitScript />
         <ThemeProvider>

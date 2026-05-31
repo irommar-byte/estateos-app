@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { resolveCounterpartyLabel } from '@/lib/sellerDisplay';
 import {
   canClosePresentation,
   counterpartyId,
@@ -47,8 +48,8 @@ export async function getPendingPresentationStep(
               images: true,
             },
           },
-          buyer: { select: { id: true, name: true, email: true, image: true } },
-          seller: { select: { id: true, name: true, email: true, image: true } },
+          buyer: { select: { id: true, name: true, email: true, image: true, companyName: true, role: true, planType: true } },
+          seller: { select: { id: true, name: true, email: true, image: true, companyName: true, role: true, planType: true } },
         },
       },
     },
@@ -87,7 +88,15 @@ export async function getPendingPresentationStep(
 function serialize(
   app: any,
   viewerId: number,
-  counterparty: { id: number; name: string | null; email: string | null; image?: string | null },
+  counterparty: {
+    id: number;
+    name: string | null;
+    email: string | null;
+    image?: string | null;
+    companyName?: string | null;
+    role?: string | null;
+    planType?: string | null;
+  },
 ): PendingPresentationPayload['appointment'] {
   const offer = app.deal?.offer;
   return {
@@ -107,9 +116,7 @@ function serialize(
       : null,
     counterparty: {
       id: counterparty.id,
-      name:
-        counterparty.name ||
-        (counterparty.email ? counterparty.email.split('@')[0] : 'Kontrahent'),
+      name: resolveCounterpartyLabel(counterparty),
       image: counterparty.image ?? null,
     },
     viewerRole: app.deal.buyerId === viewerId ? 'buyer' : 'seller',

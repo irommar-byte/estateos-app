@@ -33,6 +33,12 @@ export type Dictionary = {
     dark: string;
     system: string;
   };
+  prefsDock: {
+    introTitle: string;
+    introBody: string;
+    showSettings: string;
+    hideSettings: string;
+  };
   currency: {
     sectionTitle: string;
     labelPln: string;
@@ -382,6 +388,13 @@ const pl: Dictionary = {
     light: "Jasny",
     dark: "Ciemny",
     system: "System",
+  },
+  prefsDock: {
+    introTitle: "Ustawienia wyświetlania",
+    introBody:
+      "Tu zmienisz motyw (jasny/ciemny), język (PL/EN) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
+    showSettings: "Pokaż ustawienia",
+    hideSettings: "Schowaj ustawienia",
   },
   currency: {
     sectionTitle: "Waluta cen",
@@ -754,6 +767,13 @@ const en: Dictionary = {
     light: "Light",
     dark: "Dark",
     system: "System",
+  },
+  prefsDock: {
+    introTitle: "Display settings",
+    introBody:
+      "Adjust theme (light/dark), language (PL/EN), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
+    showSettings: "Show settings",
+    hideSettings: "Hide settings",
   },
   currency: {
     sectionTitle: "Price currency",

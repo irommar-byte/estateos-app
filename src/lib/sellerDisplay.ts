@@ -40,3 +40,33 @@ export function resolveSellerPersonName(userLike: unknown): string | null {
   const person = String(u.name ?? u.contactName ?? "").trim();
   return person || null;
 }
+
+/** Nagłówek profilu: dla agenta nazwa biura + opcjonalnie osoba, inaczej imię i nazwisko. */
+export function resolveProfileHeadlines(userLike: unknown): { primary: string; secondary?: string } {
+  if (!userLike || typeof userLike !== "object") {
+    return { primary: "Użytkownik" };
+  }
+  const u = userLike as Record<string, unknown>;
+  const emailFallback = String(u.email ?? "")
+    .trim()
+    .split("@")[0];
+  const person = String(u.name ?? u.contactName ?? emailFallback ?? "").trim() || "Użytkownik";
+
+  if (isAgentOrAgencySeller(u)) {
+    const company = String(u.companyName ?? u.agencyName ?? "").trim();
+    if (company) {
+      return {
+        primary: company,
+        secondary: person !== company ? person : undefined,
+      };
+    }
+  }
+
+  return { primary: person };
+}
+
+/** Etykieta kontrahenta w czacie, opiniach i dealroomie. */
+export function resolveCounterpartyLabel(userLike: unknown, fallback = "Kontrahent"): string {
+  const { primary } = resolveProfileHeadlines(userLike);
+  return primary || fallback;
+}

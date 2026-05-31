@@ -18,8 +18,8 @@ export async function GET(req: Request) {
       },
       include: {
         offer: { select: { id: true, title: true, images: true, price: true, city: true } },
-        buyer: { select: { id: true, name: true, image: true, email: true } },
-        seller: { select: { id: true, name: true, image: true, email: true } },
+        buyer: { select: { id: true, name: true, image: true, email: true, companyName: true, role: true, planType: true } },
+        seller: { select: { id: true, name: true, image: true, email: true, companyName: true, role: true, planType: true } },
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,

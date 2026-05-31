@@ -17,6 +17,7 @@ import {
 import EliteStatusBadges from '@/components/ui/EliteStatusBadges';
 import DealRoomAppointmentPicker from '@/components/crm/DealRoomAppointmentPicker';
 import DealRoomPostSaleReview from '@/components/crm/DealRoomPostSaleReview';
+import { resolveCounterpartyLabel, resolveProfileHeadlines } from '@/lib/sellerDisplay';
 import PresentationFlowBanner from '@/components/presentation/PresentationFlowBanner';
 import { formatDealChatMessage } from '@/lib/dealroomReviewMessage';
 import {
@@ -397,9 +398,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
   const activeBid = bidActionModal ? (deal.bids || []).find((b: any) => b.id === bidActionModal.bidId) : null;
   const activeAppointment = appointmentActionModal ? (deal.appointments || []).find((a: any) => a.id === appointmentActionModal.appointmentId) : null;
 
+  const otherPartyHeadlines = resolveProfileHeadlines(otherParty);
+
   const formatActor = (senderId?: number | null) => {
     if (senderId === currentUserId) return 'Ty';
-    return otherParty?.name || otherParty?.email?.split('@')[0] || 'Kontrahent';
+    return resolveCounterpartyLabel(otherParty);
   };
 
   const latestAppointment = appointmentEvents[appointmentEvents.length - 1] || null;
@@ -516,7 +519,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             <div className="flex items-center gap-3 mt-1 text-[10px] uppercase tracking-widest font-bold">
               <span className="text-emerald-500">{Number(String(deal.offer?.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</span>
               <span className="w-1 h-1 rounded-full bg-white/20"></span>
-              <span className="text-white/40">{isBuyer ? 'Kupujesz od:' : 'Sprzedajesz dla:'} <span className="text-white/80">{otherParty?.name || otherParty?.email?.split('@')[0]}</span></span>
+              <span className="text-white/40">{isBuyer ? 'Kupujesz od:' : 'Sprzedajesz dla:'} <span className="text-white/80">{otherPartyHeadlines.primary}</span></span>
+              {otherPartyHeadlines.secondary ? (
+                <span className="block text-[10px] text-white/45 mt-0.5">{otherPartyHeadlines.secondary}</span>
+              ) : null}
             </div>
             <EliteStatusBadges subject={otherParty} isDark compact className="mt-2" />
           </div>
@@ -766,6 +772,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                 id: Number(otherParty?.id || (isBuyer ? deal.sellerId : deal.buyerId)),
                 name: otherParty?.name,
                 email: otherParty?.email,
+                companyName: otherParty?.companyName,
+                role: otherParty?.role,
+                planType: otherParty?.planType,
               }}
               myReviewSubmitted={Boolean(deal?.myReviewSubmitted)}
               partnerReviewVisible={Boolean(deal?.partnerReviewVisible)}

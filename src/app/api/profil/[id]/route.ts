@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, planType: true, createdAt: true }
+      select: { id: true, name: true, planType: true, role: true, companyName: true, buyerType: true, createdAt: true }
     });
 
     if (!user) return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });

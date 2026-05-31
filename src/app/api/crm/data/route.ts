@@ -80,8 +80,8 @@ export async function GET(req: Request) {
         deal: {
           include: {
             offer: true,
-            buyer: { select: { id: true, name: true, email: true, phone: true, image: true } },
-            seller: { select: { id: true, name: true, email: true, phone: true, image: true } },
+            buyer: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
+            seller: { select: { id: true, name: true, email: true, phone: true, image: true, companyName: true, role: true, planType: true } },
           },
         },
         proposedBy: { select: { id: true, name: true, email: true } },

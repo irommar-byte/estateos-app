@@ -21,6 +21,7 @@ import PresentationFlowBanner from "@/components/presentation/PresentationFlowBa
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
 import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload } from "@/lib/reviewsPresentation";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
+import { resolveProfileHeadlines } from "@/lib/sellerDisplay";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -834,14 +835,15 @@ export default function CRMDashboard() {
     );
   }
 
-  const displayName = currentUser?.firstName
+  const personName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
     : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : c.welcome));
+  const accountHeadlines = resolveProfileHeadlines(currentUser);
   const avatarSrcRaw = currentUser?.image || '';
   const avatarSrc = avatarSrcRaw
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
     : '';
-  const avatarInitial = (displayName || 'U').trim().charAt(0).toUpperCase();
+  const avatarInitial = (personName || accountHeadlines.primary || 'U').trim().charAt(0).toUpperCase();
   const isDarkTheme = resolvedTheme !== "light";
   const verificationStatus: "verified" | "email" | "sms" =
     currentUser?.isEmailVerified && currentUser?.isVerifiedPhone
@@ -932,7 +934,10 @@ export default function CRMDashboard() {
         name: data.user?.name ?? user.name,
         email: data.user?.email ?? user.email,
         image: data.user?.image,
+        companyName: data.user?.companyName,
+        role: data.user?.role,
         planType: data.user?.planType,
+        displayName: data.user?.displayName ?? data.user?.publicName,
         buyerType: data.user?.planType,
         badges: data.user?.badges,
         reviewsData: reviewsPayload,
@@ -1049,7 +1054,7 @@ export default function CRMDashboard() {
                 {avatarSrc ? (
                   <img
                     src={avatarSrc}
-                    alt={`Awatar ${displayName}`}
+                    alt={`Awatar ${personName}`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -1058,9 +1063,14 @@ export default function CRMDashboard() {
                   </div>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
-                {displayName}
-              </h1>
+              <div>
+                <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
+                  {accountHeadlines.primary}
+                </h1>
+                {accountHeadlines.secondary ? (
+                  <p className="mt-1 text-sm font-semibold text-[var(--eos-muted)]">{accountHeadlines.secondary}</p>
+                ) : null}
+              </div>
               <EliteStatusBadges subject={currentUser} isDark={isDarkTheme} compact className="mt-1" />
               {currentUser?.id && (
                 <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-[var(--eos-border)] rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
@@ -2127,7 +2137,17 @@ export default function CRMDashboard() {
                           );
                         })()}
                         
-                        <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{viewingProfile.name || viewingProfile.email?.split('@')[0]}</h3>
+                        {(() => {
+                          const headlines = resolveProfileHeadlines(viewingProfile);
+                          return (
+                            <>
+                              <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{headlines.primary}</h3>
+                              {headlines.secondary ? (
+                                <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', margin: '0 0 8px 0' }}>{headlines.secondary}</p>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '100px', border: '1px solid rgba(16,185,129,0.2)' }}>
                             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 10px #10b981' }}></span>
                             <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>{c.profile.verified}</span>
@@ -2208,7 +2228,17 @@ export default function CRMDashboard() {
               <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-[var(--eos-subtle)] hover:text-white transition-colors">
                 <X size={20} />
               </button>
-              <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || c.profileModal.title}</h3>
+              {(() => {
+                const headlines = resolveProfileHeadlines(profileModalData?.user || profileModalUser);
+                return (
+                  <>
+                    <h3 className="text-xl font-black tracking-tight text-white mb-1">{headlines.primary}</h3>
+                    {headlines.secondary ? (
+                      <p className="text-sm font-semibold text-[var(--eos-muted)] mb-1">{headlines.secondary}</p>
+                    ) : null}
+                  </>
+                );
+              })()}
               <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-6">ID: {profileModalUser.id}</p>
               <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 

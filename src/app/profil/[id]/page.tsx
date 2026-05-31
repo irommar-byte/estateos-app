@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, use } from "react";
 import { motion } from "framer-motion";
-import { Star, Calendar, Shield, MessageSquare, Loader2, ChevronLeft, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Star, Calendar, Shield, MessageSquare, Loader2, ChevronLeft, CheckCircle2, XCircle, AlertCircle, Briefcase } from "lucide-react";
 import Link from "next/link";
+import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 
 export default function UserProfile({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -20,6 +21,8 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
   if (!data || data.error) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center"><h1 className="text-2xl font-black">Profil niedostępny</h1></div>;
 
   const { user, reviews, stats } = data;
+  const headlines = resolveProfileHeadlines(user);
+  const isAgency = isAgentOrAgencySeller(user) || user.buyerType === 'agency';
   const avgRating = reviews.length > 0 ? (reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length).toFixed(1) : "Brak";
 
   return (
@@ -35,12 +38,15 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
           <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none"></div>
           
           <div className="w-32 h-32 rounded-full bg-[#111] border border-white/10 flex items-center justify-center text-5xl font-black text-white/30 shadow-inner shrink-0 relative">
-            {user.name?.[0] || 'U'}
-            {user.buyerType === 'agency' && <div className="absolute -bottom-3 bg-orange-500 text-black text-[9px] px-3 py-1 rounded-full uppercase tracking-widest font-black shadow-lg">Agencja</div>}
+            {isAgency ? <Briefcase size={48} className="text-emerald-400/70" /> : (user.name?.[0] || 'U')}
+            {isAgency && <div className="absolute -bottom-3 bg-orange-500 text-black text-[9px] px-3 py-1 rounded-full uppercase tracking-widest font-black shadow-lg">Biuro</div>}
           </div>
 
           <div className="flex-1 text-center md:text-left">
-            <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-4">{user.name || 'Zarejestrowany Klient'}</h1>
+            <h1 className="text-4xl md:text-5xl font-black tracking-tighter mb-2">{headlines.primary}</h1>
+            {headlines.secondary ? (
+              <p className="text-lg font-medium text-white/55 mb-4">{headlines.secondary}</p>
+            ) : null}
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-xs font-bold text-white/50 uppercase tracking-widest">
               <span className="flex items-center gap-2"><Calendar size={14}/> Dołączył: {new Date(user.createdAt).toLocaleDateString('pl-PL')}</span>
               <span className="flex items-center gap-2 text-emerald-500"><Shield size={14}/> Zweryfikowany ({stats.reliability}%)</span>
@@ -55,7 +61,6 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
           </div>
         </div>
 
-        {/* NOWA SEKCJA STATYSTYK I NIEZAWODNOŚCI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
            <div className="bg-[#111] border border-white/5 p-8 rounded-[2rem] flex flex-col items-center justify-center text-center">
               <CheckCircle2 className="text-emerald-500 mb-4" size={32} />

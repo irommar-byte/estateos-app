@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertCircle,
   Building2,
+  Check,
   CheckCircle,
   Loader2,
   Lock,
@@ -381,25 +382,44 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
         )}
       </AnimatePresence>
 
-      <label className="eos-choice-card flex cursor-pointer items-start gap-3 rounded-2xl p-4">
-        <input
-          type="checkbox"
-          checked={acceptTerms}
-          onChange={(e) => setAcceptTerms(e.target.checked)}
-          className="mt-1 size-4 accent-emerald-500"
-        />
+      <div
+        className="eos-choice-card flex cursor-pointer items-start gap-4 rounded-2xl p-4"
+        role="checkbox"
+        aria-checked={acceptTerms}
+        tabIndex={0}
+        onClick={() => setAcceptTerms((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            setAcceptTerms((v) => !v);
+          }
+        }}
+      >
+        <span className={`estate-checkbox shrink-0 ${acceptTerms ? 'checked' : ''}`} aria-hidden>
+          <Check size={16} strokeWidth={4} />
+        </span>
         <span className="eos-muted-copy text-xs leading-relaxed">
           {t.acceptTermsPrefix}{' '}
-          <Link href="/regulamin" className="text-emerald-500 hover:underline" target="_blank">
+          <Link
+            href="/regulamin"
+            className="text-emerald-500 hover:underline"
+            target="_blank"
+            onClick={(e) => e.stopPropagation()}
+          >
             {t.termsLink}
           </Link>{' '}
           {t.acceptTermsMiddle}{' '}
-          <Link href="/polityka-prywatnosci" className="text-emerald-500 hover:underline" target="_blank">
+          <Link
+            href="/polityka-prywatnosci"
+            className="text-emerald-500 hover:underline"
+            target="_blank"
+            onClick={(e) => e.stopPropagation()}
+          >
             {t.privacyLink}
           </Link>
           .
         </span>
-      </label>
+      </div>
 
       <button
         type="submit"
