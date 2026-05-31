@@ -57,6 +57,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
+  const rentAdminFeeNum = Number(offer.adminFee);
+  const rentAdminFeeFormatted =
+    Number.isFinite(rentAdminFeeNum) && rentAdminFeeNum > 0
+      ? `${Math.round(rentAdminFeeNum).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
+      : null;
   const isDealRoom = offer.badges?.isPartner === true;
   const themeColors = {
     primaryBg: isDealRoom ? "bg-orange-500" : isRent ? "bg-blue-500" : "bg-emerald-500",
@@ -294,7 +299,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       label: t.furnished,
       value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    { label: t.rentFee, value: offer.rent ? `${String(offer.rent).replace(/\D/g, "")} PLN` : null },
+    {
+      label: isRent ? t.rentAdditionalFees : t.rentFee,
+      value: rentAdminFeeFormatted,
+    },
     {
       label: t.availability,
       value: offer.availabilityDate
@@ -535,6 +543,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h2 className="mb-2 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
                   {priceFormatted.primary}
                 </h2>
+                {isRent && rentAdminFeeFormatted ? (
+                  <div className="mb-4 inline-flex max-w-full items-center rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-2.5 shadow-[0_8px_24px_rgba(16,185,129,0.12)]">
+                    <p className="text-sm font-bold tracking-tight text-emerald-400">
+                      {t.rentAdditionalFeesPill.replace("{{amount}}", rentAdminFeeFormatted)}
+                    </p>
+                  </div>
+                ) : null}
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
                 ) : (

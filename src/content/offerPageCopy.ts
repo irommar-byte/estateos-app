@@ -47,6 +47,8 @@ export type OfferPageCopy = {
   furnishedYes: string;
   furnishedNo: string;
   rentFee: string;
+  rentAdditionalFees: string;
+  rentAdditionalFeesPill: string;
   availability: string;
   aboutProperty: string;
   amenities: string;
@@ -88,7 +90,7 @@ const PL: OfferPageCopy = {
   privateOwner: "Właściciel prywatny",
   verified: "Zweryfikowana",
   verifiedHint: "Odznaka jakości EstateOS",
-  legalVerifiedKw: "Zweryfikowany",
+  legalVerifiedKw: "BEZPIECZNA NIERUCHOMOŚĆ",
   legalUnverifiedKw: "Niezweryfikowany",
   legalVerifiedKwSublabel: "EstateOS™ Quality Shield",
   newOfferBadge: "NOWA OFERTA",
@@ -126,6 +128,8 @@ const PL: OfferPageCopy = {
   furnishedYes: "Tak",
   furnishedNo: "Nie",
   rentFee: "Czynsz",
+  rentAdditionalFees: "Opłaty dodatkowe (czynsz)",
+  rentAdditionalFeesPill: "+ {{amount}} dodatkowe opłaty (czynsz)",
   availability: "Dostępność",
   aboutProperty: "O nieruchomości",
   amenities: "Udogodnienia",
@@ -169,7 +173,7 @@ const EN: OfferPageCopy = {
   privateOwner: "Private owner",
   verified: "Verified",
   verifiedHint: "EstateOS quality badge",
-  legalVerifiedKw: "Verified",
+  legalVerifiedKw: "SECURE PROPERTY",
   legalUnverifiedKw: "Unverified",
   legalVerifiedKwSublabel: "EstateOS™ Quality Shield",
   newOfferBadge: "NEW LISTING",
@@ -207,6 +211,8 @@ const EN: OfferPageCopy = {
   furnishedYes: "Yes",
   furnishedNo: "No",
   rentFee: "Service charge",
+  rentAdditionalFees: "Additional fees (service charge)",
+  rentAdditionalFeesPill: "+ {{amount}} additional fees (service charge)",
   availability: "Availability",
   aboutProperty: "About the property",
   amenities: "Amenities",

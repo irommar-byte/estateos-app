@@ -10,6 +10,8 @@ import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
 import { isAgentCommissionAccount } from '@/lib/agentCommission';
 import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
+import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
+import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 
 // --- LUKSUSOWE STYLE ---
 const inputWrapper = "relative group flex items-center";
@@ -100,6 +102,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           rooms: String(offer.rooms || ''),
           floor: String(offer.floor || ''),
           year: String(offer.yearBuilt ?? offer.year ?? offer.buildYear ?? ''),
+          rentAdminFee: offer.adminFee != null ? String(offer.adminFee) : '',
           plotArea: String(offer.plotArea || ''),
           amenities: offer.amenities || "",
           district: offer.district || "",
@@ -211,6 +214,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       floorPlan: floorPlanUrl || null,
       buildYear: data.year,
       yearBuilt: data.year,
+      adminFee: data.rentAdminFee ? Number(String(data.rentAdminFee).replace(/\D/g, '')) : null,
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
         : {}),
@@ -337,7 +341,12 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               <label className={labelPremium}>Rok Budowy</label>
               <div className={inputWrapper}>
                 <Calendar className={iconGlow} size={20} />
-                <input type="number" value={data.year || ''} onChange={e => updateData({ year: e.target.value })} className={inputPremium} placeholder="Np. 2023" />
+                <select value={data.year || ''} onChange={e => updateData({ year: e.target.value })} className={`${inputPremium} appearance-none cursor-pointer`}>
+                  <option value="">—</option>
+                  {buildYearBuiltSelectOptions().map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

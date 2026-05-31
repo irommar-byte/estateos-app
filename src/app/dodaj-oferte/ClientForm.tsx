@@ -42,6 +42,11 @@ import {
   parseAddressSearchQuery,
   pickBestGeocodeFeature,
 } from "@/lib/mapboxGeocodeClient";
+import { buildYearBuiltSelectOptions } from "@/lib/offerYearBuilt";
+import {
+  buildRentAdditionalFeeSelectOptions,
+  parseRentAdditionalFeeForApi,
+} from "@/lib/rentAdditionalFees";
 import {
   AGENT_COMMISSION_MIN_NONZERO,
   validateAgentCommissionPercent,
@@ -1245,8 +1250,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       price: cleanPriceValue,
       priceCurrency: data.priceCurrency || 'PLN',
       area: String(data.area).replace(',', '.'),
-      // Czynsz z WWW mapujemy na adminFee, żeby app mobilna widziała tę samą wartość.
-      adminFee: String(data.rent || '').trim() ? Number(String(data.rent).replace(/\D/g, '')) : null,
+      adminFee:
+        data.transactionType === "RENT"
+          ? parseRentAdditionalFeeForApi(data.rentAdminFee)
+          : String(data.rent || "").trim()
+            ? Number(String(data.rent).replace(/\D/g, ""))
+            : null,
       images: '[]',
       imageUrl: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop",
       floorPlan: null,
@@ -1777,7 +1786,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       <label className={labelPremium}>Rok budowy *</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.buildYear || ''} onChange={(e) => updateData({ buildYear: e.target.value })}>
                         <option value="">-</option>
-                        {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(year => <option key={year} value={year}>{year}</option>)}
+                        {buildYearBuiltSelectOptions().map(year => <option key={year} value={year}>{year}</option>)}
                       </select>
                     </div>
                   </>
@@ -1802,7 +1811,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       </div>
                     </div>
 
-                    {/* Pole Czynszu */}
+                    {data.transactionType !== 'RENT' ? (
                     <div>
                       <label className={labelPremium}>Czynsz administracyjny <span className="text-white/30 font-normal ml-1 text-[10px]">(Opcjonalnie)</span></label>
                       <div className="relative group">
@@ -1810,6 +1819,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">PLN</div>
                       </div>
                     </div>
+                    ) : null}
                   </>
                 )}
 
@@ -1817,7 +1827,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
                   <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
                     Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
-                    {AGENT_COMMISSION_MIN_NONZERO}% wzwyż. Cena ogłoszenia pozostaje finalną kwotą brutto dla
+                    {AGENT_COMMISSION_MIN_NONZERO}% wzwyż — bez górnego limitu. Cena ogłoszenia pozostaje finalną kwotą brutto dla
                     klienta, a prowizja jest rozliczana poza platformą.
                   </p>
                   <AgentCommissionEditor
@@ -1963,6 +1973,36 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                             <Key size={14} /> Szczegóły Wynajmu
                           </h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <label className={labelPremium}>Opłaty dodatkowe (czynsz)</label>
+                              <p className="text-[10px] text-zinc-500 mb-2 leading-relaxed">
+                                Osobno od czynszu najmu — wspólnota, media, administracja. Wybierz z listy lub zostaw „Brak”.
+                              </p>
+                              <select
+                                className={`${inputPremium} appearance-none cursor-pointer`}
+                                value={String(data.rentAdminFee ?? "")}
+                                onChange={(e) => updateData({ rentAdminFee: e.target.value })}
+                              >
+                                <option value="">Brak</option>
+                                {buildRentAdditionalFeeSelectOptions()
+                                  .filter((v) => v > 0)
+                                  .map((fee) => (
+                                    <option key={fee} value={String(fee)}>
+                                      {fee.toLocaleString("pl-PL")} PLN / mc
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className={labelPremium}>Kaucja (PLN)</label>
+                              <input
+                                type="text"
+                                className={inputPremium}
+                                placeholder="np. 5000"
+                                value={data.deposit || ""}
+                                onChange={(e) => updateData({ deposit: e.target.value.replace(/[^0-9]/g, "") })}
+                              />
+                            </div>
                             <div>
                               <label className={labelPremium}>Typ umowy / Dostępność</label>
                               <input 

@@ -111,14 +111,6 @@ export function validateAgentCommissionPercent(raw: unknown): AgentCommissionVal
     };
   }
 
-  if (!isMultipleOfStep(parsed, AGENT_COMMISSION_STEP)) {
-    return {
-      ok: false,
-      code: AGENT_COMMISSION_ERROR_CODES.INVALID_STEP,
-      message: `Krok ${AGENT_COMMISSION_STEP}% (np. 0,5; 0,75; 1; …).`,
-    };
-  }
-
   return { ok: true, value: Math.round(parsed * 10000) / 10000 };
 }
 
@@ -167,11 +159,11 @@ export function percentFromCommissionAmount(
   const amount = parseOfferNumeric(amountRaw);
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
   if (amount === 0) return 0;
-  let percent = roundToQuarter((amount / price) * 100);
+  let percent = (amount / price) * 100;
   if (options?.clampToMax && Number.isFinite(AGENT_COMMISSION_MAX) && percent > AGENT_COMMISSION_MAX) {
     percent = AGENT_COMMISSION_MAX;
   }
-  return percent;
+  return Math.round(percent * 10000) / 10000;
 }
 
 export function commissionAmountInputToPercent(
@@ -181,10 +173,6 @@ export function commissionAmountInputToPercent(
   const price = parseOfferNumeric(priceRaw);
   let amount = parseOfferNumeric(amountRaw);
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
-  const maxAmt = maxAgentCommissionAmountPln(priceRaw);
-  if (Number.isFinite(maxAmt) && maxAmt > 0 && amount > maxAmt) {
-    amount = maxAmt;
-  }
   const percent = percentFromCommissionAmount(price, amount);
   if (percent === null) return null;
   return { percent, amountPln: Math.round(amount) };

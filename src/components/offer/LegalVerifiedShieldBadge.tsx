@@ -23,7 +23,7 @@ export default function LegalVerifiedShieldBadge({
   active = true,
   className = "",
 }: Props) {
-  const displayLabel = String(label || (active ? "Zweryfikowany" : "Niezweryfikowany"));
+  const displayLabel = String(label || (active ? "BEZPIECZNA NIERUCHOMOŚĆ" : "Niezweryfikowany"));
   const isCard = variant === "card";
 
   const shellClass = active
@@ -36,8 +36,8 @@ export default function LegalVerifiedShieldBadge({
 
   const titleClass = active
     ? isCard
-      ? "text-[10px] font-semibold tracking-tight text-white"
-      : "text-[10px] font-semibold tracking-tight text-emerald-100 sm:text-[11px]"
+      ? "text-[9px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+      : "text-[9px] font-black uppercase tracking-[0.14em] text-emerald-50 drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)] sm:text-[10px]"
     : isCard
       ? "text-[10px] font-semibold tracking-tight text-zinc-300"
       : "text-[10px] font-semibold tracking-tight text-zinc-400";
@@ -50,16 +50,18 @@ export default function LegalVerifiedShieldBadge({
 
   return (
     <div
-      className={`inline-flex max-w-full items-center gap-2 rounded-2xl border px-2.5 py-1.5 ${shellClass} ${className}`}
+      className={`inline-flex max-w-full items-center gap-2.5 rounded-2xl border px-2.5 py-1.5 overflow-visible ${shellClass} ${className}`}
       aria-label={`${displayLabel} — ${sublabel}`}
     >
       {active ? (
-        <EstateOS3DVerifiedShield
-          size={isCard ? "xs" : "xs"}
-          showLabel={false}
-          tilt={false}
-          active
-        />
+        <div className="-my-1 shrink-0">
+          <EstateOS3DVerifiedShield
+            size={isCard ? "sm" : "sm"}
+            showLabel={false}
+            tilt
+            active
+          />
+        </div>
       ) : (
         <div
           className={`flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] ${
