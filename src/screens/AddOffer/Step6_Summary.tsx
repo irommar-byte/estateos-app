@@ -68,6 +68,7 @@ import {
   validateAgentCommissionPercent,
 } from '../../lib/agentCommission';
 import { API_URL } from '../../config/network';
+import { parseRentAdditionalFeeForApi } from '../../lib/rentAdditionalFees';
 import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
 
 const { width } = Dimensions.get('window');
@@ -570,9 +571,10 @@ export default function Step6_Summary({ theme }: { theme: any }) {
       priceAmount: pricePayload.priceAmount,
       priceCurrency: pricePayload.priceCurrency,
       pricePln: pricePayload.pricePln,
-      adminFee: draft.transactionType !== 'RENT' && parseLocaleNumber(draft.adminFee || draft.rent) > 0
-        ? parseLocaleNumber(draft.adminFee || draft.rent)
-        : null,
+      adminFee:
+        parseRentAdditionalFeeForApi(
+          draft.transactionType === 'RENT' ? draft.adminFee : draft.adminFee || draft.rent,
+        ),
       deposit: draft.deposit || null,
       plotArea: resolvePlotAreaForSubmit(draft),
       rooms: draft.rooms || '0',        
@@ -1087,6 +1089,13 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 {draft.transactionType === 'RENT' && depositNum > 0 ? (
                   <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
                     {t('addOffer.step6.depositLabel', { amount: Math.round(depositNum).toLocaleString('pl-PL') })}
+                  </Text>
+                ) : null}
+                {draft.transactionType === 'RENT' && adminFeeValue > 0 ? (
+                  <Text style={[styles.financeSecondary, { color: colors.subtitle }]}>
+                    {t('addOffer.step6.rentAdditionalFeesLabel', {
+                      amount: Math.round(adminFeeValue).toLocaleString('pl-PL'),
+                    })}
                   </Text>
                 ) : null}
                 {draft.transactionType === 'SALE' && adminFeeValue > 0 ? (

@@ -298,7 +298,13 @@ export const addOffer = {
       priceSell: 'Cena całkowita — waluta oferty',
       deposit: 'Kaucja',
       adminFee: 'Czynsz Admin.',
+      rentAdditionalFees: 'Opłaty dodatkowe (czynsz)',
     },
+    rentPriceHint:
+      'To miesięczny czynsz najmu za sam lokal — bez opłat administracyjnych. Opłaty dodatkowe (wspólnota, media itd.) wybierzesz poniżej.',
+    rentAdditionalFeesNone: 'Brak',
+    rentAdditionalFeesHint:
+      'Czynsz do wspólnoty / administracji — osobno od kwoty najmu. Wybierz z listy lub zostaw „Brak”, jeśli najemca dowie się na spotkaniu.',
     placeholders: {
       amount: '0',
     },
@@ -322,21 +328,22 @@ export const addOffer = {
       subtitleDefaultPrefix:
         'Cena ofertowa to ostateczna kwota brutto. Kupujący po transakcji z tej kwoty wypłaci Tobie',
       subtitleDefaultSuffix:
-        'jako prowizję — bezpośrednio (maks. 10% ceny ofertowej).',
+        'jako prowizję — bezpośrednio poza platformą.',
       subtitleVatNote:
         'Prowizja jest brutto (z VAT). Kupujący nie dopłaca nic ponad cenę ofertową i uzgodnioną kwotę prowizji.',
+      dualInputHint: 'Wpisz prowizję procentowo albo kwotowo — oba pola synchronizują się ze sobą.',
       addDefault: 'Prowizja {{percent}}',
       addZero: 'Bez prowizji',
-      label: 'Prowizja',
+      label: 'Procent prowizji',
       stepHint: 'krok {{step}}',
       amountLabelBuyer: 'dla kupującego',
-      amountLabelFromPrice: 'z ceny ofertowej',
+      amountLabelFromPrice: 'Kwota z ceny ({{currency}})',
       amountZero: 'BEZ PROWIZJI',
-      amountEmpty: '— PLN',
+      amountEmpty: '—',
       amountHintZero: 'Kupujący nie płaci prowizji.',
-      amountHintDefault: 'Wypłata z ceny ofertowej brutto po transakcji (max. 10%).',
-      warnRange:
-        'Prowizja: 0% (bez prowizji) albo {{min}}–{{max}} ceny ofertowej brutto (maks. 10%).',
+      amountHintDefault: 'Kwota liczona od ceny brutto widocznej w ogłoszeniu.',
+      amountSyncPercent: 'Odpowiada {{percent}} ceny ofertowej.',
+      warnMinOnly: 'Prowizja: 0% (bez prowizji) albo co najmniej {{min}} ceny ofertowej brutto.',
     },
     footerHint:
       'Kwoty mają być jednoznaczne dla strony kupującej lub najemnej (w tym przy sprzedaży: czynsz administracyjny, jeśli dotyczy). Wskaźnik ceny za m² i porównanie do uproszczonej średniej służą orientacji — nie stanowią wyceny eksperckiej ani pełnej analizy rynku.',
@@ -524,8 +531,9 @@ export const addOffer = {
 
   step6: {
     noPhotos: 'Brak zdjęć w ofercie',
-    rentLabel: 'Czynsz najmu (całkowity)',
+    rentLabel: 'Czynsz najmu (miesięcznie)',
     depositLabel: 'Kaucja {{amount}} PLN',
+    rentAdditionalFeesLabel: '+ {{amount}} PLN opłaty dodatkowe (czynsz)',
     adminFeeLabel: 'Czynsz administracyjny ~ {{amount}} PLN',
     commissionSummary: {
       label: 'Prowizja:',

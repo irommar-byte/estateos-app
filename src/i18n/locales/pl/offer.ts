@@ -223,8 +223,9 @@ export const offer = {
       countZero: '0 wyświetleń',
     },
     legalVerified: {
-      label: 'zweryfikowane',
-      a11y: 'Księga wieczysta zweryfikowana przez EstateOS',
+      label: 'BEZPIECZNA NIERUCHOMOŚĆ',
+      sublabel: 'EstateOS™ Quality Shield',
+      a11y: 'Bezpieczna nieruchomość — zweryfikowana księga wieczysta EstateOS Quality Shield',
     },
     stats: {
       rooms: '{{count}} Pokoje',
@@ -279,7 +280,7 @@ export const offer = {
       bodyPaidVatBold:
         'Prowizja jest brutto (z VAT). Nie dopłacasz podatku ani opłat ponad cenę ofertową i uzgodnioną kwotę prowizji.',
     },
-    adminFeePill: '+ czynsz admin {{amount}}',
+    adminFeePill: '+ {{amount}} dodatkowe opłaty (czynsz)',
     roi: {
       label: 'EstateOS™ ROI',
       sub: 'roczna stopa',

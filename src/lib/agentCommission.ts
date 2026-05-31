@@ -15,9 +15,7 @@
  *  • Pinezki na mapie: zielone = sprzedaż, niebieskie = wynajem (bez wyjątku
  *    dla agenta; osobny kolor partnera — w późniejszej iteracji).
  *
- * Walidacja zakresu: 0.5%–10%. Powyżej 10% nie ma praktyki rynkowej w PL,
- * niżej (np. 0.1%) najczęściej to literówki — wymuszamy minimum, żeby
- * unikać przypadkowego wpisania 0/błędnej wartości w kreatorze.
+ * Walidacja: 0% (bez prowizji) albo od 0,5% w górę — bez górnego limitu procentu.
  */
 
 /**
@@ -26,8 +24,8 @@
  * `isZeroCommission()` poniżej. Nielegalny jest dopiero zakres `(0, 0.5)`.
  */
 export const AGENT_COMMISSION_MIN_PERCENT = 0.5;
-/** Maksymalna prowizja akceptowana przez UI. Backend MUSI mieć ten sam limit. */
-export const AGENT_COMMISSION_MAX_PERCENT = 10;
+/** Brak górnego limitu — agent wpisuje dowolną prowizję rynkową. */
+export const AGENT_COMMISSION_MAX_PERCENT = Number.POSITIVE_INFINITY;
 /** Krok stepperów +/- w UI (np. Step4_Finance). */
 export const AGENT_COMMISSION_STEP_PERCENT = 0.25;
 /** Wartość domyślna pre-fillowana, gdy agent włącza pole pierwszy raz. */
@@ -110,7 +108,7 @@ export function shouldWarnCommissionPercentDraft(
   const parsed = parseAgentCommissionPercent(raw);
   if (parsed === null) return true;
   if (parsed === 0) return false;
-  return parsed < AGENT_COMMISSION_MIN_PERCENT || parsed > AGENT_COMMISSION_MAX_PERCENT;
+  return parsed < AGENT_COMMISSION_MIN_PERCENT;
 }
 
 /**
@@ -134,16 +132,16 @@ export function validateAgentCommissionPercent(raw: unknown): AgentCommissionVal
   if (parsed === AGENT_COMMISSION_ZERO_PERCENT) {
     return { ok: true, percent: 0 };
   }
-  if (parsed < AGENT_COMMISSION_MIN_PERCENT || parsed > AGENT_COMMISSION_MAX_PERCENT) {
+  if (parsed < AGENT_COMMISSION_MIN_PERCENT) {
     return {
       ok: false,
       errorCode: 'OUT_OF_RANGE',
-      message: `Prowizja agenta: 0% (bez prowizji) albo ${formatPercentLabel(
+      message: `Prowizja agenta: 0% (bez prowizji) albo co najmniej ${formatPercentLabel(
         AGENT_COMMISSION_MIN_PERCENT,
-      )} – ${formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT)} ceny ofertowej (maks. 10%).`,
+      )} ceny ofertowej.`,
     };
   }
-  return { ok: true, percent: roundToQuarter(parsed) };
+  return { ok: true, percent: Math.round(parsed * 10000) / 10000 };
 }
 
 /** Czy wartość procentu to świadome „0%" (a nie brak / null)? */
@@ -177,9 +175,8 @@ export function parseOfferNumeric(raw: unknown): number {
  */
 export type AgentCommissionInputMode = 'percent' | 'amount';
 
-/** Maksymalna kwota prowizji (PLN) przy limicie 10% ceny ofertowej. */
-export function maxAgentCommissionAmountPln(priceRaw: unknown): number {
-  return computeAgentCommissionAmount(priceRaw, AGENT_COMMISSION_MAX_PERCENT);
+export function maxAgentCommissionAmountPln(_priceRaw: unknown): number {
+  return Number.NaN;
 }
 
 export function percentFromCommissionAmount(
@@ -191,11 +188,15 @@ export function percentFromCommissionAmount(
   const amount = parseOfferNumeric(amountRaw);
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
   if (amount === 0) return 0;
-  let percent = roundToQuarter((amount / price) * 100);
-  if (options?.clampToMax && percent > AGENT_COMMISSION_MAX_PERCENT) {
+  let percent = (amount / price) * 100;
+  if (
+    options?.clampToMax &&
+    Number.isFinite(AGENT_COMMISSION_MAX_PERCENT) &&
+    percent > AGENT_COMMISSION_MAX_PERCENT
+  ) {
     percent = AGENT_COMMISSION_MAX_PERCENT;
   }
-  return percent;
+  return Math.round(percent * 10000) / 10000;
 }
 
 /** Z kwoty PLN → procent + opcjonalnie przycięta kwota (gdy > 10%). */
@@ -206,10 +207,6 @@ export function commissionAmountInputToPercent(
   const price = parseOfferNumeric(priceRaw);
   let amount = parseOfferNumeric(amountRaw);
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(amount) || amount < 0) return null;
-  const maxAmt = maxAgentCommissionAmountPln(priceRaw);
-  if (Number.isFinite(maxAmt) && maxAmt > 0 && amount > maxAmt) {
-    amount = maxAmt;
-  }
   const percent = percentFromCommissionAmount(price, amount);
   if (percent === null) return null;
   return { percent, amountPln: Math.round(amount) };

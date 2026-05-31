@@ -19,6 +19,7 @@ import {
 import { isPolandLocationDraft } from '../../constants/locationEcosystem';
 import { useI18n } from '../../i18n';
 import { parseDraftDimension } from './validation';
+import { buildYearBuiltPickerValues } from '../../lib/offerYearBuilt';
 
 const Colors = { primary: '#10b981' };
 const HEATING_OPTIONS = [
@@ -33,7 +34,7 @@ const HEATING_OPTIONS = [
 
 const ROOMS = ['', ...Array.from({ length: 10 }, (_, i) => (i + 1).toString())];
 const FLOORS = ['', 'Parter', ...Array.from({ length: 30 }, (_, i) => (i + 1).toString())];
-const YEARS = ['', ...Array.from({ length: 100 }, (_, i) => (new Date().getFullYear() - i).toString())];
+const YEARS = buildYearBuiltPickerValues();
 
 const buildSqmPickerValues = (ranges: { start: number; end: number; step: number }[]) => {
   const numeric = new Set<number>();

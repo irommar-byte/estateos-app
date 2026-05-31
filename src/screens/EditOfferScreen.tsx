@@ -51,7 +51,6 @@ import {
 } from '../constants/locationEcosystem';
 import {
   AGENT_COMMISSION_DEFAULT_PERCENT,
-  AGENT_COMMISSION_MAX_PERCENT,
   AGENT_COMMISSION_MIN_PERCENT,
   AGENT_COMMISSION_STEP_PERCENT,
   AGENT_COMMISSION_ZERO_PERCENT,
@@ -1104,11 +1103,9 @@ export default function EditOfferScreen({ route }: any) {
       setAgentCommissionAmountDraft('0');
       return;
     }
-    const snapped = roundToQuarter(
-      Math.min(AGENT_COMMISSION_MAX_PERCENT, Math.max(AGENT_COMMISSION_MIN_PERCENT, parsed)),
-    );
-    setAgentCommissionPercent(String(snapped).replace('.', ','));
-    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(price, snapped)));
+    const normalized = Math.max(AGENT_COMMISSION_MIN_PERCENT, parsed);
+    setAgentCommissionPercent(String(normalized).replace('.', ','));
+    setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(price, normalized)));
   };
 
   /** Zmiana o ±0.25 z preserwacją „twardych" przejść:
@@ -1125,10 +1122,7 @@ export default function EditOfferScreen({ route }: any) {
       setAgentCommissionPercent('0');
       return;
     }
-    const next = Math.max(
-      AGENT_COMMISSION_MIN_PERCENT,
-      Math.min(AGENT_COMMISSION_MAX_PERCENT, roundToQuarter(base + delta)),
-    );
+    const next = Math.max(AGENT_COMMISSION_MIN_PERCENT, roundToQuarter(base + delta));
     setAgentCommissionPercent(String(next).replace('.', ','));
     setAgentCommissionAmountDraft(String(computeAgentCommissionAmount(price, next)));
   };
@@ -1650,7 +1644,7 @@ export default function EditOfferScreen({ route }: any) {
             </View>
             <View style={[styles.divider, { backgroundColor: borderColor }]} />
 
-            {/* Rok budowy — TextInput (zakres 1900-2099) */}
+            {/* Rok budowy — od 1850 */}
             <View style={styles.inputRowPremium}>
               <Text style={[styles.inputLabelPremium, { color: txtColor }]}>{t('offer.edit.parameters.yearBuilt')}</Text>
               <TextInput
@@ -1985,12 +1979,7 @@ export default function EditOfferScreen({ route }: any) {
                         >
                           {commissionInputMode === 'amount'
                             ? commissionPercentPreview !== null
-                              ? formatPercentLabel(
-                                  Math.min(
-                                    AGENT_COMMISSION_MAX_PERCENT,
-                                    Math.max(0, commissionPercentPreview),
-                                  ),
-                                )
+                              ? formatPercentLabel(Math.max(0, commissionPercentPreview))
                               : t('offer.edit.commission.amountEmpty')
                             : isZeroCommission
                               ? t('offer.edit.commission.amountZero')
@@ -2012,8 +2001,8 @@ export default function EditOfferScreen({ route }: any) {
                         <Text style={[styles.commissionWarnText, { color: '#FF3B30' }]}>
                           {t('offer.edit.commission.rangeWarning', {
                             min: formatPercentLabel(AGENT_COMMISSION_MIN_PERCENT),
-                            max: formatPercentLabel(AGENT_COMMISSION_MAX_PERCENT),
-                          })}
+                            max: '',
+                          }).replace(/\s*–\s*$/, '')}
                         </Text>
             </View>
                     ) : null}
