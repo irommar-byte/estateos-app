@@ -5,183 +5,283 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0c" />
   <meta name="apple-itunes-app" content="app-id=6762899098" id="smartBannerMeta" />
-  <title>EstateOS — oferta</title>
+  <meta name="description" content="Wizytówka oferty nieruchomości na EstateOS™ — zdjęcia, parametry i bezpieczny kontakt po rejestracji." id="metaDescription" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="EstateOS™" />
+  <meta property="og:title" content="Oferta nieruchomości — EstateOS™" id="ogTitle" />
+  <meta property="og:description" content="Zobacz parametry i galerię. Kontakt i negocjacje w zweryfikowanej aplikacji EstateOS™." id="ogDescription" />
+  <meta property="og:url" content="" id="ogUrl" />
+  <meta property="og:image" content="" id="ogImage" />
+  <title>EstateOS™ — wizytówka oferty</title>
   <style>
     :root {
-      --bg: #0a0a0c;
+      --bg: #08080a;
       --panel: #121218;
       --muted: #9a9aaa;
       --text: #f4f4f8;
       --gold: #d4af37;
+      --gold-dim: rgba(212, 175, 55, 0.14);
       --line: rgba(255, 255, 255, 0.08);
-      --danger: #ff6b6b;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      --trust: rgba(143, 212, 154, 0.12);
+      --trust-border: rgba(143, 212, 154, 0.28);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: radial-gradient(1200px 600px at 50% -10%, rgba(212, 175, 55, 0.12), transparent 55%), var(--bg);
+      background:
+        radial-gradient(900px 480px at 50% -8%, rgba(212, 175, 55, 0.11), transparent 58%),
+        radial-gradient(600px 300px at 100% 20%, rgba(100, 120, 255, 0.06), transparent 55%),
+        var(--bg);
       color: var(--text);
       min-height: 100vh;
+      line-height: 1.5;
     }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 24px 18px 48px; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 56px; }
     .brand {
-      display: flex; align-items: center; gap: 10px;
-      letter-spacing: 0.18em; font-size: 11px; text-transform: uppercase; color: var(--muted);
-      margin-bottom: 22px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-bottom: 16px;
     }
-    .brand strong { color: var(--text); letter-spacing: 0.12em; }
+    .brand-left {
+      display: flex; align-items: center; gap: 10px;
+      letter-spacing: 0.16em; font-size: 10px; text-transform: uppercase; color: var(--muted);
+    }
+    .brand-left strong { color: var(--text); letter-spacing: 0.1em; font-weight: 700; }
+    .brand-tag {
+      font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--gold); border: 1px solid rgba(212, 175, 55, 0.35);
+      padding: 5px 10px; border-radius: 999px; background: var(--gold-dim);
+    }
+    .intro {
+      font-size: 14px; line-height: 1.6; color: var(--muted);
+      margin-bottom: 16px; padding: 14px 16px;
+      border-radius: 14px; border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+    }
+    .intro strong { color: var(--text); font-weight: 600; }
     .hero {
       border-radius: 18px; overflow: hidden;
       border: 1px solid var(--line);
       background: linear-gradient(145deg, #16161d, #0e0e12);
       min-height: 220px;
-      position: relative;
     }
     .hero img {
-      width: 100%; height: 320px; object-fit: cover; display: block;
+      width: 100%; height: min(52vw, 340px); object-fit: cover; display: block;
       background: #1a1a22;
     }
     .hero.placeholder {
       display: grid; place-items: center;
-      color: var(--muted); font-size: 14px;
-      min-height: 240px;
+      color: var(--muted); font-size: 14px; min-height: 240px;
     }
     .panel {
-      margin-top: 18px;
-      padding: 22px 20px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: rgba(18, 18, 24, 0.92);
-      backdrop-filter: blur(10px);
+      margin-top: 16px; padding: 22px 18px;
+      border-radius: 18px; border: 1px solid var(--line);
+      background: rgba(14, 14, 18, 0.94);
+      backdrop-filter: blur(12px);
     }
-    h1 { margin: 0 0 10px; font-size: clamp(22px, 4vw, 30px); line-height: 1.15; letter-spacing: -0.02em; }
-    .meta { color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .badge {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      padding: 6px 11px; border-radius: 999px; border: 1px solid var(--line);
+    }
+    .badge-tx { color: #8fd49a; border-color: var(--trust-border); background: var(--trust); }
+    .badge-type { color: var(--text); background: rgba(255,255,255,0.05); }
+    h1 {
+      margin: 0 0 8px; font-size: clamp(21px, 4.2vw, 28px);
+      line-height: 1.2; letter-spacing: -0.025em; font-weight: 700;
+    }
+    .summary-line {
+      font-size: 14px; color: var(--muted); margin-bottom: 4px;
+    }
+    .location { color: var(--muted); font-size: 14px; margin-bottom: 2px; }
+    .price-row { margin-top: 14px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; }
     .price {
-      margin-top: 14px;
-      font-size: clamp(20px, 3.6vw, 26px);
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      color: var(--gold);
+      font-size: clamp(24px, 4vw, 32px); font-weight: 700;
+      letter-spacing: -0.03em; color: var(--gold);
     }
-    .row { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 14px; font-size: 14px; color: var(--muted); }
-    .kbd { font-variant-numeric: tabular-nums; color: var(--text); }
+    .price-suffix { font-size: 15px; font-weight: 500; color: var(--muted); }
+    .spec-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px; margin-top: 18px;
+    }
+    @media (min-width: 480px) { .spec-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .spec {
+      padding: 12px 12px; border-radius: 12px;
+      border: 1px solid var(--line); background: rgba(255,255,255,0.03);
+    }
+    .spec label {
+      display: block; font-size: 10px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+    }
+    .spec strong { font-size: 15px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+    .amenities { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .amenity {
+      font-size: 12px; color: var(--muted); padding: 5px 10px;
+      border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.02);
+    }
     .thumbs {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-      gap: 8px;
-      margin-top: 18px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+      gap: 8px; margin-top: 16px;
     }
     .thumbs button {
       padding: 0; border: 1px solid var(--line); border-radius: 10px;
       overflow: hidden; cursor: pointer; background: #111118;
     }
-    .thumbs img { width: 100%; height: 72px; object-fit: cover; display: block; }
-    .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-    @media (min-width: 560px) {
-      .actions { flex-direction: row; flex-wrap: wrap; }
+    .thumbs img { width: 100%; height: 68px; object-fit: cover; display: block; }
+    .trust-card {
+      margin-top: 20px; padding: 16px 16px;
+      border-radius: 14px; border: 1px solid var(--trust-border);
+      background: linear-gradient(145deg, rgba(143, 212, 154, 0.07), rgba(18, 18, 24, 0.6));
     }
+    .trust-card h3 {
+      margin: 0 0 10px; font-size: 13px; letter-spacing: 0.04em;
+      text-transform: uppercase; color: #8fd49a; font-weight: 700;
+    }
+    .trust-card ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .trust-card li { margin-bottom: 6px; }
+    .trust-card li:last-child { margin-bottom: 0; }
+    .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
     .btn {
       appearance: none; border: 0; cursor: pointer;
       border-radius: 12px; padding: 14px 18px; font-weight: 600; font-size: 15px;
-      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
       text-decoration: none; transition: transform 0.12s ease, opacity 0.12s ease;
-      flex: 1;
+      text-align: center;
     }
     .btn:active { transform: translateY(1px); }
     .btn-primary {
       background: linear-gradient(135deg, #e8cf73, #b8892e);
       color: #141210;
-      box-shadow: 0 12px 40px rgba(212, 175, 55, 0.22);
+      box-shadow: 0 10px 36px rgba(212, 175, 55, 0.2);
     }
     .btn-secondary {
       background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      border: 1px solid var(--line);
+      color: var(--text); border: 1px solid var(--line);
     }
-    .toast {
-      margin-top: 14px; font-size: 13px; color: var(--muted);
-      min-height: 1.2em;
+    .btn-outline {
+      background: transparent; color: var(--gold);
+      border: 1px solid rgba(212, 175, 55, 0.45);
     }
+    .cta-note {
+      margin-top: 12px; font-size: 12px; line-height: 1.55; color: var(--muted); text-align: center;
+    }
+    .toast { margin-top: 12px; font-size: 13px; color: var(--muted); min-height: 1.2em; text-align: center; }
     .toast.ok { color: #8fd49a; }
     .err {
-      margin-top: 16px; padding: 14px 14px;
-      border-radius: 12px;
+      margin-top: 16px; padding: 14px; border-radius: 12px;
       border: 1px solid rgba(255, 107, 107, 0.35);
       background: rgba(255, 107, 107, 0.08);
-      color: #ffc9c9;
-      font-size: 14px; line-height: 1.5;
+      color: #ffc9c9; font-size: 14px; line-height: 1.5;
     }
     .spinner {
       width: 18px; height: 18px; border-radius: 50%;
-      border: 2px solid rgba(255,255,255,0.18);
-      border-top-color: var(--gold);
+      border: 2px solid rgba(255,255,255,0.18); border-top-color: var(--gold);
       animation: spin 0.8s linear infinite;
       display: inline-block; vertical-align: -3px; margin-right: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .promo-top {
-      font-size: 13px;
-      line-height: 1.55;
-      color: var(--muted);
-      margin-bottom: 18px;
-      padding: 14px 16px;
-      border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.03);
-    }
-    .promo-top a { color: var(--gold); text-decoration: none; border-bottom: 1px solid rgba(212, 175, 55, 0.35); }
     .promo-foot {
-      margin-top: 28px;
-      padding: 20px 18px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: linear-gradient(145deg, rgba(212, 175, 55, 0.08), rgba(18, 18, 24, 0.95));
+      margin-top: 24px; padding: 22px 18px;
+      border-radius: 18px; border: 1px solid var(--line);
+      background: linear-gradient(160deg, rgba(212, 175, 55, 0.07), rgba(12, 12, 16, 0.98));
     }
     .promo-foot h2 {
-      margin: 0 0 10px;
-      font-size: 15px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--gold);
-      font-weight: 700;
+      margin: 0 0 12px; font-size: 13px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--gold); font-weight: 700;
     }
-    .promo-foot p { margin: 0 0 10px; font-size: 14px; line-height: 1.55; color: var(--muted); }
-    .promo-foot p:last-child { margin-bottom: 0; }
-    .promo-foot a { color: var(--text); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(244, 244, 248, 0.25); }
+    .promo-foot p { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+    .promo-foot p:last-of-type { margin-bottom: 0; }
+    .promo-foot a { color: var(--text); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(244,244,248,0.22); }
+    .audience-grid {
+      display: grid; gap: 12px; margin-top: 18px;
+    }
+    @media (min-width: 560px) { .audience-grid { grid-template-columns: 1fr 1fr; } }
+    .audience-card {
+      padding: 16px; border-radius: 14px; border: 1px solid var(--line);
+      background: rgba(255,255,255,0.03);
+    }
+    .audience-card h3 { margin: 0 0 8px; font-size: 14px; color: var(--text); font-weight: 700; }
+    .audience-card p { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+    .audience-card a.btn { width: 100%; font-size: 13px; padding: 11px 14px; }
+    .footer-links {
+      margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line);
+      display: flex; flex-wrap: wrap; gap: 12px 18px; justify-content: center;
+      font-size: 12px;
+    }
+    .footer-links a { color: var(--muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--text); }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="brand"><span>Wizytówka</span><strong>EstateOS™</strong></div>
-    <p class="promo-top">
-      Ten link działa wszędzie — z czatu, maila lub social mediów. Pełne szczegóły, negocjacje i radar ofert masz w jednym miejscu:
-      <a href="https://estateos.pl" rel="noopener noreferrer">estateos.pl</a>
-      oraz w aplikacji mobilnej EstateOS™ (przycisk poniżej).
+    <div class="brand">
+      <div class="brand-left"><span>Wizytówka oferty</span><strong>EstateOS™</strong></div>
+      <span class="brand-tag">Zweryfikowany rynek</span>
+    </div>
+    <p class="intro" id="introText">
+      <strong>Publiczny podgląd nieruchomości</strong> — zdjęcia i parametry widoczne od razu.
+      Kontakt z właścicielem, negocjacje i umówienie prezentacji odbywają się w aplikacji,
+      po bezpłatnej rejestracji. Działamy na zaufaniu — użytkownicy przechodzą weryfikację.
     </p>
     <div id="hero" class="hero placeholder"><span class="spinner" aria-hidden="true"></span>Ładowanie oferty…</div>
     <div class="panel" id="panel" hidden>
+      <div class="badges" id="badges"></div>
+      <p class="summary-line" id="summaryLine"></p>
       <h1 id="title">—</h1>
-      <div class="meta" id="location">—</div>
-      <div class="price" id="price">—</div>
-      <div class="row" id="facts"></div>
-      <div class="thumbs" id="thumbs" hidden></div>
-      <div class="actions">
-        <a class="btn btn-primary" id="openApp" href="#">Otwórz w aplikacji</a>
-        <button type="button" class="btn btn-secondary" id="copyLink">Kopiuj link do schowka</button>
+      <div class="location" id="location">—</div>
+      <div class="price-row">
+        <div class="price" id="price">—</div>
+        <span class="price-suffix" id="priceSuffix" hidden></span>
       </div>
+      <div class="spec-grid" id="specGrid"></div>
+      <div class="amenities" id="amenities" hidden></div>
+      <div class="thumbs" id="thumbs" hidden></div>
+      <div class="trust-card">
+        <h3>Bezpieczny kontakt na zaufaniu</h3>
+        <ul>
+          <li>Przeglądasz galerię i kluczowe parametry <strong>bez zakładania konta</strong>.</li>
+          <li>Aby napisać do właściciela, złożyć ofertę lub umówić prezentację — <strong>załóż bezpłatne konto</strong> w aplikacji lub na stronie.</li>
+          <li>Klienci, inwestorzy i właściciele są weryfikowani — bez anonimowego chaosu z portali ogłoszeniowych.</li>
+        </ul>
+      </div>
+      <div class="actions">
+        <a class="btn btn-primary" id="openApp" href="#">Zobacz pełną ofertę w aplikacji</a>
+        <a class="btn btn-secondary" id="registerCta" href="https://estateos.pl/rejestracja">Załóż konto i skontaktuj się</a>
+        <button type="button" class="btn btn-outline" id="copyLink">Kopiuj link do wiadomości</button>
+      </div>
+      <p class="cta-note" id="ctaNote">
+        Ten link możesz wysłać SMS-em, mailem lub wiadomością prywatną — odbiorca zobaczy wizytówkę,
+        a po rejestracji przejdzie do pełnego kontaktu w EstateOS™.
+      </p>
       <div class="toast" id="toast" aria-live="polite"></div>
     </div>
     <section class="promo-foot" aria-label="O platformie EstateOS">
-      <h2>Inteligentna platforma EstateOS™</h2>
+      <h2>Dlaczego EstateOS™?</h2>
       <p>
-        Niezależnie skąd trafiłeś na tę wizytówkę — z wiadomości, grupy na Facebooku czy SMS —
-        możesz kontynuować na <a href="https://estateos.pl" rel="noopener noreferrer">estateos.pl</a>
-        lub w aplikacji: jedna platforma na ogłoszenia, dopasowanie rynku i dealroom bez chaosu na messengerze.
+        Jedna platforma dla osób <strong>szukających</strong> i <strong>wystawiających</strong> nieruchomości:
+        dopasowanie rynku (Radar), negocjacje w Dealroomie i uporządkowany kontakt — zamiast rozproszonej korespondencji.
       </p>
       <p>
-        Pobierz aplikację i negocjuj warunki bezpiecznie w jednym wątku — od pierwszego kontaktu po spotkanie.
+        Link <strong>estateos.pl/o/…</strong> działa wszędzie: SMS, e-mail, Messenger, WhatsApp czy grupy na Facebooku.
+        Odbiorca od razu widzi, co to za nieruchomość — a dalszą rozmowę prowadzicie bezpiecznie w aplikacji.
       </p>
+      <div class="audience-grid">
+        <div class="audience-card">
+          <h3>Szukasz mieszkania lub inwestycji?</h3>
+          <p>Skonfiguruj Radar, otrzymuj dopasowane oferty push-em i negocjuj warunki w jednym wątku — od pierwszego kontaktu po spotkanie.</p>
+          <a class="btn btn-outline" href="https://estateos.pl/rejestracja">Załóż konto — szukam</a>
+        </div>
+        <div class="audience-card">
+          <h3>Masz nieruchomość do wynajęcia lub sprzedaży?</h3>
+          <p>Wystaw ofertę, udostępnij tę wizytówkę znajomym i klientom, a zapytania obsłużysz w zweryfikowanym Dealroomie.</p>
+          <a class="btn btn-outline" href="https://estateos.pl/rejestracja?next=/dodaj-oferte">Załóż konto — wystawiam</a>
+        </div>
+      </div>
+      <div class="footer-links">
+        <a href="https://estateos.pl">estateos.pl</a>
+        <a href="https://estateos.pl/login">Logowanie</a>
+        <a href="https://apps.apple.com/app/id6762899098" rel="noopener noreferrer">Pobierz na iPhone</a>
+      </div>
     </section>
     <div id="fatal" class="err" style="display:none"></div>
   </div>
@@ -192,6 +292,31 @@
   var m = path.match(/\/o\/(\d+)/);
   var id = m ? m[1] : '';
   var canonicalHttps = ORIGIN + '/o/' + id;
+
+  var PROPERTY_LABELS = {
+    FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal użytkowy',
+    APARTMENT: 'Mieszkanie', STUDIO: 'Kawalerka', LAND: 'Działka', OFFICE: 'Biuro', RETAIL: 'Lokal handlowy'
+  };
+  var TX_LABELS = { RENT: 'Wynajem', SELL: 'Sprzedaż', BUY: 'Kupno' };
+
+  function labelProperty(raw, fromApi) {
+    if (fromApi) return fromApi;
+    var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    return PROPERTY_LABELS[key] || null;
+  }
+  function labelTransaction(raw) {
+    var key = String(raw || '').trim().toUpperCase();
+    return TX_LABELS[key] || (key === 'RENT' ? 'Wynajem' : key === 'SELL' ? 'Sprzedaż' : null);
+  }
+  function labelCondition(raw, fromApi) {
+    if (fromApi) return fromApi;
+    var map = {
+      READY: 'Gotowe do wprowadzenia', DEVELOPER: 'Stan deweloperski',
+      TO_RENOVATION: 'Do remontu', NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry'
+    };
+    var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    return map[key] || null;
+  }
 
   function parseImages(raw) {
     if (!raw) return [];
@@ -226,7 +351,7 @@
     }
   }
 
-  function setHero(src) {
+  function setHero(src, alt) {
     var el = document.getElementById('hero');
     el.classList.remove('placeholder');
     el.innerHTML = '';
@@ -236,7 +361,7 @@
       return;
     }
     var img = document.createElement('img');
-    img.alt = '';
+    img.alt = alt || 'Zdjęcie nieruchomości';
     img.loading = 'eager';
     img.decoding = 'async';
     img.src = src;
@@ -247,13 +372,10 @@
     el.appendChild(img);
   }
 
-  function renderThumbs(urls, active) {
+  function renderThumbs(urls) {
     var wrap = document.getElementById('thumbs');
     wrap.innerHTML = '';
-    if (!urls || urls.length < 2) {
-      wrap.hidden = true;
-      return;
-    }
+    if (!urls || urls.length < 2) { wrap.hidden = true; return; }
     wrap.hidden = false;
     urls.slice(0, 12).forEach(function (u, i) {
       var b = document.createElement('button');
@@ -264,11 +386,51 @@
       im.loading = 'lazy';
       im.src = u;
       b.appendChild(im);
-      b.addEventListener('click', function () {
-        setHero(u);
-      });
+      b.addEventListener('click', function () { setHero(u); });
       wrap.appendChild(b);
     });
+  }
+
+  function addSpec(grid, label, value) {
+    if (value === null || value === undefined || value === '') return;
+    var d = document.createElement('div');
+    d.className = 'spec';
+    d.innerHTML = '<label>' + label + '</label><strong>' + String(value) + '</strong>';
+    grid.appendChild(d);
+  }
+
+  function renderAmenities(data) {
+    var wrap = document.getElementById('amenities');
+    wrap.innerHTML = '';
+    var items = [];
+    if (data.hasBalcony) items.push('Balkon');
+    if (data.hasGarden) items.push('Ogród');
+    if (data.hasParking) items.push('Parking');
+    if (data.hasElevator) items.push('Winda');
+    if (data.hasStorage) items.push('Piwnica / komórka');
+    if (data.isFurnished) items.push('Umeblowane');
+    if (!items.length) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    items.forEach(function (t) {
+      var s = document.createElement('span');
+      s.className = 'amenity';
+      s.textContent = t;
+      wrap.appendChild(s);
+    });
+  }
+
+  function updateShareMeta(title, description, imageUrl) {
+    document.title = title + ' — EstateOS™';
+    var ogTitle = document.getElementById('ogTitle');
+    var ogDesc = document.getElementById('ogDescription');
+    var ogUrl = document.getElementById('ogUrl');
+    var ogImage = document.getElementById('ogImage');
+    var metaDesc = document.getElementById('metaDescription');
+    if (ogTitle) ogTitle.setAttribute('content', title);
+    if (ogDesc) ogDesc.setAttribute('content', description);
+    if (metaDesc) metaDesc.setAttribute('content', description);
+    if (ogUrl) ogUrl.setAttribute('content', canonicalHttps);
+    if (ogImage && imageUrl) ogImage.setAttribute('content', imageUrl);
   }
 
   function fatal(msg) {
@@ -292,19 +454,20 @@
     '#Intent;scheme=estateos;package=pl.estateos.app;S.browser_fallback_url=' +
     encodeURIComponent(PLAY_STORE_URL) + ';end';
 
-  function isIOS() {
-    return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-  }
-  function isAndroid() {
-    return /Android/i.test(navigator.userAgent || '');
-  }
-  function isMobile() {
-    return isIOS() || isAndroid();
-  }
+  function isIOS() { return /iPhone|iPad|iPod/i.test(navigator.userAgent || ''); }
+  function isAndroid() { return /Android/i.test(navigator.userAgent || ''); }
 
   var smartBannerMeta = document.getElementById('smartBannerMeta');
   if (smartBannerMeta) {
     smartBannerMeta.setAttribute('content', 'app-id=6762899098, app-argument=' + canonicalHttps);
+  }
+
+  var ogUrl = document.getElementById('ogUrl');
+  if (ogUrl) ogUrl.setAttribute('content', canonicalHttps);
+
+  var registerCta = document.getElementById('registerCta');
+  if (registerCta) {
+    registerCta.href = ORIGIN + '/rejestracja?next=' + encodeURIComponent('/oferta/' + id);
   }
 
   var openAppLink = document.getElementById('openApp');
@@ -320,41 +483,61 @@
 
   openAppLink.addEventListener('click', function (e) {
     var toast = document.getElementById('toast');
-
     if (isIOS()) {
-      // Natywny href estateos:// — nie blokuj domyślnej nawigacji (Safari wymaga user gesture).
       toast.textContent = 'Otwieranie aplikacji EstateOS™…';
       toast.className = 'toast ok';
       setTimeout(function () {
-        toast.textContent =
-          'Jeśli aplikacja się nie otworzyła, zainstaluj EstateOS z App Store i spróbuj ponownie.';
+        toast.textContent = 'Jeśli aplikacja się nie otworzyła, zainstaluj ją z App Store i spróbuj ponownie.';
         toast.className = 'toast';
       }, 1800);
       return;
     }
-
     if (isAndroid()) {
       e.preventDefault();
       window.location.href = androidIntentUrl;
       return;
     }
-
-    // Desktop — App Store w nowej karcie (href już ustawiony).
-    toast.textContent = 'Pobierz aplikację EstateOS™ na iPhone — lub otwórz ten link na telefonie.';
+    toast.textContent = 'Pobierz aplikację na iPhone — lub otwórz ten link na telefonie.';
     toast.className = 'toast';
   });
 
   document.getElementById('copyLink').addEventListener('click', async function () {
     var toast = document.getElementById('toast');
+    var shareText = buildShareText();
     try {
-      await navigator.clipboard.writeText(canonicalHttps);
-      toast.textContent = 'Skopiowano kanoniczny link: ' + canonicalHttps;
+      if (navigator.share && isIOS()) {
+        await navigator.share({ title: document.getElementById('title').textContent, text: shareText, url: canonicalHttps });
+        toast.textContent = 'Udostępniono wizytówkę oferty.';
+        toast.className = 'toast ok';
+        return;
+      }
+      await navigator.clipboard.writeText(shareText);
+      toast.textContent = 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.';
       toast.className = 'toast ok';
     } catch (e) {
-      toast.textContent = 'Nie udało się skopiować — zaznacz i skopiuj ręcznie z paska adresu.';
-      toast.className = 'toast';
+      try {
+        await navigator.clipboard.writeText(canonicalHttps);
+        toast.textContent = 'Skopiowano link: ' + canonicalHttps;
+        toast.className = 'toast ok';
+      } catch (e2) {
+        toast.textContent = 'Skopiuj ręcznie z paska adresu: ' + canonicalHttps;
+        toast.className = 'toast';
+      }
     }
   });
+
+  var cachedShare = { title: '', priceLine: '', summary: '' };
+  function buildShareText() {
+    var lines = [];
+    if (cachedShare.title) lines.push(cachedShare.title);
+    if (cachedShare.summary) lines.push(cachedShare.summary);
+    if (cachedShare.priceLine) lines.push(cachedShare.priceLine);
+    lines.push('');
+    lines.push(canonicalHttps);
+    lines.push('');
+    lines.push('EstateOS™ — zobacz parametry i zdjęcia bez konta. Kontakt po bezpłatnej rejestracji · estateos.pl');
+    return lines.join('\n');
+  }
 
   fetch(ORIGIN + '/api/offers/' + encodeURIComponent(id), { credentials: 'omit' })
     .then(function (r) {
@@ -363,40 +546,81 @@
     })
     .then(function (data) {
       if (!data || data.error) throw new Error(data && data.error ? String(data.error) : 'Brak danych');
-      var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
-      setHero(imgs[0] || '');
-      renderThumbs(imgs, imgs[0]);
 
-      document.getElementById('title').textContent = data.title || ('Oferta #' + id);
-      var loc = [data.district, data.city].filter(Boolean).join(', ');
-      document.getElementById('location').textContent = loc || (data.city || '—');
+      var propLabel = labelProperty(data.propertyType, data.propertyTypeLabel);
+      var txLabel = labelTransaction(data.transactionType);
+      var condLabel = labelCondition(data.condition, data.conditionLabel);
+      var isRent = String(data.transactionType || '').toUpperCase() === 'RENT';
+
+      var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
+      var title = data.title || ('Oferta #' + id);
+      setHero(imgs[0] || '', title);
+      renderThumbs(imgs);
+
+      var locParts = [data.district, data.city].filter(Boolean);
+      var loc = locParts.join(', ') || data.city || 'Polska';
+      var summaryParts = [propLabel, txLabel ? (isRent ? 'do wynajęcia' : 'na sprzedaż') : null, loc].filter(Boolean);
+      var summaryLine = summaryParts.join(' · ');
+
+      document.getElementById('title').textContent = title;
+      document.getElementById('summaryLine').textContent = summaryLine;
+      document.getElementById('location').textContent = loc;
       document.getElementById('price').textContent = fmtMoney(data.price);
 
-      var facts = document.getElementById('facts');
-      facts.innerHTML = '';
-      function addFact(label, val) {
-        if (val === null || val === undefined || val === '') return;
-        var d = document.createElement('div');
-        d.innerHTML = label + ': <span class="kbd">' + String(val) + '</span>';
-        facts.appendChild(d);
+      var suffixEl = document.getElementById('priceSuffix');
+      if (isRent) {
+        suffixEl.textContent = '/ miesiąc';
+        suffixEl.hidden = false;
+      } else {
+        suffixEl.hidden = true;
       }
-      if (data.area != null) addFact('Powierzchnia', String(data.area).replace('.', ',') + ' m²');
-      if (data.rooms != null) addFact('Pokoje', data.rooms);
-      if (data.propertyType) addFact('Typ', data.propertyType);
-      if (data.transactionType) addFact('Transakcja', data.transactionType);
+
+      var badges = document.getElementById('badges');
+      badges.innerHTML = '';
+      if (txLabel) {
+        var b1 = document.createElement('span');
+        b1.className = 'badge badge-tx';
+        b1.textContent = txLabel;
+        badges.appendChild(b1);
+      }
+      if (propLabel) {
+        var b2 = document.createElement('span');
+        b2.className = 'badge badge-type';
+        b2.textContent = propLabel;
+        badges.appendChild(b2);
+      }
+
+      var grid = document.getElementById('specGrid');
+      grid.innerHTML = '';
+      if (data.area != null) addSpec(grid, 'Powierzchnia', String(data.area).replace('.', ',') + ' m²');
+      if (data.rooms != null) addSpec(grid, 'Liczba pokoi', data.rooms);
+      if (data.floor != null && data.floor !== '') addSpec(grid, 'Piętro', data.floor);
+      var year = data.yearBuilt || data.buildYear || data.year;
+      if (year) addSpec(grid, 'Rok budowy', year);
+      if (condLabel) addSpec(grid, 'Stan', condLabel);
+      if (data.plotArea) addSpec(grid, 'Działka', String(data.plotArea).replace('.', ',') + ' m²');
+
+      renderAmenities(data);
+
+      cachedShare.title = title;
+      cachedShare.summary = summaryLine;
+      cachedShare.priceLine = fmtMoney(data.price) + (isRent ? ' / mc' : '');
+
+      var ogDesc = summaryLine + ' — ' + cachedShare.priceLine + '. Zobacz galerię bez konta. Kontakt w EstateOS™ po rejestracji.';
+      updateShareMeta(title, ogDesc, imgs[0] || '');
 
       document.getElementById('panel').hidden = false;
     })
     .catch(function (e) {
       fatal(
-        'Nie udało się wczytać oferty z API (' + (e && e.message ? e.message : 'błąd') + '). ' +
-        'Możesz nadal otworzyć wizytówkę w aplikacji przyciskiem poniżej.'
+        'Nie udało się wczytać oferty (' + (e && e.message ? e.message : 'błąd') + '). ' +
+        'Możesz otworzyć ofertę w aplikacji przyciskiem poniżej.'
       );
       document.getElementById('panel').hidden = false;
       document.getElementById('title').textContent = 'Oferta #' + id;
-      document.getElementById('location').textContent = ORIGIN;
+      document.getElementById('summaryLine').textContent = 'Wizytówka nieruchomości na EstateOS™';
+      document.getElementById('location').textContent = 'estateos.pl';
       document.getElementById('price').textContent = '';
-      document.getElementById('facts').innerHTML = '';
       setHero('');
     });
 })();
