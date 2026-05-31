@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power } from "lucide-react";
+import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search } from "lucide-react";
+import type { OtodomImportDraft } from "@/lib/otodomImport";
 
 export default function Centrala() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -9,6 +10,10 @@ export default function Centrala() {
   const [debugMsg, setDebugMsg] = useState("");
   const [smsEnabled, setSmsEnabled] = useState(true);
   const [togglingSms, setTogglingSms] = useState(false);
+  const [otodomUrl, setOtodomUrl] = useState("");
+  const [otodomLoading, setOtodomLoading] = useState(false);
+  const [otodomError, setOtodomError] = useState("");
+  const [otodomDraft, setOtodomDraft] = useState<OtodomImportDraft | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -56,6 +61,37 @@ export default function Centrala() {
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
+  };
+
+  const handleOtodomImport = async () => {
+    const url = otodomUrl.trim();
+    if (!url) {
+      setOtodomError("Wklej link do oferty OtoDom.");
+      return;
+    }
+
+    setOtodomLoading(true);
+    setOtodomError("");
+    setOtodomDraft(null);
+
+    try {
+      const res = await fetch("/api/admin/otodom-import", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOtodomError(data?.error || `Błąd importu (${res.status}).`);
+        return;
+      }
+      setOtodomDraft(data.draft ?? null);
+    } catch {
+      setOtodomError("Błąd połączenia z serwerem.");
+    } finally {
+      setOtodomLoading(false);
+    }
   };
 
   if (isLoading) {
@@ -155,6 +191,132 @@ export default function Centrala() {
            </div>
         </motion.div>
 
+        {/* --- IMPORT OTODOM (Eksperyment) --- */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl relative overflow-hidden"
+        >
+          <div className="absolute top-0 left-0 w-64 h-64 bg-blue-500/5 blur-[100px] rounded-full pointer-events-none" />
+          <div className="relative z-10 space-y-8">
+            <div className="flex items-start gap-6">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-blue-500/10 border border-blue-500/30 text-blue-400 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+                <Link2 size={28} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-xl md:text-2xl font-black mb-2 flex flex-wrap items-center gap-3">
+                  Importuj z OtoDom
+                  <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400">
+                    Eksperyment
+                  </span>
+                </h3>
+                <p className="text-gray-500 text-xs md:text-sm leading-relaxed max-w-2xl">
+                  Wklej publiczny link do ogłoszenia OtoDom. Centrala pobierze stronę, sparsuje dane i pokaże podgląd pól
+                  do ewentualnego mapowania na EstateOS (bez zapisu oferty).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-4">
+              <input
+                type="url"
+                value={otodomUrl}
+                onChange={(e) => setOtodomUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleOtodomImport();
+                }}
+                placeholder="https://www.otodom.pl/pl/oferta/..."
+                className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400/50 focus:ring-2 focus:ring-blue-500/20"
+              />
+              <button
+                type="button"
+                onClick={() => void handleOtodomImport()}
+                disabled={otodomLoading}
+                className="shrink-0 inline-flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors"
+              >
+                {otodomLoading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                Analizuj
+              </button>
+            </div>
+
+            {otodomError ? (
+              <p className="text-red-400 text-sm font-medium bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                {otodomError}
+              </p>
+            ) : null}
+
+            {otodomDraft ? (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    ["Tytuł", otodomDraft.title],
+                    ["Transakcja", otodomDraft.transactionType],
+                    ["Typ", otodomDraft.propertyType],
+                    ["Cena", otodomDraft.price != null ? `${otodomDraft.price} PLN` : "—"],
+                    ["Opłaty admin.", otodomDraft.adminFee != null ? `${otodomDraft.adminFee} PLN` : "—"],
+                    ["Kaucja", otodomDraft.deposit != null ? `${otodomDraft.deposit} PLN` : "—"],
+                    ["Metraż", otodomDraft.area != null ? `${otodomDraft.area} m²` : "—"],
+                    ["Pokoje", otodomDraft.rooms ?? "—"],
+                    ["Piętro", otodomDraft.floor != null ? `${otodomDraft.floor}${otodomDraft.totalFloors ? ` / ${otodomDraft.totalFloors}` : ""}` : "—"],
+                    ["Rok budowy", otodomDraft.yearBuilt ?? "—"],
+                    ["Miasto", otodomDraft.city],
+                    ["Dzielnica", otodomDraft.district],
+                    ["Rejon", otodomDraft.neighborhood ?? "—"],
+                    ["Ulica", otodomDraft.street ?? "—"],
+                    ["GPS", otodomDraft.lat != null && otodomDraft.lng != null ? `${otodomDraft.lat.toFixed(5)}, ${otodomDraft.lng.toFixed(5)}` : "—"],
+                    ["Zdjęcia", String(otodomDraft.imageCount)],
+                    ["ID OtoDom", String(otodomDraft.externalId)],
+                    ["Agencja", otodomDraft.agency?.name ?? "—"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">{label}</p>
+                      <p className="text-sm text-white/90 break-words">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {otodomDraft.locationWarnings.length ? (
+                  <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                    {otodomDraft.locationWarnings.join(" ")}
+                  </p>
+                ) : null}
+
+                {otodomDraft.features.length ? (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Cechy</p>
+                    <div className="flex flex-wrap gap-2">
+                      {otodomDraft.features.map((feature) => (
+                        <span key={feature} className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-white/80">
+                          {feature}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {otodomDraft.descriptionText ? (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Opis (skrót)</p>
+                    <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line max-h-40 overflow-y-auto bg-black/30 border border-white/10 rounded-xl p-4">
+                      {otodomDraft.descriptionText.slice(0, 1200)}
+                      {otodomDraft.descriptionText.length > 1200 ? "…" : ""}
+                    </p>
+                  </div>
+                ) : null}
+
+                <details className="bg-black/30 border border-white/10 rounded-xl p-4">
+                  <summary className="cursor-pointer text-xs font-black uppercase tracking-widest text-white/50">
+                    Pełny JSON draftu
+                  </summary>
+                  <pre className="mt-4 text-[11px] text-emerald-300/90 overflow-x-auto whitespace-pre-wrap break-words">
+                    {JSON.stringify(otodomDraft, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ) : null}
+          </div>
+        </motion.div>
 
         {/* SNAPSHOT ENGINE */}
         <motion.div
