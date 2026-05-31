@@ -11,9 +11,17 @@ type Props = {
   className?: string;
   compact?: boolean;
   label?: string;
+  androidComingSoon?: boolean;
+  androidSoonLabel?: string;
 };
 
-export default function AppStoreBadgeLink({ className = "", compact = false, label }: Props) {
+export default function AppStoreBadgeLink({
+  className = "",
+  compact = false,
+  label,
+  androidComingSoon = false,
+  androidSoonLabel = "Wkrótce",
+}: Props) {
   const [appleBadgeError, setAppleBadgeError] = useState(false);
   const [googleBadgeError, setGoogleBadgeError] = useState(false);
   const shellClass = compact
@@ -24,8 +32,22 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
     "group relative inline-flex items-center justify-center overflow-hidden border border-white/55 bg-black/90 shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.2)] transition-all duration-300 hover:-translate-y-[1px] hover:border-white hover:bg-black hover:shadow-[0_16px_34px_rgba(0,0,0,0.55),0_0_28px_rgba(16,185,129,0.22)]";
   const fallbackText = compact ? "text-[10px]" : "text-[11px]";
 
+  const googleBadgeInner = googleBadgeError ? (
+    <span className={`inline-flex items-center ${fallbackText} font-bold text-white`}>
+      ▶ Get it on Google Play
+    </span>
+  ) : (
+    <img
+      src={GOOGLE_PLAY_BADGE_URL}
+      alt="Get it on Google Play"
+      className={imageClass}
+      loading="lazy"
+      onError={() => setGoogleBadgeError(true)}
+    />
+  );
+
   return (
-    <div className={`flex flex-wrap items-center gap-3 ${className}`}>
+    <div className={`flex flex-wrap items-center justify-center gap-3 ${className}`}>
       <a
         href={APP_STORE_URL}
         target="_blank"
@@ -49,28 +71,30 @@ export default function AppStoreBadgeLink({ className = "", compact = false, lab
           />
         )}
       </a>
-      <a
-        href={GOOGLE_PLAY_URL}
-        target="_blank"
-        rel="noreferrer"
-        aria-label="Pobierz EstateOS w Google Play"
-        className={`${badgeShell} ${shellClass}`}
-      >
-        <span className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/35 opacity-80" />
-        {googleBadgeError ? (
-          <span className={`inline-flex items-center ${fallbackText} font-bold text-white`}>
-            ▶ Get it on Google Play
+
+      {androidComingSoon ? (
+        <span
+          aria-label={`Google Play — ${androidSoonLabel}`}
+          className={`${badgeShell} ${shellClass} cursor-default opacity-60 hover:translate-y-0 hover:border-white/55 hover:shadow-[0_10px_28px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.2)]`}
+        >
+          <span className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/35 opacity-80" />
+          {googleBadgeInner}
+          <span className="absolute bottom-1.5 right-1.5 rounded-md bg-emerald-500/90 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-sm">
+            {androidSoonLabel}
           </span>
-        ) : (
-          <img
-            src={GOOGLE_PLAY_BADGE_URL}
-            alt="Get it on Google Play"
-            className={imageClass}
-            loading="lazy"
-            onError={() => setGoogleBadgeError(true)}
-          />
-        )}
-      </a>
+        </span>
+      ) : (
+        <a
+          href={GOOGLE_PLAY_URL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Pobierz EstateOS w Google Play"
+          className={`${badgeShell} ${shellClass}`}
+        >
+          <span className="pointer-events-none absolute inset-x-0 top-0 h-[1px] bg-white/35 opacity-80" />
+          {googleBadgeInner}
+        </a>
+      )}
     </div>
   );
 }

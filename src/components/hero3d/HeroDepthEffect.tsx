@@ -9,8 +9,6 @@ import {
   HomeCtaId,
 } from "@/contracts/homeCtaContract";
 import { useLocale } from "@/contexts/LocaleContext";
-import AppStoreBadgeLink from "@/components/ui/AppStoreBadgeLink";
-
 const HERO_IMAGE =
   "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?q=80&w=2075&auto=format&fit=crop";
 
@@ -186,15 +184,6 @@ export default function HeroDepthEffect() {
               >
                 {dict.hero.ctaList}
               </button>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: customEase, delay: 0.58 }}
-              className="mt-5"
-            >
-              <AppStoreBadgeLink label="Pobierz EstateOS na iPhone" />
             </motion.div>
           </motion.div>
         </motion.div>

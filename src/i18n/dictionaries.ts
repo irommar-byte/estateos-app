@@ -93,6 +93,18 @@ export type Dictionary = {
     ctaList: string;
     exploreMap: string;
   };
+  homeAppPitch: {
+    eyebrow: string;
+    headline: string;
+    headlineAccent: string;
+    radarTitle: string;
+    radarBody: string;
+    sellerTitle: string;
+    sellerBody: string;
+    closing: string;
+    downloadLabel: string;
+    androidSoon: string;
+  };
   pulse: {
     title: string;
     liveFrom: string;
@@ -452,6 +464,21 @@ const pl: Dictionary = {
     ctaList: "Dodaj swoją ofertę",
     exploreMap: "Mapa ofert",
   },
+  homeAppPitch: {
+    eyebrow: "Radar Inwestycji",
+    headline: "Nie szukaj nieruchomości.",
+    headlineAccent: "Niech to one szukają Ciebie.",
+    radarTitle: "Twój Radar na rynku",
+    radarBody:
+      "Ustaw lokalizację, budżet i parametry w EstateOS™ — system monitoruje rynek i powiadamia Cię o ofertach, które pasują do Twoich kryteriów, gdy tylko się pojawią.",
+    sellerTitle: "Sprzedajesz lub wynajmujesz?",
+    sellerBody:
+      "Dodaj nieruchomość do EstateOS™ — trafi na radary osób aktywnie szukających i inwestorów. Jedna baza na stronie i w aplikacji.",
+    closing:
+      "To nie kolejny portal ogłoszeniowy. To nowoczesny system operacyjny nieruchomości — zawsze pod ręką, na telefonie i w przeglądarce.",
+    downloadLabel: "Pobierz aplikację",
+    androidSoon: "Wkrótce",
+  },
   pulse: {
     title: "Puls rynku",
     liveFrom: "Na żywo z EstateOS™",
@@ -703,28 +730,28 @@ const pl: Dictionary = {
     tabPrivate: "Prywatni & Inwestorzy",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
-    basicDesc: "Idealny start do sprzedaży własnej nieruchomości lub szukania ofert.",
+    basicDesc: "Darmowe konto — przeglądasz mapę i rynek, ustawiasz Radar i dodajesz własną ofertę.",
     basicPrice: "0 PLN",
-    basicF1: "1 aktywne ogłoszenie w naszej bazie.",
-    basicF2:
-      "Radar: na Basic widzisz mniej w pierwszych 24 godzinach premiery — po tym czasie jak na szerokim rynku. PRO widzi pełny obraz od razu.",
-    basicF3: "Podstawowe statystyki wyświetleń.",
+    basicF1:
+      "Jedna aktywna oferta w panelu. Publikacja na mapie i rynku (30 dni): kupon powitalny, Pakiet + (49 zł) lub kredyty z PRO.",
+    basicF2: "Radar Inwestycji — ten sam algorytm dopasowań co w Investor PRO (lokalizacja, budżet, metraż).",
+    basicF3: "Podstawowe statystyki wyświetleń oferty w Moje konto.",
     basicF4:
-      "Investor PRO (tylko na stronie): 5 kredytów publikacji + Off Market od razu. Opcjonalnie Pakiet + — 1 dodatkowy kredyt.",
+      "Nowe oferty innych: pełne szczegóły (adres, galeria) widoczne po 24 h od publikacji. PRO ma podgląd od razu.",
     basicCta: "Załóż darmowe konto",
     proBadge: "Rekomendowane",
     proName: "Investor PRO",
-    proDesc: "Dla łowców okazji. 5 kredytów publikacji + Off Market od razu (aktywacja tylko na stronie).",
+    proDesc: "Abonament 30 dni: 5 kredytów publikacji i wczesny podgląd rynku. Aktywacja tylko na stronie.",
     proWas: "299 PLN",
     proPrice: "249",
     proF1:
-      "Natychmiastowy Radar — bez 24‑godzinnego okna premiery jak na Basic. Powiadomienia PUSH w ułamek sekundy.",
+      "Wczesny podgląd nowych ofert — adres, galeria i parametry od razu (Basic: te same dane po 24 h od publikacji).",
     proF2:
-      "5 kredytów publikacji przy aktywacji — każde wystawienie zużywa 1 kredyt (30 dni na rynku).",
+      "5 kredytów publikacji przy aktywacji — każde wystawienie zużywa 1 kredyt (30 dni widoczności na mapie i rynku).",
     proF3:
-      "Wczesny dostęp Off Market — szczegóły ofert 24 h przed premierą na szerokim rynku.",
-    proF4: "Złota rama wyróżniająca Twoje ogłoszenia na mapie i w katalogu.",
-    proF5: "Kolejne publikacje po wykorzystaniu puli PRO — Pakiet + (1 kredyt / 30 dni).",
+      "Radar sprzedawcy bez czekania — dopasowanych kupców widzisz od razu po publikacji (Basic: lista po 24 h).",
+    proF4: "Odznaka Investor PRO w profilu publicznym.",
+    proF5: "Po wykorzystaniu puli PRO — Pakiet + (1 kredyt / 30 dni, 49 zł).",
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
     agencySoon: "Wkrótce",
@@ -830,6 +857,21 @@ const en: Dictionary = {
     ctaMap: "Search on the map",
     ctaList: "Add your listing",
     exploreMap: "Listing map",
+  },
+  homeAppPitch: {
+    eyebrow: "Investment Radar",
+    headline: "Stop chasing listings.",
+    headlineAccent: "Let the right ones find you.",
+    radarTitle: "Your market radar",
+    radarBody:
+      "Set location, budget, and criteria in EstateOS™ — the system watches the market and notifies you when matching listings appear.",
+    sellerTitle: "Selling or renting?",
+    sellerBody:
+      "Add your property to EstateOS™ — it reaches radars of active buyers and investors. One database on web and mobile.",
+    closing:
+      "Not another classifieds site. A modern real-estate operating system — in your pocket and in the browser.",
+    downloadLabel: "Get the app",
+    androidSoon: "Coming soon",
   },
   pulse: {
     title: "Market pulse",
@@ -1082,28 +1124,28 @@ const en: Dictionary = {
     tabPrivate: "Private & Investors",
     tabAgency: "EstateOS™ Partner",
     basicName: "Basic",
-    basicDesc: "Perfect start for selling your property or searching listings.",
+    basicDesc: "Free account — browse the map and market, set up Radar, and add your own listing.",
     basicPrice: "0 PLN",
-    basicF1: "1 active listing in our database.",
-    basicF2:
-      "Radar: on Basic you see less during the first 24 launch hours — after that it matches open market visibility. PRO sees full details instantly.",
-    basicF3: "Basic view statistics.",
+    basicF1:
+      "One active listing slot in your panel. Market publication (30 days): welcome coupon, Pakiet + (49 PLN), or PRO credits.",
+    basicF2: "Investment Radar — the same matching algorithm as Investor PRO (location, budget, size).",
+    basicF3: "Basic view statistics for your listing in My account.",
     basicF4:
-      "Investor PRO (web only): 5 publication credits + instant Off Market. Optional Pakiet + — 1 extra credit.",
+      "Other users' new listings: full details (address, gallery) after 24 h from publication. PRO sees them immediately.",
     basicCta: "Create free account",
     proBadge: "Recommended",
     proName: "Investor PRO",
-    proDesc: "For opportunity hunters. 5 publication credits + instant Off Market (web activation only).",
+    proDesc: "30-day subscription: 5 publication credits and early market preview. Web activation only.",
     proWas: "299 PLN",
     proPrice: "249",
     proF1:
-      "Instant Radar — no 24-hour premiere window like on Basic. PUSH notifications in a fraction of a second.",
+      "Early preview of new listings — address, gallery, and details right away (Basic: same data after 24 h from publication).",
     proF2:
-      "5 publication credits on activation — each listing uses 1 credit (30 days on market).",
+      "5 publication credits on activation — each listing uses 1 credit (30 days visible on map and market).",
     proF3:
-      "Early Off Market access — listing details 24 h before the public market premiere.",
-    proF4: "Gold frame highlighting your listings on the map and in the catalog.",
-    proF5: "After using the PRO pool — Pakiet + (1 credit / 30 days).",
+      "Seller Radar without the wait — matched buyers visible immediately after publication (Basic: list after 24 h).",
+    proF4: "Investor PRO badge on your public profile.",
+    proF5: "After using the PRO pool — Pakiet + (1 credit / 30 days, 49 PLN).",
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
     agencySoon: "Coming soon",

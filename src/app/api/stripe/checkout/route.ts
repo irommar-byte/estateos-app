@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     if (plan === 'investor') {
       productName = 'EstateOS Investor PRO';
       productDesc =
-        '5 kredytów publikacji, natychmiastowy Radar (bez okna premiery), wczesny dostęp Off Market 24 h. Kolejne publikacje — Pakiet +.';
+        '5 kredytów publikacji (30 dni każdy), wczesny podgląd nowych ofert, Radar sprzedawcy bez 24-godzinnego oczekiwania. Kolejne publikacje — Pakiet +.';
       unitAmount = 24900;
     } else if (plan === 'renewal') {
       productName = 'Odnowienie Oferty (30 Dni)';

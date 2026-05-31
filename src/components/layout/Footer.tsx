@@ -20,7 +20,12 @@ export default function Footer() {
             <p className="text-xs font-medium tracking-wide text-[var(--eos-muted)]">{dict.footer.rights}</p>
             <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-[var(--eos-subtle)]">{dict.footer.tagline}</p>
             <div className="mt-4 flex justify-center md:justify-start">
-              <AppStoreBadgeLink compact label={dict.footer.appStore} />
+              <AppStoreBadgeLink
+                compact
+                label={dict.footer.appStore}
+                androidComingSoon
+                androidSoonLabel={dict.homeAppPitch.androidSoon}
+              />
             </div>
           </div>
           <div className="flex flex-wrap justify-center gap-6 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)] sm:gap-8">

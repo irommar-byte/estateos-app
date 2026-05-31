@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Zap, Radar, Crown, Building2, User, ArrowRight, Clock, ShieldCheck, X, Key, Home } from 'lucide-react';
+import { Check, Zap, Radar, Crown, Building2, User, ArrowRight, Eye, X, Key, Home } from 'lucide-react';
 import { useLocale } from '@/contexts/LocaleContext';
 
 export default function Pricing() {
@@ -45,11 +45,11 @@ export default function Pricing() {
   };
 
   const proFeatures = [
-    { Icon: Radar, text: p.proF1 },
+    { Icon: Eye, text: p.proF1 },
     { Icon: Check, text: p.proF2 },
-    { Icon: Zap, text: p.proF3 },
-    { Icon: ShieldCheck, text: p.proF4 },
-    { Icon: Check, text: p.proF5 },
+    { Icon: Radar, text: p.proF3 },
+    { Icon: Crown, text: p.proF4 },
+    { Icon: Zap, text: p.proF5 },
   ];
 
   return (
@@ -118,7 +118,7 @@ export default function Pricing() {
                   <span>{p.basicF1}</span>
                 </li>
                 <li className="flex items-start gap-3 text-white/80 text-sm">
-                  <Clock className="text-orange-500/80 shrink-0" size={20} />
+                  <Radar className="text-emerald-500/80 shrink-0" size={20} />
                   <span>{p.basicF2}</span>
                 </li>
                 <li className="flex items-start gap-3 text-white/80 text-sm">
