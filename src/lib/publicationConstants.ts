@@ -5,6 +5,7 @@ export const PAKIET_PLUS_PRICE_LABEL = "49 zł";
 export const PAKIET_PLUS_STRIPE_AMOUNT = 4900;
 
 export const PUBLICATION_RENEWAL_STRIPE_AMOUNT = 4900;
+export const PUBLICATION_RENEWAL_PRICE_LABEL = "49,00 zł";
 
 export const PAKIET_PLUS_PRODUCT_ID = "pl.estateos.app.pakiet_plus_30d";
 

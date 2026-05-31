@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2 } from "lucide-react";
-import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS, PUBLICATION_RENEWAL_PRICE_LABEL } from "@/lib/publicationConstants";
 import type { PublicationSelection } from "@/lib/publicationSelection";
 import { defaultPublicationSelection } from "@/lib/publicationSelection";
 
@@ -39,6 +39,8 @@ type Props = {
   onSelectionChange?: (selection: PublicationSelection) => void;
   /** Gdy podane — panel nie robi własnego fetchu (synchronizacja z formularzem). */
   walletOverride?: WalletOverride | null;
+  /** `renew` — płatność za odnowienie konkretnej oferty zamiast zakupu Pakietu Plus. */
+  variant?: "publish" | "renew";
 };
 
 function SelectRing({ active }: { active: boolean }) {
@@ -60,6 +62,7 @@ export default function PublicationWalletPanel({
   selection,
   onSelectionChange,
   walletOverride,
+  variant = "publish",
 }: Props) {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(!walletOverride);
@@ -172,12 +175,19 @@ export default function PublicationWalletPanel({
     );
   }
 
+  const isRenew = variant === "renew";
+  const paySelection: PublicationSelection = isRenew ? "pay_renewal" : "buy_plus";
+
   return (
     <div className="mb-8">
       <div className="mb-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">Metoda publikacji</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+          {isRenew ? "Metoda odnowienia" : "Metoda publikacji"}
+        </p>
         <p className="mt-1 text-sm text-white/50">
-          Wybierz kupon, wykorzystaj kredyt Plus lub opłać nową publikację — tak jak w aplikacji mobilnej.
+          {isRenew
+            ? "Wybierz kupon, wykorzystaj kredyt Plus lub opłać odnowienie oferty na 30 dni."
+            : "Wybierz kupon, wykorzystaj kredyt Plus lub opłać nową publikację — tak jak w aplikacji mobilnej."}
         </p>
       </div>
 
@@ -267,9 +277,9 @@ export default function PublicationWalletPanel({
 
               <button
                 type="button"
-                onClick={() => pick("buy_plus")}
+                onClick={() => pick(paySelection)}
                 className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all ${
-                  resolvedSelection === "buy_plus"
+                  resolvedSelection === paySelection
                     ? "border-emerald-400/60 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.15)]"
                     : "border-white/10 bg-white/[0.03] hover:border-white/20"
                 }`}
@@ -278,12 +288,16 @@ export default function PublicationWalletPanel({
                   <ShoppingBag size={18} />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-white">Kup Pakiet Plus</p>
+                  <p className="text-sm font-bold text-white">
+                    {isRenew ? "Opłać odnowienie" : "Kup Pakiet Plus"}
+                  </p>
                   <p className="mt-1 text-xs text-white/45">
-                    Opłać 1 dodatkowe wystawienie ({PAKIET_PLUS_PRICE_LABEL}) — kredyt pojawi się na koncie po płatności
+                    {isRenew
+                      ? `Przedłuż ofertę o ${PUBLICATION_DURATION_DAYS} dni · ${PUBLICATION_RENEWAL_PRICE_LABEL}`
+                      : `Opłać 1 dodatkowe wystawienie (${PAKIET_PLUS_PRICE_LABEL}) — kredyt pojawi się na koncie po płatności`}
                   </p>
                 </div>
-                <SelectRing active={resolvedSelection === "buy_plus"} />
+                <SelectRing active={resolvedSelection === paySelection} />
               </button>
             </div>
           </div>

@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
 import ReviewsModal from "@/components/ReviewsModal";
+import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target } from 'lucide-react';
 import OfferFavoriteButton from '@/components/offer/OfferFavoriteButton';
@@ -491,8 +492,8 @@ export default function CRMDashboard() {
   const [wowPlusType, setWowPlusType] = useState<boolean>(false);
   const crmPollingRef = useRef<number | null>(null);
 
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [offerToArchive, setOfferToArchive] = useState<any>(null);
+  const [renewModalOffer, setRenewModalOffer] = useState<{ id: string; title?: string } | null>(null);
 
   // === ESTATEOS ELITE: NIEZALEŻNY SILNIK POKOI (NIE RUSZA WYGLĄDU) ===
   const [isolatedDeals, setIsolatedDeals] = useState<any[]>([]);
@@ -596,25 +597,14 @@ export default function CRMDashboard() {
     }
   };
 
-  const handleRefreshOffer = async (id: string) => {
-    setRefreshingId(id);
-    try {
-      const res = await fetch('/api/stripe/checkout', { credentials: 'include', 
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          returnUrl: `${window.location.origin}/moje-konto/crm?tab=my_offers&renewalOfferId=${id}`,
-          plan: 'renewal',
-          offerId: id
-        })
-      });
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    } catch(e) {
-      alert(c.alerts.paymentError);
-    } finally {
-      setRefreshingId(null);
-    }
+  const handleRefreshOffer = (offer: { id: string; title?: string }) => {
+    setRenewModalOffer({ id: String(offer.id), title: offer.title });
+  };
+
+  const handleRenewalCompleted = () => {
+    setWowType("renewal");
+    if (currentUser?.id) void fetchData(currentUser.id);
+    window.setTimeout(() => setWowType(null), 5500);
   };
 
   const handleSendVip = async (offerId: number, buyerIds: number[]) => {
@@ -768,7 +758,19 @@ export default function CRMDashboard() {
        
        const syncPromise = plan === 'renewal'
          ? syncRenewalAfterPayment(searchParams)
-         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(() => undefined);
+         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(async () => {
+             const renewalOfferId = searchParams.get('renewalOfferId');
+             if (plan === 'pakiet_plus' && renewalOfferId) {
+               await fetch(`/api/offers/${renewalOfferId}/activate`, {
+                 method: 'POST',
+                 credentials: 'include',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                   publication: { kind: 'PLUS_CREDIT', consumePlusPublication: true },
+                 }),
+               });
+             }
+           });
        syncPromise.finally(() => { initCrm(); });
        
        const animDuration = plan === 'pakiet_plus' ? 9500 : 5500;
@@ -1738,16 +1740,15 @@ export default function CRMDashboard() {
                     <div className="relative z-10 flex flex-col gap-2">
                       {isArchived ? (
                         <button 
-                          onClick={() => handleRefreshOffer(offer.id)}
-                          disabled={refreshingId === offer.id}
-                          className="group relative w-full py-4 rounded-[1.5rem] overflow-visible transition-all duration-500 flex items-center justify-center gap-3 border border-blue-500/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10 disabled:opacity-70 disabled:hover:scale-100"
+                          onClick={() => handleRefreshOffer(offer)}
+                          className="group relative w-full py-4 rounded-[1.5rem] overflow-visible transition-all duration-500 flex items-center justify-center gap-3 border border-blue-500/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10"
                         >
                           <div className="absolute inset-0 w-full h-full rounded-[1.5rem] overflow-hidden pointer-events-none" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e40af 100%)" }}>
                             <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-30deg] pointer-events-none group-hover:animate-[luxurySweep_1.5s_ease-in-out_infinite]" style={{ left: '-100%' }} />
                           </div>
-                          <RefreshCcw className={`text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] ${refreshingId === offer.id ? 'animate-spin' : 'group-hover:rotate-180'}`} size={18} />
+                          <RefreshCcw className="text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] group-hover:rotate-180" size={18} />
                           <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                            {refreshingId === offer.id ? c.offers.renewProcessing : c.offers.renewCta}
+                            {c.offers.renewCta}
                           </span>
                         </button>
                       ) : (
@@ -2344,6 +2345,14 @@ export default function CRMDashboard() {
           reviewsData={reviewsData ?? EMPTY_REVIEWS_MODAL} 
           userName={currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}` : (currentUser?.name || 'Inwestor')}
           subject={currentUser}
+      />
+
+      <OfferRenewalModal
+        offerId={renewModalOffer?.id ?? null}
+        offerTitle={renewModalOffer?.title}
+        isOpen={Boolean(renewModalOffer)}
+        onClose={() => setRenewModalOffer(null)}
+        onRenewed={handleRenewalCompleted}
       />
 </div>
   );
