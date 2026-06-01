@@ -9,7 +9,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, planType: true, createdAt: true }
+      select: { id: true, name: true, planType: true, role: true, companyName: true, buyerType: true, createdAt: true }
     });
 
     if (!user) return NextResponse.json({ error: 'Nie znaleziono użytkownika' }, { status: 404 });
@@ -17,6 +17,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const reviews = await prisma.review.findMany({
       where: { revieweeId: Number(userIdStr) },
       orderBy: { createdAt: 'desc' }
+    });
+
+    const offers = await prisma.offer.findMany({
+      where: { userId, status: { in: ['ACTIVE', 'PENDING'] } },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      take: 6,
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        district: true,
+        street: true,
+        buildingNumber: true,
+        lat: true,
+        lng: true,
+        isExactLocation: true,
+        imageUrl: true,
+        images: true,
+      },
     });
 
     // Pobieramy historię spotkań, w których ten użytkownik brał udział
@@ -40,6 +59,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ 
       user, 
       reviews, 
+      offers,
       stats: { completed, canceled, declined, reliability } 
     });
   } catch (error) {

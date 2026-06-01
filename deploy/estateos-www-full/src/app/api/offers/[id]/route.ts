@@ -9,7 +9,7 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
-import { ensureOfferLegalColumns, ensureOfferMoneyColumns } from '@/lib/services/offer.service';
+import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns } from '@/lib/services/offer.service';
 import { enrichOfferMoneyFieldsForApi } from '@/lib/money/offerPrice.server';
 import { enrichOfferMoneyFields, parsePriceAmount } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -31,7 +31,9 @@ import {
   resolveSellerPersonName,
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
+import { getOfferMarketListingMeta } from '@/lib/offerPublication';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -104,6 +106,7 @@ async function resolveCurrentUser() {
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureOfferLegalColumns();
+    await ensureOfferLocalityCountryColumns();
     const resolvedParams = await params;
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
@@ -196,6 +199,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const sellerDisplayName = offerUser ? resolveSellerDisplayName(offerUser) : '';
     const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
     const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
+    const marketListing = await getOfferMarketListingMeta(Number(resolvedParams.id));
+    const localityResolved = resolvePersistedLocalityFields({
+      localityCountry: (legalOffer as { localityCountry?: string }).localityCountry,
+      localityCountryCode: (legalOffer as { localityCountryCode?: string }).localityCountryCode,
+      city: legalOffer.city,
+      lat: legalOffer.lat,
+      lng: legalOffer.lng,
+    });
     const enrichedUser = offerUser
       ? {
           ...offerUser,
@@ -224,6 +235,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       buildYear,
       year: yearBuilt,
       buildYearLabel: formatOfferBuildYear(legalOffer as Record<string, unknown>),
+      marketListedAt: marketListing.marketListedAt,
+      marketRenewedAt: marketListing.marketRenewedAt,
+      localityCountry: localityResolved.localityCountry,
+      localityCountryCode: localityResolved.localityCountryCode,
       _viewerIsPro: isRealPro,
       views: viewsCount,
       viewsCount,
@@ -363,6 +378,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             : body.floorPlan != null
               ? String(body.floorPlan)
               : currentOffer.floorPlanUrl,
+        street: body.street != null ? String(body.street) : currentOffer.street,
+        buildingNumber: body.buildingNumber != null ? String(body.buildingNumber) : currentOffer.buildingNumber,
+        isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : currentOffer.isExactLocation,
+        lat:
+          body.lat !== undefined && body.lat !== null && body.lat !== ''
+            ? Number(body.lat)
+            : currentOffer.lat,
+        lng:
+          body.lng !== undefined && body.lng !== null && body.lng !== ''
+            ? Number(body.lng)
+            : currentOffer.lng,
         heating: body.heating !== undefined
           ? (body.heating ? String(body.heating) : null)
           : currentOffer.heating,

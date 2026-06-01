@@ -119,14 +119,14 @@ export default function PublicProfileModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={handleClose}
-        className="absolute inset-0 bg-black/50 backdrop-blur-md"
+        className="eos-modal-backdrop absolute inset-0"
       />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="relative w-full max-w-lg max-h-[90vh] my-auto shrink-0 overflow-hidden flex flex-col rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] shadow-2xl text-[var(--eos-text)]"
+        className="eos-modal-surface relative w-full max-w-lg max-h-[90vh] my-auto shrink-0 overflow-hidden flex flex-col rounded-[2rem] text-[var(--eos-text)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-amber-500/10 to-transparent pointer-events-none" />
