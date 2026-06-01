@@ -6,6 +6,7 @@ import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, A
 import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
+import OtodomCreateConfirmModal from "@/components/admin/OtodomCreateConfirmModal";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -38,6 +39,9 @@ export default function Centrala() {
     editUrl: string;
     publicUrl: string;
   } | null>(null);
+  const [otodomConfirmOpen, setOtodomConfirmOpen] = useState(false);
+  const [otodomResolvedDistrict, setOtodomResolvedDistrict] = useState<string>("");
+  const [otodomResolvedCity, setOtodomResolvedCity] = useState<string>("");
 
   useEffect(() => {
     void (async () => {
@@ -68,6 +72,36 @@ export default function Centrala() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!otodomDraft?.lat || !otodomDraft?.lng) {
+      setOtodomResolvedDistrict("");
+      setOtodomResolvedCity("");
+      return;
+    }
+
+    let cancelled = false;
+    void fetch(
+      `/api/location/reverse?lat=${encodeURIComponent(String(otodomDraft.lat))}&lng=${encodeURIComponent(String(otodomDraft.lng))}`,
+      { cache: "no-store" },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setOtodomResolvedCity(String(data.city || "").trim());
+        setOtodomResolvedDistrict(String(data.district || "").trim());
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOtodomResolvedDistrict("");
+          setOtodomResolvedCity("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [otodomDraft?.lat, otodomDraft?.lng, otodomDraft?.city]);
 
   
   const handleSmsToggle = async () => {
@@ -126,15 +160,6 @@ export default function Centrala() {
   const handleOtodomCreateOffer = async () => {
     if (!otodomDraft) return;
 
-    const confirmed = window.confirm(
-      `Utworzyć ofertę na koncie administratora?\n\n` +
-        `Tytuł: ${otodomDraft.title}\n` +
-        `Status: PENDING (aktywacja w Centrali → Baza Ofert)\n` +
-        `Zdjęcia: do ${Math.min(otodomDraft.imageCount, 20)} z OtoDom\n\n` +
-        `Upewnij się, że masz prawo do publikacji tych danych.`,
-    );
-    if (!confirmed) return;
-
     setOtodomCreating(true);
     setOtodomCreateError("");
     setOtodomCreateMessage("");
@@ -145,7 +170,7 @@ export default function Centrala() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft: otodomDraft }),
+        body: JSON.stringify({ draft: otodomDraft, rightsConfirmed: true }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -171,6 +196,7 @@ export default function Centrala() {
       setOtodomCreateError("Błąd połączenia podczas tworzenia oferty.");
     } finally {
       setOtodomCreating(false);
+      setOtodomConfirmOpen(false);
     }
   };
 
@@ -342,7 +368,9 @@ export default function Centrala() {
                     ["Piętro", otodomDraft.floor != null ? `${otodomDraft.floor}${otodomDraft.totalFloors ? ` / ${otodomDraft.totalFloors}` : ""}` : "—"],
                     ["Rok budowy", otodomDraft.yearBuilt ?? "—"],
                     ["Miasto", otodomDraft.city],
-                    ["Dzielnica", otodomDraft.district],
+                    ["Dzielnica (OtoDom)", otodomDraft.district],
+                    ["Dzielnica EstateOS (GPS)", otodomResolvedDistrict || "…"],
+                    ["Miasto EstateOS (GPS)", otodomResolvedCity || "…"],
                     ["Rejon", otodomDraft.neighborhood ?? "—"],
                     ["Ulica", otodomDraft.street ?? "—"],
                     ["GPS", otodomDraft.lat != null && otodomDraft.lng != null ? `${otodomDraft.lat.toFixed(5)}, ${otodomDraft.lng.toFixed(5)}` : "—"],
@@ -375,9 +403,10 @@ export default function Centrala() {
                     lng={otodomDraft.lng}
                     title={otodomDraft.title}
                     street={otodomDraft.street}
-                    city={otodomDraft.city}
-                    district={otodomDraft.district}
+                    city={otodomResolvedCity || otodomDraft.city}
+                    district={otodomResolvedDistrict || otodomDraft.district}
                     previewImageUrl={otodomDraft.imageUrls[0] ?? null}
+                    showPin
                   />
                 ) : (
                   <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
@@ -388,9 +417,9 @@ export default function Centrala() {
                 <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    onClick={() => void handleOtodomCreateOffer()}
+                    onClick={() => setOtodomConfirmOpen(true)}
                     disabled={otodomCreating}
-                    className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors"
+                    className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors shadow-[0_12px_32px_rgba(16,185,129,0.28)]"
                   >
                     {otodomCreating ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
                     Dodaj na EstateOS
@@ -479,6 +508,15 @@ export default function Centrala() {
             ) : null}
           </div>
         </motion.div>
+
+        <OtodomCreateConfirmModal
+          open={otodomConfirmOpen}
+          title={otodomPresentation?.title ?? otodomDraft?.title ?? "Oferta OtoDom"}
+          imageCount={otodomDraft?.imageCount ?? 0}
+          confirming={otodomCreating}
+          onCancel={() => setOtodomConfirmOpen(false)}
+          onConfirm={() => void handleOtodomCreateOffer()}
+        />
 
         {/* SNAPSHOT ENGINE */}
         <motion.div

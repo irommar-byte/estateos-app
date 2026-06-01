@@ -5,14 +5,12 @@ export type OfferPageCopy = {
   offerId: string;
   views: string;
   listedSince: string;
-  renewedOn: string;
   agency: string;
   privateOwner: string;
   verified: string;
   verifiedHint: string;
   legalVerifiedKw: string;
   legalUnverifiedKw: string;
-  legalVerifiedKwSublabel: string;
   newOfferBadge: string;
   pendingReview: string;
   pendingHint: string;
@@ -47,14 +45,13 @@ export type OfferPageCopy = {
   furnishedYes: string;
   furnishedNo: string;
   rentFee: string;
-  rentAdditionalFees: string;
-  rentAdditionalFeesPill: string;
   availability: string;
   aboutProperty: string;
   amenities: string;
   floorPlan: string;
   enlarge: string;
   locationSection: string;
+  neighborhoodPreview: string;
   mainParamsSection: string;
   buildingSection: string;
   costsSection: string;
@@ -67,7 +64,6 @@ export type OfferPageCopy = {
   commissionAmount: string;
   commissionCompany: string;
   openCompanyProfile: string;
-  photoGalleryCount: string;
   negotiatorsOne: string;
   negotiatorsMany: (n: number) => string;
   contactDisabled: string;
@@ -85,14 +81,12 @@ const PL: OfferPageCopy = {
   offerId: "ID Oferty",
   views: "Odsłony",
   listedSince: "Dodano",
-  renewedOn: "Odnowiono",
   agency: "Agencja",
   privateOwner: "Właściciel prywatny",
   verified: "Zweryfikowana",
   verifiedHint: "Odznaka jakości EstateOS",
-  legalVerifiedKw: "BEZPIECZNA NIERUCHOMOŚĆ",
-  legalUnverifiedKw: "Niezweryfikowany",
-  legalVerifiedKwSublabel: "EstateOS™ Quality Shield",
+  legalVerifiedKw: "ZWERYFIKOWANE",
+  legalUnverifiedKw: "NIEZWERYFIKOWANE",
   newOfferBadge: "NOWA OFERTA",
   pendingReview: "Weryfikacja w toku",
   pendingHint: "Sprawdzamy dokumenty",
@@ -128,14 +122,13 @@ const PL: OfferPageCopy = {
   furnishedYes: "Tak",
   furnishedNo: "Nie",
   rentFee: "Czynsz",
-  rentAdditionalFees: "Opłaty dodatkowe (czynsz)",
-  rentAdditionalFeesPill: "+ {{amount}} dodatkowe opłaty (czynsz)",
   availability: "Dostępność",
   aboutProperty: "O nieruchomości",
   amenities: "Udogodnienia",
   floorPlan: "Rzut lokalu",
   enlarge: "Powiększ",
   locationSection: "Lokalizacja",
+  neighborhoodPreview: "Okolica nieruchomości",
   mainParamsSection: "Główne parametry",
   buildingSection: "Budynek i koszty",
   costsSection: "Koszty i prowizja",
@@ -149,7 +142,6 @@ const PL: OfferPageCopy = {
   commissionAmount: "Kwota prowizji",
   commissionCompany: "Firma obsługująca",
   openCompanyProfile: "Otwórz wizytówkę",
-  photoGalleryCount: "Galeria · {n} zdjęć",
   negotiatorsOne: "1 osoba złożyła ofertę",
   negotiatorsMany: (n) => `${n} osoby złożyły ofertę`,
   contactDisabled: "Kontakt wyłączony",
@@ -168,14 +160,12 @@ const EN: OfferPageCopy = {
   offerId: "Listing ID",
   views: "Views",
   listedSince: "Listed",
-  renewedOn: "Renewed",
   agency: "Agency",
   privateOwner: "Private owner",
   verified: "Verified",
   verifiedHint: "EstateOS quality badge",
-  legalVerifiedKw: "SECURE PROPERTY",
-  legalUnverifiedKw: "Unverified",
-  legalVerifiedKwSublabel: "EstateOS™ Quality Shield",
+  legalVerifiedKw: "VERIFIED",
+  legalUnverifiedKw: "UNVERIFIED",
   newOfferBadge: "NEW LISTING",
   pendingReview: "Verification in progress",
   pendingHint: "We are reviewing documents",
@@ -211,14 +201,13 @@ const EN: OfferPageCopy = {
   furnishedYes: "Yes",
   furnishedNo: "No",
   rentFee: "Service charge",
-  rentAdditionalFees: "Additional fees (service charge)",
-  rentAdditionalFeesPill: "+ {{amount}} additional fees (service charge)",
   availability: "Availability",
   aboutProperty: "About the property",
   amenities: "Amenities",
   floorPlan: "Floor plan",
   enlarge: "Enlarge",
   locationSection: "Location",
+  neighborhoodPreview: "Neighborhood",
   mainParamsSection: "Main parameters",
   buildingSection: "Building & costs",
   costsSection: "Costs & commission",
@@ -231,7 +220,6 @@ const EN: OfferPageCopy = {
   commissionAmount: "Commission amount",
   commissionCompany: "Handling company",
   openCompanyProfile: "Open profile card",
-  photoGalleryCount: "Gallery · {n} photos",
   negotiatorsOne: "1 person submitted an offer",
   negotiatorsMany: (n) => `${n} people submitted offers`,
   contactDisabled: "Contact disabled",

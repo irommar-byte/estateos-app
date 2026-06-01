@@ -1,5 +1,5 @@
-import { validateCityDistrict } from '@/lib/location/locationCatalog';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { createOffer } from '@/lib/services/offer.service';
@@ -30,21 +30,6 @@ function featureIncludes(features: string[], needles: string[]): boolean {
   return needles.some((needle) => hay.some((f) => f.includes(needle)));
 }
 
-function resolveLocationFields(draft: OtodomImportDraft): { city: string; district: string } {
-  const candidates = [draft.district, draft.neighborhood, 'Inny obszar'].filter(Boolean) as string[];
-  for (const candidate of candidates) {
-    const validation = validateCityDistrict(draft.city, candidate);
-    if (validation.valid) {
-      return { city: validation.city, district: validation.district };
-    }
-  }
-  const fallback = validateCityDistrict(draft.city, draft.district || 'Inny obszar');
-  if (!fallback.valid) {
-    throw new Error(fallback.message || 'Nie udało się dopasować miasta i dzielnicy.');
-  }
-  return { city: fallback.city, district: fallback.district };
-}
-
 export function buildOtodomOfferDescription(
   draft: OtodomImportDraft,
   descriptionHtml: string,
@@ -63,7 +48,7 @@ export async function findExistingOtodomImportOffer(externalId: number) {
   });
 }
 
-export function draftToOfferCreateBody(
+export async function draftToOfferCreateBody(
   draft: OtodomImportDraft,
   userId: number,
   presentation: { title: string; descriptionHtml: string },
@@ -81,7 +66,7 @@ export function draftToOfferCreateBody(
     throw new Error('Brak poprawnego metrażu.');
   }
 
-  const { city, district } = resolveLocationFields(draft);
+  const { city, district, street } = await resolveOtodomImportLocationFields(draft);
   const features = draft.features || [];
 
   return {
@@ -102,7 +87,7 @@ export function draftToOfferCreateBody(
     yearBuilt: draft.yearBuilt,
     city,
     district,
-    street: draft.street,
+    street: street || draft.street,
     lat: draft.lat,
     lng: draft.lng,
     localityCountryCode: draft.localityCountryCode || 'PL',
@@ -221,7 +206,7 @@ export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, admin
   }
 
   const presentation = await buildOtodomPresentationCopy(draft);
-  const body = draftToOfferCreateBody(draft, adminUserId, presentation);
+  const body = await draftToOfferCreateBody(draft, adminUserId, presentation);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {

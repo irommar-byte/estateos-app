@@ -45,7 +45,45 @@ const STRICT_CITY_DISTRICTS: DistrictCatalog = {
   "Zamość": ["Stare Miasto", "Nowe Miasto", "Planty", "Janowice", "Karolówka", "Promyk", "Powiatowa", "Rataja", "Zamczysko", "Słoneczny Stok"],
 };
 
-export const REST_OF_COUNTRY_CITY = "Reszta kraju";
+/** Pod-dzielnice / synonimy OtoDom → oficjalna dzielnica w katalogu EstateOS. */
+const DISTRICT_ALIAS_RULES: Array<{ city: string; patterns: string[]; district: string }> = [
+  {
+    city: "Warszawa",
+    patterns: [
+      "nowa praga", "stara praga", "praga polnoc", "praga pn", "praga-polnoc", "praga północ",
+      "florianska", "floryanska", "zabkowska", "stalowa", "inzynierska", "inżynierska",
+    ],
+    district: "Praga-Północ",
+  },
+  {
+    city: "Warszawa",
+    patterns: [
+      "saska kepa", "saska kępa", "goclaw", "gocław", "goclawek", "gocławek", "kamionek",
+      "olszynka grochowska", "praga poludnie", "praga południe", "praga pd",
+    ],
+    district: "Praga-Południe",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["mokotow", "mokotów", "sluzew", "służew", "sluzewiec", "służewiec", "wierzbno", "stegny"],
+    district: "Mokotów",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["ursynow", "ursynów", "kabaty", "imielin", "natolin"],
+    district: "Ursynów",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["wola", "mirów", "mlynarska", "młynarska", "czyste"],
+    district: "Wola",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["zoliborz", "żoliborz", "stary zoliborz", "stary żoliborz"],
+    district: "Żoliborz",
+  },
+];
 
 const CITY_ALIASES: Record<string, string> = {
   trojmiasto: "Gdańsk",
@@ -99,13 +137,70 @@ export function getDistrictsForCity(city?: string | null): string[] {
   return STRICT_CITY_DISTRICTS[canonical] || [];
 }
 
+/** Dopasowuje synonim (np. „Nowa Praga”) do dzielnicy z katalogu strict city. */
+export function matchDistrictAlias(city: string, rawDistrict?: string | null): string {
+  const canonicalCity = canonicalizeCity(city);
+  if (!canonicalCity || !isStrictCity(canonicalCity)) return "";
+
+  const rawNorm = normalizeText(String(rawDistrict || "").trim());
+  if (!rawNorm || rawNorm === "inny obszar") return "";
+
+  for (const rule of DISTRICT_ALIAS_RULES) {
+    if (canonicalizeCity(rule.city) !== canonicalCity) continue;
+    for (const pattern of rule.patterns) {
+      const patternNorm = normalizeText(pattern);
+      if (!patternNorm) continue;
+      if (rawNorm === patternNorm || rawNorm.includes(patternNorm) || patternNorm.includes(rawNorm)) {
+        const allowed = getDistrictsForCity(canonicalCity);
+        if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
+          return rule.district;
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
+/** Szuka nazwy dzielnicy z katalogu w dowolnym tekście (np. place_name z Mapbox). */
+export function pickDistrictFromPlaceName(city: string, text: string, allowedDistricts?: string[]): string {
+  const canonicalCity = canonicalizeCity(city);
+  if (!canonicalCity || !text) return "";
+
+  const alias = matchDistrictAlias(canonicalCity, text);
+  if (alias) return alias;
+
+  const candidates =
+    allowedDistricts && allowedDistricts.length > 0
+      ? allowedDistricts
+      : getDistrictsForCity(canonicalCity);
+  if (!candidates.length) return "";
+
+  const source = normalizeText(text);
+  if (!source) return "";
+
+  for (const district of candidates) {
+    const nd = normalizeText(district);
+    if (!nd) continue;
+    if (source.includes(nd)) {
+      return district;
+    }
+  }
+
+  return "";
+}
+
 export function canonicalizeDistrict(city: string, district?: string | null): string {
   const value = String(district || "").trim();
   if (!value) {
     return "";
   }
 
-  const districts = getDistrictsForCity(city);
+  const canonicalCity = canonicalizeCity(city);
+  const aliasHit = matchDistrictAlias(canonicalCity, value);
+  if (aliasHit) return aliasHit;
+
+  const districts = getDistrictsForCity(canonicalCity);
   if (!districts.length) {
     return value;
   }
@@ -138,16 +233,24 @@ export function validateCityDistrict(city?: string | null, district?: string | n
 
   if (strictCity) {
     const allowed = getDistrictsForCity(canonicalCity);
-    const allowedHit = allowed.some((entry) => normalizeText(entry) === normalizeText(canonicalDistrict));
+    const aliasDistrict = matchDistrictAlias(canonicalCity, canonicalDistrict);
+    const districtToCheck = aliasDistrict || canonicalDistrict;
+    const allowedHit = allowed.some((entry) => normalizeText(entry) === normalizeText(districtToCheck));
     if (!allowedHit) {
       return {
         valid: false,
         strictCity,
         city: canonicalCity,
-        district: canonicalDistrict,
-        message: `Dzielnica '${canonicalDistrict || "-"}' nie należy do listy dla miasta ${canonicalCity}.`,
+        district: districtToCheck,
+        message: `Dzielnica '${districtToCheck || "-"}' nie należy do listy dla miasta ${canonicalCity}.`,
       };
     }
+    return {
+      valid: true,
+      strictCity,
+      city: canonicalCity,
+      district: districtToCheck,
+    };
   }
 
   return {
@@ -181,9 +284,6 @@ export function inferAreaLabelFromMapboxFeature(
     context?: MapboxContextItem[];
     place_name?: string;
     place_name_pl?: string;
-    text?: string;
-    address?: string;
-    place_type?: string[];
   } | null | undefined,
 ): string {
   if (!feature) return "";
@@ -191,50 +291,31 @@ export function inferAreaLabelFromMapboxFeature(
     return inferStrictDistrictFromMapboxFeature(canonicalCity, feature);
   }
 
-  const streetHint = [String(feature.text || "").trim(), String(feature.address || "").trim()]
-    .filter(Boolean)
-    .join(" ");
-
   const context = Array.isArray(feature.context) ? feature.context : [];
   const neighborhood = mapboxContextByPrefix(context, "neighborhood");
   const district = mapboxContextByPrefix(context, "district");
   const locality = mapboxContextByPrefix(context, "locality");
 
-  const candidates = [neighborhood, district, locality].filter(Boolean) as string[];
-  for (const raw of candidates) {
-    if (/województwo/i.test(raw)) continue;
-    if (normalizeText(raw) === normalizeText(canonicalCity)) continue;
-    if (looksLikeStreetSegment(raw, streetHint, canonicalCity)) continue;
-    return raw.trim();
-  }
+  const pick =
+    (neighborhood && neighborhood !== canonicalCity ? neighborhood : "") ||
+    (district && !/województwo/i.test(district) ? district : "") ||
+    (locality && locality !== canonicalCity ? locality : "");
+
+  if (pick) return pick.trim();
 
   const placeName = String(feature.place_name_pl || feature.place_name || "").trim();
   if (!placeName || !canonicalCity) return "";
   const segments = placeName.split(",").map((s) => s.trim()).filter(Boolean);
   for (const seg of segments) {
     const cleaned = seg.replace(/^\d{2}-\d{3}\s+/i, "").trim();
-    if (!cleaned || normalizeText(cleaned) === normalizeText(canonicalCity)) continue;
+    if (!cleaned || cleaned === canonicalCity) continue;
     if (/województwo|polska|poland|powiat/i.test(cleaned)) {
       if (/powiat/i.test(cleaned)) return cleaned;
       continue;
     }
-    if (looksLikeStreetSegment(cleaned, streetHint, canonicalCity)) continue;
     return cleaned;
   }
   return "";
-}
-
-function looksLikeStreetSegment(segment: string, streetHint: string, city: string): boolean {
-  const seg = String(segment || "").trim();
-  if (!seg) return true;
-  if (/\s+\d+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż]?(?:\/\d+)?\s*$/u.test(seg)) return true;
-  const segNorm = normalizeText(seg.split(/\s+\d/)[0] || seg);
-  const hintNorm = normalizeText(String(streetHint || "").split(/\s+\d/)[0] || streetHint);
-  if (hintNorm && segNorm && (segNorm === hintNorm || hintNorm.includes(segNorm) || segNorm.includes(hintNorm))) {
-    return true;
-  }
-  if (city && segNorm === normalizeText(city)) return true;
-  return false;
 }
 
 /** Wyciąga nazwę miasta z odpowiedzi Geocoding API (forward / reverse). */
@@ -243,47 +324,12 @@ export function inferCityFromMapboxFeature(feature: {
   place_name?: string;
   place_name_pl?: string;
   text?: string;
-  place_type?: string[];
 } | null | undefined): string {
-  const placeTypes = Array.isArray(feature?.place_type) ? feature.place_type : [];
-  const featureText = String(feature?.text || "").trim();
   const context = Array.isArray(feature?.context) ? feature.context : [];
-  const placeFromContext = mapboxContextByPrefix(context, "place");
-  const localityFromContext = mapboxContextByPrefix(context, "locality");
-
-  if (placeFromContext) {
-    const placeCity = canonicalizeCity(placeFromContext);
-    if (
-      placeCity &&
-      featureText &&
-      normalizeText(featureText) !== normalizeText(placeCity) &&
-      (placeTypes.includes("address") ||
-        placeTypes.includes("neighborhood") ||
-        placeTypes.includes("district") ||
-        placeTypes.includes("locality") ||
-        placeTypes.includes("poi"))
-    ) {
-      return placeCity;
-    }
-  }
-
-  if (
-    featureText &&
-    (placeTypes.includes("locality") || placeTypes.includes("place")) &&
-    !/^(powiat|gmina|województwo)\s/i.test(featureText)
-  ) {
-    const direct = canonicalizeCity(featureText);
-    if (direct) {
-      const contextPlace = canonicalizeCity(placeFromContext || localityFromContext);
-      if (contextPlace && normalizeText(direct) !== normalizeText(contextPlace)) {
-        return contextPlace;
-      }
-      return direct;
-    }
-  }
-
-  const fromContext = localityFromContext || placeFromContext;
-  if (fromContext && !/^(powiat|gmina|województwo)\s/i.test(fromContext)) {
+  const locality = mapboxContextByPrefix(context, "locality");
+  const place = mapboxContextByPrefix(context, "place");
+  const fromContext = locality || place;
+  if (fromContext) {
     return canonicalizeCity(fromContext);
   }
 
@@ -293,18 +339,13 @@ export function inferCityFromMapboxFeature(feature: {
     for (let i = parts.length - 1; i >= 0; i--) {
       const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
       if (!segment) continue;
-      if (/województwo|polska|poland|^pl$|^(powiat|gmina)\s/i.test(segment)) continue;
-      if (looksLikeStreetSegment(segment, featureText, "")) continue;
+      if (/województwo|polska|poland|^pl$/i.test(segment)) continue;
       const c = canonicalizeCity(segment);
       if (c) return c;
     }
   }
 
-  if (placeTypes.includes("address")) {
-    return "";
-  }
-
-  return canonicalizeCity(featureText);
+  return canonicalizeCity(String(feature?.text || "").trim());
 }
 
 /**
@@ -329,6 +370,8 @@ export function inferStrictDistrictFromMapboxFeature(
   const tryValidDistrict = (raw: string): string => {
     const trimmed = String(raw || "").trim();
     if (!trimmed) return "";
+    const alias = matchDistrictAlias(canonicalCity, trimmed);
+    if (alias) return alias;
     const v = validateCityDistrict(canonicalCity, trimmed);
     return v.valid ? v.district : "";
   };
