@@ -13,6 +13,7 @@ import { useLocale } from '@/contexts/LocaleContext';
 import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
+import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import dynamic from 'next/dynamic';
 
 const NeighborhoodMapPreview = dynamic(
@@ -114,6 +115,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
+          description: descriptionForEditForm(offer.description),
           ...resolveStreetFieldsForForm({
             street: offer.street,
             address: offer.address,
@@ -225,6 +227,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     // Przed wysłaniem usuwamy spacje z ceny
     const payload = {
       ...data,
+      description: descriptionForStorageFromEdit(data.description),
       price: String(data.price || '').replace(/\s/g, ''),
       images: JSON.stringify(imagesList),
       floorPlanUrl: floorPlanUrl || null,

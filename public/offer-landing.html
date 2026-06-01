@@ -419,6 +419,83 @@
       display: inline-block; vertical-align: -3px; margin-right: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .description-section,
+    .map-section {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 700;
+    }
+    .description-body {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--muted);
+      white-space: pre-line;
+    }
+    .map-frame {
+      display: block;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      background: rgba(127,127,127,0.06);
+      text-decoration: none;
+    }
+    .map-frame img {
+      width: 100%;
+      height: auto;
+      min-height: 180px;
+      max-height: 260px;
+      object-fit: cover;
+      display: block;
+    }
+    .map-caption {
+      margin: 8px 0 0;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .landing-print-hide {}
+    @media print {
+      @page { size: A4 portrait; margin: 8mm; }
+      body {
+        background: #fff !important;
+        color: #111 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page { max-width: none; padding: 0; margin: 0; }
+      .sheet {
+        box-shadow: none !important;
+        background: none !important;
+        padding: 0 !important;
+      }
+      .sheet-inner { border: none !important; border-radius: 0 !important; }
+      .sheet-header { padding: 0 0 8px !important; border-bottom: 1px solid #ddd !important; }
+      .sheet-lead { display: none !important; }
+      .hero img { height: 42mm !important; max-height: 42mm !important; }
+      .body { padding: 10px 0 0 !important; }
+      .landing-print-hide,
+      .platform-foot,
+      .qr-row,
+      .trust-note,
+      .thumbs,
+      #fatal,
+      .toast { display: none !important; }
+      .description-body { font-size: 11px !important; line-height: 1.45 !important; max-height: 55mm; overflow: hidden; }
+      .map-frame img { max-height: 45mm !important; min-height: 0 !important; }
+      .spec-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
+      .spec { padding: 6px 8px !important; }
+      h1 { font-size: 18px !important; }
+      .price { font-size: 20px !important; color: #8a6d1f !important; }
+    }
   </style>
 </head>
 <body>
@@ -451,7 +528,20 @@
           <div class="amenities" id="amenities" hidden></div>
           <div class="thumbs" id="thumbs" hidden></div>
 
-          <div class="qr-row">
+          <section class="description-section" id="descriptionSection" hidden>
+            <h2 class="section-title">Opis</h2>
+            <p class="description-body" id="descriptionBody"></p>
+          </section>
+
+          <section class="map-section" id="mapSection" hidden>
+            <h2 class="section-title">Lokalizacja na mapie</h2>
+            <a class="map-frame" id="mapLink" href="#" target="_blank" rel="noopener noreferrer">
+              <img id="mapImage" alt="Mapa okolicy nieruchomości" loading="lazy" />
+            </a>
+            <p class="map-caption" id="mapCaption"></p>
+          </section>
+
+          <div class="qr-row landing-print-hide">
             <div class="qr-frame">
               <canvas id="qrCanvas" width="128" height="128" aria-hidden="true"></canvas>
             </div>
@@ -462,13 +552,14 @@
             </div>
           </div>
 
-          <p class="trust-note">
+          <p class="trust-note landing-print-hide">
             Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.
           </p>
 
-          <div class="actions">
+          <div class="actions landing-print-hide">
             <a class="btn btn-primary" id="openApp" href="#">Otwórz w aplikacji EstateOS™</a>
             <a class="btn btn-secondary" id="registerCta" href="https://estateos.pl/rejestracja">Załóż konto i skontaktuj się</a>
+            <button type="button" class="btn btn-secondary" id="savePdf">Zachowaj jako PDF (A4)</button>
             <button type="button" class="btn btn-ghost" id="copyLink">Kopiuj link do wiadomości</button>
           </div>
           <div class="toast" id="toast" aria-live="polite"></div>
@@ -638,8 +729,94 @@
     });
   }
 
+  function stripDescriptionHtml(raw) {
+    var html = String(raw || '')
+      .replace(/<!--\s*estateos-otodom:\d+\s*-->/gi, '')
+      .replace(/<p>\s*<small>\s*Import OtoDom[\s\S]*?<\/small>\s*<\/p>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trim();
+    if (!html) return '';
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+\n/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function renderDescription(data) {
+    var section = document.getElementById('descriptionSection');
+    var body = document.getElementById('descriptionBody');
+    if (!section || !body) return;
+    var plain = stripDescriptionHtml(data.description || '');
+    if (!plain || plain.length < 16) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    body.textContent = plain;
+    cachedShare.description = plain.length > 320 ? plain.slice(0, 317) + '…' : plain;
+  }
+
+  function renderMap(data) {
+    var section = document.getElementById('mapSection');
+    var img = document.getElementById('mapImage');
+    var link = document.getElementById('mapLink');
+    var caption = document.getElementById('mapCaption');
+    if (!section || !img || !link) return;
+
+    var lat = Number(data.lat);
+    var lng = Number(data.lng);
+    if (!isFinite(lat) || !isFinite(lng)) {
+      section.hidden = true;
+      return;
+    }
+
+    var locParts = [data.street, data.district, data.city].filter(Boolean);
+    var locLine = locParts.join(', ') || data.city || '';
+    var exact = data.isExactLocation !== false;
+    var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng + '&z=' + (exact ? 17 : 15);
+    link.href = mapsUrl;
+    if (caption) {
+      caption.textContent = exact
+        ? (locLine ? 'Punkt na mapie: ' + locLine : 'Lokalizacja nieruchomości na mapie.')
+        : (locLine ? 'Okolica: ' + locLine + ' (bez dokładnego adresu na mapie).' : 'Podgląd okolicy bez dokładnej pinezki.');
+    }
+
+    fetch(ORIGIN + '/api/map/config', { credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (cfg) {
+        var token = cfg && cfg.mapboxToken ? String(cfg.mapboxToken).trim() : '';
+        if (!token) throw new Error('no token');
+        var overlay = exact
+          ? 'pin-l+cc9a2e(' + lng + ',' + lat + ')'
+          : 'circle-rgba(184,146,46,0.35)-stroke-rgba(184,146,46,0.9)-stroke-width-2+' + lng + ',' + lat + '+120';
+        var staticUrl =
+          'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/' +
+          overlay + '/' + lng + ',' + lat + ',' + (exact ? '16.5' : '14.2') + ',0,45/640x320@2x' +
+          '?access_token=' + encodeURIComponent(token);
+        img.src = staticUrl;
+        img.onerror = function () { section.hidden = true; };
+        section.hidden = false;
+      })
+      .catch(function () {
+        img.src =
+          'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng +
+          '&zoom=' + (exact ? 16 : 14) + '&size=640x320&maptype=mapnik' +
+          (exact ? '&markers=' + lat + ',' + lng + ',red-pushpin' : '');
+        img.onerror = function () { section.hidden = true; };
+        section.hidden = false;
+      });
+  }
+
   function renderQr() {
-    var label = document.getElementById('qrUrlLabel');
     if (label) label.textContent = canonicalHttps;
     var canvas = document.getElementById('qrCanvas');
     if (!canvas) return;
@@ -789,12 +966,28 @@
     }
   });
 
-  var cachedShare = { title: '', priceLine: '', summary: '' };
+  var savePdfBtn = document.getElementById('savePdf');
+  if (savePdfBtn) {
+    savePdfBtn.addEventListener('click', function () {
+      var toast = document.getElementById('toast');
+      if (toast) {
+        toast.textContent = 'Otwieranie podglądu wydruku — wybierz „Zapisz jako PDF”.';
+        toast.className = 'toast ok';
+      }
+      window.print();
+    });
+  }
+
+  var cachedShare = { title: '', priceLine: '', summary: '', description: '' };
   function buildShareText() {
     var lines = [];
     if (cachedShare.title) lines.push(cachedShare.title);
     if (cachedShare.summary) lines.push(cachedShare.summary);
     if (cachedShare.priceLine) lines.push(cachedShare.priceLine);
+    if (cachedShare.description) {
+      lines.push('');
+      lines.push(cachedShare.description);
+    }
     lines.push('');
     lines.push(canonicalHttps);
     lines.push('');
@@ -864,6 +1057,8 @@
       if (data.plotArea) addSpec(grid, 'Działka', String(data.plotArea).replace('.', ',') + ' m²');
 
       renderAmenities(data);
+      renderDescription(data);
+      renderMap(data);
 
       cachedShare.title = title;
       cachedShare.summary = summaryLine;

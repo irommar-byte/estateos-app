@@ -61,6 +61,23 @@ function buildLocationPhrase(draft: OtodomImportDraft): string {
   return unique.join(', ') || draft.city || 'wybranej lokalizacji';
 }
 
+function titleConflictsWithPropertyType(title: string, propertyType: OtodomImportDraft['propertyType']): boolean {
+  const t = title.toLowerCase();
+  if (propertyType === 'PLOT') {
+    return /\b(mieszkan|kawalerk|apartment|flat|pokojow)\b/i.test(t) && !/\b(działk|grunt|teren)\b/i.test(t);
+  }
+  if (propertyType === 'HOUSE') {
+    return /\b(mieszkan|kawalerk|działk|grunt)\b/i.test(t) && !/\b(dom\b|domu|willa)\b/i.test(t);
+  }
+  if (propertyType === 'COMMERCIAL') {
+    return /\b(mieszkan|kawalerk|działk)\b/i.test(t) && !/\b(lokal|biuro|magazyn|hala)\b/i.test(t);
+  }
+  if (propertyType === 'FLAT') {
+    return /\b(działk|grunt\b|dom jednorodzin)\b/i.test(t) && !/\b(mieszkan|kawalerk|pokoj)\b/i.test(t);
+  }
+  return false;
+}
+
 function refineTitle(draft: OtodomImportDraft): string {
   const original = draft.title?.trim() || '';
   const location = buildLocationPhrase(draft);
@@ -71,6 +88,7 @@ function refineTitle(draft: OtodomImportDraft): string {
     const parts = [`Działka`, area, location ? `— ${location}` : ''].filter(Boolean);
     const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
     if (!original || original.length < 8) return generated;
+    if (titleConflictsWithPropertyType(original, draft.propertyType)) return generated;
     if (normalizeForCompare(original) === normalizeForCompare(generated)) return original;
     if (/działk|grunt|teren/i.test(original)) return original;
     return generated.length >= 12 ? generated : original;
@@ -80,6 +98,7 @@ function refineTitle(draft: OtodomImportDraft): string {
     const parts = [`Lokal użytkowy`, area, location ? `— ${location}` : ''].filter(Boolean);
     const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
     if (!original || original.length < 8) return generated;
+    if (titleConflictsWithPropertyType(original, draft.propertyType)) return generated;
     if (/lokal|biuro|magazyn|hala/i.test(original)) return original;
     return generated.length >= 12 ? generated : original;
   }
@@ -101,6 +120,7 @@ function refineTitle(draft: OtodomImportDraft): string {
 
   const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
   if (!original || original.length < 8) return generated;
+  if (titleConflictsWithPropertyType(original, draft.propertyType)) return generated;
 
   if (normalizeForCompare(original) === normalizeForCompare(generated)) {
     return original;
@@ -138,20 +158,31 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
     introFacts.push(`rok budowy ${draft.yearBuilt}`);
   }
 
-  const htmlParts: string[] = [
-    `<p>Przedstawiamy ${tx} — ${typeWord} w ${escapeHtml(location)}${
-      introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
-    }. Poniżej najważniejsze informacje o nieruchomości.</p>`,
-  ];
+  const htmlParts: string[] = [];
 
-  for (const paragraph of sourceParagraphs) {
-    const cleaned = paragraph
-      .replace(/\bOTODOM\b/gi, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    if (cleaned.length > 20) {
-      htmlParts.push(`<p>${escapeHtml(cleaned)}</p>`);
+  if (sourceParagraphs.length >= 1) {
+    for (const paragraph of sourceParagraphs.slice(0, 5)) {
+      const cleaned = paragraph
+        .replace(/\bOTODOM\b/gi, '')
+        .replace(/\bestateos\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      if (cleaned.length > 24) {
+        htmlParts.push(`<p>${escapeHtml(cleaned)}</p>`);
+      }
     }
+  }
+
+  if (!htmlParts.length) {
+    htmlParts.push(
+      `<p>Przedstawiamy ${tx} — ${typeWord} w ${escapeHtml(location)}${
+        introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
+      }.</p>`,
+    );
+  } else if (introFacts.length) {
+    htmlParts.unshift(
+      `<p><strong>${escapeHtml(typeWord.charAt(0).toUpperCase() + typeWord.slice(1))}</strong> · ${escapeHtml(introFacts.join(' · '))} · ${escapeHtml(location)}</p>`,
+    );
   }
 
   if (draft.features.length > 0) {
@@ -180,7 +211,7 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
   }
 
   htmlParts.push(
-    '<p><em>Opis przygotowany na podstawie publicznych danych rynkowych i sformułowany na potrzeby prezentacji w serwisie EstateOS.</em></p>',
+    '<p><em>Szczegóły finansowe i lokalizacja zostały zweryfikowane na potrzeby prezentacji w serwisie EstateOS.</em></p>',
   );
 
   return htmlParts.join('\n');
@@ -231,7 +262,7 @@ Odpowiedz wyłącznie JSON: {"title":"...","descriptionHtml":"..."}`;
     if (!title || !descriptionHtml) return null;
 
     return {
-      title,
+      title: refineTitle({ ...draft, title }),
       descriptionHtml,
       descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
     };
