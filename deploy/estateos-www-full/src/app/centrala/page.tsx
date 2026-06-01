@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search, PlusCircle, ExternalLink } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
+import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
+import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -27,6 +29,7 @@ export default function Centrala() {
   const [otodomLoading, setOtodomLoading] = useState(false);
   const [otodomError, setOtodomError] = useState("");
   const [otodomDraft, setOtodomDraft] = useState<OtodomImportDraft | null>(null);
+  const [otodomPresentation, setOtodomPresentation] = useState<OtodomPresentationCopy | null>(null);
   const [otodomCreating, setOtodomCreating] = useState(false);
   const [otodomCreateMessage, setOtodomCreateMessage] = useState("");
   const [otodomCreateError, setOtodomCreateError] = useState("");
@@ -94,6 +97,7 @@ export default function Centrala() {
     setOtodomLoading(true);
     setOtodomError("");
     setOtodomDraft(null);
+    setOtodomPresentation(null);
     setOtodomCreateMessage("");
     setOtodomCreateError("");
     setOtodomCreatedLinks(null);
@@ -111,6 +115,7 @@ export default function Centrala() {
         return;
       }
       setOtodomDraft(data.draft ?? null);
+      setOtodomPresentation(data.presentation ?? null);
     } catch {
       setOtodomError("Błąd połączenia z serwerem.");
     } finally {
@@ -325,7 +330,8 @@ export default function Centrala() {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {[
-                    ["Tytuł", otodomDraft.title],
+                    ["Tytuł (EstateOS)", otodomPresentation?.title ?? otodomDraft.title],
+                    ["Tytuł (OtoDom)", otodomDraft.title],
                     ["Transakcja", otodomDraft.transactionType],
                     ["Typ", otodomDraft.propertyType],
                     ["Cena", otodomDraft.price != null ? `${otodomDraft.price} PLN` : "—"],
@@ -350,6 +356,18 @@ export default function Centrala() {
                     </div>
                   ))}
                 </div>
+
+                {otodomPresentation ? (
+                  <div className="bg-white/5 border border-emerald-500/20 rounded-2xl p-5 space-y-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
+                      Podgląd opisu na EstateOS (przepisany)
+                    </p>
+                    <OfferDescriptionBody
+                      description={otodomPresentation.descriptionHtml}
+                      className="text-white/75 max-h-56 overflow-y-auto"
+                    />
+                  </div>
+                ) : null}
 
                 {otodomDraft.lat != null && otodomDraft.lng != null ? (
                   <OtodomImportLocationPreview
@@ -378,8 +396,8 @@ export default function Centrala() {
                     Dodaj na EstateOS
                   </button>
                   <p className="text-[11px] text-white/40 max-w-md leading-relaxed">
-                    Tworzy ofertę na Twoim koncie admina (status PENDING), pobiera zdjęcia z OtoDom i zapisuje opis z
-                    linkiem do źródła. Aktywuj w Centrali → Baza Ofert.
+                    Tworzy ofertę PENDING z przepisanym tytułem/opisem, zdjęciami bez znaku OtoDom (przycięcie + delikatna
+                    modyfikacja). Aktywuj w Centrali → Baza Ofert.
                   </p>
                 </div>
 
@@ -439,9 +457,9 @@ export default function Centrala() {
                   </div>
                 ) : null}
 
-                {otodomDraft.descriptionText ? (
+                {otodomDraft.descriptionText && !otodomPresentation ? (
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Opis (skrót)</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Opis OtoDom (surowy)</p>
                     <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line max-h-40 overflow-y-auto bg-black/30 border border-white/10 rounded-xl p-4">
                       {otodomDraft.descriptionText.slice(0, 1200)}
                       {otodomDraft.descriptionText.length > 1200 ? "…" : ""}

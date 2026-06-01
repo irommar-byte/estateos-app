@@ -24,6 +24,7 @@ import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
@@ -620,7 +621,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 ) : null}
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
-                  <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
+                  <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
                 {offer.amenities && offer.amenities.length > 0 && (
