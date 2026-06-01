@@ -25,10 +25,29 @@ export function stripInternalOfferDescriptionMarkers(html: string): string {
     .trim();
 }
 
-export function looksLikeOfferDescriptionHtml(value: string): boolean {
-  const trimmed = String(value || '').trim();
+export function stripHtmlToPlain(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+export function shouldRenderOfferDescriptionAsHtml(value: string): boolean {
+  const trimmed = stripInternalOfferDescriptionMarkers(value).trim();
   if (!trimmed) return false;
-  return /<\s*(p|ul|ol|li|br|h2|h3|div)\b/i.test(trimmed);
+  return /<\s*\/?[a-z][a-z0-9]*\b/i.test(trimmed);
+}
+
+export function looksLikeOfferDescriptionHtml(value: string): boolean {
+  return shouldRenderOfferDescriptionAsHtml(value);
 }
 
 /** Prosta sanityzacja HTML opisu oferty przed renderem na stronie. */
