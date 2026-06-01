@@ -236,7 +236,11 @@ export async function submitOwnerLegalVerification(req: Request, offerId: number
     return { request, updatedOffer };
   });
 
-  notifyAdminsLegalVerificationPending(offerId, created.updatedOffer?.title ?? null);
+  const offerTitleRow = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { title: true },
+  });
+  notifyAdminsLegalVerificationPending(offerId, offerTitleRow?.title ?? null);
 
   return NextResponse.json(await offerViewFromState(offerId, created.updatedOffer, created.request), {
     headers: { 'Cache-Control': 'no-store, max-age=0' },
