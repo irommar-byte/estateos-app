@@ -64,14 +64,34 @@ function buildLocationPhrase(draft: OtodomImportDraft): string {
 function refineTitle(draft: OtodomImportDraft): string {
   const original = draft.title?.trim() || '';
   const location = buildLocationPhrase(draft);
+  const area = draft.area != null ? `${draft.area} m²` : '';
+  const typeWord = propertyLabel(draft.propertyType);
+
+  if (draft.propertyType === 'PLOT') {
+    const parts = [`Działka`, area, location ? `— ${location}` : ''].filter(Boolean);
+    const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
+    if (!original || original.length < 8) return generated;
+    if (normalizeForCompare(original) === normalizeForCompare(generated)) return original;
+    if (/działk|grunt|teren/i.test(original)) return original;
+    return generated.length >= 12 ? generated : original;
+  }
+
+  if (draft.propertyType === 'COMMERCIAL') {
+    const parts = [`Lokal użytkowy`, area, location ? `— ${location}` : ''].filter(Boolean);
+    const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
+    if (!original || original.length < 8) return generated;
+    if (/lokal|biuro|magazyn|hala/i.test(original)) return original;
+    return generated.length >= 12 ? generated : original;
+  }
+
   const rooms =
-    draft.rooms != null && draft.rooms > 0
+    draft.propertyType === 'FLAT' && draft.rooms != null && draft.rooms > 0
       ? draft.rooms === 1
         ? 'kawalerka'
         : `${draft.rooms}-pokojowe`
-      : '';
-  const area = draft.area != null ? `${draft.area} m²` : '';
-  const typeWord = propertyLabel(draft.propertyType);
+      : draft.propertyType === 'HOUSE' && draft.rooms != null && draft.rooms > 0
+        ? `${draft.rooms}-pokojowy dom`
+        : '';
 
   const parts: string[] = [];
   if (rooms) parts.push(rooms.charAt(0).toUpperCase() + rooms.slice(1));
@@ -106,13 +126,17 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
 
   const introFacts: string[] = [];
   if (draft.area != null) introFacts.push(`${draft.area} m²`);
-  if (draft.rooms != null) introFacts.push(`${draft.rooms} ${draft.rooms === 1 ? 'pokój' : 'pokoje'}`);
-  if (draft.floor != null && draft.totalFloors != null) {
-    introFacts.push(`piętro ${draft.floor}/${draft.totalFloors}`);
-  } else if (draft.floor != null) {
-    introFacts.push(`piętro ${draft.floor}`);
+  if (draft.propertyType === 'FLAT' || draft.propertyType === 'HOUSE') {
+    if (draft.rooms != null) introFacts.push(`${draft.rooms} ${draft.rooms === 1 ? 'pokój' : 'pokoje'}`);
+    if (draft.floor != null && draft.totalFloors != null) {
+      introFacts.push(`piętro ${draft.floor}/${draft.totalFloors}`);
+    } else if (draft.floor != null) {
+      introFacts.push(`piętro ${draft.floor}`);
+    }
   }
-  if (draft.yearBuilt != null) introFacts.push(`rok budowy ${draft.yearBuilt}`);
+  if (draft.yearBuilt != null && draft.propertyType !== 'PLOT') {
+    introFacts.push(`rok budowy ${draft.yearBuilt}`);
+  }
 
   const htmlParts: string[] = [
     `<p>Przedstawiamy ${tx} — ${typeWord} w ${escapeHtml(location)}${

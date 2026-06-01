@@ -257,10 +257,18 @@ export default function OtodomImportProCard() {
                 <p className="mt-2 text-sm font-semibold text-[var(--eos-text)]">
                   {presentation?.title ?? draft.title}
                 </p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                  {draft.city}
-                  {draft.district ? ` · ${draft.district}` : ""} · {draft.price != null ? `${draft.price} PLN` : ""}
-                </p>
+                      <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                        {draft.city}
+                        {draft.district ? ` · ${draft.district}` : ""} · {draft.price != null ? `${draft.price} PLN` : ""}
+                        {" · "}
+                        {draft.propertyType === "PLOT"
+                          ? "Działka"
+                          : draft.propertyType === "HOUSE"
+                            ? "Dom"
+                            : draft.propertyType === "COMMERCIAL"
+                              ? "Lokal użytkowy"
+                              : "Mieszkanie"}
+                      </p>
               </div>
 
               {presentation ? (

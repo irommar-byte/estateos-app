@@ -1,8 +1,9 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import EosModal from "@/components/ui/EosModal";
+import EosCheckbox from "@/components/ui/EosCheckbox";
 
 type Props = {
   open: boolean;
@@ -23,7 +24,6 @@ export default function OtodomCreateConfirmModal({
   confirming = false,
   variant = "admin",
 }: Props) {
-  const checkboxId = useId();
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
 
   useEffect(() => {
@@ -97,21 +97,12 @@ export default function OtodomCreateConfirmModal({
           </div>
         </div>
 
-        <label
-          htmlFor={checkboxId}
-          className="flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-4 text-left transition-colors hover:bg-[var(--eos-surface)]"
-        >
-          <input
-            id={checkboxId}
-            type="checkbox"
-            checked={rightsConfirmed}
-            onChange={(event) => setRightsConfirmed(event.target.checked)}
-            className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded-[5px] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] accent-emerald-500"
-          />
-          <span className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
-            Oświadczam, że posiadam prawa niezbędne do publikacji tych danych i materiałów na platformie EstateOS.
-          </span>
-        </label>
+        <EosCheckbox
+          checked={rightsConfirmed}
+          onCheckedChange={setRightsConfirmed}
+          label="Oświadczam, że posiadam prawa niezbędne do publikacji tych danych i materiałów na platformie EstateOS."
+          className="text-left"
+        />
       </div>
     </EosModal>
   );

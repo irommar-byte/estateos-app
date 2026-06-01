@@ -92,12 +92,150 @@ function characteristicsMap(ad: RawAd): Map<string, { value: string; label: stri
   return map;
 }
 
-function mapPropertyType(raw: unknown): OtodomImportDraft['propertyType'] {
-  const value = String(raw ?? '').trim().toUpperCase();
-  if (value === 'HOUSE') return 'HOUSE';
-  if (value === 'PLOT' || value === 'LAND') return 'PLOT';
-  if (value === 'COMMERCIAL' || value === 'OFFICE' || value === 'HALL') return 'COMMERCIAL';
+function normalizeCategoryToken(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+const OTODOM_CATEGORY_MAP: Record<string, OtodomImportDraft['propertyType']> = {
+  FLAT: 'FLAT',
+  APARTMENT: 'FLAT',
+  STUDIO_FLAT: 'FLAT',
+  ONE_ROOM: 'FLAT',
+  ROOM: 'FLAT',
+  MIESZKANIE: 'FLAT',
+  HOUSE: 'HOUSE',
+  DETACHED_HOUSE: 'HOUSE',
+  SEMI_DETACHED: 'HOUSE',
+  SEMI_DETACHED_HOUSE: 'HOUSE',
+  TERRACED_HOUSE: 'HOUSE',
+  TERRAIN: 'PLOT',
+  LAND: 'PLOT',
+  PLOT: 'PLOT',
+  BUILDING_PLOT: 'PLOT',
+  DZIALKA: 'PLOT',
+  DZIALKI: 'PLOT',
+  GRUNT: 'PLOT',
+  GRUNTY: 'PLOT',
+  COMMERCIAL: 'COMMERCIAL',
+  COMMERCIAL_PREMISE: 'COMMERCIAL',
+  COMMERCIAL_PROPERTY: 'COMMERCIAL',
+  OFFICE: 'COMMERCIAL',
+  HALL: 'COMMERCIAL',
+  WAREHOUSE: 'COMMERCIAL',
+  LOKAL: 'COMMERCIAL',
+  LOKAL_UZYTKOWY: 'COMMERCIAL',
+  USLUGOWY: 'COMMERCIAL',
+  GARAGE: 'COMMERCIAL',
+  INVESTMENT: 'COMMERCIAL',
+};
+
+function scorePropertyTypeFromText(text: string): Record<OtodomImportDraft['propertyType'], number> {
+  const scores: Record<OtodomImportDraft['propertyType'], number> = {
+    FLAT: 0,
+    HOUSE: 0,
+    PLOT: 0,
+    COMMERCIAL: 0,
+  };
+  const t = text.toLowerCase();
+
+  if (/\b(działk|dzialk|grunt|teren\b|roln|rekreacyjn|budowl|inwestycyjn|sad\b|łąk|lak\b|pastwisk|terrain|plot|land)\b/.test(t)) {
+    scores.PLOT += 4;
+  }
+  if (/\b(dom\b|jednorodzin|bliźniak|blizniak|szeregow|willa|segment\b|detached|house)\b/.test(t)) {
+    scores.HOUSE += 4;
+  }
+  if (/\b(lokal|biuro|magazyn|hala\b|handlow|usług|gastronom|komercyj|commercial|office|warehouse|retail)\b/.test(t)) {
+    scores.COMMERCIAL += 4;
+  }
+  if (/\b(mieszkan|kawalerk|apartment|flat|studio|loft|pokojow|pokój|pokoi)\b/.test(t)) {
+    scores.FLAT += 4;
+  }
+
+  return scores;
+}
+
+export function resolveOtodomPropertyType(input: {
+  adCategory?: Record<string, unknown> | null;
+  title?: string | null;
+  slug?: string | null;
+  descriptionText?: string | null;
+  buildingType?: string | null;
+  area?: number | null;
+  rooms?: number | null;
+  floor?: number | null;
+}): OtodomImportDraft['propertyType'] {
+  const adCategory = input.adCategory ?? {};
+  const tokens = [
+    adCategory.name,
+    adCategory.type,
+    adCategory.id,
+    adCategory.label,
+    adCategory.technicalName,
+  ]
+    .map(normalizeCategoryToken)
+    .filter(Boolean);
+
+  for (const token of tokens) {
+    const direct = OTODOM_CATEGORY_MAP[token];
+    if (direct) return direct;
+    if (token.includes('TERRAIN') || token.includes('DZIALK') || token.includes('GRUNT')) return 'PLOT';
+    if (token.includes('APARTMENT') || token.includes('MIESZKAN') || token.includes('FLAT')) return 'FLAT';
+    if (token.includes('HOUSE') || token.includes('DOM')) return 'HOUSE';
+    if (token.includes('COMMERCIAL') || token.includes('LOKAL') || token.includes('OFFICE') || token.includes('HALL')) {
+      return 'COMMERCIAL';
+    }
+  }
+
+  const textBlob = [
+    input.slug,
+    input.title,
+    input.descriptionText,
+    input.buildingType,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 6000);
+
+  const scores = scorePropertyTypeFromText(textBlob);
+
+  const area = input.area;
+  const rooms = input.rooms;
+  const floor = input.floor;
+  const hasApartmentSignals = (rooms != null && rooms > 0) || (floor != null && floor >= 0);
+
+  if (area != null && area >= 350 && !hasApartmentSignals) {
+    scores.PLOT += 5;
+  }
+  if (area != null && area >= 900 && !hasApartmentSignals) {
+    scores.PLOT += 3;
+  }
+  if (hasApartmentSignals) {
+    scores.FLAT += 3;
+  }
+
+  const building = String(input.buildingType ?? '').toLowerCase();
+  if (building && /działk|grunt|teren|roln|inwestycyjn/.test(building)) scores.PLOT += 6;
+  if (building && /dom|willa|segment/.test(building)) scores.HOUSE += 4;
+  if (building && /biuro|lokal|magazyn|hala|handlow/.test(building)) scores.COMMERCIAL += 4;
+
+  const ranked = (Object.entries(scores) as [OtodomImportDraft['propertyType'], number][])
+    .sort((a, b) => b[1] - a[1]);
+  const [bestType, bestScore] = ranked[0] ?? ['FLAT', 0];
+  const [, secondScore] = ranked[1] ?? ['FLAT', 0];
+
+  if (bestScore > 0 && bestScore >= secondScore) return bestType;
+  if (hasApartmentSignals) return 'FLAT';
+  if (area != null && area >= 350) return 'PLOT';
   return 'FLAT';
+}
+
+function mapPropertyType(raw: unknown): OtodomImportDraft['propertyType'] {
+  return resolveOtodomPropertyType({ adCategory: { name: raw } });
 }
 
 function mapTransactionType(raw: unknown): OtodomImportDraft['transactionType'] {
@@ -232,6 +370,22 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     characteristics[key] = value;
   });
 
+  const area = parseNumber(chars.get('m')?.value);
+  const rooms = parseNumber(chars.get('rooms_num')?.value);
+  const floor = parseFloor(chars.get('floor_no')?.value);
+  const descriptionText = stripHtml(descriptionHtml);
+
+  const propertyType = resolveOtodomPropertyType({
+    adCategory,
+    title: String(ad.title ?? '').trim(),
+    slug: String(ad.slug ?? ''),
+    descriptionText,
+    buildingType: chars.get('building_type')?.label ?? chars.get('building_type')?.value ?? null,
+    area,
+    rooms,
+    floor,
+  });
+
   return {
     source: 'OTODOM',
     externalId: parseNumber(ad.id) ?? 0,
@@ -239,14 +393,14 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     slug: String(ad.slug ?? ''),
     title: String(ad.title ?? '').trim(),
     transactionType: mapTransactionType(adCategory.type),
-    propertyType: mapPropertyType(adCategory.name),
+    propertyType,
     price: parseNumber(chars.get('price')?.value),
     priceCurrency: 'PLN',
     adminFee: parseNumber(chars.get('rent')?.value),
     deposit: parseNumber(chars.get('deposit')?.value),
-    area: parseNumber(chars.get('m')?.value),
-    rooms: parseNumber(chars.get('rooms_num')?.value),
-    floor: parseFloor(chars.get('floor_no')?.value),
+    area,
+    rooms,
+    floor,
     totalFloors: parseNumber(chars.get('building_floors_num')?.value),
     yearBuilt: parseNumber(chars.get('build_year')?.value),
     condition: chars.get('construction_status')?.label ?? null,
@@ -262,7 +416,7 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     lng: parseNumber(coordinates.longitude),
     localityCountryCode: 'PL',
     descriptionHtml,
-    descriptionText: stripHtml(descriptionHtml),
+    descriptionText,
     features: Array.isArray(ad.features) ? ad.features.map((f) => String(f)) : [],
     imageUrls,
     imageCount: imageUrls.length,
