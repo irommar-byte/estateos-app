@@ -67,6 +67,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (body?.rightsConfirmed !== true) {
+      return NextResponse.json(
+        { error: 'Wymagane oświadczenie o posiadaniu praw do publikacji danych i materiałów.' },
+        { status: 400 },
+      );
+    }
+
     const result = await createOfferFromOtodomDraft(draft, admin.id);
 
     if (!result.ok) {

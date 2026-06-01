@@ -51,6 +51,7 @@ export type OfferPageCopy = {
   floorPlan: string;
   enlarge: string;
   locationSection: string;
+  neighborhoodPreview: string;
   mainParamsSection: string;
   buildingSection: string;
   costsSection: string;
@@ -127,6 +128,7 @@ const PL: OfferPageCopy = {
   floorPlan: "Rzut lokalu",
   enlarge: "Powiększ",
   locationSection: "Lokalizacja",
+  neighborhoodPreview: "Okolica nieruchomości",
   mainParamsSection: "Główne parametry",
   buildingSection: "Budynek i koszty",
   costsSection: "Koszty i prowizja",
@@ -205,6 +207,7 @@ const EN: OfferPageCopy = {
   floorPlan: "Floor plan",
   enlarge: "Enlarge",
   locationSection: "Location",
+  neighborhoodPreview: "Neighborhood",
   mainParamsSection: "Main parameters",
   buildingSection: "Building & costs",
   costsSection: "Costs & commission",

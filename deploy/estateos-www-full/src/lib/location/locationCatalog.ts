@@ -45,6 +45,46 @@ const STRICT_CITY_DISTRICTS: DistrictCatalog = {
   "Zamość": ["Stare Miasto", "Nowe Miasto", "Planty", "Janowice", "Karolówka", "Promyk", "Powiatowa", "Rataja", "Zamczysko", "Słoneczny Stok"],
 };
 
+/** Pod-dzielnice / synonimy OtoDom → oficjalna dzielnica w katalogu EstateOS. */
+const DISTRICT_ALIAS_RULES: Array<{ city: string; patterns: string[]; district: string }> = [
+  {
+    city: "Warszawa",
+    patterns: [
+      "nowa praga", "stara praga", "praga polnoc", "praga pn", "praga-polnoc", "praga północ",
+      "florianska", "floryanska", "zabkowska", "stalowa", "inzynierska", "inżynierska",
+    ],
+    district: "Praga-Północ",
+  },
+  {
+    city: "Warszawa",
+    patterns: [
+      "saska kepa", "saska kępa", "goclaw", "gocław", "goclawek", "gocławek", "kamionek",
+      "olszynka grochowska", "praga poludnie", "praga południe", "praga pd",
+    ],
+    district: "Praga-Południe",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["mokotow", "mokotów", "sluzew", "służew", "sluzewiec", "służewiec", "wierzbno", "stegny"],
+    district: "Mokotów",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["ursynow", "ursynów", "kabaty", "imielin", "natolin"],
+    district: "Ursynów",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["wola", "mirów", "mlynarska", "młynarska", "czyste"],
+    district: "Wola",
+  },
+  {
+    city: "Warszawa",
+    patterns: ["zoliborz", "żoliborz", "stary zoliborz", "stary żoliborz"],
+    district: "Żoliborz",
+  },
+];
+
 const CITY_ALIASES: Record<string, string> = {
   trojmiasto: "Gdańsk",
   "trojmiasto gdańsk": "Gdańsk",
@@ -97,13 +137,70 @@ export function getDistrictsForCity(city?: string | null): string[] {
   return STRICT_CITY_DISTRICTS[canonical] || [];
 }
 
+/** Dopasowuje synonim (np. „Nowa Praga”) do dzielnicy z katalogu strict city. */
+export function matchDistrictAlias(city: string, rawDistrict?: string | null): string {
+  const canonicalCity = canonicalizeCity(city);
+  if (!canonicalCity || !isStrictCity(canonicalCity)) return "";
+
+  const rawNorm = normalizeText(String(rawDistrict || "").trim());
+  if (!rawNorm || rawNorm === "inny obszar") return "";
+
+  for (const rule of DISTRICT_ALIAS_RULES) {
+    if (canonicalizeCity(rule.city) !== canonicalCity) continue;
+    for (const pattern of rule.patterns) {
+      const patternNorm = normalizeText(pattern);
+      if (!patternNorm) continue;
+      if (rawNorm === patternNorm || rawNorm.includes(patternNorm) || patternNorm.includes(rawNorm)) {
+        const allowed = getDistrictsForCity(canonicalCity);
+        if (allowed.some((entry) => normalizeText(entry) === normalizeText(rule.district))) {
+          return rule.district;
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
+/** Szuka nazwy dzielnicy z katalogu w dowolnym tekście (np. place_name z Mapbox). */
+export function pickDistrictFromPlaceName(city: string, text: string, allowedDistricts?: string[]): string {
+  const canonicalCity = canonicalizeCity(city);
+  if (!canonicalCity || !text) return "";
+
+  const alias = matchDistrictAlias(canonicalCity, text);
+  if (alias) return alias;
+
+  const candidates =
+    allowedDistricts && allowedDistricts.length > 0
+      ? allowedDistricts
+      : getDistrictsForCity(canonicalCity);
+  if (!candidates.length) return "";
+
+  const source = normalizeText(text);
+  if (!source) return "";
+
+  for (const district of candidates) {
+    const nd = normalizeText(district);
+    if (!nd) continue;
+    if (source.includes(nd)) {
+      return district;
+    }
+  }
+
+  return "";
+}
+
 export function canonicalizeDistrict(city: string, district?: string | null): string {
   const value = String(district || "").trim();
   if (!value) {
     return "";
   }
 
-  const districts = getDistrictsForCity(city);
+  const canonicalCity = canonicalizeCity(city);
+  const aliasHit = matchDistrictAlias(canonicalCity, value);
+  if (aliasHit) return aliasHit;
+
+  const districts = getDistrictsForCity(canonicalCity);
   if (!districts.length) {
     return value;
   }
@@ -136,16 +233,24 @@ export function validateCityDistrict(city?: string | null, district?: string | n
 
   if (strictCity) {
     const allowed = getDistrictsForCity(canonicalCity);
-    const allowedHit = allowed.some((entry) => normalizeText(entry) === normalizeText(canonicalDistrict));
+    const aliasDistrict = matchDistrictAlias(canonicalCity, canonicalDistrict);
+    const districtToCheck = aliasDistrict || canonicalDistrict;
+    const allowedHit = allowed.some((entry) => normalizeText(entry) === normalizeText(districtToCheck));
     if (!allowedHit) {
       return {
         valid: false,
         strictCity,
         city: canonicalCity,
-        district: canonicalDistrict,
-        message: `Dzielnica '${canonicalDistrict || "-"}' nie należy do listy dla miasta ${canonicalCity}.`,
+        district: districtToCheck,
+        message: `Dzielnica '${districtToCheck || "-"}' nie należy do listy dla miasta ${canonicalCity}.`,
       };
     }
+    return {
+      valid: true,
+      strictCity,
+      city: canonicalCity,
+      district: districtToCheck,
+    };
   }
 
   return {
@@ -265,6 +370,8 @@ export function inferStrictDistrictFromMapboxFeature(
   const tryValidDistrict = (raw: string): string => {
     const trimmed = String(raw || "").trim();
     if (!trimmed) return "";
+    const alias = matchDistrictAlias(canonicalCity, trimmed);
+    if (alias) return alias;
     const v = validateCityDistrict(canonicalCity, trimmed);
     return v.valid ? v.district : "";
   };

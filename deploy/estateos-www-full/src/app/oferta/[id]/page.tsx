@@ -1,5 +1,6 @@
 "use client";
 import PublicProfileModal from "@/components/PublicProfileModal";
+import dynamic from "next/dynamic";
 import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -40,6 +41,11 @@ import {
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 import { isStrictCity } from "@/lib/location/locationCatalog";
 import { mosaicCellClass, offerPhotoMosaicCells } from "@/lib/offerPhotoMosaic";
+
+const NeighborhoodMapPreview = dynamic(
+  () => import("@/components/map/NeighborhoodMapPreview"),
+  { ssr: false },
+);
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -683,6 +689,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       </div>
                     ))}
                   </div>
+                  {offer?.lat && offer?.lng ? (
+                    <div className="mt-5">
+                      <NeighborhoodMapPreview
+                        lat={Number(offer.lat)}
+                        lng={Number(offer.lng)}
+                        street={offer.street}
+                        city={offer.city}
+                        district={offer.district}
+                        variant="offer"
+                        showPin={false}
+                        sectionLabel={t.neighborhoodPreview}
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="eos-offer-panel p-6">

@@ -1,78 +1,50 @@
 import { NextResponse } from "next/server";
 import {
-  canonicalizeCity,
-  canonicalizeDistrict,
-  getDistrictsForCity,
-  inferAreaLabelFromMapboxFeature,
-  inferCityFromMapboxFeature,
-  isStrictCity,
-  validateCityDistrict,
-} from "@/lib/location/locationCatalog";
-
-function getContextText(context: any[], idPrefix: string): string {
-  const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
-  return String(hit?.text || hit?.text_pl || "").trim();
-}
-
-function getContextShortCode(context: any[], idPrefix: string): string {
-  const hit = context.find((item) => String(item?.id || "").startsWith(idPrefix));
-  return String(hit?.short_code || "").trim().toUpperCase();
-}
+  fetchMapboxReverseFeature,
+  resolveOfferLocationFromCoordinates,
+} from "@/lib/location/resolveOfferLocationFromCoordinates";
+import { getDistrictsForCity } from "@/lib/location/locationCatalog";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
-  const token = process.env.MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return NextResponse.json({ error: "Nieprawidłowe współrzędne." }, { status: 400 });
   }
-  if (!token) {
-    return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN." }, { status: 500 });
-  }
-
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&country=pl&types=address,place,locality,neighborhood,district`;
 
   try {
-    const response = await fetch(endpoint, { cache: "no-store" });
-    const payload = await response.json();
-    const feature = Array.isArray(payload?.features) ? payload.features[0] : null;
+    const resolved = await resolveOfferLocationFromCoordinates({ lat, lng });
+    if (!resolved) {
+      return NextResponse.json({ error: "Brak tokenu MAPBOX_TOKEN lub błąd reverse geocoding." }, { status: 500 });
+    }
+
+    const feature = await fetchMapboxReverseFeature(lat, lng);
     const context = Array.isArray(feature?.context) ? feature.context : [];
-
-    const country = getContextText(context, "country") || "Polska";
-    const countryCode = getContextShortCode(context, "country") || "PL";
-    const streetRaw = String(feature?.text || "").trim();
-    const numberRaw = String(feature?.address || "").trim();
-    const primaryAddressLabel = String(feature?.place_name || "").split(',')[0]?.trim();
-
-    const city = inferCityFromMapboxFeature(feature);
-    const inferredDistrict = inferAreaLabelFromMapboxFeature(city, feature);
-    const legacyDistrictRaw =
-      getContextText(context, "neighborhood") ||
-      getContextText(context, "district") ||
-      getContextText(context, "locality");
-    const districtMerged = inferredDistrict || legacyDistrictRaw;
-    const district = canonicalizeDistrict(city, districtMerged);
-    const strictCity = isStrictCity(city);
-    const validation = validateCityDistrict(city, district);
-    const street = (numberRaw ? `${streetRaw} ${numberRaw}`.trim() : streetRaw) || primaryAddressLabel || '';
+    const countryItem = context.find((item: { id?: string }) => String(item?.id || "").startsWith("country"));
+    const country = String(countryItem?.text || countryItem?.text_pl || "Polska").trim();
+    const countryCode = String(countryItem?.short_code || "pl").trim().toUpperCase();
 
     return NextResponse.json({
-      city,
+      city: resolved.city,
       country,
       countryCode,
-      district: strictCity ? (validation.valid ? validation.district : "") : district,
-      street,
+      district: resolved.strictCity
+        ? resolved.validation.valid
+          ? resolved.validation.district
+          : ""
+        : resolved.district,
+      street: resolved.street,
       addressLabel: String(feature?.place_name || "").trim(),
-      strictCity,
-      districtOptions: getDistrictsForCity(city),
-      requiresDistrictSelection: strictCity && !validation.valid,
+      strictCity: resolved.strictCity,
+      districtOptions: getDistrictsForCity(resolved.city),
+      requiresDistrictSelection: resolved.strictCity && !resolved.validation.valid,
       lat,
       lng,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Błąd reverse geocoding." }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Błąd reverse geocoding.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
