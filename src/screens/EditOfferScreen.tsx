@@ -99,6 +99,7 @@ function extractVerifyTokens(desc: string): { clean: string; tokens: string[] } 
   const tokens: string[] = [];
   const clean = desc
     .replace(/<!--\s*ESTATEOS_VERIFY:[^>]*-->/gi, (m) => { tokens.push(m); return ''; })
+    .replace(/<!--\s*estateos-otodom:\d+\s*-->/gi, '')
     .replace(/^\s+|\s+$/g, '');
   return { clean, tokens };
 }

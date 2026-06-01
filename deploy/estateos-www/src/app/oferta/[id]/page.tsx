@@ -19,6 +19,7 @@ import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
+import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
@@ -620,7 +621,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 ) : null}
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
-                  <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
+                  <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
                 {offer.amenities && offer.amenities.length > 0 && (

@@ -45,6 +45,7 @@ import {
   resolveIsExactLocation,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
+import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { describeOfferAgentCommission, parseOfferNumeric } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
@@ -103,16 +104,6 @@ function formatFloorStat(f: unknown, translate: (key: string) => string): string
   return s ? s : '-';
 }
 
-function sanitizeOfferDescription(input: unknown): string {
-  const raw = String(input ?? '');
-  if (!raw) return '';
-  return raw
-    // ukryj techniczne markery backendowe np. <!-- ESTATEOS_VERIFY:... -->
-    .replace(/<!--\s*ESTATEOS_VERIFY:[\s\S]*?-->/gi, '')
-    .replace(/\bESTATEOS_VERIFY:[A-Za-z0-9._=-]+\b/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
 
 const firstDefined = (...values: unknown[]) => values.find((v) => v !== undefined && v !== null && v !== '');
 
@@ -506,7 +497,7 @@ export default function OfferDetail({ route, navigation }: any) {
     price: offerPriceDisplay.primary,
     priceSecondary: offerPriceDisplay.secondary,
     location: formatOfferLocationLine(offer) || formatLocationLabel(offer?.city, offer?.district, t('offer.shared.defaultCity')),
-    description: sanitizeOfferDescription(offer?.description) || t('offer.detail.noDescription'),
+    description: formatOfferDescriptionForDisplay(offer?.description) || t('offer.detail.noDescription'),
     stats: { beds: offer?.rooms || '-', size: offer?.area ? `${offer.area} m²` : '- m²' }
   };
   const pricePerSqmLabel = useMemo(() => {
