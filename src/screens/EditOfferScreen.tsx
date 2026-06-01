@@ -79,6 +79,7 @@ import {
   isExplicitMobileOfferSaveFailure,
 } from '../utils/mobileOfferUpdate';
 import { normalizeOfferConditionForEdit } from '../utils/offerFieldLabels';
+import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 
 const { width } = Dimensions.get('window');
 const MAX_IMAGES = 15;
@@ -291,7 +292,7 @@ export default function EditOfferScreen({ route }: any) {
           setOriginalData(offer);
           setTitle(offer.title || '');
           const { clean: cleanDesc, tokens } = extractVerifyTokens(offer.description || '');
-          setDescription(cleanDesc);
+          setDescription(formatOfferDescriptionForDisplay(cleanDesc));
           setVerifyTokens(tokens);
           setPrice(String(offer.priceAmount ?? offer.price ?? '') || '');
           setPriceCurrency(normalizeListingCurrency(offer.priceCurrency ?? offer.price_currency));

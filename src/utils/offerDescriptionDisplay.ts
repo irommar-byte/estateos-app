@@ -18,7 +18,7 @@ function stripHtmlToPlain(html: string): string {
     .trim();
 }
 
-/** Opis oferty do wyświetlenia w aplikacji mobilnej (bez surowego HTML). */
+/** Opis oferty do wyświetlenia i edycji (bez surowego HTML). */
 export function formatOfferDescriptionForDisplay(input: unknown): string {
   let raw = String(input ?? '').trim();
   if (!raw) return '';
@@ -36,4 +36,9 @@ export function formatOfferDescriptionForDisplay(input: unknown): string {
   }
 
   return raw.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Alias — ten sam format co w widoku oferty. */
+export function descriptionForEditForm(input: unknown): string {
+  return formatOfferDescriptionForDisplay(input);
 }
