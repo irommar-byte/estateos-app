@@ -182,7 +182,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const districtRaw = String(offer.district || "").trim();
   const streetRaw = String(offer.street || offer.address || "").trim();
   const addressNumberRaw = String(offer.buildingNumber || "").trim();
-  const streetLine = [streetRaw, addressNumberRaw].filter(Boolean).join(" ").trim();
+  const exactLocation = offer.isExactLocation !== false;
+  const streetLine = exactLocation
+    ? [streetRaw, addressNumberRaw].filter(Boolean).join(" ").trim()
+    : streetRaw;
   const districtUpper = districtRaw.toUpperCase();
   const districtSpecified =
     districtRaw.length > 0 &&
@@ -698,7 +701,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         city={offer.city}
                         district={offer.district}
                         variant="offer"
-                        showPin={false}
+                        showPin={exactLocation}
                         sectionLabel={t.neighborhoodPreview}
                       />
                     </div>

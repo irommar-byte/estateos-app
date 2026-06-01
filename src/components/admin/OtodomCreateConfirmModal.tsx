@@ -54,7 +54,7 @@ export default function OtodomCreateConfirmModal({
           role="presentation"
           onClick={onCancel}
         >
-          <div className="absolute inset-0 bg-black/45 backdrop-blur-xl" />
+          <div className="eos-modal-backdrop absolute inset-0" />
 
           <motion.div
             initial={{ opacity: 0, scale: 0.92, y: 16 }}
@@ -64,29 +64,29 @@ export default function OtodomCreateConfirmModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="otodom-create-modal-title"
-            className="relative w-full max-w-md overflow-hidden rounded-[28px] border border-white/15 bg-[rgba(28,28,30,0.88)] shadow-[0_30px_90px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+            className="eos-modal-surface relative w-full max-w-md overflow-hidden rounded-[28px] backdrop-blur-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.08] to-transparent" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.06] to-transparent" />
 
             <div className="relative px-6 pt-6 pb-4 text-center">
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-400/25 bg-emerald-500/10 text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.18)]">
                 <ShieldCheck size={28} strokeWidth={2.2} />
               </div>
-              <h2 id="otodom-create-modal-title" className="text-[17px] font-semibold tracking-tight text-white">
+              <h2 id="otodom-create-modal-title" className="text-[17px] font-semibold tracking-tight text-[var(--eos-text)]">
                 Utworzyć ofertę na koncie administratora?
               </h2>
-              <p className="mt-3 text-[13px] leading-relaxed text-white/55">
-                Oferta trafi do statusu <span className="font-semibold text-white/80">PENDING</span> i wymaga aktywacji w
+              <p className="mt-3 text-[13px] leading-relaxed text-[var(--eos-muted)]">
+                Oferta trafi do statusu <span className="font-semibold text-[var(--eos-text)]">PENDING</span> i wymaga aktywacji w
                 Centrali → Baza Ofert.
               </p>
             </div>
 
-            <div className="relative mx-6 rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-left">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/35 mb-2">Podsumowanie</p>
-              <p className="text-sm font-medium text-white/90 leading-snug">{title}</p>
+            <div className="relative mx-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-4 text-left">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--eos-subtle)] mb-2">Podsumowanie</p>
+              <p className="text-sm font-medium text-[var(--eos-text)] leading-snug">{title}</p>
               <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-white/70">
+                <span className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1 text-[var(--eos-muted)]">
                   do {Math.min(imageCount, 20)} zdjęć
                 </span>
                 <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-emerald-300">
@@ -97,26 +97,26 @@ export default function OtodomCreateConfirmModal({
 
             <label
               htmlFor={checkboxId}
-              className="relative mx-6 mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 transition-colors hover:bg-white/[0.05]"
+              className="relative mx-6 mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-4 transition-colors hover:bg-[var(--eos-surface)]"
             >
               <input
                 id={checkboxId}
                 type="checkbox"
                 checked={rightsConfirmed}
                 onChange={(event) => setRightsConfirmed(event.target.checked)}
-                className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded-[5px] border border-white/25 bg-black/30 accent-emerald-500"
+                className="mt-0.5 h-[18px] w-[18px] shrink-0 rounded-[5px] border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] accent-emerald-500"
               />
-              <span className="text-[13px] leading-relaxed text-white/75">
+              <span className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
                 Oświadczam, że posiadam prawa niezbędne do publikacji tych danych i materiałów na platformie EstateOS.
               </span>
             </label>
 
-            <div className="relative mt-5 grid grid-cols-2 gap-px border-t border-white/10 bg-white/10">
+            <div className="relative mt-5 grid grid-cols-2 gap-px border-t border-[var(--eos-border)] bg-[var(--eos-border)]">
               <button
                 type="button"
                 onClick={onCancel}
                 disabled={confirming}
-                className="bg-[rgba(28,28,30,0.95)] px-4 py-4 text-[15px] font-medium text-blue-400 transition-colors hover:bg-white/[0.04] disabled:opacity-50"
+                className="bg-[var(--eos-card)] px-4 py-4 text-[15px] font-medium text-blue-500 transition-colors hover:bg-[var(--eos-input)] disabled:opacity-50"
               >
                 Anuluj
               </button>
@@ -124,7 +124,7 @@ export default function OtodomCreateConfirmModal({
                 type="button"
                 onClick={onConfirm}
                 disabled={!rightsConfirmed || confirming}
-                className="bg-[rgba(28,28,30,0.95)] px-4 py-4 text-[15px] font-semibold text-emerald-400 transition-colors hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:text-white/25"
+                className="bg-[var(--eos-card)] px-4 py-4 text-[15px] font-semibold text-emerald-500 transition-colors hover:bg-[var(--eos-input)] disabled:cursor-not-allowed disabled:text-[var(--eos-subtle)]"
               >
                 {confirming ? "Tworzenie…" : "Utwórz ofertę"}
               </button>
@@ -133,7 +133,7 @@ export default function OtodomCreateConfirmModal({
             <button
               type="button"
               onClick={onCancel}
-              className="absolute right-4 top-4 rounded-full p-2 text-white/35 transition-colors hover:bg-white/10 hover:text-white/70"
+              className="absolute right-4 top-4 rounded-full p-2 text-[var(--eos-subtle)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
               aria-label="Zamknij"
             >
               <X size={16} />

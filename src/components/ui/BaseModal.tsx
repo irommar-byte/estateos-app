@@ -28,24 +28,24 @@ export default function BaseModal({ isOpen, onClose, children, title, maxWidth =
   return (
     // Warstwa tła z ekstremalnie wysokim z-index, aby przykryć absolutnie wszystko
     <div 
-      className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4 sm:p-6 transition-opacity" 
+      className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 sm:p-6 transition-opacity" 
       onClick={onClose}
     >
       {/* Kontener modala - items-start w rodzicu i my-auto tutaj zapobiega ucinaniu od góry przy wysokich modalach */}
       <div 
-        className={`relative w-full ${maxWidth} bg-[#0a0a0a] border border-white/10 rounded-2xl shadow-2xl my-auto transform transition-all flex flex-col max-h-[90vh]`} 
+        className={`eos-modal-surface relative w-full ${maxWidth} rounded-2xl my-auto transform transition-all flex flex-col max-h-[90vh]`} 
         onClick={(e) => e.stopPropagation()} // Blokada propagacji (zapobiega znikaniu po kliknięciu w środek)
       >
         {/* Nagłówek modala (jeśli istnieje) lub sam przycisk X */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-white/5 bg-[#050505] shrink-0">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] shrink-0">
           {title ? (
-            <h3 className="text-xl font-semibold text-white">{title}</h3>
+            <h3 className="text-xl font-semibold text-[var(--eos-text)]">{title}</h3>
           ) : (
             <div></div> // Pusty div dla flex-between jeśli nie ma tytułu
           )}
           <button 
             onClick={onClose} 
-            className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors focus:outline-none"
+            className="p-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:bg-[var(--eos-input)] rounded-full transition-colors focus:outline-none"
             aria-label="Zamknij"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

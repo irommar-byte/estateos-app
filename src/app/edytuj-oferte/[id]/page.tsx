@@ -12,6 +12,12 @@ import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
 import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
+import dynamic from 'next/dynamic';
+
+const NeighborhoodMapPreview = dynamic(
+  () => import('@/components/map/NeighborhoodMapPreview'),
+  { ssr: false },
+);
 
 // --- LUKSUSOWE STYLE ---
 const inputWrapper = "relative group flex items-center";
@@ -107,6 +113,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
+          streetName: offer.street || offer.address || "",
+          buildingNumber: offer.buildingNumber || "",
+          isExactLocation: offer.isExactLocation !== false,
           apartmentNumber: offer.apartmentNumber || "",
           propertyType: offer.propertyType || "FLAT",
         });
@@ -205,6 +214,10 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
 
   const handleSave = async () => {
     setIsSubmitting(true);
+    const exactLocation = data.isExactLocation !== false;
+    const streetName = String(data.streetName || data.address || '').trim();
+    const buildingNumber = String(data.buildingNumber || '').trim();
+    const mergedStreet = [streetName, exactLocation ? buildingNumber : ''].filter(Boolean).join(' ').trim();
     // Przed wysłaniem usuwamy spacje z ceny
     const payload = {
       ...data,
@@ -215,6 +228,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       buildYear: data.year,
       yearBuilt: data.year,
       adminFee: data.rentAdminFee ? Number(String(data.rentAdminFee).replace(/\D/g, '')) : null,
+      street: mergedStreet,
+      buildingNumber: exactLocation ? buildingNumber : '',
+      isExactLocation: exactLocation,
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
         : {}),
@@ -363,6 +379,80 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 );
               })}
             </div>
+          </div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className={glassPanel}>
+          <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
+            <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-emerald-500/20 to-cyan-900/20 flex items-center justify-center border border-emerald-500/30">
+              <MapPin className="text-emerald-400" size={24} />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-white drop-shadow-md">Lokalizacja</h2>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">Dokładna lub przybliżona publikacja</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="inline-flex rounded-2xl border border-white/10 bg-black/30 p-1">
+              <button
+                type="button"
+                onClick={() => updateData({ isExactLocation: true })}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${data.isExactLocation !== false ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:text-white'}`}
+              >
+                Dokładna lokalizacja
+              </button>
+              <button
+                type="button"
+                onClick={() => updateData({ isExactLocation: false })}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${data.isExactLocation === false ? 'bg-cyan-500 text-black' : 'text-zinc-400 hover:text-white'}`}
+              >
+                Przybliżona okolica
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className={labelPremium}>Nazwa ulicy</label>
+                <div className={inputWrapper}>
+                  <MapPin className={iconGlow} size={20} />
+                  <input
+                    value={data.streetName || ''}
+                    onChange={(e) => updateData({ streetName: e.target.value, address: e.target.value })}
+                    className={inputPremium}
+                    placeholder="Np. Inżynierska"
+                  />
+                </div>
+              </div>
+              {data.isExactLocation !== false ? (
+                <div>
+                  <label className={labelPremium}>Numer ulicy</label>
+                  <div className={inputWrapper}>
+                    <Home className={iconGlow} size={20} />
+                    <input
+                      value={data.buildingNumber || ''}
+                      onChange={(e) => updateData({ buildingNumber: e.target.value })}
+                      className={inputPremium}
+                      placeholder="Np. 12A"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {Number.isFinite(Number(data.lat)) && Number.isFinite(Number(data.lng)) ? (
+              <NeighborhoodMapPreview
+                lat={Number(data.lat)}
+                lng={Number(data.lng)}
+                street={data.streetName || data.address || ''}
+                city={data.city || ''}
+                district={data.district || ''}
+                variant="offer"
+                showPin={data.isExactLocation !== false}
+              />
+            ) : (
+              <p className="text-xs text-[var(--eos-muted)]">Brak współrzędnych GPS w tej ofercie.</p>
+            )}
           </div>
         </motion.div>
 

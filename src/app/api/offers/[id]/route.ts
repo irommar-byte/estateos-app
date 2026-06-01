@@ -378,6 +378,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             : body.floorPlan != null
               ? String(body.floorPlan)
               : currentOffer.floorPlanUrl,
+        street: body.street != null ? String(body.street) : currentOffer.street,
+        buildingNumber: body.buildingNumber != null ? String(body.buildingNumber) : currentOffer.buildingNumber,
+        isExactLocation: body.isExactLocation !== undefined ? !!body.isExactLocation : currentOffer.isExactLocation,
+        lat:
+          body.lat !== undefined && body.lat !== null && body.lat !== ''
+            ? Number(body.lat)
+            : currentOffer.lat,
+        lng:
+          body.lng !== undefined && body.lng !== null && body.lng !== ''
+            ? Number(body.lng)
+            : currentOffer.lng,
         heating: body.heating !== undefined
           ? (body.heating ? String(body.heating) : null)
           : currentOffer.heating,

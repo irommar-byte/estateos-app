@@ -19,6 +19,7 @@ type Props = {
   variant?: "admin" | "offer";
   sectionLabel?: string;
   footerCaption?: string;
+  showExternalLinks?: boolean;
 };
 
 function add3dBuildingsLayer(map: mapboxgl.Map) {
@@ -78,6 +79,7 @@ export default function NeighborhoodMapPreview({
   variant = "admin",
   sectionLabel,
   footerCaption,
+  showExternalLinks = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -257,16 +259,18 @@ export default function NeighborhoodMapPreview({
             </p>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>
-            Google Maps <ExternalLink size={12} />
-          </a>
-          {showPin ? (
-            <a href={streetViewUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>
-              Street View <ExternalLink size={12} />
+        {showExternalLinks ? (
+          <div className="flex flex-wrap gap-2">
+            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>
+              Google Maps <ExternalLink size={12} />
             </a>
-          ) : null}
-        </div>
+            {showPin ? (
+              <a href={streetViewUrl} target="_blank" rel="noopener noreferrer" className={linkClass}>
+                Street View <ExternalLink size={12} />
+              </a>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className={previewImageUrl && !isOffer ? "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4" : ""}>

@@ -1,9 +1,15 @@
 "use client";
 import { useEffect, useState, use } from "react";
 import { motion } from "framer-motion";
-import { Star, Calendar, Shield, MessageSquare, Loader2, ChevronLeft, CheckCircle2, XCircle, AlertCircle, Briefcase } from "lucide-react";
+import { Star, Calendar, Shield, MessageSquare, Loader2, ChevronLeft, CheckCircle2, XCircle, AlertCircle, Briefcase, Download } from "lucide-react";
 import Link from "next/link";
 import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
+import dynamic from "next/dynamic";
+
+const NeighborhoodMapPreview = dynamic(
+  () => import("@/components/map/NeighborhoodMapPreview"),
+  { ssr: false },
+);
 
 export default function UserProfile({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -21,6 +27,8 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
   if (!data || data.error) return <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center"><h1 className="text-2xl font-black">Profil niedostępny</h1></div>;
 
   const { user, reviews, stats } = data;
+  const offers = Array.isArray(data?.offers) ? data.offers : [];
+  const firstOfferWithCoords = offers.find((offer: any) => Number.isFinite(Number(offer?.lat)) && Number.isFinite(Number(offer?.lng)));
   const headlines = resolveProfileHeadlines(user);
   const isAgency = isAgentOrAgencySeller(user) || user.buyerType === 'agency';
   const avgRating = reviews.length > 0 ? (reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length).toFixed(1) : "Brak";
@@ -29,10 +37,19 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
     <main className="min-h-screen bg-[#050505] text-white p-6 pt-32 pb-40 font-sans relative overflow-hidden">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="max-w-4xl mx-auto relative z-10">
-        <Link href="#" onClick={(e) => { e.preventDefault(); window.close(); }} className="inline-flex items-center gap-2 text-white/40 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest mb-8">
-          <ChevronLeft size={14}/> Zamknij i wróć
-        </Link>
+      <div className="max-w-4xl mx-auto relative z-10 profile-print-page p-6 md:p-8">
+        <div className="profile-print-hide mb-8 flex items-center justify-between gap-3">
+          <Link href="#" onClick={(e) => { e.preventDefault(); window.close(); }} className="inline-flex items-center gap-2 text-white/40 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest">
+            <ChevronLeft size={14}/> Zamknij i wróć
+          </Link>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white/80 hover:bg-white/10"
+          >
+            <Download size={14} /> Pobierz PDF A4
+          </button>
+        </div>
 
         <div className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 md:p-14 flex flex-col md:flex-row items-center gap-10 shadow-[0_30px_60px_rgba(0,0,0,0.8)] mb-12 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none"></div>
@@ -60,6 +77,22 @@ export default function UserProfile({ params }: { params: Promise<{ id: string }
             <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Na podstawie {reviews.length} opinii</p>
           </div>
         </div>
+
+        {firstOfferWithCoords ? (
+          <div className="mb-10">
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/45 mb-3">Okolica nieruchomości</h3>
+            <NeighborhoodMapPreview
+              lat={Number(firstOfferWithCoords.lat)}
+              lng={Number(firstOfferWithCoords.lng)}
+              street={firstOfferWithCoords.street}
+              city={firstOfferWithCoords.city}
+              district={firstOfferWithCoords.district}
+              variant="offer"
+              showPin={firstOfferWithCoords.isExactLocation !== false}
+              showExternalLinks={false}
+            />
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
            <div className="bg-[#111] border border-white/5 p-8 rounded-[2rem] flex flex-col items-center justify-center text-center">

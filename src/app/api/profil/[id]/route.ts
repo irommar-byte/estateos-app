@@ -19,6 +19,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       orderBy: { createdAt: 'desc' }
     });
 
+    const offers = await prisma.offer.findMany({
+      where: { userId, status: { in: ['ACTIVE', 'PENDING'] } },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      take: 6,
+      select: {
+        id: true,
+        title: true,
+        city: true,
+        district: true,
+        street: true,
+        buildingNumber: true,
+        lat: true,
+        lng: true,
+        isExactLocation: true,
+        imageUrl: true,
+        images: true,
+      },
+    });
+
     // Pobieramy historię spotkań, w których ten użytkownik brał udział
     const appointments = await prisma.appointment.findMany({
       where: {
@@ -40,6 +59,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ 
       user, 
       reviews, 
+      offers,
       stats: { completed, canceled, declined, reliability } 
     });
   } catch (error) {
