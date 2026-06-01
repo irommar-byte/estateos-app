@@ -1320,7 +1320,7 @@ export default function CRMDashboard() {
           <div className="flex flex-col gap-8 mb-12">
             
             <>
-            <div className="eos-crm-radar-panel eos-radar-widget relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
+            <div className="eos-crm-radar-panel eos-radar-widget relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[var(--eos-shadow-strong)] overflow-hidden group transition-all duration-700">
               <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen transition-opacity duration-1000 group-hover:opacity-100 opacity-50" />
               <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
               
@@ -1346,7 +1346,7 @@ export default function CRMDashboard() {
                      )}
                   </div>
                   <div>
-                    <h3 className="text-white text-2xl font-black tracking-tighter">
+                    <h3 className="text-2xl font-black tracking-tighter text-[var(--eos-text)]">
                       {showDualRadarPro ? (
                         <>
                           {c.radarTitle} <span className="text-amber-400">{c.radarTitlePro}</span>
@@ -1375,32 +1375,32 @@ export default function CRMDashboard() {
               </div>
 
               <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
-                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
                     <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
                     <span className="eos-radar-value font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
-                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
                     <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Przeznaczenie</span>
                     <span className="eos-radar-value font-black text-sm truncate">{radarSummary.transactionType}</span>
                  </div>
-                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
                     <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
                     <span className="eos-radar-value font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
-                 <div className="bg-black/50 border border-white/10 rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
                     <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
                     <span className="eos-radar-value font-black text-sm truncate">{radarSummary.minArea}</span>
                  </div>
-                 <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price col-span-2 md:col-span-1">
+                 <div className="eos-radar-stat-card eos-radar-stat-card--budget flex flex-col justify-center relative overflow-hidden group/price col-span-2 md:col-span-1">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
                     <span className="eos-radar-budget-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
-                    <span className="text-emerald-400 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
+                    <span className="eos-radar-value text-emerald-600 dark:text-emerald-400 font-black text-sm truncate relative z-10">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
                 <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
-                <span className="rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
+                <span className="eos-radar-threshold-pill rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                   {radarSummary.threshold}
                 </span>
               </div>
