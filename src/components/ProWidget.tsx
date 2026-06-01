@@ -9,6 +9,7 @@ import {
   type PulseEventIcon,
   type PulseHeadline,
 } from "@/types/marketPulse";
+import OtodomImportProCard from "@/components/otodom/OtodomImportProCard";
 
 const FALLBACK_HEADLINES_PL: PulseHeadline[] = [
   {
@@ -286,6 +287,8 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                  </span>
               </div>
            </div>
+
+           <OtodomImportProCard />
 
         </div>
 

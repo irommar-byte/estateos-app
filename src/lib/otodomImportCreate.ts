@@ -1,5 +1,7 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
+import { splitStreetAndBuildingNumber } from '@/lib/offerStreetFields';
+import { stageOtodomImportPublication, type OtodomPublicationInput } from '@/lib/otodomImportPublication';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { createOffer } from '@/lib/services/offer.service';
@@ -67,6 +69,8 @@ export async function draftToOfferCreateBody(
   }
 
   const { city, district, street } = await resolveOtodomImportLocationFields(draft);
+  const streetLine = street || String(draft.street || '').trim();
+  const { streetName, buildingNumber } = splitStreetAndBuildingNumber(streetLine);
   const features = draft.features || [];
 
   return {
@@ -87,7 +91,8 @@ export async function draftToOfferCreateBody(
     yearBuilt: draft.yearBuilt,
     city,
     district,
-    street: street || draft.street,
+    street: streetName || streetLine,
+    buildingNumber: buildingNumber || null,
     lat: draft.lat,
     lng: draft.lng,
     localityCountryCode: draft.localityCountryCode || 'PL',
@@ -194,7 +199,11 @@ export async function importOtodomImagesForOffer(params: {
   return { uploaded, failed, urls };
 }
 
-export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, adminUserId: number) {
+export async function createOfferFromOtodomDraft(
+  draft: OtodomImportDraft,
+  ownerUserId: number,
+  publication?: OtodomPublicationInput | null,
+) {
   const existing = await findExistingOtodomImportOffer(draft.externalId);
   if (existing) {
     return {
@@ -206,16 +215,24 @@ export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, admin
   }
 
   const presentation = await buildOtodomPresentationCopy(draft);
-  const body = await draftToOfferCreateBody(draft, adminUserId, presentation);
+  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {
     throw new Error('Nie udało się odczytać ID nowej oferty.');
   }
 
+  if (publication) {
+    await stageOtodomImportPublication({
+      userId: ownerUserId,
+      offerId,
+      publication,
+    });
+  }
+
   const imageResult = await importOtodomImagesForOffer({
     offerId,
-    ownerUserId: adminUserId,
+    ownerUserId,
     imageUrls: draft.imageUrls,
   });
 

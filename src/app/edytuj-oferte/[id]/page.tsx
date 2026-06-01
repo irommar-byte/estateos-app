@@ -12,6 +12,7 @@ import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
 import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
+import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import dynamic from 'next/dynamic';
 
 const NeighborhoodMapPreview = dynamic(
@@ -113,8 +114,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
-          streetName: offer.street || offer.address || "",
-          buildingNumber: offer.buildingNumber || "",
+          ...resolveStreetFieldsForForm({
+            street: offer.street,
+            address: offer.address,
+            buildingNumber: offer.buildingNumber,
+          }),
           isExactLocation: offer.isExactLocation !== false,
           apartmentNumber: offer.apartmentNumber || "",
           propertyType: offer.propertyType || "FLAT",
@@ -217,7 +221,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     const exactLocation = data.isExactLocation !== false;
     const streetName = String(data.streetName || data.address || '').trim();
     const buildingNumber = String(data.buildingNumber || '').trim();
-    const mergedStreet = [streetName, exactLocation ? buildingNumber : ''].filter(Boolean).join(' ').trim();
+    const storedStreet = streetFieldsForOfferStorage(streetName, buildingNumber, exactLocation);
     // Przed wysłaniem usuwamy spacje z ceny
     const payload = {
       ...data,
@@ -228,8 +232,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       buildYear: data.year,
       yearBuilt: data.year,
       adminFee: data.rentAdminFee ? Number(String(data.rentAdminFee).replace(/\D/g, '')) : null,
-      street: mergedStreet,
-      buildingNumber: exactLocation ? buildingNumber : '',
+      street: storedStreet.street,
+      buildingNumber: storedStreet.buildingNumber,
       isExactLocation: exactLocation,
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }

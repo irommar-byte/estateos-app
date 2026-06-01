@@ -11,6 +11,7 @@ type Props = {
   onCancel: () => void;
   onConfirm: () => void;
   confirming?: boolean;
+  variant?: "admin" | "pro";
 };
 
 export default function OtodomCreateConfirmModal({
@@ -20,6 +21,7 @@ export default function OtodomCreateConfirmModal({
   onCancel,
   onConfirm,
   confirming = false,
+  variant = "admin",
 }: Props) {
   const checkboxId = useId();
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
@@ -74,11 +76,21 @@ export default function OtodomCreateConfirmModal({
                 <ShieldCheck size={28} strokeWidth={2.2} />
               </div>
               <h2 id="otodom-create-modal-title" className="text-[17px] font-semibold tracking-tight text-[var(--eos-text)]">
-                Utworzyć ofertę na koncie administratora?
+                {variant === "pro" ? "Potwierdzić import na EstateOS?" : "Utworzyć ofertę na koncie administratora?"}
               </h2>
               <p className="mt-3 text-[13px] leading-relaxed text-[var(--eos-muted)]">
-                Oferta trafi do statusu <span className="font-semibold text-[var(--eos-text)]">PENDING</span> i wymaga aktywacji w
-                Centrali → Baza Ofert.
+                {variant === "pro" ? (
+                  <>
+                    Publikacja jest już <span className="font-semibold text-[var(--eos-text)]">opłacona</span>. Oferta trafi do
+                    weryfikacji, a po akceptacji od razu na aktywny rynek.
+                  </>
+                ) : (
+                  <>
+                    Publikacja jest już <span className="font-semibold text-[var(--eos-text)]">opłacona</span>. Oferta trafi do
+                    statusu <span className="font-semibold text-[var(--eos-text)]">PENDING</span> — po weryfikacji w Centrali
+                    aktywuje się automatycznie.
+                  </>
+                )}
               </p>
             </div>
 

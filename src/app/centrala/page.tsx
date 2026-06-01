@@ -7,6 +7,10 @@ import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OtodomCreateConfirmModal from "@/components/admin/OtodomCreateConfirmModal";
+import PublicationChoiceModal, {
+  type PublicationCouponOption,
+  type PublicationRedemption,
+} from "@/components/publication/PublicationChoiceModal";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -40,6 +44,11 @@ export default function Centrala() {
     publicUrl: string;
   } | null>(null);
   const [otodomConfirmOpen, setOtodomConfirmOpen] = useState(false);
+  const [otodomPubOpen, setOtodomPubOpen] = useState(false);
+  const [otodomPendingRedemption, setOtodomPendingRedemption] = useState<PublicationRedemption | null>(null);
+  const [otodomWalletCoupons, setOtodomWalletCoupons] = useState<PublicationCouponOption[]>([]);
+  const [otodomWalletPlusCredits, setOtodomWalletPlusCredits] = useState(0);
+  const [otodomWalletHasPlusCredit, setOtodomWalletHasPlusCredit] = useState(false);
   const [otodomResolvedDistrict, setOtodomResolvedDistrict] = useState<string>("");
   const [otodomResolvedCity, setOtodomResolvedCity] = useState<string>("");
 
@@ -157,8 +166,30 @@ export default function Centrala() {
     }
   };
 
-  const handleOtodomCreateOffer = async () => {
+  const loadOtodomPublicationWallet = async () => {
+    const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      throw new Error(String(data?.error || data?.message || "Nie udało się pobrać portfela publikacji."));
+    }
+    const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
+    setOtodomWalletCoupons(coupons);
+    setOtodomWalletPlusCredits(Number(data.plusCredits || 0));
+    setOtodomWalletHasPlusCredit(Boolean(data.hasPlusCredit));
+  };
+
+  const handleOtodomStartCreate = async () => {
     if (!otodomDraft) return;
+    try {
+      await loadOtodomPublicationWallet();
+      setOtodomPubOpen(true);
+    } catch (e) {
+      setOtodomCreateError(e instanceof Error ? e.message : "Nie udało się załadować metod płatności.");
+    }
+  };
+
+  const handleOtodomCreateOffer = async () => {
+    if (!otodomDraft || !otodomPendingRedemption) return;
 
     setOtodomCreating(true);
     setOtodomCreateError("");
@@ -170,7 +201,11 @@ export default function Centrala() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft: otodomDraft, rightsConfirmed: true }),
+        body: JSON.stringify({
+          draft: otodomDraft,
+          rightsConfirmed: true,
+          publication: otodomPendingRedemption,
+        }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -417,7 +452,7 @@ export default function Centrala() {
                 <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    onClick={() => setOtodomConfirmOpen(true)}
+                    onClick={() => void handleOtodomStartCreate()}
                     disabled={otodomCreating}
                     className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors shadow-[0_12px_32px_rgba(16,185,129,0.28)]"
                   >
@@ -425,8 +460,8 @@ export default function Centrala() {
                     Dodaj na EstateOS
                   </button>
                   <p className="text-[11px] text-white/40 max-w-md leading-relaxed">
-                    Tworzy ofertę PENDING z przepisanym tytułem/opisem, zdjęciami bez znaku OtoDom (przycięcie + delikatna
-                    modyfikacja). Aktywuj w Centrali → Baza Ofert.
+                    Najpierw opłacisz publikację (kupon lub kredyt Plus), potem potwierdzisz prawa do materiałów.
+                    Oferta trafi do weryfikacji z zarezerwowaną publikacją — po akceptacji od razu na rynek.
                   </p>
                 </div>
 
@@ -508,6 +543,30 @@ export default function Centrala() {
             ) : null}
           </div>
         </motion.div>
+
+        <PublicationChoiceModal
+          isOpen={otodomPubOpen}
+          onClose={() => setOtodomPubOpen(false)}
+          title="Opłata za publikację importu"
+          subtitle="Import z OtoDom zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
+          coupons={otodomWalletCoupons}
+          hasPlusCredit={otodomWalletHasPlusCredit}
+          plusCredits={otodomWalletPlusCredits}
+          onConfirm={(result) => {
+            if (result.action === "cancel") {
+              setOtodomPubOpen(false);
+              return;
+            }
+            if (result.action === "buy_plus") {
+              setOtodomCreateError("Kup Pakiet Plus w portfelu, a następnie ponów import.");
+              setOtodomPubOpen(false);
+              return;
+            }
+            setOtodomPendingRedemption(result.redemption);
+            setOtodomPubOpen(false);
+            setOtodomConfirmOpen(true);
+          }}
+        />
 
         <OtodomCreateConfirmModal
           open={otodomConfirmOpen}
