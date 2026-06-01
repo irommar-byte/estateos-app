@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search } from "lucide-react";
+import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search, PlusCircle, ExternalLink } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
 
 const OtodomImportLocationPreview = dynamic(
@@ -27,6 +27,14 @@ export default function Centrala() {
   const [otodomLoading, setOtodomLoading] = useState(false);
   const [otodomError, setOtodomError] = useState("");
   const [otodomDraft, setOtodomDraft] = useState<OtodomImportDraft | null>(null);
+  const [otodomCreating, setOtodomCreating] = useState(false);
+  const [otodomCreateMessage, setOtodomCreateMessage] = useState("");
+  const [otodomCreateError, setOtodomCreateError] = useState("");
+  const [otodomCreatedLinks, setOtodomCreatedLinks] = useState<{
+    offerId: number;
+    editUrl: string;
+    publicUrl: string;
+  } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -86,6 +94,9 @@ export default function Centrala() {
     setOtodomLoading(true);
     setOtodomError("");
     setOtodomDraft(null);
+    setOtodomCreateMessage("");
+    setOtodomCreateError("");
+    setOtodomCreatedLinks(null);
 
     try {
       const res = await fetch("/api/admin/otodom-import", {
@@ -104,6 +115,57 @@ export default function Centrala() {
       setOtodomError("Błąd połączenia z serwerem.");
     } finally {
       setOtodomLoading(false);
+    }
+  };
+
+  const handleOtodomCreateOffer = async () => {
+    if (!otodomDraft) return;
+
+    const confirmed = window.confirm(
+      `Utworzyć ofertę na koncie administratora?\n\n` +
+        `Tytuł: ${otodomDraft.title}\n` +
+        `Status: PENDING (aktywacja w Centrali → Baza Ofert)\n` +
+        `Zdjęcia: do ${Math.min(otodomDraft.imageCount, 20)} z OtoDom\n\n` +
+        `Upewnij się, że masz prawo do publikacji tych danych.`,
+    );
+    if (!confirmed) return;
+
+    setOtodomCreating(true);
+    setOtodomCreateError("");
+    setOtodomCreateMessage("");
+    setOtodomCreatedLinks(null);
+
+    try {
+      const res = await fetch("/api/admin/otodom-import/create", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: otodomDraft }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (data?.code === "ALREADY_IMPORTED" && data?.existingOfferId) {
+          setOtodomCreatedLinks({
+            offerId: Number(data.existingOfferId),
+            editUrl: String(data.editUrl || `/edytuj-oferte/${data.existingOfferId}`),
+            publicUrl: String(data.publicUrl || `/oferta/${data.existingOfferId}`),
+          });
+        }
+        setOtodomCreateError(data?.error || `Nie udało się utworzyć oferty (${res.status}).`);
+        return;
+      }
+
+      setOtodomCreateMessage(String(data?.message || "Oferta utworzona."));
+      setOtodomCreatedLinks({
+        offerId: Number(data.offerId),
+        editUrl: String(data.editUrl || `/edytuj-oferte/${data.offerId}`),
+        publicUrl: String(data.publicUrl || `/oferta/${data.offerId}`),
+      });
+    } catch {
+      setOtodomCreateError("Błąd połączenia podczas tworzenia oferty.");
+    } finally {
+      setOtodomCreating(false);
     }
   };
 
@@ -304,6 +366,59 @@ export default function Centrala() {
                     OtoDom nie podał współrzędnych — mapa podglądowa niedostępna.
                   </p>
                 )}
+
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
+                  <button
+                    type="button"
+                    onClick={() => void handleOtodomCreateOffer()}
+                    disabled={otodomCreating}
+                    className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors"
+                  >
+                    {otodomCreating ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
+                    Dodaj na EstateOS
+                  </button>
+                  <p className="text-[11px] text-white/40 max-w-md leading-relaxed">
+                    Tworzy ofertę na Twoim koncie admina (status PENDING), pobiera zdjęcia z OtoDom i zapisuje opis z
+                    linkiem do źródła. Aktywuj w Centrali → Baza Ofert.
+                  </p>
+                </div>
+
+                {otodomCreateMessage ? (
+                  <p className="text-emerald-300 text-sm font-medium bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3">
+                    {otodomCreateMessage}
+                  </p>
+                ) : null}
+
+                {otodomCreateError ? (
+                  <p className="text-red-400 text-sm font-medium bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                    {otodomCreateError}
+                  </p>
+                ) : null}
+
+                {otodomCreatedLinks ? (
+                  <div className="flex flex-wrap gap-3">
+                    <a
+                      href={otodomCreatedLinks.editUrl}
+                      className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/15 transition-colors"
+                    >
+                      Edytuj #{otodomCreatedLinks.offerId} <ExternalLink size={14} />
+                    </a>
+                    <a
+                      href={otodomCreatedLinks.publicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-500/15 border border-blue-400/30 text-xs font-bold uppercase tracking-wider text-blue-300 hover:bg-blue-500/25 transition-colors"
+                    >
+                      Podgląd oferty <ExternalLink size={14} />
+                    </a>
+                    <a
+                      href="/centrala/oferty"
+                      className="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-xs font-bold uppercase tracking-wider text-white/70 hover:text-white transition-colors"
+                    >
+                      Baza Ofert
+                    </a>
+                  </div>
+                ) : null}
 
                 {otodomDraft.locationWarnings.length ? (
                   <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
