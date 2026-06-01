@@ -3032,6 +3032,18 @@ function ProfileScreenLoggedIn({
     useProfileTabBadgeStore.getState().setProfilePendingCount(adminProfileTabBadgeTotal);
   }, [adminProfileTabBadgeTotal]);
 
+  useEffect(() => {
+    if (!isZarzad) return;
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+      if (String(data?.kind || data?.notificationType || '').toLowerCase() !== 'admin_attention') return;
+      void refreshAdminPendingOffers();
+      void refreshAdminPendingLegalVerifications();
+      void refreshAdminPendingReports();
+    });
+    return () => sub.remove();
+  }, [isZarzad, token]);
+
   const togglePasskey = async (value) => {
     if (value) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);

@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { NextResponse } from 'next/server';
+import { notifyAdminsContentReportPending } from '@/lib/adminAttentionPush';
 import { prisma } from '@/lib/prisma';
 import { mobileBearerUserId, readJson } from '@/lib/mobileApiAuth';
 import { ensureMobileUgcTables } from '@/lib/mobileUgcTables';
@@ -38,6 +39,12 @@ export async function POST(req: Request) {
     category,
     reason ? String(reason).slice(0, 5000) : null
   );
+
+  const idRows = (await prisma.$queryRawUnsafe(`SELECT LAST_INSERT_ID() AS id`)) as Array<{ id: bigint | number }>;
+  const reportId = Number(idRows?.[0]?.id ?? 0);
+  if (reportId > 0) {
+    notifyAdminsContentReportPending(reportId, category);
+  }
 
   return NextResponse.json({ success: true }, { status: 201, headers: { 'Cache-Control': 'no-store' } });
 }

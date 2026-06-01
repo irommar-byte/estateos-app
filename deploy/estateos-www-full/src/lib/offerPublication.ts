@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import {
   clearPendingPublication,
   ensureOfferPendingPublicationColumns,
@@ -487,7 +488,7 @@ export async function stageOfferPublicationForReview(params: {
     throw new Error('IAP_TRANSACTION_REQUIRED');
   }
 
-  return db.$transaction(async (tx: any) => {
+  const staged = await db.$transaction(async (tx: any) => {
     const concurrentActive = await activePublicationForOffer(tx, params.offerId);
     if (concurrentActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
@@ -510,9 +511,10 @@ export async function stageOfferPublicationForReview(params: {
       entitlementConsumed: true,
     });
 
-    await tx.offer.update({
+    const updated = await tx.offer.update({
       where: { id: params.offerId },
       data: { status: 'PENDING', updatedAt: new Date() },
+      select: { id: true, title: true },
     });
 
     return {
@@ -520,8 +522,12 @@ export async function stageOfferPublicationForReview(params: {
       status: 'PENDING' as const,
       kind: params.kind,
       awaitingModeration: true,
+      offerTitle: updated.title,
     };
   }, PUBLICATION_TX_OPTIONS);
+
+  notifyAdminsOfferPending(staged.offerId, staged.offerTitle);
+  return staged;
 }
 
 export async function activateOfferPublication(params: {
@@ -597,14 +603,10 @@ export async function activateOfferPublication(params: {
     };
   }, PUBLICATION_TX_OPTIONS);
 
-  try {
-    const publicationId = result.publication?.id ?? null;
-    await import('@/lib/services/radar.service').then(({ radarService }) =>
-      radarService.notifyRadarForMarketEntry(params.offerId, publicationId),
-    );
-  } catch (radarErr) {
-    console.warn('[RADAR] post-activation match failed', radarErr);
-  }
+  const publicationId = result.publication?.id ?? null;
+  void import('@/lib/services/radar.service').then(({ dispatchRadarForMarketEntry }) =>
+    dispatchRadarForMarketEntry(params.offerId, publicationId),
+  );
 
   return result;
 }
@@ -685,6 +687,34 @@ export async function activePublicationOfferIds(offerIds: number[]) {
     ...safeIds
   );
   return new Set(rows.map((row) => Number(row.offerId)).filter((id) => Number.isFinite(id)));
+}
+
+/** Data bieżącej sesji na rynku; `marketRenewedAt` gdy oferta wróciła z archiwum. */
+export async function getOfferMarketListingMeta(offerId: number): Promise<{
+  marketListedAt: string | null;
+  marketRenewedAt: string | null;
+}> {
+  await ensureOfferPublicationSchema();
+  const active = await activePublicationForOffer(prisma, offerId);
+  if (!active) {
+    return { marketListedAt: null, marketRenewedAt: null };
+  }
+
+  const endedRows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
+    `
+      SELECT COUNT(*) AS total
+      FROM OfferPublication
+      WHERE offerId = ? AND status = 'ENDED'
+    `,
+    offerId,
+  )) as Array<{ total: number | bigint }>;
+  const endedCount = Number(endedRows[0]?.total ?? 0);
+  const startedAtIso = new Date(active.startedAt).toISOString();
+
+  return {
+    marketListedAt: startedAtIso,
+    marketRenewedAt: endedCount > 0 ? startedAtIso : null,
+  };
 }
 
 export type AdminOfferApprovalResult =
@@ -796,12 +826,9 @@ export async function completeAdminOfferApproval(params: {
     });
     await clearPendingPublication(offerId);
     if (String(before?.status || '').toUpperCase() !== 'ACTIVE') {
-      try {
-        const { radarService } = await import('@/lib/services/radar.service');
-        await radarService.notifyRadarForMarketEntry(offerId, active.id);
-      } catch (radarErr) {
-        console.warn('[RADAR] admin already-on-market match failed', radarErr);
-      }
+      void import('@/lib/services/radar.service').then(({ dispatchRadarForMarketEntry }) =>
+        dispatchRadarForMarketEntry(offerId, active.id),
+      );
     }
     return { ok: true, endsAt, alreadyOnMarket: true };
   }

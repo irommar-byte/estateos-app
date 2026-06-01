@@ -41,6 +41,7 @@ import { useAuthStore } from './src/store/useAuthStore';
 import { useBlockedUsersStore } from './src/store/useBlockedUsersStore';
 import { useUnreadBadgeStore } from './src/store/useUnreadBadgeStore';
 import { useProfileTabBadgeStore } from './src/store/useProfileTabBadgeStore';
+import { refreshAdminAttentionBadgeCounts } from './src/services/adminAttentionRefresh';
 import { bootstrapFxRateRefresh } from './src/store/useFxRateStore';
 import { RELEASE_BUILD_FINGERPRINT } from './src/releaseBuildMarker';
 import AppleHover from './src/components/AppleHover';
@@ -782,6 +783,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const { t } = useI18n();
   const restoreSession = useAuthStore(state => state.restoreSession);
   const token = useAuthStore((state: any) => state.token);
+  const userRole = useAuthStore((state: any) => state.user?.role);
+  const isAdminUser = String(userRole || '').trim().toUpperCase() === 'ADMIN';
   const systemColorScheme = useColorScheme();
   const themeMode = useThemeStore((state) => state.themeMode);
   /**
@@ -804,6 +807,27 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       useProfileTabBadgeStore.getState().setProfilePendingCount(0);
     }
   }, [token]);
+
+  useEffect(() => {
+    if (!isAdminUser || !token) return;
+
+    const refresh = () => void refreshAdminAttentionBadgeCounts(token);
+
+    refresh();
+    const pushSub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = (notification?.request?.content?.data || {}) as Record<string, unknown>;
+      if (String(data?.kind || data?.notificationType || '').toLowerCase() !== 'admin_attention') return;
+      refresh();
+    });
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+
+    return () => {
+      pushSub.remove();
+      appSub.remove();
+    };
+  }, [isAdminUser, token]);
 
   // ──────────────────────────────────────────────────────────────────────
   // IAP BOOTSTRAP (App Store / Google Play)

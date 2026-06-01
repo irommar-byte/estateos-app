@@ -96,7 +96,7 @@ export default function OfferGalleryLightbox({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="fixed inset-0 z-[999999] flex flex-col bg-black/97 backdrop-blur-2xl"
+        className="eos-media-chrome fixed inset-0 z-[999999] flex flex-col bg-black/97 backdrop-blur-2xl"
         onClick={onClose}
       >
         <div className="eos-on-media flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-gradient-to-b from-black/90 to-transparent px-4 py-4 sm:px-6">

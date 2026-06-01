@@ -218,8 +218,8 @@ export const notificationService = {
       }
     }
 
-    // Receipts zwykle są gotowe po chwili; krótki delay i odczyt.
-    if (ticketTokenPairs.length) {
+    // Receipt polling tylko dla ścieżki cen Ulubionych — inaczej opóźnia każdy radar/admin push o ~1,2s × N urządzeń.
+    if (ticketTokenPairs.length && isFavoritesPriceFlow) {
       await new Promise((resolve) => setTimeout(resolve, 1200));
       const ids = ticketTokenPairs.map((t) => t.ticketId);
       const receiptMap = await fetchExpoReceipts(ids);
