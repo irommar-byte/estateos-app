@@ -6,7 +6,8 @@ export type NotificationType =
   | 'NEW_OFFER'
   | 'RADAR_MATCH'
   | 'CRM_EVENT'
-  | 'CHAT_MESSAGE';
+  | 'CHAT_MESSAGE'
+  | 'ADMIN_ATTENTION';
 
 interface SendNotificationParams {
   userId: number;
@@ -27,6 +28,8 @@ function mapTypeToDb(type: NotificationType): PrismaNotificationType {
       return 'DEAL_UPDATE' as PrismaNotificationType;
     case 'CHAT_MESSAGE':
       return 'MESSAGE' as PrismaNotificationType;
+    case 'ADMIN_ATTENTION':
+      return 'SYSTEM_ALERT' as PrismaNotificationType;
     default:
       return 'SYSTEM_ALERT' as PrismaNotificationType;
   }

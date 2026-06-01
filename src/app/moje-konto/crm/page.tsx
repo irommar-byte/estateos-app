@@ -1320,7 +1320,7 @@ export default function CRMDashboard() {
           <div className="flex flex-col gap-8 mb-12">
             
             <>
-            <div className="relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)] eos-radar-widget">
+            <div className="eos-crm-radar-panel eos-radar-widget relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
               <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen transition-opacity duration-1000 group-hover:opacity-100 opacity-50" />
               <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
               
@@ -1368,7 +1368,7 @@ export default function CRMDashboard() {
                   </div>
                 </div>
 
-                <button onClick={openRadarEditor} className="relative flex items-center gap-2 px-5 py-3 bg-transparent border border-white/20 hover:border-emerald-500 hover:bg-emerald-500/10 text-white/80 hover:text-white rounded-xl font-bold uppercase tracking-widest text-[10px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] cursor-pointer group">
+                <button onClick={openRadarEditor} className="eos-outline-btn relative flex items-center gap-2 px-5 py-3 bg-transparent border border-white/20 hover:border-emerald-500 hover:bg-emerald-500/10 text-white/80 hover:text-white rounded-xl font-bold uppercase tracking-widest text-[10px] transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] cursor-pointer group">
                   <SlidersHorizontal size={14} className="text-emerald-500 transition-colors" />
                   <span>{c.calibrate}</span>
                 </button>
