@@ -1,6 +1,6 @@
 "use client";
 import PublicProfileModal from "@/components/PublicProfileModal";
-import { useEffect, useState, useRef, use, useMemo } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { ArchiveX, Eye, Shield, Briefcase, CheckCircle2, CalendarPlus, Star, Lock, Timer, FileImage, X, Maximize2 } from "lucide-react";
@@ -19,12 +19,12 @@ import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
-import OfferPhotoGallery from "@/components/offer/OfferPhotoGallery";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
 import { useLocale } from "@/contexts/LocaleContext";
 import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
@@ -39,7 +39,7 @@ import {
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
 import { isStrictCity } from "@/lib/location/locationCatalog";
-import { resolveOfferDisplayCountry } from "@/lib/offerLocalityCountry";
+import { mosaicCellClass, offerPhotoMosaicCells } from "@/lib/offerPhotoMosaic";
 
 /** Wysokość fixed Navbar (h-20) + safe-area — pasek oferty zawsze poniżej nagłówka. */
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
@@ -57,11 +57,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
-  const rentAdminFeeNum = Number(offer.adminFee);
-  const rentAdminFeeFormatted =
-    Number.isFinite(rentAdminFeeNum) && rentAdminFeeNum > 0
-      ? `${Math.round(rentAdminFeeNum).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
-      : null;
   const isDealRoom = offer.badges?.isPartner === true;
   const themeColors = {
     primaryBg: isDealRoom ? "bg-orange-500" : isRent ? "bg-blue-500" : "bg-emerald-500",
@@ -89,6 +84,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawImages = (() => { if (!offer.images) return []; try { const p = JSON.parse(offer.images); return Array.isArray(p) ? p : offer.images.split(','); } catch(e) { return offer.images.split(','); } })();
   const allImages = [offer.imageUrl, ...rawImages].filter((v: string, i: number, a: string[]) => v && v.length > 5 && a.indexOf(v) === i);
   const images = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
+  const thumbImages = images.slice(1);
+  const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
+  const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
 
   const offerStatus = String(offer.status || '').toUpperCase();
   const expiredByDate =
@@ -103,10 +101,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const resolvedCountry = useMemo(
-    () => resolveOfferDisplayCountry(offer, locale === "en" ? "en" : "pl"),
-    [offer, locale],
-  );
+  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>({
+    name: locale === "pl" ? "Polska" : "Poland",
+    code: "PL",
+  });
 
   const openGallery = (index: number) => {
     setCurrentImageIndex(index);
@@ -130,11 +128,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const isOwner = currentUser && (currentUser.id === offer.userId || currentUser.email === offer.user?.email || currentUser.email === offer.contactEmail);
   const isPro = offer._viewerIsPro || currentUser?.role === 'ADMIN';
   
-  const offerListingLabel = offer?.marketRenewedAt ? t.renewedOn : t.listedSince;
-  const offerListingDateRaw = offer?.marketRenewedAt || offer?.marketListedAt || offer?.createdAt;
-  const offerListingDateFormatted = offerListingDateRaw
-    ? new Date(offerListingDateRaw).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB")
-    : t.noData;
   const unlockTime = offerPremarketUnlockMs(offer.createdAt);
 
   useEffect(() => {
@@ -299,10 +292,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       label: t.furnished,
       value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    {
-      label: isRent ? t.rentAdditionalFees : t.rentFee,
-      value: rentAdminFeeFormatted,
-    },
+    { label: t.rentFee, value: offer.rent ? `${String(offer.rent).replace(/\D/g, "")} PLN` : null },
     {
       label: t.availability,
       value: offer.availabilityDate
@@ -332,6 +322,32 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           },
         ]
       : [];
+
+  useEffect(() => {
+    if (!offer?.lat || !offer?.lng) return;
+    let cancelled = false;
+    fetch(`/api/location/reverse?lat=${encodeURIComponent(String(offer.lat))}&lng=${encodeURIComponent(String(offer.lng))}`, {
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const countryName = String(data.country || "").trim();
+        const countryCode = String(data.countryCode || "").trim().toUpperCase();
+        if (countryName) {
+          setResolvedCountry({
+            name: countryName,
+            code: countryCode || "PL",
+          });
+        }
+      })
+      .catch(() => {
+        /* noop */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.lat, offer?.lng]);
 
   const countryFlag = resolvedCountry.code
     ? String.fromCodePoint(
@@ -449,8 +465,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
 
                   <div className="flex flex-col items-center justify-center">
-                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{offerListingLabel}</span>
-                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offerListingDateFormatted}</span>
+                      <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mb-0.5">{t.listedSince}</span>
+                      <span className="text-[11px] font-black text-white/70 tracking-widest">{offer?.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale === "pl" ? "pl-PL" : "en-GB") : t.noData}</span>
                   </div>
                 </div>
 
@@ -529,12 +545,33 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-30 flex flex-col xl:flex-row gap-8 transition-all duration-1000 ${isLocked ? 'blur-2xl opacity-20 pointer-events-none select-none h-[850px] overflow-hidden' : ''}`}>
           
           <div className="xl:w-2/3 flex flex-col gap-10 sm:gap-16">
-            <OfferPhotoGallery
-              images={images}
-              onOpen={openGallery}
-              isArchived={isArchived}
-              galleryLabel={t.photoGalleryCount}
-            />
+            {thumbImages.length > 0 && (
+              <div className={`grid grid-cols-4 auto-rows-[72px] gap-0.5 overflow-hidden rounded-[2rem] border border-white/5 bg-black/20 shadow-2xl backdrop-blur-3xl sm:auto-rows-[110px] sm:gap-1 md:auto-rows-[150px] sm:rounded-[2.5rem] ${isArchived ? 'grayscale opacity-50' : ''}`}>
+                {thumbImages.slice(0, mosaicCells.length).map((src, idx) => (
+                  <div
+                    key={`${idx}-${src}`}
+                    className={`${mosaicCellClass(mosaicCells[idx])} relative overflow-hidden bg-zinc-950`}
+                  >
+                    <img
+                      onClick={() => openGallery(idx + 1)}
+                      src={src}
+                      alt=""
+                      className="h-full w-full cursor-pointer object-cover transition-transform duration-500 hover:scale-[1.03]"
+                      style={{ filter: "contrast(1.04) saturate(1.08) brightness(1.02)" }}
+                    />
+                    {hiddenThumbCount > 0 && idx === mosaicCells.length - 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => openGallery(idx + 1)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-black text-white backdrop-blur-[2px] sm:text-2xl"
+                      >
+                        +{hiddenThumbCount}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div>
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
@@ -543,13 +580,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h2 className="mb-2 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
                   {priceFormatted.primary}
                 </h2>
-                {isRent && rentAdminFeeFormatted ? (
-                  <div className="mb-4 inline-flex max-w-full items-center rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.08] px-4 py-2.5 shadow-[0_8px_24px_rgba(16,185,129,0.12)]">
-                    <p className="text-sm font-bold tracking-tight text-emerald-400">
-                      {t.rentAdditionalFeesPill.replace("{{amount}}", rentAdminFeeFormatted)}
-                    </p>
-                  </div>
-                ) : null}
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
                 ) : (
@@ -591,7 +621,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 ) : null}
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
-                  <p className="text-base font-light leading-relaxed text-[var(--eos-muted)] whitespace-pre-line break-words sm:text-lg">{offer.description}</p>
+                  <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
                 {offer.amenities && offer.amenities.length > 0 && (

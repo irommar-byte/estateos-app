@@ -88,11 +88,12 @@ export async function POST(req: Request) {
       offerId: result.offerId,
       offer: result.offer,
       images: result.images,
+      presentation: result.presentation,
       editUrl: result.editUrl,
       publicUrl: result.publicUrl,
       message:
         result.images.uploaded > 0
-          ? `Utworzono ofertę #${result.offerId} (PENDING) z ${result.images.uploaded} zdjęciami.`
+          ? `Utworzono ofertę #${result.offerId} (PENDING) z ${result.images.uploaded} zdjęciami. Tytuł i opis zostały przepisane na styl EstateOS.`
           : `Utworzono ofertę #${result.offerId} (PENDING). Zdjęcia nie zostały pobrane — uzupełnij ręcznie.`,
     });
   } catch (error) {

@@ -5,6 +5,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { importOfferFromOtodomUrl, isOtodomOfferUrl } from '@/lib/otodomImport';
+import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 
 async function requireAdmin() {
   const nextAuth = await getServerSession(authOptions);
@@ -51,7 +52,8 @@ export async function POST(req: Request) {
     }
 
     const draft = await importOfferFromOtodomUrl(url);
-    return NextResponse.json({ ok: true, draft });
+    const presentation = await buildOtodomPresentationCopy(draft);
+    return NextResponse.json({ ok: true, draft, presentation });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Import z OtoDom nie powiódł się.';
     return NextResponse.json({ error: message }, { status: 422 });

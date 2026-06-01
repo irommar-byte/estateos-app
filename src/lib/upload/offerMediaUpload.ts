@@ -80,8 +80,10 @@ export function isValidImageMagic(buffer: Buffer, mime: string): boolean {
 
 export async function processOfferImageWebp(
   buffer: Buffer,
-  fallbackExt: string
+  fallbackExt: string,
+  options?: { tileWatermark?: boolean },
 ): Promise<{ buffer: Buffer; ext: string }> {
+  const tileWatermark = options?.tileWatermark !== false;
   try {
     const sharp = (await import('sharp')).default;
     let image = sharp(buffer).rotate();
@@ -113,15 +115,16 @@ export async function processOfferImageWebp(
       </svg>
     `;
 
-    const watermarkBuffer = await sharp(Buffer.from(svgWatermark)).png().toBuffer();
-
-    image = image.composite([
-      {
-        input: watermarkBuffer,
-        tile: true,
-        blend: 'over',
-      },
-    ]);
+    if (tileWatermark) {
+      const watermarkBuffer = await sharp(Buffer.from(svgWatermark)).png().toBuffer();
+      image = image.composite([
+        {
+          input: watermarkBuffer,
+          tile: true,
+          blend: 'over',
+        },
+      ]);
+    }
 
     const finalBuffer = await image
       .webp({
@@ -199,6 +202,8 @@ export async function saveOfferGalleryOrFloorplan(params: {
   originalFileName?: string;
   isFloorPlan: boolean;
   byteLengthInput: number;
+  /** Domyślnie true; import OtoDom wyłącza kafelkowy znak wodny EstateOS. */
+  tileWatermark?: boolean;
 }): Promise<
   | { ok: true; url: string }
   | { ok: false; status: number; error: string }
@@ -254,7 +259,8 @@ export async function saveOfferGalleryOrFloorplan(params: {
   const fallbackExt = MIME_TO_EXT[mime] || '.jpg';
   const { buffer: finalBuffer, ext: finalExt } = await processOfferImageWebp(
     params.fileBuffer,
-    fallbackExt
+    fallbackExt,
+    { tileWatermark: params.tileWatermark !== false },
   );
 
   const offerDir = path.join(OFFER_UPLOAD_BASE_FS, String(params.offerId));

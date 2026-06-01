@@ -1,5 +1,7 @@
 import { validateCityDistrict } from '@/lib/location/locationCatalog';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
+import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -43,15 +45,12 @@ function resolveLocationFields(draft: OtodomImportDraft): { city: string; distri
   return { city: fallback.city, district: fallback.district };
 }
 
-export function buildOtodomOfferDescription(draft: OtodomImportDraft): string {
+export function buildOtodomOfferDescription(
+  draft: OtodomImportDraft,
+  descriptionHtml: string,
+): string {
   const marker = `<!-- ${OTODOM_MARKER_PREFIX}${draft.externalId} -->`;
-  const body = draft.descriptionHtml?.trim()
-    ? draft.descriptionHtml
-    : `<p>${draft.descriptionText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
-  const source = draft.externalUrl
-    ? `<p><small>Import OtoDom · <a href="${draft.externalUrl}" rel="nofollow noopener noreferrer" target="_blank">ogłoszenie źródłowe</a></small></p>`
-    : `<p><small>Import OtoDom #${draft.externalId}</small></p>`;
-  return `${marker}\n${body}\n${source}`;
+  return `${marker}\n${descriptionHtml.trim()}`;
 }
 
 export async function findExistingOtodomImportOffer(externalId: number) {
@@ -64,7 +63,11 @@ export async function findExistingOtodomImportOffer(externalId: number) {
   });
 }
 
-export function draftToOfferCreateBody(draft: OtodomImportDraft, userId: number) {
+export function draftToOfferCreateBody(
+  draft: OtodomImportDraft,
+  userId: number,
+  presentation: { title: string; descriptionHtml: string },
+) {
   if (draft.lat == null || draft.lng == null) {
     throw new Error('Brak współrzędnych GPS — nie można utworzyć oferty.');
   }
@@ -83,8 +86,8 @@ export function draftToOfferCreateBody(draft: OtodomImportDraft, userId: number)
 
   return {
     userId,
-    title: draft.title.trim(),
-    description: buildOtodomOfferDescription(draft),
+    title: presentation.title.trim(),
+    description: buildOtodomOfferDescription(draft, presentation.descriptionHtml),
     transactionType: draft.transactionType,
     propertyType: draft.propertyType,
     condition: draft.propertyType === 'PLOT' ? 'NOT_APPLICABLE' : mapConditionCode(draft.conditionCode),
@@ -165,21 +168,30 @@ export async function importOtodomImagesForOffer(params: {
 
   await acquireOfferUploadLock(params.offerId);
   try {
-    for (const remoteUrl of toFetch) {
+    for (let index = 0; index < toFetch.length; index += 1) {
+      const remoteUrl = toFetch[index];
       const file = await downloadRemoteImage(remoteUrl);
       if (!file) {
         failed += 1;
         continue;
       }
 
+      let processedBuffer: Buffer;
+      try {
+        processedBuffer = await processOtodomImportImageBuffer(file.buffer, index);
+      } catch {
+        processedBuffer = file.buffer;
+      }
+
       const saved = await saveOfferGalleryOrFloorplan({
         offerId: params.offerId,
         ownerUserId: params.ownerUserId,
-        fileBuffer: file.buffer,
-        mimeTypeDeclared: file.mime,
+        fileBuffer: processedBuffer,
+        mimeTypeDeclared: 'image/jpeg',
         originalFileName: 'otodom-import.jpg',
         isFloorPlan: false,
-        byteLengthInput: file.buffer.length,
+        byteLengthInput: processedBuffer.length,
+        tileWatermark: false,
       });
 
       if (!saved.ok) {
@@ -208,7 +220,8 @@ export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, admin
     };
   }
 
-  const body = draftToOfferCreateBody(draft, adminUserId);
+  const presentation = await buildOtodomPresentationCopy(draft);
+  const body = draftToOfferCreateBody(draft, adminUserId, presentation);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {
@@ -231,6 +244,7 @@ export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, admin
     offer: refreshed,
     offerId,
     images: imageResult,
+    presentation,
     editUrl: `/edytuj-oferte/${offerId}`,
     publicUrl: `/oferta/${offerId}`,
   };
