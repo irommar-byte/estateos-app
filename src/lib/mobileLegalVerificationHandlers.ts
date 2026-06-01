@@ -11,6 +11,7 @@ import {
 /** Pola legalne — obiekt jako `any`, żeby TS nie porównywał do starego `OfferSelect` z cache Prisma. */
 const OFFER_LEGAL_SELECT: any = {
   id: true,
+  title: true,
   userId: true,
   legalCheckStatus: true,
   legalCheckSubmittedAt: true,
