@@ -420,7 +420,8 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .description-section,
-    .map-section {
+    .map-section,
+    .floorplan-section {
       margin-top: 22px;
       padding-top: 18px;
       border-top: 1px solid var(--line);
@@ -462,6 +463,23 @@
       line-height: 1.5;
       color: var(--muted);
     }
+    .floorplan-frame {
+      display: block;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      background: rgba(127,127,127,0.06);
+      text-decoration: none;
+    }
+    .floorplan-frame img {
+      width: 100%;
+      height: auto;
+      min-height: 160px;
+      max-height: 420px;
+      object-fit: contain;
+      display: block;
+      background: rgba(127,127,127,0.04);
+    }
     .landing-print-hide {}
     @media print {
       @page { size: A4 portrait; margin: 8mm; }
@@ -491,6 +509,7 @@
       .toast { display: none !important; }
       .description-body { font-size: 11px !important; line-height: 1.45 !important; max-height: 55mm; overflow: hidden; }
       .map-frame img { max-height: 45mm !important; min-height: 0 !important; }
+      .floorplan-frame img { max-height: 50mm !important; min-height: 0 !important; }
       .spec-grid { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; }
       .spec { padding: 6px 8px !important; }
       h1 { font-size: 18px !important; }
@@ -539,6 +558,13 @@
               <img id="mapImage" alt="Mapa okolicy nieruchomości" loading="lazy" />
             </a>
             <p class="map-caption" id="mapCaption"></p>
+          </section>
+
+          <section class="floorplan-section" id="floorPlanSection" hidden>
+            <h2 class="section-title">Rzut / plan</h2>
+            <a class="floorplan-frame" id="floorPlanLink" href="#" target="_blank" rel="noopener noreferrer">
+              <img id="floorPlanImage" alt="Rzut lokalu" loading="lazy" />
+            </a>
           </section>
 
           <div class="qr-row landing-print-hide">
@@ -816,7 +842,27 @@
       });
   }
 
+  function renderFloorPlan(data) {
+    var section = document.getElementById('floorPlanSection');
+    var img = document.getElementById('floorPlanImage');
+    var link = document.getElementById('floorPlanLink');
+    if (!section || !img) return;
+    var url = absUrl(data.floorPlanUrl || data.floorPlan || '');
+    if (!url) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    img.src = url;
+    if (link) {
+      link.href = url;
+      link.setAttribute('aria-label', 'Otwórz rzut lokalu w pełnym rozmiarze');
+    }
+    img.onerror = function () { section.hidden = true; };
+  }
+
   function renderQr() {
+    var label = document.getElementById('qrUrlLabel');
     if (label) label.textContent = canonicalHttps;
     var canvas = document.getElementById('qrCanvas');
     if (!canvas) return;
@@ -1059,6 +1105,7 @@
       renderAmenities(data);
       renderDescription(data);
       renderMap(data);
+      renderFloorPlan(data);
 
       cachedShare.title = title;
       cachedShare.summary = summaryLine;
