@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
 import ReviewsModal from "@/components/ReviewsModal";
+import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target } from 'lucide-react';
 import OfferFavoriteButton from '@/components/offer/OfferFavoriteButton';
@@ -21,6 +22,7 @@ import PresentationFlowBanner from "@/components/presentation/PresentationFlowBa
 import { enrichAppointmentForUi } from "@/lib/crm/planningCalendar";
 import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload } from "@/lib/reviewsPresentation";
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
+import { resolveProfileHeadlines } from "@/lib/sellerDisplay";
 import {
   buildLegacyRadarUpdateBody,
   buildRadarPreferencesPostBody,
@@ -490,8 +492,8 @@ export default function CRMDashboard() {
   const [wowPlusType, setWowPlusType] = useState<boolean>(false);
   const crmPollingRef = useRef<number | null>(null);
 
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [offerToArchive, setOfferToArchive] = useState<any>(null);
+  const [renewModalOffer, setRenewModalOffer] = useState<{ id: string; title?: string } | null>(null);
 
   // === ESTATEOS ELITE: NIEZALEŻNY SILNIK POKOI (NIE RUSZA WYGLĄDU) ===
   const [isolatedDeals, setIsolatedDeals] = useState<any[]>([]);
@@ -595,25 +597,14 @@ export default function CRMDashboard() {
     }
   };
 
-  const handleRefreshOffer = async (id: string) => {
-    setRefreshingId(id);
-    try {
-      const res = await fetch('/api/stripe/checkout', { credentials: 'include', 
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          returnUrl: `${window.location.origin}/moje-konto/crm?tab=my_offers&renewalOfferId=${id}`,
-          plan: 'renewal',
-          offerId: id
-        })
-      });
-      const { url } = await res.json();
-      if (url) window.location.href = url;
-    } catch(e) {
-      alert(c.alerts.paymentError);
-    } finally {
-      setRefreshingId(null);
-    }
+  const handleRefreshOffer = (offer: { id: string; title?: string }) => {
+    setRenewModalOffer({ id: String(offer.id), title: offer.title });
+  };
+
+  const handleRenewalCompleted = () => {
+    setWowType("renewal");
+    if (currentUser?.id) void fetchData(currentUser.id);
+    window.setTimeout(() => setWowType(null), 5500);
   };
 
   const handleSendVip = async (offerId: number, buyerIds: number[]) => {
@@ -767,7 +758,19 @@ export default function CRMDashboard() {
        
        const syncPromise = plan === 'renewal'
          ? syncRenewalAfterPayment(searchParams)
-         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(() => undefined);
+         : fetch('/api/stripe/force-sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) }).then(async () => {
+             const renewalOfferId = searchParams.get('renewalOfferId');
+             if (plan === 'pakiet_plus' && renewalOfferId) {
+               await fetch(`/api/offers/${renewalOfferId}/activate`, {
+                 method: 'POST',
+                 credentials: 'include',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                   publication: { kind: 'PLUS_CREDIT', consumePlusPublication: true },
+                 }),
+               });
+             }
+           });
        syncPromise.finally(() => { initCrm(); });
        
        const animDuration = plan === 'pakiet_plus' ? 9500 : 5500;
@@ -834,14 +837,15 @@ export default function CRMDashboard() {
     );
   }
 
-  const displayName = currentUser?.firstName
+  const personName = currentUser?.firstName
     ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
     : (currentUser?.name || (currentUser?.email ? currentUser.email.split('@')[0] : c.welcome));
+  const accountHeadlines = resolveProfileHeadlines(currentUser);
   const avatarSrcRaw = currentUser?.image || '';
   const avatarSrc = avatarSrcRaw
     ? (avatarSrcRaw.startsWith('http') ? avatarSrcRaw : avatarSrcRaw)
     : '';
-  const avatarInitial = (displayName || 'U').trim().charAt(0).toUpperCase();
+  const avatarInitial = (personName || accountHeadlines.primary || 'U').trim().charAt(0).toUpperCase();
   const isDarkTheme = resolvedTheme !== "light";
   const verificationStatus: "verified" | "email" | "sms" =
     currentUser?.isEmailVerified && currentUser?.isVerifiedPhone
@@ -932,7 +936,10 @@ export default function CRMDashboard() {
         name: data.user?.name ?? user.name,
         email: data.user?.email ?? user.email,
         image: data.user?.image,
+        companyName: data.user?.companyName,
+        role: data.user?.role,
         planType: data.user?.planType,
+        displayName: data.user?.displayName ?? data.user?.publicName,
         buyerType: data.user?.planType,
         badges: data.user?.badges,
         reviewsData: reviewsPayload,
@@ -1049,7 +1056,7 @@ export default function CRMDashboard() {
                 {avatarSrc ? (
                   <img
                     src={avatarSrc}
-                    alt={`Awatar ${displayName}`}
+                    alt={`Awatar ${personName}`}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -1058,9 +1065,14 @@ export default function CRMDashboard() {
                   </div>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
-                {displayName}
-              </h1>
+              <div>
+                <h1 className="text-2xl sm:text-3xl md:text-5xl font-black tracking-tighter text-white break-words max-w-full">
+                  {accountHeadlines.primary}
+                </h1>
+                {accountHeadlines.secondary ? (
+                  <p className="mt-1 text-sm font-semibold text-[var(--eos-muted)]">{accountHeadlines.secondary}</p>
+                ) : null}
+              </div>
               <EliteStatusBadges subject={currentUser} isDark={isDarkTheme} compact className="mt-1" />
               {currentUser?.id && (
                 <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-white/5 to-transparent border border-[var(--eos-border)] rounded-xl shadow-inner mt-2 md:mt-0 transition-all hover:border-emerald-500/30">
@@ -1308,7 +1320,7 @@ export default function CRMDashboard() {
           <div className="flex flex-col gap-8 mb-12">
             
             <>
-            <div className="eos-crm-radar-panel relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[inset_0_0_80px_rgba(0,0,0,0.8),0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden group transition-all duration-700 hover:shadow-[inset_0_0_80px_rgba(0,0,0,0.9),0_30px_60px_rgba(16,185,129,0.1)]">
+            <div className="eos-crm-radar-panel eos-radar-widget relative w-full mb-12 p-8 md:p-10 rounded-[3rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#111111] to-[#050505] shadow-[var(--eos-shadow-strong)] overflow-hidden group transition-all duration-700">
               <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen transition-opacity duration-1000 group-hover:opacity-100 opacity-50" />
               <div className="absolute inset-0 bg-[url('/noise.png')] opacity-5 mix-blend-overlay pointer-events-none" />
               
@@ -1334,7 +1346,7 @@ export default function CRMDashboard() {
                      )}
                   </div>
                   <div>
-                    <h3 className="text-white text-2xl font-black tracking-tighter">
+                    <h3 className="text-2xl font-black tracking-tighter text-[var(--eos-text)]">
                       {showDualRadarPro ? (
                         <>
                           {c.radarTitle} <span className="text-amber-400">{c.radarTitlePro}</span>
@@ -1362,29 +1374,33 @@ export default function CRMDashboard() {
                 </button>
               </div>
 
-              <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.location}</span>
+              <div className="relative z-10 mt-8 grid grid-cols-2 md:grid-cols-5 gap-4">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.location}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.location}</span>
                  </div>
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.propertyType}</span>
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">Przeznaczenie</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.transactionType}</span>
                  </div>
-                 <div className="bg-black/50 border border-[var(--eos-border)] rounded-[1.5rem] p-5 shadow-inner flex flex-col justify-center transition-all hover:bg-black/80">
-                    <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
-                    <span className="text-white font-black text-sm truncate">{radarSummary.minArea}</span>
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.propertyType}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.propertyType}</span>
                  </div>
-                 <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[1.5rem] p-5 shadow-[inset_0_0_20px_rgba(16,185,129,0.05)] flex flex-col justify-center relative overflow-hidden group/price">
+                 <div className="eos-radar-stat-card flex flex-col justify-center">
+                    <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2">{c.minArea}</span>
+                    <span className="eos-radar-value font-black text-sm truncate">{radarSummary.minArea}</span>
+                 </div>
+                 <div className="eos-radar-stat-card eos-radar-stat-card--budget flex flex-col justify-center relative overflow-hidden group/price col-span-2 md:col-span-1">
                     <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
-                    <span className="text-emerald-500/50 text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
-                    <span className="text-emerald-500 font-black text-sm truncate relative z-10 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">{radarSummary.maxBudget}</span>
+                    <span className="eos-radar-budget-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
+                    <span className="eos-radar-value text-emerald-600 dark:text-emerald-400 font-black text-sm truncate relative z-10">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
-                <span className="text-[var(--eos-subtle)] text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
-                <span className="rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-400/90">
+                <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
+                <span className="eos-radar-threshold-pill rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                   {radarSummary.threshold}
                 </span>
               </div>
@@ -1438,15 +1454,15 @@ export default function CRMDashboard() {
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
                               <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{txRent ? c.rent : c.sale}</span>
-                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-white text-sm truncate hover:text-emerald-400 transition-colors">
+                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-[var(--eos-text)] text-sm truncate hover:text-emerald-400 transition-colors">
                                  {offer.title}
                               </a>
                               
                               <div className="flex flex-col mt-1">
                                 {txRent ? (
                                     <>
-                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-subtle)]">{c.perMonth}</span></p>
-                                        <p className="text-[8px] font-bold text-[var(--eos-subtle)] uppercase tracking-widest mt-0.5 flex gap-1">
+                                        <p className="font-black text-xs text-blue-400">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN <span className="text-[9px] text-[var(--eos-muted)]">{c.perMonth}</span></p>
+                                        <p className="text-[8px] font-bold text-[var(--eos-muted)] uppercase tracking-widest mt-0.5 flex gap-1">
                                             {offer.deposit && <span>{c.radar.deposit} {offer.deposit}</span>} 
                                             {offer.rentAdminFee && <span>| {c.radar.adminFee} {offer.rentAdminFee}</span>}
                                         </p>
@@ -1458,7 +1474,7 @@ export default function CRMDashboard() {
                            </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || 'Warszawa'}</span>
+                           <span className="bg-[var(--eos-input)] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><MapPin size={12}/> {offer.district || offer.city || '—'}</span>
                            <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><Target size={12}/> {offer.area} m²</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
@@ -1490,7 +1506,7 @@ export default function CRMDashboard() {
                     </motion.div>
                   )}
                 </div>
-                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
+                <p className="text-[var(--eos-muted)] font-bold uppercase tracking-widest text-sm relative z-10 text-center px-4 max-w-lg">
                   {c.radar.emptyHint}
                 </p>
                 <div className="mt-6 flex gap-2">
@@ -1724,16 +1740,15 @@ export default function CRMDashboard() {
                     <div className="relative z-10 flex flex-col gap-2">
                       {isArchived ? (
                         <button 
-                          onClick={() => handleRefreshOffer(offer.id)}
-                          disabled={refreshingId === offer.id}
-                          className="group relative w-full py-4 rounded-[1.5rem] overflow-visible transition-all duration-500 flex items-center justify-center gap-3 border border-blue-500/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10 disabled:opacity-70 disabled:hover:scale-100"
+                          onClick={() => handleRefreshOffer(offer)}
+                          className="group relative w-full py-4 rounded-[1.5rem] overflow-visible transition-all duration-500 flex items-center justify-center gap-3 border border-blue-500/50 cursor-pointer shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:scale-[1.04] z-10"
                         >
                           <div className="absolute inset-0 w-full h-full rounded-[1.5rem] overflow-hidden pointer-events-none" style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e40af 100%)" }}>
                             <div className="absolute top-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/80 to-transparent skew-x-[-30deg] pointer-events-none group-hover:animate-[luxurySweep_1.5s_ease-in-out_infinite]" style={{ left: '-100%' }} />
                           </div>
-                          <RefreshCcw className={`text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] ${refreshingId === offer.id ? 'animate-spin' : 'group-hover:rotate-180'}`} size={18} />
+                          <RefreshCcw className="text-white relative z-10 transition-all duration-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] group-hover:rotate-180" size={18} />
                           <span className="text-[12px] font-black uppercase tracking-[0.2em] text-white whitespace-nowrap relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                            {refreshingId === offer.id ? c.offers.renewProcessing : c.offers.renewCta}
+                            {c.offers.renewCta}
                           </span>
                         </button>
                       ) : (
@@ -2123,7 +2138,17 @@ export default function CRMDashboard() {
                           );
                         })()}
                         
-                        <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{viewingProfile.name || viewingProfile.email?.split('@')[0]}</h3>
+                        {(() => {
+                          const headlines = resolveProfileHeadlines(viewingProfile);
+                          return (
+                            <>
+                              <h3 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', margin: '0 0 4px 0', letterSpacing: '-0.05em' }}>{headlines.primary}</h3>
+                              {headlines.secondary ? (
+                                <p style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.55)', margin: '0 0 8px 0' }}>{headlines.secondary}</p>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '100px', border: '1px solid rgba(16,185,129,0.2)' }}>
                             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 10px #10b981' }}></span>
                             <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>{c.profile.verified}</span>
@@ -2204,7 +2229,17 @@ export default function CRMDashboard() {
               <button onClick={() => { setProfileModalUser(null); setProfileModalData(null); }} className="absolute top-4 right-4 text-[var(--eos-subtle)] hover:text-white transition-colors">
                 <X size={20} />
               </button>
-              <h3 className="text-xl font-black tracking-tight text-white mb-1">{profileModalUser.name || c.profileModal.title}</h3>
+              {(() => {
+                const headlines = resolveProfileHeadlines(profileModalData?.user || profileModalUser);
+                return (
+                  <>
+                    <h3 className="text-xl font-black tracking-tight text-white mb-1">{headlines.primary}</h3>
+                    {headlines.secondary ? (
+                      <p className="text-sm font-semibold text-[var(--eos-muted)] mb-1">{headlines.secondary}</p>
+                    ) : null}
+                  </>
+                );
+              })()}
               <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-6">ID: {profileModalUser.id}</p>
               <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 
@@ -2310,6 +2345,14 @@ export default function CRMDashboard() {
           reviewsData={reviewsData ?? EMPTY_REVIEWS_MODAL} 
           userName={currentUser?.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}` : (currentUser?.name || 'Inwestor')}
           subject={currentUser}
+      />
+
+      <OfferRenewalModal
+        offerId={renewModalOffer?.id ?? null}
+        offerTitle={renewModalOffer?.title}
+        isOpen={Boolean(renewModalOffer)}
+        onClose={() => setRenewModalOffer(null)}
+        onRenewed={handleRenewalCompleted}
       />
 </div>
   );

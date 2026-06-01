@@ -15,8 +15,8 @@ html, body {
   --eos-surface-strong: rgba(14, 14, 16, 0.92);
   --eos-card: rgba(12, 12, 14, 0.92);
   --eos-text: #ffffff;
-  --eos-muted: rgba(255, 255, 255, 0.58);
-  --eos-subtle: rgba(255, 255, 255, 0.52);
+  --eos-muted: rgba(255, 255, 255, 0.72);
+  --eos-subtle: rgba(255, 255, 255, 0.62);
   --eos-border: rgba(255, 255, 255, 0.11);
   --eos-border-strong: rgba(255, 255, 255, 0.2);
   --eos-glass: rgba(8, 8, 10, 0.72);
@@ -482,6 +482,22 @@ html.light .eos-glass {
   -webkit-backdrop-filter: blur(18px);
 }
 
+.eos-segmented-control [role="radio"]:not([aria-checked="true"]) {
+  color: var(--eos-muted);
+}
+
+.eos-segmented-control [role="radio"]:not([aria-checked="true"]):hover {
+  color: var(--eos-text);
+}
+
+html.light nav .eos-nav-link {
+  color: rgba(17, 24, 39, 0.78);
+}
+
+html.light nav .eos-nav-link:hover {
+  color: var(--eos-text);
+}
+
 html.light .premium-home-shell {
   background:
     radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.12), transparent 34%),
@@ -694,6 +710,101 @@ html.light .theme-aware-dashboard {
   color: var(--eos-text) !important;
 }
 
+/* Passkey toggle — własna paleta, bez globalnych nadpisań CRM */
+html.light .theme-aware-dashboard .eos-passkey-toggle,
+html.light .theme-aware-dashboard .eos-passkey-toggle h3,
+html.light .theme-aware-dashboard .eos-passkey-toggle p {
+  color: inherit;
+}
+
+/* Tekst na zdjęciu / gradientach — zachowaj jasne napisy w light mode */
+html.light .theme-aware-dashboard .eos-on-media,
+html.light .theme-aware-dashboard .eos-on-media .text-white,
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/"],
+html.light .theme-aware-dashboard .eos-on-media h1,
+html.light .theme-aware-dashboard .eos-on-media h2,
+html.light .theme-aware-dashboard .eos-on-media h3,
+html.light .theme-aware-dashboard .eos-on-media p,
+html.light .theme-aware-dashboard .eos-on-media span {
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/40"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/50"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/60"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/70"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/75"],
+html.light .theme-aware-dashboard .eos-on-media [class*="text-white/85"] {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+html.light .theme-aware-dashboard .eos-on-media [class*="text-emerald-300"] {
+  color: #6ee7b7 !important;
+}
+
+/* Karty CRM / listy — spójne tło w jasnym motywie */
+html.light .theme-aware-dashboard .eos-surface-card {
+  background-color: var(--eos-card) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+  box-shadow: var(--eos-shadow-lift), var(--eos-shadow-soft) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card .text-white,
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/"] {
+  color: var(--eos-text) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/40"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/50"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-white/60"] {
+  color: var(--eos-muted) !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-emerald-"] {
+  color: #059669 !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-blue-"] {
+  color: #2563eb !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-yellow-"],
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-amber-"] {
+  color: #d97706 !important;
+}
+
+html.light .theme-aware-dashboard .eos-surface-card [class*="text-red-"] {
+  color: #dc2626 !important;
+}
+
+/* Modale portowane — jasny motyw */
+html.light .eos-themed-modal {
+  background-color: var(--eos-card) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+}
+
+html.light .eos-themed-modal .text-white,
+html.light .eos-themed-modal [class*="text-white/"] {
+  color: var(--eos-text) !important;
+}
+
+html.light .eos-themed-modal [class*="text-white/40"],
+html.light .eos-themed-modal [class*="text-white/50"],
+html.light .eos-themed-modal [class*="text-white/60"],
+html.light .eos-themed-modal [class*="text-white/70"] {
+  color: var(--eos-muted) !important;
+}
+
+html.light .eos-themed-modal input,
+html.light .eos-themed-modal select,
+html.light .eos-themed-modal textarea {
+  background-color: var(--eos-input) !important;
+  border-color: var(--eos-border) !important;
+  color: var(--eos-text) !important;
+}
+
 html.light .theme-aware-dashboard .text-white,
 html.light .theme-aware-dashboard [class*="text-white/"],
 html.light .theme-aware-dashboard [class*="text-[#f5f5f7]"],
@@ -872,7 +983,6 @@ html.light .eos-media-chrome [class*="from-black"] {
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
 }
 
-/* Nawigacja — czytelniejsze CTA w jasnym motywie */
 html.light .eos-nav-admin {
   background: linear-gradient(180deg, rgba(5, 150, 105, 0.2), rgba(5, 150, 105, 0.1)) !important;
   border-color: rgba(5, 150, 105, 0.42) !important;
@@ -897,37 +1007,82 @@ html.light .eos-nav-link:hover {
   background: var(--eos-input) !important;
 }
 
-/* CRM Radar — panel z głębią zamiast płaskiej bieli */
 html.light .eos-crm-radar-panel {
-  background: linear-gradient(145deg, #ffffff 0%, #eef2f7 52%, #e8edf4 100%) !important;
-  border-color: var(--eos-border-strong) !important;
+  background: linear-gradient(155deg, #ffffff 0%, #f3f6fb 48%, #e9eef6 100%) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 1) inset,
-    0 10px 32px rgba(15, 23, 42, 0.08),
-    0 28px 64px rgba(15, 23, 42, 0.07) !important;
+    0 14px 40px rgba(15, 23, 42, 0.1),
+    0 36px 80px rgba(15, 23, 42, 0.08) !important;
 }
 
+html.light .eos-crm-radar-panel h3,
 html.light .eos-crm-radar-panel h3.text-white {
   color: var(--eos-text) !important;
 }
 
-html.light .eos-crm-radar-panel .bg-black\/50,
-html.light .eos-crm-radar-panel [class*="bg-[#161616]"] {
-  background-color: rgba(255, 255, 255, 0.72) !important;
-  border-color: var(--eos-border) !important;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 6px 16px rgba(15, 23, 42, 0.05) !important;
+html.light .eos-crm-radar-panel .eos-radar-label {
+  color: var(--eos-subtle) !important;
 }
 
-html.light .eos-crm-radar-panel .text-white {
+html.light .eos-crm-radar-panel .eos-radar-value {
+  color: var(--eos-text) !important;
+}
+
+html.light .eos-crm-radar-panel .eos-radar-budget-label {
+  color: #047857 !important;
+}
+
+html.light .eos-crm-radar-panel .eos-radar-stat-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 8px 22px rgba(15, 23, 42, 0.07),
+    0 2px 6px rgba(15, 23, 42, 0.04) !important;
+}
+
+html.light .eos-crm-radar-panel .eos-radar-stat-card--budget {
+  background: linear-gradient(145deg, rgba(5, 150, 105, 0.12) 0%, rgba(255, 255, 255, 0.96) 55%) !important;
+  border-color: rgba(5, 150, 105, 0.28) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 10px 28px rgba(5, 150, 105, 0.14) !important;
+}
+
+html.light .eos-crm-radar-panel .eos-radar-threshold-pill {
+  background: #ffffff !important;
+  border-color: rgba(5, 150, 105, 0.35) !important;
+  color: #047857 !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 6px 18px rgba(5, 150, 105, 0.12) !important;
+}
+
+html.light .eos-crm-radar-panel .bg-black\/50,
+html.light .eos-crm-radar-panel [class*="bg-[#161616]"] {
+  background-color: rgba(255, 255, 255, 0.92) !important;
+  border-color: var(--eos-border-strong) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 8px 22px rgba(15, 23, 42, 0.07) !important;
+}
+
+html.light .eos-crm-radar-panel .text-white,
+html.light .eos-crm-radar-panel [class*="text-white/"] {
   color: var(--eos-text) !important;
 }
 
 html.light .eos-crm-radar-panel .bg-black {
-  background-color: #f8fafc !important;
-  border-color: var(--eos-border) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+  background: linear-gradient(180deg, #ffffff, #f1f5f9) !important;
+  border-color: var(--eos-border-strong) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 8px 20px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.light .eos-crm-radar-panel [class*="border-white/"] {
+  border-color: var(--eos-border-strong) !important;
 }
 
 html.light .eos-outline-btn {
@@ -1067,6 +1222,68 @@ html.dark .premium-home-shell [class*="border-white/[0.08]"] {
 html.light .pricing-dark-stage {
   background-color: #050505 !important;
   color: #f8fafc !important;
+}
+
+/* Radar CRM — ciemna scena tylko w dark mode (w light panel ma własną paletę) */
+html.dark .eos-radar-widget .eos-radar-label {
+  color: rgba(255, 255, 255, 0.68) !important;
+}
+
+html.dark .eos-radar-widget .eos-radar-value {
+  color: #ffffff !important;
+}
+
+html.dark .eos-radar-widget .eos-radar-budget-label {
+  color: rgba(110, 231, 183, 0.82) !important;
+}
+
+html.dark .eos-radar-widget .eos-radar-stat-card {
+  background: rgba(0, 0, 0, 0.48) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+html.dark .eos-radar-widget .eos-radar-stat-card--budget {
+  background: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.22) !important;
+}
+
+.eos-radar-stat-card {
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--eos-border);
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease;
+}
+
+.eos-radar-stat-card:hover {
+  transform: translateY(-1px);
+}
+
+html.light .theme-aware-dashboard [class*="bg-black/50"],
+html.light .theme-aware-dashboard [class*="bg-black/55"],
+html.light .theme-aware-dashboard [class*="bg-black/60"] {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+html.light .theme-aware-dashboard .eos-cinematic-dark [class*="bg-black/50"],
+html.light .theme-aware-dashboard .eos-cinematic-dark [class*="bg-black/55"],
+html.light .theme-aware-dashboard .eos-cinematic-dark [class*="bg-black/60"],
+html.light .theme-aware-dashboard .eos-media-chrome [class*="bg-black/50"],
+html.light .theme-aware-dashboard .eos-media-chrome [class*="bg-black/55"],
+html.light .theme-aware-dashboard .eos-media-chrome [class*="bg-black/60"] {
+  background-color: revert !important;
+}
+
+html.light .theme-aware-dashboard .eos-lux-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%) !important;
+  border-color: var(--eos-border-strong) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 12px 32px rgba(15, 23, 42, 0.09),
+    0 4px 12px rgba(15, 23, 42, 0.05) !important;
 }
 
 html.light .pricing-dark-stage .text-white,
