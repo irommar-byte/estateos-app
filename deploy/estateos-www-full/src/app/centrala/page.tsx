@@ -1,8 +1,21 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
+
+const OtodomImportLocationPreview = dynamic(
+  () => import("@/components/admin/OtodomImportLocationPreview"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="rounded-2xl border border-white/10 bg-black/30 min-h-[320px] flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-400" size={28} />
+      </div>
+    ),
+  },
+);
 
 export default function Centrala() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -275,6 +288,22 @@ export default function Centrala() {
                     </div>
                   ))}
                 </div>
+
+                {otodomDraft.lat != null && otodomDraft.lng != null ? (
+                  <OtodomImportLocationPreview
+                    lat={otodomDraft.lat}
+                    lng={otodomDraft.lng}
+                    title={otodomDraft.title}
+                    street={otodomDraft.street}
+                    city={otodomDraft.city}
+                    district={otodomDraft.district}
+                    previewImageUrl={otodomDraft.imageUrls[0] ?? null}
+                  />
+                ) : (
+                  <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+                    OtoDom nie podał współrzędnych — mapa podglądowa niedostępna.
+                  </p>
+                )}
 
                 {otodomDraft.locationWarnings.length ? (
                   <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
