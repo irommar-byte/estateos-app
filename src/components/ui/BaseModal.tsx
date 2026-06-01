@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface BaseModalProps {
   isOpen: boolean;
@@ -10,7 +11,12 @@ interface BaseModalProps {
 }
 
 export default function BaseModal({ isOpen, onClose, children, title, maxWidth = "max-w-2xl" }: BaseModalProps) {
-  // Blokada scrollowania tła i nasłuchiwanie klawisza ESC
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -23,42 +29,42 @@ export default function BaseModal({ isOpen, onClose, children, title, maxWidth =
     }
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    // Warstwa tła z ekstremalnie wysokim z-index, aby przykryć absolutnie wszystko
-    <div 
-      className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 sm:p-6 transition-opacity" 
-      onClick={onClose}
-    >
-      {/* Kontener modala - items-start w rodzicu i my-auto tutaj zapobiega ucinaniu od góry przy wysokich modalach */}
-      <div 
-        className={`eos-modal-surface relative w-full ${maxWidth} rounded-2xl my-auto transform transition-all flex flex-col max-h-[90vh]`} 
-        onClick={(e) => e.stopPropagation()} // Blokada propagacji (zapobiega znikaniu po kliknięciu w środek)
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 sm:p-6">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Zamknij okno"
+        className="eos-modal-backdrop absolute inset-0 cursor-default border-0 p-0"
+        onClick={onClose}
+      />
+      <div
+        className={`eos-modal-surface eos-modal-shell relative z-10 my-auto flex w-full ${maxWidth} max-h-[90vh] flex-col overflow-hidden rounded-2xl pointer-events-auto`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Nagłówek modala (jeśli istnieje) lub sam przycisk X */}
-        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-[var(--eos-border)] bg-[var(--eos-surface)] shrink-0">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--eos-border)] bg-[var(--eos-surface)] p-4 sm:p-6">
           {title ? (
             <h3 className="text-xl font-semibold text-[var(--eos-text)]">{title}</h3>
           ) : (
-            <div></div> // Pusty div dla flex-between jeśli nie ma tytułu
+            <div />
           )}
-          <button 
-            onClick={onClose} 
-            className="p-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)] hover:bg-[var(--eos-input)] rounded-full transition-colors focus:outline-none"
+          <button
+            onClick={onClose}
+            className="rounded-full p-2 text-[var(--eos-muted)] transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)] focus:outline-none"
             aria-label="Zamknij"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-
-        {/* Dynamiczna treść modala z własnym, wewnętrznym paskiem przewijania */}
-        <div className="p-4 sm:p-6 overflow-y-auto">
-          {children}
-        </div>
+        <div className="overflow-y-auto p-4 sm:p-6 text-[var(--eos-text)]">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

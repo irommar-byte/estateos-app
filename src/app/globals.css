@@ -1338,28 +1338,62 @@ html.dark button[class*="bg-[#111]"]:hover {
 }
 
 .eos-modal-backdrop {
-  background: rgba(15, 23, 42, 0.34);
-  backdrop-filter: blur(14px);
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(16px) saturate(1.05);
 }
 
 .eos-modal-surface {
   border: 1px solid var(--eos-border);
-  background: linear-gradient(180deg, rgba(12, 12, 14, 0.95) 0%, rgba(9, 9, 11, 0.98) 100%);
-  box-shadow: var(--eos-shadow-strong);
+  background: linear-gradient(180deg, rgba(14, 14, 16, 0.98) 0%, rgba(8, 8, 10, 0.99) 100%);
+  color: var(--eos-text);
+}
+
+.eos-modal-shell {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 2px 0 rgba(255, 255, 255, 0.03) inset,
+    0 24px 48px rgba(0, 0, 0, 0.55),
+    0 48px 96px rgba(0, 0, 0, 0.45);
+}
+
+.eos-modal-panel {
+  border: 1px solid var(--eos-border);
+  background: var(--eos-input);
+  border-radius: 1rem;
+}
+
+.eos-modal-muted {
+  color: var(--eos-muted);
+}
+
+.eos-modal-subtle {
+  color: var(--eos-subtle);
 }
 
 html.light .eos-modal-backdrop {
-  background: rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(18px) saturate(1.15);
+  background: rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 html.light .eos-modal-surface {
-  border-color: rgba(15, 23, 42, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 252, 0.97) 100%);
+  border-color: rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.98) 100%);
+  color: var(--eos-text);
+}
+
+html.light .eos-modal-shell {
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.98) inset,
-    0 10px 30px rgba(15, 23, 42, 0.11),
-    0 24px 60px rgba(15, 23, 42, 0.1);
+    0 0 0 1px rgba(255, 255, 255, 0.95) inset,
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 8px 16px rgba(15, 23, 42, 0.06),
+    0 20px 40px rgba(15, 23, 42, 0.1),
+    0 40px 80px rgba(15, 23, 42, 0.12),
+    0 64px 120px rgba(15, 23, 42, 0.08);
+}
+
+html.light .eos-modal-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(15, 23, 42, 0.1);
 }
 
 @media print {

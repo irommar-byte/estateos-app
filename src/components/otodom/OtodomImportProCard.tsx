@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useState } from "react";
+import { motion } from "framer-motion";
 import {
   Crown,
   ExternalLink,
@@ -11,16 +11,17 @@ import {
   PlusCircle,
   Search,
   Sparkles,
-  X,
 } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
+import { pasteHttpUrlFromClipboard } from "@/lib/clipboardPaste";
 import PublicationChoiceModal, {
   type PublicationCouponOption,
   type PublicationRedemption,
 } from "@/components/publication/PublicationChoiceModal";
 import OtodomCreateConfirmModal from "@/components/admin/OtodomCreateConfirmModal";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
+import EosModal from "@/components/ui/EosModal";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -74,6 +75,10 @@ export default function OtodomImportProCard() {
     setWalletPlusCredits(Number(data.plusCredits || 0));
     setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
   }, []);
+
+  const handleUrlFocus = () => {
+    void pasteHttpUrlFromClipboard(setOtodomUrl, otodomUrl);
+  };
 
   const handleAnalyze = async () => {
     const url = otodomUrl.trim();
@@ -165,14 +170,6 @@ export default function OtodomImportProCard() {
     }
   };
 
-  useEffect(() => {
-    if (!panelOpen) return;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [panelOpen]);
-
   return (
     <>
       <motion.button
@@ -202,158 +199,134 @@ export default function OtodomImportProCard() {
         </div>
       </motion.button>
 
-      <AnimatePresence>
-        {panelOpen ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99990] flex items-end justify-center bg-black/75 p-0 backdrop-blur-md sm:items-center sm:p-6"
-            onClick={() => setPanelOpen(false)}
-          >
-            <motion.div
-              initial={{ y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 16, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="eos-modal-surface relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]"
-            >
-              <div className="flex items-center justify-between border-b border-[var(--eos-border)] px-6 py-4">
-                <div className="flex items-center gap-3">
-                  <Link2 size={18} className="text-emerald-500" />
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4AF37]">
-                      Pro · OtoDom
-                    </p>
-                    <h2 className="text-base font-semibold text-[var(--eos-text)]">Import ogłoszenia</h2>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPanelOpen(false)}
-                  className="rounded-full p-2 text-[var(--eos-subtle)] hover:bg-[var(--eos-input)]"
-                  aria-label="Zamknij"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+      <EosModal
+        open={panelOpen}
+        onClose={() => setPanelOpen(false)}
+        title="Import ogłoszenia"
+        badge="Pro · OtoDom"
+        icon={<Link2 size={18} />}
+        maxWidth="max-w-3xl"
+      >
+        <div className="space-y-5">
+          <p className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
+            Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją
+            wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.
+          </p>
 
-              <div className="custom-scrollbar flex-1 space-y-5 overflow-y-auto px-6 py-5">
-                <p className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
-                  Wklej link do ogłoszenia. Przed konwersją wybierzesz kupon lub kredyt Plus — tak jak przy normalnym
-                  wystawieniu oferty. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.
+          <div className="eos-modal-panel p-4">
+            <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
+              Link OtoDom
+            </label>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                type="url"
+                value={otodomUrl}
+                onChange={(e) => setOtodomUrl(e.target.value)}
+                onFocus={handleUrlFocus}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleAnalyze();
+                }}
+                placeholder="https://www.otodom.pl/pl/oferta/..."
+                className="flex-1 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] px-4 py-3.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition-colors focus:border-emerald-500/45 focus:ring-2 focus:ring-emerald-500/15"
+              />
+              <button
+                type="button"
+                onClick={() => void handleAnalyze()}
+                disabled={loading}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3.5 text-xs font-black uppercase tracking-wider text-black shadow-[0_12px_28px_rgba(16,185,129,0.28)] disabled:opacity-60"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                Analizuj
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-[var(--eos-subtle)]">
+              Wskazówka: skopiuj link w OtoDom, kliknij pole powyżej — wklei się sam.
+            </p>
+          </div>
+
+          {error ? (
+            <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+              {error}
+            </p>
+          ) : null}
+
+          {draft ? (
+            <div className="space-y-4">
+              <div className="eos-modal-panel p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Podgląd</p>
+                <p className="mt-2 text-sm font-semibold text-[var(--eos-text)]">
+                  {presentation?.title ?? draft.title}
                 </p>
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <input
-                    type="url"
-                    value={otodomUrl}
-                    onChange={(e) => setOtodomUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleAnalyze();
-                    }}
-                    placeholder="https://www.otodom.pl/pl/oferta/..."
-                    className="flex-1 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/40"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleAnalyze()}
-                    disabled={loading}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60"
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                    Analizuj
-                  </button>
-                </div>
-
-                {error ? (
-                  <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                    {error}
-                  </p>
-                ) : null}
-
-                {draft ? (
-                  <div className="space-y-4">
-                    <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
-                        Podgląd
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-[var(--eos-text)]">
-                        {presentation?.title ?? draft.title}
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                        {draft.city}
-                        {draft.district ? ` · ${draft.district}` : ""} · {draft.price != null ? `${draft.price} PLN` : ""}
-                      </p>
-                    </div>
-
-                    {presentation ? (
-                      <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                        <OfferDescriptionBody
-                          description={presentation.descriptionHtml}
-                          className="max-h-40 overflow-y-auto text-sm text-[var(--eos-muted)]"
-                        />
-                      </div>
-                    ) : null}
-
-                    {draft.lat != null && draft.lng != null ? (
-                      <OtodomImportLocationPreview
-                        lat={draft.lat}
-                        lng={draft.lng}
-                        title={draft.title}
-                        street={draft.street}
-                        city={draft.city}
-                        district={draft.district}
-                        previewImageUrl={draft.imageUrls[0] ?? null}
-                        showPin
-                      />
-                    ) : null}
-
-                    <button
-                      type="button"
-                      onClick={() => void startPaidImport()}
-                      disabled={creating}
-                      className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 py-4 text-xs font-black uppercase tracking-wider text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:opacity-60"
-                    >
-                      <PlusCircle size={16} />
-                      Opłać i utwórz na EstateOS
-                    </button>
-
-                    {createMessage ? (
-                      <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
-                        {createMessage}
-                      </p>
-                    ) : null}
-                    {createError ? (
-                      <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                        {createError}
-                      </p>
-                    ) : null}
-                    {createdLinks ? (
-                      <div className="flex flex-wrap gap-2">
-                        <a
-                          href={createdLinks.editUrl}
-                          className="inline-flex items-center gap-2 rounded-xl border border-[var(--eos-border)] px-4 py-2 text-xs font-bold uppercase text-[var(--eos-text)]"
-                        >
-                          Edytuj <ExternalLink size={12} />
-                        </a>
-                        <a
-                          href={createdLinks.publicUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 rounded-xl border border-blue-400/30 px-4 py-2 text-xs font-bold uppercase text-blue-300"
-                        >
-                          Podgląd <ExternalLink size={12} />
-                        </a>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                  {draft.city}
+                  {draft.district ? ` · ${draft.district}` : ""} · {draft.price != null ? `${draft.price} PLN` : ""}
+                </p>
               </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+
+              {presentation ? (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                  <OfferDescriptionBody
+                    description={presentation.descriptionHtml}
+                    className="max-h-40 overflow-y-auto text-sm text-[var(--eos-muted)]"
+                  />
+                </div>
+              ) : null}
+
+              {draft.lat != null && draft.lng != null ? (
+                <OtodomImportLocationPreview
+                  lat={draft.lat}
+                  lng={draft.lng}
+                  title={draft.title}
+                  street={draft.street}
+                  city={draft.city}
+                  district={draft.district}
+                  previewImageUrl={draft.imageUrls[0] ?? null}
+                  showPin
+                />
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void startPaidImport()}
+                disabled={creating}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 py-4 text-xs font-black uppercase tracking-wider text-emerald-600 shadow-[0_12px_32px_rgba(16,185,129,0.12)] transition-colors hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-400"
+              >
+                <PlusCircle size={16} />
+                Opłać i utwórz na EstateOS
+              </button>
+
+              {createMessage ? (
+                <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-300">
+                  {createMessage}
+                </p>
+              ) : null}
+              {createError ? (
+                <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+                  {createError}
+                </p>
+              ) : null}
+              {createdLinks ? (
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={createdLinks.editUrl}
+                    className="inline-flex items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-2 text-xs font-bold uppercase text-[var(--eos-text)]"
+                  >
+                    Edytuj <ExternalLink size={12} />
+                  </a>
+                  <a
+                    href={createdLinks.publicUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/5 px-4 py-2 text-xs font-bold uppercase text-blue-600 dark:text-blue-300"
+                  >
+                    Podgląd <ExternalLink size={12} />
+                  </a>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </EosModal>
 
       <PublicationChoiceModal
         isOpen={pubOpen}
