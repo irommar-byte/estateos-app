@@ -15,6 +15,7 @@ import {
   formatOfferCondition,
   formatOfferPropertyType,
 } from "@/lib/offerDisplayLabels";
+import { formatParamDisplayValue } from "@/lib/formatParamDisplay";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
@@ -688,7 +689,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     {locationParams.map((param, idx) => (
                       <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{param.value}</span>
+                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -714,7 +715,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     {mainParams.map((param, idx) => (
                       <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                         <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="text-lg font-bold text-[var(--eos-text)]">{param.value}</span>
+                        <span className="text-lg font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
                       </div>
                     ))}
                   </div>
@@ -727,7 +728,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       {buildingParams.map((param, idx) => (
                         <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                           <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                          <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                          <span className="text-base font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
                         </div>
                       ))}
                     </div>
@@ -754,7 +755,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         {costsParams.map((param, idx) => (
                           <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                             <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                            <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                            <span className="text-base font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
                           </div>
                         ))}
                       </div>

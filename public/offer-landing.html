@@ -163,7 +163,8 @@
       font-weight: 650;
     }
     .location { color: var(--muted); font-size: 13px; margin-bottom: 0; }
-    .price-row { margin-top: 10px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+    .price-row { margin-top: 10px; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; }
+    .price-block { display: flex; flex-direction: column; gap: 4px; }
     .price {
       font-size: clamp(22px, 3.8vw, 28px);
       font-weight: 700;
@@ -171,6 +172,14 @@
       color: var(--gold);
     }
     .price-suffix { font-size: 15px; font-weight: 500; color: var(--muted); }
+    .price-commission {
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      max-width: 26rem;
+    }
+    .price-commission strong { color: var(--gold); font-weight: 700; }
     .spec-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -508,6 +517,13 @@
       display: block;
       background: rgba(127,127,127,0.04);
     }
+    .brochure-exporting .landing-print-hide,
+    .brochure-exporting .platform-foot,
+    .brochure-exporting .toast { display: none !important; }
+    .brochure-exporting .agent-print-card {
+      display: block !important;
+      margin-top: 3mm;
+    }
     .print-only { display: none !important; }
     .agent-print-card {
       display: none;
@@ -677,6 +693,7 @@
       .price-row { margin-top: 2mm !important; }
       .price { font-size: 17pt !important; color: #8a6d1f !important; }
       .price-suffix { font-size: 9pt !important; }
+      .price-commission { font-size: 8pt !important; }
       .spec-grid {
         grid-template-columns: repeat(6, 1fr) !important;
         gap: 1.5mm !important;
@@ -769,7 +786,10 @@
           <h1 id="title">—</h1>
           <div class="location" id="location">—</div>
           <div class="price-row">
-            <div class="price" id="price">—</div>
+            <div class="price-block">
+              <div class="price" id="price">—</div>
+              <p class="price-commission" id="priceCommissionNote" hidden></p>
+            </div>
             <span class="price-suffix" id="priceSuffix" hidden></span>
           </div>
           <div class="spec-grid" id="specGrid"></div>
@@ -817,7 +837,7 @@
           <div class="actions landing-print-hide">
             <a class="btn btn-primary" id="openApp" href="#">Otwórz w aplikacji EstateOS™</a>
             <a class="btn btn-secondary" id="registerCta" href="https://estateos.pl/rejestracja">Załóż konto i skontaktuj się</a>
-            <button type="button" class="btn btn-secondary" id="savePdf">Zachowaj jako PDF (A4)</button>
+            <button type="button" class="btn btn-secondary landing-print-hide" id="downloadBrochure" hidden>Pobierz ofertówkę dla klienta</button>
             <button type="button" class="btn btn-ghost" id="copyLink">Kopiuj link do wiadomości</button>
           </div>
           <div class="toast" id="toast" aria-live="polite"></div>
@@ -869,6 +889,7 @@
     <div id="fatal" class="err" style="display:none"></div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
   <script>
 (function () {
   var ORIGIN = window.location.origin;
@@ -934,6 +955,72 @@
     }
   }
 
+  function fmtPercent(raw) {
+    var x = Number(raw);
+    if (!isFinite(x)) return '';
+    var text = Number.isInteger(x) ? String(x) : x.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+    return text.replace('.', ',') + '%';
+  }
+
+  function capitalizeLabel(value) {
+    var text = String(value || '').trim();
+    if (!text || /^\d/.test(text)) return text;
+    return text.charAt(0).toLocaleUpperCase('pl-PL') + text.slice(1);
+  }
+
+  function renderPriceCommission(data) {
+    var note = document.getElementById('priceCommissionNote');
+    if (!note) return;
+    var pctRaw = data.agentCommissionPercent;
+    if (pctRaw === null || pctRaw === undefined || pctRaw === '') {
+      note.hidden = true;
+      note.textContent = '';
+      return;
+    }
+    var pct = Number(pctRaw);
+    if (!isFinite(pct)) {
+      note.hidden = true;
+      return;
+    }
+    var price = Number(data.price);
+    if (!isFinite(price) || price <= 0) {
+      note.hidden = true;
+      return;
+    }
+    if (pct === 0) {
+      note.innerHTML = 'Cena <strong>bez wynagrodzenia pośrednika</strong> (0%).';
+      note.hidden = false;
+      return;
+    }
+    var amount = Math.round((price * pct) / 100);
+    note.innerHTML =
+      'W cenie <strong>' + fmtMoney(amount) + '</strong> wynagrodzenia pośrednika (' + fmtPercent(pct) + ' ceny ofertowej).';
+    note.hidden = false;
+  }
+
+  function isAgencyAccount(user) {
+    if (!user) return false;
+    var plan = String(user.planType || '').toUpperCase();
+    if (plan === 'AGENCY') return true;
+    var buyer = String(user.buyerType || '').toUpperCase();
+    if (buyer === 'AGENCY') return true;
+    var role = String(user.role || '').toUpperCase();
+    if (role === 'AGENT' || role === 'ADMIN') return true;
+    return false;
+  }
+
+  function initBrochureAccess() {
+    fetch(ORIGIN + '/api/user/profile', { credentials: 'include' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (payload) {
+        var user = payload && (payload.user || payload);
+        if (!isAgencyAccount(user)) return;
+        var btn = document.getElementById('downloadBrochure');
+        if (btn) btn.hidden = false;
+      })
+      .catch(function () { /* tylko agencja widzi przycisk */ });
+  }
+
   function setHero(src, alt) {
     var el = document.getElementById('hero');
     el.classList.remove('placeholder');
@@ -978,7 +1065,7 @@
     if (value === null || value === undefined || value === '') return;
     var d = document.createElement('div');
     d.className = 'spec';
-    d.innerHTML = '<label>' + label + '</label><strong>' + String(value) + '</strong>';
+    d.innerHTML = '<label>' + label + '</label><strong>' + capitalizeLabel(String(value)) + '</strong>';
     grid.appendChild(d);
   }
 
@@ -1273,6 +1360,7 @@
 
   document.getElementById('offerRef').textContent = 'Ref. ' + id;
   renderQr();
+  initBrochureAccess();
 
   var APP_STORE_URL = 'https://apps.apple.com/app/id6762899098';
   var PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=pl.estateos.app';
@@ -1353,15 +1441,61 @@
     }
   });
 
-  var savePdfBtn = document.getElementById('savePdf');
-  if (savePdfBtn) {
-    savePdfBtn.addEventListener('click', function () {
+  var downloadBrochureBtn = document.getElementById('downloadBrochure');
+  if (downloadBrochureBtn) {
+    downloadBrochureBtn.addEventListener('click', function () {
       var toast = document.getElementById('toast');
+      var root = document.querySelector('.sheet-inner');
+      if (!root || typeof html2pdf === 'undefined') {
+        if (toast) {
+          toast.textContent = 'Nie udało się przygotować PDF — odśwież stronę i spróbuj ponownie.';
+          toast.className = 'toast';
+        }
+        return;
+      }
+
+      downloadBrochureBtn.disabled = true;
+      var originalLabel = downloadBrochureBtn.textContent;
+      downloadBrochureBtn.textContent = 'Generowanie ofertówki…';
       if (toast) {
-        toast.textContent = 'Podgląd A4 z wizytówką agenta — wybierz „Zapisz jako PDF”.';
+        toast.textContent = 'Przygotowujemy PDF na jedną stronę A4…';
         toast.className = 'toast ok';
       }
-      window.print();
+
+      var agentCard = document.getElementById('agentPrintCard');
+      var agentWasHidden = agentCard && agentCard.hidden;
+      if (agentCard) agentCard.hidden = false;
+      document.body.classList.add('brochure-exporting');
+
+      html2pdf()
+        .set({
+          margin: [6, 6, 6, 6],
+          filename: 'ofertowka-estateos-' + id + '.pdf',
+          image: { type: 'jpeg', quality: 0.94 },
+          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        })
+        .from(root)
+        .save()
+        .then(function () {
+          if (toast) {
+            toast.textContent = 'Ofertówka została pobrana.';
+            toast.className = 'toast ok';
+          }
+        })
+        .catch(function () {
+          if (toast) {
+            toast.textContent = 'Nie udało się wygenerować PDF. Spróbuj ponownie za chwilę.';
+            toast.className = 'toast';
+          }
+        })
+        .finally(function () {
+          document.body.classList.remove('brochure-exporting');
+          if (agentCard && agentWasHidden) agentCard.hidden = true;
+          downloadBrochureBtn.disabled = false;
+          downloadBrochureBtn.textContent = originalLabel;
+        });
     });
   }
 
@@ -1409,6 +1543,7 @@
       document.getElementById('summaryLine').textContent = summaryLine;
       document.getElementById('location').textContent = loc;
       document.getElementById('price').textContent = fmtMoney(data.price);
+      renderPriceCommission(data);
 
       var suffixEl = document.getElementById('priceSuffix');
       if (isRent) {
