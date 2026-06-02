@@ -362,7 +362,9 @@ export default function AdminNativeImportScreen() {
             }
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.success) {
-              setError(String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`));
+              const errMessage = String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`);
+              setError(errMessage);
+              Alert.alert('Nie udało się utworzyć oferty', errMessage);
               return;
             }
             setMessage(String(data?.message || 'Oferta utworzona.'));
@@ -370,12 +372,17 @@ export default function AdminNativeImportScreen() {
             setEditUrl(String(data?.editUrl || ''));
             setPublicUrl(String(data?.publicUrl || ''));
             setPendingRedemption(redemption);
+            if (redemption.source === 'bonus_coupon') {
+              setPublicationChoiceCoupons((prev) => prev.filter((coupon) => coupon.id !== redemption.couponId));
+            }
             await clearImportDraftCache();
             setRestoredDraftBadge(false);
+            await refreshUser();
             setSuccessFxVisible(true);
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           } catch {
             setError('Błąd połączenia podczas tworzenia oferty.');
+            Alert.alert('Błąd połączenia', 'Nie udało się utworzyć oferty. Sprawdź internet i spróbuj ponownie.');
           } finally {
             setCreating(false);
           }
@@ -420,7 +427,15 @@ export default function AdminNativeImportScreen() {
     if (patched && currentUser) {
       useAuthStore.setState({ user: { ...currentUser, ...patched } });
     }
-    void runCreate({ source: 'plus_iap', transactionId: purchase.transactionId });
+    const tx = String(purchase.transactionId || '').trim();
+    if (!tx) {
+      Alert.alert(
+        'Brak transakcji IAP',
+        'Zakup nie zwrócił ID transakcji. Otwórz ponownie okno publikacji i spróbuj jeszcze raz.'
+      );
+      return;
+    }
+    void runCreate({ source: 'plus_iap', transactionId: tx });
   };
 
   const handlePublicationChoice = (result: PublicationChoiceConfirm) => {
