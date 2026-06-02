@@ -2075,16 +2075,20 @@
       }));
     }
 
-    function canvasToJpeg(canvas, quality) {
-      try {
-        return canvas.toDataURL('image/jpeg', quality);
-      } catch (e) {
-        return null;
-      }
-    }
-
     function triggerPdfDownload(blob, filename) {
+      if (!blob || blob.size < 128) throw new Error('empty pdf blob');
       var url = URL.createObjectURL(blob);
+      var isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
+
+      if (isIOS) {
+        var opened = window.open(url, '_blank');
+        if (!opened) {
+          window.location.href = url;
+        }
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        return;
+      }
+
       var link = document.createElement('a');
       link.href = url;
       link.download = filename;
@@ -2095,20 +2099,40 @@
       setTimeout(function () {
         URL.revokeObjectURL(url);
         if (link.parentNode) link.parentNode.removeChild(link);
-      }, 1200);
+      }, 3000);
     }
 
-    function buildSinglePagePdf(canvas, filename) {
-      var JsPDF = window.jspdf && window.jspdf.jsPDF;
-      if (!JsPDF) throw new Error('jsPDF unavailable');
+    function canvasDataUrl(canvas) {
       var qualities = [0.88, 0.75, 0.62];
-      var dataUrl = null;
       for (var i = 0; i < qualities.length; i++) {
-        dataUrl = canvasToJpeg(canvas, qualities[i]);
-        if (dataUrl) break;
+        try {
+          var url = canvas.toDataURL('image/jpeg', qualities[i]);
+          if (url && url.length > 100) return url;
+        } catch (e) { /* tainted canvas */ }
       }
+      return null;
+    }
+
+    function obtainJsPdfTemplate() {
+      var el = document.createElement('div');
+      el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
+      document.body.appendChild(el);
+      var worker = html2pdf().set({
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+      }).from(el);
+      return worker.toPdf().get('pdf').then(function (pdf) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+        if (!pdf || typeof pdf.addImage !== 'function') throw new Error('jsPDF template unavailable');
+        return pdf;
+      }).catch(function (err) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+        throw err;
+      });
+    }
+
+    function buildSinglePageBlobFromCanvas(canvas, templatePdf) {
+      var dataUrl = canvasDataUrl(canvas);
       if (!dataUrl) throw new Error('canvas tainted');
-      var pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
       var margin = 5;
       var pageW = 210 - margin * 2;
       var pageH = 297 - margin * 2;
@@ -2120,20 +2144,18 @@
         imgW = imgH * ratio;
       }
       var x = margin + (pageW - imgW) / 2;
-      var y = margin;
-      pdf.addImage(dataUrl, 'JPEG', x, y, imgW, imgH, undefined, 'MEDIUM');
-      return pdf.output('blob');
+      templatePdf.addImage(dataUrl, 'JPEG', x, margin, imgW, imgH, undefined, 'MEDIUM');
+      return templatePdf.output('blob');
     }
 
-    function captureBrochureCanvas(root) {
-      var scale = Math.min(1.5, Math.max(1, (window.devicePixelRatio || 1)));
-      return html2pdf().set({
+    function captureBrochurePdf(root, scale) {
+      var worker = html2pdf().set({
         margin: 0,
         image: { type: 'jpeg', quality: 0.85 },
         html2canvas: {
           scale: scale,
           useCORS: true,
-          allowTaint: false,
+          allowTaint: true,
           logging: false,
           backgroundColor: '#ffffff',
           scrollX: 0,
@@ -2141,8 +2163,21 @@
           width: root.scrollWidth,
           windowWidth: root.scrollWidth,
         },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      }).from(root).toCanvas().get('canvas');
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
+        pagebreak: { mode: ['avoid-all'] },
+      }).from(root);
+
+      return worker.toCanvas().toPdf().then(function () {
+        var pdf = worker.prop.pdf;
+        var canvas = worker.prop.canvas;
+        if (!pdf || !canvas || !canvas.width) throw new Error('export incomplete');
+        if (pdf.internal.getNumberOfPages() === 1) {
+          return pdf.output('blob');
+        }
+        return obtainJsPdfTemplate().then(function (templatePdf) {
+          return buildSinglePageBlobFromCanvas(canvas, templatePdf);
+        });
+      });
     }
 
     downloadBrochureBtn.addEventListener('click', function () {
@@ -2172,6 +2207,7 @@
 
       var pdfFilename = t('pdfFilename') + id + '.pdf';
       var mapSection = document.getElementById('mapSection');
+      var exportScale = Math.min(1.75, Math.max(1.1, (window.devicePixelRatio || 1.25)));
 
       inlineCrossOriginImages(root)
         .then(function () { return waitForImages(root); })
@@ -2180,22 +2216,13 @@
             requestAnimationFrame(function () { requestAnimationFrame(resolve); });
           });
         })
-        .then(function () { return captureBrochureCanvas(root); })
-        .then(function (canvas) {
-          if (!canvas) throw new Error('empty canvas');
-          var blob;
-          try {
-            blob = buildSinglePagePdf(canvas, pdfFilename);
-          } catch (err) {
-            if (!mapSection || mapSection.hidden) throw err;
+        .then(function () { return captureBrochurePdf(root, exportScale); })
+        .catch(function () {
+          if (mapSection && !mapSection.hidden) {
             mapSection.setAttribute('data-brochure-hidden', '1');
             mapSection.hidden = true;
-            return captureBrochureCanvas(root).then(function (retryCanvas) {
-              if (!retryCanvas) throw new Error('empty canvas retry');
-              return buildSinglePagePdf(retryCanvas, pdfFilename);
-            });
           }
-          return blob;
+          return captureBrochurePdf(root, Math.max(1, exportScale - 0.25));
         })
         .then(function (blob) {
           triggerPdfDownload(blob, pdfFilename);
