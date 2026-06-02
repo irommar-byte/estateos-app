@@ -1,4 +1,10 @@
-import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationCatalog';
+import {
+  canonicalizeCity,
+  canonicalizeDistrict,
+  isPlaceholderDistrict,
+  matchDistrictAlias,
+  pickDistrictFromPlaceName,
+} from '@/lib/location/locationCatalog';
 
 const OTODOM_HOST = 'otodom.pl';
 const FETCH_TIMEOUT_MS = 20_000;
@@ -346,7 +352,19 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     }) as Record<string, unknown> | undefined;
   const neighborhood = neighborhoodEntry ? String(neighborhoodEntry.name ?? '').trim() || null : null;
 
-  const district = canonicalizeDistrict(city, otodomDistrict || neighborhood || '');
+  const districtCandidates = [otodomDistrict, neighborhood].filter(
+    (value) => value && !isPlaceholderDistrict(value),
+  );
+  const combinedLocationText = districtCandidates.join(', ');
+  const districtFromCombined = combinedLocationText
+    ? pickDistrictFromPlaceName(city, combinedLocationText)
+    : '';
+  const district =
+    districtFromCombined ||
+    canonicalizeDistrict(city, otodomDistrict || neighborhood || '') ||
+    matchDistrictAlias(city, neighborhood) ||
+    matchDistrictAlias(city, otodomDistrict) ||
+    '';
   const locationWarnings: string[] = [];
   if (neighborhood && otodomDistrict && normalizeText(neighborhood) !== normalizeText(otodomDistrict)) {
     locationWarnings.push(`OtoDom: dzielnica „${otodomDistrict}”, rejon „${neighborhood}”.`);

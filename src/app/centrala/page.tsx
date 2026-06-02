@@ -91,7 +91,11 @@ export default function Centrala() {
 
     let cancelled = false;
     void fetch(
-      `/api/location/reverse?lat=${encodeURIComponent(String(otodomDraft.lat))}&lng=${encodeURIComponent(String(otodomDraft.lng))}`,
+      `/api/location/reverse?lat=${encodeURIComponent(String(otodomDraft.lat))}&lng=${encodeURIComponent(String(otodomDraft.lng))}` +
+        `&city=${encodeURIComponent(String(otodomDraft.city || ""))}` +
+        `&district=${encodeURIComponent(String(otodomDraft.district || ""))}` +
+        `&neighborhood=${encodeURIComponent(String(otodomDraft.neighborhood || ""))}` +
+        `&street=${encodeURIComponent(String(otodomDraft.street || ""))}`,
       { cache: "no-store" },
     )
       .then((res) => (res.ok ? res.json() : null))
