@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": false,
-      "buildNumber": "39",
+      "buildNumber": "40",
       "bundleIdentifier": "pl.estateos.app",
       "associatedDomains": [
         "webcredentials:estateos.pl",

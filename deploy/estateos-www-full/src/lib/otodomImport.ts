@@ -580,6 +580,42 @@ function hashStringToPositiveInt(value: string): number {
   return normalized > 0 ? normalized : 1;
 }
 
+function extractNierOnlineListValue(html: string, label: string): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `<strong>\\s*${escaped}\\s*:\\s*<\\/strong>\\s*<span[^>]*>([\\s\\S]*?)<\\/span>`,
+    'i',
+  );
+  const match = html.match(re);
+  if (!match?.[1]) return '';
+  return decodeImportHtmlText(match[1]).replace(/\s+/g, ' ').trim();
+}
+
+function parseNierOnlineAdminFee(html: string): number | null {
+  const czynszText = extractNierOnlineListValue(html, 'Czynsz');
+  if (!czynszText) {
+    const fallback = html.match(/<strong>\s*Czynsz:\s*<\/strong>\s*([\d\s.,]+)\s*(?:&nbsp;|\s)*zł/i)?.[1];
+    return parseNumber(fallback);
+  }
+  const amount = parseNumber(czynszText.replace(/[^\d\s.,]/g, ' '));
+  return amount;
+}
+
+function parseNierOnlineHeating(html: string): string | null {
+  const media = extractNierOnlineListValue(html, 'Media');
+  if (!media) {
+    const block = html.match(/<strong>\s*Media:\s*<\/strong>[\s\S]*?ogrzewanie\s*:\s*([^<,;]+)/i);
+    return block?.[1] ? decodeImportHtmlText(block[1]).trim() : null;
+  }
+  const labeled = media.match(/ogrzewanie\s*:\s*([^,;]+)/i);
+  if (labeled?.[1]) return labeled[1].trim();
+  if (/miejsk/i.test(media)) return 'miejskie';
+  if (/gaz/i.test(media)) return 'gazowe';
+  if (/elektryczn/i.test(media)) return 'elektryczne';
+  if (/komink/i.test(media)) return 'kominkowe';
+  return media.length <= 80 ? media : null;
+}
+
 function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft {
   const normalizedHtml = decodeImportHtmlText(html);
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -725,6 +761,23 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
         ? 'COMMERCIAL'
         : 'FLAT';
 
+  const adminFee = parseNierOnlineAdminFee(html);
+  const heating = parseNierOnlineHeating(html);
+  const conditionFromHtml =
+    extractNierOnlineListValue(html, 'Stan') ||
+    extractNierOnlineListValue(html, 'Stan wykończenia') ||
+    '';
+  const conditionCode =
+    /bardzo dobry|doskonał/i.test(conditionFromHtml)
+      ? 'very_good'
+      : /do remontu|do wykończenia/i.test(conditionFromHtml)
+        ? 'to_renovation'
+        : /dewelopersk/i.test(conditionFromHtml)
+          ? 'developer_state'
+          : conditionFromHtml
+            ? 'ready'
+            : null;
+
   return {
     source: 'NIERUCHOMOSCI_ONLINE',
     externalId: hashStringToPositiveInt(cleanCanonical),
@@ -735,7 +788,7 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     propertyType,
     price,
     priceCurrency: 'PLN',
-    adminFee: null,
+    adminFee,
     deposit: null,
     area: areaResolved,
     plotArea,
@@ -743,10 +796,10 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     floor,
     totalFloors: null,
     yearBuilt,
-    condition: null,
-    conditionCode: null,
-    heating: null,
-    heatingCode: null,
+    condition: conditionFromHtml || null,
+    conditionCode,
+    heating,
+    heatingCode: heating ? heating.toLowerCase().replace(/\s+/g, '_') : null,
     buildingType: null,
     city,
     district,

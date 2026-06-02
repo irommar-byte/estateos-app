@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rezerwacja publikacji przy imporcie Pro + kupon powitalny na serwerze.
+# Import Pro: opłacenie publikacji (atomowe) + parser Nieruchomosci (czynsz, ogrzewanie).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,6 +9,7 @@ REMOTE="${ESTATEOS_REMOTE_DIR:-~/estateos}"
 
 FILES=(
   "src/lib/otodomImportPublication.ts"
+  "src/lib/otodomImport.ts"
   "src/lib/profilePromoCards.ts"
   "src/app/api/mobile/v1/pro/otodom-import/create/route.ts"
   "src/app/api/mobile/v1/me/promo-cards/route.ts"
@@ -29,4 +30,4 @@ ssh "${SSH_HOST}" "cd ${REMOTE} && npm run deploy:server-only"
 echo "→ smoke"
 ssh "${SSH_HOST}" "cd ${REMOTE} && npm run smoke:postdeploy" || true
 
-echo "✓ Import publication fix wdrożony na produkcję"
+echo "✓ Produkcja: import + opłacanie publikacji wdrożone"

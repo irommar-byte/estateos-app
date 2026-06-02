@@ -6,12 +6,12 @@ import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 import {
-  reservePublicationForImportedOffer,
-  rollbackImportPublicationConsumption,
-  type ImportPublicationRedemptionKind,
+  consumeAndReserveImportPublication,
+  deleteOfferAfterImportPaymentFailure,
+  ImportPublicationError,
+  type ImportRedemptionInput,
 } from '@/lib/otodomImportPublication';
 import { getCreatePublicationQuote } from '@/lib/offerPublication';
-import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -55,13 +55,25 @@ function isImportDraft(value: unknown): value is OtodomImportDraft {
   );
 }
 
+function parseRedemption(body: Record<string, unknown>): ImportRedemptionInput | null {
+  const source = String(body?.redemption && typeof body.redemption === 'object'
+    ? (body.redemption as Record<string, unknown>).source
+    : '').trim().toLowerCase();
+  if (source !== 'plus_credit' && source !== 'bonus_coupon' && source !== 'plus_iap') {
+    return null;
+  }
+  const redemption = body.redemption as Record<string, unknown>;
+  return {
+    source,
+    couponId: String(redemption.couponId || '').trim() || undefined,
+    transactionId: String(redemption.transactionId || '').trim() || undefined,
+  };
+}
+
 export async function POST(req: Request) {
   const gate = await requireInvestorPro(req);
   if (!gate.ok) return gate.response;
 
-  let consumedKind: ImportPublicationRedemptionKind | null = null;
-  let consumedCouponId: string | null = null;
-  let consumedIapTransactionId: string | null = null;
   try {
     const body = await req.json().catch(() => ({}));
     let draft: OtodomImportDraft | null = isImportDraft(body?.draft) ? body.draft : null;
@@ -92,15 +104,8 @@ export async function POST(req: Request) {
     }
 
     const quote = await getCreatePublicationQuote({ userId: gate.userId });
-    const redemptionSource = String(body?.redemption?.source || '').trim().toLowerCase();
-    const couponId = String(body?.redemption?.couponId || '').trim();
-    const iapTransactionId = String(body?.redemption?.transactionId || '').trim();
-
-    if (
-      redemptionSource !== 'plus_credit' &&
-      redemptionSource !== 'bonus_coupon' &&
-      redemptionSource !== 'plus_iap'
-    ) {
+    const redemption = parseRedemption(body as Record<string, unknown>);
+    if (!redemption) {
       return NextResponse.json(
         {
           success: false,
@@ -112,133 +117,8 @@ export async function POST(req: Request) {
       );
     }
 
-    if (redemptionSource === 'plus_credit') {
-      const consumed = await prisma.$executeRawUnsafe(
-        `
-          UPDATE \`User\`
-          SET extraListings = GREATEST(0, extraListings - 1)
-          WHERE id = ?
-            AND extraListings > 0
-            AND plusExpiresAt IS NOT NULL
-            AND plusExpiresAt > NOW(3)
-        `,
-        gate.userId
-      );
-      if (Number(consumed || 0) < 1) {
-        return NextResponse.json(
-          {
-            success: false,
-            errorCode: 'PUBLICATION_REQUIRES_PLUS',
-            message: 'Brak dostępnego kredytu Pakietu Plus. Użyj kuponu lub doładuj kredyt.',
-            quote,
-          },
-          { status: 409 }
-        );
-      }
-      consumedKind = 'PLUS_CREDIT';
-    } else if (redemptionSource === 'bonus_coupon') {
-      if (!couponId) {
-        return NextResponse.json(
-          { success: false, errorCode: 'COUPON_REQUIRED', message: 'Podaj ID kuponu do wykorzystania.' },
-          { status: 400 }
-        );
-      }
-      if (couponId.startsWith('welcome_')) {
-        await ensureWelcomePromoCardForUser(gate.userId);
-      }
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS MobileProfilePromoCard (
-          id VARCHAR(64) NOT NULL,
-          userId INT NOT NULL,
-          kind VARCHAR(32) NOT NULL DEFAULT 'admin_promo',
-          title VARCHAR(191) NOT NULL,
-          subtitle VARCHAR(255) NOT NULL DEFAULT '',
-          meta TEXT NULL,
-          accentColor VARCHAR(32) NULL,
-          iconName VARCHAR(64) NULL,
-          pillLabel VARCHAR(64) NULL,
-          templateId VARCHAR(64) NULL,
-          grantsFreeListing TINYINT(1) NOT NULL DEFAULT 0,
-          couponUsed TINYINT(1) NOT NULL DEFAULT 0,
-          purpose VARCHAR(32) NULL,
-          birthdayYear INT NULL,
-          expiresAt DATETIME(3) NULL,
-          createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-          updatedAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-          PRIMARY KEY (id),
-          KEY MobileProfilePromoCard_user_idx (userId, couponUsed, createdAt)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-      `);
-      const consumedCoupon = await prisma.$executeRawUnsafe(
-        `
-          UPDATE MobileProfilePromoCard
-          SET couponUsed = 1, updatedAt = NOW(3)
-          WHERE id = ?
-            AND userId = ?
-            AND grantsFreeListing = 1
-            AND couponUsed = 0
-            AND (expiresAt IS NULL OR expiresAt > NOW(3))
-        `,
-        couponId.slice(0, 64),
-        gate.userId
-      );
-      if (Number(consumedCoupon || 0) < 1) {
-        return NextResponse.json(
-          {
-            success: false,
-            errorCode: 'COUPON_NOT_AVAILABLE',
-            message: 'Kupon jest nieważny, wygasł lub został już wykorzystany.',
-          },
-          { status: 409 }
-        );
-      }
-      consumedKind = 'BONUS_COUPON';
-      consumedCouponId = couponId.slice(0, 64);
-    } else {
-      if (!iapTransactionId) {
-        return NextResponse.json(
-          { success: false, errorCode: 'IAP_TRANSACTION_REQUIRED', message: 'Brak ID transakcji IAP.' },
-          { status: 400 }
-        );
-      }
-      const consumedIap = await prisma.$executeRawUnsafe(
-        `
-          UPDATE MobileIapPurchase
-          SET consumedAt = COALESCE(consumedAt, NOW(3)),
-              verifyStatus = 'VERIFIED'
-          WHERE userId = ?
-            AND transactionId = ?
-            AND productId = 'pl.estateos.app.pakiet_plus_30d'
-            AND consumedAt IS NULL
-            AND verifyStatus = 'VERIFIED'
-        `,
-        gate.userId,
-        iapTransactionId.slice(0, 128)
-      );
-      if (Number(consumedIap || 0) < 1) {
-        return NextResponse.json(
-          {
-            success: false,
-            errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
-            message: 'Nie znaleziono niewykorzystanej transakcji IAP dla Pakietu Plus.',
-          },
-          { status: 409 }
-        );
-      }
-      consumedKind = 'PLUS_IAP';
-      consumedIapTransactionId = iapTransactionId.slice(0, 128);
-    }
-
     const result = await createOfferFromOtodomDraft(draft, gate.userId);
     if (!result.ok) {
-      if (consumedKind) {
-        await rollbackImportPublicationConsumption({
-          userId: gate.userId,
-          consumedKind,
-          couponId: consumedCouponId,
-          iapTransactionId: consumedIapTransactionId,
-        });
-      }
       return NextResponse.json(
         {
           success: false,
@@ -252,24 +132,27 @@ export async function POST(req: Request) {
       );
     }
 
-    if (consumedKind) {
-      try {
-        await reservePublicationForImportedOffer({
-          offerId: result.offerId,
-          userId: gate.userId,
-          consumedKind,
-          couponId: consumedCouponId,
-          iapTransactionId: consumedIapTransactionId,
-        });
-      } catch (reserveError) {
-        await rollbackImportPublicationConsumption({
-          userId: gate.userId,
-          consumedKind,
-          couponId: consumedCouponId,
-          iapTransactionId: consumedIapTransactionId,
-        });
-        throw reserveError;
+    let payment: Awaited<ReturnType<typeof consumeAndReserveImportPublication>>;
+    try {
+      payment = await consumeAndReserveImportPublication({
+        offerId: result.offerId,
+        userId: gate.userId,
+        redemption,
+      });
+    } catch (paymentError) {
+      await deleteOfferAfterImportPaymentFailure(result.offerId);
+      if (paymentError instanceof ImportPublicationError) {
+        return NextResponse.json(
+          {
+            success: false,
+            errorCode: paymentError.code,
+            message: paymentError.message,
+            quote,
+          },
+          { status: paymentError.status }
+        );
       }
+      throw paymentError;
     }
 
     return NextResponse.json({
@@ -278,23 +161,20 @@ export async function POST(req: Request) {
       offer: result.offer,
       images: result.images,
       presentation: result.presentation,
-      redemption: consumedKind,
+      redemption: payment.kind,
+      publicationReserved: true,
+      wallet: {
+        extraListings: payment.extraListings,
+        plusExpiresAt: payment.plusExpiresAt,
+      },
       editUrl: result.editUrl,
       publicUrl: result.publicUrl,
       message:
         result.images.uploaded > 0
-          ? `Utworzono ofertę #${result.offerId} (PENDING) z ${result.images.uploaded} zdjęciami.`
-          : `Utworzono ofertę #${result.offerId} (PENDING). Zdjęcia nie zostały pobrane — uzupełnij ręcznie.`,
+          ? `Utworzono ofertę #${result.offerId} (PENDING) z ${result.images.uploaded} zdjęciami. Publikacja opłacona.`
+          : `Utworzono ofertę #${result.offerId} (PENDING). Publikacja opłacona. Zdjęcia uzupełnij ręcznie.`,
     });
   } catch (error) {
-    if (consumedKind) {
-      await rollbackImportPublicationConsumption({
-        userId: gate.userId,
-        consumedKind,
-        couponId: consumedCouponId,
-        iapTransactionId: consumedIapTransactionId,
-      });
-    }
     const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
     return NextResponse.json({ success: false, message }, { status: 422 });
   }

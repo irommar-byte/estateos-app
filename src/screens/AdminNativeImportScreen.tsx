@@ -341,7 +341,7 @@ export default function AdminNativeImportScreen() {
           setError('');
           setMessage('');
           try {
-            let res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
+            const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -349,20 +349,6 @@ export default function AdminNativeImportScreen() {
               },
               body: JSON.stringify({ draft, rightsConfirmed: true, redemption }),
             });
-            if (res.status === 404) {
-              res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import/create`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${token}`,
-                },
-              body: JSON.stringify({
-                draft,
-                rightsConfirmed: true,
-                redemption,
-              }),
-              });
-            }
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.success) {
               const errMessage = String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`);
@@ -370,17 +356,37 @@ export default function AdminNativeImportScreen() {
               Alert.alert('Nie udało się utworzyć oferty', errMessage);
               return;
             }
+            if (!data?.redemption || data?.publicationReserved !== true) {
+              const errMessage =
+                'Serwer nie potwierdził opłacenia publikacji. Kredyt nie został pobrany — spróbuj ponownie po aktualizacji aplikacji.';
+              setError(errMessage);
+              Alert.alert('Publikacja nieopłacona', errMessage);
+              return;
+            }
             setMessage(String(data?.message || 'Oferta utworzona.'));
             setCreatedOfferId(Number(data?.offerId || 0) || null);
             setEditUrl(String(data?.editUrl || ''));
             setPublicUrl(String(data?.publicUrl || ''));
             setPendingRedemption(redemption);
-            if (data?.redemption && redemption.source === 'bonus_coupon' && user?.id) {
+            if (redemption.source === 'bonus_coupon' && user?.id) {
               setPublicationChoiceCoupons((prev) =>
                 prev.filter((coupon) => coupon.id !== redemption.couponId),
               );
               const { markProfilePromoCouponUsed } = await import('../services/profilePromoService');
               await markProfilePromoCouponUsed(user.id, redemption.couponId, token);
+            }
+            const wallet = data?.wallet as { extraListings?: number; plusExpiresAt?: string | null } | undefined;
+            if (wallet && user) {
+              const currentUser = useAuthStore.getState().user;
+              if (currentUser) {
+                useAuthStore.setState({
+                  user: {
+                    ...currentUser,
+                    extraListings: Number(wallet.extraListings ?? currentUser.extraListings ?? 0),
+                    ...(wallet.plusExpiresAt ? { plusExpiresAt: wallet.plusExpiresAt } : {}),
+                  },
+                });
+              }
             }
             await clearImportDraftCache();
             setRestoredDraftBadge(false);
