@@ -1734,22 +1734,45 @@
       var agentCard = document.getElementById('agentPrintCard');
       var agentWasHidden = agentCard && agentCard.hidden;
       if (agentCard) agentCard.hidden = false;
-      window.scrollTo(0, 0);
 
       var restored = false;
+      var cleanupFns = [];
       function restoreAfterPrint() {
         if (restored) return;
         restored = true;
         if (agentCard && agentWasHidden) agentCard.hidden = true;
+        while (cleanupFns.length) {
+          var fn = cleanupFns.pop();
+          if (typeof fn === 'function') {
+            try { fn(); } catch (err) {}
+          }
+        }
       }
 
-      window.addEventListener('afterprint', function onAfterPrint() {
-        window.removeEventListener('afterprint', onAfterPrint);
+      function onAfterPrint() {
         restoreAfterPrint();
-      });
+      }
+      window.addEventListener('afterprint', onAfterPrint);
+      cleanupFns.push(function () { window.removeEventListener('afterprint', onAfterPrint); });
+
+      if (window.matchMedia) {
+        var mediaPrint = window.matchMedia('print');
+        var onMediaChange = function (event) {
+          if (!event.matches) restoreAfterPrint();
+        };
+        if (typeof mediaPrint.addEventListener === 'function') {
+          mediaPrint.addEventListener('change', onMediaChange);
+          cleanupFns.push(function () { mediaPrint.removeEventListener('change', onMediaChange); });
+        } else if (typeof mediaPrint.addListener === 'function') {
+          mediaPrint.addListener(onMediaChange);
+          cleanupFns.push(function () { mediaPrint.removeListener(onMediaChange); });
+        }
+      }
 
       try {
-        window.print();
+        requestAnimationFrame(function () {
+          window.print();
+        });
       } catch (e) {
         restoreAfterPrint();
         var toast = document.getElementById('toast');
@@ -1759,8 +1782,6 @@
         }
         return;
       }
-
-      setTimeout(restoreAfterPrint, 1500);
     });
   }
 
