@@ -1,10 +1,11 @@
 import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationCatalog';
 
 const OTODOM_HOST = 'otodom.pl';
+const OLX_HOST = 'olx.pl';
 const FETCH_TIMEOUT_MS = 20_000;
 
 export type OtodomImportDraft = {
-  source: 'OTODOM';
+  source: 'OTODOM' | 'OLX';
   externalId: number;
   externalUrl: string;
   slug: string;
@@ -16,6 +17,7 @@ export type OtodomImportDraft = {
   adminFee: number | null;
   deposit: number | null;
   area: number | null;
+  plotArea: number | null;
   rooms: number | null;
   floor: number | null;
   totalFloors: number | null;
@@ -63,7 +65,9 @@ function stripHtml(html: string): string {
 
 function parseNumber(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
-  const n = Number(String(raw).replace(/\s/g, '').replace(',', '.'));
+  const value = String(raw).replace(/\s/g, '').replace(',', '.');
+  const match = value.match(/-?\d+(?:\.\d+)?/);
+  const n = Number(match ? match[0] : value);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -90,6 +94,39 @@ function characteristicsMap(ad: RawAd): Map<string, { value: string; label: stri
     });
   }
   return map;
+}
+
+function resolvePlotAreaFromCharacteristics(
+  chars: Map<string, { value: string; label: string }>,
+  descriptionHtml: string,
+): number | null {
+  const keyCandidates = [
+    'plot_area',
+    'terrain_area',
+    'parcel_area',
+    'lot_area',
+    'dzialka',
+    'dzialka_area',
+    'land_area',
+  ];
+  for (const key of keyCandidates) {
+    const n = parseNumber(chars.get(key)?.value ?? chars.get(key)?.label);
+    if (n != null && n > 0) return n;
+  }
+
+  for (const entry of chars.values()) {
+    const label = String(entry.label || '').toLowerCase();
+    if (!label) continue;
+    if (label.includes('działk') || label.includes('dzialk') || label.includes('parcel') || label.includes('teren')) {
+      const n = parseNumber(entry.value || entry.label);
+      if (n != null && n > 0) return n;
+    }
+  }
+
+  const plain = stripHtml(descriptionHtml || '');
+  const m = plain.match(/powierzchnia\s+dzia[łl]ki[:\s]*([\d\s,.]+)\s*m/i);
+  const fallback = parseNumber(m?.[1]);
+  return fallback != null && fallback > 0 ? fallback : null;
 }
 
 function mapPropertyType(raw: unknown): OtodomImportDraft['propertyType'] {
@@ -125,6 +162,63 @@ function extractAdPayload(html: string): RawAd {
   return ad;
 }
 
+function extractOlxAdPayload(html: string): RawAd {
+  const key = 'window.__PRERENDERED_STATE__=';
+  const startIdx = html.indexOf(key);
+  if (startIdx < 0) {
+    throw new Error('Nie znaleziono danych ogłoszenia w HTML OLX.');
+  }
+
+  const quoteStart = html.indexOf('"', startIdx + key.length);
+  if (quoteStart < 0) {
+    throw new Error('Nie znaleziono zakodowanego payloadu OLX.');
+  }
+
+  let i = quoteStart + 1;
+  let escaped = false;
+  while (i < html.length) {
+    const ch = html[i];
+    if (escaped) {
+      escaped = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') break;
+    i += 1;
+  }
+
+  if (i >= html.length) {
+    throw new Error('Nie udało się odczytać końca payloadu OLX.');
+  }
+
+  const encoded = html.slice(quoteStart + 1, i);
+  let decoded: string;
+  try {
+    decoded = JSON.parse(`"${encoded}"`) as string;
+  } catch {
+    throw new Error('Nie udało się odkodować payloadu OLX.');
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(decoded);
+  } catch {
+    throw new Error('Nie udało się sparsować JSON payloadu OLX.');
+  }
+
+  const ad = (payload as { ad?: { ad?: RawAd } }).ad?.ad;
+  if (!ad || typeof ad !== 'object') {
+    throw new Error('Brak obiektu ogłoszenia OLX (ad.ad).');
+  }
+
+  return ad;
+}
+
 function normalizeOtodomUrl(input: string): string {
   let url: URL;
   try {
@@ -146,9 +240,47 @@ function normalizeOtodomUrl(input: string): string {
   return url.toString();
 }
 
-export function isOtodomOfferUrl(input: string): boolean {
+function normalizeOlxUrl(input: string): string {
+  let url: URL;
   try {
-    normalizeOtodomUrl(input);
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host !== OLX_HOST) {
+    throw new Error('Obsługiwane są wyłącznie linki z olx.pl.');
+  }
+  if (!url.pathname.includes('/d/oferta/')) {
+    throw new Error('URL musi wskazywać stronę ogłoszenia OLX (/d/oferta/...).');
+  }
+
+  url.hash = '';
+  return url.toString();
+}
+
+export function detectImportSource(input: string): OtodomImportDraft['source'] {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host === OTODOM_HOST) return 'OTODOM';
+  if (host === OLX_HOST) return 'OLX';
+  throw new Error('Obsługiwane są wyłącznie linki z OtoDom lub OLX.');
+}
+
+export function isSupportedImportOfferUrl(input: string): boolean {
+  try {
+    const source = detectImportSource(input);
+    if (source === 'OTODOM') {
+      normalizeOtodomUrl(input);
+    } else {
+      normalizeOlxUrl(input);
+    }
     return true;
   } catch {
     return false;
@@ -226,6 +358,7 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   const agencyRaw = (ad.agency ?? null) as Record<string, unknown> | null;
   const phones = Array.isArray(agencyRaw?.phones) ? agencyRaw?.phones : [];
   const descriptionHtml = String(ad.description ?? '');
+  const plotArea = resolvePlotAreaFromCharacteristics(chars, descriptionHtml);
 
   const characteristics: Record<string, { value: string; label: string }> = {};
   chars.forEach((value, key) => {
@@ -245,6 +378,7 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     adminFee: parseNumber(chars.get('rent')?.value),
     deposit: parseNumber(chars.get('deposit')?.value),
     area: parseNumber(chars.get('m')?.value),
+    plotArea,
     rooms: parseNumber(chars.get('rooms_num')?.value),
     floor: parseFloor(chars.get('floor_no')?.value),
     totalFloors: parseNumber(chars.get('building_floors_num')?.value),
@@ -284,6 +418,122 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   };
 }
 
+function getOlxParam(
+  params: Array<Record<string, unknown>>,
+  key: string,
+): { value: string; label: string } | null {
+  const row = params.find((entry) => String(entry.key ?? '') === key);
+  if (!row) return null;
+  const value = String(row.normalizedValue ?? row.value ?? '').trim();
+  const label = String(row.value ?? row.normalizedValue ?? '').trim();
+  return { value, label };
+}
+
+function mapOlxTransactionType(ad: RawAd): OtodomImportDraft['transactionType'] {
+  const category = (ad.category ?? {}) as Record<string, unknown>;
+  const categoryId = Number(category.id);
+  if (categoryId === 15 || categoryId === 20 || categoryId === 25 || categoryId === 127) {
+    return 'RENT';
+  }
+  const urlPath = String(ad.urlPath ?? ad.url ?? '').toLowerCase();
+  if (urlPath.includes('/wynajem/')) return 'RENT';
+  return 'SALE';
+}
+
+function mapOlxPropertyType(ad: RawAd): OtodomImportDraft['propertyType'] {
+  const urlPath = String(ad.urlPath ?? ad.url ?? '').toLowerCase();
+  if (urlPath.includes('/domy/')) return 'HOUSE';
+  if (urlPath.includes('/dzialki/')) return 'PLOT';
+  if (urlPath.includes('/biura-lokale/') || urlPath.includes('/pozostale-nieruchomosci/')) return 'COMMERCIAL';
+  return 'FLAT';
+}
+
+export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
+  const paramsRaw = Array.isArray(ad.params) ? ad.params : [];
+  const params = paramsRaw.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'));
+  const map = (key: string) => getOlxParam(params, key);
+  const location = (ad.location ?? {}) as Record<string, unknown>;
+  const mapData = (ad.map ?? {}) as Record<string, unknown>;
+  const user = (ad.user ?? null) as Record<string, unknown> | null;
+  const city = canonicalizeCity(String(location.cityName ?? '').trim());
+  const district = canonicalizeDistrict(city, String(location.districtName ?? '').trim());
+
+  const characteristics: Record<string, { value: string; label: string }> = {};
+  for (const entry of params) {
+    const key = String(entry.key ?? '').trim();
+    if (!key) continue;
+    characteristics[key] = {
+      value: String(entry.normalizedValue ?? entry.value ?? ''),
+      label: String(entry.value ?? entry.normalizedValue ?? ''),
+    };
+  }
+
+  const images = Array.isArray(ad.photos)
+    ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
+    : [];
+
+  return {
+    source: 'OLX',
+    externalId: parseNumber(ad.id) ?? 0,
+    externalUrl: String(ad.url ?? sourceUrl),
+    slug: String(ad.urlPath ?? ''),
+    title: String(ad.title ?? '').trim(),
+    transactionType: mapOlxTransactionType(ad),
+    propertyType: mapOlxPropertyType(ad),
+    price: parseNumber(((ad.price ?? {}) as Record<string, unknown>).regularPrice
+      ? (((ad.price ?? {}) as Record<string, unknown>).regularPrice as Record<string, unknown>).value
+      : null),
+    priceCurrency: 'PLN',
+    adminFee: null,
+    deposit: null,
+    area: parseNumber(map('m')?.value ?? map('m')?.label),
+    plotArea:
+      parseNumber(map('plot_area')?.value ?? map('plot_area')?.label) ??
+      parseNumber(map('terrain_area')?.value ?? map('terrain_area')?.label) ??
+      parseNumber(map('dzialka')?.value ?? map('dzialka')?.label),
+    rooms: parseNumber(map('rooms')?.value ?? map('rooms')?.label),
+    floor: parseFloor(map('floor_select')?.value ?? map('floor')?.value),
+    totalFloors: null,
+    yearBuilt: parseNumber(map('buildyear')?.value ?? map('build_year')?.value),
+    condition: map('market')?.label ?? null,
+    conditionCode: map('market')?.value ?? null,
+    heating: map('heating')?.label ?? null,
+    heatingCode: map('heating')?.value ?? null,
+    buildingType: map('builttype')?.label ?? map('building_type')?.label ?? null,
+    city,
+    district,
+    neighborhood: null,
+    street: null,
+    lat: parseNumber(mapData.lat),
+    lng: parseNumber(mapData.lon),
+    localityCountryCode: 'PL',
+    descriptionHtml: String(ad.description ?? ''),
+    descriptionText: stripHtml(String(ad.description ?? '')),
+    features: params.map((entry) => {
+      const name = String(entry.name ?? '').trim();
+      const value = String(entry.value ?? '').trim();
+      return name && value ? `${name}: ${value}` : '';
+    }).filter((value) => Boolean(value)),
+    imageUrls: images,
+    imageCount: images.length,
+    agency: user
+      ? {
+          id: parseNumber(user.id) ?? 0,
+          name: String(user.name ?? '').trim(),
+          phone: null,
+          address: null,
+        }
+      : null,
+    advertiserType: user ? (ad.isBusiness ? 'business' : 'private') : null,
+    status: String(ad.status ?? '').trim() || null,
+    createdAt: String(ad.createdTime ?? '').trim() || null,
+    modifiedAt: String(ad.lastRefreshTime ?? '').trim() || null,
+    characteristics,
+    locationWarnings: !district ? ['OLX nie podał dzielnicy — sprawdź mapowanie lokalizacji.'] : [],
+    parsedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')
@@ -298,4 +548,16 @@ export async function importOfferFromOtodomUrl(inputUrl: string): Promise<Otodom
   const html = await fetchOtodomOfferHtml(url);
   const ad = extractAdPayload(html);
   return parseOtodomAd(ad, url);
+}
+
+export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImportDraft> {
+  const source = detectImportSource(inputUrl);
+  if (source === 'OTODOM') {
+    return importOfferFromOtodomUrl(inputUrl);
+  }
+
+  const url = normalizeOlxUrl(inputUrl);
+  const html = await fetchOtodomOfferHtml(url);
+  const ad = extractOlxAdPayload(html);
+  return parseOlxAd(ad, url);
 }
