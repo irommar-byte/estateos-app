@@ -174,11 +174,11 @@ export async function ensureWelcomePromoCardForUser(userId: number): Promise<voi
   )) as Array<{ id: string; couponUsed: number }>;
   if (existing[0]) return;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { firstFreePublicationUsed: true },
-  });
-  if (!user || Number(user.firstFreePublicationUsed) > 0) return;
+  const userRows = (await prisma.$queryRawUnsafe(
+    'SELECT firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
+    userId,
+  )) as Array<{ firstFreePublicationUsed: number | null }>;
+  if (Number(userRows[0]?.firstFreePublicationUsed ?? 0) > 0) return;
 
   await prisma.$executeRawUnsafe(
     `
