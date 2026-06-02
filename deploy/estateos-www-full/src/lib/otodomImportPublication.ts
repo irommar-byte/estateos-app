@@ -76,8 +76,14 @@ async function setPendingPublicationTx(
   );
 }
 
-async function consumePlusCreditTx(tx: { $executeRawUnsafe: typeof prisma.$executeRawUnsafe }, userId: number) {
-  const rows = (await tx.$executeRawUnsafe(
+async function consumePlusCreditTx(
+  tx: {
+    $executeRawUnsafe: typeof prisma.$executeRawUnsafe;
+    $queryRawUnsafe: typeof prisma.$queryRawUnsafe;
+  },
+  userId: number,
+) {
+  const rows = (await tx.$queryRawUnsafe(
     `
       SELECT extraListings, plusExpiresAt
       FROM \`User\`
