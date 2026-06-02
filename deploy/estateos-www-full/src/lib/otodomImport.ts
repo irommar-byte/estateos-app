@@ -91,6 +91,7 @@ function parseNumber(raw: unknown): number | null {
 function parseFloor(raw: unknown): number | null {
   const value = String(raw ?? '').trim();
   if (!value) return null;
+  if (/parter/i.test(value)) return 0;
   const fromToken = value.match(/floor_(\d+)/i);
   if (fromToken) return parseNumber(fromToken[1]);
   return parseNumber(value);
@@ -618,7 +619,8 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
   })();
 
   const priceMain =
-    parseNumber(normalizedHtml.match(/info-secondary-price[^>]*>\s*([\d\s.,]+)\s*(?:zł|PLN)/i)?.[1]) ??
+    parseNumber(normalizedHtml.match(/info-primary-price[^>]*>\s*([\d\s.,]+)\s*(?:zł|PLN)/i)?.[1]) ??
+    parseNumber(normalizedHtml.match(/price:\s*['"][^'"]*?(\d[\d\s.,]*)\s*(?:zł|PLN)\s*(?:\(|$)/i)?.[1]) ??
     parseNumber(normalizedHtml.match(/price:\s*['"][^'"]*?(\d[\d\s.,]*)\s*(?:zł|PLN)[^'"]*['"]/i)?.[1]) ??
     parseNumber(normalizedHtml.match(/"price"\s*:\s*"?(\d[\d\s.,]*)"?/i)?.[1]);
   const priceCandidates = Array.from(
@@ -658,7 +660,9 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     parseNumber(normalizedHtml.match(/(\d+)\s*pok\./i)?.[1]) ??
     parseNumber(normalizedHtml.match(/liczba\s+pokoi[:\s]*([\d]+)/i)?.[1]) ??
     parseNumber(normalizedHtml.match(/(\d+)\s*pomieszczeni(?:a|e)/i)?.[1]);
-  const floor = parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]);
+  const floor =
+    parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]) ??
+    parseFloor(normalizedHtml.match(/pi(?:ę|e)tro\s*([0-9]+)\s*\/\s*[0-9]+/i)?.[1]);
   const yearBuilt = parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1]);
   const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
   const lng = parseNumber(html.match(/"longitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
@@ -671,6 +675,22 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
   const city = canonicalizeCity(String(cityRaw || '').trim());
   const district = canonicalizeDistrict(city, '');
   const htmlWithUnescapedSlashes = html.replace(/\\\//g, '/');
+  const photosJsonMatch = html.match(/photos:\s*(\{[\s\S]*?\})\s*,\s*adType\s*:/i);
+  let photosPreferred: string[] = [];
+  if (photosJsonMatch?.[1]) {
+    try {
+      const parsed = JSON.parse(photosJsonMatch[1]) as { l?: string[]; x?: string[]; m?: string[] };
+      photosPreferred = Array.isArray(parsed.l) && parsed.l.length
+        ? parsed.l
+        : Array.isArray(parsed.x) && parsed.x.length
+          ? parsed.x
+          : Array.isArray(parsed.m)
+            ? parsed.m
+            : [];
+    } catch {
+      photosPreferred = [];
+    }
+  }
   const imageFromOg = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
   const imageFromCdn = Array.from(
     new Set(
@@ -679,9 +699,24 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
         .filter(Boolean)
     )
   );
-  const imageUrls = Array.from(new Set([imageFromOg, ...imageFromCdn].filter(Boolean)));
+  const imageUrls =
+    photosPreferred.length > 0
+      ? Array.from(new Set(photosPreferred.filter(Boolean)))
+      : Array.from(new Set([imageFromOg, ...imageFromCdn].filter(Boolean)));
 
-  const transactionType = /wynajem|do wynajęcia|na wynajem/i.test(html) ? 'RENT' : 'SALE';
+  const adTypeToken =
+    html.match(/adTypeName:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/adType:\s*'([^']+)'/i)?.[1] ||
+    '';
+  const canonicalLower = cleanCanonical.toLowerCase();
+  const transactionType =
+    /sprzeda|sale/.test(adTypeToken.toLowerCase()) || canonicalLower.includes(',sprzedaz/')
+      ? 'SALE'
+      : /wynajem|rent/.test(adTypeToken.toLowerCase()) || canonicalLower.includes(',na-wynajem/')
+        ? 'RENT'
+        : /wynajem|do wynajęcia|na wynajem/i.test(normalizedHtml)
+          ? 'RENT'
+          : 'SALE';
   const propertyType = /dom/i.test(title)
     ? 'HOUSE'
     : /dzia[łl]k/i.test(title)
