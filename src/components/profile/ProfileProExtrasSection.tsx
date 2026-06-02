@@ -20,6 +20,7 @@ type FeatureId = 'auction' | 'openHouse' | 'insider' | 'circle';
 type Props = {
   user: Record<string, unknown> | null | undefined;
   isDark?: boolean;
+  onFeaturePress?: (id: FeatureId) => void;
 };
 
 function FeatureRow({
@@ -67,13 +68,17 @@ function FeatureRow({
   );
 }
 
-export default function ProfileProExtrasSection({ user, isDark = true }: Props) {
+export default function ProfileProExtrasSection({ user, isDark = true, onFeaturePress }: Props) {
   const { t } = useI18n();
 
   if (!hasActiveInvestorProMembership(user)) return null;
 
   const onFeature = (id: FeatureId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (onFeaturePress) {
+      onFeaturePress(id);
+      return;
+    }
     if (id === 'insider' || id === 'circle') {
       void Linking.openURL('https://estateos.pl/centrala').catch(() => {
         Alert.alert(t('common.error'), t(`profile.proExtras.features.${id}.alertBody`));

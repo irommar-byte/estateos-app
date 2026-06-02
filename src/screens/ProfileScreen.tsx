@@ -3700,7 +3700,16 @@ function ProfileScreenLoggedIn({
 
         {hasActiveInvestorProMembership(user) ? (
         <View style={styles.section}>
-            <ProfileProExtrasSection user={user} isDark={isDark} />
+            <ProfileProExtrasSection
+              user={user}
+              isDark={isDark}
+              onFeaturePress={(featureId) => {
+                if (featureId === 'insider' || featureId === 'circle') {
+                  (navigation as any).navigate('AdminNativeImport');
+                  return;
+                }
+              }}
+            />
           </View>
         ) : null}
 
