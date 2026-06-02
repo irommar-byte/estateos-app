@@ -10,6 +10,7 @@ REMOTE="${ESTATEOS_REMOTE_DIR:-~/estateos}"
 FILES=(
   "src/lib/otodomImportPublication.ts"
   "src/lib/otodomImport.ts"
+  "src/lib/otodomImportCreate.ts"
   "src/lib/profilePromoCards.ts"
   "src/app/api/mobile/v1/pro/otodom-import/create/route.ts"
   "src/app/api/mobile/v1/me/promo-cards/route.ts"

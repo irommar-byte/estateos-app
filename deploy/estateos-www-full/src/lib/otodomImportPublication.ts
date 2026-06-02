@@ -10,6 +10,33 @@ export type ImportRedemptionInput = {
   transactionId?: string;
 };
 
+/** Kontrakt WWW (`POST /api/otodom-import/create`) — zgodny z `buildCreatePublicationPayload`. */
+export type OtodomPublicationInput = {
+  kind?: string;
+  bonusCouponId?: string;
+  iapTransactionId?: string;
+  consumePlusPublication?: boolean;
+};
+
+export function publicationInputToRedemption(
+  pub: OtodomPublicationInput,
+): ImportRedemptionInput | null {
+  const bonusCouponId = String(pub.bonusCouponId || '').trim();
+  const iapTransactionId = String(pub.iapTransactionId || '').trim();
+  const kind = String(pub.kind || '').trim().toUpperCase();
+
+  if (bonusCouponId || kind === 'FREE_FIRST') {
+    return { source: 'bonus_coupon', couponId: bonusCouponId || undefined };
+  }
+  if (iapTransactionId || kind === 'PLUS_PAID') {
+    return { source: 'plus_iap', transactionId: iapTransactionId || undefined };
+  }
+  if (pub.consumePlusPublication === true || kind === 'PLUS_CREDIT') {
+    return { source: 'plus_credit' };
+  }
+  return null;
+}
+
 export class ImportPublicationError extends Error {
   constructor(
     message: string,

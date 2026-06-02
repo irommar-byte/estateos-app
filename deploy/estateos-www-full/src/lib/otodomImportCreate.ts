@@ -3,6 +3,13 @@ import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLo
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
+import {
+  consumeAndReserveImportPublication,
+  deleteOfferAfterImportPaymentFailure,
+  ImportPublicationError,
+  publicationInputToRedemption,
+  type OtodomPublicationInput,
+} from '@/lib/otodomImportPublication';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -211,7 +218,7 @@ export async function importOtodomImagesForOffer(params: {
 export async function createOfferFromOtodomDraft(
   draft: OtodomImportDraft,
   adminUserId: number,
-  _publication?: unknown,
+  publication?: OtodomPublicationInput | unknown,
 ) {
   const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (existing) {
@@ -248,6 +255,28 @@ export async function createOfferFromOtodomDraft(
     where: { id: offerId },
     select: { id: true, title: true, status: true, city: true, district: true, images: true },
   });
+
+  if (publication && typeof publication === 'object') {
+    const redemption = publicationInputToRedemption(publication as OtodomPublicationInput);
+    if (redemption) {
+      try {
+        await consumeAndReserveImportPublication({
+          offerId,
+          userId: adminUserId,
+          redemption,
+        });
+      } catch (error) {
+        await deleteOfferAfterImportPaymentFailure(offerId);
+        if (error instanceof ImportPublicationError) {
+          if (error.code === 'PUBLICATION_REQUIRES_PLUS') {
+            throw new Error('NO_PLUS_CREDIT_AVAILABLE');
+          }
+          throw new Error(error.message);
+        }
+        throw error;
+      }
+    }
+  }
 
   return {
     ok: true as const,
