@@ -258,6 +258,21 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
     await refreshPushPermission();
   };
 
+  const handleSystemPushToggle = async (nextValue: boolean) => {
+    if (nextValue) {
+      await handleSystemPushAction();
+      return;
+    }
+    Alert.alert(
+      t('profile.notifications.systemAlertTitle'),
+      t('profile.notifications.systemAlertBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('profile.notifications.settings'), onPress: () => void Linking.openSettings() },
+      ]
+    );
+  };
+
   const pushStatusLabel =
     pushPermissionStatus === 'granted'
       ? t('profile.notifications.enabled')
@@ -285,14 +300,13 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
                 <Text style={[styles.listTitle, { color: isDark ? '#FFF' : '#000' }]}>{t('profile.notifications.systemStatus')}</Text>
                 <Text style={styles.listSubtitle}>{pushStatusLabel}</Text>
               </View>
-              <Pressable
-                onPress={() => void handleSystemPushAction()}
-                style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
-              >
-                <Text style={{ color: '#007AFF', fontWeight: '700', fontSize: 15 }}>
-                  {pushPermissionStatus === 'denied' ? t('profile.notifications.settings') : t('profile.notifications.continue')}
-                </Text>
-              </Pressable>
+              <Switch
+                value={pushPermissionStatus === 'granted'}
+                onValueChange={(value) => void handleSystemPushToggle(value)}
+                trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#34C759' }}
+                thumbColor={Platform.OS === 'android' ? '#FFFFFF' : undefined}
+                ios_backgroundColor={isDark ? '#3A3A3C' : '#E5E5EA'}
+              />
             </View>
           </View>
           <Text style={styles.sectionFooter}>
@@ -839,6 +853,18 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
       }
       handleMyOffersClose();
       setTimeout(() => navigation.navigate('EditOffer', { offerId: selectedOffer.id }), 200);
+    } else if (actionType === 'COMMENTS') {
+      if (!selectedOffer?.id) return;
+      const offerId = Number(selectedOffer.id);
+      const commentsUrl = `${API_URL}/moje-konto/crm?offerId=${offerId}&comment=1`;
+      try {
+        await Linking.openURL(commentsUrl);
+      } catch {
+        Alert.alert(
+          t('profile.myOffers.alerts.editTitle'),
+          t('profile.myOffers.commentsOpenFailed', { defaultValue: 'Nie udało się otworzyć komentarzy dla oferty.' })
+        );
+      }
     } else if (actionType === 'BUMP') {
       Alert.alert(
         t('profile.myOffers.alerts.plusPackageTitle'),
@@ -1009,6 +1035,7 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
           <PremiumActionButton onPress={() => handleAction('PREVIEW')} icon="search" color={{ bg: 'rgba(0,122,255,0.1)', icon: '#007AFF' }} title={t('profile.myOffers.preview')} subtitle={t('profile.myOffers.previewSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton onPress={() => handleAction('EDIT')} icon="pencil" color={{ bg: 'rgba(255,159,10,0.1)', icon: '#FF9F0A' }} title={t('profile.myOffers.edit')} subtitle={t('profile.myOffers.editSubtitle')} theme={theme} isDark={isDark} />
+          <PremiumActionButton onPress={() => handleAction('COMMENTS')} icon="chatbubbles" color={{ bg: 'rgba(175,82,222,0.12)', icon: '#AF52DE' }} title={t('profile.myOffers.comments')} subtitle={t('profile.myOffers.commentsSubtitle')} theme={theme} isDark={isDark} />
           <PremiumActionButton disabled={selSt === 'ARCHIVED' || archiving} onPress={() => handleAction('ARCHIVE')} icon="archive" color={{ bg: selSt === 'ARCHIVED' ? 'rgba(142,142,147,0.1)' : 'rgba(255,59,48,0.1)', icon: selSt === 'ARCHIVED' ? '#8E8E93' : '#FF3B30' }} title={archiving ? t('profile.myOffers.withdrawing') : t('profile.myOffers.withdraw')} subtitle={t('profile.myOffers.withdrawSubtitle')} theme={theme} isDark={isDark} />
           {selSt === 'ARCHIVED' && (
             <PremiumActionButton

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking } from 'react-native';
 import {
   Gavel,
   DoorOpen,
@@ -73,6 +74,12 @@ export default function ProfileProExtrasSection({ user, isDark = true }: Props) 
 
   const onFeature = (id: FeatureId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (id === 'insider' || id === 'circle') {
+      void Linking.openURL('https://estateos.pl/centrala').catch(() => {
+        Alert.alert(t('common.error'), t(`profile.proExtras.features.${id}.alertBody`));
+      });
+      return;
+    }
     Alert.alert(
       t(`profile.proExtras.features.${id}.alertTitle`),
       t(`profile.proExtras.features.${id}.alertBody`)
