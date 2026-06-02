@@ -375,8 +375,12 @@ export default function AdminNativeImportScreen() {
             setEditUrl(String(data?.editUrl || ''));
             setPublicUrl(String(data?.publicUrl || ''));
             setPendingRedemption(redemption);
-            if (redemption.source === 'bonus_coupon') {
-              setPublicationChoiceCoupons((prev) => prev.filter((coupon) => coupon.id !== redemption.couponId));
+            if (data?.redemption && redemption.source === 'bonus_coupon' && user?.id) {
+              setPublicationChoiceCoupons((prev) =>
+                prev.filter((coupon) => coupon.id !== redemption.couponId),
+              );
+              const { markProfilePromoCouponUsed } = await import('../services/profilePromoService');
+              await markProfilePromoCouponUsed(user.id, redemption.couponId, token);
             }
             await clearImportDraftCache();
             setRestoredDraftBadge(false);

@@ -159,18 +159,64 @@ export async function createProfilePromoCard(
   return rowToApiCard(row);
 }
 
+export function welcomePromoCardId(userId: number): string {
+  return `welcome_${userId}`;
+}
+
+/** Stały kupon powitalny w DB — wymagany do pobrania przy imporcie / publikacji z mobile. */
+export async function ensureWelcomePromoCardForUser(userId: number): Promise<void> {
+  await ensureProfilePromoCardTable();
+  const id = welcomePromoCardId(userId);
+  const existing = (await prisma.$queryRawUnsafe(
+    `SELECT id, couponUsed FROM MobileProfilePromoCard WHERE id = ? AND userId = ? LIMIT 1`,
+    id,
+    userId,
+  )) as Array<{ id: string; couponUsed: number }>;
+  if (existing[0]) return;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { firstFreePublicationUsed: true },
+  });
+  if (!user || Number(user.firstFreePublicationUsed) > 0) return;
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO MobileProfilePromoCard
+        (id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
+         templateId, grantsFreeListing, couponUsed, purpose, birthdayYear, expiresAt)
+      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny', 'Jedna darmowa publikacja pierwszej oferty',
+              'Wykorzystaj przy pierwszym publicznym wystawieniu ogłoszenia.',
+              '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, 0, 'publication', NULL, NULL)
+    `,
+    id,
+    userId,
+  );
+}
+
 export async function markProfilePromoCardUsed(userId: number, cardId: string): Promise<boolean> {
   await ensureProfilePromoCardTable();
+  const normalizedId = String(cardId).slice(0, 64);
+  if (normalizedId.startsWith('welcome_')) {
+    await ensureWelcomePromoCardForUser(userId);
+  }
   const result = await prisma.$executeRawUnsafe(
     `
       UPDATE MobileProfilePromoCard
       SET couponUsed = 1, updatedAt = NOW(3)
       WHERE id = ? AND userId = ?
     `,
-    String(cardId).slice(0, 64),
+    normalizedId,
     userId,
   );
-  return Number(result || 0) > 0;
+  const ok = Number(result || 0) > 0;
+  if (ok && normalizedId.startsWith('welcome_')) {
+    await prisma.$executeRawUnsafe(
+      'UPDATE `User` SET firstFreePublicationUsed = 1 WHERE id = ?',
+      userId,
+    );
+  }
+  return ok;
 }
 
 export async function getProfilePromoCardForUser(userId: number, cardId: string) {

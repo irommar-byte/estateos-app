@@ -113,9 +113,5 @@ export async function ensureWelcomeCouponForUser(
     opts?.email != null ? await consumePendingWelcomeGrant(opts.email) : false;
   if (pendingRegister) return saveWelcomeCouponLocal(userId);
 
-  if (opts?.firstFreePublicationUsed === false) {
-    return saveWelcomeCouponLocal(userId);
-  }
-
   return null;
 }

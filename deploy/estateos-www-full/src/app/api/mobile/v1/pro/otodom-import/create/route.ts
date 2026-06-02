@@ -5,7 +5,13 @@ import { computeIsProActive } from '@/lib/mobileUserShape';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
+import {
+  reservePublicationForImportedOffer,
+  rollbackImportPublicationConsumption,
+  type ImportPublicationRedemptionKind,
+} from '@/lib/otodomImportPublication';
 import { getCreatePublicationQuote } from '@/lib/offerPublication';
+import { ensureWelcomePromoCardForUser } from '@/lib/profilePromoCards';
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -53,7 +59,7 @@ export async function POST(req: Request) {
   const gate = await requireInvestorPro(req);
   if (!gate.ok) return gate.response;
 
-  let consumedKind: 'PLUS_CREDIT' | 'BONUS_COUPON' | 'PLUS_IAP' | null = null;
+  let consumedKind: ImportPublicationRedemptionKind | null = null;
   let consumedCouponId: string | null = null;
   let consumedIapTransactionId: string | null = null;
   try {
@@ -136,6 +142,9 @@ export async function POST(req: Request) {
           { success: false, errorCode: 'COUPON_REQUIRED', message: 'Podaj ID kuponu do wykorzystania.' },
           { status: 400 }
         );
+      }
+      if (couponId.startsWith('welcome_')) {
+        await ensureWelcomePromoCardForUser(gate.userId);
       }
       await prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS MobileProfilePromoCard (
@@ -222,26 +231,13 @@ export async function POST(req: Request) {
 
     const result = await createOfferFromOtodomDraft(draft, gate.userId);
     if (!result.ok) {
-      if (consumedKind === 'PLUS_CREDIT') {
-        await prisma.$executeRawUnsafe('UPDATE `User` SET extraListings = extraListings + 1 WHERE id = ?', gate.userId);
-      } else if (consumedKind === 'BONUS_COUPON' && consumedCouponId) {
-        await prisma.$executeRawUnsafe(
-          'UPDATE MobileProfilePromoCard SET couponUsed = 0, updatedAt = NOW(3) WHERE id = ? AND userId = ?',
-          consumedCouponId,
-          gate.userId
-        );
-      } else if (consumedKind === 'PLUS_IAP' && consumedIapTransactionId) {
-        await prisma.$executeRawUnsafe(
-          `
-            UPDATE MobileIapPurchase
-            SET consumedAt = NULL
-            WHERE userId = ?
-              AND transactionId = ?
-              AND productId = 'pl.estateos.app.pakiet_plus_30d'
-          `,
-          gate.userId,
-          consumedIapTransactionId
-        );
+      if (consumedKind) {
+        await rollbackImportPublicationConsumption({
+          userId: gate.userId,
+          consumedKind,
+          couponId: consumedCouponId,
+          iapTransactionId: consumedIapTransactionId,
+        });
       }
       return NextResponse.json(
         {
@@ -254,6 +250,26 @@ export async function POST(req: Request) {
         },
         { status: 409 }
       );
+    }
+
+    if (consumedKind) {
+      try {
+        await reservePublicationForImportedOffer({
+          offerId: result.offerId,
+          userId: gate.userId,
+          consumedKind,
+          couponId: consumedCouponId,
+          iapTransactionId: consumedIapTransactionId,
+        });
+      } catch (reserveError) {
+        await rollbackImportPublicationConsumption({
+          userId: gate.userId,
+          consumedKind,
+          couponId: consumedCouponId,
+          iapTransactionId: consumedIapTransactionId,
+        });
+        throw reserveError;
+      }
     }
 
     return NextResponse.json({
@@ -271,26 +287,13 @@ export async function POST(req: Request) {
           : `Utworzono ofertę #${result.offerId} (PENDING). Zdjęcia nie zostały pobrane — uzupełnij ręcznie.`,
     });
   } catch (error) {
-    if (consumedKind === 'PLUS_CREDIT') {
-      await prisma.$executeRawUnsafe('UPDATE `User` SET extraListings = extraListings + 1 WHERE id = ?', gate.userId);
-    } else if (consumedKind === 'BONUS_COUPON' && consumedCouponId) {
-      await prisma.$executeRawUnsafe(
-        'UPDATE MobileProfilePromoCard SET couponUsed = 0, updatedAt = NOW(3) WHERE id = ? AND userId = ?',
-        consumedCouponId,
-        gate.userId
-      );
-    } else if (consumedKind === 'PLUS_IAP' && consumedIapTransactionId) {
-      await prisma.$executeRawUnsafe(
-        `
-          UPDATE MobileIapPurchase
-          SET consumedAt = NULL
-          WHERE userId = ?
-            AND transactionId = ?
-            AND productId = 'pl.estateos.app.pakiet_plus_30d'
-        `,
-        gate.userId,
-        consumedIapTransactionId
-      );
+    if (consumedKind) {
+      await rollbackImportPublicationConsumption({
+        userId: gate.userId,
+        consumedKind,
+        couponId: consumedCouponId,
+        iapTransactionId: consumedIapTransactionId,
+      });
     }
     const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
     return NextResponse.json({ success: false, message }, { status: 422 });
