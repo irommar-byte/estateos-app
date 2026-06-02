@@ -156,6 +156,18 @@ export const profile = {
     bonusCouponsEmpty: 'No active coupons — hidden cards stay hidden.',
     plusSectionTitle: 'Plus Package',
     plusPackage: 'Plus Package',
+    investorProSectionTitle: 'Investor Pro',
+    investorProPackage: 'Investor Pro Package',
+    investorProActive: 'Investor Pro active',
+    investorProInactive: 'No active Investor Pro',
+    investorProMeta: 'Portal import, off-market preview and Pro tools for 30 days.',
+    investorProValidUntil: 'Valid until {{date}}',
+    investorProDaysLeft: '{{days}} {{daysLabel}} of Pro access left',
+    buyInvestorPro: 'Buy Investor Pro',
+    buyInvestorProExtend: 'Extend Investor Pro',
+    buyInvestorProSubtitle: 'Pay for 30 days of Investor Pro in the App Store',
+    investorProFooter:
+      'Investor Pro is a 30-day package: import from portals, off-market preview and Pro tools. It is separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
     plusSlotOne: '1 Plus publication available',
     plusSlotsMany: '{{count}} Plus publications available',
     noPackages: 'No packages — buy before the next paid publication',
@@ -234,6 +246,13 @@ export const profile = {
         'You have {{count}} Plus publications to use when publishing a listing.',
       plusActivePending:
         'Payment received. Processing — refresh Profile in a moment.',
+      investorProLoginBody: 'Sign in again to buy Investor Pro.',
+      investorProPurchaseTitle: 'Buy Investor Pro',
+      investorProActiveTitle: 'Investor Pro active',
+      investorProActiveBody:
+        'Investor Pro is active. Portal import and premium tools are unlocked.',
+      investorProActivePending:
+        'Payment received. Activation in progress — refresh Profile shortly.',
     },
   },
   help: {

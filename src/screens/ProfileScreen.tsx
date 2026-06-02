@@ -22,10 +22,11 @@ import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
+import { purchaseInvestorProConsumable } from '../services/iapInvestorPro';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import ProfileProExtrasSection from '../components/profile/ProfileProExtrasSection';
-import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
+import { hasActiveInvestorProMembership, buildProMembershipCountdown, userAfterInvestorProPurchase } from '../utils/investorProMembership';
 import DeleteAccountSheet from '../components/DeleteAccountSheet';
 import EditNameSheet from '../components/profile/EditNameSheet';
 import EditPhoneSheet from '../components/profile/EditPhoneSheet';
@@ -41,6 +42,7 @@ import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
 import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
 import BonusCouponsSection from '../components/profile/BonusCouponsSection';
 import PlusPackageShopPanel from '../components/profile/PlusPackageShopPanel';
+import InvestorProShopPanel from '../components/profile/InvestorProShopPanel';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -2931,6 +2933,7 @@ function ProfileScreenLoggedIn({
    */
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [isBuyingPakietPlus, setIsBuyingPakietPlus] = useState(false);
+  const [isBuyingInvestorPro, setIsBuyingInvestorPro] = useState(false);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -3397,6 +3400,30 @@ function ProfileScreenLoggedIn({
       ? t('profile.shop.plusValidUntil', { date: plusExpiryLabel })
       : null;
 
+  const hasInvestorProActive = hasActiveInvestorProMembership(user);
+  const investorProCountdown = buildProMembershipCountdown((user as any)?.proExpiresAt);
+  const investorProExpiryLabel = investorProCountdown
+    ? new Date(investorProCountdown.expiresAtMs).toLocaleDateString(dateLocale, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+    : null;
+  const investorProStatusLabel = hasInvestorProActive
+    ? t('profile.shop.investorProActive')
+    : t('profile.shop.investorProInactive');
+  const investorProMetaLabel = hasInvestorProActive && investorProCountdown
+    ? t('profile.shop.investorProDaysLeft', {
+        days: investorProCountdown.daysLeft,
+        daysLabel:
+          investorProCountdown.daysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
+      })
+    : t('profile.shop.investorProMeta');
+  const investorProExpiryLine =
+    hasInvestorProActive && investorProExpiryLabel
+      ? t('profile.shop.investorProValidUntil', { date: investorProExpiryLabel })
+      : null;
+
   const toggleSms = async (value) => {
     setIsSmsEnabled(value);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -3540,6 +3567,46 @@ function ProfileScreenLoggedIn({
       );
     } finally {
       setIsBuyingPakietPlus(false);
+    }
+  };
+
+  const handleBuyInvestorPro = async () => {
+    if (isBuyingInvestorPro) return;
+    if (!token) {
+      Alert.alert(t('profile.shop.alerts.loginRequiredTitle'), t('profile.shop.alerts.investorProLoginBody'));
+      return;
+    }
+
+    setIsBuyingInvestorPro(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const result = await purchaseInvestorProConsumable(API_URL, token);
+      if (result.cancelled) return;
+      if (!result.ok) {
+        Alert.alert(t('profile.shop.alerts.investorProPurchaseTitle'), result.message || t('profile.shop.alerts.purchaseFailed'));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+
+      await refreshUser?.();
+      const patched = userAfterInvestorProPurchase(useAuthStore.getState().user, {
+        backendRegistered: Boolean(result.backendRegistered),
+        isPro: result.isPro,
+        proExpiresAt: result.proExpiresAt,
+      });
+      if (patched) {
+        useAuthStore.setState({ user: { ...useAuthStore.getState().user, ...patched } });
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        t('profile.shop.alerts.investorProActiveTitle'),
+        hasActiveInvestorProMembership(patched ?? useAuthStore.getState().user)
+          ? t('profile.shop.alerts.investorProActiveBody')
+          : t('profile.shop.alerts.investorProActivePending'),
+      );
+    } finally {
+      setIsBuyingInvestorPro(false);
     }
   };
 
@@ -3910,6 +3977,37 @@ function ProfileScreenLoggedIn({
               ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
               : t('profile.shop.footerAndroid')}
           </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.shop.investorProSectionTitle')}</Text>
+          <InvestorProShopPanel
+            isDark={isDark}
+            title={t('profile.shop.investorProPackage')}
+            statusLabel={investorProStatusLabel}
+            metaLabel={investorProMetaLabel}
+            expiryLabel={investorProExpiryLine}
+            buyLabel={
+              hasInvestorProActive
+                ? t('profile.shop.buyInvestorProExtend')
+                : t('profile.shop.buyInvestorPro')
+            }
+            buySubtitle={t('profile.shop.buyInvestorProSubtitle')}
+            restoreLabel={t('profile.shop.restorePurchases')}
+            restoreSubtitle={
+              isRestoringPurchases
+                ? t('profile.shop.restoring')
+                : Platform.OS === 'ios'
+                  ? t('profile.shop.restoreIos')
+                  : t('profile.shop.restoreAndroid')
+            }
+            buying={isBuyingInvestorPro}
+            restoring={isRestoringPurchases}
+            isActive={hasInvestorProActive}
+            onBuy={handleBuyInvestorPro}
+            onRestore={handleRestorePurchases}
+          />
+          <Text style={styles.sectionFooter}>{t('profile.shop.investorProFooter')}</Text>
         </View>
 
         {isZarzad && (

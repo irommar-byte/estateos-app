@@ -156,6 +156,18 @@ export const profile = {
     bonusCouponsEmpty: 'Brak aktywnych kuponów — ukryte karty nie wracają.',
     plusSectionTitle: 'Pakiet Plus',
     plusPackage: 'Pakiet Plus',
+    investorProSectionTitle: 'Investor Pro',
+    investorProPackage: 'Pakiet Inwestor Pro',
+    investorProActive: 'Investor Pro aktywny',
+    investorProInactive: 'Brak aktywnego Investor Pro',
+    investorProMeta: 'Import z portali, off-market i narzędzia premium na 30 dni.',
+    investorProValidUntil: 'Ważne do {{date}}',
+    investorProDaysLeft: 'Pozostało {{days}} {{daysLabel}} dostępu Pro',
+    buyInvestorPro: 'Kup Investor Pro',
+    buyInvestorProExtend: 'Przedłuż Investor Pro',
+    buyInvestorProSubtitle: 'Opłać 30 dni Investor Pro w App Store',
+    investorProFooter:
+      'Investor Pro to pakiet na 30 dni: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. To nie jest to samo co Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
     plusSlotOne: '1 publikacja Plus do wykorzystania',
     plusSlotsMany: '{{count}} publikacji Plus do wykorzystania',
     noPackages: 'Brak pakietów — kup przed kolejną płatną publikacją',
@@ -234,6 +246,13 @@ export const profile = {
         'Masz {{count}} publikacje Plus do wykorzystania przy publikacji ogłoszenia.',
       plusActivePending:
         'Płatność została przyjęta. Księgowanie trwa — odśwież Profil za chwilę.',
+      investorProLoginBody: 'Zaloguj się ponownie, aby kupić Investor Pro.',
+      investorProPurchaseTitle: 'Zakup Investor Pro',
+      investorProActiveTitle: 'Investor Pro aktywny',
+      investorProActiveBody:
+        'Masz aktywny dostęp Investor Pro. Import z portali i narzędzia premium są odblokowane.',
+      investorProActivePending:
+        'Płatność została przyjęta. Trwa aktywacja — odśwież Profil za chwilę.',
     },
   },
   help: {

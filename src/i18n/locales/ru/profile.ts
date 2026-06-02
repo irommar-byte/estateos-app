@@ -156,6 +156,18 @@ export const profile = {
     bonusCouponsEmpty: 'Нет активных купонов — скрытые карточки не возвращаются.',
     plusSectionTitle: 'Пакет Plus',
     plusPackage: 'Пакет Плюс',
+    investorProSectionTitle: 'Investor Pro',
+    investorProPackage: 'Пакет Investor Pro',
+    investorProActive: 'Investor Pro активен',
+    investorProInactive: 'Investor Pro не активен',
+    investorProMeta: 'Импорт с порталов, off-market и Pro-инструменты на 30 дней.',
+    investorProValidUntil: 'Действует до {{date}}',
+    investorProDaysLeft: 'Осталось {{days}} {{daysLabel}} доступа Pro',
+    buyInvestorPro: 'Купить Investor Pro',
+    buyInvestorProExtend: 'Продлить Investor Pro',
+    buyInvestorProSubtitle: 'Оплатите 30 дней Investor Pro в App Store',
+    investorProFooter:
+      'Investor Pro — пакет на 30 дней: импорт с порталов, off-market и Pro-инструменты. Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
     plusSlotOne: 'Доступна 1 публикация Plus',
     plusSlotsMany: '{{count}} Плюс доступны публикации',
     noPackages: 'Нет пакетов — купите до следующей платной публикации',
@@ -234,6 +246,13 @@ export const profile = {
         'You have {{count}} Plus publications to use when publishing a listing.',
       plusActivePending:
         'Payment received. Processing — refresh Profile in a moment.',
+      investorProLoginBody: 'Войдите еще раз, чтобы купить Investor Pro.',
+      investorProPurchaseTitle: 'Покупка Investor Pro',
+      investorProActiveTitle: 'Investor Pro активен',
+      investorProActiveBody:
+        'Investor Pro активен. Импорт с порталов и premium-инструменты разблокированы.',
+      investorProActivePending:
+        'Платеж принят. Идет активация — обновите профиль через минуту.',
     },
   },
   help: {

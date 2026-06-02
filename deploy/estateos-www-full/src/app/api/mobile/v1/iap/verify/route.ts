@@ -5,7 +5,13 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { mobileBearerUserId, readJson } from '@/lib/mobileApiAuth';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
-import { buildPakietPlusUserUpdate, isPakietPlusProductId } from '@/lib/mobileIapEntitlements';
+import {
+  buildInvestorProIapUserUpdate,
+  buildPakietPlusUserUpdate,
+  isInvestorProProductId,
+  isPakietPlusProductId,
+  isSupportedIapProductId,
+} from '@/lib/mobileIapEntitlements';
 
 export async function POST(req: Request) {
   const userId = mobileBearerUserId(req);
@@ -28,9 +34,12 @@ export async function POST(req: Request) {
   if (!productId) {
     return NextResponse.json({ success: false, message: 'Brak productId' }, { status: 400 });
   }
-  if (!isPakietPlusProductId(productId)) {
-    return NextResponse.json({ success: false, message: 'Nieobsługiwany productId Pakietu Plus' }, { status: 400 });
+  if (!isSupportedIapProductId(productId)) {
+    return NextResponse.json({ success: false, message: 'Nieobsługiwany productId IAP' }, { status: 400 });
   }
+
+  const isPlus = isPakietPlusProductId(productId);
+  const isInvestorPro = isInvestorProProductId(productId);
 
   await ensureMobileIapTables();
   await prisma.$executeRawUnsafe(
@@ -83,7 +92,7 @@ export async function POST(req: Request) {
 
   const current = await prisma.user.findUnique({
     where: { id: userId },
-    select: { extraListings: true, plusExpiresAt: true },
+    select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true },
   });
   if (!current) {
     return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
@@ -91,20 +100,42 @@ export async function POST(req: Request) {
 
   let plusExpiresAt = current.plusExpiresAt;
   let extraListings = current.extraListings;
+  let proExpiresAt = current.proExpiresAt;
+  let isPro = current.isPro;
   let entitlementGranted = false;
-  if (!deferPublicationConsume && alreadyGranted.length === 0) {
-    const update = buildPakietPlusUserUpdate();
+  let investorProGranted = false;
+
+  const shouldGrantPlus = isPlus && !deferPublicationConsume && alreadyGranted.length === 0;
+  const shouldGrantInvestorPro = isInvestorPro && alreadyGranted.length === 0;
+
+  if (shouldGrantPlus) {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: update,
-      select: { extraListings: true, plusExpiresAt: true },
+      data: buildPakietPlusUserUpdate(),
+      select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true },
     });
     extraListings = updatedUser.extraListings;
     plusExpiresAt = updatedUser.plusExpiresAt;
+    isPro = updatedUser.isPro;
+    proExpiresAt = updatedUser.proExpiresAt;
     entitlementGranted = true;
   }
 
-  if (purchaseKeys.length && !deferPublicationConsume) {
+  if (shouldGrantInvestorPro) {
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: buildInvestorProIapUserUpdate(current.proExpiresAt),
+      select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true },
+    });
+    extraListings = updatedUser.extraListings;
+    plusExpiresAt = updatedUser.plusExpiresAt;
+    isPro = updatedUser.isPro;
+    proExpiresAt = updatedUser.proExpiresAt;
+    entitlementGranted = true;
+    investorProGranted = true;
+  }
+
+  if (purchaseKeys.length && (shouldGrantPlus || shouldGrantInvestorPro)) {
     await prisma.$executeRawUnsafe(
       `
         UPDATE MobileIapPurchase
@@ -130,14 +161,22 @@ export async function POST(req: Request) {
     success: true,
     verified: true,
     status: 'VERIFIED',
-    publicationConsumeDeferred: deferPublicationConsume,
+    publicationConsumeDeferred: isPlus ? deferPublicationConsume : false,
     pendingPurchaseId,
     productId,
     transactionId,
-    extraListings: deferPublicationConsume ? 0 : extraListings,
+    extraListings: isPlus && deferPublicationConsume ? 0 : extraListings,
     plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null,
+    isPro: Boolean(isPro),
+    proExpiresAt: proExpiresAt ? new Date(proExpiresAt).toISOString() : null,
+    investorProGranted,
     backendRegistered: true,
     entitlementGranted,
-    entitlements: { plus: true, plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null },
+    entitlements: {
+      plus: isPlus,
+      plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null,
+      investorPro: isInvestorPro,
+      proExpiresAt: proExpiresAt ? new Date(proExpiresAt).toISOString() : null,
+    },
   });
 }

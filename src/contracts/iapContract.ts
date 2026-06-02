@@ -50,15 +50,18 @@
 export const IAP_PRODUCT_IDS = {
   /** Consumable: pozwala dodać 1 dodatkową publikację na 30 dni. */
   PAKIET_PLUS_30D: 'pl.estateos.app.pakiet_plus_30d',
+  /** Consumable: aktywuje Investor Pro na 30 dni (import, off-market, narzędzia Pro). */
+  INVESTOR_PRO: 'pl.estateos.app.pakiet_investor_pro',
 } as const;
 
 export type IapProductId = (typeof IAP_PRODUCT_IDS)[keyof typeof IAP_PRODUCT_IDS];
 
 /** Logiczna nazwa produktu — używana do mapowania backend → UI. */
-export type IapProductKind = 'PAKIET_PLUS_30D';
+export type IapProductKind = 'PAKIET_PLUS_30D' | 'INVESTOR_PRO';
 
 export function getProductKind(productId: string): IapProductKind | null {
   if (productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D) return 'PAKIET_PLUS_30D';
+  if (productId === IAP_PRODUCT_IDS.INVESTOR_PRO) return 'INVESTOR_PRO';
   return null;
 }
 
@@ -128,6 +131,10 @@ export type IapVerifyResponse =
       extraListings?: number;
       /** Data końca 30-dniowej dodatkowej publikacji / prawa publikacji (ISO 8601), jeśli backend ją zwraca. */
       plusExpiresAt?: string | null;
+      /** Po zakupie Investor Pro — status konta. */
+      isPro?: boolean;
+      proExpiresAt?: string | null;
+      investorProGranted?: boolean;
       /** Echo: verify przyjęte, slot zużyty dopiero przy utworzeniu oferty. */
       publicationConsumeDeferred?: boolean;
       /** Czy backend POTWIERDZIŁ weryfikację z Apple/Google.

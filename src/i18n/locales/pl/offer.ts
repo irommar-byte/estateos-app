@@ -25,7 +25,7 @@ export const offer = {
   investorPro: {
     alertTitle: 'Investor Pro',
     alertBody:
-      'Investor Pro jest statusem konta dostępnym poza aplikacją. W aplikacji nie prowadzimy do zakupu Pro; ta oferta odblokuje się automatycznie po czasie oczekiwania.',
+      'Investor Pro odblokowuje podgląd off-market i narzędzia premium. Możesz kupić pakiet w Profil → Zakupy i sklep albo poczekać do końca okresu oczekiwania.',
     paidFeaturesTitle: 'Aktywne płatne funkcje',
     deleteAccountDisclaimer:
       'Usunięcie konta usuwa dostęp do funkcji konta w EstateOS. Pakiet Plus jest jednorazowym zakupem w aplikacji pozwalającym dodać jedną dodatkową publikację na 30 dni; Investor Pro nie jest kupowany w aplikacji.',

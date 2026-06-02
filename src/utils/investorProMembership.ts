@@ -55,3 +55,23 @@ export function buildProMembershipCountdown(
 
   return { expiresAtMs, daysLeft, hoursLeft, progress, labelKey };
 }
+
+export function userAfterInvestorProPurchase(
+  user: Record<string, unknown> | null | undefined,
+  opts: { isPro?: boolean; proExpiresAt?: string | null; backendRegistered?: boolean },
+): Record<string, unknown> | null {
+  if (!user) return null;
+  if (opts.isPro === true || opts.proExpiresAt) {
+    return {
+      ...user,
+      isPro: true,
+      planType: 'PRO',
+      ...(opts.proExpiresAt ? { proExpiresAt: opts.proExpiresAt } : {}),
+    };
+  }
+  if (opts.backendRegistered) {
+    const optimistic = new Date(Date.now() + DEFAULT_PRO_PERIOD_MS).toISOString();
+    return { ...user, isPro: true, planType: 'PRO', proExpiresAt: optimistic };
+  }
+  return user;
+}

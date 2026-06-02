@@ -77,6 +77,8 @@ export type IapPurchaseResult =
       backendVerified: boolean;
       /** Liczba dodatkowych publikacji po zaksięgowaniu (jeśli backend zwrócił). */
       extraListings?: number;
+      isPro?: boolean;
+      proExpiresAt?: string | null;
       /** Żądano odłożonego zużycia slotu (nie bumpuj extraListings w UI przed publish). */
       deferPublicationConsume?: boolean;
       publicationConsumeDeferred?: boolean;
@@ -445,6 +447,8 @@ class IAPManagerImpl {
         transactionId: this.transactionIdOf(payload),
         backendVerified: true,
         extraListings: verifyResult.extraListings,
+        isPro: verifyResult.isPro,
+        proExpiresAt: verifyResult.proExpiresAt,
         deferPublicationConsume: Boolean(
           'deferPublicationConsume' in payload && payload.deferPublicationConsume,
         ),
@@ -462,6 +466,8 @@ class IAPManagerImpl {
         transactionId: this.transactionIdOf(payload),
         backendVerified: false,
         extraListings: verifyResult.extraListings,
+        isPro: verifyResult.isPro,
+        proExpiresAt: verifyResult.proExpiresAt,
         deferPublicationConsume: Boolean(
           'deferPublicationConsume' in payload && payload.deferPublicationConsume,
         ),
@@ -552,8 +558,10 @@ class IAPManagerImpl {
   }
 
   private isConsumable(productId: IapProductId): boolean {
-    // Wszystkie obecne produkty to consumable.
-    return productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D;
+    return (
+      productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D ||
+      productId === IAP_PRODUCT_IDS.INVESTOR_PRO
+    );
   }
 
   private resolveWaiterFor(productId: IapProductId, result: IapPurchaseResult): void {
