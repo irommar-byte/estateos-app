@@ -545,70 +545,130 @@
     .brochure-exporting .description-hint,
     .brochure-exporting .actions,
     .brochure-exporting .qr-row,
-    .brochure-exporting .trust-note,
-    .brochure-exporting #mapSection { display: none !important; }
+    .brochure-exporting .trust-note { display: none !important; }
     .brochure-exporting .sheet-header {
-      padding: 0 0 2.5mm !important;
-      margin-bottom: 1.5mm !important;
+      padding: 0 0 3mm !important;
+      margin-bottom: 2mm !important;
       border-bottom: 1px solid #ddd !important;
       background: none !important;
     }
-    .brochure-exporting .sheet-brand-left { font-size: 7pt !important; }
-    .brochure-exporting .sheet-ref { font-size: 7pt !important; padding: 1mm 2.5mm !important; }
+    .brochure-exporting .sheet-brand-left { font-size: 7.5pt !important; }
+    .brochure-exporting .sheet-ref { font-size: 7.5pt !important; padding: 1mm 2.5mm !important; }
     .brochure-exporting .sheet-lead { display: none !important; }
-    .brochure-exporting .hero { min-height: 0 !important; }
+    .brochure-exporting .hero {
+      min-height: 0 !important;
+      max-height: 46mm !important;
+      background: #f4f4f5 !important;
+      border-radius: 3mm !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border: 1px solid #e5e5ea !important;
+    }
     .brochure-exporting .hero img {
       width: 100% !important;
-      height: 30mm !important;
-      max-height: 30mm !important;
-      object-fit: cover !important;
+      height: 46mm !important;
+      max-height: 46mm !important;
+      object-fit: contain !important;
+      object-position: center !important;
+      display: block !important;
     }
-    .brochure-exporting .body { padding: 1.5mm 0 0 !important; }
-    .brochure-exporting .badges { margin-bottom: 1.5mm !important; gap: 1.5mm !important; }
-    .brochure-exporting .badge { font-size: 7pt !important; padding: 0.8mm 2mm !important; }
-    .brochure-exporting .summary-line { font-size: 8pt !important; margin-bottom: 0.8mm !important; }
-    .brochure-exporting h1 { font-size: 14pt !important; margin-bottom: 0.8mm !important; line-height: 1.12 !important; }
-    .brochure-exporting .location { font-size: 8.5pt !important; }
-    .brochure-exporting .price-row { margin-top: 1.5mm !important; }
-    .brochure-exporting .price { font-size: 16pt !important; color: #8a6d1f !important; }
-    .brochure-exporting .price-suffix { font-size: 8.5pt !important; }
-    .brochure-exporting .price-commission { font-size: 7.5pt !important; }
+    .brochure-exporting .body { padding: 2.5mm 0 0 !important; }
+    .brochure-exporting .badges { margin-bottom: 2mm !important; gap: 1.5mm !important; }
+    .brochure-exporting .badge { font-size: 7.5pt !important; padding: 1mm 2.2mm !important; }
+    .brochure-exporting .summary-line { font-size: 8.5pt !important; margin-bottom: 1mm !important; }
+    .brochure-exporting h1 { font-size: 15pt !important; margin-bottom: 1mm !important; line-height: 1.15 !important; }
+    .brochure-exporting .location { font-size: 9pt !important; }
+    .brochure-exporting .price-row { margin-top: 2mm !important; }
+    .brochure-exporting .price { font-size: 18pt !important; color: #8a6d1f !important; }
+    .brochure-exporting .price-suffix { font-size: 9pt !important; }
+    .brochure-exporting .price-commission { font-size: 8pt !important; }
     .brochure-exporting .spec-grid {
       grid-template-columns: repeat(5, 1fr) !important;
-      gap: 1.2mm !important;
-      margin-top: 2mm !important;
+      gap: 1.5mm !important;
+      margin-top: 2.5mm !important;
     }
-    .brochure-exporting .spec { padding: 1.2mm 1.8mm !important; border-radius: 2mm !important; }
-    .brochure-exporting .spec label { font-size: 5.5pt !important; margin-bottom: 0.4mm !important; }
-    .brochure-exporting .spec strong { font-size: 7.5pt !important; }
-    .brochure-exporting .amenities { margin-top: 1.5mm !important; gap: 1.2mm !important; }
-    .brochure-exporting .amenity { font-size: 6.5pt !important; padding: 0.6mm 1.8mm !important; }
-    .brochure-exporting .description-section,
-    .brochure-exporting .floorplan-section {
-      margin-top: 2mm !important;
-      padding-top: 1.5mm !important;
+    .brochure-exporting .spec { padding: 1.5mm 2mm !important; border-radius: 2mm !important; }
+    .brochure-exporting .spec label { font-size: 6pt !important; margin-bottom: 0.5mm !important; }
+    .brochure-exporting .spec strong { font-size: 8pt !important; }
+    .brochure-exporting .amenities { margin-top: 2mm !important; gap: 1.5mm !important; }
+    .brochure-exporting .amenity { font-size: 7pt !important; padding: 0.8mm 2mm !important; }
+    .brochure-exporting .description-section {
+      margin-top: 2.5mm !important;
+      padding-top: 2mm !important;
       border-top: 1px solid #e5e5ea !important;
     }
-    .brochure-exporting .section-title { font-size: 6.5pt !important; margin-bottom: 0.8mm !important; }
+    .brochure-exporting .section-title { font-size: 7pt !important; margin-bottom: 1mm !important; }
     .brochure-exporting .description-body {
-      font-size: 8pt !important;
-      line-height: 1.32 !important;
+      font-size: 8.5pt !important;
+      line-height: 1.38 !important;
       display: -webkit-box !important;
-      -webkit-line-clamp: 5 !important;
+      -webkit-line-clamp: 6 !important;
       -webkit-box-orient: vertical !important;
       overflow: hidden !important;
       max-height: none !important;
     }
     .brochure-exporting .description-body::after { display: none !important; }
-    .brochure-exporting .floorplan-frame img {
-      max-height: 22mm !important;
+    .brochure-exporting .media-stack {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      gap: 3mm;
+      margin-top: 2.5mm !important;
+    }
+    .brochure-exporting .media-stack .map-section,
+    .brochure-exporting .media-stack .floorplan-section {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+      border-top: none !important;
+    }
+    .brochure-exporting .media-stack .map-section[hidden],
+    .brochure-exporting .media-stack .floorplan-section[hidden] {
+      display: none !important;
+    }
+    .brochure-exporting .media-stack:has(.map-section[hidden]):has(.floorplan-section:not([hidden])) .floorplan-section,
+    .brochure-exporting .media-stack:has(.floorplan-section[hidden]):has(.map-section:not([hidden])) .map-section {
+      grid-column: 1 / -1;
+    }
+    .brochure-exporting .map-frame,
+    .brochure-exporting .floorplan-frame {
+      border-radius: 2.5mm !important;
+      border: 1px solid #e5e5ea !important;
+      overflow: hidden !important;
+      background: #f8f8fa !important;
+    }
+    .brochure-exporting .map-frame img {
+      width: 100% !important;
+      max-height: 30mm !important;
       min-height: 0 !important;
-      height: 22mm !important;
+      height: 30mm !important;
+      object-fit: cover !important;
+      display: block !important;
+    }
+    .brochure-exporting .floorplan-frame img {
+      width: 100% !important;
+      max-height: 30mm !important;
+      min-height: 0 !important;
+      height: 30mm !important;
       object-fit: contain !important;
+      display: block !important;
+      background: #fff !important;
+    }
+    .brochure-exporting .map-caption {
+      font-size: 6.5pt !important;
+      line-height: 1.3 !important;
+      margin-top: 1mm !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
     }
     .brochure-exporting .agent-print-card {
       display: block !important;
-      margin-top: 2.5mm !important;
+      margin-top: 3mm !important;
+    }
+    .brochure-exporting .agent-print-inner {
+      padding: 3.5mm 4.5mm !important;
     }
     .print-only { display: none !important; }
     .agent-print-card {
@@ -1827,6 +1887,21 @@
 
   var downloadBrochureBtn = document.getElementById('downloadBrochure');
   if (downloadBrochureBtn) {
+    function waitForImages(container) {
+      var imgs = Array.prototype.slice.call(container.querySelectorAll('img'));
+      imgs.forEach(function (img) { img.loading = 'eager'; });
+      var pending = imgs.filter(function (img) { return img.src && !img.complete; });
+      if (!pending.length) return Promise.resolve();
+      return Promise.all(pending.map(function (img) {
+        return new Promise(function (resolve) {
+          var done = function () { resolve(); };
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+          setTimeout(done, 4000);
+        });
+      }));
+    }
+
     downloadBrochureBtn.addEventListener('click', function () {
       var toast = document.getElementById('toast');
       var root = document.querySelector('.sheet-inner');
@@ -1850,11 +1925,17 @@
       var agentWasHidden = agentCard && agentCard.hidden;
       if (agentCard) agentCard.hidden = false;
       document.body.classList.add('brochure-exporting');
+      window.scrollTo(0, 0);
 
-      html2pdf()
+      waitForImages(root).then(function () {
+        return new Promise(function (resolve) {
+          requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+        });
+      }).then(function () {
+        return html2pdf()
         .set({
           margin: 0,
-          image: { type: 'jpeg', quality: 0.92 },
+          image: { type: 'jpeg', quality: 0.93 },
           html2canvas: {
             scale: 2,
             useCORS: true,
@@ -1883,13 +1964,14 @@
           }
           var x = margin + (pageW - imgW) / 2;
           var y = margin;
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, imgW, imgH, undefined, 'FAST');
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', x, y, imgW, imgH, undefined, 'FAST');
           pdf.save(t('pdfFilename') + id + '.pdf');
           if (toast) {
             toast.textContent = t('toastPdfDone');
             toast.className = 'toast ok';
           }
-        })
+        });
+      })
         .catch(function () {
           if (toast) {
             toast.textContent = t('toastPdfFail');
