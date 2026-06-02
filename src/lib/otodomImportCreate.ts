@@ -4,6 +4,7 @@ import { splitStreetAndBuildingNumber } from '@/lib/offerStreetFields';
 import { stageOtodomImportPublication, type OtodomPublicationInput } from '@/lib/otodomImportPublication';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -241,6 +242,12 @@ export async function createOfferFromOtodomDraft(
       publication,
     });
   }
+
+  await upsertImportedOfferPrivateSnapshot({
+    offerId,
+    userId: ownerUserId,
+    draft,
+  });
 
   const imageResult = await importOtodomImagesForOffer({
     offerId,

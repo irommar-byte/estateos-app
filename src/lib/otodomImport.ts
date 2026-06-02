@@ -732,7 +732,14 @@ export function parseNieruchomosciOnlineAd(ad: RawAd, sourceUrl: string): Otodom
   const rooms = parseNumber(ad.numberOfRooms ?? extractNoAdditionalPropertyValue(ad, ['Number of rooms']));
   const floor = parseNumber(ad.floorLevel ?? extractNoAdditionalPropertyValue(ad, ['Floor level']));
   const yearBuilt = parseNumber(ad.yearBuilt ?? extractNoAdditionalPropertyValue(ad, ['Year built']));
-  const adminFee = parseNumber(extractNoAdditionalPropertyValue(ad, ['Rent']));
+  const adminFee = parseNumber(
+    extractNoAdditionalPropertyValue(ad, [
+      'Rent',
+      'Czynsz',
+      'Maintenance fee',
+      'Administrative rent',
+    ]),
+  );
 
   const features: string[] = [];
   const amenityList = Array.isArray(ad.amenityFeature) ? ad.amenityFeature : [];
