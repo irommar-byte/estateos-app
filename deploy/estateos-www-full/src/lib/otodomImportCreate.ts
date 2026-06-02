@@ -201,7 +201,11 @@ export async function importOtodomImagesForOffer(params: {
   return { uploaded, failed, urls };
 }
 
-export async function createOfferFromOtodomDraft(draft: OtodomImportDraft, adminUserId: number) {
+export async function createOfferFromOtodomDraft(
+  draft: OtodomImportDraft,
+  adminUserId: number,
+  _publication?: unknown,
+) {
   const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (existing) {
     return {
