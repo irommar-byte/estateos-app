@@ -3,7 +3,7 @@ import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationC
 const OTODOM_HOST = 'otodom.pl';
 const OLX_HOST = 'olx.pl';
 const NIERUCHOMOSCI_ONLINE_HOST = 'nieruchomosci-online.pl';
-const FETCH_TIMEOUT_MS = 20_000;
+const FETCH_TIMEOUT_MS = 40_000;
 
 function isNieruchomosciOnlineHost(host: string): boolean {
   const normalized = String(host || '').replace(/^www\./, '').toLowerCase();
@@ -597,13 +597,26 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
   const price =
     parseNumber(html.match(/(\d[\d\s.,]*)\s*(?:zł|PLN)/i)?.[1]) ??
     parseNumber(html.match(/price["']?\s*[:=]\s*["']?(\d[\d\s.,]*)/i)?.[1]);
-  const area = parseNumber(
-    html.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania)?[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
+  const areaFromLabel = parseNumber(
+    html.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1]
   );
+  const areaFromTable = parseNumber(
+    html.match(/\|\s*([\d\s.,]{2,12})\s*m(?:2|²|kw)\s*\|/i)?.[1]
+  );
+  const areaFromRange = parseNumber(
+    html.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1]
+  );
+  const areaFromAny = parseNumber(
+    html.match(/([\d]{2,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
+  );
+  const area = areaFromLabel ?? areaFromTable ?? areaFromRange ?? areaFromAny;
   const plotArea = parseNumber(
     html.match(/powierzchni[aey]?\s*dzia[łl]ki[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
   );
-  const rooms = parseNumber(html.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]);
+  const rooms =
+    parseNumber(html.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]) ??
+    parseNumber(html.match(/(\d+)\s*pok\./i)?.[1]) ??
+    parseNumber(html.match(/liczba\s+pokoi[:\s]*([\d]+)/i)?.[1]);
   const floor = parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]);
   const yearBuilt = parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1]);
   const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
