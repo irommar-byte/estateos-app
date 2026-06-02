@@ -139,6 +139,59 @@
       color: var(--muted);
       font-size: 14px;
     }
+    .hero-gallery {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+      background: var(--sheet-inner);
+      overflow: hidden;
+    }
+    .hero-gallery.has-side {
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.46fr);
+    }
+    .hero-gallery-main,
+    .hero-gallery-side-cell {
+      position: relative;
+      overflow: hidden;
+      background: rgba(127,127,127,0.06);
+    }
+    .hero-gallery-main img,
+    .hero-gallery-side-cell img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .hero-gallery-main {
+      min-height: min(42vw, 220px);
+    }
+    .hero-gallery.has-side .hero-gallery-main {
+      min-height: min(44vw, 232px);
+    }
+    .hero-gallery.solo .hero-gallery-main {
+      min-height: min(46vw, 248px);
+    }
+    .hero-gallery-side {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      gap: 4px;
+      min-height: 0;
+    }
+    .hero-gallery.duo .hero-gallery-side {
+      grid-template-rows: 1fr;
+    }
+    .hero-gallery.duo .hero-gallery-side-cell:last-child {
+      display: none;
+    }
+    .hero-gallery.placeholder {
+      display: grid;
+      place-items: center;
+      gap: 8px;
+      min-height: 180px;
+      color: var(--muted);
+      font-size: 14px;
+      grid-template-columns: 1fr !important;
+    }
     .body {
       padding: 16px 16px 18px;
     }
@@ -555,24 +608,48 @@
     .brochure-exporting .sheet-brand-left { font-size: 7.5pt !important; }
     .brochure-exporting .sheet-ref { font-size: 7.5pt !important; padding: 1mm 2.5mm !important; }
     .brochure-exporting .sheet-lead { display: none !important; }
-    .brochure-exporting .hero {
-      min-height: 0 !important;
-      max-height: 46mm !important;
-      background: #f4f4f5 !important;
+    .brochure-exporting .hero-gallery {
+      display: grid !important;
+      gap: 1.2mm !important;
+      max-height: 42mm !important;
       border-radius: 3mm !important;
       overflow: hidden !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
       border: 1px solid #e5e5ea !important;
+      background: #f4f4f5 !important;
     }
-    .brochure-exporting .hero img {
+    .brochure-exporting .hero-gallery.solo {
+      grid-template-columns: 1fr !important;
+      height: 40mm !important;
+    }
+    .brochure-exporting .hero-gallery.has-side,
+    .brochure-exporting .hero-gallery.duo {
+      grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.48fr) !important;
+      height: 42mm !important;
+    }
+    .brochure-exporting .hero-gallery-main,
+    .brochure-exporting .hero-gallery-side {
+      height: 100% !important;
+      min-height: 0 !important;
+    }
+    .brochure-exporting .hero-gallery-main {
+      min-height: 0 !important;
+    }
+    .brochure-exporting .hero-gallery-main img,
+    .brochure-exporting .hero-gallery-side-cell img {
       width: 100% !important;
-      height: 46mm !important;
-      max-height: 46mm !important;
-      object-fit: contain !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      object-fit: cover !important;
       object-position: center !important;
-      display: block !important;
+    }
+    .brochure-exporting .hero-gallery-side {
+      display: grid !important;
+      grid-template-rows: 1fr 1fr !important;
+      gap: 1.2mm !important;
+    }
+    .brochure-exporting .hero-gallery.duo .hero-gallery-side {
+      grid-template-rows: 1fr !important;
     }
     .brochure-exporting .body { padding: 2.5mm 0 0 !important; }
     .brochure-exporting .badges { margin-bottom: 2mm !important; gap: 1.5mm !important; }
@@ -840,6 +917,35 @@
       .sheet-ref { font-size: 7pt; padding: 1mm 2.5mm; }
       .sheet-lead { display: none !important; }
       .hero { min-height: 0 !important; }
+      .hero-gallery {
+        display: grid !important;
+        gap: 1.5mm !important;
+        max-height: 38mm !important;
+      }
+      .hero-gallery.solo {
+        grid-template-columns: 1fr !important;
+        height: 36mm !important;
+      }
+      .hero-gallery.has-side,
+      .hero-gallery.duo {
+        grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.48fr) !important;
+        height: 38mm !important;
+      }
+      .hero-gallery-main,
+      .hero-gallery-side { height: 100% !important; min-height: 0 !important; }
+      .hero-gallery-main { min-height: 0 !important; }
+      .hero-gallery-main img,
+      .hero-gallery-side-cell img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+      .hero-gallery-side {
+        display: grid !important;
+        grid-template-rows: 1fr 1fr !important;
+        gap: 1.5mm !important;
+      }
+      .hero-gallery.duo .hero-gallery-side { grid-template-rows: 1fr !important; }
       .hero img {
         width: 100% !important;
         height: 34mm !important;
@@ -956,7 +1062,7 @@
           </p>
         </header>
 
-        <div id="hero" class="hero placeholder"><span class="spinner" aria-hidden="true"></span>Ładowanie oferty…</div>
+        <div id="hero" class="hero-gallery placeholder"><span class="spinner" aria-hidden="true"></span><span id="heroLoadingText">Ładowanie oferty…</span></div>
 
         <div class="body" id="panel" hidden>
           <div class="badges" id="badges"></div>
@@ -1284,11 +1390,8 @@
     var floorImg = document.getElementById('floorPlanImage');
     if (floorImg) floorImg.alt = t('floorPlanAlt');
     var hero = document.getElementById('hero');
-    if (hero && hero.classList.contains('placeholder')) {
-      hero.childNodes.forEach(function (node) {
-        if (node.nodeType === 3 && String(node.textContent || '').trim()) node.textContent = t('loading');
-      });
-    }
+    var heroLoading = document.getElementById('heroLoadingText');
+    if (heroLoading) heroLoading.textContent = t('loading');
     var offerRef = document.getElementById('offerRef');
     if (offerRef && id) offerRef.textContent = t('refPrefix') + id;
     document.title = LOCALE === 'en' ? 'EstateOS™ — offer sheet' : 'EstateOS™ — wizytówka oferty';
@@ -1459,42 +1562,79 @@
       .catch(function () { /* tylko agencja widzi przycisk */ });
   }
 
-  function setHero(src, alt) {
-    var el = document.getElementById('hero');
-    el.classList.remove('placeholder');
-    el.innerHTML = '';
-    if (!src) {
-      el.classList.add('placeholder');
-      el.textContent = t('noPhoto');
-      return;
-    }
+  function mountHeroImage(cell, src, alt) {
+    if (!cell) return null;
+    cell.innerHTML = '';
+    if (!src) return null;
     var img = document.createElement('img');
     img.alt = alt || t('heroAlt');
     img.loading = 'eager';
     img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
     img.src = src;
-    img.onerror = function () {
-      el.classList.add('placeholder');
-      el.textContent = t('photoError');
-    };
-    el.appendChild(img);
+    cell.appendChild(img);
+    return img;
   }
 
-  function renderThumbs(urls) {
+  function renderHeroGallery(urls, alt) {
+    var el = document.getElementById('hero');
+    if (!el) return;
+    var list = (urls || []).filter(Boolean);
+    el.classList.remove('placeholder');
+    el.innerHTML = '';
+
+    if (!list.length) {
+      el.className = 'hero-gallery placeholder';
+      el.textContent = t('noPhoto');
+      return;
+    }
+
+    var mode = list.length === 1 ? 'solo' : (list.length === 2 ? 'duo' : 'has-side');
+    el.className = 'hero-gallery ' + mode;
+
+    var main = document.createElement('div');
+    main.className = 'hero-gallery-main';
+    mountHeroImage(main, list[0], alt);
+
+    el.appendChild(main);
+
+    if (mode !== 'solo') {
+      var side = document.createElement('div');
+      side.className = 'hero-gallery-side';
+      var cell1 = document.createElement('div');
+      cell1.className = 'hero-gallery-side-cell';
+      mountHeroImage(cell1, list[1], alt);
+      side.appendChild(cell1);
+      if (mode === 'has-side') {
+        var cell2 = document.createElement('div');
+        cell2.className = 'hero-gallery-side-cell';
+        mountHeroImage(cell2, list[2], alt);
+        side.appendChild(cell2);
+      }
+      el.appendChild(side);
+    }
+  }
+
+  function renderExtraThumbs(urls) {
     var wrap = document.getElementById('thumbs');
+    if (!wrap) return;
     wrap.innerHTML = '';
-    if (!urls || urls.length < 2) { wrap.hidden = true; return; }
+    var extra = (urls || []).slice(3);
+    if (extra.length < 1) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    urls.slice(0, 12).forEach(function (u, i) {
+    extra.slice(0, 9).forEach(function (u, i) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('aria-label', t('thumbLabel') + (i + 1));
+      b.setAttribute('aria-label', t('thumbLabel') + (i + 4));
       var im = document.createElement('img');
       im.alt = '';
       im.loading = 'lazy';
+      im.crossOrigin = 'anonymous';
       im.src = u;
       b.appendChild(im);
-      b.addEventListener('click', function () { setHero(u); });
+      b.addEventListener('click', function () {
+        renderHeroGallery([u].concat((urls || []).filter(function (x) { return x !== u; })), document.getElementById('title').textContent);
+      });
       wrap.appendChild(b);
     });
   }
@@ -1636,6 +1776,7 @@
             initialEl.textContent = (primary.charAt(0) || 'E').toUpperCase();
           }
         };
+        photoEl.crossOrigin = 'anonymous';
         photoEl.src = photo;
         photoEl.alt = primary;
       } else if (initialEl) {
@@ -1690,11 +1831,13 @@
           'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/' +
           overlay + '/' + lng + ',' + lat + ',' + (exact ? '16.5' : '14.2') + ',0,45/640x320@2x' +
           '?access_token=' + encodeURIComponent(token);
+        img.crossOrigin = 'anonymous';
         img.src = staticUrl;
         img.onerror = function () { section.hidden = true; };
         section.hidden = false;
       })
       .catch(function () {
+        img.crossOrigin = 'anonymous';
         img.src =
           'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng +
           '&zoom=' + (exact ? 16 : 14) + '&size=640x320&maptype=mapnik' +
@@ -1715,6 +1858,7 @@
       return;
     }
     section.hidden = false;
+    img.crossOrigin = 'anonymous';
     img.src = url;
     if (link) {
       link.href = url;
@@ -1793,8 +1937,10 @@
     document.getElementById('fatal').style.display = 'block';
     document.getElementById('fatal').textContent = msg;
     var el = document.getElementById('hero');
-    el.classList.add('placeholder');
-    el.innerHTML = t('heroLoadFail');
+    if (el) {
+      el.className = 'hero-gallery placeholder';
+      el.textContent = t('heroLoadFail');
+    }
   }
 
   if (!id) {
@@ -1897,9 +2043,106 @@
           var done = function () { resolve(); };
           img.addEventListener('load', done, { once: true });
           img.addEventListener('error', done, { once: true });
-          setTimeout(done, 4000);
+          setTimeout(done, 5000);
         });
       }));
+    }
+
+    function inlineCrossOriginImages(container) {
+      var origin = window.location.origin;
+      var imgs = Array.prototype.slice.call(container.querySelectorAll('img'));
+      return Promise.all(imgs.map(function (img) {
+        var src = String(img.src || '').trim();
+        if (!src || src.indexOf('data:') === 0 || src.indexOf('blob:') === 0) return Promise.resolve();
+        if (src.indexOf(origin) === 0) return Promise.resolve();
+        return fetch(src, { mode: 'cors', credentials: 'omit', cache: 'force-cache' })
+          .then(function (r) {
+            if (!r.ok) throw new Error('fetch failed');
+            return r.blob();
+          })
+          .then(function (blob) {
+            return new Promise(function (resolve) {
+              var reader = new FileReader();
+              reader.onload = function () {
+                if (reader.result) img.src = String(reader.result);
+                resolve();
+              };
+              reader.onerror = function () { resolve(); };
+              reader.readAsDataURL(blob);
+            });
+          })
+          .catch(function () { /* zostaw oryginał — html2canvas spróbuje useCORS */ });
+      }));
+    }
+
+    function canvasToJpeg(canvas, quality) {
+      try {
+        return canvas.toDataURL('image/jpeg', quality);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function triggerPdfDownload(blob, filename) {
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.rel = 'noopener';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(function () {
+        URL.revokeObjectURL(url);
+        if (link.parentNode) link.parentNode.removeChild(link);
+      }, 1200);
+    }
+
+    function buildSinglePagePdf(canvas, filename) {
+      var JsPDF = window.jspdf && window.jspdf.jsPDF;
+      if (!JsPDF) throw new Error('jsPDF unavailable');
+      var qualities = [0.88, 0.75, 0.62];
+      var dataUrl = null;
+      for (var i = 0; i < qualities.length; i++) {
+        dataUrl = canvasToJpeg(canvas, qualities[i]);
+        if (dataUrl) break;
+      }
+      if (!dataUrl) throw new Error('canvas tainted');
+      var pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+      var margin = 5;
+      var pageW = 210 - margin * 2;
+      var pageH = 297 - margin * 2;
+      var ratio = canvas.width / canvas.height;
+      var imgW = pageW;
+      var imgH = imgW / ratio;
+      if (imgH > pageH) {
+        imgH = pageH;
+        imgW = imgH * ratio;
+      }
+      var x = margin + (pageW - imgW) / 2;
+      var y = margin;
+      pdf.addImage(dataUrl, 'JPEG', x, y, imgW, imgH, undefined, 'MEDIUM');
+      return pdf.output('blob');
+    }
+
+    function captureBrochureCanvas(root) {
+      var scale = Math.min(1.5, Math.max(1, (window.devicePixelRatio || 1)));
+      return html2pdf().set({
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.85 },
+        html2canvas: {
+          scale: scale,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          backgroundColor: '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+          width: root.scrollWidth,
+          windowWidth: root.scrollWidth,
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(root).toCanvas().get('canvas');
     }
 
     downloadBrochureBtn.addEventListener('click', function () {
@@ -1927,51 +2170,40 @@
       document.body.classList.add('brochure-exporting');
       window.scrollTo(0, 0);
 
-      waitForImages(root).then(function () {
-        return new Promise(function (resolve) {
-          requestAnimationFrame(function () { requestAnimationFrame(resolve); });
-        });
-      }).then(function () {
-        return html2pdf()
-        .set({
-          margin: 0,
-          image: { type: 'jpeg', quality: 0.93 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-            backgroundColor: '#ffffff',
-            scrollY: -window.scrollY,
-            windowWidth: root.scrollWidth,
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      var pdfFilename = t('pdfFilename') + id + '.pdf';
+      var mapSection = document.getElementById('mapSection');
+
+      inlineCrossOriginImages(root)
+        .then(function () { return waitForImages(root); })
+        .then(function () {
+          return new Promise(function (resolve) {
+            requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+          });
         })
-        .from(root)
-        .toCanvas()
+        .then(function () { return captureBrochureCanvas(root); })
         .then(function (canvas) {
-          var JsPDF = window.jspdf && window.jspdf.jsPDF;
-          if (!JsPDF) throw new Error('jsPDF unavailable');
-          var pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-          var margin = 5;
-          var pageW = 210 - margin * 2;
-          var pageH = 297 - margin * 2;
-          var ratio = canvas.width / canvas.height;
-          var imgW = pageW;
-          var imgH = imgW / ratio;
-          if (imgH > pageH) {
-            imgH = pageH;
-            imgW = imgH * ratio;
+          if (!canvas) throw new Error('empty canvas');
+          var blob;
+          try {
+            blob = buildSinglePagePdf(canvas, pdfFilename);
+          } catch (err) {
+            if (!mapSection || mapSection.hidden) throw err;
+            mapSection.setAttribute('data-brochure-hidden', '1');
+            mapSection.hidden = true;
+            return captureBrochureCanvas(root).then(function (retryCanvas) {
+              if (!retryCanvas) throw new Error('empty canvas retry');
+              return buildSinglePagePdf(retryCanvas, pdfFilename);
+            });
           }
-          var x = margin + (pageW - imgW) / 2;
-          var y = margin;
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', x, y, imgW, imgH, undefined, 'FAST');
-          pdf.save(t('pdfFilename') + id + '.pdf');
+          return blob;
+        })
+        .then(function (blob) {
+          triggerPdfDownload(blob, pdfFilename);
           if (toast) {
             toast.textContent = t('toastPdfDone');
             toast.className = 'toast ok';
           }
-        });
-      })
+        })
         .catch(function () {
           if (toast) {
             toast.textContent = t('toastPdfFail');
@@ -1979,6 +2211,10 @@
           }
         })
         .finally(function () {
+          if (mapSection && mapSection.getAttribute('data-brochure-hidden') === '1') {
+            mapSection.hidden = false;
+            mapSection.removeAttribute('data-brochure-hidden');
+          }
           document.body.classList.remove('brochure-exporting');
           if (agentCard && agentWasHidden) agentCard.hidden = true;
           downloadBrochureBtn.disabled = false;
@@ -2019,8 +2255,8 @@
 
       var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
       var title = data.title || (t('offerTitleFallback') + id);
-      setHero(imgs[0] || '', title);
-      renderThumbs(imgs);
+      renderHeroGallery(imgs, title);
+      renderExtraThumbs(imgs);
 
       var locParts = [data.district, data.city].filter(Boolean);
       var loc = locParts.join(', ') || data.city || t('countryDefault');
@@ -2089,7 +2325,7 @@
       document.getElementById('summaryLine').textContent = t('fallbackSummary');
       document.getElementById('location').textContent = 'estateos.pl';
       document.getElementById('price').textContent = '';
-      setHero('');
+      renderHeroGallery([], '');
     });
 })();
   </script>
