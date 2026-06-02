@@ -856,15 +856,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     } else if (actionType === 'COMMENTS') {
       if (!selectedOffer?.id) return;
       const offerId = Number(selectedOffer.id);
-      const commentsUrl = `${API_URL}/moje-konto/crm?offerId=${offerId}&comment=1`;
-      try {
-        await Linking.openURL(commentsUrl);
-      } catch {
-        Alert.alert(
-          t('profile.myOffers.alerts.editTitle'),
-          t('profile.myOffers.commentsOpenFailed', { defaultValue: 'Nie udało się otworzyć komentarzy dla oferty.' })
-        );
-      }
+      handleMyOffersClose();
+      setTimeout(
+        () => navigation.navigate('OfferComments', { offerId, offerTitle: String(selectedOffer.title || '') }),
+        180,
+      );
     } else if (actionType === 'BUMP') {
       Alert.alert(
         t('profile.myOffers.alerts.plusPackageTitle'),

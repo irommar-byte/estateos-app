@@ -76,6 +76,7 @@ import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
+import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
 import { extractIdFromDeeplink } from './src/utils/deeplinkParse';
 import {
   extractPushDealAndOfferIds,
@@ -1490,6 +1491,7 @@ export default function App() {
             <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
+            <AppStack.Screen name="OfferComments" component={OfferCommentsScreen} />
           </AppStack.Navigator>
         </NavigationContainer>
         </I18nProvider>

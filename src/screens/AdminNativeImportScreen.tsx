@@ -104,7 +104,9 @@ function ImportSuccessCinematic({
         )
       ),
     ]).start();
-  }, [visible, confetti, fireworks, opacity, scale]);
+    const timer = setTimeout(onDone, 2600);
+    return () => clearTimeout(timer);
+  }, [visible, confetti, fireworks, opacity, scale, onDone]);
 
   if (!visible) return null;
 
@@ -436,6 +438,24 @@ export default function AdminNativeImportScreen() {
     void openPublicationChoice();
   };
 
+  const openOfferPreviewNative = async (offerId: number) => {
+    if (!token || !Number.isFinite(offerId) || offerId <= 0) return;
+    try {
+      const res = await fetch(`${API_URL}/api/mobile/v1/offers/${offerId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      const offer = data?.offer;
+      if (offer) {
+        navigation.navigate('OfferDetail', { offer });
+        return;
+      }
+      navigation.navigate('OfferDetail', { id: offerId });
+    } catch {
+      navigation.navigate('OfferDetail', { id: offerId });
+    }
+  };
+
   if (!hasActiveInvestorProMembership(user)) {
     return (
       <View style={[styles.center, { backgroundColor: theme.bg }]}>
@@ -631,10 +651,19 @@ export default function AdminNativeImportScreen() {
                 style={[styles.linkBtn, { borderColor: theme.border }]}
                 onPress={() => {
                   if (!createdOfferId) return;
-                  navigation.navigate('OfferDetail', { id: createdOfferId });
+                  void openOfferPreviewNative(createdOfferId);
                 }}
               >
                 <Text style={[styles.linkText, { color: theme.text }]}>Podgląd</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.linkBtn, { borderColor: theme.border }]}
+                onPress={() => {
+                  if (!createdOfferId) return;
+                  navigation.navigate('OfferComments', { offerId: createdOfferId, offerTitle: presentation?.title || draft?.title || '' });
+                }}
+              >
+                <Text style={[styles.linkText, { color: theme.text }]}>Komentarze</Text>
               </Pressable>
             </View>
           ) : null}
@@ -764,8 +793,8 @@ const styles = StyleSheet.create({
   warningChipText: { color: '#FF9500', fontSize: 12, fontWeight: '700', lineHeight: 16 },
   featureChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
   featureChipText: { fontSize: 12, fontWeight: '600', lineHeight: 16 },
-  linksRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
-  linkBtn: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  linksRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  linkBtn: { minWidth: '31%', flexGrow: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   linkText: { fontSize: 13, fontWeight: '700' },
   lightboxBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)' },
   lightboxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10 },
