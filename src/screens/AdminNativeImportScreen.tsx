@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
 import { useThemeStore } from '../store/useThemeStore';
 import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
+import { useNavigation } from '@react-navigation/native';
 
 type ImportSource = 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
 
@@ -37,6 +38,7 @@ type ImportPresentation = {
 };
 
 export default function AdminNativeImportScreen() {
+  const navigation = useNavigation<any>();
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
@@ -212,6 +214,13 @@ export default function AdminNativeImportScreen() {
       contentContainerStyle={{ padding: 16, paddingBottom: 40, paddingTop: Math.max(insets.top + 10, 28) }}
     >
       <View style={[styles.heroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.7 : 1, borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F8F9FB' }]}
+        >
+          <Ionicons name="chevron-back" size={16} color={theme.text} />
+          <Text style={[styles.backBtnText, { color: theme.text }]}>Wróć</Text>
+        </Pressable>
         <View style={styles.heroTopRow}>
           <View style={[styles.heroIconWrap, { backgroundColor: isDark ? 'rgba(10,132,255,0.15)' : 'rgba(10,132,255,0.12)' }]}>
             <Ionicons name="sparkles" size={18} color="#0A84FF" />
@@ -419,6 +428,18 @@ const styles = StyleSheet.create({
   noAccessTitle: { marginTop: 10, fontSize: 20, fontWeight: '800' },
   noAccessBody: { marginTop: 8, textAlign: 'center', fontSize: 14, lineHeight: 20 },
   heroCard: { borderWidth: 1, borderRadius: 18, padding: 16, marginBottom: 12 },
+  backBtn: {
+    alignSelf: 'flex-start',
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginBottom: 10,
+  },
+  backBtnText: { fontSize: 13, fontWeight: '700' },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   heroIconWrap: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   heroBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: 'rgba(10,132,255,0.16)' },

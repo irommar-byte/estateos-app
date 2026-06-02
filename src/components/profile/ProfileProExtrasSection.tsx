@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Linking } from 'react-native';
 import {
   Gavel,
@@ -28,6 +28,7 @@ function FeatureRow({
   subtitle,
   tag,
   isDark,
+  isImport,
   onPress,
 }: {
   icon: LucideIcon;
@@ -35,8 +36,40 @@ function FeatureRow({
   subtitle: string;
   tag: string;
   isDark: boolean;
+  isImport?: boolean;
   onPress: () => void;
 }) {
+  const spin = React.useRef(new Animated.Value(0)).current;
+  const orbit = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    if (!isImport) return;
+    const spinLoop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 2600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const orbitLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbit, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(orbit, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    spinLoop.start();
+    orbitLoop.start();
+    return () => {
+      spinLoop.stop();
+      orbitLoop.stop();
+    };
+  }, [isImport, orbit, spin]);
+
+  const rotation = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const orbitX = orbit.interpolate({ inputRange: [0, 1], outputRange: [-3, 3] });
+  const orbitY = orbit.interpolate({ inputRange: [0, 1], outputRange: [3, -3] });
+
   return (
     <Pressable
       onPress={onPress}
@@ -46,8 +79,27 @@ function FeatureRow({
         pressed && { opacity: 0.88 },
       ]}
     >
-      <View style={[styles.featureIcon, isDark ? styles.featureIconDark : styles.featureIconLight]}>
-        <Icon size={20} color={isDark ? '#E8EDF5' : '#4B5563'} strokeWidth={2} />
+      <View
+        style={[
+          styles.featureIcon,
+          isImport ? (isDark ? styles.importIconDark : styles.importIconLight) : isDark ? styles.featureIconDark : styles.featureIconLight,
+        ]}
+      >
+        {isImport ? (
+          <View style={styles.importStarsWrap}>
+            <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+              <Sparkles size={18} color={isDark ? '#7DD3FC' : '#0EA5E9'} strokeWidth={2.2} />
+            </Animated.View>
+            <Animated.View style={[styles.importStarOrbitLeft, { transform: [{ translateX: orbitX }, { translateY: orbitY }] }]}>
+              <Sparkles size={11} color="#F59E0B" strokeWidth={2.4} />
+            </Animated.View>
+            <Animated.View style={[styles.importStarOrbitRight, { transform: [{ translateX: Animated.multiply(orbitX, -1) }, { translateY: Animated.multiply(orbitY, -1) }] }]}>
+              <Sparkles size={10} color="#A855F7" strokeWidth={2.4} />
+            </Animated.View>
+          </View>
+        ) : (
+          <Icon size={20} color={isDark ? '#E8EDF5' : '#4B5563'} strokeWidth={2} />
+        )}
       </View>
       <View style={styles.featureCopy}>
         <View style={styles.featureTitleRow}>
@@ -98,6 +150,13 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
     tag: string;
   }> = [
     {
+      id: 'insider',
+      icon: Sparkles,
+      title: t('profile.proExtras.features.insider.title'),
+      subtitle: t('profile.proExtras.features.insider.subtitle'),
+      tag: t('profile.proExtras.features.insider.tag'),
+    },
+    {
       id: 'auction',
       icon: Gavel,
       title: t('profile.proExtras.features.auction.title'),
@@ -110,13 +169,6 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
       title: t('profile.proExtras.features.openHouse.title'),
       subtitle: t('profile.proExtras.features.openHouse.subtitle'),
       tag: t('profile.proExtras.features.openHouse.tag'),
-    },
-    {
-      id: 'insider',
-      icon: Sparkles,
-      title: t('profile.proExtras.features.insider.title'),
-      subtitle: t('profile.proExtras.features.insider.subtitle'),
-      tag: t('profile.proExtras.features.insider.tag'),
     },
   ];
 
@@ -148,6 +200,7 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
             subtitle={f.subtitle}
             tag={f.tag}
             isDark={isDark}
+            isImport={f.id === 'insider'}
             onPress={() => onFeature(f.id)}
           />
         ))}
@@ -244,6 +297,32 @@ const styles = StyleSheet.create({
   },
   featureIconLight: {
     backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  importIconDark: {
+    backgroundColor: 'rgba(56,189,248,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(125,211,252,0.35)',
+  },
+  importIconLight: {
+    backgroundColor: 'rgba(14,165,233,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(14,165,233,0.24)',
+  },
+  importStarsWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importStarOrbitLeft: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+  },
+  importStarOrbitRight: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
   },
   featureCopy: {
     flex: 1,

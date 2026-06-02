@@ -307,10 +307,10 @@ export const profile = {
   },
   proExtras: {
     eyebrow: 'EstateOS',
-    title: 'Pro privileges',
-    lead: 'Tools for Investor Pro members — without limiting everyone else on EstateOS.',
+    title: 'EstateOS™ Pro tools',
+    lead: 'Advanced Investor Pro tools for faster listing operations and smart imports.',
     footer:
-      'Standard EstateOS features stay the same. This section is only for active Pro membership extras.',
+      'Premium workspace for active Investor Pro members focused on productivity.',
     countdown: {
       title: 'Pro membership',
       active: '{{days}} days left',

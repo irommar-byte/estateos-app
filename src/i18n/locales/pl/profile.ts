@@ -308,10 +308,10 @@ export const profile = {
   },
   proExtras: {
     eyebrow: 'EstateOS',
-    title: 'Przywileje Pro',
-    lead: 'Narzędzia dla członków Investor Pro — bez ograniczania pozostałych użytkowników.',
+    title: 'Narzędzia EstateOS™ Pro',
+    lead: 'Zaawansowane narzędzia dla aktywnego Investor Pro: import ofert i automatyzacje pracy.',
     footer:
-      'Standardowe funkcje EstateOS pozostają bez zmian. Ten dział to wyłącznie dodatki dla aktywnego członkostwa Pro.',
+      'To strefa narzędzi premium dla Investor Pro — zaprojektowana do szybszej pracy na ofertach.',
     countdown: {
       title: 'Członkostwo Pro',
       active: 'Pozostało {{days}} dni',
