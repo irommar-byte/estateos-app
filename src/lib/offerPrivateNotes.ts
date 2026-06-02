@@ -28,6 +28,26 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 export async function ensureOfferPrivateNoteTable() {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS OfferPrivateNote (
@@ -156,7 +176,19 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
   if (!row?.importExternalUrl) return row;
 
   const lastCheckMs = row.sourceLastCheckAt ? new Date(row.sourceLastCheckAt).getTime() : 0;
-  const isStale = !lastCheckMs || Date.now() - lastCheckMs >= SOURCE_CHECK_MAX_AGE_MS;
+  let snapshotNeedsHydration = false;
+  if (String(row.importSource || '') === 'NIERUCHOMOSCI_ONLINE' && row.importSnapshotJson) {
+    try {
+      const parsed = JSON.parse(row.importSnapshotJson) as Record<string, unknown>;
+      const contactHints = (parsed.contactHints ?? {}) as Record<string, unknown>;
+      const hasName = Boolean(String(contactHints.agencyName || '').trim());
+      const descriptionLen = String(parsed.descriptionOriginalText || '').trim().length;
+      snapshotNeedsHydration = !hasName || descriptionLen < 250;
+    } catch {
+      snapshotNeedsHydration = true;
+    }
+  }
+  const isStale = !lastCheckMs || Date.now() - lastCheckMs >= SOURCE_CHECK_MAX_AGE_MS || snapshotNeedsHydration;
   if (!isStale) return row;
 
   const controller = new AbortController();
@@ -164,6 +196,7 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
   let status: number | null = null;
   let isActive = 0;
   let errorText: string | null = null;
+  let refreshedSnapshotJson: string | null = null;
   try {
     const res = await fetch(row.importExternalUrl, {
       signal: controller.signal,
@@ -177,6 +210,49 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
     });
     status = res.status;
     isActive = res.ok ? 1 : 0;
+    if (res.ok) {
+      const html = await res.text();
+      if (String(row.importSource || '') === 'NIERUCHOMOSCI_ONLINE') {
+        let parsed: Record<string, unknown> = {};
+        if (row.importSnapshotJson) {
+          try {
+            parsed = JSON.parse(row.importSnapshotJson) as Record<string, unknown>;
+          } catch {
+            parsed = {};
+          }
+        }
+        const contactNameMatch = html.match(
+          /<div class="box-agent-mini"[\s\S]*?<p class="name"[^>]*>([^<]+)<\/p>/i,
+        );
+        const contactScope = html.match(/<div class="box-agent-mini"[\s\S]*?<\/div>\s*<\/div>/i)?.[0] ?? html;
+        const phoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+        const descMoreMatch = html.match(
+          /<div class="estate-desc-more"[^>]*>\s*<p class="body-md">([\s\S]*?)<\/p>\s*<\/div>/i,
+        );
+        const descLessMatch = html.match(
+          /<div class="estate-desc-less"[^>]*>\s*<p class="body-md">([\s\S]*?)<\/p>/i,
+        );
+        const fullDescHtml = decodeHtmlEntities(
+          String(descMoreMatch?.[1] ?? descLessMatch?.[1] ?? parsed.descriptionOriginalHtml ?? ''),
+        ).trim();
+        const contactHints = {
+          agencyName: contactNameMatch
+            ? decodeHtmlEntities(String(contactNameMatch[1])).trim()
+            : String((parsed.contactHints as Record<string, unknown> | undefined)?.agencyName || ''),
+          phone: phoneMatch
+            ? phoneMatch[0].replace(/[^\d+]/g, '')
+            : String((parsed.contactHints as Record<string, unknown> | undefined)?.phone || ''),
+          address: String((parsed.contactHints as Record<string, unknown> | undefined)?.address || ''),
+        };
+        const merged = {
+          ...parsed,
+          descriptionOriginalHtml: fullDescHtml || parsed.descriptionOriginalHtml || '',
+          descriptionOriginalText: fullDescHtml ? stripHtml(fullDescHtml) : parsed.descriptionOriginalText || '',
+          contactHints,
+        };
+        refreshedSnapshotJson = safeJsonStringify(merged);
+      }
+    }
   } catch (error) {
     status = null;
     isActive = 0;
@@ -188,12 +264,14 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
   await prisma.$executeRawUnsafe(
     `
       UPDATE OfferPrivateNote
-      SET sourceIsActive = ?, sourceLastCheckAt = NOW(3), sourceLastHttpStatus = ?, sourceLastError = ?
+      SET sourceIsActive = ?, sourceLastCheckAt = NOW(3), sourceLastHttpStatus = ?, sourceLastError = ?,
+          importSnapshotJson = COALESCE(?, importSnapshotJson)
       WHERE offerId = ? AND userId = ?
     `,
     isActive,
     status,
     errorText,
+    refreshedSnapshotJson,
     offerId,
     userId,
   );

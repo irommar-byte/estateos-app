@@ -60,6 +60,12 @@ export type OtodomImportDraft = {
 };
 
 type RawAd = Record<string, unknown>;
+type NieruchomosciOnlineRichData = {
+  descriptionHtml: string | null;
+  descriptionText: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+};
 
 function stripHtml(html: string): string {
   return html
@@ -71,6 +77,16 @@ function stripHtml(html: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
 }
 
 function parseNumber(raw: unknown): number | null {
@@ -346,6 +362,35 @@ function extractNieruchomosciOnlineAdPayload(html: string): RawAd {
     }
   }
   throw new Error('Nie znaleziono danych ogłoszenia (JSON-LD Apartment) w Nieruchomosci-Online.');
+}
+
+function extractNieruchomosciOnlineRichData(html: string): NieruchomosciOnlineRichData {
+  const descMoreMatch = html.match(
+    /<div class="estate-desc-more"[^>]*>\s*<p class="body-md">([\s\S]*?)<\/p>\s*<\/div>/i,
+  );
+  const descLessMatch = html.match(
+    /<div class="estate-desc-less"[^>]*>\s*<p class="body-md">([\s\S]*?)<\/p>/i,
+  );
+  const descriptionHtmlRaw = descMoreMatch?.[1] ?? descLessMatch?.[1] ?? null;
+  const descriptionHtml = descriptionHtmlRaw ? decodeHtmlEntities(descriptionHtmlRaw).trim() : null;
+  const descriptionText = descriptionHtml ? stripHtml(descriptionHtml) : null;
+
+  const contactNameMatch = html.match(
+    /<div class="box-agent-mini"[\s\S]*?<p class="name"[^>]*>([^<]+)<\/p>/i,
+  );
+  const contactName = contactNameMatch ? decodeHtmlEntities(String(contactNameMatch[1])).trim() : null;
+
+  const contactBoxMatch = html.match(/<div class="box-agent-mini"[\s\S]*?<\/div>\s*<\/div>/i);
+  const contactScope = contactBoxMatch?.[0] ?? html;
+  const phoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+  const contactPhone = phoneMatch ? phoneMatch[0].replace(/[^\d+]/g, '') : null;
+
+  return {
+    descriptionHtml,
+    descriptionText,
+    contactName: contactName || null,
+    contactPhone: contactPhone || null,
+  };
 }
 
 function normalizeOtodomUrl(input: string): string {
@@ -715,9 +760,13 @@ function extractNoAdditionalPropertyValue(ad: RawAd, candidateNames: string[]): 
   return '';
 }
 
-export function parseNieruchomosciOnlineAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
+export function parseNieruchomosciOnlineAd(
+  ad: RawAd,
+  sourceUrl: string,
+  richData?: NieruchomosciOnlineRichData,
+): OtodomImportDraft {
   const title = String(ad.name ?? '').trim();
-  const descriptionHtml = String(ad.description ?? '');
+  const descriptionHtml = richData?.descriptionHtml || String(ad.description ?? '');
   const geo = (ad.geo ?? {}) as Record<string, unknown>;
   const addr = (ad.address ?? {}) as Record<string, unknown>;
   const offers = Array.isArray(ad.offers) ? ad.offers : [];
@@ -796,15 +845,15 @@ export function parseNieruchomosciOnlineAd(ad: RawAd, sourceUrl: string): Otodom
     lng: parseNumber(geo.longitude),
     localityCountryCode: 'PL',
     descriptionHtml,
-    descriptionText: stripHtml(descriptionHtml),
+    descriptionText: richData?.descriptionText || stripHtml(descriptionHtml),
     features,
     imageUrls: images.map((row) => String(row ?? '').trim()).filter((value) => Boolean(value)),
     imageCount: images.length,
-    agency: agent
+    agency: agent || richData?.contactName || richData?.contactPhone
       ? {
-          id: parseNumber(agent.identifier) ?? 0,
-          name: String(agent.name ?? '').trim(),
-          phone: String(agent.telephone ?? '').trim() || null,
+          id: parseNumber(agent?.identifier) ?? 0,
+          name: String(agent?.name ?? richData?.contactName ?? '').trim(),
+          phone: String(agent?.telephone ?? richData?.contactPhone ?? '').trim() || null,
           address: null,
         }
       : null,
@@ -850,5 +899,6 @@ export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImport
   const url = normalizeNieruchomosciOnlineUrl(inputUrl);
   const html = await fetchOtodomOfferHtml(url);
   const ad = extractNieruchomosciOnlineAdPayload(html);
-  return parseNieruchomosciOnlineAd(ad, url);
+  const richData = extractNieruchomosciOnlineRichData(html);
+  return parseNieruchomosciOnlineAd(ad, url, richData);
 }
