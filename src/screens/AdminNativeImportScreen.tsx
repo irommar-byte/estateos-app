@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
@@ -26,6 +27,8 @@ type ImportDraft = {
   lng?: number | null;
   city?: string | null;
   district?: string | null;
+  features?: string[];
+  locationWarnings?: string[];
 };
 
 type ImportPresentation = {
@@ -37,6 +40,8 @@ export default function AdminNativeImportScreen() {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const theme = useMemo(
     () =>
@@ -56,6 +61,8 @@ export default function AdminNativeImportScreen() {
   const [createdOfferId, setCreatedOfferId] = useState<number | null>(null);
   const [editUrl, setEditUrl] = useState('');
   const [publicUrl, setPublicUrl] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
@@ -79,6 +86,13 @@ export default function AdminNativeImportScreen() {
     return String(draft?.descriptionText || '').trim();
   }, [presentation?.descriptionHtml, draft?.descriptionText]);
 
+  const locationPrecision = useMemo(() => {
+    const warnings = Array.isArray(draft?.locationWarnings) ? draft?.locationWarnings : [];
+    const joined = warnings.join(' ').toLowerCase();
+    if (/przybliżon|obszar|approx/.test(joined)) return 'Obszarowa';
+    return hasMap ? 'Dokładna' : 'Brak współrzędnych';
+  }, [draft?.locationWarnings, hasMap]);
+
   const handleAnalyze = async () => {
     if (!token) {
       Alert.alert(t('common.error'), 'Brak sesji. Zaloguj się ponownie.');
@@ -98,7 +112,7 @@ export default function AdminNativeImportScreen() {
     setEditUrl('');
     setPublicUrl('');
     try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import`, {
+      let res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,6 +120,17 @@ export default function AdminNativeImportScreen() {
         },
         body: JSON.stringify({ url: cleanUrl }),
       });
+      if (res.status === 404) {
+        // Backward compatibility: older API namespace
+        res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ url: cleanUrl }),
+        });
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
         setError(String(data?.message || data?.error || `Błąd importu (${res.status})`));
@@ -133,7 +158,7 @@ export default function AdminNativeImportScreen() {
           setError('');
           setMessage('');
           try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
+            let res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -141,6 +166,16 @@ export default function AdminNativeImportScreen() {
               },
               body: JSON.stringify({ draft, rightsConfirmed: true }),
             });
+            if (res.status === 404) {
+              res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import/create`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ draft, rightsConfirmed: true }),
+              });
+            }
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.success) {
               setError(String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`));
@@ -172,7 +207,10 @@ export default function AdminNativeImportScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: theme.bg }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 40, paddingTop: Math.max(insets.top + 10, 28) }}
+    >
       <View style={[styles.heroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={styles.heroTopRow}>
           <View style={[styles.heroIconWrap, { backgroundColor: isDark ? 'rgba(10,132,255,0.15)' : 'rgba(10,132,255,0.12)' }]}>
@@ -228,6 +266,7 @@ export default function AdminNativeImportScreen() {
             <Text style={[styles.row, { color: theme.sub }]}>Źródło: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.source}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Tytuł: <Text style={[styles.rowStrong, { color: theme.text }]}>{presentation?.title || draft.title}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Lokalizacja: <Text style={[styles.rowStrong, { color: theme.text }]}>{[draft.district, draft.city].filter(Boolean).join(', ') || '—'}</Text></Text>
+            <Text style={[styles.row, { color: theme.sub }]}>Tryb lokalizacji: <Text style={[styles.rowStrong, { color: theme.text }]}>{locationPrecision}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Zdjęcia: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.imageCount}</Text></Text>
           </View>
 
@@ -236,11 +275,19 @@ export default function AdminNativeImportScreen() {
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Miniatury zdjęć</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbStrip}>
                 {draft.imageUrls.slice(0, 16).map((uri, idx) => (
-                  <View key={`${uri}-${idx}`} style={[styles.thumbItem, { borderColor: theme.border }]}>
+                  <Pressable
+                    key={`${uri}-${idx}`}
+                    style={[styles.thumbItem, { borderColor: theme.border }]}
+                    onPress={() => {
+                      setLightboxIndex(idx);
+                      setLightboxOpen(true);
+                    }}
+                  >
                     <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
-                  </View>
+                  </Pressable>
                 ))}
               </ScrollView>
+              <Text style={[styles.lightboxHint, { color: theme.sub }]}>Dotknij miniatury, aby otworzyć pełny podgląd.</Text>
             </View>
           ) : null}
 
@@ -269,6 +316,32 @@ export default function AdminNativeImportScreen() {
               <Text style={[styles.sectionTitle, { color: theme.text }]}>Pełny podgląd opisu</Text>
               <View style={[styles.descriptionCard, { backgroundColor: isDark ? '#111114' : '#F9FAFB', borderColor: theme.border }]}>
                 <Text style={[styles.descriptionText, { color: theme.text }]}>{descriptionFull}</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {!!draft.locationWarnings?.length ? (
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Ostrzeżenia importu</Text>
+              <View style={styles.chipsWrap}>
+                {draft.locationWarnings.map((warning, idx) => (
+                  <View key={`${warning}-${idx}`} style={styles.warningChip}>
+                    <Text style={styles.warningChipText}>{warning}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {!!draft.features?.length ? (
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Cechy oferty</Text>
+              <View style={styles.chipsWrap}>
+                {draft.features.map((feature, idx) => (
+                  <View key={`${feature}-${idx}`} style={[styles.featureChip, { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}>
+                    <Text style={[styles.featureChipText, { color: theme.text }]}>{feature}</Text>
+                  </View>
+                ))}
               </View>
             </View>
           ) : null}
@@ -307,6 +380,36 @@ export default function AdminNativeImportScreen() {
           </View>
         </>
       ) : null}
+
+      <Modal visible={lightboxOpen} animationType="fade" transparent onRequestClose={() => setLightboxOpen(false)}>
+        <View style={styles.lightboxBackdrop}>
+          <View style={[styles.lightboxHeader, { paddingTop: Math.max(insets.top, 10) }]}>
+            <Text style={styles.lightboxCounter}>
+              {lightboxIndex + 1} / {draft?.imageUrls?.length || 0}
+            </Text>
+            <Pressable onPress={() => setLightboxOpen(false)} style={styles.lightboxClose}>
+              <Ionicons name="close" size={18} color="#fff" />
+            </Pressable>
+          </View>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            contentOffset={{ x: lightboxIndex * screenWidth, y: 0 }}
+            onMomentumScrollEnd={(e) => {
+              const width = e.nativeEvent.layoutMeasurement.width || 1;
+              const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+              setLightboxIndex(Math.max(0, idx));
+            }}
+          >
+            {(draft?.imageUrls || []).map((uri, idx) => (
+              <View key={`${uri}-full-${idx}`} style={[styles.lightboxSlide, { width: screenWidth }]}>
+                <Image source={{ uri }} style={styles.lightboxImage} resizeMode="contain" />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -340,11 +443,23 @@ const styles = StyleSheet.create({
   thumbStrip: { gap: 10, paddingRight: 6 },
   thumbItem: { width: 116, height: 84, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   thumbImage: { width: '100%', height: '100%' },
+  lightboxHint: { marginTop: 8, fontSize: 12, lineHeight: 16, fontWeight: '500' },
   mapWrap: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', height: 220 },
   map: { width: '100%', height: '100%' },
   descriptionCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
   descriptionText: { fontSize: 14, lineHeight: 21 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  warningChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: 'rgba(255,149,0,0.14)', borderWidth: 1, borderColor: 'rgba(255,149,0,0.32)' },
+  warningChipText: { color: '#FF9500', fontSize: 12, fontWeight: '700', lineHeight: 16 },
+  featureChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
+  featureChipText: { fontSize: 12, fontWeight: '600', lineHeight: 16 },
   linksRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
   linkBtn: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   linkText: { fontSize: 13, fontWeight: '700' },
+  lightboxBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)' },
+  lightboxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10 },
+  lightboxCounter: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  lightboxClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  lightboxSlide: { height: '100%', alignItems: 'center', justifyContent: 'center' },
+  lightboxImage: { width: '100%', height: '84%' },
 });
