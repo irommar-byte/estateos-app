@@ -3704,7 +3704,7 @@ function ProfileScreenLoggedIn({
               user={user}
               isDark={isDark}
               onFeaturePress={(featureId) => {
-                if (featureId === 'insider' || featureId === 'circle') {
+                if (featureId === 'insider') {
                   (navigation as any).navigate('AdminNativeImport');
                   return;
                 }

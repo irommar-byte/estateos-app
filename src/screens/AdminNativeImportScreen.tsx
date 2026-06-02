@@ -7,6 +7,7 @@ import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
 import { useThemeStore } from '../store/useThemeStore';
+import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 
 type ImportSource = 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
 
@@ -35,7 +36,7 @@ type ImportPresentation = {
 export default function AdminNativeImportScreen() {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
-  const userRole = String(useAuthStore((s) => s.user?.role) || '').toUpperCase();
+  const user = useAuthStore((s) => s.user);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const theme = useMemo(
     () =>
@@ -97,7 +98,7 @@ export default function AdminNativeImportScreen() {
     setEditUrl('');
     setPublicUrl('');
     try {
-      const res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import`, {
+      const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,7 +133,7 @@ export default function AdminNativeImportScreen() {
           setError('');
           setMessage('');
           try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import/create`, {
+            const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -160,12 +161,12 @@ export default function AdminNativeImportScreen() {
     ]);
   };
 
-  if (userRole !== 'ADMIN') {
+  if (!hasActiveInvestorProMembership(user)) {
     return (
       <View style={[styles.center, { backgroundColor: theme.bg }]}>
         <Ionicons name="shield-outline" size={32} color="#FF3B30" />
         <Text style={[styles.noAccessTitle, { color: theme.text }]}>Brak dostępu</Text>
-        <Text style={[styles.noAccessBody, { color: theme.sub }]}>Ten ekran importu jest dostępny tylko dla administratora.</Text>
+        <Text style={[styles.noAccessBody, { color: theme.sub }]}>Ten ekran importu jest dostępny dla aktywnego Investor Pro.</Text>
       </View>
     );
   }

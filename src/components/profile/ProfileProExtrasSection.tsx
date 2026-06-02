@@ -5,7 +5,6 @@ import {
   Gavel,
   DoorOpen,
   Sparkles,
-  Users,
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -15,7 +14,7 @@ import InvestorProShimmerBadge from './InvestorProShimmerBadge';
 import ProMembershipCountdownBar from './ProMembershipCountdownBar';
 import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
 
-type FeatureId = 'auction' | 'openHouse' | 'insider' | 'circle';
+type FeatureId = 'auction' | 'openHouse' | 'insider';
 
 type Props = {
   user: Record<string, unknown> | null | undefined;
@@ -79,7 +78,7 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
       onFeaturePress(id);
       return;
     }
-    if (id === 'insider' || id === 'circle') {
+    if (id === 'insider') {
       void Linking.openURL('https://estateos.pl/centrala').catch(() => {
         Alert.alert(t('common.error'), t(`profile.proExtras.features.${id}.alertBody`));
       });
@@ -118,13 +117,6 @@ export default function ProfileProExtrasSection({ user, isDark = true, onFeature
       title: t('profile.proExtras.features.insider.title'),
       subtitle: t('profile.proExtras.features.insider.subtitle'),
       tag: t('profile.proExtras.features.insider.tag'),
-    },
-    {
-      id: 'circle',
-      icon: Users,
-      title: t('profile.proExtras.features.circle.title'),
-      subtitle: t('profile.proExtras.features.circle.subtitle'),
-      tag: t('profile.proExtras.features.circle.tag'),
     },
   ];
 
