@@ -2,10 +2,11 @@ import { canonicalizeCity, canonicalizeDistrict } from '@/lib/location/locationC
 
 const OTODOM_HOST = 'otodom.pl';
 const OLX_HOST = 'olx.pl';
+const NIERUCHOMOSCI_ONLINE_HOST = 'nieruchomosci-online.pl';
 const FETCH_TIMEOUT_MS = 20_000;
 
 export type OtodomImportDraft = {
-  source: 'OTODOM' | 'OLX';
+  source: 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
   externalId: number;
   externalUrl: string;
   slug: string;
@@ -260,6 +261,21 @@ function normalizeOlxUrl(input: string): string {
   return url.toString();
 }
 
+function normalizeNieruchomosciOnlineUrl(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host !== NIERUCHOMOSCI_ONLINE_HOST) {
+    throw new Error('Obsługiwane są wyłącznie linki z nieruchomosci-online.pl.');
+  }
+  url.hash = '';
+  return url.toString();
+}
+
 export function detectImportSource(input: string): OtodomImportDraft['source'] {
   let url: URL;
   try {
@@ -270,7 +286,8 @@ export function detectImportSource(input: string): OtodomImportDraft['source'] {
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
   if (host === OTODOM_HOST) return 'OTODOM';
   if (host === OLX_HOST) return 'OLX';
-  throw new Error('Obsługiwane są wyłącznie linki z OtoDom lub OLX.');
+  if (host === NIERUCHOMOSCI_ONLINE_HOST) return 'NIERUCHOMOSCI_ONLINE';
+  throw new Error('Obsługiwane są wyłącznie linki z OtoDom, OLX lub Nieruchomosci-Online.');
 }
 
 export function isSupportedImportOfferUrl(input: string): boolean {
@@ -278,8 +295,10 @@ export function isSupportedImportOfferUrl(input: string): boolean {
     const source = detectImportSource(input);
     if (source === 'OTODOM') {
       normalizeOtodomUrl(input);
-    } else {
+    } else if (source === 'OLX') {
       normalizeOlxUrl(input);
+    } else {
+      normalizeNieruchomosciOnlineUrl(input);
     }
     return true;
   } catch {
@@ -534,6 +553,113 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   };
 }
 
+function hashStringToPositiveInt(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const normalized = Math.abs(hash >>> 0);
+  return normalized > 0 ? normalized : 1;
+}
+
+function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft {
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  const title = String((ogTitle || titleMatch?.[1] || '').replace(/\s+/g, ' ').trim());
+
+  const descriptionMeta =
+    html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] || '';
+  const descriptionText = String(descriptionMeta).trim();
+  const descriptionHtml = descriptionText ? `<p>${descriptionText}</p>` : '';
+
+  const canonical =
+    html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] || sourceUrl;
+  const cleanCanonical = normalizeNieruchomosciOnlineUrl(canonical);
+  const slug = (() => {
+    try {
+      const u = new URL(cleanCanonical);
+      const bits = u.pathname.split('/').filter(Boolean);
+      return bits[bits.length - 1] || '';
+    } catch {
+      return '';
+    }
+  })();
+
+  const price =
+    parseNumber(html.match(/(\d[\d\s.,]*)\s*(?:zł|PLN)/i)?.[1]) ??
+    parseNumber(html.match(/price["']?\s*[:=]\s*["']?(\d[\d\s.,]*)/i)?.[1]);
+  const area = parseNumber(
+    html.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania)?[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
+  );
+  const plotArea = parseNumber(
+    html.match(/powierzchni[aey]?\s*dzia[łl]ki[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
+  );
+  const rooms = parseNumber(html.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]);
+  const floor = parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]);
+  const yearBuilt = parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1]);
+  const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
+  const lng = parseNumber(html.match(/"longitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
+
+  const cityRaw =
+    html.match(/"addressLocality"\s*:\s*"([^"]+)"/i)?.[1] ||
+    html.match(/\b,\s*([A-ZĄĆĘŁŃÓŚŹŻ][A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż\- ]+)\s*$/m)?.[1] ||
+    '';
+  const city = canonicalizeCity(String(cityRaw || '').trim());
+  const district = canonicalizeDistrict(city, '');
+  const imageUrls = [
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] || '',
+  ].filter((v) => Boolean(String(v).trim()));
+
+  const transactionType = /wynajem|do wynajęcia|na wynajem/i.test(html) ? 'RENT' : 'SALE';
+  const propertyType = /dom/i.test(title) ? 'HOUSE' : /dzia[łl]k/i.test(title) ? 'PLOT' : 'FLAT';
+
+  return {
+    source: 'NIERUCHOMOSCI_ONLINE',
+    externalId: hashStringToPositiveInt(cleanCanonical),
+    externalUrl: cleanCanonical,
+    slug,
+    title: title || 'Oferta z Nieruchomosci-Online',
+    transactionType,
+    propertyType,
+    price,
+    priceCurrency: 'PLN',
+    adminFee: null,
+    deposit: null,
+    area,
+    plotArea,
+    rooms,
+    floor,
+    totalFloors: null,
+    yearBuilt,
+    condition: null,
+    conditionCode: null,
+    heating: null,
+    heatingCode: null,
+    buildingType: null,
+    city,
+    district,
+    neighborhood: null,
+    street: null,
+    lat,
+    lng,
+    localityCountryCode: 'PL',
+    descriptionHtml,
+    descriptionText: stripHtml(descriptionHtml),
+    features: [],
+    imageUrls,
+    imageCount: imageUrls.length,
+    agency: null,
+    advertiserType: null,
+    status: null,
+    createdAt: null,
+    modifiedAt: null,
+    characteristics: {},
+    locationWarnings: !lat || !lng ? ['Nieruchomosci-Online nie podał dokładnych współrzędnych GPS.'] : [],
+    parsedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')
@@ -555,9 +681,14 @@ export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImport
   if (source === 'OTODOM') {
     return importOfferFromOtodomUrl(inputUrl);
   }
+  if (source === 'OLX') {
+    const url = normalizeOlxUrl(inputUrl);
+    const html = await fetchOtodomOfferHtml(url);
+    const ad = extractOlxAdPayload(html);
+    return parseOlxAd(ad, url);
+  }
 
-  const url = normalizeOlxUrl(inputUrl);
+  const url = normalizeNieruchomosciOnlineUrl(inputUrl);
   const html = await fetchOtodomOfferHtml(url);
-  const ad = extractOlxAdPayload(html);
-  return parseOlxAd(ad, url);
+  return parseNierOnlineHtml(html, url);
 }

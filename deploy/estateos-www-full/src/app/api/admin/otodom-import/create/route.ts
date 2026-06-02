@@ -5,7 +5,7 @@ import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
-import { importOfferFromOtodomUrl, isOtodomOfferUrl } from '@/lib/otodomImport';
+import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
 
 async function requireAdmin() {
@@ -39,7 +39,10 @@ async function requireAdmin() {
 function isOtodomDraft(value: unknown): value is OtodomImportDraft {
   if (!value || typeof value !== 'object') return false;
   const row = value as Record<string, unknown>;
-  return row.source === 'OTODOM' && typeof row.externalId === 'number';
+  return (
+    (row.source === 'OTODOM' || row.source === 'OLX' || row.source === 'NIERUCHOMOSCI_ONLINE') &&
+    typeof row.externalId === 'number'
+  );
 }
 
 export async function POST(req: Request) {
@@ -54,10 +57,13 @@ export async function POST(req: Request) {
 
     const url = String(body?.url ?? '').trim();
     if (!draft && url) {
-      if (!isOtodomOfferUrl(url)) {
-        return NextResponse.json({ error: 'Obsługiwane są wyłącznie linki otodom.pl/oferta/...' }, { status: 400 });
+      if (!isSupportedImportOfferUrl(url)) {
+        return NextResponse.json(
+          { error: 'Obsługiwane są linki OtoDom, OLX oraz Nieruchomosci-Online.' },
+          { status: 400 },
+        );
       }
-      draft = await importOfferFromOtodomUrl(url);
+      draft = await importOfferFromUrl(url);
     }
 
     if (!draft) {

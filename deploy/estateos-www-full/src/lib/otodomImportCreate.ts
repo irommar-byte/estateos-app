@@ -16,6 +16,7 @@ import { prisma } from '@/lib/prisma';
 const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
   OTODOM: 'estateos-otodom:',
   OLX: 'estateos-olx:',
+  NIERUCHOMOSCI_ONLINE: 'estateos-nieruchomosci-online:',
 };
 const IMAGE_FETCH_TIMEOUT_MS = 25_000;
 const MAX_IMPORT_IMAGES = MAX_IMAGES_PER_OFFER;
@@ -122,7 +123,12 @@ async function downloadRemoteImage(
       headers: {
         Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
         'Accept-Language': 'pl-PL,pl;q=0.9',
-        Referer: source === 'OLX' ? 'https://www.olx.pl/' : 'https://www.otodom.pl/',
+        Referer:
+          source === 'OLX'
+            ? 'https://www.olx.pl/'
+            : source === 'NIERUCHOMOSCI_ONLINE'
+              ? 'https://www.nieruchomosci-online.pl/'
+              : 'https://www.otodom.pl/',
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       },

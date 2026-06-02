@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { importOfferFromOtodomUrl, isOtodomOfferUrl } from '@/lib/otodomImport';
+import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 
 async function requireAdmin() {
@@ -45,13 +45,16 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const url = String(body?.url ?? '').trim();
     if (!url) {
-      return NextResponse.json({ error: 'Podaj link do oferty OtoDom.' }, { status: 400 });
+      return NextResponse.json({ error: 'Podaj link do oferty OtoDom, OLX lub Nieruchomosci-Online.' }, { status: 400 });
     }
-    if (!isOtodomOfferUrl(url)) {
-      return NextResponse.json({ error: 'Obsługiwane są wyłącznie linki otodom.pl/oferta/...' }, { status: 400 });
+    if (!isSupportedImportOfferUrl(url)) {
+      return NextResponse.json(
+        { error: 'Obsługiwane są linki OtoDom, OLX oraz Nieruchomosci-Online.' },
+        { status: 400 },
+      );
     }
 
-    const draft = await importOfferFromOtodomUrl(url);
+    const draft = await importOfferFromUrl(url);
     const presentation = await buildOtodomPresentationCopy(draft);
     return NextResponse.json({ ok: true, draft, presentation });
   } catch (error) {
