@@ -517,12 +517,98 @@
       display: block;
       background: rgba(127,127,127,0.04);
     }
+    .brochure-exporting {
+      background: #fff !important;
+    }
+    .brochure-exporting .page {
+      max-width: none !important;
+      width: 196mm !important;
+      padding: 0 !important;
+      margin: 0 auto !important;
+    }
+    .brochure-exporting .sheet {
+      box-shadow: none !important;
+      background: none !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+    .brochure-exporting .sheet-inner {
+      border: none !important;
+      border-radius: 0 !important;
+      overflow: hidden !important;
+      background: #fff !important;
+    }
     .brochure-exporting .landing-print-hide,
     .brochure-exporting .platform-foot,
-    .brochure-exporting .toast { display: none !important; }
+    .brochure-exporting .toast,
+    .brochure-exporting .thumbs,
+    .brochure-exporting .description-hint,
+    .brochure-exporting .actions,
+    .brochure-exporting .qr-row,
+    .brochure-exporting .trust-note,
+    .brochure-exporting #mapSection { display: none !important; }
+    .brochure-exporting .sheet-header {
+      padding: 0 0 2.5mm !important;
+      margin-bottom: 1.5mm !important;
+      border-bottom: 1px solid #ddd !important;
+      background: none !important;
+    }
+    .brochure-exporting .sheet-brand-left { font-size: 7pt !important; }
+    .brochure-exporting .sheet-ref { font-size: 7pt !important; padding: 1mm 2.5mm !important; }
+    .brochure-exporting .sheet-lead { display: none !important; }
+    .brochure-exporting .hero { min-height: 0 !important; }
+    .brochure-exporting .hero img {
+      width: 100% !important;
+      height: 30mm !important;
+      max-height: 30mm !important;
+      object-fit: cover !important;
+    }
+    .brochure-exporting .body { padding: 1.5mm 0 0 !important; }
+    .brochure-exporting .badges { margin-bottom: 1.5mm !important; gap: 1.5mm !important; }
+    .brochure-exporting .badge { font-size: 7pt !important; padding: 0.8mm 2mm !important; }
+    .brochure-exporting .summary-line { font-size: 8pt !important; margin-bottom: 0.8mm !important; }
+    .brochure-exporting h1 { font-size: 14pt !important; margin-bottom: 0.8mm !important; line-height: 1.12 !important; }
+    .brochure-exporting .location { font-size: 8.5pt !important; }
+    .brochure-exporting .price-row { margin-top: 1.5mm !important; }
+    .brochure-exporting .price { font-size: 16pt !important; color: #8a6d1f !important; }
+    .brochure-exporting .price-suffix { font-size: 8.5pt !important; }
+    .brochure-exporting .price-commission { font-size: 7.5pt !important; }
+    .brochure-exporting .spec-grid {
+      grid-template-columns: repeat(5, 1fr) !important;
+      gap: 1.2mm !important;
+      margin-top: 2mm !important;
+    }
+    .brochure-exporting .spec { padding: 1.2mm 1.8mm !important; border-radius: 2mm !important; }
+    .brochure-exporting .spec label { font-size: 5.5pt !important; margin-bottom: 0.4mm !important; }
+    .brochure-exporting .spec strong { font-size: 7.5pt !important; }
+    .brochure-exporting .amenities { margin-top: 1.5mm !important; gap: 1.2mm !important; }
+    .brochure-exporting .amenity { font-size: 6.5pt !important; padding: 0.6mm 1.8mm !important; }
+    .brochure-exporting .description-section,
+    .brochure-exporting .floorplan-section {
+      margin-top: 2mm !important;
+      padding-top: 1.5mm !important;
+      border-top: 1px solid #e5e5ea !important;
+    }
+    .brochure-exporting .section-title { font-size: 6.5pt !important; margin-bottom: 0.8mm !important; }
+    .brochure-exporting .description-body {
+      font-size: 8pt !important;
+      line-height: 1.32 !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 5 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      max-height: none !important;
+    }
+    .brochure-exporting .description-body::after { display: none !important; }
+    .brochure-exporting .floorplan-frame img {
+      max-height: 22mm !important;
+      min-height: 0 !important;
+      height: 22mm !important;
+      object-fit: contain !important;
+    }
     .brochure-exporting .agent-print-card {
       display: block !important;
-      margin-top: 3mm;
+      margin-top: 2.5mm !important;
     }
     .print-only { display: none !important; }
     .agent-print-card {
@@ -530,8 +616,8 @@
     }
     .agent-print-inner {
       display: grid;
-      grid-template-columns: 22mm 1fr auto;
-      gap: 4mm;
+      grid-template-columns: 22mm 1fr 20mm auto;
+      gap: 3mm;
       align-items: center;
       padding: 4mm 5mm;
       border-radius: 4mm;
@@ -601,7 +687,32 @@
       text-transform: uppercase;
       color: #141416;
     }
-    .agent-print-prestige {
+    .agent-print-qr-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1mm;
+    }
+    .agent-print-qr {
+      width: 18mm;
+      height: 18mm;
+      border-radius: 2mm;
+      border: 1px solid rgba(20,20,22,0.12);
+      background: #fff;
+      display: block;
+      object-fit: contain;
+    }
+    .agent-print-qr-label {
+      font-size: 5.5pt;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #6b6b76;
+      text-align: center;
+      line-height: 1.25;
+      max-width: 20mm;
+    }
+    .agent-print-badge {
       display: inline-block;
       margin: 1mm 0 2mm;
       padding: 0.8mm 2.5mm;
@@ -759,6 +870,13 @@
         margin-top: 3mm;
         page-break-inside: avoid;
       }
+      .agent-print-inner {
+        grid-template-columns: 22mm 1fr 20mm auto !important;
+      }
+      .agent-print-qr {
+        width: 18mm !important;
+        height: 18mm !important;
+      }
       .agent-print-card.print-only { display: block !important; }
       .agent-print-card[hidden] { display: block !important; }
     }
@@ -773,7 +891,7 @@
             <div class="sheet-brand-left"><span>Wizytówka</span><strong>EstateOS™</strong></div>
             <span class="sheet-ref" id="offerRef">Oferta</span>
           </div>
-          <p class="sheet-lead">
+          <p class="sheet-lead" id="sheetLead">
             Kompaktowy podgląd oferty — pełny kontakt w aplikacji EstateOS™.
           </p>
         </header>
@@ -797,14 +915,14 @@
           <div class="thumbs" id="thumbs" hidden></div>
 
           <section class="description-section" id="descriptionSection" hidden>
-            <h2 class="section-title">Opis</h2>
+            <h2 class="section-title" id="sectionDescriptionTitle">Opis</h2>
             <p class="description-body" id="descriptionBody"></p>
-            <p class="description-hint">Pełny opis w aplikacji EstateOS™</p>
+            <p class="description-hint" id="descriptionHint">Pełny opis w aplikacji EstateOS™</p>
           </section>
 
           <div class="media-stack" id="mediaStack">
           <section class="map-section" id="mapSection" hidden>
-            <h2 class="section-title">Lokalizacja</h2>
+            <h2 class="section-title" id="sectionLocationTitle">Lokalizacja</h2>
             <a class="map-frame" id="mapLink" href="#" target="_blank" rel="noopener noreferrer">
               <img id="mapImage" alt="Mapa okolicy nieruchomości" loading="lazy" />
             </a>
@@ -812,7 +930,7 @@
           </section>
 
           <section class="floorplan-section" id="floorPlanSection" hidden>
-            <h2 class="section-title">Rzut / plan</h2>
+            <h2 class="section-title" id="sectionFloorPlanTitle">Rzut / plan</h2>
             <a class="floorplan-frame" id="floorPlanLink" href="#" target="_blank" rel="noopener noreferrer">
               <img id="floorPlanImage" alt="Rzut lokalu" loading="lazy" />
             </a>
@@ -824,13 +942,13 @@
               <canvas id="qrCanvas" width="128" height="128" aria-hidden="true"></canvas>
             </div>
             <div class="qr-copy">
-              <h3>Aplikacja EstateOS™</h3>
-              <p><strong>Zeskanuj, aby zobaczyć nieruchomość w aplikacji.</strong> Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.</p>
+              <h3 id="qrHeading">Aplikacja EstateOS™</h3>
+              <p><strong id="qrLead">Zeskanuj, aby zobaczyć nieruchomość w aplikacji.</strong> <span id="qrIntro">Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.</span></p>
               <div class="mono" id="qrUrlLabel"></div>
             </div>
           </div>
 
-          <p class="trust-note landing-print-hide">
+          <p class="trust-note landing-print-hide" id="trustNote">
             Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.
           </p>
 
@@ -856,18 +974,22 @@
               <p class="agent-print-contact" id="agentPhone" hidden></p>
               <p class="agent-print-contact" id="agentEmail" hidden></p>
             </div>
+            <div class="agent-print-qr-col">
+              <img class="agent-print-qr" id="agentPrintQr" alt="" width="72" height="72" hidden />
+              <span class="agent-print-qr-label" id="agentQrLabel">Zeskanuj ofertę</span>
+            </div>
             <div class="agent-print-brand">
               <strong>EstateOS™</strong>
-              <span class="agent-print-prestige">Prestiż</span>
-              <p>Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.</p>
+              <span class="agent-print-badge" id="agentBadge">WIZYTÓWKA</span>
+              <p id="agentBrandTagline">Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.</p>
               <div class="agent-print-ref" id="agentPrintRef"></div>
             </div>
           </div>
         </section>
 
         <footer class="platform-foot landing-print-hide" aria-label="O platformie EstateOS">
-          <h2>Platforma EstateOS™</h2>
-          <p>
+          <h2 id="platformTitle">Platforma EstateOS™</h2>
+          <p id="platformLead">
             <span class="highlight">Inteligentny rynek nieruchomości</span> — Radar, Dealroom i bezpieczny kontakt w jednej aplikacji.
           </p>
           <div class="platform-badges" aria-label="Linki do platformy">
@@ -880,7 +1002,7 @@
             </a>
             <span class="badge-shell badge-soon" aria-label="Google Play — wkrótce">
               <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="" width="120" height="28" loading="lazy" />
-              <span class="soon-label">Wkrótce</span>
+              <span class="soon-label" id="soonLabel">Wkrótce</span>
             </span>
           </div>
         </footer>
@@ -898,28 +1020,278 @@
   var id = m ? m[1] : '';
   var canonicalHttps = ORIGIN + '/o/' + id;
 
+  function resolvePageLocale() {
+    var params = new URLSearchParams(window.location.search);
+    var q = params.get('lang') || params.get('locale');
+    if (q === 'en' || q === 'pl') return q;
+    var cookieMatch = document.cookie.match(/(?:^|;\s*)estateos_lang=(pl|en)(?:;|$)/);
+    if (cookieMatch) return cookieMatch[1];
+    var nav = (navigator.language || '').toLowerCase();
+    if (nav.indexOf('en') === 0) return 'en';
+    return 'pl';
+  }
+
+  var LOCALE = resolvePageLocale();
+  document.documentElement.lang = LOCALE;
+
+  var I18N = {
+    pl: {
+      sheetBrand: 'Wizytówka',
+      sheetLead: 'Kompaktowy podgląd oferty — pełny kontakt w aplikacji EstateOS™.',
+      sectionDescription: 'Opis',
+      sectionLocation: 'Lokalizacja',
+      sectionFloorPlan: 'Rzut / plan',
+      descriptionHint: 'Pełny opis w aplikacji EstateOS™',
+      qrHeading: 'Aplikacja EstateOS™',
+      qrLead: 'Zeskanuj, aby zobaczyć nieruchomość w aplikacji.',
+      qrIntro: 'Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.',
+      qrAlt: 'Kod QR — otwórz ofertę w aplikacji EstateOS',
+      agentQrLabel: 'Zeskanuj ofertę',
+      trustNote: 'Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.',
+      openApp: 'Otwórz w aplikacji EstateOS™',
+      registerCta: 'Załóż konto i skontaktuj się',
+      downloadBrochure: 'Pobierz ofertówkę dla klienta',
+      copyLink: 'Kopiuj link do wiadomości',
+      perMonth: '/ miesiąc',
+      perMonthShort: ' / mc',
+      specArea: 'Powierzchnia',
+      specRooms: 'Liczba pokoi',
+      specFloor: 'Piętro',
+      specYear: 'Rok budowy',
+      specCondition: 'Stan',
+      specPlot: 'Działka',
+      forRent: 'do wynajęcia',
+      forSale: 'na sprzedaż',
+      countryDefault: 'Polska',
+      agentKickerAgent: 'Twój doradca · EstateOS™',
+      agentKickerContact: 'Kontakt do oferty · EstateOS™',
+      agentBadge: 'WIZYTÓWKA',
+      agentTagline: 'Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.',
+      agentDefaultName: 'Agent nieruchomości',
+      agentPhonePrefix: 'tel. ',
+      refPrefix: 'Ref. ',
+      commissionNone: 'Cena <strong>bez wynagrodzenia pośrednika</strong> (0%).',
+      commissionInPrice: 'W cenie <strong>{amount}</strong> wynagrodzenia pośrednika ({pct} ceny ofertowej).',
+      mapExactPrefix: 'Punkt na mapie: ',
+      mapExactFallback: 'Lokalizacja nieruchomości na mapie.',
+      mapAreaPrefix: 'Okolica: ',
+      mapAreaSuffix: ' (bez dokładnego adresu na mapie).',
+      mapAreaFallback: 'Podgląd okolicy bez dokładnej pinezki.',
+      floorPlanAria: 'Otwórz rzut lokalu w pełnym rozmiarze',
+      loading: 'Ładowanie oferty…',
+      noPhoto: 'Brak zdjęcia',
+      photoError: 'Nie udało się załadować zdjęcia',
+      thumbLabel: 'Miniatura ',
+      shareFooter: 'EstateOS™ — zeskanuj QR na wizytówce lub otwórz link w aplikacji.',
+      shareOgSuffix: '. Zeskanuj QR lub otwórz w aplikacji EstateOS™.',
+      toastShared: 'Udostępniono wizytówkę oferty.',
+      toastCopied: 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.',
+      toastLinkCopied: 'Skopiowano link: ',
+      toastCopyManual: 'Skopiuj ręcznie: ',
+      toastPdfPrepFail: 'Nie udało się przygotować PDF — odśwież stronę i spróbuj ponownie.',
+      toastPdfGenerating: 'Przygotowujemy PDF na jedną stronę A4…',
+      toastPdfDone: 'Ofertówka została pobrana.',
+      toastPdfFail: 'Nie udało się wygenerować PDF. Spróbuj ponownie za chwilę.',
+      toastGeneratingLabel: 'Generowanie ofertówki…',
+      platformTitle: 'Platforma EstateOS™',
+      platformLeadHtml: '<span class="highlight">Inteligentny rynek nieruchomości</span> — Radar, Dealroom i bezpieczny kontakt w jednej aplikacji.',
+      soonLabel: 'Wkrótce',
+      fatalInvalidId: 'Niepoprawny adres — brak identyfikatora oferty w ścieżce /o/{id}.',
+      fatalLoadError: 'Nie udało się wczytać oferty ({msg}).',
+      fallbackSummary: 'Wizytówka nieruchomości · EstateOS™',
+      heroLoadFail: 'Nie udało się pobrać danych',
+      offerFallback: 'Oferta',
+      offerTitleFallback: 'Oferta #',
+      mapAlt: 'Mapa okolicy nieruchomości',
+      floorPlanAlt: 'Rzut lokalu',
+      heroAlt: 'Zdjęcie nieruchomości',
+      pdfFilename: 'ofertowka-estateos-',
+      areaUnit: ' m²',
+      priceOfOffer: ' ceny ofertowej',
+    },
+    en: {
+      sheetBrand: 'Offer sheet',
+      sheetLead: 'Compact offer preview — full contact in the EstateOS™ app.',
+      sectionDescription: 'Description',
+      sectionLocation: 'Location',
+      sectionFloorPlan: 'Floor plan',
+      descriptionHint: 'Full description in the EstateOS™ app',
+      qrHeading: 'EstateOS™ app',
+      qrLead: 'Scan to view this property in the app.',
+      qrIntro: 'If the app is not installed yet, you will be prompted to download it; after install, this offer opens automatically.',
+      qrAlt: 'QR code — open offer in EstateOS app',
+      agentQrLabel: 'Scan offer',
+      trustNote: 'Gallery and specs — no sign-up required. Contact, price offers, and viewings require a free account on our verified platform.',
+      openApp: 'Open in EstateOS™ app',
+      registerCta: 'Create account & contact',
+      downloadBrochure: 'Download client brochure (PDF)',
+      copyLink: 'Copy link for messaging',
+      perMonth: '/ month',
+      perMonthShort: ' / mo',
+      specArea: 'Area',
+      specRooms: 'Rooms',
+      specFloor: 'Floor',
+      specYear: 'Year built',
+      specCondition: 'Condition',
+      specPlot: 'Plot',
+      forRent: 'for rent',
+      forSale: 'for sale',
+      countryDefault: 'Poland',
+      agentKickerAgent: 'Your advisor · EstateOS™',
+      agentKickerContact: 'Offer contact · EstateOS™',
+      agentBadge: 'OFFER SHEET',
+      agentTagline: 'The intelligent real estate market — material prepared for your client.',
+      agentDefaultName: 'Real estate agent',
+      agentPhonePrefix: 'tel. ',
+      refPrefix: 'Ref. ',
+      commissionNone: 'Price <strong>without agent commission</strong> (0%).',
+      commissionInPrice: 'Includes <strong>{amount}</strong> agent commission ({pct} of the listed price).',
+      mapExactPrefix: 'Map pin: ',
+      mapExactFallback: 'Property location on the map.',
+      mapAreaPrefix: 'Area: ',
+      mapAreaSuffix: ' (exact address not shown on map).',
+      mapAreaFallback: 'Neighbourhood preview without exact pin.',
+      floorPlanAria: 'Open floor plan full size',
+      loading: 'Loading offer…',
+      noPhoto: 'No photo',
+      photoError: 'Could not load photo',
+      thumbLabel: 'Thumbnail ',
+      shareFooter: 'EstateOS™ — scan the QR on this sheet or open the link in the app.',
+      shareOgSuffix: '. Scan QR or open in the EstateOS™ app.',
+      toastShared: 'Offer sheet shared.',
+      toastCopied: 'Message text copied — paste in SMS, email, or chat.',
+      toastLinkCopied: 'Link copied: ',
+      toastCopyManual: 'Copy manually: ',
+      toastPdfPrepFail: 'Could not prepare PDF — refresh and try again.',
+      toastPdfGenerating: 'Preparing single-page A4 PDF…',
+      toastPdfDone: 'Brochure downloaded.',
+      toastPdfFail: 'PDF generation failed. Please try again shortly.',
+      toastGeneratingLabel: 'Generating brochure…',
+      platformTitle: 'EstateOS™ platform',
+      platformLeadHtml: '<span class="highlight">The intelligent real estate market</span> — Radar, Dealroom, and secure contact in one app.',
+      soonLabel: 'Coming soon',
+      fatalInvalidId: 'Invalid URL — missing offer id in /o/{id}.',
+      fatalLoadError: 'Could not load offer ({msg}).',
+      fallbackSummary: 'Property offer sheet · EstateOS™',
+      heroLoadFail: 'Could not load data',
+      offerFallback: 'Offer',
+      offerTitleFallback: 'Offer #',
+      mapAlt: 'Neighbourhood map',
+      floorPlanAlt: 'Floor plan',
+      heroAlt: 'Property photo',
+      pdfFilename: 'estateos-offer-',
+      areaUnit: ' m²',
+      priceOfOffer: ' of listed price',
+    },
+  };
+
+  function t(key) {
+    return (I18N[LOCALE] && I18N[LOCALE][key]) || I18N.pl[key] || key;
+  }
+
+  function applyStaticCopy() {
+    var brandSpan = document.querySelector('.sheet-brand-left span');
+    if (brandSpan) brandSpan.textContent = t('sheetBrand');
+    var sheetLead = document.getElementById('sheetLead');
+    if (sheetLead) sheetLead.textContent = t('sheetLead');
+    var ids = {
+      sectionDescriptionTitle: 'sectionDescription',
+      sectionLocationTitle: 'sectionLocation',
+      sectionFloorPlanTitle: 'sectionFloorPlan',
+      descriptionHint: 'descriptionHint',
+      qrHeading: 'qrHeading',
+      qrLead: 'qrLead',
+      qrIntro: 'qrIntro',
+      trustNote: 'trustNote',
+      openApp: 'openApp',
+      registerCta: 'registerCta',
+      downloadBrochure: 'downloadBrochure',
+      copyLink: 'copyLink',
+      agentBadge: 'agentBadge',
+      agentBrandTagline: 'agentTagline',
+      agentQrLabel: 'agentQrLabel',
+      platformTitle: 'platformTitle',
+      soonLabel: 'soonLabel',
+    };
+    Object.keys(ids).forEach(function (elId) {
+      var el = document.getElementById(elId);
+      if (el) el.textContent = t(ids[elId]);
+    });
+    var platformLead = document.getElementById('platformLead');
+    if (platformLead) platformLead.innerHTML = t('platformLeadHtml');
+    var mapImg = document.getElementById('mapImage');
+    if (mapImg) mapImg.alt = t('mapAlt');
+    var floorImg = document.getElementById('floorPlanImage');
+    if (floorImg) floorImg.alt = t('floorPlanAlt');
+    var hero = document.getElementById('hero');
+    if (hero && hero.classList.contains('placeholder')) {
+      hero.childNodes.forEach(function (node) {
+        if (node.nodeType === 3 && String(node.textContent || '').trim()) node.textContent = t('loading');
+      });
+    }
+    var offerRef = document.getElementById('offerRef');
+    if (offerRef && id) offerRef.textContent = t('refPrefix') + id;
+    document.title = LOCALE === 'en' ? 'EstateOS™ — offer sheet' : 'EstateOS™ — wizytówka oferty';
+  }
+
+  applyStaticCopy();
+
   var PROPERTY_LABELS = {
     FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal użytkowy',
     APARTMENT: 'Mieszkanie', STUDIO: 'Kawalerka', LAND: 'Działka', OFFICE: 'Biuro', RETAIL: 'Lokal handlowy'
   };
+  var PROPERTY_LABELS_EN = {
+    FLAT: 'Flat', HOUSE: 'House', PLOT: 'Plot', COMMERCIAL: 'Commercial unit',
+    APARTMENT: 'Apartment', STUDIO: 'Studio', LAND: 'Land', OFFICE: 'Office', RETAIL: 'Retail unit'
+  };
   var TX_LABELS = { RENT: 'Wynajem', SELL: 'Sprzedaż', BUY: 'Kupno' };
+  var TX_LABELS_EN = { RENT: 'Rent', SELL: 'Sale', BUY: 'Buy' };
+  var CONDITION_LABELS = {
+    READY: 'Gotowe do wprowadzenia', DEVELOPER: 'Stan deweloperski',
+    TO_RENOVATION: 'Do remontu', NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry'
+  };
+  var CONDITION_LABELS_EN = {
+    READY: 'Move-in ready', DEVELOPER: 'Developer finish', TO_RENOVATION: 'Needs renovation',
+    NEW: 'New', VERY_GOOD: 'Very good', GOOD: 'Good'
+  };
+  var AMENITY_KEYS = [
+    ['hasBalcony', 'amenityBalcony'],
+    ['hasGarden', 'amenityGarden'],
+    ['hasParking', 'amenityParking'],
+    ['hasElevator', 'amenityElevator'],
+    ['hasStorage', 'amenityStorage'],
+    ['isFurnished', 'amenityFurnished'],
+  ];
+  I18N.pl.amenityBalcony = 'Balkon';
+  I18N.pl.amenityGarden = 'Ogród';
+  I18N.pl.amenityParking = 'Parking';
+  I18N.pl.amenityElevator = 'Winda';
+  I18N.pl.amenityStorage = 'Piwnica / komórka';
+  I18N.pl.amenityFurnished = 'Umeblowane';
+  I18N.en.amenityBalcony = 'Balcony';
+  I18N.en.amenityGarden = 'Garden';
+  I18N.en.amenityParking = 'Parking';
+  I18N.en.amenityElevator = 'Elevator';
+  I18N.en.amenityStorage = 'Storage / cellar';
+  I18N.en.amenityFurnished = 'Furnished';
 
-  function labelProperty(raw, fromApi) {
+  function labelProperty(raw, fromApi, fromApiEn) {
+    if (LOCALE === 'en' && fromApiEn) return fromApiEn;
     if (fromApi) return fromApi;
     var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
-    return PROPERTY_LABELS[key] || null;
+    var map = LOCALE === 'en' ? PROPERTY_LABELS_EN : PROPERTY_LABELS;
+    return map[key] || null;
   }
   function labelTransaction(raw) {
     var key = String(raw || '').trim().toUpperCase();
-    return TX_LABELS[key] || null;
+    var map = LOCALE === 'en' ? TX_LABELS_EN : TX_LABELS;
+    return map[key] || null;
   }
-  function labelCondition(raw, fromApi) {
+  function labelCondition(raw, fromApi, fromApiEn) {
+    if (LOCALE === 'en' && fromApiEn) return fromApiEn;
     if (fromApi) return fromApi;
-    var map = {
-      READY: 'Gotowe do wprowadzenia', DEVELOPER: 'Stan deweloperski',
-      TO_RENOVATION: 'Do remontu', NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry'
-    };
     var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    var map = LOCALE === 'en' ? CONDITION_LABELS_EN : CONDITION_LABELS;
     return map[key] || null;
   }
 
@@ -949,9 +1321,12 @@
     var x = Number(n);
     if (!isFinite(x)) return String(n);
     try {
+      if (LOCALE === 'en') {
+        return x.toLocaleString('en-GB', { maximumFractionDigits: 0 }) + ' PLN';
+      }
       return x.toLocaleString('pl-PL', { maximumFractionDigits: 0 }) + ' zł';
     } catch (e) {
-      return String(Math.round(x)) + ' zł';
+      return String(Math.round(x)) + (LOCALE === 'en' ? ' PLN' : ' zł');
     }
   }
 
@@ -959,13 +1334,15 @@
     var x = Number(raw);
     if (!isFinite(x)) return '';
     var text = Number.isInteger(x) ? String(x) : x.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+    if (LOCALE === 'en') return text + '%';
     return text.replace('.', ',') + '%';
   }
 
   function capitalizeLabel(value) {
     var text = String(value || '').trim();
     if (!text || /^\d/.test(text)) return text;
-    return text.charAt(0).toLocaleUpperCase('pl-PL') + text.slice(1);
+    var loc = LOCALE === 'en' ? 'en-GB' : 'pl-PL';
+    return text.charAt(0).toLocaleUpperCase(loc) + text.slice(1);
   }
 
   function renderPriceCommission(data) {
@@ -988,13 +1365,14 @@
       return;
     }
     if (pct === 0) {
-      note.innerHTML = 'Cena <strong>bez wynagrodzenia pośrednika</strong> (0%).';
+      note.innerHTML = t('commissionNone');
       note.hidden = false;
       return;
     }
     var amount = Math.round((price * pct) / 100);
-    note.innerHTML =
-      'W cenie <strong>' + fmtMoney(amount) + '</strong> wynagrodzenia pośrednika (' + fmtPercent(pct) + ' ceny ofertowej).';
+    note.innerHTML = t('commissionInPrice')
+      .replace('{amount}', fmtMoney(amount))
+      .replace('{pct}', fmtPercent(pct));
     note.hidden = false;
   }
 
@@ -1027,17 +1405,17 @@
     el.innerHTML = '';
     if (!src) {
       el.classList.add('placeholder');
-      el.textContent = 'Brak zdjęcia';
+      el.textContent = t('noPhoto');
       return;
     }
     var img = document.createElement('img');
-    img.alt = alt || 'Zdjęcie nieruchomości';
+    img.alt = alt || t('heroAlt');
     img.loading = 'eager';
     img.decoding = 'async';
     img.src = src;
     img.onerror = function () {
       el.classList.add('placeholder');
-      el.textContent = 'Nie udało się załadować zdjęcia';
+      el.textContent = t('photoError');
     };
     el.appendChild(img);
   }
@@ -1050,7 +1428,7 @@
     urls.slice(0, 12).forEach(function (u, i) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('aria-label', 'Miniatura ' + (i + 1));
+      b.setAttribute('aria-label', t('thumbLabel') + (i + 1));
       var im = document.createElement('img');
       im.alt = '';
       im.loading = 'lazy';
@@ -1073,18 +1451,15 @@
     var wrap = document.getElementById('amenities');
     wrap.innerHTML = '';
     var items = [];
-    if (data.hasBalcony) items.push('Balkon');
-    if (data.hasGarden) items.push('Ogród');
-    if (data.hasParking) items.push('Parking');
-    if (data.hasElevator) items.push('Winda');
-    if (data.hasStorage) items.push('Piwnica / komórka');
-    if (data.isFurnished) items.push('Umeblowane');
+    AMENITY_KEYS.forEach(function (pair) {
+      if (data[pair[0]]) items.push(t(pair[1]));
+    });
     if (!items.length) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    items.forEach(function (t) {
+    items.forEach(function (label) {
       var s = document.createElement('span');
       s.className = 'amenity';
-      s.textContent = t;
+      s.textContent = label;
       wrap.appendChild(s);
     });
   }
@@ -1170,24 +1545,23 @@
       var pub = profile && profile.user ? profile.user : {};
       var personName = data.sellerPersonName || pub.personName || null;
       var company = data.servicingCompanyName || pub.companyName || offerUser.companyName || null;
-      var display = data.sellerDisplayName || pub.displayName || offerUser.displayName || offerUser.name || 'Agent nieruchomości';
+      var display = data.sellerDisplayName || pub.displayName || offerUser.displayName || offerUser.name || t('agentDefaultName');
       var primary = personName || display;
       var agentLike = isAgentRole(pub.id ? pub : offerUser);
-      var kicker = agentLike ? 'Twój doradca · EstateOS™ Prestiż' : 'Kontakt do oferty · EstateOS™';
+      var kicker = agentLike ? t('agentKickerAgent') : t('agentKickerContact');
       var phone = fmtPhone(pub.phone || offerUser.phone || '');
       var email = String(offerUser.email || '').trim();
-      var photo = absUrl(pub.image || offerUser.image || '');
 
       var kickerEl = document.getElementById('agentKicker');
       if (kickerEl) kickerEl.textContent = kicker;
       var nameEl = document.getElementById('agentName');
       if (nameEl) nameEl.textContent = primary;
       setAgentLine(document.getElementById('agentCompany'), company && company !== primary ? company : '');
-      setAgentLine(document.getElementById('agentPhone'), phone ? ('tel. ' + phone) : '');
+      setAgentLine(document.getElementById('agentPhone'), phone ? (t('agentPhonePrefix') + phone) : '');
       setAgentLine(document.getElementById('agentEmail'), email || '');
       var refEl = document.getElementById('agentPrintRef');
-      if (refEl) refEl.textContent = 'Ref. ' + id + ' · estateos.pl/o/' + id;
-
+      if (refEl) refEl.textContent = t('refPrefix') + id + ' · estateos.pl/o/' + id;
+      var photo = absUrl(pub.image || offerUser.image || '');
       var photoEl = document.getElementById('agentPhoto');
       var initialEl = document.getElementById('agentPhotoInitial');
       if (photo && photoEl) {
@@ -1240,8 +1614,8 @@
     link.href = mapsUrl;
     if (caption) {
       caption.textContent = exact
-        ? (locLine ? 'Punkt na mapie: ' + locLine : 'Lokalizacja nieruchomości na mapie.')
-        : (locLine ? 'Okolica: ' + locLine + ' (bez dokładnego adresu na mapie).' : 'Podgląd okolicy bez dokładnej pinezki.');
+        ? (locLine ? t('mapExactPrefix') + locLine : t('mapExactFallback'))
+        : (locLine ? t('mapAreaPrefix') + locLine + t('mapAreaSuffix') : t('mapAreaFallback'));
     }
 
     fetch(ORIGIN + '/api/map/config', { credentials: 'omit' })
@@ -1284,9 +1658,18 @@
     img.src = url;
     if (link) {
       link.href = url;
-      link.setAttribute('aria-label', 'Otwórz rzut lokalu w pełnym rozmiarze');
+      link.setAttribute('aria-label', t('floorPlanAria'));
     }
     img.onerror = function () { section.hidden = true; };
+  }
+
+  function setBrochureQr(src) {
+    var agentQr = document.getElementById('agentPrintQr');
+    if (agentQr && src) {
+      agentQr.src = src;
+      agentQr.alt = t('qrAlt');
+      agentQr.hidden = false;
+    }
   }
 
   function renderQr() {
@@ -1296,9 +1679,10 @@
     if (!canvas) return;
 
     function mountQrImage(src) {
+      setBrochureQr(src);
       var img = document.createElement('img');
       img.className = 'qr-img';
-      img.alt = 'Kod QR — otwórz ofertę w aplikacji EstateOS';
+      img.alt = t('qrAlt');
       img.width = 128;
       img.height = 128;
       img.src = src;
@@ -1350,15 +1734,15 @@
     document.getElementById('fatal').textContent = msg;
     var el = document.getElementById('hero');
     el.classList.add('placeholder');
-    el.innerHTML = 'Nie udało się pobrać danych';
+    el.innerHTML = t('heroLoadFail');
   }
 
   if (!id) {
-    fatal('Niepoprawny adres — brak identyfikatora oferty w ścieżce /o/{id}.');
+    fatal(t('fatalInvalidId'));
     return;
   }
 
-  document.getElementById('offerRef').textContent = 'Ref. ' + id;
+  document.getElementById('offerRef').textContent = t('refPrefix') + id;
   renderQr();
   initBrochureAccess();
 
@@ -1422,20 +1806,20 @@
     try {
       if (navigator.share && isIOS()) {
         await navigator.share({ title: document.getElementById('title').textContent, text: shareText, url: canonicalHttps });
-        toast.textContent = 'Udostępniono wizytówkę oferty.';
+        toast.textContent = t('toastShared');
         toast.className = 'toast ok';
         return;
       }
       await navigator.clipboard.writeText(shareText);
-      toast.textContent = 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.';
+      toast.textContent = t('toastCopied');
       toast.className = 'toast ok';
     } catch (e) {
       try {
         await navigator.clipboard.writeText(canonicalHttps);
-        toast.textContent = 'Skopiowano link: ' + canonicalHttps;
+        toast.textContent = t('toastLinkCopied') + canonicalHttps;
         toast.className = 'toast ok';
       } catch (e2) {
-        toast.textContent = 'Skopiuj ręcznie: ' + canonicalHttps;
+        toast.textContent = t('toastCopyManual') + canonicalHttps;
         toast.className = 'toast';
       }
     }
@@ -1448,7 +1832,7 @@
       var root = document.querySelector('.sheet-inner');
       if (!root || typeof html2pdf === 'undefined') {
         if (toast) {
-          toast.textContent = 'Nie udało się przygotować PDF — odśwież stronę i spróbuj ponownie.';
+          toast.textContent = t('toastPdfPrepFail');
           toast.className = 'toast';
         }
         return;
@@ -1456,9 +1840,9 @@
 
       downloadBrochureBtn.disabled = true;
       var originalLabel = downloadBrochureBtn.textContent;
-      downloadBrochureBtn.textContent = 'Generowanie ofertówki…';
+      downloadBrochureBtn.textContent = t('toastGeneratingLabel');
       if (toast) {
-        toast.textContent = 'Przygotowujemy PDF na jedną stronę A4…';
+        toast.textContent = t('toastPdfGenerating');
         toast.className = 'toast ok';
       }
 
@@ -1469,24 +1853,46 @@
 
       html2pdf()
         .set({
-          margin: [6, 6, 6, 6],
-          filename: 'ofertowka-estateos-' + id + '.pdf',
-          image: { type: 'jpeg', quality: 0.94 },
-          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+          margin: 0,
+          image: { type: 'jpeg', quality: 0.92 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: '#ffffff',
+            scrollY: -window.scrollY,
+            windowWidth: root.scrollWidth,
+          },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
         })
         .from(root)
-        .save()
-        .then(function () {
+        .toCanvas()
+        .then(function (canvas) {
+          var JsPDF = window.jspdf && window.jspdf.jsPDF;
+          if (!JsPDF) throw new Error('jsPDF unavailable');
+          var pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+          var margin = 5;
+          var pageW = 210 - margin * 2;
+          var pageH = 297 - margin * 2;
+          var ratio = canvas.width / canvas.height;
+          var imgW = pageW;
+          var imgH = imgW / ratio;
+          if (imgH > pageH) {
+            imgH = pageH;
+            imgW = imgH * ratio;
+          }
+          var x = margin + (pageW - imgW) / 2;
+          var y = margin;
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, imgW, imgH, undefined, 'FAST');
+          pdf.save(t('pdfFilename') + id + '.pdf');
           if (toast) {
-            toast.textContent = 'Ofertówka została pobrana.';
+            toast.textContent = t('toastPdfDone');
             toast.className = 'toast ok';
           }
         })
         .catch(function () {
           if (toast) {
-            toast.textContent = 'Nie udało się wygenerować PDF. Spróbuj ponownie za chwilę.';
+            toast.textContent = t('toastPdfFail');
             toast.className = 'toast';
           }
         })
@@ -1512,7 +1918,7 @@
     lines.push('');
     lines.push(canonicalHttps);
     lines.push('');
-    lines.push('EstateOS™ — zeskanuj QR na wizytówce lub otwórz link w aplikacji.');
+    lines.push(t('shareFooter'));
     return lines.join('\n');
   }
 
@@ -1524,19 +1930,19 @@
     .then(function (data) {
       if (!data || data.error) throw new Error(data && data.error ? String(data.error) : 'Brak danych');
 
-      var propLabel = labelProperty(data.propertyType, data.propertyTypeLabel);
+      var propLabel = labelProperty(data.propertyType, data.propertyTypeLabel, data.propertyTypeLabelEn);
       var txLabel = labelTransaction(data.transactionType);
-      var condLabel = labelCondition(data.condition, data.conditionLabel);
+      var condLabel = labelCondition(data.condition, data.conditionLabel, data.conditionLabelEn);
       var isRent = String(data.transactionType || '').toUpperCase() === 'RENT';
 
       var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
-      var title = data.title || ('Oferta #' + id);
+      var title = data.title || (t('offerTitleFallback') + id);
       setHero(imgs[0] || '', title);
       renderThumbs(imgs);
 
       var locParts = [data.district, data.city].filter(Boolean);
-      var loc = locParts.join(', ') || data.city || 'Polska';
-      var summaryParts = [propLabel, txLabel ? (isRent ? 'do wynajęcia' : 'na sprzedaż') : null, loc].filter(Boolean);
+      var loc = locParts.join(', ') || data.city || t('countryDefault');
+      var summaryParts = [propLabel, txLabel ? (isRent ? t('forRent') : t('forSale')) : null, loc].filter(Boolean);
       var summaryLine = summaryParts.join(' · ');
 
       document.getElementById('title').textContent = title;
@@ -1547,7 +1953,7 @@
 
       var suffixEl = document.getElementById('priceSuffix');
       if (isRent) {
-        suffixEl.textContent = '/ miesiąc';
+        suffixEl.textContent = t('perMonth');
         suffixEl.hidden = false;
       } else {
         suffixEl.hidden = true;
@@ -1570,13 +1976,14 @@
 
       var grid = document.getElementById('specGrid');
       grid.innerHTML = '';
-      if (data.area != null) addSpec(grid, 'Powierzchnia', String(data.area).replace('.', ',') + ' m²');
-      if (data.rooms != null) addSpec(grid, 'Liczba pokoi', data.rooms);
-      if (data.floor != null && data.floor !== '') addSpec(grid, 'Piętro', data.floor);
+      var areaUnit = t('areaUnit');
+      if (data.area != null) addSpec(grid, t('specArea'), String(data.area).replace('.', LOCALE === 'en' ? '.' : ',') + areaUnit);
+      if (data.rooms != null) addSpec(grid, t('specRooms'), data.rooms);
+      if (data.floor != null && data.floor !== '') addSpec(grid, t('specFloor'), data.floor);
       var year = data.yearBuilt || data.buildYear || data.year;
-      if (year) addSpec(grid, 'Rok budowy', year);
-      if (condLabel) addSpec(grid, 'Stan', condLabel);
-      if (data.plotArea) addSpec(grid, 'Działka', String(data.plotArea).replace('.', ',') + ' m²');
+      if (year) addSpec(grid, t('specYear'), year);
+      if (condLabel) addSpec(grid, t('specCondition'), condLabel);
+      if (data.plotArea) addSpec(grid, t('specPlot'), String(data.plotArea).replace('.', LOCALE === 'en' ? '.' : ',') + areaUnit);
 
       renderAmenities(data);
       renderDescription(data);
@@ -1586,18 +1993,18 @@
 
       cachedShare.title = title;
       cachedShare.summary = summaryLine;
-      cachedShare.priceLine = fmtMoney(data.price) + (isRent ? ' / mc' : '');
+      cachedShare.priceLine = fmtMoney(data.price) + (isRent ? t('perMonthShort') : '');
 
-      var ogDesc = summaryLine + ' — ' + cachedShare.priceLine + '. Zeskanuj QR lub otwórz w aplikacji EstateOS™.';
+      var ogDesc = summaryLine + ' — ' + cachedShare.priceLine + t('shareOgSuffix');
       updateShareMeta(title, ogDesc, imgs[0] || '');
 
       document.getElementById('panel').hidden = false;
     })
     .catch(function (e) {
-      fatal('Nie udało się wczytać oferty (' + (e && e.message ? e.message : 'błąd') + ').');
+      fatal(t('fatalLoadError').replace('{msg}', e && e.message ? e.message : (LOCALE === 'en' ? 'error' : 'błąd')));
       document.getElementById('panel').hidden = false;
-      document.getElementById('title').textContent = 'Oferta #' + id;
-      document.getElementById('summaryLine').textContent = 'Wizytówka nieruchomości · EstateOS™';
+      document.getElementById('title').textContent = t('offerTitleFallback') + id;
+      document.getElementById('summaryLine').textContent = t('fallbackSummary');
       document.getElementById('location').textContent = 'estateos.pl';
       document.getElementById('price').textContent = '';
       setHero('');
