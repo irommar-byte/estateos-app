@@ -63,6 +63,8 @@ export default function AdminNativeImportScreen() {
   const [createdOfferId, setCreatedOfferId] = useState<number | null>(null);
   const [editUrl, setEditUrl] = useState('');
   const [publicUrl, setPublicUrl] = useState('');
+  const [redemptionSource, setRedemptionSource] = useState<'plus_credit' | 'bonus_coupon'>('plus_credit');
+  const [couponId, setCouponId] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
@@ -150,6 +152,10 @@ export default function AdminNativeImportScreen() {
 
   const handleCreate = async () => {
     if (!token || !draft) return;
+    if (redemptionSource === 'bonus_coupon' && !couponId.trim()) {
+      Alert.alert('Brak kuponu', 'Wpisz ID kuponu, aby utworzyć ofertę z kuponu.');
+      return;
+    }
     Alert.alert('Utworzyć ofertę?', 'Utworzę ofertę PENDING na podstawie zaimportowanych danych.', [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -175,7 +181,14 @@ export default function AdminNativeImportScreen() {
                   'Content-Type': 'application/json',
                   Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ draft, rightsConfirmed: true }),
+              body: JSON.stringify({
+                draft,
+                rightsConfirmed: true,
+                redemption: {
+                  source: redemptionSource,
+                  ...(redemptionSource === 'bonus_coupon' ? { couponId: couponId.trim() } : {}),
+                },
+              }),
               });
             }
             const data = await res.json().catch(() => ({}));
@@ -357,6 +370,46 @@ export default function AdminNativeImportScreen() {
 
           <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Utworzenie oferty</Text>
+            <Text style={[styles.row, { color: theme.sub, marginBottom: 8 }]}>
+              Przed utworzeniem oferta pobiera 1 kredyt Plus albo 1 kupon publikacji.
+            </Text>
+            <View style={styles.redemptionRow}>
+              <Pressable
+                onPress={() => setRedemptionSource('plus_credit')}
+                style={[
+                  styles.redemptionChip,
+                  redemptionSource === 'plus_credit' && styles.redemptionChipActive,
+                  { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' },
+                ]}
+              >
+                <Text style={[styles.redemptionChipText, { color: redemptionSource === 'plus_credit' ? '#0A84FF' : theme.text }]}>
+                  Kredyt Plus
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setRedemptionSource('bonus_coupon')}
+                style={[
+                  styles.redemptionChip,
+                  redemptionSource === 'bonus_coupon' && styles.redemptionChipActive,
+                  { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' },
+                ]}
+              >
+                <Text style={[styles.redemptionChipText, { color: redemptionSource === 'bonus_coupon' ? '#0A84FF' : theme.text }]}>
+                  Kupon
+                </Text>
+              </Pressable>
+            </View>
+            {redemptionSource === 'bonus_coupon' ? (
+              <TextInput
+                value={couponId}
+                onChangeText={setCouponId}
+                placeholder="ID kuponu (np. promo_...)"
+                placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={[styles.input, { marginTop: 8, color: theme.text, borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}
+              />
+            ) : null}
           <Pressable onPress={handleCreate} disabled={creating} style={[styles.successBtn, creating && styles.btnDisabled]}>
             {creating ? <ActivityIndicator color="#fff" /> : <Ionicons name="add-circle" size={16} color="#fff" />}
             <Text style={styles.primaryBtnText}>{creating ? 'Tworzenie…' : 'Utwórz ofertę'}</Text>
@@ -470,6 +523,23 @@ const styles = StyleSheet.create({
   descriptionCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
   descriptionText: { fontSize: 14, lineHeight: 21 },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  redemptionRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  redemptionChip: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  redemptionChipActive: {
+    borderColor: 'rgba(10,132,255,0.45)',
+    shadowColor: '#0A84FF',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  redemptionChipText: { fontSize: 12, fontWeight: '700' },
   warningChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: 'rgba(255,149,0,0.14)', borderWidth: 1, borderColor: 'rgba(255,149,0,0.32)' },
   warningChipText: { color: '#FF9500', fontSize: 12, fontWeight: '700', lineHeight: 16 },
   featureChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
