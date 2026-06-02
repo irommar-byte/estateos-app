@@ -137,7 +137,7 @@ export default function Centrala() {
   const handleOtodomImport = async () => {
     const url = otodomUrl.trim();
     if (!url) {
-      setOtodomError("Wklej link do oferty OtoDom.");
+      setOtodomError("Wklej link do oferty OtoDom, OLX lub Nieruchomosci-Online.");
       return;
     }
 
@@ -351,14 +351,14 @@ export default function Centrala() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-xl md:text-2xl font-black mb-2 flex flex-wrap items-center gap-3">
-                  Importuj z OtoDom
+                  Importuj z OtoDom + OLX + Nieruchomosci-Online
                   <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400">
-                    Eksperyment
+                    Auto Detect
                   </span>
                 </h3>
                 <p className="text-gray-500 text-xs md:text-sm leading-relaxed max-w-2xl">
-                  Wklej publiczny link do ogłoszenia OtoDom. Centrala pobierze stronę, sparsuje dane i pokaże podgląd pól
-                  do ewentualnego mapowania na EstateOS (bez zapisu oferty).
+                  Wklej publiczny link do ogłoszenia z OtoDom, OLX albo Nieruchomosci-Online. Centrala automatycznie
+                  wykryje serwis, pobierze dane i pokaże podgląd pól do mapowania na EstateOS (bez zapisu oferty).
                 </p>
               </div>
             </div>
@@ -371,7 +371,7 @@ export default function Centrala() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void handleOtodomImport();
                 }}
-                placeholder="https://www.otodom.pl/pl/oferta/..."
+                placeholder="https://www.otodom.pl/... lub https://www.olx.pl/d/oferta/... lub https://...nieruchomosci-online.pl/...html"
                 className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400/50 focus:ring-2 focus:ring-blue-500/20"
               />
               <button
@@ -395,8 +395,9 @@ export default function Centrala() {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {[
+                    ["Źródło", otodomDraft.source],
                     ["Tytuł (EstateOS)", otodomPresentation?.title ?? otodomDraft.title],
-                    ["Tytuł (OtoDom)", otodomDraft.title],
+                    ["Tytuł (źródło)", otodomDraft.title],
                     ["Transakcja", otodomDraft.transactionType],
                     ["Typ", otodomDraft.propertyType],
                     ["Cena", otodomDraft.price != null ? `${otodomDraft.price} PLN` : "—"],
@@ -407,14 +408,14 @@ export default function Centrala() {
                     ["Piętro", otodomDraft.floor != null ? `${otodomDraft.floor}${otodomDraft.totalFloors ? ` / ${otodomDraft.totalFloors}` : ""}` : "—"],
                     ["Rok budowy", otodomDraft.yearBuilt ?? "—"],
                     ["Miasto", otodomDraft.city],
-                    ["Dzielnica (OtoDom)", otodomDraft.district],
+                    ["Dzielnica (źródło)", otodomDraft.district],
                     ["Dzielnica EstateOS (GPS)", otodomResolvedDistrict || "…"],
                     ["Miasto EstateOS (GPS)", otodomResolvedCity || "…"],
                     ["Rejon", otodomDraft.neighborhood ?? "—"],
                     ["Ulica", otodomDraft.street ?? "—"],
                     ["GPS", otodomDraft.lat != null && otodomDraft.lng != null ? `${otodomDraft.lat.toFixed(5)}, ${otodomDraft.lng.toFixed(5)}` : "—"],
                     ["Zdjęcia", String(otodomDraft.imageCount)],
-                    ["ID OtoDom", String(otodomDraft.externalId)],
+                    ["ID źródła", String(otodomDraft.externalId)],
                     ["Agencja", otodomDraft.agency?.name ?? "—"],
                   ].map(([label, value]) => (
                     <div key={label} className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
@@ -449,7 +450,7 @@ export default function Centrala() {
                   />
                 ) : (
                   <p className="text-amber-400/90 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
-                    OtoDom nie podał współrzędnych — mapa podglądowa niedostępna.
+                    Źródłowy portal nie podał współrzędnych — mapa podglądowa niedostępna.
                   </p>
                 )}
 
@@ -527,7 +528,7 @@ export default function Centrala() {
 
                 {otodomDraft.descriptionText && !otodomPresentation ? (
                   <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Opis OtoDom (surowy)</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">Opis źródłowy (surowy)</p>
                     <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line max-h-40 overflow-y-auto bg-black/30 border border-white/10 rounded-xl p-4">
                       {otodomDraft.descriptionText.slice(0, 1200)}
                       {otodomDraft.descriptionText.length > 1200 ? "…" : ""}
@@ -552,7 +553,7 @@ export default function Centrala() {
           isOpen={otodomPubOpen}
           onClose={() => setOtodomPubOpen(false)}
           title="Opłata za publikację importu"
-          subtitle="Import z OtoDom zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
+          subtitle="Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
           coupons={otodomWalletCoupons}
           hasPlusCredit={otodomWalletHasPlusCredit}
           plusCredits={otodomWalletPlusCredits}
@@ -574,7 +575,7 @@ export default function Centrala() {
 
         <OtodomCreateConfirmModal
           open={otodomConfirmOpen}
-          title={otodomPresentation?.title ?? otodomDraft?.title ?? "Oferta OtoDom"}
+          title={otodomPresentation?.title ?? otodomDraft?.title ?? "Oferta źródłowa"}
           imageCount={otodomDraft?.imageCount ?? 0}
           confirming={otodomCreating}
           onCancel={() => setOtodomConfirmOpen(false)}

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
-import { importOfferFromOtodomUrl, isOtodomOfferUrl } from "@/lib/otodomImport";
+import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImport";
 import { createOfferFromOtodomDraft } from "@/lib/otodomImportCreate";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
 import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
@@ -8,7 +8,10 @@ import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
 function isOtodomDraft(value: unknown): value is OtodomImportDraft {
   if (!value || typeof value !== "object") return false;
   const row = value as Record<string, unknown>;
-  return row.source === "OTODOM" && typeof row.externalId === "number";
+  return (
+    (row.source === "OTODOM" || row.source === "OLX" || row.source === "NIERUCHOMOSCI_ONLINE") &&
+    typeof row.externalId === "number"
+  );
 }
 
 function parsePublicationBody(body: Record<string, unknown>): OtodomPublicationInput | null {
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
     const user = await requireOtodomImporter();
     if (!user) {
       return NextResponse.json(
-        { error: "Import OtoDom jest dostępny wyłącznie dla kont Pro lub administratorów." },
+        { error: "Import ofert jest dostępny wyłącznie dla kont Pro lub administratorów." },
         { status: 401 },
       );
     }
@@ -37,13 +40,13 @@ export async function POST(req: Request) {
 
     const url = String(body?.url ?? "").trim();
     if (!draft && url) {
-      if (!isOtodomOfferUrl(url)) {
+      if (!isSupportedImportOfferUrl(url)) {
         return NextResponse.json(
-          { error: "Obsługiwane są wyłącznie linki otodom.pl/oferta/..." },
+          { error: "Obsługiwane są linki: OtoDom (/oferta/...), OLX (/d/oferta/...) lub Nieruchomosci-Online (.../12345.html)." },
           { status: 400 },
         );
       }
-      draft = await importOfferFromOtodomUrl(url);
+      draft = await importOfferFromUrl(url);
     }
 
     if (!draft) {
@@ -103,7 +106,7 @@ export async function POST(req: Request) {
           : `Utworzono ofertę #${result.offerId} (opłacona, oczekuje weryfikacji). Uzupełnij zdjęcia w edycji.`,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Nie udało się utworzyć oferty z importu OtoDom.";
+    const message = error instanceof Error ? error.message : "Nie udało się utworzyć oferty z importu.";
     if (message === "NO_PLUS_CREDIT_AVAILABLE") {
       return NextResponse.json(
         { error: "Brak dostępnego kredytu Pakietu Plus.", code: "NO_PLUS_CREDIT" },

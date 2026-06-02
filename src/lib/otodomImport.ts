@@ -7,10 +7,12 @@ import {
 } from '@/lib/location/locationCatalog';
 
 const OTODOM_HOST = 'otodom.pl';
+const OLX_HOST = 'olx.pl';
+const NIERUCHOMOSCI_ONLINE_HOST = 'nieruchomosci-online.pl';
 const FETCH_TIMEOUT_MS = 20_000;
 
 export type OtodomImportDraft = {
-  source: 'OTODOM';
+  source: 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
   externalId: number;
   externalUrl: string;
   slug: string;
@@ -69,7 +71,9 @@ function stripHtml(html: string): string {
 
 function parseNumber(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
-  const n = Number(String(raw).replace(/\s/g, '').replace(',', '.'));
+  const value = String(raw).replace(/\s/g, '').replace(',', '.');
+  const match = value.match(/-?\d+(?:\.\d+)?/);
+  const n = Number(match ? match[0] : value);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -269,6 +273,77 @@ function extractAdPayload(html: string): RawAd {
   return ad;
 }
 
+function extractOlxAdPayload(html: string): RawAd {
+  const key = 'window.__PRERENDERED_STATE__=';
+  const startIdx = html.indexOf(key);
+  if (startIdx < 0) {
+    throw new Error('Nie znaleziono danych ogłoszenia w HTML OLX.');
+  }
+
+  const quoteStart = html.indexOf('"', startIdx + key.length);
+  if (quoteStart < 0) {
+    throw new Error('Nie znaleziono zakodowanego payloadu OLX.');
+  }
+
+  let i = quoteStart + 1;
+  let escaped = false;
+  while (i < html.length) {
+    const ch = html[i];
+    if (escaped) {
+      escaped = false;
+      i += 1;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      i += 1;
+      continue;
+    }
+    if (ch === '"') break;
+    i += 1;
+  }
+  if (i >= html.length) {
+    throw new Error('Nie udało się odczytać payloadu OLX.');
+  }
+
+  const encoded = html.slice(quoteStart + 1, i);
+  let decoded: string;
+  try {
+    decoded = JSON.parse(`"${encoded}"`) as string;
+  } catch {
+    throw new Error('Nie udało się odkodować payloadu OLX.');
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = JSON.parse(decoded);
+  } catch {
+    throw new Error('Nie udało się sparsować JSON payloadu OLX.');
+  }
+
+  const ad = (payload as { ad?: { ad?: RawAd } }).ad?.ad;
+  if (!ad || typeof ad !== 'object') {
+    throw new Error('Brak obiektu ogłoszenia OLX (ad.ad).');
+  }
+  return ad;
+}
+
+function extractNieruchomosciOnlineAdPayload(html: string): RawAd {
+  const scriptRegex = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scriptRegex.exec(html))) {
+    try {
+      const parsed = JSON.parse(match[1]) as Record<string, unknown> | Array<Record<string, unknown>>;
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      const apartment = rows.find((row) => String(row?.['@type'] ?? '').toLowerCase() === 'apartment');
+      if (apartment && typeof apartment === 'object') return apartment as RawAd;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('Nie znaleziono danych ogłoszenia (JSON-LD Apartment) w Nieruchomosci-Online.');
+}
+
 function normalizeOtodomUrl(input: string): string {
   let url: URL;
   try {
@@ -290,9 +365,64 @@ function normalizeOtodomUrl(input: string): string {
   return url.toString();
 }
 
-export function isOtodomOfferUrl(input: string): boolean {
+function normalizeOlxUrl(input: string): string {
+  let url: URL;
   try {
-    normalizeOtodomUrl(input);
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host !== OLX_HOST) {
+    throw new Error('Obsługiwane są wyłącznie linki z olx.pl.');
+  }
+  if (!url.pathname.includes('/d/oferta/')) {
+    throw new Error('URL musi wskazywać stronę ogłoszenia OLX (/d/oferta/...).');
+  }
+
+  url.hash = '';
+  return url.toString();
+}
+
+function normalizeNieruchomosciOnlineUrl(input: string): string {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host !== NIERUCHOMOSCI_ONLINE_HOST) {
+    throw new Error('Obsługiwane są wyłącznie linki z nieruchomosci-online.pl.');
+  }
+  if (!/\/\d+\.html$/i.test(url.pathname)) {
+    throw new Error('URL musi wskazywać stronę ogłoszenia Nieruchomosci-Online.');
+  }
+  url.hash = '';
+  return url.toString();
+}
+
+export function detectImportSource(input: string): OtodomImportDraft['source'] {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    throw new Error('Nieprawidłowy adres URL.');
+  }
+  const host = url.hostname.replace(/^www\./, '').toLowerCase();
+  if (host === OTODOM_HOST) return 'OTODOM';
+  if (host === OLX_HOST) return 'OLX';
+  if (host === NIERUCHOMOSCI_ONLINE_HOST) return 'NIERUCHOMOSCI_ONLINE';
+  throw new Error('Obsługiwane są wyłącznie linki z OtoDom, OLX lub Nieruchomosci-Online.');
+}
+
+export function isSupportedImportOfferUrl(input: string): boolean {
+  try {
+    const source = detectImportSource(input);
+    if (source === 'OTODOM') normalizeOtodomUrl(input);
+    if (source === 'OLX') normalizeOlxUrl(input);
+    if (source === 'NIERUCHOMOSCI_ONLINE') normalizeNieruchomosciOnlineUrl(input);
     return true;
   } catch {
     return false;
@@ -456,6 +586,229 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
   };
 }
 
+function getOlxParam(
+  params: Array<Record<string, unknown>>,
+  key: string,
+): { value: string; label: string } | null {
+  const row = params.find((entry) => String(entry.key ?? '') === key);
+  if (!row) return null;
+  return {
+    value: String(row.normalizedValue ?? row.value ?? '').trim(),
+    label: String(row.value ?? row.normalizedValue ?? '').trim(),
+  };
+}
+
+function mapOlxTransactionType(ad: RawAd): OtodomImportDraft['transactionType'] {
+  const category = (ad.category ?? {}) as Record<string, unknown>;
+  const categoryId = Number(category.id);
+  if (categoryId === 15 || categoryId === 20 || categoryId === 25 || categoryId === 127) return 'RENT';
+  const path = String(ad.urlPath ?? ad.url ?? '').toLowerCase();
+  return path.includes('/wynajem/') ? 'RENT' : 'SALE';
+}
+
+function mapOlxPropertyType(ad: RawAd): OtodomImportDraft['propertyType'] {
+  const path = String(ad.urlPath ?? ad.url ?? '').toLowerCase();
+  if (path.includes('/domy/')) return 'HOUSE';
+  if (path.includes('/dzialki/')) return 'PLOT';
+  if (path.includes('/biura-lokale/') || path.includes('/pozostale-nieruchomosci/')) return 'COMMERCIAL';
+  return 'FLAT';
+}
+
+export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
+  const paramsRaw = Array.isArray(ad.params) ? ad.params : [];
+  const params = paramsRaw.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'));
+  const get = (key: string) => getOlxParam(params, key);
+  const location = (ad.location ?? {}) as Record<string, unknown>;
+  const mapData = (ad.map ?? {}) as Record<string, unknown>;
+  const user = (ad.user ?? null) as Record<string, unknown> | null;
+  const city = canonicalizeCity(String(location.cityName ?? '').trim());
+  const district = canonicalizeDistrict(city, String(location.districtName ?? '').trim());
+  const priceNode = ((ad.price ?? {}) as Record<string, unknown>).regularPrice as Record<string, unknown> | undefined;
+
+  const characteristics: Record<string, { value: string; label: string }> = {};
+  for (const entry of params) {
+    const key = String(entry.key ?? '').trim();
+    if (!key) continue;
+    characteristics[key] = {
+      value: String(entry.normalizedValue ?? entry.value ?? ''),
+      label: String(entry.value ?? entry.normalizedValue ?? ''),
+    };
+  }
+
+  const imageUrls = Array.isArray(ad.photos)
+    ? ad.photos.map((row) => String(row ?? '').trim()).filter((value) => Boolean(value))
+    : [];
+
+  return {
+    source: 'OLX',
+    externalId: parseNumber(ad.id) ?? 0,
+    externalUrl: String(ad.url ?? sourceUrl),
+    slug: String(ad.urlPath ?? ''),
+    title: String(ad.title ?? '').trim(),
+    transactionType: mapOlxTransactionType(ad),
+    propertyType: mapOlxPropertyType(ad),
+    price: parseNumber(priceNode?.value),
+    priceCurrency: 'PLN',
+    adminFee: null,
+    deposit: null,
+    area: parseNumber(get('m')?.value ?? get('m')?.label),
+    rooms: parseNumber(get('rooms')?.value ?? get('rooms')?.label),
+    floor: parseFloor(get('floor_select')?.value ?? get('floor')?.value),
+    totalFloors: null,
+    yearBuilt: parseNumber(get('buildyear')?.value ?? get('build_year')?.value),
+    condition: get('market')?.label ?? null,
+    conditionCode: get('market')?.value ?? null,
+    heating: get('heating')?.label ?? null,
+    heatingCode: get('heating')?.value ?? null,
+    buildingType: get('builttype')?.label ?? get('building_type')?.label ?? null,
+    city,
+    district,
+    neighborhood: null,
+    street: null,
+    lat: parseNumber(mapData.lat),
+    lng: parseNumber(mapData.lon),
+    localityCountryCode: 'PL',
+    descriptionHtml: String(ad.description ?? ''),
+    descriptionText: stripHtml(String(ad.description ?? '')),
+    features: params
+      .map((entry) => {
+        const name = String(entry.name ?? '').trim();
+        const value = String(entry.value ?? '').trim();
+        return name && value ? `${name}: ${value}` : '';
+      })
+      .filter((value) => Boolean(value)),
+    imageUrls,
+    imageCount: imageUrls.length,
+    agency: user
+      ? {
+          id: parseNumber(user.id) ?? 0,
+          name: String(user.name ?? '').trim(),
+          phone: null,
+          address: null,
+        }
+      : null,
+    advertiserType: user ? (ad.isBusiness ? 'business' : 'private') : null,
+    status: String(ad.status ?? '').trim() || null,
+    createdAt: String(ad.createdTime ?? '').trim() || null,
+    modifiedAt: String(ad.lastRefreshTime ?? '').trim() || null,
+    characteristics,
+    locationWarnings: !district ? ['OLX nie podał dzielnicy — sprawdź mapowanie lokalizacji.'] : [],
+    parsedAt: new Date().toISOString(),
+  };
+}
+
+function extractNoAdditionalPropertyValue(ad: RawAd, candidateNames: string[]): string {
+  const rows = Array.isArray(ad.additionalProperty) ? ad.additionalProperty : [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const name = String(r.name ?? '').trim().toLowerCase();
+    if (!name) continue;
+    if (candidateNames.some((candidate) => name === candidate.toLowerCase())) {
+      return String(r.value ?? '').trim();
+    }
+  }
+  return '';
+}
+
+export function parseNieruchomosciOnlineAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
+  const title = String(ad.name ?? '').trim();
+  const descriptionHtml = String(ad.description ?? '');
+  const geo = (ad.geo ?? {}) as Record<string, unknown>;
+  const addr = (ad.address ?? {}) as Record<string, unknown>;
+  const offers = Array.isArray(ad.offers) ? ad.offers : [];
+  const offer = (offers[0] ?? {}) as Record<string, unknown>;
+  const floorSize = (ad.floorSize ?? {}) as Record<string, unknown>;
+  const images = Array.isArray(ad.image) ? ad.image : [];
+  const agent = (ad.agent ?? null) as Record<string, unknown> | null;
+
+  const city = canonicalizeCity(String(addr.addressLocality ?? '').trim());
+  const district = canonicalizeDistrict(city, String(addr.addressDistrict ?? '').trim());
+  const area = parseNumber(floorSize.value ?? extractNoAdditionalPropertyValue(ad, ['Floor area']));
+  const rooms = parseNumber(ad.numberOfRooms ?? extractNoAdditionalPropertyValue(ad, ['Number of rooms']));
+  const floor = parseNumber(ad.floorLevel ?? extractNoAdditionalPropertyValue(ad, ['Floor level']));
+  const yearBuilt = parseNumber(ad.yearBuilt ?? extractNoAdditionalPropertyValue(ad, ['Year built']));
+  const adminFee = parseNumber(extractNoAdditionalPropertyValue(ad, ['Rent']));
+
+  const features: string[] = [];
+  const amenityList = Array.isArray(ad.amenityFeature) ? ad.amenityFeature : [];
+  for (const row of amenityList) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    if (r.value === true) {
+      const name = String(r.name ?? '').trim();
+      if (name) features.push(name);
+    }
+  }
+
+  const propertyType = resolveOtodomPropertyType({
+    adCategory: { name: ad['@type'] },
+    title,
+    slug: String(ad.url ?? ''),
+    descriptionText: stripHtml(descriptionHtml),
+    area,
+    rooms,
+    floor,
+  });
+
+  const characteristics: Record<string, { value: string; label: string }> = {
+    source_type: { value: String(ad['@type'] ?? ''), label: String(ad['@type'] ?? '') },
+  };
+
+  return {
+    source: 'NIERUCHOMOSCI_ONLINE',
+    externalId: parseNumber(String(sourceUrl.match(/\/(\d+)\.html$/)?.[1] ?? '')) ?? 0,
+    externalUrl: String(ad.url ?? sourceUrl),
+    slug: String(sourceUrl.split('/').pop() ?? ''),
+    title,
+    transactionType: /wynajem/i.test(String(ad.name ?? '') + ' ' + String(ad.description ?? '')) ? 'RENT' : 'SALE',
+    propertyType,
+    price: parseNumber(offer.price),
+    priceCurrency: String(offer.priceCurrency ?? 'PLN').toUpperCase() === 'PLN' ? 'PLN' : 'PLN',
+    adminFee: adminFee && adminFee > 0 ? adminFee : null,
+    deposit: null,
+    area,
+    rooms,
+    floor,
+    totalFloors: parseNumber(extractNoAdditionalPropertyValue(ad, ['Number of floors', 'Building floors'])),
+    yearBuilt,
+    condition: extractNoAdditionalPropertyValue(ad, ['Condition']) || null,
+    conditionCode: null,
+    heating: features.find((f) => /heating|ogrzewanie/i.test(f)) ?? null,
+    heatingCode: null,
+    buildingType: String(ad['@type'] ?? '').trim() || null,
+    city,
+    district,
+    neighborhood: String(addr.addressRegion ?? '').trim() || null,
+    street: String(addr.streetAddress ?? '').trim() || null,
+    lat: parseNumber(geo.latitude),
+    lng: parseNumber(geo.longitude),
+    localityCountryCode: 'PL',
+    descriptionHtml,
+    descriptionText: stripHtml(descriptionHtml),
+    features,
+    imageUrls: images.map((row) => String(row ?? '').trim()).filter((value) => Boolean(value)),
+    imageCount: images.length,
+    agency: agent
+      ? {
+          id: parseNumber(agent.identifier) ?? 0,
+          name: String(agent.name ?? '').trim(),
+          phone: String(agent.telephone ?? '').trim() || null,
+          address: null,
+        }
+      : null,
+    advertiserType: 'business',
+    status: 'active',
+    createdAt: String(ad.datePosted ?? '').trim() || null,
+    modifiedAt: String(ad.datePosted ?? '').trim() || null,
+    characteristics,
+    locationWarnings: !district
+      ? ['Nieruchomosci-Online nie podał dzielnicy lub aliasu — sprawdź mapowanie lokalizacji.']
+      : [],
+    parsedAt: new Date().toISOString(),
+  };
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize('NFD')
@@ -470,4 +823,21 @@ export async function importOfferFromOtodomUrl(inputUrl: string): Promise<Otodom
   const html = await fetchOtodomOfferHtml(url);
   const ad = extractAdPayload(html);
   return parseOtodomAd(ad, url);
+}
+
+export async function importOfferFromUrl(inputUrl: string): Promise<OtodomImportDraft> {
+  const source = detectImportSource(inputUrl);
+  if (source === 'OTODOM') return importOfferFromOtodomUrl(inputUrl);
+
+  if (source === 'OLX') {
+    const url = normalizeOlxUrl(inputUrl);
+    const html = await fetchOtodomOfferHtml(url);
+    const ad = extractOlxAdPayload(html);
+    return parseOlxAd(ad, url);
+  }
+
+  const url = normalizeNieruchomosciOnlineUrl(inputUrl);
+  const html = await fetchOtodomOfferHtml(url);
+  const ad = extractNieruchomosciOnlineAdPayload(html);
+  return parseNieruchomosciOnlineAd(ad, url);
 }

@@ -15,7 +15,11 @@ import {
 } from '@/lib/upload/offerMediaUpload';
 import { prisma } from '@/lib/prisma';
 
-const OTODOM_MARKER_PREFIX = 'estateos-otodom:';
+const IMPORT_MARKER_PREFIXES: Record<OtodomImportDraft['source'], string> = {
+  OTODOM: 'estateos-otodom:',
+  OLX: 'estateos-olx:',
+  NIERUCHOMOSCI_ONLINE: 'estateos-nieruchomosci-online:',
+};
 const IMAGE_FETCH_TIMEOUT_MS = 25_000;
 const MAX_IMPORT_IMAGES = MAX_IMAGES_PER_OFFER;
 
@@ -36,13 +40,14 @@ export function buildOtodomOfferDescription(
   draft: OtodomImportDraft,
   descriptionHtml: string,
 ): string {
-  const marker = `<!-- ${OTODOM_MARKER_PREFIX}${draft.externalId} -->`;
+  const markerPrefix = IMPORT_MARKER_PREFIXES[draft.source] || IMPORT_MARKER_PREFIXES.OTODOM;
+  const marker = `<!-- ${markerPrefix}${draft.externalId} -->`;
   return `${marker}\n${descriptionHtml.trim()}`;
 }
 
-export async function findExistingOtodomImportOffer(externalId: number) {
+export async function findExistingOtodomImportOffer(source: OtodomImportDraft['source'], externalId: number) {
   if (!externalId) return null;
-  const marker = OTODOM_MARKER_PREFIX + String(externalId);
+  const marker = (IMPORT_MARKER_PREFIXES[source] || IMPORT_MARKER_PREFIXES.OTODOM) + String(externalId);
   return prisma.offer.findFirst({
     where: { description: { contains: marker } },
     select: { id: true, title: true, status: true },
@@ -112,6 +117,7 @@ export async function draftToOfferCreateBody(
 
 async function downloadRemoteImage(
   url: string,
+  source: OtodomImportDraft['source'],
 ): Promise<{ buffer: Buffer; mime: string } | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
@@ -121,7 +127,12 @@ async function downloadRemoteImage(
       headers: {
         Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
         'Accept-Language': 'pl-PL,pl;q=0.9',
-        Referer: 'https://www.otodom.pl/',
+        Referer:
+          source === 'OLX'
+            ? 'https://www.olx.pl/'
+            : source === 'NIERUCHOMOSCI_ONLINE'
+              ? 'https://www.nieruchomosci-online.pl/'
+              : 'https://www.otodom.pl/',
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       },
@@ -150,6 +161,7 @@ export async function importOtodomImagesForOffer(params: {
   offerId: number;
   ownerUserId: number;
   imageUrls: string[];
+  source: OtodomImportDraft['source'];
 }): Promise<{ uploaded: number; failed: number; urls: string[] }> {
   const urls: string[] = [];
   let uploaded = 0;
@@ -160,7 +172,7 @@ export async function importOtodomImagesForOffer(params: {
   try {
     for (let index = 0; index < toFetch.length; index += 1) {
       const remoteUrl = toFetch[index];
-      const file = await downloadRemoteImage(remoteUrl);
+      const file = await downloadRemoteImage(remoteUrl, params.source);
       if (!file) {
         failed += 1;
         continue;
@@ -204,13 +216,13 @@ export async function createOfferFromOtodomDraft(
   ownerUserId: number,
   publication?: OtodomPublicationInput | null,
 ) {
-  const existing = await findExistingOtodomImportOffer(draft.externalId);
+  const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (existing) {
     return {
       ok: false as const,
       code: 'ALREADY_IMPORTED' as const,
       existingOfferId: existing.id,
-      message: `Ta oferta OtoDom (#${draft.externalId}) jest już w bazie jako #${existing.id} (${existing.status}).`,
+      message: `Ta oferta źródłowa (#${draft.externalId}) jest już w bazie jako #${existing.id} (${existing.status}).`,
     };
   }
 
@@ -234,6 +246,7 @@ export async function createOfferFromOtodomDraft(
     offerId,
     ownerUserId,
     imageUrls: draft.imageUrls,
+    source: draft.source,
   });
 
   const refreshed = await prisma.offer.findUnique({

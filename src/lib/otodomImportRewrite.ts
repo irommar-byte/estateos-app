@@ -34,7 +34,7 @@ function splitParagraphs(text: string): string[] {
     .split(/\n{2,}|\n/)
     .map((p) => p.trim())
     .filter((p) => p.length > 12)
-    .filter((p) => !/otodom/i.test(p))
+    .filter((p) => !/(otodom|olx|nieruchomosci-online)/i.test(p))
     .slice(0, 8);
 }
 
@@ -230,7 +230,7 @@ async function rewriteWithOpenAI(
 - zachować wszystkie fakty (cena, metraż, pokoje, lokalizacja, cechy),
 - brzmieć profesjonalnie i elegancko po polsku,
 - NIE kopiować sformułowań 1:1 (unikaj duplikatu treści),
-- NIE wspominać OtoDom ani innych portali,
+- NIE wspominać OtoDom, OLX, Nieruchomosci-Online ani innych portali,
 - opis zwróć jako krótki HTML (tylko tagi: p, ul, li, strong).
 
 Dane:
