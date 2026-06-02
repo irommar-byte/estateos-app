@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -35,6 +35,8 @@ export default function OfferCommentsScreen() {
   const [description, setDescription] = useState('');
   const [localComment, setLocalComment] = useState('');
   const [saving, setSaving] = useState(false);
+  const entryOpacity = useRef(new Animated.Value(0)).current;
+  const entryScale = useRef(new Animated.Value(0.975)).current;
 
   useEffect(() => {
     if (!Number.isFinite(offerId) || offerId <= 0) return;
@@ -43,6 +45,24 @@ export default function OfferCommentsScreen() {
       if (saved) setLocalComment(saved);
     })();
   }, [offerId]);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(entryOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(entryScale, {
+        toValue: 1,
+        damping: 14,
+        stiffness: 190,
+        mass: 0.7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [entryOpacity, entryScale]);
 
   useEffect(() => {
     if (!Number.isFinite(offerId) || offerId <= 0 || !token) return;
@@ -94,7 +114,8 @@ export default function OfferCommentsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }}>
+    <Animated.View style={{ flex: 1, opacity: entryOpacity, transform: [{ scale: entryScale }] }}>
+      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 36 }}>
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backRow}>
           <Ionicons name="chevron-back" size={17} color={theme.text} />
@@ -137,7 +158,8 @@ export default function OfferCommentsScreen() {
           <Text style={styles.saveBtnText}>Zapisz komentarz</Text>
         </Pressable>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </Animated.View>
   );
 }
 

@@ -1491,7 +1491,11 @@ export default function App() {
             <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
-            <AppStack.Screen name="OfferComments" component={OfferCommentsScreen} />
+            <AppStack.Screen
+              name="OfferComments"
+              component={OfferCommentsScreen}
+              options={{ animation: 'fade_from_bottom', animationDuration: 260 }}
+            />
           </AppStack.Navigator>
         </NavigationContainer>
         </I18nProvider>
