@@ -5,6 +5,14 @@ const OLX_HOST = 'olx.pl';
 const NIERUCHOMOSCI_ONLINE_HOST = 'nieruchomosci-online.pl';
 const FETCH_TIMEOUT_MS = 20_000;
 
+function isNieruchomosciOnlineHost(host: string): boolean {
+  const normalized = String(host || '').replace(/^www\./, '').toLowerCase();
+  return (
+    normalized === NIERUCHOMOSCI_ONLINE_HOST ||
+    normalized.endsWith(`.${NIERUCHOMOSCI_ONLINE_HOST}`)
+  );
+}
+
 export type OtodomImportDraft = {
   source: 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
   externalId: number;
@@ -268,8 +276,8 @@ function normalizeNieruchomosciOnlineUrl(input: string): string {
   } catch {
     throw new Error('Nieprawidłowy adres URL.');
   }
-  const host = url.hostname.replace(/^www\./, '').toLowerCase();
-  if (host !== NIERUCHOMOSCI_ONLINE_HOST) {
+  const host = url.hostname;
+  if (!isNieruchomosciOnlineHost(host)) {
     throw new Error('Obsługiwane są wyłącznie linki z nieruchomosci-online.pl.');
   }
   url.hash = '';
@@ -286,7 +294,7 @@ export function detectImportSource(input: string): OtodomImportDraft['source'] {
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
   if (host === OTODOM_HOST) return 'OTODOM';
   if (host === OLX_HOST) return 'OLX';
-  if (host === NIERUCHOMOSCI_ONLINE_HOST) return 'NIERUCHOMOSCI_ONLINE';
+  if (isNieruchomosciOnlineHost(host)) return 'NIERUCHOMOSCI_ONLINE';
   throw new Error('Obsługiwane są wyłącznie linki z OtoDom, OLX lub Nieruchomosci-Online.');
 }
 
