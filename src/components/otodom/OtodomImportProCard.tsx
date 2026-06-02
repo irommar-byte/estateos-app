@@ -83,7 +83,7 @@ export default function OtodomImportProCard() {
   const handleAnalyze = async () => {
     const url = otodomUrl.trim();
     if (!url) {
-      setError("Wklej link do oferty OtoDom.");
+      setError("Wklej link do oferty z OtoDom, OLX lub Nieruchomosci-Online.");
       return;
     }
     setLoading(true);
@@ -189,7 +189,7 @@ export default function OtodomImportProCard() {
               Ekskluzywne narzędzie Pro
             </p>
             <h3 className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-white/95">
-              Import z OtoDom
+              Import z OtoDom + OLX + Nieruchomosci-Online
             </h3>
             <p className="mt-2 text-[11px] leading-relaxed text-white/45">
               Przenieś ogłoszenie na EstateOS — z opłatą publikacji jak przy zwykłym wystawieniu.
@@ -203,7 +203,7 @@ export default function OtodomImportProCard() {
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
         title="Import ogłoszenia"
-        badge="Pro · OtoDom"
+        badge="Pro · OtoDom + OLX + Nieruchomosci-Online"
         icon={<Link2 size={18} />}
         maxWidth="max-w-3xl"
       >
@@ -215,7 +215,7 @@ export default function OtodomImportProCard() {
 
           <div className="eos-modal-panel p-4">
             <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
-              Link OtoDom
+              Link ogłoszenia (auto detect)
             </label>
             <div className="flex flex-col gap-3 sm:flex-row">
               <input
@@ -226,7 +226,7 @@ export default function OtodomImportProCard() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void handleAnalyze();
                 }}
-                placeholder="https://www.otodom.pl/pl/oferta/..."
+                placeholder="https://www.otodom.pl/... lub https://www.olx.pl/d/oferta/... lub https://...nieruchomosci-online.pl/...html"
                 className="flex-1 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] px-4 py-3.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition-colors focus:border-emerald-500/45 focus:ring-2 focus:ring-emerald-500/15"
               />
               <button
@@ -240,7 +240,7 @@ export default function OtodomImportProCard() {
               </button>
             </div>
             <p className="mt-2 text-[11px] text-[var(--eos-subtle)]">
-              Wskazówka: skopiuj link w OtoDom, kliknij pole powyżej — wklei się sam.
+              Wskazówka: skopiuj link z OtoDom, OLX lub Nieruchomosci-Online, kliknij pole powyżej — wklei się sam.
             </p>
           </div>
 
@@ -340,7 +340,7 @@ export default function OtodomImportProCard() {
         isOpen={pubOpen}
         onClose={() => setPubOpen(false)}
         title="Opłata za publikację importu"
-        subtitle="Import z OtoDom zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty na 30 dni. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
+        subtitle="Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty na 30 dni. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
         coupons={walletCoupons}
         hasPlusCredit={walletHasPlusCredit}
         plusCredits={walletPlusCredits}
@@ -362,7 +362,7 @@ export default function OtodomImportProCard() {
 
       <OtodomCreateConfirmModal
         open={confirmOpen}
-        title={presentation?.title ?? draft?.title ?? "Oferta OtoDom"}
+        title={presentation?.title ?? draft?.title ?? "Oferta źródłowa"}
         imageCount={draft?.imageCount ?? 0}
         confirming={creating}
         variant="pro"

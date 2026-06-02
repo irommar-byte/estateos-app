@@ -11,6 +11,10 @@ const OLX_HOST = 'olx.pl';
 const NIERUCHOMOSCI_ONLINE_HOST = 'nieruchomosci-online.pl';
 const FETCH_TIMEOUT_MS = 20_000;
 
+function hostMatches(host: string, baseHost: string): boolean {
+  return host === baseHost || host.endsWith(`.${baseHost}`);
+}
+
 export type OtodomImportDraft = {
   source: 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
   externalId: number;
@@ -353,7 +357,7 @@ function normalizeOtodomUrl(input: string): string {
   }
 
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
-  if (host !== OTODOM_HOST) {
+  if (!hostMatches(host, OTODOM_HOST)) {
     throw new Error('Obsługiwane są wyłącznie linki z otodom.pl.');
   }
   if (!url.pathname.includes('/oferta/')) {
@@ -374,7 +378,7 @@ function normalizeOlxUrl(input: string): string {
   }
 
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
-  if (host !== OLX_HOST) {
+  if (!hostMatches(host, OLX_HOST)) {
     throw new Error('Obsługiwane są wyłącznie linki z olx.pl.');
   }
   if (!url.pathname.includes('/d/oferta/')) {
@@ -393,7 +397,7 @@ function normalizeNieruchomosciOnlineUrl(input: string): string {
     throw new Error('Nieprawidłowy adres URL.');
   }
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
-  if (host !== NIERUCHOMOSCI_ONLINE_HOST) {
+  if (!hostMatches(host, NIERUCHOMOSCI_ONLINE_HOST)) {
     throw new Error('Obsługiwane są wyłącznie linki z nieruchomosci-online.pl.');
   }
   if (!/\/\d+\.html$/i.test(url.pathname)) {
@@ -411,9 +415,9 @@ export function detectImportSource(input: string): OtodomImportDraft['source'] {
     throw new Error('Nieprawidłowy adres URL.');
   }
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
-  if (host === OTODOM_HOST) return 'OTODOM';
-  if (host === OLX_HOST) return 'OLX';
-  if (host === NIERUCHOMOSCI_ONLINE_HOST) return 'NIERUCHOMOSCI_ONLINE';
+  if (hostMatches(host, OTODOM_HOST)) return 'OTODOM';
+  if (hostMatches(host, OLX_HOST)) return 'OLX';
+  if (hostMatches(host, NIERUCHOMOSCI_ONLINE_HOST)) return 'NIERUCHOMOSCI_ONLINE';
   throw new Error('Obsługiwane są wyłącznie linki z OtoDom, OLX lub Nieruchomosci-Online.');
 }
 
