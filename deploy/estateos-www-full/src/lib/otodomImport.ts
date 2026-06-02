@@ -72,6 +72,14 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+function decodeImportHtmlText(html: string): string {
+  return String(html || '')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&sup2;|&#178;/gi, '²')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ');
+}
+
 function parseNumber(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
   const value = String(raw).replace(/\s/g, '').replace(',', '.');
@@ -572,6 +580,7 @@ function hashStringToPositiveInt(value: string): number {
 }
 
 function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft {
+  const normalizedHtml = decodeImportHtmlText(html);
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1];
   const title = String((ogTitle || titleMatch?.[1] || '').replace(/\s+/g, ' ').trim());
@@ -594,29 +603,41 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     }
   })();
 
+  const priceCandidates = Array.from(
+    normalizedHtml.matchAll(/(\d[\d\s.,]*)\s*(?:zł|PLN)(?!\s*\/\s*m(?:2|²|kw))/gi)
+  )
+    .map((m) => parseNumber(m[1]))
+    .filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0);
   const price =
-    parseNumber(html.match(/(\d[\d\s.,]*)\s*(?:zł|PLN)/i)?.[1]) ??
-    parseNumber(html.match(/price["']?\s*[:=]\s*["']?(\d[\d\s.,]*)/i)?.[1]);
+    priceCandidates.sort((a, b) => b - a)[0] ??
+    parseNumber(normalizedHtml.match(/price["']?\s*[:=]\s*["']?(\d[\d\s.,]*)/i)?.[1]);
   const areaFromLabel = parseNumber(
-    html.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1]
+    normalizedHtml.match(/powierzchni[aey]?\s*(?:użytkowa|mieszkania|całkowita)?[:\s]*([\d\s.,]+)\s*m(?:2|²|kw)/i)?.[1]
   );
   const areaFromTable = parseNumber(
-    html.match(/\|\s*([\d\s.,]{2,12})\s*m(?:2|²|kw)\s*\|/i)?.[1]
+    normalizedHtml.match(/\|\s*([\d\s.,]{2,12})\s*m(?:2|²|kw)\s*\|/i)?.[1]
   );
   const areaFromRange = parseNumber(
-    html.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1]
+    normalizedHtml.match(/metra(?:że|ze)\s*(?:od)?\s*([\d\s.,]+)\s*(?:do\s*[\d\s.,]+)?\s*m(?:2|²|kw)/i)?.[1]
   );
   const areaFromAny = parseNumber(
-    html.match(/([\d]{2,3}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
+    normalizedHtml.match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
+  );
+  const areaFromTitle = parseNumber(
+    decodeImportHtmlText(title).match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
+  );
+  const areaFromDescription = parseNumber(
+    decodeImportHtmlText(descriptionText).match(/([\d]{2,4}(?:[.,]\d{1,2})?)\s*m(?:2|²|kw)\b/i)?.[1]
   );
   const area = areaFromLabel ?? areaFromTable ?? areaFromRange ?? areaFromAny;
   const plotArea = parseNumber(
     html.match(/powierzchni[aey]?\s*dzia[łl]ki[:\s]*([\d\s.,]+)\s*m(?:2|²)/i)?.[1]
   );
+  const areaResolved = area ?? areaFromTitle ?? areaFromDescription;
   const rooms =
-    parseNumber(html.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]) ??
-    parseNumber(html.match(/(\d+)\s*pok\./i)?.[1]) ??
-    parseNumber(html.match(/liczba\s+pokoi[:\s]*([\d]+)/i)?.[1]);
+    parseNumber(normalizedHtml.match(/(\d+)\s*pok(?:ó|o)j/i)?.[1]) ??
+    parseNumber(normalizedHtml.match(/(\d+)\s*pok\./i)?.[1]) ??
+    parseNumber(normalizedHtml.match(/liczba\s+pokoi[:\s]*([\d]+)/i)?.[1]);
   const floor = parseFloor(html.match(/pi(?:ę|e)tro[:\s]*([\w\/-]+)/i)?.[1]);
   const yearBuilt = parseNumber(html.match(/rok\s*budow[yia][:\s]*([\d]{4})/i)?.[1]);
   const lat = parseNumber(html.match(/"latitude"\s*:\s*"?(-?\d+(?:\.\d+)?)"?/i)?.[1]);
@@ -647,7 +668,7 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     priceCurrency: 'PLN',
     adminFee: null,
     deposit: null,
-    area,
+    area: areaResolved,
     plotArea,
     rooms,
     floor,

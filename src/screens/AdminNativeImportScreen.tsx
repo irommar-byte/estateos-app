@@ -24,6 +24,7 @@ type ImportDraft = {
   source: ImportSource;
   externalId: number;
   title: string;
+  transactionType?: 'RENT' | 'SALE' | null;
   descriptionText?: string;
   imageCount: number;
   imageUrls: string[];
@@ -206,6 +207,8 @@ export default function AdminNativeImportScreen() {
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
+  const asTransactionType = (raw?: 'RENT' | 'SALE' | null) =>
+    raw === 'RENT' ? 'Wynajem' : raw === 'SALE' ? 'Sprzedaż' : '—';
   const hasMap = Number.isFinite(Number(draft?.lat)) && Number.isFinite(Number(draft?.lng));
 
   const stripHtml = (html: string) =>
@@ -552,6 +555,7 @@ export default function AdminNativeImportScreen() {
             </View>
 
             <Text style={[styles.row, { color: theme.sub }]}>Źródło: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.source}</Text></Text>
+            <Text style={[styles.row, { color: theme.sub }]}>Transakcja: <Text style={[styles.rowStrong, { color: theme.text }]}>{asTransactionType(draft.transactionType)}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Tytuł: <Text style={[styles.rowStrong, { color: theme.text }]}>{presentation?.title || draft.title}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Lokalizacja: <Text style={[styles.rowStrong, { color: theme.text }]}>{[draft.district, draft.city].filter(Boolean).join(', ') || '—'}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Tryb lokalizacji: <Text style={[styles.rowStrong, { color: theme.text }]}>{locationPrecision}</Text></Text>
