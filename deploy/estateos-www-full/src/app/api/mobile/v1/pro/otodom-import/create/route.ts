@@ -53,8 +53,9 @@ export async function POST(req: Request) {
   const gate = await requireInvestorPro(req);
   if (!gate.ok) return gate.response;
 
-  let consumedKind: 'PLUS_CREDIT' | 'BONUS_COUPON' | null = null;
+  let consumedKind: 'PLUS_CREDIT' | 'BONUS_COUPON' | 'PLUS_IAP' | null = null;
   let consumedCouponId: string | null = null;
+  let consumedIapTransactionId: string | null = null;
   try {
     const body = await req.json().catch(() => ({}));
     let draft: OtodomImportDraft | null = isImportDraft(body?.draft) ? body.draft : null;
@@ -87,8 +88,13 @@ export async function POST(req: Request) {
     const quote = await getCreatePublicationQuote({ userId: gate.userId });
     const redemptionSource = String(body?.redemption?.source || '').trim().toLowerCase();
     const couponId = String(body?.redemption?.couponId || '').trim();
+    const iapTransactionId = String(body?.redemption?.transactionId || '').trim();
 
-    if (redemptionSource !== 'plus_credit' && redemptionSource !== 'bonus_coupon') {
+    if (
+      redemptionSource !== 'plus_credit' &&
+      redemptionSource !== 'bonus_coupon' &&
+      redemptionSource !== 'plus_iap'
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -124,7 +130,7 @@ export async function POST(req: Request) {
         );
       }
       consumedKind = 'PLUS_CREDIT';
-    } else {
+    } else if (redemptionSource === 'bonus_coupon') {
       if (!couponId) {
         return NextResponse.json(
           { success: false, errorCode: 'COUPON_REQUIRED', message: 'Podaj ID kuponu do wykorzystania.' },
@@ -179,6 +185,39 @@ export async function POST(req: Request) {
       }
       consumedKind = 'BONUS_COUPON';
       consumedCouponId = couponId.slice(0, 64);
+    } else {
+      if (!iapTransactionId) {
+        return NextResponse.json(
+          { success: false, errorCode: 'IAP_TRANSACTION_REQUIRED', message: 'Brak ID transakcji IAP.' },
+          { status: 400 }
+        );
+      }
+      const consumedIap = await prisma.$executeRawUnsafe(
+        `
+          UPDATE MobileIapPurchase
+          SET consumedAt = COALESCE(consumedAt, NOW(3)),
+              verifyStatus = 'VERIFIED'
+          WHERE userId = ?
+            AND transactionId = ?
+            AND productId = 'pl.estateos.app.pakiet_plus_30d'
+            AND consumedAt IS NULL
+            AND verifyStatus = 'VERIFIED'
+        `,
+        gate.userId,
+        iapTransactionId.slice(0, 128)
+      );
+      if (Number(consumedIap || 0) < 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            errorCode: 'IAP_TRANSACTION_NOT_AVAILABLE',
+            message: 'Nie znaleziono niewykorzystanej transakcji IAP dla Pakietu Plus.',
+          },
+          { status: 409 }
+        );
+      }
+      consumedKind = 'PLUS_IAP';
+      consumedIapTransactionId = iapTransactionId.slice(0, 128);
     }
 
     const result = await createOfferFromOtodomDraft(draft, gate.userId);
@@ -190,6 +229,18 @@ export async function POST(req: Request) {
           'UPDATE MobileProfilePromoCard SET couponUsed = 0, updatedAt = NOW(3) WHERE id = ? AND userId = ?',
           consumedCouponId,
           gate.userId
+        );
+      } else if (consumedKind === 'PLUS_IAP' && consumedIapTransactionId) {
+        await prisma.$executeRawUnsafe(
+          `
+            UPDATE MobileIapPurchase
+            SET consumedAt = NULL
+            WHERE userId = ?
+              AND transactionId = ?
+              AND productId = 'pl.estateos.app.pakiet_plus_30d'
+          `,
+          gate.userId,
+          consumedIapTransactionId
         );
       }
       return NextResponse.json(
@@ -227,6 +278,18 @@ export async function POST(req: Request) {
         'UPDATE MobileProfilePromoCard SET couponUsed = 0, updatedAt = NOW(3) WHERE id = ? AND userId = ?',
         consumedCouponId,
         gate.userId
+      );
+    } else if (consumedKind === 'PLUS_IAP' && consumedIapTransactionId) {
+      await prisma.$executeRawUnsafe(
+        `
+          UPDATE MobileIapPurchase
+          SET consumedAt = NULL
+          WHERE userId = ?
+            AND transactionId = ?
+            AND productId = 'pl.estateos.app.pakiet_plus_30d'
+        `,
+        gate.userId,
+        consumedIapTransactionId
       );
     }
     const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';

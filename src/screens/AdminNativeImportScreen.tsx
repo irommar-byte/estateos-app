@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Easing, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker } from 'react-native-maps';
@@ -46,6 +46,122 @@ type ImportPresentation = {
 
 const IMPORT_DRAFT_STORAGE_KEY = 'nativeImport:portalDraft:v1';
 
+function ImportSuccessCinematic({
+  visible,
+  onDone,
+}: {
+  visible: boolean;
+  onDone: () => void;
+}) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.92)).current;
+  const confetti = useRef(Array.from({ length: 26 }, () => new Animated.Value(0))).current;
+  const fireworks = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    opacity.setValue(0);
+    scale.setValue(0.92);
+    confetti.forEach((v) => v.setValue(0));
+    fireworks.forEach((v) => v.setValue(0));
+
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        damping: 12,
+        stiffness: 180,
+        mass: 0.7,
+        useNativeDriver: true,
+      }),
+      Animated.stagger(
+        40,
+        confetti.map((v) =>
+          Animated.timing(v, {
+            toValue: 1,
+            duration: 1300,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          })
+        )
+      ),
+      Animated.stagger(
+        180,
+        fireworks.map((v) =>
+          Animated.sequence([
+            Animated.delay(180),
+            Animated.timing(v, {
+              toValue: 1,
+              duration: 620,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ])
+        )
+      ),
+    ]).start();
+  }, [visible, confetti, fireworks, opacity, scale]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onDone}>
+      <Animated.View style={[styles.fxBackdrop, { opacity }]}>
+        {fireworks.map((v, i) => {
+          const scaleFx = v.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1.6] });
+          const alpha = v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0] });
+          return (
+            <Animated.View
+              key={`fx-${i}`}
+              style={[
+                styles.fxRing,
+                {
+                  left: `${18 + i * 20}%`,
+                  top: i % 2 === 0 ? '18%' : '28%',
+                  opacity: alpha,
+                  transform: [{ scale: scaleFx }],
+                },
+              ]}
+            />
+          );
+        })}
+        {confetti.map((v, i) => {
+          const x = (i % 2 === 0 ? -1 : 1) * (16 + (i % 7) * 12);
+          const translateY = v.interpolate({ inputRange: [0, 1], outputRange: [-30, 560 + (i % 5) * 55] });
+          const rotate = v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${220 + i * 17}deg`] });
+          const alpha = v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.15] });
+          return (
+            <Animated.View
+              key={`confetti-${i}`}
+              style={[
+                styles.fxConfetti,
+                {
+                  left: `${8 + (i % 10) * 9}%`,
+                  backgroundColor: ['#10B981', '#0A84FF', '#FFCC00', '#AF52DE', '#FF3B30'][i % 5],
+                  opacity: alpha,
+                  transform: [{ translateX: x }, { translateY }, { rotate }],
+                },
+              ]}
+            />
+          );
+        })}
+        <Animated.View style={[styles.fxCard, { transform: [{ scale }] }]}>
+          <Ionicons name="sparkles" size={34} color="#FFD60A" />
+          <Text style={styles.fxTitle}>Oferta utworzona</Text>
+          <Text style={styles.fxSubtitle}>Cinematic success</Text>
+          <Pressable style={styles.fxButton} onPress={onDone}>
+            <Text style={styles.fxButtonText}>Super</Text>
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+}
+
 export default function AdminNativeImportScreen() {
   const navigation = useNavigation<any>();
   const { t } = useI18n();
@@ -83,6 +199,8 @@ export default function AdminNativeImportScreen() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [storageReady, setStorageReady] = useState(false);
+  const [restoredDraftBadge, setRestoredDraftBadge] = useState(false);
+  const [successFxVisible, setSuccessFxVisible] = useState(false);
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
@@ -127,6 +245,9 @@ export default function AdminNativeImportScreen() {
         if (typeof parsed?.url === 'string') setUrl(parsed.url);
         if (parsed?.draft) setDraft(parsed.draft);
         if (parsed?.presentation) setPresentation(parsed.presentation);
+        if (parsed?.draft || parsed?.presentation || parsed?.url) {
+          setRestoredDraftBadge(true);
+        }
       } catch {
         // ignore invalid cache
       } finally {
@@ -163,6 +284,7 @@ export default function AdminNativeImportScreen() {
     setMessage('');
     setDraft(null);
     setPresentation(null);
+    setRestoredDraftBadge(false);
     setPendingRedemption(null);
     setCreatedOfferId(null);
     setEditUrl('');
@@ -247,6 +369,8 @@ export default function AdminNativeImportScreen() {
             setPublicUrl(String(data?.publicUrl || ''));
             setPendingRedemption(redemption);
             await clearImportDraftCache();
+            setRestoredDraftBadge(false);
+            setSuccessFxVisible(true);
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           } catch {
             setError('Błąd połączenia podczas tworzenia oferty.');
@@ -344,6 +468,12 @@ export default function AdminNativeImportScreen() {
           </View>
         </View>
         <Text style={[styles.heroTitle, { color: theme.text }]}>Import z portali</Text>
+        {restoredDraftBadge ? (
+          <View style={styles.restoreBadge}>
+            <Ionicons name="refresh-circle" size={14} color="#10B981" />
+            <Text style={styles.restoreBadgeText}>Przywrócono zapisany draft</Text>
+          </View>
+        ) : null}
         <Text style={[styles.heroSubtitle, { color: theme.sub }]}>
           Wklej link OtoDom, OLX lub Nieruchomosci-Online. System wykryje portal i przygotuje draft oferty.
         </Text>
@@ -491,8 +621,8 @@ export default function AdminNativeImportScreen() {
               <Pressable
                 style={[styles.linkBtn, { borderColor: theme.border }]}
                 onPress={() => {
-                  if (!editUrl) return;
-                  void Linking.openURL(`${API_URL}${editUrl.startsWith('/') ? editUrl : `/${editUrl}`}`);
+                  if (!createdOfferId) return;
+                  navigation.navigate('EditOffer', { offerId: createdOfferId });
                 }}
               >
                 <Text style={[styles.linkText, { color: theme.text }]}>Edytuj #{createdOfferId}</Text>
@@ -500,8 +630,8 @@ export default function AdminNativeImportScreen() {
               <Pressable
                 style={[styles.linkBtn, { borderColor: theme.border }]}
                 onPress={() => {
-                  if (!publicUrl) return;
-                  void Linking.openURL(`${API_URL}${publicUrl.startsWith('/') ? publicUrl : `/${publicUrl}`}`);
+                  if (!createdOfferId) return;
+                  navigation.navigate('OfferDetail', { id: createdOfferId });
                 }}
               >
                 <Text style={[styles.linkText, { color: theme.text }]}>Podgląd</Text>
@@ -566,6 +696,7 @@ export default function AdminNativeImportScreen() {
         onConfirm={handlePublicationChoice}
         onClose={() => setPublicationChoiceVisible(false)}
       />
+      <ImportSuccessCinematic visible={successFxVisible} onDone={() => setSuccessFxVisible(false)} />
     </ScrollView>
   );
 }
@@ -592,6 +723,18 @@ const styles = StyleSheet.create({
   heroBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: 'rgba(10,132,255,0.16)' },
   heroBadgeText: { color: '#0A84FF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   heroTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  restoreBadge: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(16,185,129,0.14)',
+  },
+  restoreBadgeText: { color: '#10B981', fontSize: 12, fontWeight: '700' },
   heroSubtitle: { marginTop: 6, fontSize: 13, lineHeight: 18 },
   input: { marginTop: 14, borderWidth: 1, borderRadius: 12, minHeight: 46, paddingHorizontal: 12, fontSize: 15 },
   primaryBtn: { marginTop: 12, borderRadius: 12, minHeight: 46, backgroundColor: '#007AFF', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
@@ -630,4 +773,47 @@ const styles = StyleSheet.create({
   lightboxClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   lightboxSlide: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   lightboxImage: { width: '100%', height: '84%' },
+  fxBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(5,8,20,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fxRing: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(255,216,10,0.9)',
+  },
+  fxConfetti: {
+    position: 'absolute',
+    width: 8,
+    height: 16,
+    borderRadius: 2,
+    top: 70,
+  },
+  fxCard: {
+    width: '82%',
+    borderRadius: 24,
+    paddingVertical: 26,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    backgroundColor: 'rgba(20,24,44,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  fxTitle: { marginTop: 8, color: '#FFFFFF', fontSize: 30, fontWeight: '900', letterSpacing: -0.7 },
+  fxSubtitle: { marginTop: 8, color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: '600' },
+  fxButton: {
+    marginTop: 18,
+    minHeight: 44,
+    minWidth: 140,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+  },
+  fxButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });
