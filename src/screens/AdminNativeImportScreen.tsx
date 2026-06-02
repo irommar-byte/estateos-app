@@ -1,15 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
 import { useThemeStore } from '../store/useThemeStore';
 import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
 import { useNavigation } from '@react-navigation/native';
+import { getAdditionalListingSlots, hasAdditionalPlusPublication, userAfterPakietPlusPurchase } from '../utils/listingQuota';
+import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../services/iapPakietPlus';
+import { gatherPublicationBonusCoupons } from '../services/publicationBonusCoupons';
+import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags';
+import PublicationChoiceModal, { type PublicationChoiceConfirm } from '../components/publication/PublicationChoiceModal';
+import type { CreatePublicationRedemption } from '../contracts/offerPublicationContract';
 
 type ImportSource = 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
 
@@ -37,11 +44,14 @@ type ImportPresentation = {
   descriptionHtml: string;
 };
 
+const IMPORT_DRAFT_STORAGE_KEY = 'nativeImport:portalDraft:v1';
+
 export default function AdminNativeImportScreen() {
   const navigation = useNavigation<any>();
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  const refreshUser = useAuthStore((s) => s.refreshUser);
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
@@ -63,10 +73,16 @@ export default function AdminNativeImportScreen() {
   const [createdOfferId, setCreatedOfferId] = useState<number | null>(null);
   const [editUrl, setEditUrl] = useState('');
   const [publicUrl, setPublicUrl] = useState('');
-  const [redemptionSource, setRedemptionSource] = useState<'plus_credit' | 'bonus_coupon'>('plus_credit');
-  const [couponId, setCouponId] = useState('');
+  const [publicationChoiceVisible, setPublicationChoiceVisible] = useState(false);
+  const [publicationChoiceCoupons, setPublicationChoiceCoupons] = useState<
+    Awaited<ReturnType<typeof gatherPublicationBonusCoupons>>['coupons']
+  >([]);
+  const [publicationChoicePlusSlots, setPublicationChoicePlusSlots] = useState(0);
+  const [publicationChoiceHasPlus, setPublicationChoiceHasPlus] = useState(false);
+  const [pendingRedemption, setPendingRedemption] = useState<CreatePublicationRedemption | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [storageReady, setStorageReady] = useState(false);
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
@@ -97,6 +113,41 @@ export default function AdminNativeImportScreen() {
     return hasMap ? 'Dokładna' : 'Brak współrzędnych';
   }, [draft?.locationWarnings, hasMap]);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(IMPORT_DRAFT_STORAGE_KEY);
+        if (!raw || !mounted) return;
+        const parsed = JSON.parse(raw) as {
+          url?: string;
+          draft?: ImportDraft | null;
+          presentation?: ImportPresentation | null;
+        };
+        if (typeof parsed?.url === 'string') setUrl(parsed.url);
+        if (parsed?.draft) setDraft(parsed.draft);
+        if (parsed?.presentation) setPresentation(parsed.presentation);
+      } catch {
+        // ignore invalid cache
+      } finally {
+        if (mounted) setStorageReady(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    const payload = JSON.stringify({ url, draft, presentation });
+    void AsyncStorage.setItem(IMPORT_DRAFT_STORAGE_KEY, payload);
+  }, [storageReady, url, draft, presentation]);
+
+  const clearImportDraftCache = useCallback(async () => {
+    await AsyncStorage.removeItem(IMPORT_DRAFT_STORAGE_KEY);
+  }, []);
+
   const handleAnalyze = async () => {
     if (!token) {
       Alert.alert(t('common.error'), 'Brak sesji. Zaloguj się ponownie.');
@@ -112,6 +163,7 @@ export default function AdminNativeImportScreen() {
     setMessage('');
     setDraft(null);
     setPresentation(null);
+    setPendingRedemption(null);
     setCreatedOfferId(null);
     setEditUrl('');
     setPublicUrl('');
@@ -150,12 +202,8 @@ export default function AdminNativeImportScreen() {
     }
   };
 
-  const handleCreate = async () => {
+  const runCreate = async (redemption: CreatePublicationRedemption) => {
     if (!token || !draft) return;
-    if (redemptionSource === 'bonus_coupon' && !couponId.trim()) {
-      Alert.alert('Brak kuponu', 'Wpisz ID kuponu, aby utworzyć ofertę z kuponu.');
-      return;
-    }
     Alert.alert('Utworzyć ofertę?', 'Utworzę ofertę PENDING na podstawie zaimportowanych danych.', [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -172,7 +220,7 @@ export default function AdminNativeImportScreen() {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify({ draft, rightsConfirmed: true }),
+              body: JSON.stringify({ draft, rightsConfirmed: true, redemption }),
             });
             if (res.status === 404) {
               res = await fetch(`${API_URL}/api/mobile/v1/admin/otodom-import/create`, {
@@ -184,10 +232,7 @@ export default function AdminNativeImportScreen() {
               body: JSON.stringify({
                 draft,
                 rightsConfirmed: true,
-                redemption: {
-                  source: redemptionSource,
-                  ...(redemptionSource === 'bonus_coupon' ? { couponId: couponId.trim() } : {}),
-                },
+                redemption,
               }),
               });
             }
@@ -200,6 +245,8 @@ export default function AdminNativeImportScreen() {
             setCreatedOfferId(Number(data?.offerId || 0) || null);
             setEditUrl(String(data?.editUrl || ''));
             setPublicUrl(String(data?.publicUrl || ''));
+            setPendingRedemption(redemption);
+            await clearImportDraftCache();
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           } catch {
             setError('Błąd połączenia podczas tworzenia oferty.');
@@ -209,6 +256,60 @@ export default function AdminNativeImportScreen() {
         },
       },
     ]);
+  };
+
+  const openPublicationChoice = async () => {
+    if (!token || !user?.id) return;
+    await refreshUser();
+    const latestUser = useAuthStore.getState().user;
+    const gathered = await gatherPublicationBonusCoupons({
+      apiUrl: API_URL,
+      token,
+      userId: user.id,
+      email: latestUser?.email,
+      firstFreePublicationUsed: readUserFirstFreePublicationUsed(latestUser),
+      t,
+    });
+    setPublicationChoiceCoupons(gathered.coupons);
+    setPublicationChoicePlusSlots(getAdditionalListingSlots(latestUser));
+    setPublicationChoiceHasPlus(hasAdditionalPlusPublication(latestUser));
+    setPublicationChoiceVisible(true);
+  };
+
+  const runPakietPlusPurchaseAndCreate = async () => {
+    if (!token || !draft) return;
+    const purchase = await purchasePakietPlusConsumable(API_URL, token);
+    if (!purchase.ok) {
+      if (!purchase.cancelled && purchase.message) {
+        Alert.alert(t('common.error'), purchase.message);
+      }
+      return;
+    }
+    await refreshUser();
+    const patched = userAfterPakietPlusPurchase(useAuthStore.getState().user, {
+      backendRegistered: Boolean(purchase.backendRegistered),
+      extraListings: purchase.extraListings,
+    });
+    const currentUser = useAuthStore.getState().user;
+    if (patched && currentUser) {
+      useAuthStore.setState({ user: { ...currentUser, ...patched } });
+    }
+    void runCreate({ source: 'plus_iap', transactionId: purchase.transactionId });
+  };
+
+  const handlePublicationChoice = (result: PublicationChoiceConfirm) => {
+    setPublicationChoiceVisible(false);
+    if (result.action === 'cancel') return;
+    if (result.action === 'buy_plus') {
+      void runPakietPlusPurchaseAndCreate();
+      return;
+    }
+    void runCreate(result.redemption);
+  };
+
+  const handleCreatePress = () => {
+    if (!token || !draft || creating) return;
+    void openPublicationChoice();
   };
 
   if (!hasActiveInvestorProMembership(user)) {
@@ -371,46 +472,14 @@ export default function AdminNativeImportScreen() {
           <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Utworzenie oferty</Text>
             <Text style={[styles.row, { color: theme.sub, marginBottom: 8 }]}>
-              Przed utworzeniem oferta pobiera 1 kredyt Plus albo 1 kupon publikacji.
+              Przed utworzeniem pojawi się okno publikacji jak przy dodawaniu nieruchomości.
             </Text>
-            <View style={styles.redemptionRow}>
-              <Pressable
-                onPress={() => setRedemptionSource('plus_credit')}
-                style={[
-                  styles.redemptionChip,
-                  redemptionSource === 'plus_credit' && styles.redemptionChipActive,
-                  { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' },
-                ]}
-              >
-                <Text style={[styles.redemptionChipText, { color: redemptionSource === 'plus_credit' ? '#0A84FF' : theme.text }]}>
-                  Kredyt Plus
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setRedemptionSource('bonus_coupon')}
-                style={[
-                  styles.redemptionChip,
-                  redemptionSource === 'bonus_coupon' && styles.redemptionChipActive,
-                  { borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' },
-                ]}
-              >
-                <Text style={[styles.redemptionChipText, { color: redemptionSource === 'bonus_coupon' ? '#0A84FF' : theme.text }]}>
-                  Kupon
-                </Text>
-              </Pressable>
-            </View>
-            {redemptionSource === 'bonus_coupon' ? (
-              <TextInput
-                value={couponId}
-                onChangeText={setCouponId}
-                placeholder="ID kuponu (np. promo_...)"
-                placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={[styles.input, { marginTop: 8, color: theme.text, borderColor: theme.border, backgroundColor: isDark ? '#111114' : '#F9FAFB' }]}
-              />
+            {pendingRedemption ? (
+              <Text style={[styles.row, { color: '#10B981', marginBottom: 8 }]}>
+                Ostatnio wybrane źródło: {pendingRedemption.source === 'bonus_coupon' ? 'Kupon' : pendingRedemption.source === 'plus_credit' ? 'Kredyt Plus' : 'Dokupienie Plus'}
+              </Text>
             ) : null}
-          <Pressable onPress={handleCreate} disabled={creating} style={[styles.successBtn, creating && styles.btnDisabled]}>
+          <Pressable onPress={handleCreatePress} disabled={creating} style={[styles.successBtn, creating && styles.btnDisabled]}>
             {creating ? <ActivityIndicator color="#fff" /> : <Ionicons name="add-circle" size={16} color="#fff" />}
             <Text style={styles.primaryBtnText}>{creating ? 'Tworzenie…' : 'Utwórz ofertę'}</Text>
           </Pressable>
@@ -472,6 +541,31 @@ export default function AdminNativeImportScreen() {
           </ScrollView>
         </View>
       </Modal>
+      <PublicationChoiceModal
+        visible={publicationChoiceVisible}
+        isDark={isDark}
+        title={t('addOffer.step6.publicationChoice.title')}
+        subtitle={t('addOffer.step6.publicationChoice.subtitle')}
+        couponsSectionTitle={t('addOffer.step6.publicationChoice.couponsSection')}
+        couponsEmptyHint={t('addOffer.step6.publicationChoice.couponsEmpty')}
+        plusSectionTitle={t('addOffer.step6.publicationChoice.plusSection')}
+        plusCreditLabel={t('addOffer.step6.publicationChoice.plusCreditTitle')}
+        plusCreditSubtitle={t('addOffer.step6.publicationChoice.plusCreditSubtitle', {
+          count: publicationChoicePlusSlots,
+        })}
+        buyPlusLabel={t('addOffer.step6.publicationChoice.buyPlusTitle')}
+        buyPlusSubtitle={t('addOffer.step6.publicationChoice.buyPlusSubtitle', {
+          price: PAKIET_PLUS_PRICE_LABEL,
+        })}
+        publishLabel={t('addOffer.step6.publicationChoice.publish')}
+        cancelLabel={t('common.cancel')}
+        couponPriorityHint={t('addOffer.step6.publicationChoice.couponPriorityHint')}
+        coupons={publicationChoiceCoupons}
+        plusSlots={publicationChoicePlusSlots}
+        hasPlusCredit={publicationChoiceHasPlus}
+        onConfirm={handlePublicationChoice}
+        onClose={() => setPublicationChoiceVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -523,23 +617,6 @@ const styles = StyleSheet.create({
   descriptionCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
   descriptionText: { fontSize: 14, lineHeight: 21 },
   chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  redemptionRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  redemptionChip: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  redemptionChipActive: {
-    borderColor: 'rgba(10,132,255,0.45)',
-    shadowColor: '#0A84FF',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  redemptionChipText: { fontSize: 12, fontWeight: '700' },
   warningChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: 'rgba(255,149,0,0.14)', borderWidth: 1, borderColor: 'rgba(255,149,0,0.32)' },
   warningChipText: { color: '#FF9500', fontSize: 12, fontWeight: '700', lineHeight: 16 },
   featureChip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1 },
