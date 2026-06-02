@@ -139,59 +139,6 @@
       color: var(--muted);
       font-size: 14px;
     }
-    .hero-gallery {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 4px;
-      background: var(--sheet-inner);
-      overflow: hidden;
-    }
-    .hero-gallery.has-side {
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.46fr);
-    }
-    .hero-gallery-main,
-    .hero-gallery-side-cell {
-      position: relative;
-      overflow: hidden;
-      background: rgba(127,127,127,0.06);
-    }
-    .hero-gallery-main img,
-    .hero-gallery-side-cell img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .hero-gallery-main {
-      min-height: min(42vw, 220px);
-    }
-    .hero-gallery.has-side .hero-gallery-main {
-      min-height: min(44vw, 232px);
-    }
-    .hero-gallery.solo .hero-gallery-main {
-      min-height: min(46vw, 248px);
-    }
-    .hero-gallery-side {
-      display: grid;
-      grid-template-rows: 1fr 1fr;
-      gap: 4px;
-      min-height: 0;
-    }
-    .hero-gallery.duo .hero-gallery-side {
-      grid-template-rows: 1fr;
-    }
-    .hero-gallery.duo .hero-gallery-side-cell:last-child {
-      display: none;
-    }
-    .hero-gallery.placeholder {
-      display: grid;
-      place-items: center;
-      gap: 8px;
-      min-height: 180px;
-      color: var(--muted);
-      font-size: 14px;
-      grid-template-columns: 1fr !important;
-    }
     .body {
       padding: 16px 16px 18px;
     }
@@ -570,286 +517,6 @@
       display: block;
       background: rgba(127,127,127,0.04);
     }
-    .brochure-exporting {
-      background: #ffffff !important;
-      color: #141416 !important;
-      color-scheme: light only !important;
-      --text: #141416;
-      --muted: #5c5c66;
-      --sheet: #ffffff;
-      --sheet-inner: #ffffff;
-      --line: rgba(20, 20, 22, 0.12);
-      --line-strong: rgba(20, 20, 22, 0.18);
-      --gold: #8a6d1f;
-      --gold-soft: rgba(184, 146, 46, 0.12);
-      --gold-line: rgba(184, 146, 46, 0.35);
-      --trust: rgba(36, 120, 72, 0.1);
-      --trust-text: #1f6b43;
-    }
-    .brochure-exporting .page {
-      max-width: none !important;
-      width: 794px !important;
-      padding: 0 !important;
-      margin: 0 !important;
-    }
-    .brochure-exporting .sheet {
-      box-shadow: none !important;
-      background: none !important;
-      padding: 0 !important;
-      border-radius: 0 !important;
-    }
-    .brochure-exporting .sheet-inner {
-      width: 794px !important;
-      max-width: 794px !important;
-      border: none !important;
-      border-radius: 0 !important;
-      overflow: hidden !important;
-      background: #ffffff !important;
-      color: #141416 !important;
-      padding: 0 0 8px !important;
-    }
-    .brochure-exporting .landing-print-hide,
-    .brochure-exporting .platform-foot,
-    .brochure-exporting .toast,
-    .brochure-exporting .thumbs,
-    .brochure-exporting .description-hint,
-    .brochure-exporting .actions,
-    .brochure-exporting .qr-row,
-    .brochure-exporting .trust-note { display: none !important; }
-    .brochure-exporting .sheet-header {
-      padding: 14px 28px 12px !important;
-      margin-bottom: 0 !important;
-      border-bottom: 2px solid #b8922e !important;
-      background: linear-gradient(180deg, #fffdf7 0%, #ffffff 100%) !important;
-    }
-    .brochure-exporting .sheet-brand { margin-bottom: 0 !important; }
-    .brochure-exporting .sheet-brand-left {
-      font-size: 8px !important;
-      color: #8a8a96 !important;
-      letter-spacing: 0.2em !important;
-    }
-    .brochure-exporting .sheet-brand-left strong {
-      color: #141416 !important;
-      font-size: 10px !important;
-    }
-    .brochure-exporting .sheet-ref {
-      font-size: 8px !important;
-      padding: 4px 10px !important;
-      color: #8a6d1f !important;
-      border-color: rgba(184,146,46,0.45) !important;
-      background: rgba(184,146,46,0.1) !important;
-    }
-    .brochure-exporting .sheet-lead { display: none !important; }
-    .brochure-exporting .hero-gallery {
-      display: grid !important;
-      gap: 6px !important;
-      margin: 0 !important;
-      border-radius: 0 !important;
-      overflow: hidden !important;
-      border: none !important;
-      border-bottom: 1px solid #ececef !important;
-      background: #f4f4f5 !important;
-    }
-    .brochure-exporting .hero-gallery.solo {
-      grid-template-columns: 1fr !important;
-      height: 220px !important;
-      max-height: 220px !important;
-    }
-    .brochure-exporting .hero-gallery.has-side,
-    .brochure-exporting .hero-gallery.duo {
-      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.42fr) !important;
-      height: 232px !important;
-      max-height: 232px !important;
-    }
-    .brochure-exporting .hero-gallery-main,
-    .brochure-exporting .hero-gallery-side {
-      height: 100% !important;
-      min-height: 0 !important;
-    }
-    .brochure-exporting .hero-gallery-main { min-height: 0 !important; }
-    .brochure-exporting .hero-gallery-main img,
-    .brochure-exporting .hero-gallery-side-cell img {
-      width: 100% !important;
-      height: 100% !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      object-fit: cover !important;
-      object-position: center !important;
-    }
-    .brochure-exporting .hero-gallery-side {
-      display: grid !important;
-      grid-template-rows: 1fr 1fr !important;
-      gap: 6px !important;
-    }
-    .brochure-exporting .hero-gallery.duo .hero-gallery-side {
-      grid-template-rows: 1fr !important;
-    }
-    .brochure-exporting .body {
-      padding: 18px 28px 0 !important;
-      color: #141416 !important;
-    }
-    .brochure-exporting .badges { margin-bottom: 10px !important; gap: 6px !important; }
-    .brochure-exporting .badge {
-      font-size: 8px !important;
-      padding: 5px 10px !important;
-      letter-spacing: 0.1em !important;
-    }
-    .brochure-exporting .badge-tx {
-      color: #1f6b43 !important;
-      background: rgba(36,120,72,0.1) !important;
-      border-color: rgba(36,120,72,0.25) !important;
-    }
-    .brochure-exporting .badge-type {
-      color: #141416 !important;
-      background: #f5f5f7 !important;
-      border-color: #e5e5ea !important;
-    }
-    .brochure-exporting .summary-line {
-      font-size: 11px !important;
-      margin-bottom: 4px !important;
-      color: #6b6b76 !important;
-    }
-    .brochure-exporting h1 {
-      font-size: 22px !important;
-      margin-bottom: 4px !important;
-      line-height: 1.18 !important;
-      color: #141416 !important;
-      font-weight: 650 !important;
-    }
-    .brochure-exporting .location {
-      font-size: 12px !important;
-      color: #6b6b76 !important;
-    }
-    .brochure-exporting .price-row { margin-top: 12px !important; }
-    .brochure-exporting .price {
-      font-size: 26px !important;
-      color: #8a6d1f !important;
-      font-weight: 700 !important;
-    }
-    .brochure-exporting .price-suffix {
-      font-size: 12px !important;
-      color: #6b6b76 !important;
-    }
-    .brochure-exporting .price-commission {
-      font-size: 10px !important;
-      color: #6b6b76 !important;
-    }
-    .brochure-exporting .price-commission strong { color: #8a6d1f !important; }
-    .brochure-exporting .spec-grid {
-      grid-template-columns: repeat(5, 1fr) !important;
-      gap: 8px !important;
-      margin-top: 14px !important;
-    }
-    .brochure-exporting .spec {
-      padding: 8px 10px !important;
-      border-radius: 8px !important;
-      background: #f5f5f7 !important;
-      border: 1px solid #e5e5ea !important;
-    }
-    .brochure-exporting .spec label {
-      font-size: 7px !important;
-      margin-bottom: 3px !important;
-      color: #8a8a96 !important;
-      letter-spacing: 0.12em !important;
-    }
-    .brochure-exporting .spec strong {
-      font-size: 11px !important;
-      color: #141416 !important;
-      font-weight: 600 !important;
-    }
-    .brochure-exporting .amenities { margin-top: 10px !important; gap: 6px !important; }
-    .brochure-exporting .amenity {
-      font-size: 9px !important;
-      padding: 4px 10px !important;
-      color: #5c5c66 !important;
-      background: #ffffff !important;
-      border: 1px solid #e5e5ea !important;
-    }
-    .brochure-exporting .description-section {
-      margin-top: 14px !important;
-      padding-top: 12px !important;
-      border-top: 1px solid #ececef !important;
-    }
-    .brochure-exporting .section-title {
-      font-size: 8px !important;
-      margin-bottom: 6px !important;
-      color: #8a6d1f !important;
-      letter-spacing: 0.18em !important;
-    }
-    .brochure-exporting .description-body {
-      font-size: 11px !important;
-      line-height: 1.48 !important;
-      color: #3d3d46 !important;
-      display: -webkit-box !important;
-      -webkit-line-clamp: 5 !important;
-      -webkit-box-orient: vertical !important;
-      overflow: hidden !important;
-      max-height: none !important;
-    }
-    .brochure-exporting .description-body::after { display: none !important; }
-    .brochure-exporting .media-stack {
-      display: grid !important;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-top: 14px !important;
-    }
-    .brochure-exporting .media-stack .map-section,
-    .brochure-exporting .media-stack .floorplan-section {
-      margin-top: 0 !important;
-      padding-top: 0 !important;
-      border-top: none !important;
-    }
-    .brochure-exporting .media-stack .map-section[hidden],
-    .brochure-exporting .media-stack .floorplan-section[hidden] {
-      display: none !important;
-    }
-    .brochure-exporting .media-stack:has(.map-section[hidden]):has(.floorplan-section:not([hidden])) .floorplan-section,
-    .brochure-exporting .media-stack:has(.floorplan-section[hidden]):has(.map-section:not([hidden])) .map-section {
-      grid-column: 1 / -1;
-    }
-    .brochure-exporting .map-frame,
-    .brochure-exporting .floorplan-frame {
-      border-radius: 10px !important;
-      border: 1px solid #e5e5ea !important;
-      overflow: hidden !important;
-      background: #f8f8fa !important;
-    }
-    .brochure-exporting .map-frame img {
-      width: 100% !important;
-      height: 118px !important;
-      max-height: 118px !important;
-      min-height: 118px !important;
-      object-fit: cover !important;
-      display: block !important;
-    }
-    .brochure-exporting .floorplan-frame img {
-      width: 100% !important;
-      height: 118px !important;
-      max-height: 118px !important;
-      min-height: 118px !important;
-      object-fit: contain !important;
-      display: block !important;
-      background: #fff !important;
-    }
-    .brochure-exporting .map-caption {
-      font-size: 9px !important;
-      line-height: 1.35 !important;
-      margin-top: 4px !important;
-      color: #6b6b76 !important;
-      display: -webkit-box !important;
-      -webkit-line-clamp: 2 !important;
-      -webkit-box-orient: vertical !important;
-      overflow: hidden !important;
-    }
-    .brochure-exporting .agent-print-card {
-      display: block !important;
-      margin-top: 16px !important;
-      padding: 0 28px 4px !important;
-    }
-    .brochure-exporting .agent-print-inner {
-      padding: 14px 16px !important;
-      border-radius: 12px !important;
-    }
     .print-only { display: none !important; }
     .agent-print-card {
       display: none;
@@ -1020,42 +687,13 @@
       .sheet-ref { font-size: 7pt; padding: 1mm 2.5mm; }
       .sheet-lead { display: none !important; }
       .hero { min-height: 0 !important; }
-      .hero-gallery {
-        display: grid !important;
-        gap: 1.5mm !important;
-        max-height: 38mm !important;
-      }
-      .hero-gallery.solo {
-        grid-template-columns: 1fr !important;
-        height: 36mm !important;
-      }
-      .hero-gallery.has-side,
-      .hero-gallery.duo {
-        grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.48fr) !important;
-        height: 38mm !important;
-      }
-      .hero-gallery-main,
-      .hero-gallery-side { height: 100% !important; min-height: 0 !important; }
-      .hero-gallery-main { min-height: 0 !important; }
-      .hero-gallery-main img,
-      .hero-gallery-side-cell img {
-        width: 100% !important;
-        height: 100% !important;
-        object-fit: cover !important;
-      }
-      .hero-gallery-side {
-        display: grid !important;
-        grid-template-rows: 1fr 1fr !important;
-        gap: 1.5mm !important;
-      }
-      .hero-gallery.duo .hero-gallery-side { grid-template-rows: 1fr !important; }
       .hero img {
         width: 100% !important;
         height: 34mm !important;
         max-height: 34mm !important;
         object-fit: cover !important;
       }
-      .body { padding: 2mm 0 0 !important; }
+      .body { padding: 2mm 0 0 !important; color: #141416 !important; }
       .landing-print-hide,
       .platform-foot,
       .qr-row,
@@ -1067,9 +705,9 @@
       .actions { display: none !important; }
       .badges { margin-bottom: 2mm !important; gap: 2mm !important; }
       .badge { font-size: 7pt; padding: 1mm 2mm; }
-      .summary-line { font-size: 8.5pt; margin-bottom: 1mm !important; }
-      h1 { font-size: 15pt !important; margin-bottom: 1mm !important; line-height: 1.15 !important; }
-      .location { font-size: 9pt !important; }
+      h1 { font-size: 15pt !important; margin-bottom: 1mm !important; line-height: 1.15 !important; color: #141416 !important; }
+      .location { font-size: 9pt !important; color: #5c5c66 !important; }
+      .summary-line { font-size: 8.5pt !important; margin-bottom: 1mm !important; color: #5c5c66 !important; }
       .price-row { margin-top: 2mm !important; }
       .price { font-size: 17pt !important; color: #8a6d1f !important; }
       .price-suffix { font-size: 9pt !important; }
@@ -1080,8 +718,8 @@
         margin-top: 2.5mm !important;
       }
       .spec { padding: 1.5mm 2mm !important; border-radius: 2mm !important; }
-      .spec label { font-size: 6pt; margin-bottom: 0.5mm !important; }
-      .spec strong { font-size: 8pt !important; }
+      .spec label { font-size: 6pt; margin-bottom: 0.5mm !important; color: #8a8a96 !important; }
+      .spec strong { font-size: 8pt !important; color: #141416 !important; }
       .amenities { margin-top: 2mm !important; gap: 1.5mm !important; }
       .amenity { font-size: 7pt; padding: 0.8mm 2mm; }
       .description-section,
@@ -1095,6 +733,7 @@
       .description-body {
         font-size: 8.5pt !important;
         line-height: 1.35 !important;
+        color: #3d3d46 !important;
         max-height: none !important;
         display: -webkit-box;
         -webkit-line-clamp: 9;
@@ -1165,7 +804,7 @@
           </p>
         </header>
 
-        <div id="hero" class="hero-gallery placeholder"><span class="spinner" aria-hidden="true"></span><span id="heroLoadingText">Ładowanie oferty…</span></div>
+        <div id="hero" class="hero placeholder"><span class="spinner" aria-hidden="true"></span><span id="heroLoadingText">Ładowanie oferty…</span></div>
 
         <div class="body" id="panel" hidden>
           <div class="badges" id="badges"></div>
@@ -1224,7 +863,7 @@
           <div class="actions landing-print-hide">
             <a class="btn btn-primary" id="openApp" href="#">Otwórz w aplikacji EstateOS™</a>
             <a class="btn btn-secondary" id="registerCta" href="https://estateos.pl/rejestracja">Załóż konto i skontaktuj się</a>
-            <button type="button" class="btn btn-secondary landing-print-hide" id="downloadBrochure" hidden>Pobierz ofertówkę dla klienta</button>
+            <button type="button" class="btn btn-secondary landing-print-hide" id="printBrochure" hidden>Wydrukuj</button>
             <button type="button" class="btn btn-ghost" id="copyLink">Kopiuj link do wiadomości</button>
           </div>
           <div class="toast" id="toast" aria-live="polite"></div>
@@ -1280,7 +919,6 @@
     <div id="fatal" class="err" style="display:none"></div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" crossorigin="anonymous"></script>
   <script>
 (function () {
   var ORIGIN = window.location.origin;
@@ -1319,7 +957,7 @@
       trustNote: 'Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.',
       openApp: 'Otwórz w aplikacji EstateOS™',
       registerCta: 'Załóż konto i skontaktuj się',
-      downloadBrochure: 'Pobierz ofertówkę dla klienta',
+      printBrochure: 'Wydrukuj',
       copyLink: 'Kopiuj link do wiadomości',
       perMonth: '/ miesiąc',
       perMonthShort: ' / mc',
@@ -1357,11 +995,7 @@
       toastCopied: 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.',
       toastLinkCopied: 'Skopiowano link: ',
       toastCopyManual: 'Skopiuj ręcznie: ',
-      toastPdfPrepFail: 'Nie udało się przygotować PDF — odśwież stronę i spróbuj ponownie.',
-      toastPdfGenerating: 'Przygotowujemy PDF na jedną stronę A4…',
-      toastPdfDone: 'Ofertówka została pobrana.',
-      toastPdfFail: 'Nie udało się wygenerować PDF. Spróbuj ponownie za chwilę.',
-      toastGeneratingLabel: 'Generowanie ofertówki…',
+      toastPrintFail: 'Nie udało się otworzyć okna drukowania.',
       platformTitle: 'Platforma EstateOS™',
       platformLeadHtml: '<span class="highlight">Inteligentny rynek nieruchomości</span> — Radar, Dealroom i bezpieczny kontakt w jednej aplikacji.',
       soonLabel: 'Wkrótce',
@@ -1374,7 +1008,6 @@
       mapAlt: 'Mapa okolicy nieruchomości',
       floorPlanAlt: 'Rzut lokalu',
       heroAlt: 'Zdjęcie nieruchomości',
-      pdfFilename: 'ofertowka-estateos-',
       areaUnit: ' m²',
       priceOfOffer: ' ceny ofertowej',
     },
@@ -1393,7 +1026,7 @@
       trustNote: 'Gallery and specs — no sign-up required. Contact, price offers, and viewings require a free account on our verified platform.',
       openApp: 'Open in EstateOS™ app',
       registerCta: 'Create account & contact',
-      downloadBrochure: 'Download client brochure (PDF)',
+      printBrochure: 'Print',
       copyLink: 'Copy link for messaging',
       perMonth: '/ month',
       perMonthShort: ' / mo',
@@ -1431,11 +1064,7 @@
       toastCopied: 'Message text copied — paste in SMS, email, or chat.',
       toastLinkCopied: 'Link copied: ',
       toastCopyManual: 'Copy manually: ',
-      toastPdfPrepFail: 'Could not prepare PDF — refresh and try again.',
-      toastPdfGenerating: 'Preparing single-page A4 PDF…',
-      toastPdfDone: 'Brochure downloaded.',
-      toastPdfFail: 'PDF generation failed. Please try again shortly.',
-      toastGeneratingLabel: 'Generating brochure…',
+      toastPrintFail: 'Could not open the print dialog.',
       platformTitle: 'EstateOS™ platform',
       platformLeadHtml: '<span class="highlight">The intelligent real estate market</span> — Radar, Dealroom, and secure contact in one app.',
       soonLabel: 'Coming soon',
@@ -1448,7 +1077,6 @@
       mapAlt: 'Neighbourhood map',
       floorPlanAlt: 'Floor plan',
       heroAlt: 'Property photo',
-      pdfFilename: 'estateos-offer-',
       areaUnit: ' m²',
       priceOfOffer: ' of listed price',
     },
@@ -1474,7 +1102,7 @@
       trustNote: 'trustNote',
       openApp: 'openApp',
       registerCta: 'registerCta',
-      downloadBrochure: 'downloadBrochure',
+      printBrochure: 'printBrochure',
       copyLink: 'copyLink',
       agentBadge: 'agentBadge',
       agentBrandTagline: 'agentTagline',
@@ -1653,91 +1281,57 @@
     return false;
   }
 
-  function initBrochureAccess() {
+  function initPrintAccess() {
     fetch(ORIGIN + '/api/user/profile', { credentials: 'include' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (payload) {
         var user = payload && (payload.user || payload);
         if (!isAgencyAccount(user)) return;
-        var btn = document.getElementById('downloadBrochure');
+        var btn = document.getElementById('printBrochure');
         if (btn) btn.hidden = false;
       })
       .catch(function () { /* tylko agencja widzi przycisk */ });
   }
 
-  function mountHeroImage(cell, src, alt) {
-    if (!cell) return null;
-    cell.innerHTML = '';
-    if (!src) return null;
+  function setHero(src, alt) {
+    var el = document.getElementById('hero');
+    el.classList.remove('placeholder');
+    el.innerHTML = '';
+    if (!src) {
+      el.className = 'hero placeholder';
+      el.textContent = t('noPhoto');
+      return;
+    }
+    el.className = 'hero';
     var img = document.createElement('img');
     img.alt = alt || t('heroAlt');
     img.loading = 'eager';
     img.decoding = 'async';
     img.crossOrigin = 'anonymous';
     img.src = src;
-    cell.appendChild(img);
-    return img;
+    img.onerror = function () {
+      el.className = 'hero placeholder';
+      el.textContent = t('photoError');
+    };
+    el.appendChild(img);
   }
 
-  function renderHeroGallery(urls, alt) {
-    var el = document.getElementById('hero');
-    if (!el) return;
-    var list = (urls || []).filter(Boolean);
-    el.classList.remove('placeholder');
-    el.innerHTML = '';
-
-    if (!list.length) {
-      el.className = 'hero-gallery placeholder';
-      el.textContent = t('noPhoto');
-      return;
-    }
-
-    var mode = list.length === 1 ? 'solo' : (list.length === 2 ? 'duo' : 'has-side');
-    el.className = 'hero-gallery ' + mode;
-
-    var main = document.createElement('div');
-    main.className = 'hero-gallery-main';
-    mountHeroImage(main, list[0], alt);
-
-    el.appendChild(main);
-
-    if (mode !== 'solo') {
-      var side = document.createElement('div');
-      side.className = 'hero-gallery-side';
-      var cell1 = document.createElement('div');
-      cell1.className = 'hero-gallery-side-cell';
-      mountHeroImage(cell1, list[1], alt);
-      side.appendChild(cell1);
-      if (mode === 'has-side') {
-        var cell2 = document.createElement('div');
-        cell2.className = 'hero-gallery-side-cell';
-        mountHeroImage(cell2, list[2], alt);
-        side.appendChild(cell2);
-      }
-      el.appendChild(side);
-    }
-  }
-
-  function renderExtraThumbs(urls) {
+  function renderThumbs(urls) {
     var wrap = document.getElementById('thumbs');
-    if (!wrap) return;
     wrap.innerHTML = '';
-    var extra = (urls || []).slice(3);
-    if (extra.length < 1) { wrap.hidden = true; return; }
+    if (!urls || urls.length < 2) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    extra.slice(0, 9).forEach(function (u, i) {
+    urls.slice(0, 12).forEach(function (u, i) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('aria-label', t('thumbLabel') + (i + 4));
+      b.setAttribute('aria-label', t('thumbLabel') + (i + 1));
       var im = document.createElement('img');
       im.alt = '';
       im.loading = 'lazy';
       im.crossOrigin = 'anonymous';
       im.src = u;
       b.appendChild(im);
-      b.addEventListener('click', function () {
-        renderHeroGallery([u].concat((urls || []).filter(function (x) { return x !== u; })), document.getElementById('title').textContent);
-      });
+      b.addEventListener('click', function () { setHero(u, document.getElementById('title').textContent); });
       wrap.appendChild(b);
     });
   }
@@ -2041,7 +1635,7 @@
     document.getElementById('fatal').textContent = msg;
     var el = document.getElementById('hero');
     if (el) {
-      el.className = 'hero-gallery placeholder';
+      el.className = 'hero placeholder';
       el.textContent = t('heroLoadFail');
     }
   }
@@ -2053,7 +1647,7 @@
 
   document.getElementById('offerRef').textContent = t('refPrefix') + id;
   renderQr();
-  initBrochureAccess();
+  initPrintAccess();
 
   var APP_STORE_URL = 'https://apps.apple.com/app/id6762899098';
   var PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=pl.estateos.app';
@@ -2134,243 +1728,39 @@
     }
   });
 
-  var downloadBrochureBtn = document.getElementById('downloadBrochure');
-  if (downloadBrochureBtn) {
-    var BROCHURE_PX_WIDTH = 794;
+  var printBrochureBtn = document.getElementById('printBrochure');
+  if (printBrochureBtn) {
+    printBrochureBtn.addEventListener('click', function () {
+      var agentCard = document.getElementById('agentPrintCard');
+      var agentWasHidden = agentCard && agentCard.hidden;
+      if (agentCard) agentCard.hidden = false;
+      window.scrollTo(0, 0);
 
-    function applyBrochureExportWidth(root) {
-      var page = document.querySelector('.page');
-      var saved = {
-        pageW: page ? page.style.width : '',
-        pageMax: page ? page.style.maxWidth : '',
-        rootW: root.style.width,
-        rootMax: root.style.maxWidth,
-      };
-      if (page) {
-        page.style.width = BROCHURE_PX_WIDTH + 'px';
-        page.style.maxWidth = BROCHURE_PX_WIDTH + 'px';
-      }
-      root.style.width = BROCHURE_PX_WIDTH + 'px';
-      root.style.maxWidth = BROCHURE_PX_WIDTH + 'px';
-      return function restoreBrochureExportWidth() {
-        if (page) {
-          page.style.width = saved.pageW;
-          page.style.maxWidth = saved.pageMax;
-        }
-        root.style.width = saved.rootW;
-        root.style.maxWidth = saved.rootMax;
-      };
-    }
-    function waitForImages(container) {
-      var imgs = Array.prototype.slice.call(container.querySelectorAll('img'));
-      imgs.forEach(function (img) { img.loading = 'eager'; });
-      var pending = imgs.filter(function (img) { return img.src && !img.complete; });
-      if (!pending.length) return Promise.resolve();
-      return Promise.all(pending.map(function (img) {
-        return new Promise(function (resolve) {
-          var done = function () { resolve(); };
-          img.addEventListener('load', done, { once: true });
-          img.addEventListener('error', done, { once: true });
-          setTimeout(done, 5000);
-        });
-      }));
-    }
-
-    function inlineCrossOriginImages(container) {
-      var origin = window.location.origin;
-      var imgs = Array.prototype.slice.call(container.querySelectorAll('img'));
-      return Promise.all(imgs.map(function (img) {
-        var src = String(img.src || '').trim();
-        if (!src || src.indexOf('data:') === 0 || src.indexOf('blob:') === 0) return Promise.resolve();
-        if (src.indexOf(origin) === 0) return Promise.resolve();
-        return fetch(src, { mode: 'cors', credentials: 'omit', cache: 'force-cache' })
-          .then(function (r) {
-            if (!r.ok) throw new Error('fetch failed');
-            return r.blob();
-          })
-          .then(function (blob) {
-            return new Promise(function (resolve) {
-              var reader = new FileReader();
-              reader.onload = function () {
-                if (reader.result) img.src = String(reader.result);
-                resolve();
-              };
-              reader.onerror = function () { resolve(); };
-              reader.readAsDataURL(blob);
-            });
-          })
-          .catch(function () { /* zostaw oryginał — html2canvas spróbuje useCORS */ });
-      }));
-    }
-
-    function triggerPdfDownload(blob, filename) {
-      if (!blob || blob.size < 128) throw new Error('empty pdf blob');
-      var url = URL.createObjectURL(blob);
-      var isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
-
-      if (isIOS) {
-        var opened = window.open(url, '_blank');
-        if (!opened) {
-          window.location.href = url;
-        }
-        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
-        return;
+      var restored = false;
+      function restoreAfterPrint() {
+        if (restored) return;
+        restored = true;
+        if (agentCard && agentWasHidden) agentCard.hidden = true;
       }
 
-      var link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.rel = 'noopener';
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(function () {
-        URL.revokeObjectURL(url);
-        if (link.parentNode) link.parentNode.removeChild(link);
-      }, 3000);
-    }
-
-    function canvasDataUrl(canvas) {
-      var qualities = [0.88, 0.75, 0.62];
-      for (var i = 0; i < qualities.length; i++) {
-        try {
-          var url = canvas.toDataURL('image/jpeg', qualities[i]);
-          if (url && url.length > 100) return url;
-        } catch (e) { /* tainted canvas */ }
-      }
-      return null;
-    }
-
-    function obtainJsPdfTemplate() {
-      var el = document.createElement('div');
-      el.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;pointer-events:none';
-      document.body.appendChild(el);
-      var worker = html2pdf().set({
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-      }).from(el);
-      return worker.toPdf().get('pdf').then(function (pdf) {
-        if (el.parentNode) el.parentNode.removeChild(el);
-        if (!pdf || typeof pdf.addImage !== 'function') throw new Error('jsPDF template unavailable');
-        return pdf;
-      }).catch(function (err) {
-        if (el.parentNode) el.parentNode.removeChild(el);
-        throw err;
+      window.addEventListener('afterprint', function onAfterPrint() {
+        window.removeEventListener('afterprint', onAfterPrint);
+        restoreAfterPrint();
       });
-    }
 
-    function buildSinglePageBlobFromCanvas(canvas, templatePdf) {
-      var dataUrl = canvasDataUrl(canvas);
-      if (!dataUrl) throw new Error('canvas tainted');
-      var pageW = 210;
-      var pageH = 297;
-      var ratio = canvas.width / canvas.height;
-      var imgW = pageW;
-      var imgH = imgW / ratio;
-      var x = 0;
-      var y = 0;
-      if (imgH > pageH) {
-        imgH = pageH;
-        imgW = imgH * ratio;
-        x = (pageW - imgW) / 2;
-      }
-      templatePdf.addImage(dataUrl, 'JPEG', x, y, imgW, imgH, undefined, 'MEDIUM');
-      return templatePdf.output('blob');
-    }
-
-    function captureBrochurePdf(root, scale) {
-      return html2pdf().set({
-        margin: 0,
-        image: { type: 'jpeg', quality: 0.92 },
-        html2canvas: {
-          scale: scale,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          backgroundColor: '#ffffff',
-          scrollX: 0,
-          scrollY: 0,
-          width: BROCHURE_PX_WIDTH,
-          windowWidth: BROCHURE_PX_WIDTH,
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true },
-        pagebreak: { mode: ['avoid-all'] },
-      }).from(root).toCanvas().get('canvas').then(function (canvas) {
-        if (!canvas || !canvas.width) throw new Error('export incomplete');
-        return obtainJsPdfTemplate().then(function (templatePdf) {
-          return buildSinglePageBlobFromCanvas(canvas, templatePdf);
-        });
-      });
-    }
-
-    downloadBrochureBtn.addEventListener('click', function () {
-      var toast = document.getElementById('toast');
-      var root = document.querySelector('.sheet-inner');
-      if (!root || typeof html2pdf === 'undefined') {
+      try {
+        window.print();
+      } catch (e) {
+        restoreAfterPrint();
+        var toast = document.getElementById('toast');
         if (toast) {
-          toast.textContent = t('toastPdfPrepFail');
+          toast.textContent = t('toastPrintFail');
           toast.className = 'toast';
         }
         return;
       }
 
-      downloadBrochureBtn.disabled = true;
-      var originalLabel = downloadBrochureBtn.textContent;
-      downloadBrochureBtn.textContent = t('toastGeneratingLabel');
-      if (toast) {
-        toast.textContent = t('toastPdfGenerating');
-        toast.className = 'toast ok';
-      }
-
-      var agentCard = document.getElementById('agentPrintCard');
-      var agentWasHidden = agentCard && agentCard.hidden;
-      if (agentCard) agentCard.hidden = false;
-      document.body.classList.add('brochure-exporting');
-      var restoreBrochureWidth = applyBrochureExportWidth(root);
-      window.scrollTo(0, 0);
-
-      var pdfFilename = t('pdfFilename') + id + '.pdf';
-      var mapSection = document.getElementById('mapSection');
-      var exportScale = Math.min(2, Math.max(1.25, (window.devicePixelRatio || 1.5)));
-
-      inlineCrossOriginImages(root)
-        .then(function () { return waitForImages(root); })
-        .then(function () {
-          return new Promise(function (resolve) {
-            requestAnimationFrame(function () { requestAnimationFrame(resolve); });
-          });
-        })
-        .then(function () { return captureBrochurePdf(root, exportScale); })
-        .catch(function () {
-          if (mapSection && !mapSection.hidden) {
-            mapSection.setAttribute('data-brochure-hidden', '1');
-            mapSection.hidden = true;
-          }
-          return captureBrochurePdf(root, Math.max(1, exportScale - 0.25));
-        })
-        .then(function (blob) {
-          triggerPdfDownload(blob, pdfFilename);
-          if (toast) {
-            toast.textContent = t('toastPdfDone');
-            toast.className = 'toast ok';
-          }
-        })
-        .catch(function () {
-          if (toast) {
-            toast.textContent = t('toastPdfFail');
-            toast.className = 'toast';
-          }
-        })
-        .finally(function () {
-          if (mapSection && mapSection.getAttribute('data-brochure-hidden') === '1') {
-            mapSection.hidden = false;
-            mapSection.removeAttribute('data-brochure-hidden');
-          }
-          restoreBrochureWidth();
-          document.body.classList.remove('brochure-exporting');
-          if (agentCard && agentWasHidden) agentCard.hidden = true;
-          downloadBrochureBtn.disabled = false;
-          downloadBrochureBtn.textContent = originalLabel;
-        });
+      setTimeout(restoreAfterPrint, 1500);
     });
   }
 
@@ -2406,8 +1796,8 @@
 
       var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
       var title = data.title || (t('offerTitleFallback') + id);
-      renderHeroGallery(imgs, title);
-      renderExtraThumbs(imgs);
+      setHero(imgs[0] || '', title);
+      renderThumbs(imgs);
 
       var locParts = [data.district, data.city].filter(Boolean);
       var loc = locParts.join(', ') || data.city || t('countryDefault');
@@ -2476,7 +1866,7 @@
       document.getElementById('summaryLine').textContent = t('fallbackSummary');
       document.getElementById('location').textContent = 'estateos.pl';
       document.getElementById('price').textContent = '';
-      renderHeroGallery([], '');
+      setHero('');
     });
 })();
   </script>
