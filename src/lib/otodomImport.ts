@@ -382,8 +382,14 @@ function extractNieruchomosciOnlineRichData(html: string): NieruchomosciOnlineRi
 
   const contactBoxMatch = html.match(/<div class="box-agent-mini"[\s\S]*?<\/div>\s*<\/div>/i);
   const contactScope = contactBoxMatch?.[0] ?? html;
-  const phoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
-  const contactPhone = phoneMatch ? phoneMatch[0].replace(/[^\d+]/g, '') : null;
+  const fullPhoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+  const maskedPhoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}\s*\.\.\./);
+  const phoneFromJsonMasked = html.match(/"phoneHDots":"([^"]+)"/i);
+  const rawPhone =
+    fullPhoneMatch?.[0] ??
+    maskedPhoneMatch?.[0] ??
+    (phoneFromJsonMasked ? decodeHtmlEntities(phoneFromJsonMasked[1]) : null);
+  const contactPhone = rawPhone ? rawPhone.replace(/\s{2,}/g, ' ').trim() : null;
 
   return {
     descriptionHtml,

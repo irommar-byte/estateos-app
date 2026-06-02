@@ -225,7 +225,9 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
           /<div class="box-agent-mini"[\s\S]*?<p class="name"[^>]*>([^<]+)<\/p>/i,
         );
         const contactScope = html.match(/<div class="box-agent-mini"[\s\S]*?<\/div>\s*<\/div>/i)?.[0] ?? html;
-        const phoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+        const fullPhoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+        const maskedPhoneMatch = contactScope.match(/(?:\+48[\s-]*)?\d{3}[\s-]?\d{3}\s*\.\.\./);
+        const phoneFromJsonMasked = html.match(/"phoneHDots":"([^"]+)"/i);
         const descMoreMatch = html.match(
           /<div class="estate-desc-more"[^>]*>\s*<p class="body-md">([\s\S]*?)<\/p>\s*<\/div>/i,
         );
@@ -239,9 +241,13 @@ export async function refreshOfferSourceStatusIfStale(offerId: number, userId: n
           agencyName: contactNameMatch
             ? decodeHtmlEntities(String(contactNameMatch[1])).trim()
             : String((parsed.contactHints as Record<string, unknown> | undefined)?.agencyName || ''),
-          phone: phoneMatch
-            ? phoneMatch[0].replace(/[^\d+]/g, '')
-            : String((parsed.contactHints as Record<string, unknown> | undefined)?.phone || ''),
+          phone: fullPhoneMatch?.[0]
+            ? fullPhoneMatch[0].replace(/\s{2,}/g, ' ').trim()
+            : maskedPhoneMatch?.[0]
+              ? maskedPhoneMatch[0].replace(/\s{2,}/g, ' ').trim()
+              : phoneFromJsonMasked
+                ? decodeHtmlEntities(phoneFromJsonMasked[1]).trim()
+                : String((parsed.contactHints as Record<string, unknown> | undefined)?.phone || ''),
           address: String((parsed.contactHints as Record<string, unknown> | undefined)?.address || ''),
         };
         const merged = {
