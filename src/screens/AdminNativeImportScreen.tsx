@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import MapView, { Marker } from 'react-native-maps';
 import { API_URL } from '../config/network';
 import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
@@ -20,6 +21,8 @@ type ImportDraft = {
   area?: number | null;
   rooms?: number | null;
   floor?: number | null;
+  lat?: number | null;
+  lng?: number | null;
   city?: string | null;
   district?: string | null;
 };
@@ -55,6 +58,25 @@ export default function AdminNativeImportScreen() {
 
   const asMoney = (raw?: number | null) => (raw == null ? '—' : `${Number(raw).toLocaleString('pl-PL')} zł`);
   const asArea = (raw?: number | null) => (raw == null ? '—' : `${raw} m²`);
+  const hasMap = Number.isFinite(Number(draft?.lat)) && Number.isFinite(Number(draft?.lng));
+
+  const stripHtml = (html: string) =>
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+  const descriptionFull = useMemo(() => {
+    if (presentation?.descriptionHtml) return stripHtml(String(presentation.descriptionHtml));
+    return String(draft?.descriptionText || '').trim();
+  }, [presentation?.descriptionHtml, draft?.descriptionText]);
 
   const handleAnalyze = async () => {
     if (!token) {
@@ -151,6 +173,14 @@ export default function AdminNativeImportScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
       <View style={[styles.heroCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={styles.heroTopRow}>
+          <View style={[styles.heroIconWrap, { backgroundColor: isDark ? 'rgba(10,132,255,0.15)' : 'rgba(10,132,255,0.12)' }]}>
+            <Ionicons name="sparkles" size={18} color="#0A84FF" />
+          </View>
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>PREMIUM IMPORT</Text>
+          </View>
+        </View>
         <Text style={[styles.heroTitle, { color: theme.text }]}>Import z portali</Text>
         <Text style={[styles.heroSubtitle, { color: theme.sub }]}>
           Wklej link OtoDom, OLX lub Nieruchomosci-Online. System wykryje portal i przygotuje draft oferty.
@@ -173,16 +203,77 @@ export default function AdminNativeImportScreen() {
       </View>
 
       {draft ? (
-        <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Podgląd draftu</Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Źródło: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.source}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Tytuł: <Text style={[styles.rowStrong, { color: theme.text }]}>{presentation?.title || draft.title}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Cena: <Text style={[styles.rowStrong, { color: theme.text }]}>{asMoney(draft.price)}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Powierzchnia: <Text style={[styles.rowStrong, { color: theme.text }]}>{asArea(draft.area)}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Pokoje: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.rooms ?? '—'}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Lokalizacja: <Text style={[styles.rowStrong, { color: theme.text }]}>{[draft.district, draft.city].filter(Boolean).join(', ') || '—'}</Text></Text>
-          <Text style={[styles.row, { color: theme.sub }]}>Zdjęcia: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.imageCount}</Text></Text>
+        <>
+          <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Podgląd draftu</Text>
+            <View style={styles.kpiRow}>
+              <View style={[styles.kpiBox, { backgroundColor: isDark ? '#111114' : '#F9FAFB', borderColor: theme.border }]}>
+                <Ionicons name="pricetag" size={16} color="#10B981" />
+                <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1}>{asMoney(draft.price)}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.sub }]}>Cena</Text>
+              </View>
+              <View style={[styles.kpiBox, { backgroundColor: isDark ? '#111114' : '#F9FAFB', borderColor: theme.border }]}>
+                <Ionicons name="resize" size={16} color="#0A84FF" />
+                <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1}>{asArea(draft.area)}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.sub }]}>Powierzchnia</Text>
+              </View>
+              <View style={[styles.kpiBox, { backgroundColor: isDark ? '#111114' : '#F9FAFB', borderColor: theme.border }]}>
+                <Ionicons name="home" size={16} color="#AF52DE" />
+                <Text style={[styles.kpiValue, { color: theme.text }]} numberOfLines={1}>{draft.rooms ?? '—'}</Text>
+                <Text style={[styles.kpiLabel, { color: theme.sub }]}>Pokoje</Text>
+              </View>
+            </View>
 
+            <Text style={[styles.row, { color: theme.sub }]}>Źródło: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.source}</Text></Text>
+            <Text style={[styles.row, { color: theme.sub }]}>Tytuł: <Text style={[styles.rowStrong, { color: theme.text }]}>{presentation?.title || draft.title}</Text></Text>
+            <Text style={[styles.row, { color: theme.sub }]}>Lokalizacja: <Text style={[styles.rowStrong, { color: theme.text }]}>{[draft.district, draft.city].filter(Boolean).join(', ') || '—'}</Text></Text>
+            <Text style={[styles.row, { color: theme.sub }]}>Zdjęcia: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.imageCount}</Text></Text>
+          </View>
+
+          {!!draft.imageUrls?.length ? (
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Miniatury zdjęć</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbStrip}>
+                {draft.imageUrls.slice(0, 16).map((uri, idx) => (
+                  <View key={`${uri}-${idx}`} style={[styles.thumbItem, { borderColor: theme.border }]}>
+                    <Image source={{ uri }} style={styles.thumbImage} resizeMode="cover" />
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {hasMap ? (
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Mapa podglądu</Text>
+              <View style={[styles.mapWrap, { borderColor: theme.border }]}>
+                <MapView
+                  style={styles.map}
+                  pointerEvents="none"
+                  initialRegion={{
+                    latitude: Number(draft?.lat),
+                    longitude: Number(draft?.lng),
+                    latitudeDelta: 0.018,
+                    longitudeDelta: 0.018,
+                  }}
+                >
+                  <Marker coordinate={{ latitude: Number(draft?.lat), longitude: Number(draft?.lng) }} />
+                </MapView>
+              </View>
+            </View>
+          ) : null}
+
+          {descriptionFull ? (
+            <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>Pełny podgląd opisu</Text>
+              <View style={[styles.descriptionCard, { backgroundColor: isDark ? '#111114' : '#F9FAFB', borderColor: theme.border }]}>
+                <Text style={[styles.descriptionText, { color: theme.text }]}>{descriptionFull}</Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Utworzenie oferty</Text>
           <Pressable onPress={handleCreate} disabled={creating} style={[styles.successBtn, creating && styles.btnDisabled]}>
             {creating ? <ActivityIndicator color="#fff" /> : <Ionicons name="add-circle" size={16} color="#fff" />}
             <Text style={styles.primaryBtnText}>{creating ? 'Tworzenie…' : 'Utwórz ofertę'}</Text>
@@ -212,7 +303,8 @@ export default function AdminNativeImportScreen() {
               </Pressable>
             </View>
           ) : null}
-        </View>
+          </View>
+        </>
       ) : null}
     </ScrollView>
   );
@@ -223,6 +315,10 @@ const styles = StyleSheet.create({
   noAccessTitle: { marginTop: 10, fontSize: 20, fontWeight: '800' },
   noAccessBody: { marginTop: 8, textAlign: 'center', fontSize: 14, lineHeight: 20 },
   heroCard: { borderWidth: 1, borderRadius: 18, padding: 16, marginBottom: 12 },
+  heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  heroIconWrap: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  heroBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: 'rgba(10,132,255,0.16)' },
+  heroBadgeText: { color: '#0A84FF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   heroTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
   heroSubtitle: { marginTop: 6, fontSize: 13, lineHeight: 18 },
   input: { marginTop: 14, borderWidth: 1, borderRadius: 12, minHeight: 46, paddingHorizontal: 12, fontSize: 15 },
@@ -234,8 +330,19 @@ const styles = StyleSheet.create({
   successText: { marginTop: 10, color: '#10B981', fontSize: 13, lineHeight: 18, fontWeight: '600' },
   sectionCard: { borderWidth: 1, borderRadius: 18, padding: 16, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 10 },
+  kpiRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  kpiBox: { flex: 1, borderWidth: 1, borderRadius: 12, minHeight: 82, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  kpiValue: { fontSize: 14, fontWeight: '800', marginTop: 6 },
+  kpiLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   row: { fontSize: 14, lineHeight: 20, marginBottom: 4 },
   rowStrong: { fontWeight: '700' },
+  thumbStrip: { gap: 10, paddingRight: 6 },
+  thumbItem: { width: 116, height: 84, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  thumbImage: { width: '100%', height: '100%' },
+  mapWrap: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', height: 220 },
+  map: { width: '100%', height: '100%' },
+  descriptionCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
+  descriptionText: { fontSize: 14, lineHeight: 21 },
   linksRow: { marginTop: 12, flexDirection: 'row', gap: 10 },
   linkBtn: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   linkText: { fontSize: 13, fontWeight: '700' },
