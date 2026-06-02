@@ -1494,7 +1494,12 @@ export default function App() {
             <AppStack.Screen
               name="OfferComments"
               component={OfferCommentsScreen}
-              options={{ animation: 'fade_from_bottom', animationDuration: 260 }}
+              options={{
+                headerShown: false,
+                animation: 'fade_from_bottom',
+                animationDuration: 260,
+                gestureEnabled: true,
+              }}
             />
           </AppStack.Navigator>
         </NavigationContainer>

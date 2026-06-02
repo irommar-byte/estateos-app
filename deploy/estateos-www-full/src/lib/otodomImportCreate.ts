@@ -2,6 +2,7 @@ import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -229,6 +230,12 @@ export async function createOfferFromOtodomDraft(
   if (!Number.isFinite(offerId)) {
     throw new Error('Nie udało się odczytać ID nowej oferty.');
   }
+
+  await upsertImportedOfferPrivateSnapshot({
+    offerId,
+    userId: adminUserId,
+    draft,
+  });
 
   const imageResult = await importOtodomImagesForOffer({
     offerId,

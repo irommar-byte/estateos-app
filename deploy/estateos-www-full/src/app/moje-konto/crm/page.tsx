@@ -9,8 +9,9 @@ import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
+import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
-import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target } from 'lucide-react';
+import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, MessageSquare } from 'lucide-react';
 import OfferFavoriteButton from '@/components/offer/OfferFavoriteButton';
 import { useFavorites } from '@/hooks/useFavorites';
 import AppointmentManager from "@/components/AppointmentManager";
@@ -494,6 +495,7 @@ export default function CRMDashboard() {
 
   const [offerToArchive, setOfferToArchive] = useState<any>(null);
   const [renewModalOffer, setRenewModalOffer] = useState<{ id: string; title?: string } | null>(null);
+  const [commentModalOffer, setCommentModalOffer] = useState<{ id: number; title?: string } | null>(null);
 
   // === ESTATEOS ELITE: NIEZALEŻNY SILNIK POKOI (NIE RUSZA WYGLĄDU) ===
   const [isolatedDeals, setIsolatedDeals] = useState<any[]>([]);
@@ -1790,6 +1792,15 @@ export default function CRMDashboard() {
                            <ArchiveX size={14} className="text-red-300" /> {c.offers.pause}
                         </button>
                       </div>
+                      {isListingsTab ? (
+                        <button
+                          type="button"
+                          onClick={() => setCommentModalOffer({ id: Number(offer.id), title: String(offer.title || '') })}
+                          className="mt-2 w-full py-3 rounded-[1.5rem] bg-transparent border border-blue-500/30 text-[10px] font-black uppercase tracking-widest text-blue-300 flex items-center justify-center gap-2 hover:bg-blue-500/12 hover:text-blue-200 transition-all cursor-pointer"
+                        >
+                          <MessageSquare size={14} className="text-blue-300" /> Komentarz
+                        </button>
+                      ) : null}
 
                     </div>
                   </div>
@@ -2353,6 +2364,12 @@ export default function CRMDashboard() {
         isOpen={Boolean(renewModalOffer)}
         onClose={() => setRenewModalOffer(null)}
         onRenewed={handleRenewalCompleted}
+      />
+      <OfferPrivateCommentModal
+        open={Boolean(commentModalOffer)}
+        offerId={commentModalOffer?.id ?? null}
+        offerTitle={commentModalOffer?.title}
+        onClose={() => setCommentModalOffer(null)}
       />
 </div>
   );
