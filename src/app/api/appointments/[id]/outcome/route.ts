@@ -53,9 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       where: { id: appointmentId },
       data: {
         status: outcome,
-        outcomeAt: new Date(),
-        outcomeById: userId,
-        outcomeNote: note,
+        message: note != null ? note : undefined,
       },
     });
 
@@ -79,7 +77,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       appointment: {
         id: updated.id,
         status: updated.status,
-        outcomeAt: updated.outcomeAt,
+        outcomeAt: new Date().toISOString(),
       },
       reviewAllowed: outcome === 'COMPLETED' || outcome === 'NO_SHOW',
     });
