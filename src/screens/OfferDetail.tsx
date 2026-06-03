@@ -25,6 +25,9 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
+import OpenHouseOfferBanner from '../components/openHouse/OpenHouseOfferBanner';
+import { fetchOpenHouseForOffer } from '../services/openHouseService';
+import type { OpenHouseEventRecord } from '../contracts/openHouseContract';
 import { buildOfferShareMessage, SITE_ORIGIN } from '../utils/offerShareUrls';
 import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
@@ -47,6 +50,7 @@ import {
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
+import { requestInvestorProUpsell } from '../services/investorProUpsell';
 import { describeOfferAgentCommission, parseOfferNumeric } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
 import BlockUserSheet from '../components/BlockUserSheet';
@@ -331,11 +335,7 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const handleBecomePro = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      t('offer.investorPro.alertTitle'),
-      t('offer.investorPro.alertBody'),
-      [{ text: t('common.ok') }]
-    );
+    requestInvestorProUpsell('off_market');
   };
 
   const openAuthEntry = (intent: 'login' | 'register') => {
@@ -450,8 +450,24 @@ export default function OfferDetail({ route, navigation }: any) {
   const [reviewerNameCache, setReviewerNameCache] = useState<Record<number, string>>({});
   const [profileHistory, setProfileHistory] = useState<number[]>([]);
   const [ownerLegalVerifiedOverride, setOwnerLegalVerifiedOverride] = useState<boolean | null>(null);
+  const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
   const bidBtnScale = useSharedValue(1);
   const apptBtnScale = useSharedValue(1);
+
+  useEffect(() => {
+    const offerIdNum = Number(offer?.id || 0);
+    if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) {
+      setOpenHouseEvent(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchOpenHouseForOffer(token, offerIdNum).then((event) => {
+      if (!cancelled) setOpenHouseEvent(event);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.id, token]);
 
   useEffect(() => {
     setOwnerLegalVerifiedOverride(null);
@@ -1312,6 +1328,16 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
           
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
+
+          {openHouseEvent && openHouseEvent.status === 'PUBLISHED' && openHouseEvent.totalSpotsLeft > 0 ? (
+            <OpenHouseOfferBanner
+              event={openHouseEvent}
+              isDark={isDark}
+              onPress={() =>
+                (navigation as any).navigate('OpenHouseEvent', { eventId: openHouseEvent.id })
+              }
+            />
+          ) : null}
           
           <Pressable
             onPress={() => {
@@ -2123,7 +2149,7 @@ export default function OfferDetail({ route, navigation }: any) {
               </Text>
               <TouchableOpacity activeOpacity={0.9} style={styles.offMarketPrimaryButton} onPress={handleBecomePro}>
                 <Crown color="#0a0a0a" size={16} />
-                <Text style={styles.offMarketPrimaryButtonText}>{t('offer.offMarket.investorProInfo')}</Text>
+                <Text style={styles.offMarketPrimaryButtonText}>{t('offer.offMarket.investorProCta')}</Text>
               </TouchableOpacity>
               <TouchableOpacity activeOpacity={0.9} style={styles.offMarketSecondaryButton} onPress={() => navigation?.goBack()}>
                 <Text style={styles.offMarketSecondaryButtonText}>{t('offer.offMarket.waitPatiently')}</Text>

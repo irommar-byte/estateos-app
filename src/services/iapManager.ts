@@ -66,7 +66,116 @@ export type PurchaseConsumableOptions = {
   deferPublicationConsume?: boolean;
   /** Opcjonalnie — reaktywacja konkretnego ogłoszenia. */
   targetOfferId?: number;
+  /** Jawna zgoda: przenieś subskrypcję Apple z innego konta EstateOS na bieżące. */
+  allowSubscriptionTransfer?: boolean;
 };
+
+export type SubscriptionStoreListing = {
+  productId: IapProductId;
+  priceLabel: string | null;
+  hasFreeTrial: boolean;
+  trialDays: number | null;
+  trialLabel: string | null;
+};
+
+export type RestorePurchasesResult = {
+  ok: boolean;
+  restored: number;
+  message?: string;
+  /** Aktywna subskrypcja Apple jest przypisana do innego konta EstateOS. */
+  subscriptionConflict?: boolean;
+  errorCode?: string;
+};
+
+function readStringField(obj: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function parseSubscriptionStoreListing(
+  productId: IapProductId,
+  raw: Record<string, unknown>,
+): SubscriptionStoreListing {
+  const priceLabel =
+    readStringField(raw, 'displayPrice', 'localizedPrice', 'priceString') ??
+    (typeof raw.price === 'number' && raw.currency
+      ? `${raw.price} ${String(raw.currency)}`
+      : null);
+
+  const subscriptionOffersRaw = raw.subscriptionOfferDetails;
+  const subscriptionOffers =
+    subscriptionOffersRaw && typeof subscriptionOffersRaw === 'object'
+      ? subscriptionOffersRaw
+      : null;
+  const introDetails =
+    subscriptionOffers && !Array.isArray(subscriptionOffers)
+      ? (subscriptionOffers as Record<string, unknown>)
+      : null;
+
+  const introMode = String(
+    raw.introductoryPricePaymentModeIOS ??
+      raw.introductoryPricePaymentMode ??
+      introDetails?.introductoryPricePaymentMode ??
+      '',
+  ).toLowerCase();
+
+  const introPeriods = Number(
+    raw.introductoryPriceNumberOfPeriodsIOS ??
+      raw.introductoryPriceNumberOfPeriods ??
+      introDetails?.introductoryPriceNumberOfPeriods ??
+      0,
+  );
+
+  const introUnit = String(
+    raw.introductoryPriceSubscriptionPeriodIOS ??
+      raw.introductoryPriceSubscriptionPeriod ??
+      introDetails?.introductoryPriceSubscriptionPeriod ??
+      '',
+  ).toLowerCase();
+
+  const androidOffers = Array.isArray(subscriptionOffersRaw) ? subscriptionOffersRaw : [];
+  const androidOffersLegacy = Array.isArray(raw.subscriptionOfferDetailsAndroid)
+    ? raw.subscriptionOfferDetailsAndroid
+    : [];
+  const androidFreeTrial = [...androidOffers, ...androidOffersLegacy].some((offer) => {
+    const o = offer as Record<string, unknown>;
+    return String(o.offerTags || o.pricingPhases || '')
+      .toLowerCase()
+      .includes('free');
+  });
+
+  const hasFreeTrial =
+    androidFreeTrial ||
+    introMode.includes('freetrial') ||
+    introMode.includes('free_trial') ||
+    introMode === 'free';
+
+  let trialDays: number | null = null;
+  if (hasFreeTrial && introPeriods > 0) {
+    if (introUnit.includes('day')) trialDays = introPeriods;
+    else if (introUnit.includes('week')) trialDays = introPeriods * 7;
+    else if (introUnit.includes('month')) trialDays = introPeriods * 30;
+    else trialDays = introPeriods;
+  }
+  if (hasFreeTrial && !trialDays) trialDays = 3;
+
+  const trialLabel = hasFreeTrial
+    ? trialDays
+      ? `${trialDays} ${trialDays === 1 ? 'dzień' : 'dni'}`
+      : '3 dni'
+    : null;
+
+  return {
+    productId,
+    priceLabel,
+    hasFreeTrial,
+    trialDays,
+    trialLabel,
+  };
+}
 
 export type IapPurchaseResult =
   | {
@@ -79,12 +188,18 @@ export type IapPurchaseResult =
       extraListings?: number;
       isPro?: boolean;
       proExpiresAt?: string | null;
+      plusExpiresAt?: string | null;
+      proCreditsGranted?: boolean;
+      /** Apple ID ma już aktywną subskrypcję — zsynchronizowano bez nowego sheetu. */
+      syncedExistingSubscription?: boolean;
+      /** Subskrypcja przeniesiona z innego konta EstateOS na bieżące logowanie. */
+      subscriptionTransferred?: boolean;
       /** Żądano odłożonego zużycia slotu (nie bumpuj extraListings w UI przed publish). */
       deferPublicationConsume?: boolean;
       publicationConsumeDeferred?: boolean;
     }
   | { ok: false; cancelled: true; message?: string }
-  | { ok: false; cancelled?: false; message: string };
+  | { ok: false; cancelled?: false; message: string; errorCode?: string };
 
 // ---------------------------------------------------------------------------
 //  STAŁE
@@ -177,6 +292,7 @@ class IAPManagerImpl {
 
     // Drenuj wszystko co czeka z poprzednich sesji.
     await this.drainPending();
+    await this.syncActiveInvestorProSubscriptions({ silent: true });
 
     this.initialized = true;
     if (__DEV__) console.log('[IAP] init OK');
@@ -193,35 +309,176 @@ class IAPManagerImpl {
   ): Promise<IapPurchaseResult> {
     this.activePurchaseOptions = options ?? null;
     try {
-      return await this.purchaseConsumableInner(productId);
+      return await this.purchaseInner(productId, 'in-app');
     } finally {
       this.activePurchaseOptions = null;
     }
   }
 
-  private async purchaseConsumableInner(productId: IapProductId): Promise<IapPurchaseResult> {
-    const iap = this.iap;
-    if (!iap || !this.initialized) {
+  /** Auto-renewable subscription (Investor Pro). Trial/offers są w App Store Connect. */
+  async purchaseSubscription(
+    productId: IapProductId,
+    options?: PurchaseConsumableOptions,
+  ): Promise<IapPurchaseResult> {
+    this.activePurchaseOptions = options ?? null;
+    try {
+      const ready = await this.ensurePurchaseReady();
+      if (!ready.ok) return ready.result;
+      return await this.purchaseInner(productId, 'subs');
+    } finally {
+      this.activePurchaseOptions = null;
+    }
+  }
+
+  /**
+   * Synchronizuje aktywną subskrypcję Investor Pro z App Store (bez sheetu płatności).
+   * Używane po jawnej zgodzie użytkownika na przeniesienie subskrypcji między kontami EstateOS.
+   */
+  async claimActiveInvestorProSubscription(
+    options?: PurchaseConsumableOptions,
+  ): Promise<IapPurchaseResult> {
+    this.activePurchaseOptions = options ?? null;
+    try {
+      const ready = await this.ensurePurchaseReady();
+      if (!ready.ok) return ready.result;
+
+      if (!this.iap || typeof this.iap.getActiveSubscriptions !== 'function') {
+        return { ok: false, message: 'Sklep In-App nie jest dostępny.' };
+      }
+
+      const activeSubs = await this.iap.getActiveSubscriptions([
+        IAP_PRODUCT_IDS.INVESTOR_PRO,
+        'pl.estateos.app.pakiet_investor_pro',
+      ]);
+
+      for (const sub of activeSubs || []) {
+        if (!sub?.isActive) continue;
+        const productId = String(sub.productId || '');
+        if (!this.isKnownProductId(productId) && productId !== 'pl.estateos.app.pakiet_investor_pro') {
+          continue;
+        }
+        const jws = sub.purchaseToken ? String(sub.purchaseToken) : '';
+        const tx = sub.transactionId ? String(sub.transactionId) : '';
+        if (!jws || !tx) continue;
+
+        const payload: IapVerifyRequest = {
+          platform: Platform.OS === 'ios' ? 'ios' : 'android',
+          productId: productId as IapProductId,
+          transactionId: tx,
+          originalTransactionId:
+            (sub as { originalTransactionIdentifierIOS?: string }).originalTransactionIdentifierIOS ??
+            (sub as { originalTransactionId?: string }).originalTransactionId ??
+            undefined,
+          jwsRepresentation: jws,
+          receipt: jws,
+          receiptData: jws,
+          pendingPurchaseId: `${Platform.OS}:${tx}`,
+          ...(options?.allowSubscriptionTransfer ? { allowSubscriptionTransfer: true } : {}),
+        };
+        const key = this.idempotencyKey(payload);
+        const verifyResult = await this.verifyOnBackend(payload, key);
+        if (verifyResult?.success && verifyResult.verified) {
+          return {
+            ok: true,
+            productId: productId as IapProductId,
+            transactionId: tx,
+            backendVerified: true,
+            extraListings: verifyResult.extraListings,
+            isPro: verifyResult.isPro,
+            proExpiresAt: verifyResult.proExpiresAt,
+            plusExpiresAt: verifyResult.plusExpiresAt,
+            proCreditsGranted: verifyResult.proCreditsGranted,
+            syncedExistingSubscription: !verifyResult.subscriptionTransferred,
+            subscriptionTransferred: verifyResult.subscriptionTransferred,
+          };
+        }
+        if (verifyResult && verifyResult.success === false) {
+          const errorCode = String(
+            (verifyResult as { errorCode?: string; code?: string }).errorCode ??
+              (verifyResult as { code?: string }).code ??
+              '',
+          ).trim() || undefined;
+          return { ok: false, message: verifyResult.message, errorCode };
+        }
+      }
+
+      return {
+        ok: false,
+        message:
+          'Na tym Apple ID nie ma aktywnej subskrypcji Investor Pro. Jeśli masz własną subskrypcję na innym Apple ID, zmień konto w Ustawienia → Apple ID → Media i zakupy.',
+      };
+    } finally {
+      this.activePurchaseOptions = null;
+    }
+  }
+
+  /** Cena i trial z App Store / Play — do UI (sheet Apple i tak decyduje o trialu). */
+  async getSubscriptionListing(productId: IapProductId): Promise<SubscriptionStoreListing | null> {
+    if (!this.iap) {
+      const ok = await this.init({ apiUrl: this.apiUrl, getToken: this.getToken });
+      if (!ok) return null;
+    }
+    const connected = await this.ensureConnected();
+    if (!connected || !this.iap) return null;
+
+    try {
+      const products = await this.iap.fetchProducts({ skus: [productId], type: 'subs' });
+      const raw = products?.[0] as Record<string, unknown> | undefined;
+      if (!raw) return null;
+      return parseSubscriptionStoreListing(productId, raw);
+    } catch (e) {
+      if (__DEV__) console.log('[IAP] getSubscriptionListing failed:', e);
+      return null;
+    }
+  }
+
+  private async ensurePurchaseReady(): Promise<
+    { ok: true } | { ok: false; result: IapPurchaseResult }
+  > {
+    if (!this.iap || !this.initialized) {
       const reInit = await this.init({ apiUrl: this.apiUrl, getToken: this.getToken });
       if (!reInit) {
         return {
           ok: false,
-          message:
-            'Sklep In-App nie jest dostępny. Uruchom aplikację z natywnego buildu (`npx expo run:ios`/`run:android`), Expo Go nie obsługuje IAP.',
+          result: {
+            ok: false,
+            message:
+              'Sklep In-App nie jest dostępny. Uruchom aplikację z natywnego buildu (`npx expo run:ios`/`run:android`), Expo Go nie obsługuje IAP.',
+          },
         };
       }
     }
 
     const connected = await this.ensureConnected();
     if (!connected) {
-      return { ok: false, message: 'Brak połączenia ze sklepem. Spróbuj ponownie za chwilę.' };
+      return {
+        ok: false,
+        result: { ok: false, message: 'Brak połączenia ze sklepem. Spróbuj ponownie za chwilę.' },
+      };
+    }
+
+    return { ok: true };
+  }
+
+  private async purchaseInner(
+    productId: IapProductId,
+    storeType: 'in-app' | 'subs',
+  ): Promise<IapPurchaseResult> {
+    const ready = await this.ensurePurchaseReady();
+    if (!ready.ok) return ready.result;
+
+    const iap = this.iap;
+    if (!iap) {
+      return { ok: false, message: 'Sklep In-App nie jest dostępny.' };
     }
 
     try {
       const products = await this.withTimeout(
-        this.iap!.fetchProducts({ skus: [productId], type: 'in-app' }),
+        iap.fetchProducts({ skus: [productId], type: storeType }),
         15_000,
-        'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.',
+        storeType === 'subs'
+          ? 'Sklep nie zwrócił subskrypcji Investor Pro. Sprawdź App Store Connect (Subscription + Intro Offer) i spróbuj ponownie.'
+          : 'Sklep nie zwrócił produktu Pakiet Plus. Sprawdź, czy produkt IAP jest dodany do tej wersji w App Store Connect i spróbuj ponownie.',
       );
       if (!products?.length) {
         return {
@@ -265,7 +522,7 @@ class IAPManagerImpl {
           ? { apple: { sku: productId } }
           : { google: { skus: [productId] } };
 
-      this.iap!.requestPurchase({ request: req, type: 'in-app' }).catch((err) => {
+      this.iap!.requestPurchase({ request: req, type: storeType }).catch((err) => {
         // User cancelled — odróżniamy od błędu.
         if (this.isCancelled(err)) {
           if (this.waiters.delete(waiterKey)) {
@@ -274,15 +531,15 @@ class IAPManagerImpl {
           }
           return;
         }
-        if (this.isDuplicatePurchaseError(err)) {
-          void this.recoverDuplicatePurchase(err);
+        if (this.isRecoverablePurchaseError(err)) {
+          void this.recoverExistingPurchase(err, storeType);
           return;
         }
         if (this.waiters.delete(waiterKey)) {
           clearTimeout(timeout);
           resolve({
             ok: false,
-            message: this.errMessage(err, 'Zakup nie powiódł się.'),
+            message: this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', storeType),
           });
         }
       });
@@ -298,7 +555,7 @@ class IAPManagerImpl {
    * nowa oferta na 30 dni. Apple może zwrócić pustą listę, ale wymaga żeby przycisk DZIAŁAŁ —
    * dlatego return value to zawsze obiekt z liczbą restored.
    */
-  async restorePurchases(): Promise<{ ok: boolean; restored: number; message?: string }> {
+  async restorePurchases(): Promise<RestorePurchasesResult> {
     if (!this.iap || !this.initialized) {
       return { ok: false, restored: 0, message: 'Sklep In-App nie jest dostępny.' };
     }
@@ -314,9 +571,17 @@ class IAPManagerImpl {
         const reported = await this.handleIncomingPurchase(purchase, { silent: true });
         if (reported) restored++;
       }
+      const syncResult = await this.syncActiveInvestorProSubscriptions({ silent: true });
+      restored += syncResult.synced;
       // Plus: jeszcze raz drenujemy lokalny cache (mogły dojść).
       await this.drainPending();
-      return { ok: true, restored };
+      return {
+        ok: true,
+        restored,
+        subscriptionConflict: syncResult.subscriptionConflict,
+        errorCode: syncResult.errorCode,
+        message: syncResult.message,
+      };
     } catch (e) {
       return {
         ok: false,
@@ -370,10 +635,48 @@ class IAPManagerImpl {
     return code === this.iap.ErrorCode?.UserCancelled;
   }
 
-  private isDuplicatePurchaseError(err: unknown): boolean {
+  private isRecoverablePurchaseError(err: unknown): boolean {
     const code = String((err as { code?: unknown })?.code || '').toLowerCase();
     const message = String((err as { message?: unknown })?.message || '').toLowerCase();
-    return code === 'duplicate-purchase' || message.includes('duplicate purchase');
+    return (
+      code === 'duplicate-purchase' ||
+      code === 'already-owned' ||
+      message.includes('duplicate purchase') ||
+      message.includes('already owned') ||
+      message.includes('item already owned')
+    );
+  }
+
+  /** @deprecated alias */
+  private isDuplicatePurchaseError(err: unknown): boolean {
+    return this.isRecoverablePurchaseError(err);
+  }
+
+  private toUserPurchaseMessage(err: unknown, fallback: string, storeType: 'in-app' | 'subs' = 'in-app'): string {
+    const code = String((err as { code?: unknown })?.code || '').toLowerCase();
+    const message = String((err as { message?: unknown })?.message || '').toLowerCase();
+
+    if (this.isCancelled(err)) {
+      return fallback;
+    }
+    if (code === 'already-owned' || message.includes('already owned') || message.includes('item already owned')) {
+      return storeType === 'subs'
+        ? 'Subskrypcja Investor Pro jest już aktywna w App Store. Synchronizujemy dostęp z Twoim kontem EstateOS…'
+        : 'Ten zakup jest już przypisany do Twojego Apple ID. Synchronizujemy go z kontem EstateOS…';
+    }
+    if (code === 'duplicate-purchase' || message.includes('duplicate purchase')) {
+      return storeType === 'subs'
+        ? 'Apple zgłasza aktywną subskrypcję Investor Pro. Przywracamy dostęp na koncie…'
+        : 'Apple ma niedokończony zakup Pakietu Plus. Przywracamy go na koncie…';
+    }
+
+    const raw = this.errMessage(err, fallback);
+    if (/^item already owned/i.test(raw) || /^already[- ]owned/i.test(raw)) {
+      return storeType === 'subs'
+        ? 'Subskrypcja Investor Pro jest już aktywna w App Store. Synchronizujemy dostęp z Twoim kontem EstateOS…'
+        : 'Ten zakup jest już przypisany do Twojego Apple ID. Synchronizujemy go z kontem EstateOS…';
+    }
+    return raw.replace(/\nKod: already-owned/i, '').trim() || fallback;
   }
 
   private errMessage(e: unknown, fallback: string): string {
@@ -449,6 +752,9 @@ class IAPManagerImpl {
         extraListings: verifyResult.extraListings,
         isPro: verifyResult.isPro,
         proExpiresAt: verifyResult.proExpiresAt,
+        plusExpiresAt: verifyResult.plusExpiresAt,
+        proCreditsGranted: verifyResult.proCreditsGranted,
+        subscriptionTransferred: verifyResult.subscriptionTransferred,
         deferPublicationConsume: Boolean(
           'deferPublicationConsume' in payload && payload.deferPublicationConsume,
         ),
@@ -468,6 +774,8 @@ class IAPManagerImpl {
         extraListings: verifyResult.extraListings,
         isPro: verifyResult.isPro,
         proExpiresAt: verifyResult.proExpiresAt,
+        plusExpiresAt: verifyResult.plusExpiresAt,
+        proCreditsGranted: verifyResult.proCreditsGranted,
         deferPublicationConsume: Boolean(
           'deferPublicationConsume' in payload && payload.deferPublicationConsume,
         ),
@@ -479,12 +787,21 @@ class IAPManagerImpl {
     // Backend rejected (success: false) lub nieosiągalny.
     // Wszystko jedno — transakcja JEST w pending i ponowimy.
     if (!opts?.silent) {
+      const errorCode =
+        verifyResult && !verifyResult.success
+          ? String(
+              (verifyResult as { errorCode?: string; code?: string }).errorCode ??
+                (verifyResult as { code?: string }).code ??
+                '',
+            ).trim() || undefined
+          : undefined;
       this.resolveWaiterFor(payload.productId, {
         ok: false,
         message:
           verifyResult && !verifyResult.success
             ? verifyResult.message
             : 'Zakup potwierdzony przez Apple, ale serwer EstateOS™ jeszcze go nie zaksięgował. Dokończymy automatycznie, gdy odzyskamy łączność.',
+        errorCode,
       });
     }
     return false;
@@ -514,6 +831,9 @@ class IAPManagerImpl {
         receipt,
         receiptData: receipt,
         pendingPurchaseId: `ios:${transactionId}`,
+        ...(this.activePurchaseOptions?.allowSubscriptionTransfer
+          ? { allowSubscriptionTransfer: true }
+          : {}),
         ...(deferPublicationConsume
           ? {
               deferPublicationConsume: true,
@@ -558,10 +878,7 @@ class IAPManagerImpl {
   }
 
   private isConsumable(productId: IapProductId): boolean {
-    return (
-      productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D ||
-      productId === IAP_PRODUCT_IDS.INVESTOR_PRO
-    );
+    return productId === IAP_PRODUCT_IDS.PAKIET_PLUS_30D;
   }
 
   private resolveWaiterFor(productId: IapProductId, result: IapPurchaseResult): void {
@@ -575,9 +892,13 @@ class IAPManagerImpl {
     }
   }
 
-  private resolveWaiterForError(err: unknown, cancelled = false): void {
+  private resolveWaiterForError(
+    err: unknown,
+    cancelled = false,
+    storeType: 'in-app' | 'subs' = 'in-app',
+  ): void {
     const productId = (err as { productId?: string })?.productId;
-    const message = this.errMessage(err, 'Zakup nie powiódł się.');
+    const message = this.toUserPurchaseMessage(err, 'Zakup nie powiódł się.', storeType);
     const result: IapPurchaseResult = cancelled ? { ok: false, cancelled: true } : { ok: false, message };
     if (productId && this.isKnownProductId(productId)) {
       this.resolveWaiterFor(productId, result);
@@ -592,28 +913,189 @@ class IAPManagerImpl {
     fn(result);
   }
 
-  private async recoverDuplicatePurchase(err: unknown): Promise<void> {
+  private async recoverExistingPurchase(
+    err: unknown,
+    storeType: 'in-app' | 'subs' = 'in-app',
+  ): Promise<void> {
     const productIdFromError = String((err as { productId?: unknown })?.productId || '');
     try {
       const purchases = await this.getRecoverableStorePurchases();
-      const matching = purchases.find((p) => {
+      const matching = purchases.filter((p) => {
         if (productIdFromError) return p.productId === productIdFromError;
         return this.isKnownProductId(String(p.productId));
       });
 
-      if (matching) {
-        const handled = await this.handleIncomingPurchase(matching);
+      for (const purchase of matching) {
+        const handled = await this.handleIncomingPurchase(purchase);
         if (handled) return;
       }
+
+      if (storeType === 'subs' && typeof this.iap?.getActiveSubscriptions === 'function') {
+        const skus = productIdFromError
+          ? [productIdFromError]
+          : [IAP_PRODUCT_IDS.INVESTOR_PRO, 'pl.estateos.app.pakiet_investor_pro'];
+        const activeSubs = await this.iap.getActiveSubscriptions(skus);
+        for (const sub of activeSubs || []) {
+          if (!sub?.isActive) continue;
+          const productId = String(sub.productId || '');
+          if (!this.isKnownProductId(productId) && productId !== 'pl.estateos.app.pakiet_investor_pro') {
+            continue;
+          }
+          const jws = sub.purchaseToken ? String(sub.purchaseToken) : '';
+          const tx = sub.transactionId ? String(sub.transactionId) : '';
+          if (!jws || !tx) continue;
+
+          const payload: IapVerifyRequest = {
+            platform: Platform.OS === 'ios' ? 'ios' : 'android',
+            productId: productId as IapProductId,
+            transactionId: tx,
+            originalTransactionId:
+              (sub as { originalTransactionIdentifierIOS?: string }).originalTransactionIdentifierIOS ??
+              (sub as { originalTransactionId?: string }).originalTransactionId ??
+              undefined,
+            jwsRepresentation: jws,
+            receipt: jws,
+            receiptData: jws,
+            pendingPurchaseId: `${Platform.OS}:${tx}`,
+            ...(this.activePurchaseOptions?.allowSubscriptionTransfer
+              ? { allowSubscriptionTransfer: true }
+              : {}),
+          };
+          const key = this.idempotencyKey(payload);
+          const verifyResult = await this.verifyOnBackend(payload, key);
+          if (verifyResult?.success) {
+            this.resolveWaiterFor(productId as IapProductId, {
+              ok: true,
+              productId: productId as IapProductId,
+              transactionId: tx,
+              backendVerified: Boolean(verifyResult.verified),
+              extraListings: verifyResult.extraListings,
+              isPro: verifyResult.isPro,
+              proExpiresAt: verifyResult.proExpiresAt,
+              plusExpiresAt: verifyResult.plusExpiresAt,
+              proCreditsGranted: verifyResult.proCreditsGranted,
+              syncedExistingSubscription: true,
+              subscriptionTransferred: verifyResult.subscriptionTransferred,
+            });
+            return;
+          }
+          if (verifyResult && verifyResult.success === false) {
+            const errorCode = String(
+              (verifyResult as { errorCode?: string; code?: string }).errorCode ??
+                (verifyResult as { code?: string }).code ??
+                '',
+            ).trim() || undefined;
+            this.resolveWaiterFor(productId as IapProductId, {
+              ok: false,
+              message: verifyResult.message,
+              errorCode,
+            });
+            return;
+          }
+        }
+      }
     } catch (recoverError) {
-      if (__DEV__) console.log('[IAP] duplicate recovery failed:', recoverError);
+      if (__DEV__) console.log('[IAP] recoverExistingPurchase failed:', recoverError);
     }
 
-    this.resolveWaiterForError({
-      ...((err && typeof err === 'object') ? (err as Record<string, unknown>) : {}),
-      message:
-        'Apple ma niedokończony wcześniejszy zakup Pakietu Plus. Wejdź w Profil → Przywróć zakupy albo uruchom aplikację ponownie, a transakcja zostanie dokończona automatycznie.',
-    });
+    this.resolveWaiterForError(
+      {
+        ...(err && typeof err === 'object' ? (err as Record<string, unknown>) : {}),
+        message:
+          storeType === 'subs'
+            ? 'Subskrypcja Investor Pro jest aktywna w App Store, ale synchronizacja konta nie powiodła się od razu. Dotknij „Przywróć zakupy” w Profilu lub uruchom aplikację ponownie.'
+            : 'Apple ma niedokończony wcześniejszy zakup Pakietu Plus. Dotknij „Przywróć zakupy” w Profilu lub uruchom aplikację ponownie.',
+      },
+      false,
+      storeType,
+    );
+  }
+
+  /** Synchronizuje aktywną subskrypcję Investor Pro z backendem (restore / boot). */
+  private async syncActiveInvestorProSubscriptions(opts?: {
+    silent?: boolean;
+  }): Promise<{
+    synced: number;
+    subscriptionConflict?: boolean;
+    errorCode?: string;
+    message?: string;
+  }> {
+    if (!this.iap || typeof this.iap.getActiveSubscriptions !== 'function') {
+      return { synced: 0 };
+    }
+
+    let synced = 0;
+    let subscriptionConflict = false;
+    let conflictErrorCode: string | undefined;
+    let conflictMessage: string | undefined;
+
+    try {
+      const activeSubs = await this.iap.getActiveSubscriptions([
+        IAP_PRODUCT_IDS.INVESTOR_PRO,
+        'pl.estateos.app.pakiet_investor_pro',
+      ]);
+      for (const sub of activeSubs || []) {
+        if (!sub?.isActive) continue;
+        const productId = String(sub.productId || '');
+        if (!this.isKnownProductId(productId) && productId !== 'pl.estateos.app.pakiet_investor_pro') {
+          continue;
+        }
+        const jws = sub.purchaseToken ? String(sub.purchaseToken) : '';
+        const tx = sub.transactionId ? String(sub.transactionId) : '';
+        if (!jws || !tx) continue;
+
+        const payload: IapVerifyRequest = {
+          platform: Platform.OS === 'ios' ? 'ios' : 'android',
+          productId: productId as IapProductId,
+          transactionId: tx,
+          originalTransactionId:
+            (sub as { originalTransactionIdentifierIOS?: string }).originalTransactionIdentifierIOS ??
+            (sub as { originalTransactionId?: string }).originalTransactionId ??
+            undefined,
+          jwsRepresentation: jws,
+          receipt: jws,
+          receiptData: jws,
+          pendingPurchaseId: `${Platform.OS}:${tx}`,
+        };
+        const key = this.idempotencyKey(payload);
+        const verifyResult = await this.verifyOnBackend(payload, key);
+        if (verifyResult?.success && verifyResult.verified) {
+          synced++;
+          continue;
+        }
+        if (verifyResult && verifyResult.success === false) {
+          const errorCode = String(
+            (verifyResult as { errorCode?: string; code?: string }).errorCode ??
+              (verifyResult as { code?: string }).code ??
+              '',
+          ).trim() || undefined;
+          if (
+            errorCode === 'SUBSCRIPTION_LINKED_TO_OTHER_ACCOUNT' ||
+            /innego konta estateos/i.test(String(verifyResult.message || ''))
+          ) {
+            subscriptionConflict = true;
+            conflictErrorCode = errorCode;
+            conflictMessage = verifyResult.message;
+          } else if (!opts?.silent && __DEV__) {
+            console.log('[IAP] syncActiveInvestorProSubscriptions verify failed:', productId);
+          }
+        }
+      }
+    } catch (error) {
+      if (__DEV__) console.log('[IAP] syncActiveInvestorProSubscriptions failed:', error);
+    }
+
+    return {
+      synced,
+      subscriptionConflict,
+      errorCode: conflictErrorCode,
+      message: conflictMessage,
+    };
+  }
+
+  /** @deprecated */
+  private async recoverDuplicatePurchase(err: unknown): Promise<void> {
+    await this.recoverExistingPurchase(err, 'in-app');
   }
 
   private async getRecoverableStorePurchases(): Promise<IapPurchase[]> {

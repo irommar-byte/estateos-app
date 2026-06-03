@@ -12,6 +12,7 @@ type Props = {
   swipeHint?: string;
   dismissHint?: string;
   emptyHint?: string;
+  embedded?: boolean;
   onRequestDismiss?: (card: ProfilePromoCardRecord) => void;
 };
 
@@ -23,14 +24,15 @@ export default function BonusCouponsSection({
   swipeHint,
   dismissHint,
   emptyHint,
+  embedded = false,
   onRequestDismiss,
 }: Props) {
   const wellBg = isDark ? 'rgba(28,28,30,0.95)' : '#FFFFFF';
   const wellBorder = isDark ? 'rgba(255,159,10,0.22)' : 'rgba(255,159,10,0.28)';
   const accent = '#FF9F0A';
 
-  return (
-    <View style={styles.section}>
+  const content = (
+    <>
       <View style={styles.header}>
         <View style={[styles.headerIcon, { backgroundColor: `${accent}22`, borderColor: `${accent}44` }]}>
           <Ionicons name="ticket" size={20} color={accent} />
@@ -43,7 +45,13 @@ export default function BonusCouponsSection({
         </View>
       </View>
 
-      <View style={[styles.well, { backgroundColor: wellBg, borderColor: wellBorder }]}>
+      <View
+        style={[
+          styles.well,
+          embedded && styles.wellEmbedded,
+          { backgroundColor: wellBg, borderColor: wellBorder },
+        ]}
+      >
         {cards.length > 0 ? (
           <PromoCardStack
             cards={cards}
@@ -58,13 +66,29 @@ export default function BonusCouponsSection({
           </Text>
         )}
       </View>
-    </View>
+    </>
   );
+
+  if (embedded) {
+    return (
+      <View style={[styles.section, styles.sectionEmbedded]}>
+        {content}
+      </View>
+    );
+  }
+
+  return <View style={styles.section}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
   section: {
     marginBottom: 14,
+  },
+  sectionEmbedded: {
+    marginBottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 14,
   },
   header: {
     flexDirection: 'row',
@@ -106,6 +130,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 14,
     elevation: 3,
+  },
+  wellEmbedded: {
+    shadowOpacity: 0,
+    elevation: 0,
   },
   empty: {
     fontSize: 13,

@@ -1,6 +1,6 @@
 export const tabs = {
   radar: 'Radar',
-  favorites: 'Favorites',
+  favorites: 'Mine',
   add: 'Add',
   messages: 'Messages',
   profile: 'Profile',

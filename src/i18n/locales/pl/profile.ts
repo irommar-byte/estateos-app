@@ -160,14 +160,46 @@ export const profile = {
     investorProPackage: 'Pakiet Inwestor Pro',
     investorProActive: 'Investor Pro aktywny',
     investorProInactive: 'Brak aktywnego Investor Pro',
-    investorProMeta: 'Import z portali, off-market i narzędzia premium na 30 dni.',
+    investorProMeta: 'Import z portali, off-market i narzędzia premium — subskrypcja miesięczna.',
     investorProValidUntil: 'Ważne do {{date}}',
-    investorProDaysLeft: 'Pozostało {{days}} {{daysLabel}} dostępu Pro',
-    buyInvestorPro: 'Kup Investor Pro',
-    buyInvestorProExtend: 'Przedłuż Investor Pro',
-    buyInvestorProSubtitle: 'Opłać 30 dni Investor Pro w App Store',
+    investorProDaysLeft: 'Pozostało {{days}} {{daysLabel}} w bieżącym okresie',
+    investorProSubscriptionMeta:
+      'Subskrypcja miesięczna — odnawia się automatycznie w App Store (trial 3 dni, potem płatność).',
+    buyInvestorPro: 'Wypróbuj 3 dni za darmo',
+    buyInvestorProExtend: 'Zarządzaj subskrypcją',
+    buyInvestorProSubtitle: 'Pełny dostęp Pro — anuluj w dowolnym momencie w App Store',
+    buyInvestorProTrialSubtitle: '3 dni za darmo, potem subskrypcja w App Store',
+    investorProTrialBadge: '3 DNI ZA DARMO',
+    investorProTrialPriceAfter: 'potem {{price}}/mies.',
+    investorProTrialPriceFallback: 'potem subskrypcja miesięczna w App Store',
+    investorProTrialIntroTitle: 'Wypróbuj Investor Pro',
+    investorProTrialIntroBody:
+      'Import z portali, podgląd off-market i narzędzia premium — 3 dni za darmo, bez zobowiązań. Anuluj w App Store przed końcem trialu, jeśli nie chcesz płacić.',
+    investorProTrialIntroCta: 'Rozpocznij 3-dniowy trial',
+    investorProTrialIntroLater: 'Później',
+    investorProTrialAscHint:
+      'Jeśli w oknie Apple nie widać trialu: w App Store Connect dodaj Introductory Offer (Free Trial 3 days) i użyj nowego konta Sandbox.',
+    investorProAlreadyOwnedHint:
+      'Subskrypcja jest już w App Store — synchronizujemy dostęp z kontem. Jeśli admin wyłączył Pro testowo, użyj „Przywróć zakupy”.',
+    investorProUpsell: {
+      cta: 'Wypróbuj 3 dni za darmo',
+      later: 'Później',
+      creditsLine: '+10 kredytów publikacji na każdy okres subskrypcji',
+      off_market: {
+        title: 'Odblokuj podgląd off-market',
+        body: 'Ta oferta jest jeszcze niewidoczna publicznie. Investor Pro daje wcześniejszy dostęp, negocjacje i narzędzia premium.',
+      },
+      import: {
+        title: 'Import wymaga Investor Pro',
+        body: 'Import z OtoDom, OLX i Nieruchomosci-Online jest dostępny w subskrypcji Investor Pro.',
+      },
+      premium_tools: {
+        title: 'Narzędzia premium dla Investor Pro',
+        body: 'Odblokuj import z portali, podgląd off-market i strefę narzędzi Pro w aplikacji.',
+      },
+    },
     investorProFooter:
-      'Investor Pro to pakiet na 30 dni: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. To nie jest to samo co Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
+      'Investor Pro to subskrypcja: import z OtoDom/OLX/Nieruchomosci-Online, podgląd off-market i strefa narzędzi Pro. Po 3 dniach trialu Apple pobiera opłatę zgodnie z cennikiem. Anuluj w Ustawienia → Apple ID → Subskrypcje. To nie jest Pakiet Plus (publikacja ogłoszeń). Przy problemie z płatnością użyj „Przywróć zakupy”.',
     plusSlotOne: '1 publikacja Plus do wykorzystania',
     plusSlotsMany: '{{count}} publikacji Plus do wykorzystania',
     noPackages: 'Brak pakietów — kup przed kolejną płatną publikacją',
@@ -251,6 +283,25 @@ export const profile = {
       investorProActiveTitle: 'Investor Pro aktywny',
       investorProActiveBody:
         'Masz aktywny dostęp Investor Pro. Import z portali i narzędzia premium są odblokowane.',
+      investorProActiveBodyWithCredits:
+        'Investor Pro aktywny. Odblokowano import i narzędzia premium oraz dodano 10 kredytów publikacji na bieżący okres.',
+      investorProAlreadyActiveTitle: 'Subskrypcja już aktywna',
+      investorProAlreadyActiveBody:
+        'Masz już aktywny Investor Pro na tym koncie. Zarządzaj subskrypcją w Ustawienia → Apple ID → Subskrypcje.',
+      investorProLinkedTitle: 'Subskrypcja przypisana do konta',
+      investorProLinkedBody:
+        'Na tym Apple ID jest aktywna subskrypcja Investor Pro (np. z wcześniejszego testu). Przypisaliśmy ją do tego konta EstateOS — App Store nie pokaże okna płatności, dopóki subskrypcja trwa na tym Apple ID. Jedna subskrypcja Apple = jedno konto EstateOS.',
+      investorProOtherAccountTitle: 'Inne konto EstateOS',
+      investorProOtherAccountBody:
+        'Apple ID na tym telefonie ma subskrypcję przypisaną do innego konta EstateOS.\n\n• Masz własną subskrypcję? Zmień Apple ID w telefonie (Ustawienia → Apple ID → Media i zakupy) — wtedy zadziała na Twoim koncie.\n• To Twoje Apple ID, ale nowe konto EstateOS? Możesz przenieść subskrypcję na to konto (poprzednie straci Pro).',
+      investorProTransferConfirmTitle: 'Przenieść subskrypcję?',
+      investorProTransferConfirmBody:
+        'Subskrypcja z Apple ID na tym telefonie zostanie przypisana do tego konta EstateOS. Poprzednie konto straci dostęp Investor Pro.\n\nKontynuować?',
+      investorProTransferConfirmCta: 'Przenieś na to konto',
+      investorProTransferCancel: 'Anuluj',
+      investorProTransferredTitle: 'Investor Pro na tym koncie',
+      investorProTransferredBody:
+        'Subskrypcja z Twojego Apple ID została przeniesiona na to konto EstateOS. Poprzednie konto straciło dostęp Pro.\n\nApp Store nie pokaże okna płatności — subskrypcja jest już aktywna na tym Apple ID. To normalne zachowanie Apple.',
       investorProActivePending:
         'Płatność została przyjęta. Trwa aktywacja — odśwież Profil za chwilę.',
     },
@@ -331,6 +382,8 @@ export const profile = {
     lead: 'Zaawansowane narzędzia dla aktywnego Investor Pro: import ofert i automatyzacje pracy.',
     footer:
       'To strefa narzędzi premium dla Investor Pro — zaprojektowana do szybszej pracy na ofertach.',
+    expandTools: 'Pokaż narzędzia Pro',
+    collapseTools: 'Zwiń narzędzia Pro',
     countdown: {
       title: 'Członkostwo Pro',
       active: 'Pozostało {{days}} dni',
@@ -349,11 +402,11 @@ export const profile = {
       },
       openHouse: {
         title: 'Dzień otwartych drzwi',
-        subtitle: 'Zaplanuj prezentację zbiorową z kalendarzem i potwierdzeniami gości.',
-        tag: 'Wkrótce',
+        subtitle: 'Zaplanuj terminy, godziny i rezerwacje gości w jednym miejscu.',
+        tag: 'Pro',
         alertTitle: 'Dzień otwartych drzwi',
         alertBody:
-          'Wkrótce dodasz wydarzenie otwartych drzwi bezpośrednio z profilu — z widocznością dla zainteresowanych kupujących.',
+          'Organizuj dzień otwarty dla swojej oferty — kupujący rezerwują konkretne godziny wizyty.',
       },
       insider: {
         title: 'Import z portali',

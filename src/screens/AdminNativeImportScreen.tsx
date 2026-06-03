@@ -10,6 +10,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useI18n } from '../i18n';
 import { useThemeStore } from '../store/useThemeStore';
 import { hasActiveInvestorProMembership } from '../utils/investorProMembership';
+import { requestInvestorProUpsell } from '../services/investorProUpsell';
 import { useNavigation } from '@react-navigation/native';
 import { getAdditionalListingSlots, hasAdditionalPlusPublication, userAfterPakietPlusPurchase } from '../utils/listingQuota';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL } from '../services/iapPakietPlus';
@@ -36,6 +37,7 @@ type ImportDraft = {
   lng?: number | null;
   city?: string | null;
   district?: string | null;
+  adminFee?: number | null;
   features?: string[];
   locationWarnings?: string[];
 };
@@ -46,6 +48,20 @@ type ImportPresentation = {
 };
 
 const IMPORT_DRAFT_STORAGE_KEY = 'nativeImport:portalDraft:v1';
+
+function parsePositiveDecimal(raw: string): number | null {
+  const n = Number(String(raw).replace(',', '.').replace(/\s/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function collectImportGaps(d: ImportDraft): string[] {
+  const gaps: string[] = [];
+  if (d.lat == null || d.lng == null) gaps.push('pinezkę (GPS)');
+  if (!d.price || d.price <= 0) gaps.push('cenę');
+  if (!d.area || d.area <= 0) gaps.push('metraż');
+  if (!String(d.city || d.district || '').trim()) gaps.push('miejscowość');
+  return gaps;
+}
 
 function ImportSuccessCinematic({
   visible,
@@ -353,7 +369,15 @@ export default function AdminNativeImportScreen() {
             if (!res.ok || !data?.success) {
               const errMessage = String(data?.message || data?.error || `Błąd tworzenia oferty (${res.status})`);
               setError(errMessage);
-              Alert.alert('Nie udało się utworzyć oferty', errMessage);
+              if (data?.code === 'NEEDS_USER_INPUT' && Array.isArray(data?.issues)) {
+                Alert.alert(
+                  'Uzupełnij dane',
+                  data.issues.map((i: { message?: string }) => i.message).filter(Boolean).join('\n') ||
+                    errMessage,
+                );
+              } else {
+                Alert.alert('Nie udało się utworzyć oferty', errMessage);
+              }
               return;
             }
             if (!data?.redemption || data?.publicationReserved !== true) {
@@ -463,7 +487,19 @@ export default function AdminNativeImportScreen() {
 
   const handleCreatePress = () => {
     if (!token || !draft || creating) return;
+    const gaps = collectImportGaps(draft);
+    if (gaps.length) {
+      Alert.alert(
+        'Uzupełnij brakujące dane',
+        `W sekcji „Doprecyzuj dane” uzupełnij: ${gaps.join(', ')}.`,
+      );
+      return;
+    }
     void openPublicationChoice();
+  };
+
+  const patchDraft = (patch: Partial<ImportDraft>) => {
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
   const openOfferPreviewNative = async (offerId: number) => {
@@ -487,9 +523,18 @@ export default function AdminNativeImportScreen() {
   if (!hasActiveInvestorProMembership(user)) {
     return (
       <View style={[styles.center, { backgroundColor: theme.bg }]}>
-        <Ionicons name="shield-outline" size={32} color="#FF3B30" />
-        <Text style={[styles.noAccessTitle, { color: theme.text }]}>Brak dostępu</Text>
-        <Text style={[styles.noAccessBody, { color: theme.sub }]}>Ten ekran importu jest dostępny dla aktywnego Investor Pro.</Text>
+        <Ionicons name="diamond-outline" size={36} color="#F59E0B" />
+        <Text style={[styles.noAccessTitle, { color: theme.text }]}>{t('profile.shop.investorProUpsell.import.title')}</Text>
+        <Text style={[styles.noAccessBody, { color: theme.sub }]}>{t('profile.shop.investorProUpsell.import.body')}</Text>
+        <Pressable
+          style={styles.upsellBtn}
+          onPress={() => requestInvestorProUpsell('import')}
+        >
+          <Text style={styles.upsellBtnText}>{t('profile.shop.investorProUpsell.cta')}</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.goBack()} style={styles.upsellLaterBtn}>
+          <Text style={[styles.upsellLaterText, { color: theme.sub }]}>{t('profile.shop.investorProUpsell.later')}</Text>
+        </Pressable>
       </View>
     );
   }
@@ -570,6 +615,93 @@ export default function AdminNativeImportScreen() {
             <Text style={[styles.row, { color: theme.sub }]}>Lokalizacja: <Text style={[styles.rowStrong, { color: theme.text }]}>{[draft.district, draft.city].filter(Boolean).join(', ') || '—'}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Tryb lokalizacji: <Text style={[styles.rowStrong, { color: theme.text }]}>{locationPrecision}</Text></Text>
             <Text style={[styles.row, { color: theme.sub }]}>Zdjęcia: <Text style={[styles.rowStrong, { color: theme.text }]}>{draft.imageCount}</Text></Text>
+          </View>
+
+          <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Doprecyzuj dane</Text>
+            <Text style={[styles.row, { color: theme.sub, marginBottom: 10 }]}>
+              Jeśli parser czegoś nie wyciągnął, uzupełnij tutaj przed utworzeniem oferty.
+            </Text>
+            <Text style={[styles.gapLabel, { color: theme.sub }]}>Metraż (m²) *</Text>
+            <TextInput
+              value={draft.area != null && draft.area > 0 ? String(draft.area) : ''}
+              onChangeText={(v) => patchDraft({ area: parsePositiveDecimal(v) })}
+              placeholder="np. 45"
+              placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+              keyboardType="decimal-pad"
+              style={[
+                styles.gapInput,
+                {
+                  color: theme.text,
+                  borderColor: !draft.area || draft.area <= 0 ? '#FF9500' : theme.border,
+                  backgroundColor: isDark ? '#111114' : '#F9FAFB',
+                },
+              ]}
+            />
+            <Text style={[styles.gapLabel, { color: theme.sub }]}>Cena (PLN) *</Text>
+            <TextInput
+              value={draft.price != null && draft.price > 0 ? String(draft.price) : ''}
+              onChangeText={(v) => patchDraft({ price: parsePositiveDecimal(v) })}
+              placeholder="np. 2500"
+              placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+              keyboardType="decimal-pad"
+              style={[
+                styles.gapInput,
+                {
+                  color: theme.text,
+                  borderColor: !draft.price || draft.price <= 0 ? '#FF9500' : theme.border,
+                  backgroundColor: isDark ? '#111114' : '#F9FAFB',
+                },
+              ]}
+            />
+            <Text style={[styles.gapLabel, { color: theme.sub }]}>Miejscowość</Text>
+            <TextInput
+              value={String(draft.city || '')}
+              onChangeText={(v) => patchDraft({ city: v.trim() || null })}
+              placeholder="Miasto / wieś"
+              placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+              autoCapitalize="words"
+              style={[
+                styles.gapInput,
+                {
+                  color: theme.text,
+                  borderColor: !String(draft.city || draft.district || '').trim() ? '#FF9500' : theme.border,
+                  backgroundColor: isDark ? '#111114' : '#F9FAFB',
+                },
+              ]}
+            />
+            <Text style={[styles.gapLabel, { color: theme.sub }]}>Dzielnica / rejon</Text>
+            <TextInput
+              value={String(draft.district || '')}
+              onChangeText={(v) => patchDraft({ district: v.trim() || null })}
+              placeholder="Opcjonalnie"
+              placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+              autoCapitalize="words"
+              style={[
+                styles.gapInput,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  backgroundColor: isDark ? '#111114' : '#F9FAFB',
+                },
+              ]}
+            />
+            <Text style={[styles.gapLabel, { color: theme.sub }]}>Czynsz (PLN/mies.)</Text>
+            <TextInput
+              value={draft.adminFee != null && draft.adminFee > 0 ? String(draft.adminFee) : ''}
+              onChangeText={(v) => patchDraft({ adminFee: parsePositiveDecimal(v) })}
+              placeholder="Opcjonalnie"
+              placeholderTextColor={isDark ? '#666' : '#9AA0A6'}
+              keyboardType="decimal-pad"
+              style={[
+                styles.gapInput,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  backgroundColor: isDark ? '#111114' : '#F9FAFB',
+                },
+              ]}
+            />
           </View>
 
           {!!draft.imageUrls?.length ? (
@@ -763,6 +895,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   noAccessTitle: { marginTop: 10, fontSize: 20, fontWeight: '800' },
   noAccessBody: { marginTop: 8, textAlign: 'center', fontSize: 14, lineHeight: 20 },
+  upsellBtn: {
+    marginTop: 18,
+    minHeight: 48,
+    paddingHorizontal: 22,
+    borderRadius: 14,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upsellBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  upsellLaterBtn: { marginTop: 12, paddingVertical: 8 },
+  upsellLaterText: { fontSize: 14, fontWeight: '600' },
   heroCard: { borderWidth: 1, borderRadius: 18, padding: 16, marginBottom: 12 },
   backBtn: {
     alignSelf: 'flex-start',
@@ -825,6 +969,8 @@ const styles = StyleSheet.create({
   linksRow: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   linkBtn: { minWidth: '31%', flexGrow: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   linkText: { fontSize: 13, fontWeight: '700' },
+  gapLabel: { fontSize: 12, fontWeight: '700', marginTop: 8, marginBottom: 4 },
+  gapInput: { borderWidth: 1, borderRadius: 10, minHeight: 42, paddingHorizontal: 12, fontSize: 15, marginBottom: 4 },
   lightboxBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.94)' },
   lightboxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 10 },
   lightboxCounter: { color: '#fff', fontSize: 14, fontWeight: '700' },

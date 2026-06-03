@@ -50,8 +50,8 @@
 export const IAP_PRODUCT_IDS = {
   /** Consumable: pozwala dodać 1 dodatkową publikację na 30 dni. */
   PAKIET_PLUS_30D: 'pl.estateos.app.pakiet_plus_30d',
-  /** Consumable: aktywuje Investor Pro na 30 dni (import, off-market, narzędzia Pro). */
-  INVESTOR_PRO: 'pl.estateos.app.pakiet_investor_pro',
+  /** Auto-renewable subscription: Investor Pro (import, off-market, narzędzia Pro). Trial w ASC. */
+  INVESTOR_PRO: 'pl.estateos.app.investor_pro_monthly',
 } as const;
 
 export type IapProductId = (typeof IAP_PRODUCT_IDS)[keyof typeof IAP_PRODUCT_IDS];
@@ -102,6 +102,8 @@ export type IapVerifyRequest =
       targetOfferId?: number;
       /** Identyfikator urządzenia dla anti-fraud (opcjonalne). */
       deviceId?: string;
+      /** Jawna zgoda użytkownika na przeniesienie subskrypcji między kontami EstateOS. */
+      allowSubscriptionTransfer?: boolean;
     }
   | {
       platform: 'android';
@@ -135,6 +137,10 @@ export type IapVerifyResponse =
       isPro?: boolean;
       proExpiresAt?: string | null;
       investorProGranted?: boolean;
+      /** Subskrypcja przeniesiona z innego konta EstateOS (to samo Apple ID). */
+      subscriptionTransferred?: boolean;
+      /** Czy backend dodał miesięczne kredyty publikacji Pro w tej weryfikacji. */
+      proCreditsGranted?: boolean;
       /** Echo: verify przyjęte, slot zużyty dopiero przy utworzeniu oferty. */
       publicationConsumeDeferred?: boolean;
       /** Czy backend POTWIERDZIŁ weryfikację z Apple/Google.

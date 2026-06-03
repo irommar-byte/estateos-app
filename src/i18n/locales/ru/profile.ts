@@ -160,14 +160,44 @@ export const profile = {
     investorProPackage: 'Пакет Investor Pro',
     investorProActive: 'Investor Pro активен',
     investorProInactive: 'Investor Pro не активен',
-    investorProMeta: 'Импорт с порталов, off-market и Pro-инструменты на 30 дней.',
+    investorProMeta: 'Импорт с порталов, off-market и Pro-инструменты — месячная подписка.',
     investorProValidUntil: 'Действует до {{date}}',
-    investorProDaysLeft: 'Осталось {{days}} {{daysLabel}} доступа Pro',
-    buyInvestorPro: 'Купить Investor Pro',
-    buyInvestorProExtend: 'Продлить Investor Pro',
-    buyInvestorProSubtitle: 'Оплатите 30 дней Investor Pro в App Store',
+    investorProDaysLeft: 'В текущем периоде осталось {{days}} {{daysLabel}}',
+    investorProSubscriptionMeta:
+      'Месячная подписка — автопродление в App Store (3 дня trial, затем оплата).',
+    buyInvestorPro: '3 дня бесплатно',
+    buyInvestorProExtend: 'Управление подпиской',
+    buyInvestorProSubtitle: 'Полный Pro-доступ — отмена в App Store в любой момент',
+    buyInvestorProTrialSubtitle: '3 дня бесплатно, затем подписка в App Store',
+    investorProTrialBadge: '3 ДНЯ БЕСПЛАТНО',
+    investorProTrialPriceAfter: 'затем {{price}}/мес',
+    investorProTrialPriceFallback: 'затем месячная подписка в App Store',
+    investorProTrialIntroTitle: 'Попробуйте Investor Pro',
+    investorProTrialIntroBody:
+      'Импорт с порталов, off-market и Pro-инструменты — 3 дня бесплатно. Отмените в App Store до конца trial, если не хотите платить.',
+    investorProTrialIntroCta: 'Начать 3-дневный trial',
+    investorProTrialIntroLater: 'Позже',
+    investorProTrialAscHint:
+      'Если в окне Apple нет trial: добавьте Introductory Offer (Free Trial 3 days) в App Store Connect и используйте новый Sandbox-аккаунт.',
+    investorProUpsell: {
+      cta: 'Начать 3-дневный trial',
+      later: 'Позже',
+      creditsLine: '+10 кредитов публикации на каждый период подписки',
+      off_market: {
+        title: 'Откройте off-market',
+        body: 'Объявление ещё не публичное. Investor Pro даёт ранний доступ, переговоры и Pro-инструменты.',
+      },
+      import: {
+        title: 'Импорт требует Investor Pro',
+        body: 'Импорт с OtoDom, OLX и Nieruchomosci-Online входит в подписку Investor Pro.',
+      },
+      premium_tools: {
+        title: 'Pro-инструменты для Investor Pro',
+        body: 'Откройте импорт с порталов, off-market и зону Pro-инструментов в приложении.',
+      },
+    },
     investorProFooter:
-      'Investor Pro — пакет на 30 дней: импорт с порталов, off-market и Pro-инструменты. Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
+      'Investor Pro — подписка: импорт с порталов, off-market и Pro-инструменты. После 3-дневного trial Apple списывает оплату по тарифу App Store. Отмена: Настройки → Apple ID → Подписки. Это не Пакет Plus (публикация объявлений). При проблеме с оплатой используйте «Восстановить покупки».',
     plusSlotOne: 'Доступна 1 публикация Plus',
     plusSlotsMany: '{{count}} Плюс доступны публикации',
     noPackages: 'Нет пакетов — купите до следующей платной публикации',
@@ -251,6 +281,25 @@ export const profile = {
       investorProActiveTitle: 'Investor Pro активен',
       investorProActiveBody:
         'Investor Pro активен. Импорт с порталов и premium-инструменты разблокированы.',
+      investorProActiveBodyWithCredits:
+        'Investor Pro активен. Импорт и premium-инструменты разблокированы, добавлено 10 кредитов публикации на текущий период.',
+      investorProAlreadyActiveTitle: 'Подписка уже активна',
+      investorProAlreadyActiveBody:
+        'Investor Pro уже активен на этом аккаунте EstateOS. Управление: Настройки → Apple ID → Подписки.',
+      investorProLinkedTitle: 'Подписка привязана к аккаунту',
+      investorProLinkedBody:
+        'На этом Apple ID есть активная подписка Investor Pro (например, с прошлого теста). Мы привязали её к этому аккаунту EstateOS — окно оплаты App Store не появится, пока подписка активна на этом Apple ID. Одна подписка Apple = один аккаунт EstateOS.',
+      investorProOtherAccountTitle: 'Другой аккаунт EstateOS',
+      investorProOtherAccountBody:
+        'Apple ID на этом телефоне привязан к другому аккаунту EstateOS.\n\n• Своя подписка? Смените Apple ID (Настройки → Apple ID → Медиа и покупки).\n• Ваш Apple ID, но новый аккаунт EstateOS? Можно перенести подписку (предыдущий аккаунт потеряет Pro).',
+      investorProTransferConfirmTitle: 'Перенести подписку?',
+      investorProTransferConfirmBody:
+        'Подписка с Apple ID на этом телефоне будет привязана к этому аккаунту EstateOS. Предыдущий аккаунт потеряет Investor Pro.\n\nПродолжить?',
+      investorProTransferConfirmCta: 'Перенести на этот аккаунт',
+      investorProTransferCancel: 'Отмена',
+      investorProTransferredTitle: 'Investor Pro на этом аккаунте',
+      investorProTransferredBody:
+        'Подписка с вашего Apple ID перенесена на этот аккаунт EstateOS. Предыдущий аккаунт потерял доступ Pro.\n\nApp Store не покажет окно оплаты — подписка уже активна на этом Apple ID. Так работает Apple.',
       investorProActivePending:
         'Платеж принят. Идет активация — обновите профиль через минуту.',
     },
@@ -330,6 +379,8 @@ export const profile = {
     lead: 'Продвинутые инструменты Investor Pro для быстрого импорта и работы с объявлениями.',
     footer:
       'Премиум-раздел для активного Investor Pro, ориентированный на продуктивную работу.',
+    expandTools: 'Показать инструменты Pro',
+    collapseTools: 'Свернуть инструменты Pro',
     countdown: {
       title: 'Членство Pro',
       active: 'Осталось {{days}} дн.',
@@ -348,11 +399,11 @@ export const profile = {
       },
       openHouse: {
         title: 'День открытых дверей',
-        subtitle: 'Групповой показ с календарём и подтверждениями гостей.',
-        tag: 'Скоро',
+        subtitle: 'Планируйте даты, часы и бронирования гостей в одном месте.',
+        tag: 'Pro',
         alertTitle: 'День открытых дверей',
         alertBody:
-          'Скоро можно будет добавить событие открытых дверей из профиля.',
+          'Организуйте день открытых дверей — покупатели бронируют конкретные слоты визита.',
       },
       insider: {
         title: 'Инвесторский бриф',

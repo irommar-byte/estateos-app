@@ -21,6 +21,7 @@ import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
   isOfferAlterPrivilegeError,
   isOfferLegalColumnMissingError,
+  isOfferLocalityColumnMissingError,
   isOfferMoneyColumnMissingError,
 } from '@/lib/offerSchemaErrors';
 import {
@@ -32,6 +33,7 @@ import {
   assertPlotAreaRequired,
   resolvePlotAreaForPersistence,
 } from '@/lib/offerPlotAreaValidate';
+import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -76,10 +78,17 @@ function stripMoneyColumns(data: Record<string, unknown>) {
   delete data.exchangeRateDate;
 }
 
+function stripLocalityColumns(data: Record<string, unknown>) {
+  delete data.localityCountry;
+  delete data.localityCountryCode;
+}
+
 let offerLegalColumnsEnsured = false;
 let offerLegalColumnsPromise: Promise<void> | null = null;
 let offerMoneyColumnsEnsured = false;
 let offerMoneyColumnsPromise: Promise<void> | null = null;
+let offerLocalityColumnsEnsured = false;
+let offerLocalityColumnsPromise: Promise<void> | null = null;
 
 function isIgnorableAddColumnError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -200,6 +209,61 @@ export async function ensureOfferMoneyColumns() {
   }
 }
 
+export async function ensureOfferLocalityCountryColumns() {
+  if (offerLocalityColumnsEnsured) return;
+  if (offerLocalityColumnsPromise) return offerLocalityColumnsPromise;
+
+  offerLocalityColumnsPromise = (async () => {
+    await ensureOfferColumn('localityCountry', "VARCHAR(64) NULL DEFAULT 'Polska'");
+    await ensureOfferColumn('localityCountryCode', "VARCHAR(8) NULL DEFAULT 'PL'");
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`localityCountry\` = 'Polska' WHERE \`localityCountry\` IS NULL OR TRIM(\`localityCountry\`) = ''`
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE \`Offer\` SET \`localityCountryCode\` = 'PL' WHERE \`localityCountryCode\` IS NULL OR TRIM(\`localityCountryCode\`) = ''`
+    );
+
+    const batch = await prisma.offer.findMany({
+      select: { id: true, city: true, lat: true, lng: true, localityCountry: true, localityCountryCode: true },
+    });
+    for (const row of batch) {
+      const resolved = resolvePersistedLocalityFields({
+        localityCountry: row.localityCountry,
+        localityCountryCode: row.localityCountryCode,
+        city: row.city,
+        lat: row.lat,
+        lng: row.lng,
+      });
+      if (
+        resolved.localityCountryCode !== String(row.localityCountryCode || '').trim().toUpperCase() ||
+        resolved.localityCountry !== String(row.localityCountry || '').trim()
+      ) {
+        await prisma.offer.update({
+          where: { id: row.id },
+          data: {
+            localityCountry: resolved.localityCountry,
+            localityCountryCode: resolved.localityCountryCode,
+          },
+        });
+      }
+    }
+
+    offerLocalityColumnsEnsured = true;
+  })();
+
+  try {
+    await offerLocalityColumnsPromise;
+  } catch (error) {
+    if (isOfferAlterPrivilegeError(error)) {
+      offerLocalityColumnsEnsured = true;
+      return;
+    }
+    throw error;
+  } finally {
+    offerLocalityColumnsPromise = null;
+  }
+}
+
 // =======================
 // MAPOWANIA
 // =======================
@@ -253,6 +317,7 @@ export async function createOffer(body: any) {
   const { userId, lat, lng } = body;
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
+  await ensureOfferLocalityCountryColumns();
   const resolvedPrice = await resolveOfferPriceFromBody(body);
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
@@ -275,6 +340,7 @@ export async function createOffer(body: any) {
     lng: Number(lng),
     city: locationValidation.city,
     district: locationValidation.district,
+    localityCountryCode: body.localityCountryCode ?? body.countryCode ?? null,
   });
 
   const verificationMeta = buildOfferVerificationMeta({
@@ -295,6 +361,14 @@ export async function createOffer(body: any) {
     if (!v.ok) throw new Error(v.message);
     agentCommissionPercent = v.value;
   }
+
+  const localityFields = resolvePersistedLocalityFields({
+    localityCountry: body.localityCountry,
+    localityCountryCode: body.localityCountryCode,
+    city: locationValidation.city,
+    lat,
+    lng,
+  });
 
   const createData: any = {
       title: body.title || "Nowa Oferta",
@@ -323,6 +397,8 @@ export async function createOffer(body: any) {
 
       lat: Number(lat),
       lng: Number(lng),
+      localityCountry: localityFields.localityCountry,
+      localityCountryCode: localityFields.localityCountryCode,
 
       images: typeof body.images === "string"
         ? body.images
@@ -366,11 +442,18 @@ export async function createOffer(body: any) {
   try {
     return await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
   } catch (error) {
-    if (!isOfferLegalColumnMissingError(error) && !isOfferMoneyColumnMissingError(error)) throw error;
+    if (
+      !isOfferLegalColumnMissingError(error) &&
+      !isOfferMoneyColumnMissingError(error) &&
+      !isOfferLocalityColumnMissingError(error)
+    ) {
+      throw error;
+    }
 
     const fallbackData = { ...createData };
     stripLegacyLegalColumns(fallbackData);
     stripMoneyColumns(fallbackData);
+    stripLocalityColumns(fallbackData);
     return createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
   }
 }
@@ -382,6 +465,7 @@ export async function updateOffer(body: any) {
   const { id, userId } = body;
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
+  await ensureOfferLocalityCountryColumns();
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
     validateLandRegistryNumberInput(body.landRegistryNumber);
@@ -427,6 +511,8 @@ export async function updateOffer(body: any) {
       isExactLocation: true,
       lat: true,
       lng: true,
+      localityCountry: true,
+      localityCountryCode: true,
       street: true,
       buildingNumber: true,
       status: true,
@@ -471,6 +557,8 @@ export async function updateOffer(body: any) {
       lng: nextLng,
       city: locationValidation.city,
       district: locationValidation.district,
+      localityCountryCode:
+        body.localityCountryCode ?? body.countryCode ?? (existing as { localityCountryCode?: string }).localityCountryCode ?? null,
     });
   }
 
@@ -525,6 +613,15 @@ export async function updateOffer(body: any) {
         priceCurrency: body.priceCurrency ?? existing.priceCurrency ?? 'PLN',
       })
     : {};
+
+  const localityFields = resolvePersistedLocalityFields({
+    localityCountry: body.localityCountry ?? (existing as { localityCountry?: string }).localityCountry,
+    localityCountryCode:
+      body.localityCountryCode ?? (existing as { localityCountryCode?: string }).localityCountryCode,
+    city: locationValidation?.city ?? existing.city,
+    lat: nextLat,
+    lng: nextLng,
+  });
 
   const updateData: any = {
       ...(body.title !== undefined && { title: body.title }),
@@ -594,6 +691,8 @@ export async function updateOffer(body: any) {
       ...(body.lng !== undefined && {
         lng: body.lng === null || body.lng === '' ? null : Number(body.lng),
       }),
+      localityCountry: localityFields.localityCountry,
+      localityCountryCode: localityFields.localityCountryCode,
       ...(body.street !== undefined && {
         street: body.street ? String(body.street).trim() : null,
       }),
@@ -629,10 +728,17 @@ export async function updateOffer(body: any) {
       select: MOBILE_OFFER_WRITE_RESPONSE_SELECT as any,
     });
   } catch (error) {
-    if (!isOfferLegalColumnMissingError(error) && !isOfferMoneyColumnMissingError(error)) throw error;
+    if (
+      !isOfferLegalColumnMissingError(error) &&
+      !isOfferMoneyColumnMissingError(error) &&
+      !isOfferLocalityColumnMissingError(error)
+    ) {
+      throw error;
+    }
     const fallbackData = { ...updateData };
     stripLegacyLegalColumns(fallbackData);
     stripMoneyColumns(fallbackData);
+    stripLocalityColumns(fallbackData);
     updatedOffer = await prisma.offer.update({
       where: { id: Number(id) },
       data: fallbackData,

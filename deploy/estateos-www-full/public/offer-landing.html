@@ -59,9 +59,9 @@
         var(--bg);
     }
     .page {
-      max-width: 680px;
+      max-width: 560px;
       margin: 0 auto;
-      padding: 24px 16px 56px;
+      padding: 16px 12px 40px;
     }
     .sheet {
       position: relative;
@@ -77,7 +77,7 @@
       border: 1px solid var(--line);
     }
     .sheet-header {
-      padding: 22px 22px 18px;
+      padding: 14px 16px 12px;
       border-bottom: 1px solid var(--line);
       background: linear-gradient(180deg, var(--sheet-inner), transparent);
     }
@@ -116,33 +116,33 @@
     }
     .sheet-lead {
       margin: 0;
-      font-size: 13px;
-      line-height: 1.65;
+      font-size: 12px;
+      line-height: 1.5;
       color: var(--muted);
       font-weight: 400;
     }
     .hero {
       position: relative;
-      min-height: 220px;
+      min-height: 160px;
       background: var(--sheet-inner);
     }
     .hero img {
       width: 100%;
-      height: min(54vw, 360px);
+      height: min(42vw, 220px);
       object-fit: cover;
       display: block;
     }
     .hero.placeholder {
       display: grid;
       place-items: center;
-      min-height: 260px;
+      min-height: 180px;
       color: var(--muted);
       font-size: 14px;
     }
     .body {
-      padding: 22px 22px 26px;
+      padding: 16px 16px 18px;
     }
-    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
     .badge {
       font-size: 10px;
       font-weight: 700;
@@ -156,31 +156,40 @@
     .badge-type { color: var(--text); background: rgba(127,127,127,0.06); }
     .summary-line { margin: 0 0 6px; font-size: 13px; color: var(--muted); letter-spacing: 0.01em; }
     h1 {
-      margin: 0 0 6px;
-      font-size: clamp(22px, 4.5vw, 30px);
-      line-height: 1.15;
+      margin: 0 0 4px;
+      font-size: clamp(19px, 4vw, 24px);
+      line-height: 1.2;
       letter-spacing: -0.03em;
       font-weight: 650;
     }
-    .location { color: var(--muted); font-size: 14px; margin-bottom: 2px; }
-    .price-row { margin-top: 16px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; }
+    .location { color: var(--muted); font-size: 13px; margin-bottom: 0; }
+    .price-row { margin-top: 10px; display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; }
+    .price-block { display: flex; flex-direction: column; gap: 4px; }
     .price {
-      font-size: clamp(26px, 4.2vw, 34px);
+      font-size: clamp(22px, 3.8vw, 28px);
       font-weight: 700;
       letter-spacing: -0.04em;
       color: var(--gold);
     }
     .price-suffix { font-size: 15px; font-weight: 500; color: var(--muted); }
+    .price-commission {
+      margin: 0;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+      max-width: 26rem;
+    }
+    .price-commission strong { color: var(--gold); font-weight: 700; }
     .spec-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 18px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 12px;
     }
-    @media (min-width: 520px) { .spec-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (max-width: 420px) { .spec-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .spec {
-      padding: 12px;
-      border-radius: 14px;
+      padding: 8px 9px;
+      border-radius: 10px;
       border: 1px solid var(--line);
       background: rgba(127,127,127,0.04);
     }
@@ -192,8 +201,8 @@
       color: var(--muted);
       margin-bottom: 5px;
     }
-    .spec strong { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .amenities { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+    .spec strong { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .amenities { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
     .amenity {
       font-size: 11px;
       color: var(--muted);
@@ -203,9 +212,9 @@
     }
     .thumbs {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-      gap: 8px;
-      margin-top: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+      gap: 6px;
+      margin-top: 10px;
     }
     .thumbs button {
       padding: 0;
@@ -215,15 +224,15 @@
       cursor: pointer;
       background: transparent;
     }
-    .thumbs img { width: 100%; height: 64px; object-fit: cover; display: block; }
+    .thumbs img { width: 100%; height: 52px; object-fit: cover; display: block; }
     .qr-row {
       display: grid;
       grid-template-columns: auto 1fr;
-      gap: 16px;
+      gap: 12px;
       align-items: center;
-      margin-top: 22px;
-      padding: 16px;
-      border-radius: 18px;
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 14px;
       border: 1px solid var(--line-strong);
       background: linear-gradient(145deg, rgba(127,127,127,0.05), transparent);
     }
@@ -301,7 +310,7 @@
     .toast.ok { color: var(--trust-text); }
     .platform-foot {
       margin-top: 0;
-      padding: 22px 22px 24px;
+      padding: 14px 16px 16px;
       border-top: 1px solid var(--line);
       background: linear-gradient(180deg, transparent, rgba(127,127,127,0.04));
     }
@@ -314,9 +323,9 @@
       font-weight: 700;
     }
     .platform-foot p {
-      margin: 0 0 12px;
-      font-size: 13px;
-      line-height: 1.7;
+      margin: 0 0 8px;
+      font-size: 11px;
+      line-height: 1.55;
       color: var(--muted);
     }
     .platform-foot p:last-child { margin-bottom: 0; }
@@ -419,6 +428,366 @@
       display: inline-block; vertical-align: -3px; margin-right: 8px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .description-section,
+    .map-section,
+    .floorplan-section {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .media-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .section-title {
+      margin: 0 0 6px;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 700;
+    }
+    .description-body {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--muted);
+      white-space: pre-line;
+      max-height: 9.5em;
+      overflow: hidden;
+      position: relative;
+    }
+    .description-section.is-long .description-body::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 2.2em;
+      background: linear-gradient(transparent, var(--sheet));
+      pointer-events: none;
+    }
+    .description-hint {
+      margin: 6px 0 0;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.85;
+    }
+    .description-section.is-long .description-hint { display: block; }
+    .description-hint { display: none; }
+    .map-frame {
+      display: block;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      background: rgba(127,127,127,0.06);
+      text-decoration: none;
+    }
+    .map-frame img {
+      width: 100%;
+      height: auto;
+      min-height: 120px;
+      max-height: 180px;
+      object-fit: cover;
+      display: block;
+    }
+    .map-caption {
+      margin: 8px 0 0;
+      font-size: 11px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .floorplan-frame {
+      display: block;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      background: rgba(127,127,127,0.06);
+      text-decoration: none;
+    }
+    .floorplan-frame img {
+      width: 100%;
+      height: auto;
+      min-height: 100px;
+      max-height: 220px;
+      object-fit: contain;
+      display: block;
+      background: rgba(127,127,127,0.04);
+    }
+    .print-only { display: none !important; }
+    .agent-print-card {
+      display: none;
+    }
+    .agent-print-inner {
+      display: grid;
+      grid-template-columns: 22mm 1fr 20mm auto;
+      gap: 3mm;
+      align-items: center;
+      padding: 4mm 5mm;
+      border-radius: 4mm;
+      border: 1px solid #d4c08a;
+      background: linear-gradient(135deg, #fffdf7 0%, #f8f4ea 55%, #f3efe6 100%);
+      color: #1a1a1e;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.65);
+    }
+    .agent-print-photo {
+      width: 22mm;
+      height: 22mm;
+      border-radius: 3mm;
+      overflow: hidden;
+      border: 1px solid rgba(184,146,46,0.35);
+      background: #ece7dc;
+      display: grid;
+      place-items: center;
+    }
+    .agent-print-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .agent-photo-initial {
+      font-size: 11mm;
+      font-weight: 700;
+      color: #8a6d1f;
+      line-height: 1;
+    }
+    .agent-print-kicker {
+      margin: 0 0 1mm;
+      font-size: 7pt;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #8a6d1f;
+      font-weight: 700;
+    }
+    .agent-print-name {
+      margin: 0 0 1mm;
+      font-size: 13pt;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      font-weight: 700;
+      color: #141416;
+    }
+    .agent-print-company {
+      margin: 0 0 2mm;
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #3d3d46;
+    }
+    .agent-print-contact {
+      margin: 0;
+      font-size: 8.5pt;
+      line-height: 1.45;
+      color: #5c5c66;
+    }
+    .agent-print-brand {
+      text-align: right;
+      min-width: 42mm;
+    }
+    .agent-print-brand strong {
+      display: block;
+      font-size: 10pt;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #141416;
+    }
+    .agent-print-qr-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1mm;
+    }
+    .agent-print-qr {
+      width: 18mm;
+      height: 18mm;
+      border-radius: 2mm;
+      border: 1px solid rgba(20,20,22,0.12);
+      background: #fff;
+      display: block;
+      object-fit: contain;
+    }
+    .agent-print-qr-label {
+      font-size: 5.5pt;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #6b6b76;
+      text-align: center;
+      line-height: 1.25;
+      max-width: 20mm;
+    }
+    .agent-print-badge {
+      display: inline-block;
+      margin: 1mm 0 2mm;
+      padding: 0.8mm 2.5mm;
+      border-radius: 999px;
+      border: 1px solid rgba(184,146,46,0.45);
+      background: rgba(184,146,46,0.12);
+      color: #8a6d1f;
+      font-size: 7pt;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .agent-print-brand p {
+      margin: 0;
+      font-size: 7pt;
+      line-height: 1.35;
+      color: #6b6b76;
+      max-width: 42mm;
+      margin-left: auto;
+    }
+    .agent-print-ref {
+      margin-top: 2mm;
+      font-size: 6.5pt;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #8a6d1f;
+    }
+    .landing-print-hide {}
+    @media print {
+      @page { size: A4 portrait; margin: 7mm; }
+      html, body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+        color: #111 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page {
+        max-width: none;
+        width: 196mm;
+        padding: 0;
+        margin: 0 auto;
+      }
+      .sheet {
+        box-shadow: none !important;
+        background: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+      }
+      .sheet-inner {
+        border: none !important;
+        border-radius: 0 !important;
+        overflow: visible !important;
+      }
+      .sheet-header {
+        padding: 0 0 3mm !important;
+        margin-bottom: 2mm;
+        border-bottom: 1px solid #ddd !important;
+        background: none !important;
+      }
+      .sheet-brand-left { font-size: 7pt; }
+      .sheet-ref { font-size: 7pt; padding: 1mm 2.5mm; }
+      .sheet-lead { display: none !important; }
+      .hero { min-height: 0 !important; }
+      .hero img {
+        width: 100% !important;
+        height: 34mm !important;
+        max-height: 34mm !important;
+        object-fit: cover !important;
+      }
+      .body { padding: 2mm 0 0 !important; color: #141416 !important; }
+      .landing-print-hide,
+      .platform-foot,
+      .qr-row,
+      .trust-note,
+      .thumbs,
+      .description-hint,
+      #fatal,
+      .toast,
+      .actions { display: none !important; }
+      .badges { margin-bottom: 2mm !important; gap: 2mm !important; }
+      .badge { font-size: 7pt; padding: 1mm 2mm; }
+      h1 { font-size: 15pt !important; margin-bottom: 1mm !important; line-height: 1.15 !important; color: #141416 !important; }
+      .location { font-size: 9pt !important; color: #5c5c66 !important; }
+      .summary-line { font-size: 8.5pt !important; margin-bottom: 1mm !important; color: #5c5c66 !important; }
+      .price-row { margin-top: 2mm !important; }
+      .price { font-size: 17pt !important; color: #8a6d1f !important; }
+      .price-suffix { font-size: 9pt !important; }
+      .price-commission { font-size: 8pt !important; }
+      .spec-grid {
+        grid-template-columns: repeat(6, 1fr) !important;
+        gap: 1.5mm !important;
+        margin-top: 2.5mm !important;
+      }
+      .spec { padding: 1.5mm 2mm !important; border-radius: 2mm !important; }
+      .spec label { font-size: 6pt; margin-bottom: 0.5mm !important; color: #8a8a96 !important; }
+      .spec strong { font-size: 8pt !important; color: #141416 !important; }
+      .amenities { margin-top: 2mm !important; gap: 1.5mm !important; }
+      .amenity { font-size: 7pt; padding: 0.8mm 2mm; }
+      .description-section,
+      .map-section,
+      .floorplan-section {
+        margin-top: 2.5mm !important;
+        padding-top: 2mm !important;
+        border-top: 1px solid #e5e5ea !important;
+      }
+      .section-title { font-size: 7pt; margin-bottom: 1mm !important; }
+      .description-body {
+        font-size: 8.5pt !important;
+        line-height: 1.35 !important;
+        color: #3d3d46 !important;
+        max-height: none !important;
+        display: -webkit-box;
+        -webkit-line-clamp: 9;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .description-body::after { display: none !important; }
+      .media-stack {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 2.5mm;
+        margin-top: 2mm;
+      }
+      .media-stack .map-section,
+      .media-stack .floorplan-section {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        border-top: none !important;
+      }
+      .media-stack .map-section[hidden],
+      .media-stack .floorplan-section[hidden] {
+        display: none !important;
+      }
+      .media-stack:has(.map-section[hidden]):has(.floorplan-section:not([hidden])) .floorplan-section,
+      .media-stack:has(.floorplan-section[hidden]):has(.map-section:not([hidden])) .map-section {
+        grid-column: 1 / -1;
+      }
+      .map-frame img {
+        max-height: 28mm !important;
+        min-height: 0 !important;
+        height: 28mm !important;
+        object-fit: cover !important;
+      }
+      .map-caption { font-size: 6.5pt; margin-top: 1mm !important; }
+      .floorplan-frame img {
+        max-height: 28mm !important;
+        min-height: 0 !important;
+        height: 28mm !important;
+      }
+      .agent-print-card {
+        display: block !important;
+        margin-top: 3mm;
+        page-break-inside: avoid;
+      }
+      .agent-print-inner {
+        grid-template-columns: 22mm 1fr 20mm auto !important;
+      }
+      .agent-print-qr {
+        width: 18mm !important;
+        height: 18mm !important;
+      }
+      .agent-print-card.print-only { display: block !important; }
+      .agent-print-card[hidden] { display: block !important; }
+    }
   </style>
 </head>
 <body>
@@ -430,13 +799,12 @@
             <div class="sheet-brand-left"><span>Wizytówka</span><strong>EstateOS™</strong></div>
             <span class="sheet-ref" id="offerRef">Oferta</span>
           </div>
-          <p class="sheet-lead">
-            Elegancki podgląd nieruchomości — parametry i galeria bez konta.
-            Pełny kontakt, negocjacje i umówienie prezentacji w zweryfikowanej aplikacji.
+          <p class="sheet-lead" id="sheetLead">
+            Kompaktowy podgląd oferty — pełny kontakt w aplikacji EstateOS™.
           </p>
         </header>
 
-        <div id="hero" class="hero placeholder"><span class="spinner" aria-hidden="true"></span>Ładowanie oferty…</div>
+        <div id="hero" class="hero placeholder"><span class="spinner" aria-hidden="true"></span><span id="heroLoadingText">Ładowanie oferty…</span></div>
 
         <div class="body" id="panel" hidden>
           <div class="badges" id="badges"></div>
@@ -444,47 +812,93 @@
           <h1 id="title">—</h1>
           <div class="location" id="location">—</div>
           <div class="price-row">
-            <div class="price" id="price">—</div>
+            <div class="price-block">
+              <div class="price" id="price">—</div>
+              <p class="price-commission" id="priceCommissionNote" hidden></p>
+            </div>
             <span class="price-suffix" id="priceSuffix" hidden></span>
           </div>
           <div class="spec-grid" id="specGrid"></div>
           <div class="amenities" id="amenities" hidden></div>
           <div class="thumbs" id="thumbs" hidden></div>
 
-          <div class="qr-row">
+          <section class="description-section" id="descriptionSection" hidden>
+            <h2 class="section-title" id="sectionDescriptionTitle">Opis</h2>
+            <p class="description-body" id="descriptionBody"></p>
+            <p class="description-hint" id="descriptionHint">Pełny opis w aplikacji EstateOS™</p>
+          </section>
+
+          <div class="media-stack" id="mediaStack">
+          <section class="map-section" id="mapSection" hidden>
+            <h2 class="section-title" id="sectionLocationTitle">Lokalizacja</h2>
+            <a class="map-frame" id="mapLink" href="#" target="_blank" rel="noopener noreferrer">
+              <img id="mapImage" alt="Mapa okolicy nieruchomości" loading="lazy" />
+            </a>
+            <p class="map-caption" id="mapCaption"></p>
+          </section>
+
+          <section class="floorplan-section" id="floorPlanSection" hidden>
+            <h2 class="section-title" id="sectionFloorPlanTitle">Rzut / plan</h2>
+            <a class="floorplan-frame" id="floorPlanLink" href="#" target="_blank" rel="noopener noreferrer">
+              <img id="floorPlanImage" alt="Rzut lokalu" loading="lazy" />
+            </a>
+          </section>
+          </div>
+
+          <div class="qr-row landing-print-hide">
             <div class="qr-frame">
               <canvas id="qrCanvas" width="128" height="128" aria-hidden="true"></canvas>
             </div>
             <div class="qr-copy">
-              <h3>Aplikacja EstateOS™</h3>
-              <p><strong>Zeskanuj, aby zobaczyć nieruchomość w aplikacji.</strong> Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.</p>
+              <h3 id="qrHeading">Aplikacja EstateOS™</h3>
+              <p><strong id="qrLead">Zeskanuj, aby zobaczyć nieruchomość w aplikacji.</strong> <span id="qrIntro">Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.</span></p>
               <div class="mono" id="qrUrlLabel"></div>
             </div>
           </div>
 
-          <p class="trust-note">
+          <p class="trust-note landing-print-hide" id="trustNote">
             Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.
           </p>
 
-          <div class="actions">
+          <div class="actions landing-print-hide">
             <a class="btn btn-primary" id="openApp" href="#">Otwórz w aplikacji EstateOS™</a>
             <a class="btn btn-secondary" id="registerCta" href="https://estateos.pl/rejestracja">Załóż konto i skontaktuj się</a>
+            <button type="button" class="btn btn-secondary landing-print-hide" id="printBrochure" hidden>Wydrukuj</button>
             <button type="button" class="btn btn-ghost" id="copyLink">Kopiuj link do wiadomości</button>
           </div>
           <div class="toast" id="toast" aria-live="polite"></div>
         </div>
 
-        <footer class="platform-foot" aria-label="O platformie EstateOS">
-          <h2>Platforma EstateOS™</h2>
-          <p>
-            <span class="highlight">Inteligentny rynek nieruchomości</span> — jeden spójny ekosystem zamiast rozproszonej korespondencji.
-            <strong>Radar</strong> dopasowuje oferty do Twoich kryteriów i informuje na bieżąco,
-            <strong>Dealroom</strong> porządkuje negocjacje od pierwszego kontaktu po spotkanie,
-            a cała komunikacja odbywa się w jednym, bezpiecznym miejscu.
-          </p>
-          <p>
-            Pierwszą nieruchomość możesz wystawić <span class="highlight">bezpłatnie</span>.
-            Warto mieć aplikację — bo rynek nie czeka, a dobre oferty znikają szybko.
+        <section class="agent-print-card print-only" id="agentPrintCard" hidden aria-label="Wizytówka agenta">
+          <div class="agent-print-inner">
+            <div class="agent-print-photo" id="agentPhotoWrap">
+              <img id="agentPhoto" alt="" hidden />
+              <span class="agent-photo-initial" id="agentPhotoInitial">E</span>
+            </div>
+            <div class="agent-print-details">
+              <p class="agent-print-kicker" id="agentKicker">Twój doradca</p>
+              <h3 class="agent-print-name" id="agentName">—</h3>
+              <p class="agent-print-company" id="agentCompany" hidden></p>
+              <p class="agent-print-contact" id="agentPhone" hidden></p>
+              <p class="agent-print-contact" id="agentEmail" hidden></p>
+            </div>
+            <div class="agent-print-qr-col">
+              <img class="agent-print-qr" id="agentPrintQr" alt="" width="72" height="72" hidden />
+              <span class="agent-print-qr-label" id="agentQrLabel">Zeskanuj ofertę</span>
+            </div>
+            <div class="agent-print-brand">
+              <strong>EstateOS™</strong>
+              <span class="agent-print-badge" id="agentBadge">WIZYTÓWKA</span>
+              <p id="agentBrandTagline">Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.</p>
+              <div class="agent-print-ref" id="agentPrintRef"></div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="platform-foot landing-print-hide" aria-label="O platformie EstateOS">
+          <h2 id="platformTitle">Platforma EstateOS™</h2>
+          <p id="platformLead">
+            <span class="highlight">Inteligentny rynek nieruchomości</span> — Radar, Dealroom i bezpieczny kontakt w jednej aplikacji.
           </p>
           <div class="platform-badges" aria-label="Linki do platformy">
             <a href="https://estateos.pl" class="badge-shell www" aria-label="Przejdź na stronę estateos.pl">
@@ -496,7 +910,7 @@
             </a>
             <span class="badge-shell badge-soon" aria-label="Google Play — wkrótce">
               <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="" width="120" height="28" loading="lazy" />
-              <span class="soon-label">Wkrótce</span>
+              <span class="soon-label" id="soonLabel">Wkrótce</span>
             </span>
           </div>
         </footer>
@@ -513,28 +927,265 @@
   var id = m ? m[1] : '';
   var canonicalHttps = ORIGIN + '/o/' + id;
 
+  function resolvePageLocale() {
+    var params = new URLSearchParams(window.location.search);
+    var q = params.get('lang') || params.get('locale');
+    if (q === 'en' || q === 'pl') return q;
+    var cookieMatch = document.cookie.match(/(?:^|;\s*)estateos_lang=(pl|en)(?:;|$)/);
+    if (cookieMatch) return cookieMatch[1];
+    var nav = (navigator.language || '').toLowerCase();
+    if (nav.indexOf('en') === 0) return 'en';
+    return 'pl';
+  }
+
+  var LOCALE = resolvePageLocale();
+  document.documentElement.lang = LOCALE;
+
+  var I18N = {
+    pl: {
+      sheetBrand: 'Wizytówka',
+      sheetLead: 'Kompaktowy podgląd oferty — pełny kontakt w aplikacji EstateOS™.',
+      sectionDescription: 'Opis',
+      sectionLocation: 'Lokalizacja',
+      sectionFloorPlan: 'Rzut / plan',
+      descriptionHint: 'Pełny opis w aplikacji EstateOS™',
+      qrHeading: 'Aplikacja EstateOS™',
+      qrLead: 'Zeskanuj, aby zobaczyć nieruchomość w aplikacji.',
+      qrIntro: 'Jeśli nie masz jej jeszcze zainstalowanej — system zaproponuje pobranie, a po instalacji otworzy tę ofertę.',
+      qrAlt: 'Kod QR — otwórz ofertę w aplikacji EstateOS',
+      agentQrLabel: 'Zeskanuj ofertę',
+      trustNote: 'Galeria i parametry — bez rejestracji. Kontakt z właścicielem, oferta cenowa i prezentacja wymagają bezpłatnego konta na platformie z weryfikowanymi użytkownikami.',
+      openApp: 'Otwórz w aplikacji EstateOS™',
+      registerCta: 'Załóż konto i skontaktuj się',
+      printBrochure: 'Wydrukuj',
+      copyLink: 'Kopiuj link do wiadomości',
+      perMonth: '/ miesiąc',
+      perMonthShort: ' / mc',
+      specArea: 'Powierzchnia',
+      specRooms: 'Liczba pokoi',
+      specFloor: 'Piętro',
+      specYear: 'Rok budowy',
+      specCondition: 'Stan',
+      specPlot: 'Działka',
+      forRent: 'do wynajęcia',
+      forSale: 'na sprzedaż',
+      countryDefault: 'Polska',
+      agentKickerAgent: 'Twój doradca · EstateOS™',
+      agentKickerContact: 'Kontakt do oferty · EstateOS™',
+      agentBadge: 'WIZYTÓWKA',
+      agentTagline: 'Inteligentny rynek nieruchomości — materiał przygotowany do przekazania klientowi.',
+      agentDefaultName: 'Agent nieruchomości',
+      agentPhonePrefix: 'tel. ',
+      refPrefix: 'Ref. ',
+      commissionNone: 'Cena <strong>bez wynagrodzenia pośrednika</strong> (0%).',
+      commissionInPrice: 'W cenie <strong>{amount}</strong> wynagrodzenia pośrednika ({pct} ceny ofertowej).',
+      mapExactPrefix: 'Punkt na mapie: ',
+      mapExactFallback: 'Lokalizacja nieruchomości na mapie.',
+      mapAreaPrefix: 'Okolica: ',
+      mapAreaSuffix: ' (bez dokładnego adresu na mapie).',
+      mapAreaFallback: 'Podgląd okolicy bez dokładnej pinezki.',
+      floorPlanAria: 'Otwórz rzut lokalu w pełnym rozmiarze',
+      loading: 'Ładowanie oferty…',
+      noPhoto: 'Brak zdjęcia',
+      photoError: 'Nie udało się załadować zdjęcia',
+      thumbLabel: 'Miniatura ',
+      shareFooter: 'EstateOS™ — zeskanuj QR na wizytówce lub otwórz link w aplikacji.',
+      shareOgSuffix: '. Zeskanuj QR lub otwórz w aplikacji EstateOS™.',
+      toastShared: 'Udostępniono wizytówkę oferty.',
+      toastCopied: 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.',
+      toastLinkCopied: 'Skopiowano link: ',
+      toastCopyManual: 'Skopiuj ręcznie: ',
+      toastPrintFail: 'Nie udało się otworzyć okna drukowania.',
+      platformTitle: 'Platforma EstateOS™',
+      platformLeadHtml: '<span class="highlight">Inteligentny rynek nieruchomości</span> — Radar, Dealroom i bezpieczny kontakt w jednej aplikacji.',
+      soonLabel: 'Wkrótce',
+      fatalInvalidId: 'Niepoprawny adres — brak identyfikatora oferty w ścieżce /o/{id}.',
+      fatalLoadError: 'Nie udało się wczytać oferty ({msg}).',
+      fallbackSummary: 'Wizytówka nieruchomości · EstateOS™',
+      heroLoadFail: 'Nie udało się pobrać danych',
+      offerFallback: 'Oferta',
+      offerTitleFallback: 'Oferta #',
+      mapAlt: 'Mapa okolicy nieruchomości',
+      floorPlanAlt: 'Rzut lokalu',
+      heroAlt: 'Zdjęcie nieruchomości',
+      areaUnit: ' m²',
+      priceOfOffer: ' ceny ofertowej',
+    },
+    en: {
+      sheetBrand: 'Offer sheet',
+      sheetLead: 'Compact offer preview — full contact in the EstateOS™ app.',
+      sectionDescription: 'Description',
+      sectionLocation: 'Location',
+      sectionFloorPlan: 'Floor plan',
+      descriptionHint: 'Full description in the EstateOS™ app',
+      qrHeading: 'EstateOS™ app',
+      qrLead: 'Scan to view this property in the app.',
+      qrIntro: 'If the app is not installed yet, you will be prompted to download it; after install, this offer opens automatically.',
+      qrAlt: 'QR code — open offer in EstateOS app',
+      agentQrLabel: 'Scan offer',
+      trustNote: 'Gallery and specs — no sign-up required. Contact, price offers, and viewings require a free account on our verified platform.',
+      openApp: 'Open in EstateOS™ app',
+      registerCta: 'Create account & contact',
+      printBrochure: 'Print',
+      copyLink: 'Copy link for messaging',
+      perMonth: '/ month',
+      perMonthShort: ' / mo',
+      specArea: 'Area',
+      specRooms: 'Rooms',
+      specFloor: 'Floor',
+      specYear: 'Year built',
+      specCondition: 'Condition',
+      specPlot: 'Plot',
+      forRent: 'for rent',
+      forSale: 'for sale',
+      countryDefault: 'Poland',
+      agentKickerAgent: 'Your advisor · EstateOS™',
+      agentKickerContact: 'Offer contact · EstateOS™',
+      agentBadge: 'OFFER SHEET',
+      agentTagline: 'The intelligent real estate market — material prepared for your client.',
+      agentDefaultName: 'Real estate agent',
+      agentPhonePrefix: 'tel. ',
+      refPrefix: 'Ref. ',
+      commissionNone: 'Price <strong>without agent commission</strong> (0%).',
+      commissionInPrice: 'Includes <strong>{amount}</strong> agent commission ({pct} of the listed price).',
+      mapExactPrefix: 'Map pin: ',
+      mapExactFallback: 'Property location on the map.',
+      mapAreaPrefix: 'Area: ',
+      mapAreaSuffix: ' (exact address not shown on map).',
+      mapAreaFallback: 'Neighbourhood preview without exact pin.',
+      floorPlanAria: 'Open floor plan full size',
+      loading: 'Loading offer…',
+      noPhoto: 'No photo',
+      photoError: 'Could not load photo',
+      thumbLabel: 'Thumbnail ',
+      shareFooter: 'EstateOS™ — scan the QR on this sheet or open the link in the app.',
+      shareOgSuffix: '. Scan QR or open in the EstateOS™ app.',
+      toastShared: 'Offer sheet shared.',
+      toastCopied: 'Message text copied — paste in SMS, email, or chat.',
+      toastLinkCopied: 'Link copied: ',
+      toastCopyManual: 'Copy manually: ',
+      toastPrintFail: 'Could not open the print dialog.',
+      platformTitle: 'EstateOS™ platform',
+      platformLeadHtml: '<span class="highlight">The intelligent real estate market</span> — Radar, Dealroom, and secure contact in one app.',
+      soonLabel: 'Coming soon',
+      fatalInvalidId: 'Invalid URL — missing offer id in /o/{id}.',
+      fatalLoadError: 'Could not load offer ({msg}).',
+      fallbackSummary: 'Property offer sheet · EstateOS™',
+      heroLoadFail: 'Could not load data',
+      offerFallback: 'Offer',
+      offerTitleFallback: 'Offer #',
+      mapAlt: 'Neighbourhood map',
+      floorPlanAlt: 'Floor plan',
+      heroAlt: 'Property photo',
+      areaUnit: ' m²',
+      priceOfOffer: ' of listed price',
+    },
+  };
+
+  function t(key) {
+    return (I18N[LOCALE] && I18N[LOCALE][key]) || I18N.pl[key] || key;
+  }
+
+  function applyStaticCopy() {
+    var brandSpan = document.querySelector('.sheet-brand-left span');
+    if (brandSpan) brandSpan.textContent = t('sheetBrand');
+    var sheetLead = document.getElementById('sheetLead');
+    if (sheetLead) sheetLead.textContent = t('sheetLead');
+    var ids = {
+      sectionDescriptionTitle: 'sectionDescription',
+      sectionLocationTitle: 'sectionLocation',
+      sectionFloorPlanTitle: 'sectionFloorPlan',
+      descriptionHint: 'descriptionHint',
+      qrHeading: 'qrHeading',
+      qrLead: 'qrLead',
+      qrIntro: 'qrIntro',
+      trustNote: 'trustNote',
+      openApp: 'openApp',
+      registerCta: 'registerCta',
+      printBrochure: 'printBrochure',
+      copyLink: 'copyLink',
+      agentBadge: 'agentBadge',
+      agentBrandTagline: 'agentTagline',
+      agentQrLabel: 'agentQrLabel',
+      platformTitle: 'platformTitle',
+      soonLabel: 'soonLabel',
+    };
+    Object.keys(ids).forEach(function (elId) {
+      var el = document.getElementById(elId);
+      if (el) el.textContent = t(ids[elId]);
+    });
+    var platformLead = document.getElementById('platformLead');
+    if (platformLead) platformLead.innerHTML = t('platformLeadHtml');
+    var mapImg = document.getElementById('mapImage');
+    if (mapImg) mapImg.alt = t('mapAlt');
+    var floorImg = document.getElementById('floorPlanImage');
+    if (floorImg) floorImg.alt = t('floorPlanAlt');
+    var hero = document.getElementById('hero');
+    var heroLoading = document.getElementById('heroLoadingText');
+    if (heroLoading) heroLoading.textContent = t('loading');
+    var offerRef = document.getElementById('offerRef');
+    if (offerRef && id) offerRef.textContent = t('refPrefix') + id;
+    document.title = LOCALE === 'en' ? 'EstateOS™ — offer sheet' : 'EstateOS™ — wizytówka oferty';
+  }
+
+  applyStaticCopy();
+
   var PROPERTY_LABELS = {
     FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal użytkowy',
     APARTMENT: 'Mieszkanie', STUDIO: 'Kawalerka', LAND: 'Działka', OFFICE: 'Biuro', RETAIL: 'Lokal handlowy'
   };
+  var PROPERTY_LABELS_EN = {
+    FLAT: 'Flat', HOUSE: 'House', PLOT: 'Plot', COMMERCIAL: 'Commercial unit',
+    APARTMENT: 'Apartment', STUDIO: 'Studio', LAND: 'Land', OFFICE: 'Office', RETAIL: 'Retail unit'
+  };
   var TX_LABELS = { RENT: 'Wynajem', SELL: 'Sprzedaż', BUY: 'Kupno' };
+  var TX_LABELS_EN = { RENT: 'Rent', SELL: 'Sale', BUY: 'Buy' };
+  var CONDITION_LABELS = {
+    READY: 'Gotowe do wprowadzenia', DEVELOPER: 'Stan deweloperski',
+    TO_RENOVATION: 'Do remontu', NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry'
+  };
+  var CONDITION_LABELS_EN = {
+    READY: 'Move-in ready', DEVELOPER: 'Developer finish', TO_RENOVATION: 'Needs renovation',
+    NEW: 'New', VERY_GOOD: 'Very good', GOOD: 'Good'
+  };
+  var AMENITY_KEYS = [
+    ['hasBalcony', 'amenityBalcony'],
+    ['hasGarden', 'amenityGarden'],
+    ['hasParking', 'amenityParking'],
+    ['hasElevator', 'amenityElevator'],
+    ['hasStorage', 'amenityStorage'],
+    ['isFurnished', 'amenityFurnished'],
+  ];
+  I18N.pl.amenityBalcony = 'Balkon';
+  I18N.pl.amenityGarden = 'Ogród';
+  I18N.pl.amenityParking = 'Parking';
+  I18N.pl.amenityElevator = 'Winda';
+  I18N.pl.amenityStorage = 'Piwnica / komórka';
+  I18N.pl.amenityFurnished = 'Umeblowane';
+  I18N.en.amenityBalcony = 'Balcony';
+  I18N.en.amenityGarden = 'Garden';
+  I18N.en.amenityParking = 'Parking';
+  I18N.en.amenityElevator = 'Elevator';
+  I18N.en.amenityStorage = 'Storage / cellar';
+  I18N.en.amenityFurnished = 'Furnished';
 
-  function labelProperty(raw, fromApi) {
+  function labelProperty(raw, fromApi, fromApiEn) {
+    if (LOCALE === 'en' && fromApiEn) return fromApiEn;
     if (fromApi) return fromApi;
     var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
-    return PROPERTY_LABELS[key] || null;
+    var map = LOCALE === 'en' ? PROPERTY_LABELS_EN : PROPERTY_LABELS;
+    return map[key] || null;
   }
   function labelTransaction(raw) {
     var key = String(raw || '').trim().toUpperCase();
-    return TX_LABELS[key] || null;
+    var map = LOCALE === 'en' ? TX_LABELS_EN : TX_LABELS;
+    return map[key] || null;
   }
-  function labelCondition(raw, fromApi) {
+  function labelCondition(raw, fromApi, fromApiEn) {
+    if (LOCALE === 'en' && fromApiEn) return fromApiEn;
     if (fromApi) return fromApi;
-    var map = {
-      READY: 'Gotowe do wprowadzenia', DEVELOPER: 'Stan deweloperski',
-      TO_RENOVATION: 'Do remontu', NEW: 'Nowe', VERY_GOOD: 'Bardzo dobry', GOOD: 'Dobry'
-    };
     var key = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    var map = LOCALE === 'en' ? CONDITION_LABELS_EN : CONDITION_LABELS;
     return map[key] || null;
   }
 
@@ -564,10 +1215,82 @@
     var x = Number(n);
     if (!isFinite(x)) return String(n);
     try {
+      if (LOCALE === 'en') {
+        return x.toLocaleString('en-GB', { maximumFractionDigits: 0 }) + ' PLN';
+      }
       return x.toLocaleString('pl-PL', { maximumFractionDigits: 0 }) + ' zł';
     } catch (e) {
-      return String(Math.round(x)) + ' zł';
+      return String(Math.round(x)) + (LOCALE === 'en' ? ' PLN' : ' zł');
     }
+  }
+
+  function fmtPercent(raw) {
+    var x = Number(raw);
+    if (!isFinite(x)) return '';
+    var text = Number.isInteger(x) ? String(x) : x.toFixed(2).replace(/0$/, '').replace(/\.$/, '');
+    if (LOCALE === 'en') return text + '%';
+    return text.replace('.', ',') + '%';
+  }
+
+  function capitalizeLabel(value) {
+    var text = String(value || '').trim();
+    if (!text || /^\d/.test(text)) return text;
+    var loc = LOCALE === 'en' ? 'en-GB' : 'pl-PL';
+    return text.charAt(0).toLocaleUpperCase(loc) + text.slice(1);
+  }
+
+  function renderPriceCommission(data) {
+    var note = document.getElementById('priceCommissionNote');
+    if (!note) return;
+    var pctRaw = data.agentCommissionPercent;
+    if (pctRaw === null || pctRaw === undefined || pctRaw === '') {
+      note.hidden = true;
+      note.textContent = '';
+      return;
+    }
+    var pct = Number(pctRaw);
+    if (!isFinite(pct)) {
+      note.hidden = true;
+      return;
+    }
+    var price = Number(data.price);
+    if (!isFinite(price) || price <= 0) {
+      note.hidden = true;
+      return;
+    }
+    if (pct === 0) {
+      note.innerHTML = t('commissionNone');
+      note.hidden = false;
+      return;
+    }
+    var amount = Math.round((price * pct) / 100);
+    note.innerHTML = t('commissionInPrice')
+      .replace('{amount}', fmtMoney(amount))
+      .replace('{pct}', fmtPercent(pct));
+    note.hidden = false;
+  }
+
+  function isAgencyAccount(user) {
+    if (!user) return false;
+    var plan = String(user.planType || '').toUpperCase();
+    if (plan === 'AGENCY') return true;
+    var buyer = String(user.buyerType || '').toUpperCase();
+    if (buyer === 'AGENCY') return true;
+    var role = String(user.role || '').toUpperCase();
+    if (role === 'AGENT' || role === 'ADMIN') return true;
+    return false;
+  }
+
+  function initPrintAccess() {
+    fetch(ORIGIN + '/api/user/profile', { credentials: 'include' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (payload) {
+        var user = payload && (payload.user || payload);
+        if (!isAgencyAccount(user)) return;
+        var btn = document.getElementById('printBrochure');
+        if (btn) btn.hidden = false;
+      })
+      .catch(function () { /* tylko agencja widzi przycisk */ });
   }
 
   function setHero(src, alt) {
@@ -575,18 +1298,20 @@
     el.classList.remove('placeholder');
     el.innerHTML = '';
     if (!src) {
-      el.classList.add('placeholder');
-      el.textContent = 'Brak zdjęcia';
+      el.className = 'hero placeholder';
+      el.textContent = t('noPhoto');
       return;
     }
+    el.className = 'hero';
     var img = document.createElement('img');
-    img.alt = alt || 'Zdjęcie nieruchomości';
+    img.alt = alt || t('heroAlt');
     img.loading = 'eager';
     img.decoding = 'async';
+    img.crossOrigin = 'anonymous';
     img.src = src;
     img.onerror = function () {
-      el.classList.add('placeholder');
-      el.textContent = 'Nie udało się załadować zdjęcia';
+      el.className = 'hero placeholder';
+      el.textContent = t('photoError');
     };
     el.appendChild(img);
   }
@@ -599,13 +1324,14 @@
     urls.slice(0, 12).forEach(function (u, i) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.setAttribute('aria-label', 'Miniatura ' + (i + 1));
+      b.setAttribute('aria-label', t('thumbLabel') + (i + 1));
       var im = document.createElement('img');
       im.alt = '';
       im.loading = 'lazy';
+      im.crossOrigin = 'anonymous';
       im.src = u;
       b.appendChild(im);
-      b.addEventListener('click', function () { setHero(u); });
+      b.addEventListener('click', function () { setHero(u, document.getElementById('title').textContent); });
       wrap.appendChild(b);
     });
   }
@@ -614,7 +1340,7 @@
     if (value === null || value === undefined || value === '') return;
     var d = document.createElement('div');
     d.className = 'spec';
-    d.innerHTML = '<label>' + label + '</label><strong>' + String(value) + '</strong>';
+    d.innerHTML = '<label>' + label + '</label><strong>' + capitalizeLabel(String(value)) + '</strong>';
     grid.appendChild(d);
   }
 
@@ -622,20 +1348,229 @@
     var wrap = document.getElementById('amenities');
     wrap.innerHTML = '';
     var items = [];
-    if (data.hasBalcony) items.push('Balkon');
-    if (data.hasGarden) items.push('Ogród');
-    if (data.hasParking) items.push('Parking');
-    if (data.hasElevator) items.push('Winda');
-    if (data.hasStorage) items.push('Piwnica / komórka');
-    if (data.isFurnished) items.push('Umeblowane');
+    AMENITY_KEYS.forEach(function (pair) {
+      if (data[pair[0]]) items.push(t(pair[1]));
+    });
     if (!items.length) { wrap.hidden = true; return; }
     wrap.hidden = false;
-    items.forEach(function (t) {
+    items.forEach(function (label) {
       var s = document.createElement('span');
       s.className = 'amenity';
-      s.textContent = t;
+      s.textContent = label;
       wrap.appendChild(s);
     });
+  }
+
+  function stripDescriptionHtml(raw) {
+    var html = String(raw || '')
+      .replace(/<!--\s*estateos-otodom:\d+\s*-->/gi, '')
+      .replace(/<p>\s*<small>\s*Import OtoDom[\s\S]*?<\/small>\s*<\/p>/gi, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .trim();
+    if (!html) return '';
+    return html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/\s+\n/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function renderDescription(data) {
+    var section = document.getElementById('descriptionSection');
+    var body = document.getElementById('descriptionBody');
+    if (!section || !body) return;
+    var plain = stripDescriptionHtml(data.description || '');
+    if (!plain || plain.length < 16) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    body.textContent = plain;
+    section.classList.toggle('is-long', plain.length > 260);
+    cachedShare.description = plain.length > 320 ? plain.slice(0, 317) + '…' : plain;
+  }
+
+  function isAgentRole(user) {
+    if (!user) return false;
+    var role = String(user.role || '').toUpperCase();
+    if (role === 'AGENT' || role === 'AGENCY') return true;
+    var plan = String(user.planType || '').toUpperCase();
+    return plan === 'AGENCY' || plan === 'AGENT';
+  }
+
+  function fmtPhone(raw) {
+    var digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length === 11 && digits.charAt(0) === '4') digits = digits.slice(1);
+    if (digits.length === 9) {
+      return '+48 ' + digits.slice(0, 3) + ' ' + digits.slice(3, 6) + ' ' + digits.slice(6);
+    }
+    return String(raw || '').trim();
+  }
+
+  function setAgentLine(el, text) {
+    if (!el) return;
+    var value = String(text || '').trim();
+    if (!value) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = value;
+  }
+
+  function renderAgentCard(data) {
+    var card = document.getElementById('agentPrintCard');
+    if (!card) return;
+    var offerUser = data.user || {};
+    var userId = offerUser.id;
+    if (!userId) {
+      card.hidden = true;
+      return;
+    }
+
+    function paint(profile) {
+      var pub = profile && profile.user ? profile.user : {};
+      var personName = data.sellerPersonName || pub.personName || null;
+      var company = data.servicingCompanyName || pub.companyName || offerUser.companyName || null;
+      var display = data.sellerDisplayName || pub.displayName || offerUser.displayName || offerUser.name || t('agentDefaultName');
+      var primary = personName || display;
+      var agentLike = isAgentRole(pub.id ? pub : offerUser);
+      var kicker = agentLike ? t('agentKickerAgent') : t('agentKickerContact');
+      var phone = fmtPhone(pub.phone || offerUser.phone || '');
+      var email = String(offerUser.email || '').trim();
+
+      var kickerEl = document.getElementById('agentKicker');
+      if (kickerEl) kickerEl.textContent = kicker;
+      var nameEl = document.getElementById('agentName');
+      if (nameEl) nameEl.textContent = primary;
+      setAgentLine(document.getElementById('agentCompany'), company && company !== primary ? company : '');
+      setAgentLine(document.getElementById('agentPhone'), phone ? (t('agentPhonePrefix') + phone) : '');
+      setAgentLine(document.getElementById('agentEmail'), email || '');
+      var refEl = document.getElementById('agentPrintRef');
+      if (refEl) refEl.textContent = t('refPrefix') + id + ' · estateos.pl/o/' + id;
+      var photo = absUrl(pub.image || offerUser.image || '');
+      var photoEl = document.getElementById('agentPhoto');
+      var initialEl = document.getElementById('agentPhotoInitial');
+      if (photo && photoEl) {
+        photoEl.onload = function () {
+          photoEl.hidden = false;
+          if (initialEl) initialEl.hidden = true;
+        };
+        photoEl.onerror = function () {
+          photoEl.hidden = true;
+          if (initialEl) {
+            initialEl.hidden = false;
+            initialEl.textContent = (primary.charAt(0) || 'E').toUpperCase();
+          }
+        };
+        photoEl.crossOrigin = 'anonymous';
+        photoEl.src = photo;
+        photoEl.alt = primary;
+      } else if (initialEl) {
+        initialEl.hidden = false;
+        initialEl.textContent = (primary.charAt(0) || 'E').toUpperCase();
+        if (photoEl) photoEl.hidden = true;
+      }
+
+      card.hidden = false;
+    }
+
+    fetch(ORIGIN + '/api/users/' + encodeURIComponent(userId) + '/public', { credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (profile) { paint(profile); })
+      .catch(function () { paint(null); });
+  }
+
+  function renderMap(data) {
+    var section = document.getElementById('mapSection');
+    var img = document.getElementById('mapImage');
+    var link = document.getElementById('mapLink');
+    var caption = document.getElementById('mapCaption');
+    if (!section || !img || !link) return;
+
+    var lat = Number(data.lat);
+    var lng = Number(data.lng);
+    if (!isFinite(lat) || !isFinite(lng)) {
+      section.hidden = true;
+      return;
+    }
+
+    var locParts = [data.street, data.district, data.city].filter(Boolean);
+    var locLine = locParts.join(', ') || data.city || '';
+    var exact = data.isExactLocation !== false;
+    var mapsUrl = 'https://www.google.com/maps?q=' + lat + ',' + lng + '&z=' + (exact ? 17 : 15);
+    link.href = mapsUrl;
+    if (caption) {
+      caption.textContent = exact
+        ? (locLine ? t('mapExactPrefix') + locLine : t('mapExactFallback'))
+        : (locLine ? t('mapAreaPrefix') + locLine + t('mapAreaSuffix') : t('mapAreaFallback'));
+    }
+
+    fetch(ORIGIN + '/api/map/config', { credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (cfg) {
+        var token = cfg && cfg.mapboxToken ? String(cfg.mapboxToken).trim() : '';
+        if (!token) throw new Error('no token');
+        var overlay = exact
+          ? 'pin-l+cc9a2e(' + lng + ',' + lat + ')'
+          : 'circle-rgba(184,146,46,0.35)-stroke-rgba(184,146,46,0.9)-stroke-width-2+' + lng + ',' + lat + '+120';
+        var staticUrl =
+          'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/' +
+          overlay + '/' + lng + ',' + lat + ',' + (exact ? '16.5' : '14.2') + ',0,45/640x320@2x' +
+          '?access_token=' + encodeURIComponent(token);
+        img.crossOrigin = 'anonymous';
+        img.src = staticUrl;
+        img.onerror = function () { section.hidden = true; };
+        section.hidden = false;
+      })
+      .catch(function () {
+        img.crossOrigin = 'anonymous';
+        img.src =
+          'https://staticmap.openstreetmap.de/staticmap.php?center=' + lat + ',' + lng +
+          '&zoom=' + (exact ? 16 : 14) + '&size=640x320&maptype=mapnik' +
+          (exact ? '&markers=' + lat + ',' + lng + ',red-pushpin' : '');
+        img.onerror = function () { section.hidden = true; };
+        section.hidden = false;
+      });
+  }
+
+  function renderFloorPlan(data) {
+    var section = document.getElementById('floorPlanSection');
+    var img = document.getElementById('floorPlanImage');
+    var link = document.getElementById('floorPlanLink');
+    if (!section || !img) return;
+    var url = absUrl(data.floorPlanUrl || data.floorPlan || '');
+    if (!url) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    if (link) {
+      link.href = url;
+      link.setAttribute('aria-label', t('floorPlanAria'));
+    }
+    img.onerror = function () { section.hidden = true; };
+  }
+
+  function setBrochureQr(src) {
+    var agentQr = document.getElementById('agentPrintQr');
+    if (agentQr && src) {
+      agentQr.src = src;
+      agentQr.alt = t('qrAlt');
+      agentQr.hidden = false;
+    }
   }
 
   function renderQr() {
@@ -645,9 +1580,10 @@
     if (!canvas) return;
 
     function mountQrImage(src) {
+      setBrochureQr(src);
       var img = document.createElement('img');
       img.className = 'qr-img';
-      img.alt = 'Kod QR — otwórz ofertę w aplikacji EstateOS';
+      img.alt = t('qrAlt');
       img.width = 128;
       img.height = 128;
       img.src = src;
@@ -698,17 +1634,20 @@
     document.getElementById('fatal').style.display = 'block';
     document.getElementById('fatal').textContent = msg;
     var el = document.getElementById('hero');
-    el.classList.add('placeholder');
-    el.innerHTML = 'Nie udało się pobrać danych';
+    if (el) {
+      el.className = 'hero placeholder';
+      el.textContent = t('heroLoadFail');
+    }
   }
 
   if (!id) {
-    fatal('Niepoprawny adres — brak identyfikatora oferty w ścieżce /o/{id}.');
+    fatal(t('fatalInvalidId'));
     return;
   }
 
-  document.getElementById('offerRef').textContent = 'Ref. ' + id;
+  document.getElementById('offerRef').textContent = t('refPrefix') + id;
   renderQr();
+  initPrintAccess();
 
   var APP_STORE_URL = 'https://apps.apple.com/app/id6762899098';
   var PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=pl.estateos.app';
@@ -770,35 +1709,75 @@
     try {
       if (navigator.share && isIOS()) {
         await navigator.share({ title: document.getElementById('title').textContent, text: shareText, url: canonicalHttps });
-        toast.textContent = 'Udostępniono wizytówkę oferty.';
+        toast.textContent = t('toastShared');
         toast.className = 'toast ok';
         return;
       }
       await navigator.clipboard.writeText(shareText);
-      toast.textContent = 'Skopiowano tekst do wiadomości — wklej w SMS, mailu lub czacie.';
+      toast.textContent = t('toastCopied');
       toast.className = 'toast ok';
     } catch (e) {
       try {
         await navigator.clipboard.writeText(canonicalHttps);
-        toast.textContent = 'Skopiowano link: ' + canonicalHttps;
+        toast.textContent = t('toastLinkCopied') + canonicalHttps;
         toast.className = 'toast ok';
       } catch (e2) {
-        toast.textContent = 'Skopiuj ręcznie: ' + canonicalHttps;
+        toast.textContent = t('toastCopyManual') + canonicalHttps;
         toast.className = 'toast';
       }
     }
   });
 
-  var cachedShare = { title: '', priceLine: '', summary: '' };
+  var printBrochureBtn = document.getElementById('printBrochure');
+  if (printBrochureBtn) {
+    printBrochureBtn.addEventListener('click', function () {
+      var agentCard = document.getElementById('agentPrintCard');
+      var agentWasHidden = agentCard && agentCard.hidden;
+      if (agentCard) agentCard.hidden = false;
+      window.scrollTo(0, 0);
+
+      var restored = false;
+      function restoreAfterPrint() {
+        if (restored) return;
+        restored = true;
+        if (agentCard && agentWasHidden) agentCard.hidden = true;
+      }
+
+      window.addEventListener('afterprint', function onAfterPrint() {
+        window.removeEventListener('afterprint', onAfterPrint);
+        restoreAfterPrint();
+      });
+
+      try {
+        window.print();
+      } catch (e) {
+        restoreAfterPrint();
+        var toast = document.getElementById('toast');
+        if (toast) {
+          toast.textContent = t('toastPrintFail');
+          toast.className = 'toast';
+        }
+        return;
+      }
+
+      setTimeout(restoreAfterPrint, 1500);
+    });
+  }
+
+  var cachedShare = { title: '', priceLine: '', summary: '', description: '' };
   function buildShareText() {
     var lines = [];
     if (cachedShare.title) lines.push(cachedShare.title);
     if (cachedShare.summary) lines.push(cachedShare.summary);
     if (cachedShare.priceLine) lines.push(cachedShare.priceLine);
+    if (cachedShare.description) {
+      lines.push('');
+      lines.push(cachedShare.description);
+    }
     lines.push('');
     lines.push(canonicalHttps);
     lines.push('');
-    lines.push('EstateOS™ — zeskanuj QR na wizytówce lub otwórz link w aplikacji.');
+    lines.push(t('shareFooter'));
     return lines.join('\n');
   }
 
@@ -810,29 +1789,30 @@
     .then(function (data) {
       if (!data || data.error) throw new Error(data && data.error ? String(data.error) : 'Brak danych');
 
-      var propLabel = labelProperty(data.propertyType, data.propertyTypeLabel);
+      var propLabel = labelProperty(data.propertyType, data.propertyTypeLabel, data.propertyTypeLabelEn);
       var txLabel = labelTransaction(data.transactionType);
-      var condLabel = labelCondition(data.condition, data.conditionLabel);
+      var condLabel = labelCondition(data.condition, data.conditionLabel, data.conditionLabelEn);
       var isRent = String(data.transactionType || '').toUpperCase() === 'RENT';
 
       var imgs = parseImages(data.images).map(absUrl).filter(Boolean);
-      var title = data.title || ('Oferta #' + id);
+      var title = data.title || (t('offerTitleFallback') + id);
       setHero(imgs[0] || '', title);
       renderThumbs(imgs);
 
       var locParts = [data.district, data.city].filter(Boolean);
-      var loc = locParts.join(', ') || data.city || 'Polska';
-      var summaryParts = [propLabel, txLabel ? (isRent ? 'do wynajęcia' : 'na sprzedaż') : null, loc].filter(Boolean);
+      var loc = locParts.join(', ') || data.city || t('countryDefault');
+      var summaryParts = [propLabel, txLabel ? (isRent ? t('forRent') : t('forSale')) : null, loc].filter(Boolean);
       var summaryLine = summaryParts.join(' · ');
 
       document.getElementById('title').textContent = title;
       document.getElementById('summaryLine').textContent = summaryLine;
       document.getElementById('location').textContent = loc;
       document.getElementById('price').textContent = fmtMoney(data.price);
+      renderPriceCommission(data);
 
       var suffixEl = document.getElementById('priceSuffix');
       if (isRent) {
-        suffixEl.textContent = '/ miesiąc';
+        suffixEl.textContent = t('perMonth');
         suffixEl.hidden = false;
       } else {
         suffixEl.hidden = true;
@@ -855,30 +1835,35 @@
 
       var grid = document.getElementById('specGrid');
       grid.innerHTML = '';
-      if (data.area != null) addSpec(grid, 'Powierzchnia', String(data.area).replace('.', ',') + ' m²');
-      if (data.rooms != null) addSpec(grid, 'Liczba pokoi', data.rooms);
-      if (data.floor != null && data.floor !== '') addSpec(grid, 'Piętro', data.floor);
+      var areaUnit = t('areaUnit');
+      if (data.area != null) addSpec(grid, t('specArea'), String(data.area).replace('.', LOCALE === 'en' ? '.' : ',') + areaUnit);
+      if (data.rooms != null) addSpec(grid, t('specRooms'), data.rooms);
+      if (data.floor != null && data.floor !== '') addSpec(grid, t('specFloor'), data.floor);
       var year = data.yearBuilt || data.buildYear || data.year;
-      if (year) addSpec(grid, 'Rok budowy', year);
-      if (condLabel) addSpec(grid, 'Stan', condLabel);
-      if (data.plotArea) addSpec(grid, 'Działka', String(data.plotArea).replace('.', ',') + ' m²');
+      if (year) addSpec(grid, t('specYear'), year);
+      if (condLabel) addSpec(grid, t('specCondition'), condLabel);
+      if (data.plotArea) addSpec(grid, t('specPlot'), String(data.plotArea).replace('.', LOCALE === 'en' ? '.' : ',') + areaUnit);
 
       renderAmenities(data);
+      renderDescription(data);
+      renderMap(data);
+      renderFloorPlan(data);
+      renderAgentCard(data);
 
       cachedShare.title = title;
       cachedShare.summary = summaryLine;
-      cachedShare.priceLine = fmtMoney(data.price) + (isRent ? ' / mc' : '');
+      cachedShare.priceLine = fmtMoney(data.price) + (isRent ? t('perMonthShort') : '');
 
-      var ogDesc = summaryLine + ' — ' + cachedShare.priceLine + '. Zeskanuj QR lub otwórz w aplikacji EstateOS™.';
+      var ogDesc = summaryLine + ' — ' + cachedShare.priceLine + t('shareOgSuffix');
       updateShareMeta(title, ogDesc, imgs[0] || '');
 
       document.getElementById('panel').hidden = false;
     })
     .catch(function (e) {
-      fatal('Nie udało się wczytać oferty (' + (e && e.message ? e.message : 'błąd') + ').');
+      fatal(t('fatalLoadError').replace('{msg}', e && e.message ? e.message : (LOCALE === 'en' ? 'error' : 'błąd')));
       document.getElementById('panel').hidden = false;
-      document.getElementById('title').textContent = 'Oferta #' + id;
-      document.getElementById('summaryLine').textContent = 'Wizytówka nieruchomości · EstateOS™';
+      document.getElementById('title').textContent = t('offerTitleFallback') + id;
+      document.getElementById('summaryLine').textContent = t('fallbackSummary');
       document.getElementById('location').textContent = 'estateos.pl';
       document.getElementById('price').textContent = '';
       setHero('');

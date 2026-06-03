@@ -47,6 +47,7 @@ import {
 } from '../../services/offerPublicationService';
 import type { CreatePublicationRedemption } from '../../contracts/offerPublicationContract';
 import { gatherPublicationBonusCoupons } from '../../services/publicationBonusCoupons';
+import { recordPositiveAppMoment } from '../../services/appRatingPrompt';
 import { readUserFirstFreePublicationUsed } from '../../utils/userPublicationFlags';
 import { markProfilePromoCouponUsed } from '../../services/profilePromoService';
 import PublicationChoiceModal, {
@@ -668,6 +669,49 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           setPublicationChoiceHasPlus(hasAdditionalPlusPublication(u));
           setPublicationChoiceVisible(true);
           return;
+        } else if (
+          response.status === 422 &&
+          (errData as { code?: string }).code === 'NEEDS_USER_INPUT'
+        ) {
+          const issues =
+            (errData as {
+              issues?: Array<{ field?: string; kind?: string; to?: string; message?: string }>;
+            }).issues || [];
+          const cityIssue = issues.find((i) => i.field === 'city' && i.kind === 'suggest_replace' && i.to);
+          if (cityIssue?.to) {
+            setLoading(false);
+            Alert.alert(
+              'Lokalizacja',
+              `${cityIssue.message || 'Nazwa miejscowości różni się od pinezki.'}\n\nUżyć „${cityIssue.to}”?`,
+              [
+                { text: 'Anuluj', style: 'cancel' },
+                {
+                  text: `Użyj ${cityIssue.to}`,
+                  onPress: () => {
+                    useOfferStore.getState().updateDraft({ city: String(cityIssue.to) });
+                    void handlePublish(skipChoiceModal, plusCtx, redemption);
+                  },
+                },
+              ],
+            );
+            return;
+          }
+          setLoading(false);
+          Alert.alert(
+            'Uzupełnij dane',
+            issues.map((i) => i.message).filter(Boolean).join('\n') ||
+              String((errData as { message?: string }).message || ''),
+            [
+              {
+                text: 'Popraw',
+                onPress: () => {
+                  const step = issues.some((i) => i.field === 'area') ? 3 : 2;
+                  navigation.navigate(`Step${step}` as never);
+                },
+              },
+            ],
+          );
+          return;
         } else {
           const orphanId = Number((errData as { offer?: { id?: number } }).offer?.id);
           if (Number.isFinite(orphanId) && orphanId > 0) {
@@ -792,6 +836,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
 
       // 4. SUKCES
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void recordPositiveAppMoment('offer_published');
       Alert.alert(
         t('addOffer.step6.alerts.congratulations.title'),
         legalQueueSubmitted

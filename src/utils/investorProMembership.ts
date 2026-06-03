@@ -58,7 +58,13 @@ export function buildProMembershipCountdown(
 
 export function userAfterInvestorProPurchase(
   user: Record<string, unknown> | null | undefined,
-  opts: { isPro?: boolean; proExpiresAt?: string | null; backendRegistered?: boolean },
+  opts: {
+    isPro?: boolean;
+    proExpiresAt?: string | null;
+    backendRegistered?: boolean;
+    extraListings?: number;
+    plusExpiresAt?: string | null;
+  },
 ): Record<string, unknown> | null {
   if (!user) return null;
   if (opts.isPro === true || opts.proExpiresAt) {
@@ -67,11 +73,20 @@ export function userAfterInvestorProPurchase(
       isPro: true,
       planType: 'PRO',
       ...(opts.proExpiresAt ? { proExpiresAt: opts.proExpiresAt } : {}),
+      ...(opts.extraListings != null ? { extraListings: opts.extraListings } : {}),
+      ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
     };
   }
   if (opts.backendRegistered) {
     const optimistic = new Date(Date.now() + DEFAULT_PRO_PERIOD_MS).toISOString();
-    return { ...user, isPro: true, planType: 'PRO', proExpiresAt: optimistic };
+    return {
+      ...user,
+      isPro: true,
+      planType: 'PRO',
+      proExpiresAt: optimistic,
+      ...(opts.extraListings != null ? { extraListings: opts.extraListings } : {}),
+      ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
+    };
   }
   return user;
 }

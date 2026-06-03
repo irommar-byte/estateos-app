@@ -1,4 +1,5 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
@@ -66,18 +67,7 @@ export async function draftToOfferCreateBody(
   userId: number,
   presentation: { title: string; descriptionHtml: string },
 ) {
-  if (draft.lat == null || draft.lng == null) {
-    throw new Error('Brak współrzędnych GPS — nie można utworzyć oferty.');
-  }
-  if (!draft.title?.trim()) {
-    throw new Error('Brak tytułu ogłoszenia.');
-  }
-  if (draft.price == null || draft.price <= 0) {
-    throw new Error('Brak poprawnej ceny.');
-  }
-  if (draft.area == null || draft.area <= 0) {
-    throw new Error('Brak poprawnego metrażu.');
-  }
+  assertOtodomImportDraftReady(draft);
 
   const { city, district, street } = await resolveOtodomImportLocationFields(draft);
   const features = draft.features || [];

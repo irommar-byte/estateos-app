@@ -4,10 +4,17 @@ import {
   inferAreaLabelFromMapboxFeature,
   inferCityFromMapboxFeature,
   inferStrictDistrictFromMapboxFeature,
+  isPlaceholderDistrict,
   isStrictCity,
+  matchDistrictAlias,
   pickDistrictFromPlaceName,
   validateCityDistrict,
 } from "@/lib/location/locationCatalog";
+import {
+  resolveStrictDistrictForForm,
+  resolveStrictDistrictFromPin,
+} from "@/lib/location/strictDistrictFromPin";
+import { isOutsidePolandBounds, locationNamesEquivalent } from "@/lib/location/locationNameMatch";
 
 export type ResolvedOfferLocation = {
   city: string;
@@ -25,7 +32,9 @@ export async function fetchMapboxReverseFeature(lat: number, lng: number) {
   const token = getMapboxToken();
   if (!token) return null;
 
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&country=pl&types=address,place,locality,neighborhood,district`;
+  const inPoland = !isOutsidePolandBounds(lat, lng);
+  const countryParam = inPoland ? "&country=pl" : "";
+  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1${countryParam}&types=address,place,locality,neighborhood,district`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });
@@ -35,6 +44,48 @@ export async function fetchMapboxReverseFeature(lat: number, lng: number) {
   } catch {
     return null;
   }
+}
+
+function isDistrictHint(value: unknown): value is string {
+  return !isPlaceholderDistrict(String(value ?? ""));
+}
+
+/** Kandydaci dzielnicy z danych OtoDom — przed GPS / pinezką. */
+export function collectOtodomDistrictCandidates(
+  city: string,
+  draft: {
+    district?: string | null;
+    neighborhood?: string | null;
+    street?: string | null;
+  },
+): string[] {
+  const canonicalCity = canonicalizeCity(city);
+  const hints: string[] = [];
+  const push = (value: unknown) => {
+    if (!isDistrictHint(value)) return;
+    const raw = String(value).trim();
+    const alias = matchDistrictAlias(canonicalCity, raw);
+    if (alias) hints.push(alias);
+    const canon = canonicalizeDistrict(canonicalCity, raw);
+    if (canon) hints.push(canon);
+    const picked = pickDistrictFromPlaceName(canonicalCity, raw);
+    if (picked) hints.push(picked);
+    hints.push(raw);
+  };
+
+  push(draft.district);
+  push(draft.neighborhood);
+
+  const combined = [draft.district, draft.neighborhood, draft.street].filter(isDistrictHint).join(", ");
+  if (combined) {
+    const picked = pickDistrictFromPlaceName(canonicalCity, combined);
+    if (picked) hints.push(picked);
+    for (const part of combined.split(/[,·/|]+/)) {
+      push(part);
+    }
+  }
+
+  return [...new Set(hints.filter(isDistrictHint))];
 }
 
 /**
@@ -71,8 +122,23 @@ export async function resolveOfferLocationFromCoordinates(params: {
   const areaGuess = strict ? "" : inferAreaLabelFromMapboxFeature(city, feature);
   const districtGuess = districtGuessByContext || districtGuessByLabel || areaGuess;
   const districtMerged = districtGuess || inferAreaLabelFromMapboxFeature(city, feature);
-  const district = canonicalizeDistrict(city, districtMerged);
-  const validation = validateCityDistrict(city, district);
+  let district = canonicalizeDistrict(city, districtMerged);
+  let validation = validateCityDistrict(city, district);
+
+  if (strict && !validation.valid) {
+    const pinDistrict = resolveStrictDistrictFromPin(
+      city,
+      params.lat,
+      params.lng,
+      districtMerged || null,
+      feature,
+    );
+    const pinValidation = validateCityDistrict(city, pinDistrict);
+    if (pinValidation.valid) {
+      district = pinValidation.district;
+      validation = pinValidation;
+    }
+  }
 
   return {
     city,
@@ -95,6 +161,7 @@ export async function resolveOtodomImportLocationFields(draft: {
     throw new Error("Brak współrzędnych GPS — nie można utworzyć oferty.");
   }
 
+  const feature = await fetchMapboxReverseFeature(draft.lat, draft.lng);
   const resolved = await resolveOfferLocationFromCoordinates({
     lat: draft.lat,
     lng: draft.lng,
@@ -102,11 +169,23 @@ export async function resolveOtodomImportLocationFields(draft: {
     streetHint: draft.street,
   });
 
-  if (resolved?.validation.valid) {
+  const draftCity = canonicalizeCity(draft.city || "");
+  const mapCity = canonicalizeCity(resolved?.city || "");
+  const trustDraftLocality =
+    draftCity &&
+    !isStrictCity(draftCity) &&
+    (isOutsidePolandBounds(draft.lat, draft.lng) ||
+      !mapCity ||
+      locationNamesEquivalent(mapCity, draftCity));
+
+  if (trustDraftLocality) {
+    const district =
+      String(draft.district || draft.neighborhood || resolved?.district || "").trim() ||
+      "Inny obszar";
     return {
-      city: resolved.validation.city,
-      district: resolved.validation.district,
-      street: resolved.street || String(draft.street || "").trim(),
+      city: draftCity,
+      district,
+      street: String(draft.street || resolved?.street || "").trim(),
     };
   }
 
@@ -115,14 +194,58 @@ export async function resolveOtodomImportLocationFields(draft: {
     throw new Error("Nie udało się ustalić miasta na podstawie współrzędnych.");
   }
 
+  const street = resolved?.street || String(draft.street || "").trim();
+  const importCandidates = collectOtodomDistrictCandidates(city, draft);
+
+  if (resolved?.validation.valid) {
+    return {
+      city: resolved.validation.city,
+      district: resolved.validation.district,
+      street,
+    };
+  }
+
   if (isStrictCity(city)) {
+    const district = resolveStrictDistrictForForm(
+      city,
+      draft.lat,
+      draft.lng,
+      importCandidates,
+    );
+    const validation = validateCityDistrict(city, district);
+    if (validation.valid) {
+      return {
+        city: validation.city,
+        district: validation.district,
+        street,
+      };
+    }
+
+    const pinDistrict = resolveStrictDistrictFromPin(
+      city,
+      draft.lat,
+      draft.lng,
+      importCandidates[0] ?? null,
+      feature ?? undefined,
+    );
+    const pinValidation = validateCityDistrict(city, pinDistrict);
+    if (pinValidation.valid) {
+      return {
+        city: pinValidation.city,
+        district: pinValidation.district,
+        street,
+      };
+    }
+
     throw new Error(
-      resolved?.validation.message ||
-        `Nie udało się dopasować dzielnicy dla ${city} na podstawie współrzędnych GPS. Sprawdź pinezkę w edycji oferty.`,
+      pinValidation.message ||
+        resolved?.validation.message ||
+        `Nie udało się dopasować dzielnicy dla ${city}. Sprawdź pinezkę w podglądzie mapy.`,
     );
   }
 
   const fallbackDistrict =
+    importCandidates[0] ||
     resolved?.district ||
     String(draft.neighborhood || "").trim() ||
     String(draft.district || "").trim() ||
@@ -135,6 +258,6 @@ export async function resolveOtodomImportLocationFields(draft: {
   return {
     city: validation.city,
     district: validation.district,
-    street: resolved?.street || String(draft.street || "").trim(),
+    street,
   };
 }

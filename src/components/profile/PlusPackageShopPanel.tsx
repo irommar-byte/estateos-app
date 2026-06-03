@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,6 +22,10 @@ type Props = {
   restoreSubtitle: string;
   restoring: boolean;
   buying: boolean;
+  defaultExpanded?: boolean;
+  embedded?: boolean;
+  showRestore?: boolean;
+  footer?: React.ReactNode;
   onBuy: () => void;
   onRestore: () => void;
 };
@@ -40,17 +44,38 @@ export default function PlusPackageShopPanel({
   restoreSubtitle,
   restoring,
   buying,
+  defaultExpanded = true,
+  embedded = false,
+  showRestore = true,
+  footer,
   onBuy,
   onRestore,
 }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const panelBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const panelBorder = isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.35)';
+  const panelBorder = hasPlusAvailable
+    ? isDark
+      ? 'rgba(16,185,129,0.55)'
+      : 'rgba(16,185,129,0.62)'
+    : isDark
+      ? 'rgba(16,185,129,0.28)'
+      : 'rgba(16,185,129,0.35)';
   const divider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   const accent = hasPlusAvailable ? '#10B981' : '#0A84FF';
 
   return (
-    <View style={[styles.panel, { backgroundColor: panelBg, borderColor: panelBorder }]}>
-      <View style={styles.statusRow}>
+    <View
+      style={[
+        styles.panel,
+        embedded && styles.panelEmbedded,
+        { backgroundColor: panelBg, borderColor: panelBorder },
+        hasPlusAvailable && !embedded && styles.panelActiveGlow,
+      ]}
+    >
+      <Pressable
+        onPress={() => setExpanded((v) => !v)}
+        style={({ pressed }) => [styles.statusRow, pressed && { opacity: 0.92 }]}
+      >
         <View style={[styles.slotBadge, { backgroundColor: `${accent}18`, borderColor: `${accent}44` }]}>
           <Text style={[styles.slotNumber, { color: accent }]}>{hasPlusAvailable ? plusSlots : '0'}</Text>
           <Text style={[styles.slotCaption, { color: isDark ? 'rgba(235,235,245,0.5)' : '#8E8E93' }]}>
@@ -69,60 +94,75 @@ export default function PlusPackageShopPanel({
             {daysLabel}
           </Text>
         </View>
-        <View style={[styles.statusIcon, { backgroundColor: accent }]}>
-          <Ionicons name={hasPlusAvailable ? 'checkmark-circle' : 'bag-add'} size={22} color="#FFFFFF" />
+        <View style={styles.headerActions}>
+          <View style={[styles.statusIcon, { backgroundColor: accent }]}>
+            <Ionicons name={hasPlusAvailable ? 'checkmark-circle' : 'bag-add'} size={22} color="#FFFFFF" />
+          </View>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={isDark ? '#8E8E93' : '#C7C7CC'}
+          />
         </View>
-      </View>
-
-      <View style={[styles.divider, { backgroundColor: divider }]} />
-
-      <Pressable
-        onPress={onBuy}
-        disabled={buying}
-        style={({ pressed }) => [
-          styles.actionRow,
-          pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-          buying && { opacity: 0.7 },
-        ]}
-      >
-        <View style={[styles.actionIcon, { backgroundColor: '#10B981' }]}>
-          {buying ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Ionicons name="bag-check" size={21} color="#FFFFFF" />
-          )}
-        </View>
-        <View style={styles.actionBody}>
-          <Text style={[styles.actionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{buyLabel}</Text>
-          <Text style={styles.actionSubtitle}>{buySubtitle}</Text>
-        </View>
-        {!buying && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
       </Pressable>
 
-      <View style={[styles.dividerThin, { backgroundColor: divider }]} />
+      {expanded ? (
+        <>
+          <View style={[styles.divider, { backgroundColor: divider }]} />
 
-      <Pressable
-        onPress={onRestore}
-        disabled={restoring}
-        style={({ pressed }) => [
-          styles.actionRow,
-          pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
-          restoring && { opacity: 0.7 },
-        ]}
-      >
-        <View style={[styles.actionIcon, { backgroundColor: '#0A84FF' }]}>
-          {restoring ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Ionicons name="refresh-circle" size={22} color="#FFFFFF" />
-          )}
-        </View>
-        <View style={styles.actionBody}>
-          <Text style={[styles.actionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{restoreLabel}</Text>
-          <Text style={styles.actionSubtitle}>{restoreSubtitle}</Text>
-        </View>
-        {!restoring && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-      </Pressable>
+          <Pressable
+            onPress={onBuy}
+            disabled={buying}
+            style={({ pressed }) => [
+              styles.actionRow,
+              pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+              buying && { opacity: 0.7 },
+            ]}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#10B981' }]}>
+              {buying ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="bag-check" size={21} color="#FFFFFF" />
+              )}
+            </View>
+            <View style={styles.actionBody}>
+              <Text style={[styles.actionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{buyLabel}</Text>
+              <Text style={styles.actionSubtitle}>{buySubtitle}</Text>
+            </View>
+            {!buying && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+          </Pressable>
+
+          <View style={[styles.dividerThin, { backgroundColor: divider }]} />
+
+          {showRestore ? (
+            <Pressable
+              onPress={onRestore}
+              disabled={restoring}
+              style={({ pressed }) => [
+                styles.actionRow,
+                pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                restoring && { opacity: 0.7 },
+              ]}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: '#0A84FF' }]}>
+                {restoring ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh-circle" size={22} color="#FFFFFF" />
+                )}
+              </View>
+              <View style={styles.actionBody}>
+                <Text style={[styles.actionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{restoreLabel}</Text>
+                <Text style={styles.actionSubtitle}>{restoreSubtitle}</Text>
+              </View>
+              {!restoring && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+            </Pressable>
+          ) : null}
+
+          {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+        </>
+      ) : null}
     </View>
   );
 }
@@ -137,6 +177,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 4,
+  },
+  panelEmbedded: {
+    borderRadius: 0,
+    borderWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  panelActiveGlow: {
+    shadowColor: '#10B981',
+    shadowOpacity: 0.32,
+    shadowRadius: 22,
+    elevation: 8,
   },
   statusRow: {
     flexDirection: 'row',
@@ -181,6 +233,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '500',
   },
+  headerActions: {
+    alignItems: 'center',
+    gap: 6,
+  },
   statusIcon: {
     width: 40,
     height: 40,
@@ -221,5 +277,10 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     marginTop: 2,
     lineHeight: 16,
+  },
+  footerWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 4,
   },
 });

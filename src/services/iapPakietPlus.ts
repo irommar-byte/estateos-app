@@ -10,7 +10,7 @@
 
 import Constants from 'expo-constants';
 import { IAP_PRODUCT_IDS } from '../contracts/iapContract';
-import { IAPManager, type IapProductId, type PurchaseConsumableOptions } from './iapManager';
+import { IAPManager, type IapProductId, type PurchaseConsumableOptions, type RestorePurchasesResult } from './iapManager';
 
 const DEFAULT_PRODUCT_ID: IapProductId = IAP_PRODUCT_IDS.PAKIET_PLUS_30D;
 
@@ -78,10 +78,6 @@ export async function purchasePakietPlusConsumable(
  * Przywróć zakupy (App Store Review Guideline 3.1.1).
  * Wystawiamy jako reusowalny helper dla Profile screen.
  */
-export async function restorePakietPlusPurchases(): Promise<{
-  ok: boolean;
-  restored: number;
-  message?: string;
-}> {
+export async function restorePakietPlusPurchases(): Promise<RestorePurchasesResult> {
   return IAPManager.restorePurchases();
 }

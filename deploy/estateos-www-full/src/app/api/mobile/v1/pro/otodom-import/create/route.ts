@@ -11,6 +11,7 @@ import {
   ImportPublicationError,
   type ImportRedemptionInput,
 } from '@/lib/otodomImportPublication';
+import { ImportDraftValidationError, issuesFromCreateErrorMessage } from '@/lib/importDraftValidate';
 import { getCreatePublicationQuote } from '@/lib/offerPublication';
 
 async function requireInvestorPro(req: Request) {
@@ -175,7 +176,26 @@ export async function POST(req: Request) {
           : `Utworzono ofertę #${result.offerId} (PENDING). Publikacja opłacona. Zdjęcia uzupełnij ręcznie.`,
     });
   } catch (error) {
+    if (error instanceof ImportDraftValidationError) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: error.code,
+          issues: error.issues,
+          message: error.message,
+        },
+        { status: 422 },
+      );
+    }
     const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
-    return NextResponse.json({ success: false, message }, { status: 422 });
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'NEEDS_USER_INPUT',
+        issues: issuesFromCreateErrorMessage(message),
+        message,
+      },
+      { status: 422 },
+    );
   }
 }

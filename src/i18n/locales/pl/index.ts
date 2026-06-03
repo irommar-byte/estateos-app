@@ -8,6 +8,8 @@ import { profile } from './profile';
 import { radar } from './radar';
 import { report } from './report';
 import { tabs } from './tabs';
+import { appRating } from './appRating';
+import { openHouse } from './openHouse';
 
 export const pl = {
   common,
@@ -20,4 +22,6 @@ export const pl = {
   profile,
   offer,
   radar,
+  appRating,
+  openHouse,
 };

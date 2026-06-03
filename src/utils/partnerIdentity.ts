@@ -41,6 +41,8 @@ export function isAgentRoleIdentity(input: any): boolean {
 }
 
 export function isInvestorProIdentity(input: any): boolean {
+  if (input?.isPro === true || input?.user?.isPro === true) return true;
+
   const plusSignals = [
     input?.planType,
     input?.subscriptionPlan,
@@ -79,8 +81,6 @@ export function isInvestorProIdentity(input: any): boolean {
   ]
     .map((v) => String(v || '').trim().toUpperCase())
     .filter(Boolean);
-
-  if (input?.isPro === true || input?.user?.isPro === true) return true;
 
   const subscriptionStatus = String(input?.subscriptionStatus || input?.user?.subscriptionStatus || '')
     .trim()

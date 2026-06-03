@@ -3,6 +3,10 @@ import { usePushNotifications } from './src/hooks/usePushNotifications';
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
 import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
+import OpenHouseHubScreen from './src/screens/OpenHouseHubScreen';
+import OpenHouseCreateScreen from './src/screens/OpenHouseCreateScreen';
+import OpenHouseEventScreen from './src/screens/OpenHouseEventScreen';
+import OpenHouseLiveTicker from './src/components/openHouse/OpenHouseLiveTicker';
 import CircularLabelRing from './src/components/CircularLabelRing';
 import { IAPManager } from './src/services/iapManager';
 import { API_URL } from './src/config/network';
@@ -70,6 +74,9 @@ const Colors = {
 
 import ProfileScreen from './src/screens/ProfileScreen';
 import BonusCouponNotifyBootstrap from './src/components/profile/BonusCouponNotifyBootstrap';
+import AppRatingPromptHost from './src/components/AppRatingPromptHost';
+import InvestorProTrialIntroHost from './src/components/profile/InvestorProTrialIntroHost';
+import InvestorProUpsellHost from './src/components/profile/InvestorProUpsellHost';
 import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
@@ -896,6 +903,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const currentColors = Colors[resolvedTheme];
 
   return (
+    <View style={{ flex: 1 }}>
+      <OpenHouseLiveTicker enabled={splashDone} />
     <Tab.Navigator
       /**
        * RN 0.81 + bottom-tabs `animation: 'shift'` + domyślne detach inactive screens
@@ -976,7 +985,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       </Tab.Screen>
       <Tab.Screen
         name="Ulubione"
-        initialParams={{ favoritesOnly: true, favoritesScope: 'FAVORITES' }}
+        initialParams={{ favoritesOnly: true, favoritesScope: 'MINE' }}
         options={{ tabBarLabel: t('tabs.favorites'), tabBarIcon: ({ color }) => <Ionicons name="heart" size={24} color={color} /> }}
       >
         {props => <RadarHomeScreen {...props} splashDone={splashDone} />}
@@ -1035,10 +1044,22 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         }}
       >
         {(props) => (
-          <ProfileScreen theme={currentColors} tabRouteParams={props.route.params as { authIntent?: 'login' | 'register' } | undefined} />
+          <ProfileScreen
+            theme={currentColors}
+            tabRouteParams={
+              props.route.params as
+                | {
+                    authIntent?: 'login' | 'register';
+                    openManageListings?: boolean;
+                    prefillEmail?: string;
+                  }
+                | undefined
+            }
+          />
         )}
       </Tab.Screen>
     </Tab.Navigator>
+    </View>
   );
 }
 
@@ -1447,8 +1468,23 @@ export default function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <I18nProvider>
         <BonusCouponNotifyBootstrap />
+        <AppRatingPromptHost />
+        <InvestorProTrialIntroHost />
+        <InvestorProUpsellHost />
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
-        <PasskeyLaunchPrompt ready={!isSplashVisible} />
+        <PasskeyLaunchPrompt
+          ready={!isSplashVisible}
+          onUsePassword={(savedEmail) => {
+            if (!navigationRef.isReady()) return;
+            (navigationRef as any).navigate('MainTabs', {
+              screen: 'Profil',
+              params: {
+                authIntent: 'login',
+                ...(savedEmail ? { prefillEmail: savedEmail } : {}),
+              },
+            });
+          }}
+        />
         <NavigationContainer
           ref={navigationRef}
           theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}
@@ -1501,6 +1537,9 @@ export default function App() {
                 gestureEnabled: true,
               }}
             />
+            <AppStack.Screen name="OpenHouseHub" component={OpenHouseHubScreen} />
+            <AppStack.Screen name="OpenHouseCreate" component={OpenHouseCreateScreen} />
+            <AppStack.Screen name="OpenHouseEvent" component={OpenHouseEventScreen} />
           </AppStack.Navigator>
         </NavigationContainer>
         </I18nProvider>

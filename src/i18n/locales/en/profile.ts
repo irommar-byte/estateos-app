@@ -160,14 +160,44 @@ export const profile = {
     investorProPackage: 'Investor Pro Package',
     investorProActive: 'Investor Pro active',
     investorProInactive: 'No active Investor Pro',
-    investorProMeta: 'Portal import, off-market preview and Pro tools for 30 days.',
+    investorProMeta: 'Portal import, off-market preview and Pro tools — monthly subscription.',
     investorProValidUntil: 'Valid until {{date}}',
-    investorProDaysLeft: '{{days}} {{daysLabel}} of Pro access left',
-    buyInvestorPro: 'Buy Investor Pro',
-    buyInvestorProExtend: 'Extend Investor Pro',
-    buyInvestorProSubtitle: 'Pay for 30 days of Investor Pro in the App Store',
+    investorProDaysLeft: '{{days}} {{daysLabel}} left in current billing period',
+    investorProSubscriptionMeta:
+      'Monthly subscription — auto-renews in the App Store (3-day trial, then billing).',
+    buyInvestorPro: 'Try 3 days free',
+    buyInvestorProExtend: 'Manage subscription',
+    buyInvestorProSubtitle: 'Full Pro access — cancel anytime in the App Store',
+    buyInvestorProTrialSubtitle: '3 days free, then App Store subscription',
+    investorProTrialBadge: '3 DAYS FREE',
+    investorProTrialPriceAfter: 'then {{price}}/mo',
+    investorProTrialPriceFallback: 'then monthly subscription in the App Store',
+    investorProTrialIntroTitle: 'Try Investor Pro',
+    investorProTrialIntroBody:
+      'Portal import, off-market preview and premium tools — 3 days free, no commitment. Cancel in the App Store before the trial ends if you do not want to pay.',
+    investorProTrialIntroCta: 'Start 3-day free trial',
+    investorProTrialIntroLater: 'Later',
+    investorProTrialAscHint:
+      'If Apple’s sheet does not show the trial, add Introductory Offer (Free Trial 3 days) in App Store Connect and use a fresh Sandbox account.',
+    investorProUpsell: {
+      cta: 'Start 3-day free trial',
+      later: 'Later',
+      creditsLine: '+10 publication credits each subscription period',
+      off_market: {
+        title: 'Unlock off-market preview',
+        body: 'This listing is not public yet. Investor Pro gives early access, negotiations and premium tools.',
+      },
+      import: {
+        title: 'Import requires Investor Pro',
+        body: 'Import from OtoDom, OLX and Nieruchomosci-Online is included in Investor Pro.',
+      },
+      premium_tools: {
+        title: 'Premium tools for Investor Pro',
+        body: 'Unlock portal import, off-market preview and the Pro tools area in the app.',
+      },
+    },
     investorProFooter:
-      'Investor Pro is a 30-day package: import from portals, off-market preview and Pro tools. It is separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
+      'Investor Pro is a subscription: portal import, off-market preview and Pro tools. After the 3-day trial Apple charges per App Store pricing. Cancel in Settings → Apple ID → Subscriptions. Separate from Plus Package (listing publication). If payment did not register, use Restore purchases.',
     plusSlotOne: '1 Plus publication available',
     plusSlotsMany: '{{count}} Plus publications available',
     noPackages: 'No packages — buy before the next paid publication',
@@ -251,6 +281,25 @@ export const profile = {
       investorProActiveTitle: 'Investor Pro active',
       investorProActiveBody:
         'Investor Pro is active. Portal import and premium tools are unlocked.',
+      investorProActiveBodyWithCredits:
+        'Investor Pro is active. Import and premium tools are unlocked, plus 10 publication credits for this period.',
+      investorProAlreadyActiveTitle: 'Subscription already active',
+      investorProAlreadyActiveBody:
+        'Investor Pro is already active on this EstateOS account. Manage it in Settings → Apple ID → Subscriptions.',
+      investorProLinkedTitle: 'Subscription linked to account',
+      investorProLinkedBody:
+        'This Apple ID has an active Investor Pro subscription (e.g. from an earlier test). We linked it to this EstateOS account — the App Store payment sheet will not appear while that subscription is active on this Apple ID. One Apple subscription = one EstateOS account.',
+      investorProOtherAccountTitle: 'Different EstateOS account',
+      investorProOtherAccountBody:
+        'The Apple ID on this phone has a subscription linked to another EstateOS account.\n\n• Have your own subscription? Switch the Apple ID on this phone (Settings → Apple ID → Media & Purchases) — it will work on your account.\n• Your Apple ID but a new EstateOS account? You can move the subscription to this account (the previous one loses Pro).',
+      investorProTransferConfirmTitle: 'Move subscription?',
+      investorProTransferConfirmBody:
+        'The subscription from this phone\'s Apple ID will be linked to this EstateOS account. The previous account will lose Investor Pro.\n\nContinue?',
+      investorProTransferConfirmCta: 'Move to this account',
+      investorProTransferCancel: 'Cancel',
+      investorProTransferredTitle: 'Investor Pro on this account',
+      investorProTransferredBody:
+        'The subscription from your Apple ID has been moved to this EstateOS account. The previous account no longer has Pro access.\n\nThe App Store will not show the payment sheet — the subscription is already active on this Apple ID. That is normal Apple behavior.',
       investorProActivePending:
         'Payment received. Activation in progress — refresh Profile shortly.',
     },
@@ -330,6 +379,8 @@ export const profile = {
     lead: 'Advanced Investor Pro tools for faster listing operations and smart imports.',
     footer:
       'Premium workspace for active Investor Pro members focused on productivity.',
+    expandTools: 'Show Pro tools',
+    collapseTools: 'Hide Pro tools',
     countdown: {
       title: 'Pro membership',
       active: '{{days}} days left',
@@ -348,11 +399,11 @@ export const profile = {
       },
       openHouse: {
         title: 'Open house day',
-        subtitle: 'Schedule a group viewing with calendar invites and guest confirmations.',
-        tag: 'Soon',
+        subtitle: 'Plan dates, hours, and guest reservations in one place.',
+        tag: 'Pro',
         alertTitle: 'Open house day',
         alertBody:
-          'Soon you will add an open house event from your profile, visible to interested buyers.',
+          'Host an open house for your listing — buyers reserve specific visit slots.',
       },
       insider: {
         title: 'Portal import',

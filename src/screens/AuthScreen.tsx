@@ -245,11 +245,14 @@ const ForgotPasswordModal = ({ visible, onClose, theme, t }: any) => {
 export default function AuthScreen({
   theme,
   authIntent,
+  prefillEmail,
   embedded = false,
 }: {
   theme: any;
   /** Z nawigacji (np. gość z oferty): który formularz pokazać od razu. */
   authIntent?: 'login' | 'register';
+  /** E-mail z passkey promptu — wstępne wypełnienie pola logowania. */
+  prefillEmail?: string;
   /** Render w zakładce Profil — bez animacji „warp” i bez navigate('Profil'). */
   embedded?: boolean;
 }) {
@@ -269,7 +272,7 @@ export default function AuthScreen({
    * dedykowany onboarding na stronie WWW. Nie mylić z AGENT.
    */
   const [role, setRole] = useState<'PRIVATE' | 'AGENT'>('PRIVATE');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => String(prefillEmail || '').trim());
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [firstName, setFirstName] = useState('');
@@ -361,6 +364,11 @@ export default function AuthScreen({
     if (authIntent === 'register') setIsLogin(false);
     else if (authIntent === 'login') setIsLogin(true);
   }, [authIntent]);
+
+  useEffect(() => {
+    const next = String(prefillEmail || '').trim();
+    if (next) setEmail(next);
+  }, [prefillEmail]);
 
   const handleSubmit = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

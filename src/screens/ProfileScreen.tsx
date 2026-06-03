@@ -22,7 +22,10 @@ import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
-import { purchaseInvestorProConsumable } from '../services/iapInvestorPro';
+import { claimInvestorProSubscription, purchaseInvestorProSubscription } from '../services/iapInvestorPro';
+import { investorProPurchaseAlertCopy, investorProPurchaseErrorAlertCopy, investorProSubscriptionNeedsTransfer, promptInvestorProTransferAlert } from '../utils/investorProPurchaseFeedback';
+import { fetchInvestorProStoreListing } from '../services/iapInvestorProListing';
+import type { SubscriptionStoreListing } from '../services/iapManager';
 import * as Notifications from 'expo-notifications';
 import EliteStatusBadges from '../components/EliteStatusBadges';
 import ProfileProExtrasSection from '../components/profile/ProfileProExtrasSection';
@@ -40,9 +43,8 @@ import AdminCoreCommandCenterModal from '../components/admin/AdminCoreCommandCen
 import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection';
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
 import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
-import BonusCouponsSection from '../components/profile/BonusCouponsSection';
-import PlusPackageShopPanel from '../components/profile/PlusPackageShopPanel';
-import InvestorProShopPanel from '../components/profile/InvestorProShopPanel';
+import ProfileShopSection from '../components/profile/ProfileShopSection';
+import ProfileCardShell from '../components/profile/ProfileCardShell';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
   dismissProfilePromoCardForever,
@@ -293,7 +295,7 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
           <Text style={styles.sectionTitle}>{t('profile.notifications.deviceSection')}</Text>
-          <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)', marginBottom: 12 }]}>
+          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }}>
             <View style={[styles.listItem, { paddingVertical: 14 }]}>
               <View style={[styles.listIconBox, { backgroundColor: pushPermissionStatus === 'granted' ? '#34C759' : '#FF9500' }]}>
                 <Ionicons name="phone-portrait-outline" size={20} color="#FFF" />
@@ -310,7 +312,7 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
                 ios_backgroundColor={isDark ? '#3A3A3C' : '#E5E5EA'}
               />
             </View>
-          </View>
+          </ProfileCardShell>
           <Text style={styles.sectionFooter}>
             {t('profile.notifications.footer')}
           </Text>
@@ -1130,8 +1132,8 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
   );
 };
 
-const ListGroup = ({ children, isDark }) => (
-  <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>{children}</View>
+const ListGroup = ({ children, isDark, style }) => (
+  <ProfileCardShell isDark={isDark} style={style}>{children}</ProfileCardShell>
 );
 
 const ListItem = ({ icon, color, title, subtitle, subtitleNode, value, onPress, isLast, isDark, rightElement, badgeCount }: any) => (
@@ -2831,31 +2833,50 @@ export default function ProfileScreen({
   tabRouteParams,
 }: {
   theme: any;
-  tabRouteParams?: { authIntent?: 'login' | 'register' };
+  tabRouteParams?: {
+    authIntent?: 'login' | 'register';
+    openManageListings?: boolean;
+    prefillEmail?: string;
+  };
 }) {
   const route = useRoute<any>();
   const authIntent = (tabRouteParams?.authIntent ?? route.params?.authIntent) as
     | 'login'
     | 'register'
     | undefined;
+  const prefillEmail = String(
+    tabRouteParams?.prefillEmail ?? route.params?.prefillEmail ?? '',
+  ).trim();
+  const openManageListings = Boolean(
+    tabRouteParams?.openManageListings ?? route.params?.openManageListings,
+  );
   const user = useAuthStore((s) => s.user);
 
   if (!user) {
-    return <AuthScreen theme={theme} authIntent={authIntent} embedded />;
+    return (
+      <AuthScreen
+        theme={theme}
+        authIntent={authIntent}
+        prefillEmail={prefillEmail || undefined}
+        embedded
+      />
+    );
   }
 
-  return <ProfileScreenLoggedIn theme={theme} />;
+  return <ProfileScreenLoggedIn theme={theme} openManageListingsOnMount={openManageListings} />;
 }
 
 function ProfileScreenLoggedIn({
   theme,
+  openManageListingsOnMount = false,
 }: {
   theme: any;
-  tabRouteParams?: { authIntent?: 'login' | 'register' };
+  openManageListingsOnMount?: boolean;
 }) {
   const { t, locale } = useI18n();
   const dateLocale = localeToDateFormat(locale);
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
@@ -2881,6 +2902,24 @@ function ProfileScreenLoggedIn({
   }, [hydrateDisplayCurrency]);
   
   const [isMyOffersVisible, setIsMyOffersVisible] = useState(false);
+
+  const openManageListingsFromRoute = useCallback(() => {
+    setIsMyOffersVisible(true);
+    navigation.setParams({ openManageListings: undefined });
+  }, [navigation]);
+
+  useEffect(() => {
+    if (!openManageListingsOnMount) return;
+    openManageListingsFromRoute();
+  }, [openManageListingsOnMount, openManageListingsFromRoute]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!route.params?.openManageListings) return;
+      openManageListingsFromRoute();
+    }, [openManageListingsFromRoute, route.params?.openManageListings]),
+  );
+
   const [isNotificationsVisible, setIsNotificationsVisible] = useState(false);
   const [isAdminOffersVisible, setIsAdminOffersVisible] = useState(false);
   const [isAdminUsersVisible, setIsAdminUsersVisible] = useState(false);
@@ -2934,6 +2973,7 @@ function ProfileScreenLoggedIn({
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [isBuyingPakietPlus, setIsBuyingPakietPlus] = useState(false);
   const [isBuyingInvestorPro, setIsBuyingInvestorPro] = useState(false);
+  const [investorProListing, setInvestorProListing] = useState<SubscriptionStoreListing | null>(null);
   const adminPendingRef = useRef<number | null>(null);
   /** Zapobiega nakładaniu się dwóch Modal z listą użytkowników i kartą profilu (iOS psuje dotyk). */
   const adminUsersReturnRef = useRef(false);
@@ -3235,6 +3275,20 @@ function ProfileScreenLoggedIn({
     }, [reloadUserPromoCards]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      if (hasActiveInvestorProMembership(user)) return;
+      let cancelled = false;
+      void (async () => {
+        const listing = await fetchInvestorProStoreListing();
+        if (!cancelled) setInvestorProListing(listing);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [user]),
+  );
+
   useEffect(() => {
     if (!user?.id) {
       setDismissedPromoIds(new Set());
@@ -3412,17 +3466,34 @@ function ProfileScreenLoggedIn({
   const investorProStatusLabel = hasInvestorProActive
     ? t('profile.shop.investorProActive')
     : t('profile.shop.investorProInactive');
-  const investorProMetaLabel = hasInvestorProActive && investorProCountdown
-    ? t('profile.shop.investorProDaysLeft', {
-        days: investorProCountdown.daysLeft,
-        daysLabel:
-          investorProCountdown.daysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
-      })
+  const investorProMetaLabel = hasInvestorProActive
+    ? [
+        investorProCountdown
+          ? t('profile.shop.investorProDaysLeft', {
+              days: investorProCountdown.daysLeft,
+              daysLabel:
+                investorProCountdown.daysLeft === 1 ? t('profile.shop.dayOne') : t('profile.shop.dayMany'),
+            })
+          : null,
+        t('profile.shop.investorProSubscriptionMeta'),
+      ]
+        .filter(Boolean)
+        .join('\n')
     : t('profile.shop.investorProMeta');
   const investorProExpiryLine =
     hasInvestorProActive && investorProExpiryLabel
       ? t('profile.shop.investorProValidUntil', { date: investorProExpiryLabel })
       : null;
+  const investorProTrialBadge = !hasInvestorProActive ? t('profile.shop.investorProTrialBadge') : null;
+  const investorProPriceLine =
+    !hasInvestorProActive && investorProListing?.priceLabel
+      ? t('profile.shop.investorProTrialPriceAfter', { price: investorProListing.priceLabel })
+      : !hasInvestorProActive
+        ? t('profile.shop.investorProTrialPriceFallback')
+        : null;
+  const investorProBuySubtitle = hasInvestorProActive
+    ? t('profile.shop.buyInvestorProSubtitle')
+    : t('profile.shop.buyInvestorProTrialSubtitle');
 
   const toggleSms = async (value) => {
     setIsSmsEnabled(value);
@@ -3502,6 +3573,7 @@ function ProfileScreenLoggedIn({
       const result = await restorePakietPlusPurchases();
       if (result.ok) {
         if (result.restored > 0) {
+          await refreshUser?.();
           Alert.alert(
             t('profile.shop.alerts.restoreTitle'),
             result.restored === 1
@@ -3509,6 +3581,50 @@ function ProfileScreenLoggedIn({
               : t('profile.shop.alerts.restoreBodyMany', { count: result.restored }),
           );
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else if (
+          result.subscriptionConflict ||
+          investorProSubscriptionNeedsTransfer(result.errorCode, result.message)
+        ) {
+          promptInvestorProTransferAlert(t, () => {
+            void (async () => {
+              setIsRestoringPurchases(true);
+              try {
+                const transferResult = await claimInvestorProSubscription({
+                  allowSubscriptionTransfer: true,
+                });
+                if (!transferResult.ok) {
+                  const alertCopy = investorProPurchaseErrorAlertCopy(t, {
+                    errorCode: transferResult.errorCode,
+                    message: transferResult.message,
+                  });
+                  Alert.alert(alertCopy.title, alertCopy.body);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                  return;
+                }
+                await refreshUser?.();
+                const patched = userAfterInvestorProPurchase(useAuthStore.getState().user, {
+                  backendRegistered: Boolean(transferResult.backendRegistered),
+                  isPro: transferResult.isPro,
+                  proExpiresAt: transferResult.proExpiresAt,
+                  extraListings: transferResult.extraListings,
+                  plusExpiresAt: transferResult.plusExpiresAt,
+                });
+                if (patched) {
+                  const merged = { ...useAuthStore.getState().user!, ...patched };
+                  useAuthStore.setState({ user: merged });
+                  await AsyncStorage.setItem('user_data', JSON.stringify(merged));
+                }
+                const mergedUser = patched ?? useAuthStore.getState().user;
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                const alertCopy = investorProPurchaseAlertCopy(transferResult, mergedUser, t, {
+                  hadProBeforePurchase: hasActiveInvestorProMembership(user),
+                });
+                Alert.alert(alertCopy.title, alertCopy.body);
+              } finally {
+                setIsRestoringPurchases(false);
+              }
+            })();
+          });
         } else {
           Alert.alert(
             t('profile.shop.alerts.nothingToRestoreTitle'),
@@ -3570,6 +3686,30 @@ function ProfileScreenLoggedIn({
     }
   };
 
+  const applyInvestorProPurchaseResult = async (
+    result: Extract<Awaited<ReturnType<typeof purchaseInvestorProSubscription>>, { ok: true }>,
+    hadProBeforePurchase: boolean,
+  ) => {
+    await refreshUser?.();
+    const patched = userAfterInvestorProPurchase(useAuthStore.getState().user, {
+      backendRegistered: Boolean(result.backendRegistered),
+      isPro: result.isPro,
+      proExpiresAt: result.proExpiresAt,
+      extraListings: result.extraListings,
+      plusExpiresAt: result.plusExpiresAt,
+    });
+    if (patched) {
+      const merged = { ...useAuthStore.getState().user!, ...patched };
+      useAuthStore.setState({ user: merged });
+      await AsyncStorage.setItem('user_data', JSON.stringify(merged));
+    }
+
+    const mergedUser = patched ?? useAuthStore.getState().user;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const alertCopy = investorProPurchaseAlertCopy(result, mergedUser, t, { hadProBeforePurchase });
+    Alert.alert(alertCopy.title, alertCopy.body);
+  };
+
   const handleBuyInvestorPro = async () => {
     if (isBuyingInvestorPro) return;
     if (!token) {
@@ -3577,34 +3717,52 @@ function ProfileScreenLoggedIn({
       return;
     }
 
+    if (hasActiveInvestorProMembership(user)) {
+      return;
+    }
+
     setIsBuyingInvestorPro(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const hadProBeforePurchase = hasActiveInvestorProMembership(user);
     try {
-      const result = await purchaseInvestorProConsumable(API_URL, token);
+      const result = await purchaseInvestorProSubscription(API_URL, token);
       if (result.cancelled) return;
       if (!result.ok) {
-        Alert.alert(t('profile.shop.alerts.investorProPurchaseTitle'), result.message || t('profile.shop.alerts.purchaseFailed'));
+        if (investorProSubscriptionNeedsTransfer(result.errorCode, result.message)) {
+          promptInvestorProTransferAlert(t, () => {
+            void (async () => {
+              setIsBuyingInvestorPro(true);
+              try {
+                const transferResult = await claimInvestorProSubscription({
+                  allowSubscriptionTransfer: true,
+                });
+                if (!transferResult.ok) {
+                  const alertCopy = investorProPurchaseErrorAlertCopy(t, {
+                    errorCode: transferResult.errorCode,
+                    message: transferResult.message,
+                  });
+                  Alert.alert(alertCopy.title, alertCopy.body);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                  return;
+                }
+                await applyInvestorProPurchaseResult(transferResult, hadProBeforePurchase);
+              } finally {
+                setIsBuyingInvestorPro(false);
+              }
+            })();
+          });
+          return;
+        }
+        const alertCopy = investorProPurchaseErrorAlertCopy(t, {
+          errorCode: result.errorCode,
+          message: result.message,
+        });
+        Alert.alert(alertCopy.title, alertCopy.body);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         return;
       }
 
-      await refreshUser?.();
-      const patched = userAfterInvestorProPurchase(useAuthStore.getState().user, {
-        backendRegistered: Boolean(result.backendRegistered),
-        isPro: result.isPro,
-        proExpiresAt: result.proExpiresAt,
-      });
-      if (patched) {
-        useAuthStore.setState({ user: { ...useAuthStore.getState().user, ...patched } });
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        t('profile.shop.alerts.investorProActiveTitle'),
-        hasActiveInvestorProMembership(patched ?? useAuthStore.getState().user)
-          ? t('profile.shop.alerts.investorProActiveBody')
-          : t('profile.shop.alerts.investorProActivePending'),
-      );
+      await applyInvestorProPurchaseResult(result, hadProBeforePurchase);
     } finally {
       setIsBuyingInvestorPro(false);
     }
@@ -3647,7 +3805,7 @@ function ProfileScreenLoggedIn({
           contentContainerStyle={[styles.container, { backgroundColor: profileScreenBg }]}
         >
         
-        <View style={[styles.headerCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+        <ProfileCardShell isDark={isDark} variant="header" style={styles.headerCardShell} faceStyle={styles.headerCard}>
           <Pressable onPress={handleAvatarPick} style={({ pressed }) => [styles.avatarWrapper, { opacity: pressed ? 0.8 : 1 }]}>
             {(() => {
               const rawAvatar = user?.avatar || user?.image;
@@ -3759,9 +3917,8 @@ function ProfileScreenLoggedIn({
               }}
             />
           </View>
-        </View>
+        </ProfileCardShell>
 
-        {hasActiveInvestorProMembership(user) ? (
         <View style={styles.section}>
             <ProfileProExtrasSection
               user={user}
@@ -3771,10 +3928,12 @@ function ProfileScreenLoggedIn({
                   (navigation as any).navigate('AdminNativeImport');
                   return;
                 }
+                if (featureId === 'openHouse') {
+                  (navigation as any).navigate('OpenHouseHub');
+                }
               }}
             />
           </View>
-        ) : null}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.contact.sectionTitle')}</Text>
@@ -3893,7 +4052,7 @@ function ProfileScreenLoggedIn({
         {/* --- SEKCJA BEZPIECZEŃSTWA PASSKEY --- */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.security.sectionTitle')}</Text>
-          <View style={[styles.listGroup, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)' }]}>
+          <ProfileCardShell isDark={isDark}>
             <View style={[styles.listItem, { paddingVertical: 12 }]}>
               
               <View style={[styles.listIconBox, { backgroundColor: isPasskeyActive ? '#10b981' : (isDark ? '#3A3A3C' : '#E5E5EA') }]}>
@@ -3911,7 +4070,7 @@ function ProfileScreenLoggedIn({
                 trackColor={{ false: isDark ? '#3A3A3C' : '#E5E5EA', true: '#10b981' }} 
               />
             </View>
-          </View>
+          </ProfileCardShell>
           
           <Text style={styles.sectionFooter}>
             {isPasskeyActive 
@@ -3935,79 +4094,73 @@ function ProfileScreenLoggedIn({
           z idempotencją po `transactionId`.
         */}
         <View style={styles.section}>
-          <BonusCouponsSection
-            cards={bonusCouponCards}
-            isDark={isDark}
-            title={t('profile.shop.bonusCouponsTitle')}
-            subtitle={t('profile.shop.bonusCouponsSubtitle')}
-            swipeHint={t('profile.shop.promoSwipeHint')}
-            dismissHint={t('profile.shop.promoDismissHint')}
-            emptyHint={t('profile.shop.bonusCouponsEmpty')}
-            onRequestDismiss={handleRequestDismissPromoCard}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.shop.plusSectionTitle')}</Text>
-          <PlusPackageShopPanel
-            isDark={isDark}
-            title={t('profile.shop.plusPackage')}
-            plusSlots={plusSlots}
-            hasPlusAvailable={hasPlusPublicationAvailable}
-            counterLabel={plusCounterLabel}
-            expiryLabel={plusExpiryLine}
-            daysLabel={plusDaysLabel}
-            buyLabel={t('profile.shop.buyPlus')}
-            buySubtitle={t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL })}
-            restoreLabel={t('profile.shop.restorePurchases')}
-            restoreSubtitle={
-              isRestoringPurchases
-                ? t('profile.shop.restoring')
-                : Platform.OS === 'ios'
-                  ? t('profile.shop.restoreIos')
-                  : t('profile.shop.restoreAndroid')
-            }
-            buying={isBuyingPakietPlus}
-            restoring={isRestoringPurchases}
-            onBuy={handleBuyPakietPlus}
-            onRestore={handleRestorePurchases}
-          />
-          <Text style={styles.sectionFooter}>
-            {Platform.OS === 'ios'
-              ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
-              : t('profile.shop.footerAndroid')}
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.shop.investorProSectionTitle')}</Text>
-          <InvestorProShopPanel
-            isDark={isDark}
-            title={t('profile.shop.investorProPackage')}
-            statusLabel={investorProStatusLabel}
-            metaLabel={investorProMetaLabel}
-            expiryLabel={investorProExpiryLine}
-            buyLabel={
-              hasInvestorProActive
-                ? t('profile.shop.buyInvestorProExtend')
-                : t('profile.shop.buyInvestorPro')
-            }
-            buySubtitle={t('profile.shop.buyInvestorProSubtitle')}
-            restoreLabel={t('profile.shop.restorePurchases')}
-            restoreSubtitle={
-              isRestoringPurchases
-                ? t('profile.shop.restoring')
-                : Platform.OS === 'ios'
-                  ? t('profile.shop.restoreIos')
-                  : t('profile.shop.restoreAndroid')
-            }
-            buying={isBuyingInvestorPro}
-            restoring={isRestoringPurchases}
-            isActive={hasInvestorProActive}
-            onBuy={handleBuyInvestorPro}
-            onRestore={handleRestorePurchases}
-          />
-          <Text style={styles.sectionFooter}>{t('profile.shop.investorProFooter')}</Text>
+        <ProfileShopSection
+          isDark={isDark}
+          sectionTitle={t('profile.shop.sectionTitle')}
+          bonusCoupons={{
+            cards: bonusCouponCards,
+            title: t('profile.shop.bonusCouponsTitle'),
+            subtitle: t('profile.shop.bonusCouponsSubtitle'),
+            swipeHint: t('profile.shop.promoSwipeHint'),
+            dismissHint: t('profile.shop.promoDismissHint'),
+            emptyHint: t('profile.shop.bonusCouponsEmpty'),
+            onRequestDismiss: handleRequestDismissPromoCard,
+          }}
+          plus={{
+            title: t('profile.shop.plusPackage'),
+            plusSlots,
+            hasPlusAvailable: hasPlusPublicationAvailable,
+            counterLabel: plusCounterLabel,
+            expiryLabel: plusExpiryLine,
+            daysLabel: plusDaysLabel,
+            buyLabel: t('profile.shop.buyPlus'),
+            buySubtitle: t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL }),
+            buying: isBuyingPakietPlus,
+            defaultExpanded: !hasPlusPublicationAvailable,
+            footer: (
+              <Text style={styles.sectionFooter}>
+                {Platform.OS === 'ios'
+                  ? t('profile.shop.footerIos', { price: PAKIET_PLUS_PRICE_LABEL })
+                  : t('profile.shop.footerAndroid')}
+              </Text>
+            ),
+            onBuy: handleBuyPakietPlus,
+          }}
+          investorPro={{
+            title: t('profile.shop.investorProPackage'),
+            statusLabel: investorProStatusLabel,
+            metaLabel: investorProMetaLabel,
+            expiryLabel: investorProExpiryLine,
+            trialBadge: investorProTrialBadge,
+            priceLine: investorProPriceLine,
+            buyLabel: hasInvestorProActive
+              ? t('profile.shop.buyInvestorProExtend')
+              : t('profile.shop.buyInvestorPro'),
+            buySubtitle: investorProBuySubtitle,
+            buying: isBuyingInvestorPro,
+            isActive: hasInvestorProActive,
+            defaultExpanded: !hasInvestorProActive,
+            footer: (
+              <Text style={styles.sectionFooter}>
+                {t('profile.shop.investorProFooter')}
+                {!hasInvestorProActive && investorProListing && !investorProListing.hasFreeTrial
+                  ? `\n\n${t('profile.shop.investorProTrialAscHint')}`
+                  : ''}
+              </Text>
+            ),
+            onBuy: handleBuyInvestorPro,
+          }}
+          restore={{
+            label: t('profile.shop.restorePurchases'),
+            subtitle: isRestoringPurchases
+              ? t('profile.shop.restoring')
+              : Platform.OS === 'ios'
+                ? t('profile.shop.restoreIos')
+                : t('profile.shop.restoreAndroid'),
+            restoring: isRestoringPurchases,
+            onRestore: handleRestorePurchases,
+          }}
+        />
         </View>
 
         {isZarzad && (
@@ -4486,7 +4639,8 @@ function ProfileScreenLoggedIn({
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 70 : 50, paddingBottom: 60 },
-  headerCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 30, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  headerCardShell: { marginBottom: 30 },
+  headerCard: { flexDirection: 'row', alignItems: 'center', padding: 16 },
   avatarWrapper: { position: 'relative', width: 64, height: 64, borderRadius: 32, backgroundColor: '#D1D1D6', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   avatarRegionFlag: { position: 'absolute', right: -6, bottom: -2, zIndex: 4 },
   avatarImage: { width: '100%', height: '100%', borderRadius: 32 },
@@ -4554,7 +4708,6 @@ const styles = StyleSheet.create({
   plusStatusPillText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.6 },
   plusStatusSubtitle: { color: '#8E8E93', fontSize: 13, fontWeight: '700', marginTop: 3 },
   plusStatusMeta: { color: '#8E8E93', fontSize: 12, marginTop: 3 },
-  listGroup: { borderRadius: 12, overflow: 'hidden', borderWidth: 1 },
   listItem: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16 },
   listIconBox: { width: 30, height: 30, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   listContent: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingRight: 16 },

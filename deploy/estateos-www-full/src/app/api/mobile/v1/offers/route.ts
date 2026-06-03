@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createOffer, OfferValidationError, updateOffer } from '@/lib/services/offer.service';
+import { LocationMismatchError } from '@/lib/offerGeolocationValidate';
 import {
   assertContactVerified,
   contactVerificationJson,
@@ -291,6 +292,24 @@ export async function POST(req: Request) {
         : 'Oferta jest aktywna na rynku.',
     });
   } catch (e: unknown) {
+    if (e instanceof LocationMismatchError) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'NEEDS_USER_INPUT',
+          issues: [
+            {
+              field: 'city',
+              kind: 'suggest_replace',
+              from: e.selected,
+              to: e.resolved,
+              message: e.message,
+            },
+          ],
+        },
+        { status: 422 },
+      );
+    }
     if (e instanceof OfferValidationError) {
       return NextResponse.json(
         { success: false, message: e.message, code: 'OFFER_VALIDATION' },

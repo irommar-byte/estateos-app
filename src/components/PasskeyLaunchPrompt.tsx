@@ -18,9 +18,11 @@ import { useI18n } from '../i18n';
 type Props = {
   /** Splash zakończony i sesja odtworzona z dysku. */
   ready: boolean;
+  /** Zamknięcie passkey → standardowy ekran logowania (Profil). */
+  onUsePassword?: (email: string) => void;
 };
 
-export default function PasskeyLaunchPrompt({ ready }: Props) {
+export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const loginWithPasskey = useAuthStore((s) => s.loginWithPasskey);
@@ -109,6 +111,9 @@ export default function PasskeyLaunchPrompt({ ready }: Props) {
                 dismissed.current = true;
                 Haptics.selectionAsync();
                 setVisible(false);
+                setTimeout(() => {
+                  onUsePassword?.(email);
+                }, 220);
               }}
               style={styles.secondaryBtn}
             >

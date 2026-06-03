@@ -1,4 +1,4 @@
-"use client";
+image.png"use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power } from "lucide-react";

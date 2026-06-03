@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useI18n } from '../../i18n';
 import { buildProMembershipCountdown } from '../../utils/investorProMembership';
+import InsetMetalRecess from './InsetMetalRecess';
 
 type Props = {
   proExpiresAt: unknown;
@@ -40,7 +41,7 @@ export default function ProMembershipCountdownBar({ proExpiresAt, isDark = true 
   });
 
   return (
-    <View style={[styles.wrap, isDark ? styles.wrapDark : styles.wrapLight]}>
+    <InsetMetalRecess isDark={isDark} borderRadius={16} style={styles.wrapOuter} contentStyle={styles.wrapContent}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, isDark ? styles.labelDark : styles.labelLight]}>
           {t('profile.proExtras.countdown.title')}
@@ -61,24 +62,16 @@ export default function ProMembershipCountdownBar({ proExpiresAt, isDark = true 
       <Text style={[styles.expiry, isDark ? styles.expiryDark : styles.expiryLight]}>
         {t('profile.proExtras.countdown.until', { date: expiryDate })}
       </Text>
-    </View>
+    </InsetMetalRecess>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    borderRadius: 16,
-    padding: 14,
+  wrapOuter: {
     marginTop: 12,
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  wrapDark: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  wrapLight: {
-    backgroundColor: 'rgba(0,0,0,0.03)',
-    borderColor: 'rgba(0,0,0,0.06)',
+  wrapContent: {
+    padding: 14,
   },
   labelRow: {
     flexDirection: 'row',
