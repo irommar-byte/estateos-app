@@ -69,6 +69,8 @@ model User {
   calendarNotes      CalendarNote[]
   discoveryEvents    DiscoveryEvent[]
   discoveryProfile   DiscoveryProfile?
+  hostedOpenHouseEvents OpenHouseEvent[]       @relation("OpenHouseHost")
+  openHouseReservations OpenHouseReservation[] @relation("OpenHouseGuest")
 }
 
 model Alert {
@@ -128,6 +130,7 @@ model PageVisitLog {
 model Offer {
   leadTransfers   LeadTransfer[]
   favoritedBy      FavoriteOffer[]
+  openHouseEvents OpenHouseEvent[]
   id              Int            @id @default(autoincrement())
   title           String
   description     String?        @db.Text
@@ -226,6 +229,57 @@ model FavoriteOffer {
 
   @@unique([userId, offerId])
   @@index([offerId])
+  @@index([userId])
+}
+
+model OpenHouseEvent {
+  id          Int             @id @default(autoincrement())
+  offerId     Int
+  hostUserId  Int
+  title       String?         @db.VarChar(255)
+  description String?         @db.Text
+  status      OpenHouseStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  offer Offer           @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  host  User            @relation("OpenHouseHost", fields: [hostUserId], references: [id], onDelete: Cascade)
+  slots OpenHouseSlot[]
+
+  @@index([offerId])
+  @@index([hostUserId])
+  @@index([status, publishedAt])
+}
+
+model OpenHouseSlot {
+  id        Int      @id @default(autoincrement())
+  eventId   Int
+  startsAt  DateTime
+  endsAt    DateTime
+  capacity  Int      @default(8)
+  createdAt DateTime @default(now())
+
+  event        OpenHouseEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reservations OpenHouseReservation[]
+
+  @@index([eventId, startsAt])
+}
+
+model OpenHouseReservation {
+  id         Int                        @id @default(autoincrement())
+  slotId     Int
+  userId     Int
+  guestCount Int                        @default(1)
+  status     OpenHouseReservationStatus @default(CONFIRMED)
+  note       String?                    @db.Text
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+
+  slot OpenHouseSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user User          @relation("OpenHouseGuest", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, userId])
   @@index([userId])
 }
 
@@ -607,6 +661,18 @@ enum PropertyCondition {
   NEEDS_RENOVATION
   DEVELOPER_STATE
   NOT_APPLICABLE
+}
+
+enum OpenHouseStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum OpenHouseReservationStatus {
+  CONFIRMED
+  CANCELLED
 }
 
 model RadarPreference {
