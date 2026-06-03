@@ -1,6 +1,25 @@
 import { prisma } from '@/lib/prisma';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 
+const IMPORT_MARKER_RE =
+  /<!--\s*estateos-(otodom|olx|nieruchomosci-online):(\d+)\s*-->/i;
+
+function parseImportMarkerFromDescription(description: string): {
+  source: 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
+  externalId: number;
+} | null {
+  const match = String(description || '').match(IMPORT_MARKER_RE);
+  if (!match) return null;
+  const sourceRaw = String(match[1] || '').toLowerCase();
+  const externalId = Number(match[2]);
+  if (!Number.isFinite(externalId) || externalId <= 0) return null;
+  if (sourceRaw === 'olx') return { source: 'OLX', externalId };
+  if (sourceRaw === 'nieruchomosci-online') {
+    return { source: 'NIERUCHOMOSCI_ONLINE', externalId };
+  }
+  return { source: 'OTODOM', externalId };
+}
+
 const SOURCE_CHECK_MAX_AGE_MS = 1000 * 60 * 60 * 24;
 const SOURCE_CHECK_TIMEOUT_MS = 12_000;
 
@@ -123,6 +142,63 @@ export async function upsertImportedOfferPrivateSnapshot(params: {
     String(draft.externalId || ''),
     safeJsonStringify(importSummary),
   );
+}
+
+/** Uzupełnia brakującą notatkę importu na podstawie markera w opisie oferty. */
+export async function repairImportPrivateNoteFromOffer(
+  offerId: number,
+  userId: number,
+): Promise<OfferPrivateNoteRow | null> {
+  const existing = await getOfferPrivateNote(offerId, userId);
+  if (existing?.importSnapshotJson && existing.importExternalUrl) {
+    return existing;
+  }
+
+  const offer = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { id: true, userId: true, title: true, description: true },
+  });
+  if (!offer || Number(offer.userId) !== Number(userId)) return existing;
+
+  const marker = parseImportMarkerFromDescription(String(offer.description || ''));
+  if (!marker) return existing;
+
+  const sourceLabels: Record<string, string> = {
+    OTODOM: 'OTODOM',
+    OLX: 'OLX',
+    NIERUCHOMOSCI_ONLINE: 'NIERUCHOMOSCI_ONLINE',
+  };
+
+  const importSummary = {
+    source: marker.source,
+    externalUrl: null as string | null,
+    externalId: marker.externalId,
+    titleOriginal: String(offer.title || '').trim(),
+    descriptionOriginalHtml: String(offer.description || ''),
+    descriptionOriginalText: stripHtml(String(offer.description || '')),
+    repairedFromMarker: true,
+  };
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO OfferPrivateNote
+      (offerId, userId, userNote, importSource, importExternalUrl, importExternalId, importSnapshotJson)
+      VALUES (?, ?, COALESCE((SELECT userNote FROM OfferPrivateNote WHERE offerId = ? AND userId = ? LIMIT 1), ''), ?, NULL, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        importSource = COALESCE(VALUES(importSource), importSource),
+        importExternalId = COALESCE(VALUES(importExternalId), importExternalId),
+        importSnapshotJson = COALESCE(VALUES(importSnapshotJson), importSnapshotJson);
+    `,
+    offerId,
+    userId,
+    offerId,
+    userId,
+    sourceLabels[marker.source] || marker.source,
+    String(marker.externalId),
+    safeJsonStringify(importSummary),
+  );
+
+  return getOfferPrivateNote(offerId, userId);
 }
 
 export async function getOfferPrivateNote(offerId: number, userId: number): Promise<OfferPrivateNoteRow | null> {

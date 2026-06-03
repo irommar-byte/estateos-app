@@ -18,8 +18,9 @@ export function getPakietPlusProductId(): IapProductId {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
   const id = extra?.iapPakietPlusProductId;
   if (typeof id === 'string' && id.length > 0) {
-    // Akceptujemy tylko znane productId, żeby uniknąć fat-finger w app.json.
-    if ((Object.values(IAP_PRODUCT_IDS) as string[]).includes(id)) {
+    if (id === IAP_PRODUCT_IDS.INVESTOR_PRO || id === 'pl.estateos.app.pakiet_investor_pro') {
+      console.warn('[IAP] iapPakietPlusProductId wskazuje Investor Pro — używam domyślnego Pakietu Plus.');
+    } else if ((Object.values(IAP_PRODUCT_IDS) as string[]).includes(id)) {
       return id as IapProductId;
     }
   }

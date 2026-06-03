@@ -27,9 +27,13 @@ export const offer = {
     alertTitle: 'Investor Pro',
     alertBody:
       'Investor Pro is an account status available outside the app. We do not sell Pro in the app; this listing will unlock automatically after the waiting period.',
-    paidFeaturesTitle: 'Active paid features',
+    paidFeaturesTitle: 'Paid packages on your account',
+    deleteAccountPlusNote:
+      'Plus Package — one-time App Store purchase: one extra 30-day publication for a listing you choose (not a subscription).',
+    deleteAccountInvestorProNote:
+      'Investor Pro — monthly App Store subscription (portal import, off-market preview, Pro tools). Cancel under Settings → Apple ID → Subscriptions.',
     deleteAccountDisclaimer:
-      'Deleting your account removes access to EstateOS account features. Plus Package is a one-time in-app purchase that adds one extra publication for 30 days; Investor Pro is not purchased in the app.',
+      'Deleting your EstateOS account does not cancel Apple subscriptions — manage them in Apple ID settings.',
   },
   badges: {
     investorPro: 'Investor Pro',

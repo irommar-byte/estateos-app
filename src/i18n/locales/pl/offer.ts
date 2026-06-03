@@ -27,9 +27,13 @@ export const offer = {
     alertTitle: 'Investor Pro',
     alertBody:
       'Investor Pro odblokowuje podgląd off-market i narzędzia premium. Możesz kupić pakiet w Profil → Zakupy i sklep albo poczekać do końca okresu oczekiwania.',
-    paidFeaturesTitle: 'Aktywne płatne funkcje',
+    paidFeaturesTitle: 'Pakiety płatne na koncie',
+    deleteAccountPlusNote:
+      'Pakiet Plus — jednorazowy zakup w App Store: prawo do jednej dodatkowej publikacji wybranej oferty na 30 dni (nie jest abonamentem).',
+    deleteAccountInvestorProNote:
+      'Investor Pro — subskrypcja miesięczna w App Store (import z portali, off-market, narzędzia Pro). Anuluj w Ustawienia → Apple ID → Subskrypcje.',
     deleteAccountDisclaimer:
-      'Usunięcie konta usuwa dostęp do funkcji konta w EstateOS. Pakiet Plus jest jednorazowym zakupem w aplikacji pozwalającym dodać jedną dodatkową publikację na 30 dni; Investor Pro nie jest kupowany w aplikacji.',
+      'Usunięcie konta w EstateOS nie anuluje subskrypcji Apple — zarządzaj nią w ustawieniach Apple ID.',
   },
   badges: {
     investorPro: 'Investor Pro',

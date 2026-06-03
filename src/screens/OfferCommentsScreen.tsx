@@ -123,7 +123,13 @@ export default function OfferCommentsScreen() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        throw new Error(String(data?.message || data?.error || `Błąd ${res.status}`));
+        const fallback =
+          res.status === 404
+            ? 'Nie znaleziono oferty na serwerze — odśwież listę „Moje ogłoszenia” i spróbuj ponownie.'
+            : res.status === 403
+              ? 'Brak uprawnień do komentarzy tej oferty.'
+              : `Błąd ${res.status}`;
+        throw new Error(String(data?.message || data?.error || fallback));
       }
       const row = (data?.note || null) as PrivateNoteApi | null;
       setNote(row);

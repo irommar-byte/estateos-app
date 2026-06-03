@@ -31,7 +31,7 @@ import {
   resolveSellerPersonName,
   resolveServicingCompanyName,
 } from '@/lib/sellerDisplay';
-import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import { resolvePersistedLocalityFieldsAsync } from '@/lib/offerLocalityCountry';
 import { formatOfferPropertyType, formatOfferCondition } from '@/lib/offerDisplayLabels';
 import { getOfferMarketListingMeta } from '@/lib/offerPublication';
 
@@ -200,7 +200,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const sellerPersonName = offerUser ? resolveSellerPersonName(offerUser) : null;
     const servicingCompanyName = resolveServicingCompanyName(offerUser, (legalOffer as { agencyName?: string }).agencyName);
     const marketListing = await getOfferMarketListingMeta(Number(resolvedParams.id));
-    const localityResolved = resolvePersistedLocalityFields({
+    const localityResolved = await resolvePersistedLocalityFieldsAsync({
       localityCountry: (legalOffer as { localityCountry?: string }).localityCountry,
       localityCountryCode: (legalOffer as { localityCountryCode?: string }).localityCountryCode,
       city: legalOffer.city,

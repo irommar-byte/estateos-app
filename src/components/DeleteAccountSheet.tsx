@@ -16,6 +16,11 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../i18n';
+import {
+  profileShopLeatherFaceStyle,
+  profileShopLeatherPressedBg,
+  profileShopLeatherShellStyle,
+} from './profile/profileCardElevation';
 
 type Props = {
   visible: boolean;
@@ -25,6 +30,29 @@ type Props = {
   userEmail?: string | null;
   hasPaidIndicators?: boolean;
 };
+
+function PaidPackageCard({
+  title,
+  body,
+  isDark,
+  textMain,
+  textMuted,
+}: {
+  title: string;
+  body: string;
+  isDark: boolean;
+  textMain: string;
+  textMuted: string;
+}) {
+  return (
+    <View style={profileShopLeatherShellStyle(isDark)}>
+      <View style={[styles.packageCard, profileShopLeatherFaceStyle(isDark)]}>
+        <Text style={[styles.packageTitle, { color: textMain }]}>{title}</Text>
+        <Text style={[styles.packageBody, { color: textMuted }]}>{body}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function DeleteAccountSheet({
   visible,
@@ -58,7 +86,6 @@ export default function DeleteAccountSheet({
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      /* Sukces: rodzic zamyka modal (np. po Alert) — nie wywołujemy onClose tutaj, żeby uniknąć podwójnego zamykania. */
     } finally {
       setBusy(false);
     }
@@ -68,6 +95,7 @@ export default function DeleteAccountSheet({
   const textMain = isDark ? '#FFFFFF' : '#111827';
   const textMuted = isDark ? 'rgba(235,235,245,0.62)' : 'rgba(17,24,39,0.55)';
   const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.08)';
+  const pressedBg = profileShopLeatherPressedBg(isDark);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -102,11 +130,23 @@ export default function DeleteAccountSheet({
               <Bullet text="Czat Dealroom oraz historia transakcji mogą zostać zanonimizowane dla drugiej strony." textMain={textMain} textMuted={textMuted} />
 
               {hasPaidIndicators ? (
-                <View style={[styles.subsBtn, { borderColor: border }]}>
-                  <Text style={[styles.subsBtnText, { color: textMain }]}>{t('offer.investorPro.paidFeaturesTitle')}</Text>
-                  <Text style={[styles.subsHint, { color: textMuted }]}>
-                    {t('offer.investorPro.deleteAccountDisclaimer')}
-                  </Text>
+                <View style={styles.packagesBlock}>
+                  <Text style={[styles.packagesHead, { color: textMuted }]}>{t('offer.investorPro.paidFeaturesTitle')}</Text>
+                  <PaidPackageCard
+                    title="Pakiet Plus"
+                    body={t('offer.investorPro.deleteAccountPlusNote')}
+                    isDark={isDark}
+                    textMain={textMain}
+                    textMuted={textMuted}
+                  />
+                  <PaidPackageCard
+                    title="Investor Pro"
+                    body={t('offer.investorPro.deleteAccountInvestorProNote')}
+                    isDark={isDark}
+                    textMain={textMain}
+                    textMuted={textMuted}
+                  />
+                  <Text style={[styles.packagesFoot, { color: textMuted }]}>{t('offer.investorPro.deleteAccountDisclaimer')}</Text>
                 </View>
               ) : null}
 
@@ -131,7 +171,14 @@ export default function DeleteAccountSheet({
             </ScrollView>
 
             <View style={styles.footerRow}>
-              <Pressable onPress={onClose} disabled={busy} style={({ pressed }) => [styles.btnSecondary, { borderColor: border, opacity: pressed ? 0.75 : 1 }]}>
+              <Pressable
+                onPress={onClose}
+                disabled={busy}
+                style={({ pressed }) => [
+                  styles.btnSecondary,
+                  { borderColor: border, opacity: pressed ? 0.75 : 1, backgroundColor: pressed ? pressedBg : 'transparent' },
+                ]}
+              >
                 <Text style={[styles.btnSecondaryText, { color: textMain }]}>Anuluj</Text>
               </Pressable>
               <Pressable
@@ -234,21 +281,35 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '500',
   },
-  subsBtn: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
+  packagesBlock: {
     marginTop: 12,
-    marginBottom: 4,
+    gap: 10,
   },
-  subsBtnText: {
-    fontSize: 15,
+  packagesHead: {
+    fontSize: 12,
     fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 2,
   },
-  subsHint: {
+  packageCard: {
+    padding: 12,
+  },
+  packageTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  packageBody: {
     fontSize: 12,
     lineHeight: 17,
     marginTop: 6,
+  },
+  packagesFoot: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 2,
+    paddingHorizontal: 2,
   },
   confirmRow: {
     flexDirection: 'row',

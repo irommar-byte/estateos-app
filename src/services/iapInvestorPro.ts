@@ -10,7 +10,13 @@ export function getInvestorProProductId(): IapProductId {
   const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
   const id = extra?.iapInvestorProProductId;
   if (typeof id === 'string' && id.length > 0) {
-    if ((Object.values(IAP_PRODUCT_IDS) as string[]).includes(id)) {
+    if (id === IAP_PRODUCT_IDS.PAKIET_PLUS_30D) {
+      console.warn(
+        '[IAP] iapInvestorProProductId wskazuje Pakiet Plus — używam domyślnej subskrypcji Investor Pro.',
+      );
+      return DEFAULT_PRODUCT_ID;
+    }
+    if (id === IAP_PRODUCT_IDS.INVESTOR_PRO || id === 'pl.estateos.app.pakiet_investor_pro') {
       return id as IapProductId;
     }
   }

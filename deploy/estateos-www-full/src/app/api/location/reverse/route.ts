@@ -23,8 +23,11 @@ export async function GET(req: Request) {
     const feature = await fetchMapboxReverseFeature(lat, lng);
     const context = Array.isArray(feature?.context) ? feature.context : [];
     const countryItem = context.find((item: { id?: string }) => String(item?.id || "").startsWith("country"));
-    const country = String(countryItem?.text || countryItem?.text_pl || "Polska").trim();
-    const countryCode = String(countryItem?.short_code || "pl").trim().toUpperCase();
+    const countryCode = String(countryItem?.short_code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/^COUNTRY:/, "");
+    const country = String(countryItem?.text_pl || countryItem?.text || "").trim();
 
     return NextResponse.json({
       city: resolved.city,

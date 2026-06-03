@@ -7,6 +7,7 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import {
   getOfferPrivateNote,
   refreshOfferSourceStatusIfStale,
+  repairImportPrivateNoteFromOffer,
   saveOfferPrivateUserNote,
 } from '@/lib/offerPrivateNotes';
 
@@ -75,7 +76,12 @@ export async function GET(req: Request, context: RouteContext) {
   if ('error' in access) return access.error;
 
   try {
-    const row = await refreshOfferSourceStatusIfStale(offerId, access.offer.userId);
+    const noteOwnerId = Number(access.offer.userId);
+    let row = await getOfferPrivateNote(offerId, noteOwnerId);
+    if (!row?.importSnapshotJson || !row?.importSource) {
+      row = await repairImportPrivateNoteFromOffer(offerId, noteOwnerId);
+    }
+    row = await refreshOfferSourceStatusIfStale(offerId, noteOwnerId);
     return NextResponse.json(
       { success: true, ok: true, note: serializeNoteRow(row) },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } },

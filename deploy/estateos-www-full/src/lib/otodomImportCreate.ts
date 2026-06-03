@@ -3,6 +3,7 @@ import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
 import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
 import {
   consumeAndReserveImportPublication,
@@ -70,6 +71,7 @@ export async function draftToOfferCreateBody(
   assertOtodomImportDraftReady(draft);
 
   const { city, district, street } = await resolveOtodomImportLocationFields(draft);
+  const country = await inferCountryFromCoordinates(draft.lat, draft.lng);
   const features = draft.features || [];
 
   return {
@@ -94,8 +96,8 @@ export async function draftToOfferCreateBody(
     street: street || draft.street,
     lat: draft.lat,
     lng: draft.lng,
-    localityCountryCode: draft.localityCountryCode || 'PL',
-    localityCountry: 'Polska',
+    localityCountryCode: country.localityCountryCode,
+    localityCountry: country.localityCountry,
     isExactLocation: true,
     hasBalcony: featureIncludes(features, ['balkon']),
     hasElevator: featureIncludes(features, ['winda']),

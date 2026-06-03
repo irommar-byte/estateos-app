@@ -33,7 +33,11 @@ import {
   assertPlotAreaRequired,
   resolvePlotAreaForPersistence,
 } from '@/lib/offerPlotAreaValidate';
-import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import {
+  inferCountryFromCoordinates,
+  resolvePersistedLocalityFields,
+  resolvePersistedLocalityFieldsAsync,
+} from '@/lib/offerLocalityCountry';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -227,13 +231,16 @@ export async function ensureOfferLocalityCountryColumns() {
       select: { id: true, city: true, lat: true, lng: true, localityCountry: true, localityCountryCode: true },
     });
     for (const row of batch) {
-      const resolved = resolvePersistedLocalityFields({
+      let resolved = resolvePersistedLocalityFields({
         localityCountry: row.localityCountry,
         localityCountryCode: row.localityCountryCode,
         city: row.city,
         lat: row.lat,
         lng: row.lng,
       });
+      if (!resolved.localityCountryCode && row.lat != null && row.lng != null) {
+        resolved = await inferCountryFromCoordinates(row.lat, row.lng);
+      }
       if (
         resolved.localityCountryCode !== String(row.localityCountryCode || '').trim().toUpperCase() ||
         resolved.localityCountry !== String(row.localityCountry || '').trim()
@@ -362,7 +369,7 @@ export async function createOffer(body: any) {
     agentCommissionPercent = v.value;
   }
 
-  const localityFields = resolvePersistedLocalityFields({
+  const localityFields = await resolvePersistedLocalityFieldsAsync({
     localityCountry: body.localityCountry,
     localityCountryCode: body.localityCountryCode,
     city: locationValidation.city,
@@ -614,7 +621,7 @@ export async function updateOffer(body: any) {
       })
     : {};
 
-  const localityFields = resolvePersistedLocalityFields({
+  const localityFields = await resolvePersistedLocalityFieldsAsync({
     localityCountry: body.localityCountry ?? (existing as { localityCountry?: string }).localityCountry,
     localityCountryCode:
       body.localityCountryCode ?? (existing as { localityCountryCode?: string }).localityCountryCode,
