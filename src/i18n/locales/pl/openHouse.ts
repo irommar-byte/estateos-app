@@ -85,6 +85,11 @@ export const openHouse = {
     panelLive: 'LIVE',
     ringLabel: 'Live',
     discoveryRing: 'Discovery',
+    countdownDays: 'dni',
+    countdownHours: 'godz',
+    countdownMinutes: 'min',
+    countdownSeconds: 'sek',
+    countdownStarted: 'Trwa teraz — dołącz',
   },
   offerBanner: {
     title: 'Dzień otwartych drzwi',

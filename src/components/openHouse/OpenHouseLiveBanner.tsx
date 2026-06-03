@@ -15,7 +15,8 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '../../store/useThemeStore';
 import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
-import { useI18n, localeToDateFormat } from '../../i18n';
+import { useI18n, getAppLocale } from '../../i18n';
+import { formatOpenHouseLiveDetail } from './openHouseLiveFormat';
 import type { LayoutChangeEvent } from 'react-native';
 
 const AUTO_HIDE_MS = 30_000;
@@ -77,7 +78,8 @@ type Props = {
 };
 
 export default function OpenHouseLiveBanner({ topOffset }: Props) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const locale = getAppLocale();
   const navigation = useNavigation<any>();
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
@@ -101,22 +103,8 @@ export default function OpenHouseLiveBanner({ topOffset }: Props) {
   const active = items[index % Math.max(items.length, 1)];
   const detail = useMemo(() => {
     if (!active) return '';
-    const fullTitle = (active.title ?? '').trim();
-    if (!active.startsAt) return `${active.city ?? ''} · ${fullTitle}`.trim();
-    const date = new Date(active.startsAt).toLocaleString(localeToDateFormat(locale), {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    return t('openHouse.ticker.openHouseInvite', {
-      city: active.city,
-      title: fullTitle,
-      date,
-      spots: String(active.spotsLeft),
-    });
-  }, [active, locale, t]);
+    return formatOpenHouseLiveDetail(active, locale);
+  }, [active, locale]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {

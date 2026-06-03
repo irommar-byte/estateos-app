@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   FlatList,
   Modal,
@@ -16,8 +16,11 @@ import { Image } from 'expo-image';
 import { useThemeStore } from '../../store/useThemeStore';
 import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
 import type { OpenHouseTickerItem } from '../../contracts/openHouseContract';
-import { useI18n, localeToDateFormat } from '../../i18n';
+import { useI18n, getAppLocale } from '../../i18n';
 import { resolveMediaUrl } from '../../utils/userAvatar';
+import { formatOpenHouseLiveBroadcast } from './openHouseLiveFormat';
+import LiveEventCountdown from './LiveEventCountdown';
+import GreenNewsTicker from './GreenNewsTicker';
 
 type Props = {
   visible: boolean;
@@ -27,7 +30,8 @@ type Props = {
 export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const locale = getAppLocale();
   const items = useOpenHouseLiveStore((s) => s.items);
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
@@ -35,56 +39,70 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const card = isDark ? '#1C1C1E' : '#FFFFFF';
   const text = isDark ? '#FFFFFF' : '#111827';
   const muted = isDark ? 'rgba(235,235,245,0.6)' : '#6B7280';
+  const countdownAccent = '#10B981';
+  const countdownMuted = isDark ? 'rgba(52,211,153,0.7)' : 'rgba(5,150,105,0.75)';
 
-  const openEvent = (eventId: number) => {
-    onClose();
-    navigation.navigate('OpenHouseEvent', { eventId });
-  };
+  const openEvent = useCallback(
+    (eventId: number) => {
+      onClose();
+      navigation.navigate('OpenHouseEvent', { eventId });
+    },
+    [navigation, onClose]
+  );
 
-  const renderItem = ({ item }: { item: OpenHouseTickerItem }) => {
-    const dateLabel = item.startsAt
-      ? new Date(item.startsAt).toLocaleString(localeToDateFormat(locale), {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      : '—';
-    const thumb = resolveMediaUrl(item.imageUrl);
+  const renderItem = useCallback(
+    ({ item }: { item: OpenHouseTickerItem }) => {
+      const thumb = resolveMediaUrl(item.imageUrl);
+      const broadcast = formatOpenHouseLiveBroadcast(item, locale);
 
-    return (
-      <Pressable
-        onPress={() => openEvent(item.eventId)}
-        style={[styles.card, { backgroundColor: card, borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)' }]}
-      >
-        {thumb ? (
-          <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
-        ) : (
-          <View style={[styles.thumb, styles.thumbFallback]}>
-            <Ionicons name="home-outline" size={22} color="#F59E0B" />
+      return (
+        <Pressable
+          onPress={() => openEvent(item.eventId)}
+          style={[
+            styles.card,
+            {
+              backgroundColor: card,
+              borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+            },
+          ]}
+        >
+          <View style={styles.cardTop}>
+            {thumb ? (
+              <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
+            ) : (
+              <View style={[styles.thumb, styles.thumbFallback]}>
+                <Ionicons name="home-outline" size={22} color="#10B981" />
+              </View>
+            )}
+            <View style={styles.cardBody}>
+              <View style={styles.livePill}>
+                <View style={styles.liveDot} />
+                <Text style={styles.livePillText}>{t('openHouse.live.panelLive')}</Text>
+              </View>
+              <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+                {item.title}
+              </Text>
+              <Text style={{ color: muted, fontSize: 13 }}>
+                {item.city}
+                {item.district ? ` · ${item.district}` : ''}
+              </Text>
+              <Text style={styles.spotsMeta}>
+                {t('openHouse.hub.spotsLeft', { n: item.spotsLeft })}
+              </Text>
+              <LiveEventCountdown
+                startsAt={item.startsAt}
+                accent={countdownAccent}
+                muted={countdownMuted}
+              />
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#C7C7CC" style={styles.chevron} />
           </View>
-        )}
-        <View style={{ flex: 1, gap: 4 }}>
-          <View style={styles.livePill}>
-            <View style={styles.liveDot} />
-            <Text style={styles.livePillText}>{t('openHouse.live.panelLive')}</Text>
-          </View>
-          <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={{ color: muted, fontSize: 13 }}>
-            {item.city}
-            {item.district ? ` · ${item.district}` : ''}
-          </Text>
-          <Text style={styles.cardMeta}>
-            {dateLabel} · {t('openHouse.hub.spotsLeft', { n: item.spotsLeft })}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color="#C7C7CC" />
-      </Pressable>
-    );
-  };
+          <GreenNewsTicker text={broadcast} />
+        </Pressable>
+      );
+    },
+    [card, countdownAccent, countdownMuted, isDark, locale, muted, openEvent, t, text]
+  );
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -114,7 +132,7 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
           data={items}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ gap: 10, paddingBottom: 24 }}
+          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
           ListEmptyComponent={
             <Text style={{ color: muted, textAlign: 'center', marginTop: 40 }}>
               {t('openHouse.hub.emptyDiscover')}
@@ -133,7 +151,6 @@ const styles = StyleSheet.create({
     marginTop: 48,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    backgroundColor: 'rgba(242,242,247,0.92)',
     paddingHorizontal: 16,
   },
   sheetHeader: {
@@ -152,31 +169,38 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.06)',
   },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 12,
+    overflow: 'hidden',
   },
-  thumb: { width: 72, height: 72, borderRadius: 12 },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+    paddingBottom: 10,
+  },
+  thumb: { width: 80, height: 80, borderRadius: 12 },
   thumbFallback: {
-    backgroundColor: 'rgba(245,158,11,0.14)',
+    backgroundColor: 'rgba(16,185,129,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardBody: { flex: 1, gap: 2 },
+  chevron: { marginTop: 28 },
   livePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(245,158,11,0.18)',
+    backgroundColor: 'rgba(16,185,129,0.16)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
+    marginBottom: 2,
   },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#F59E0B' },
-  livePillText: { fontSize: 10, fontWeight: '800', color: '#B45309', letterSpacing: 0.6 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+  livePillText: { fontSize: 10, fontWeight: '800', color: '#047857', letterSpacing: 0.6 },
   cardTitle: { fontSize: 15, fontWeight: '800', lineHeight: 20 },
-  cardMeta: { fontSize: 12, fontWeight: '600', color: '#F59E0B' },
+  spotsMeta: { fontSize: 12, fontWeight: '700', color: '#10B981', marginTop: 2 },
 });
