@@ -310,11 +310,15 @@ export const profile = {
         'The subscription from this phone\'s Apple ID will be linked to this EstateOS account. The previous account will lose Investor Pro.\n\nContinue?',
       investorProTransferConfirmCta: 'Move to this account',
       investorProTransferCancel: 'Cancel',
+      investorProReassignTitle: 'Subscription on another EstateOS account',
+      investorProReassignBody:
+        'This Apple ID had a subscription linked to another EstateOS account, but App Store shows no active period now. You can start Investor Pro on this account — the link will be moved here.',
+      investorProReassignCta: 'Continue in App Store',
       investorProTransferredTitle: 'Investor Pro on this account',
       investorProTransferredBody:
         'The subscription from your Apple ID has been moved to this EstateOS account. The previous account no longer has Pro access.\n\nThe App Store will not show the payment sheet — the subscription is already active on this Apple ID. That is normal Apple behavior.',
       investorProActivePending:
-        'Payment received. Activation in progress — refresh Profile shortly.',
+        'Apple accepted the payment. Investor Pro activation is in progress — refresh Profile shortly or tap Restore Purchases.',
     },
   },
   help: {

@@ -312,11 +312,15 @@ export const profile = {
         'Subskrypcja z Apple ID na tym telefonie zostanie przypisana do tego konta EstateOS. Poprzednie konto straci dostęp Investor Pro.\n\nKontynuować?',
       investorProTransferConfirmCta: 'Przenieś na to konto',
       investorProTransferCancel: 'Anuluj',
+      investorProReassignTitle: 'Subskrypcja na innym koncie EstateOS',
+      investorProReassignBody:
+        'To Apple ID miało subskrypcję przypisaną do innego konta EstateOS, ale w App Store nie ma teraz aktywnego okresu. Możesz rozpocząć Investor Pro na tym koncie — powiązanie zostanie przeniesione.',
+      investorProReassignCta: 'Kontynuuj w App Store',
       investorProTransferredTitle: 'Investor Pro na tym koncie',
       investorProTransferredBody:
         'Subskrypcja z Twojego Apple ID została przeniesiona na to konto EstateOS. Poprzednie konto straciło dostęp Pro.\n\nApp Store nie pokaże okna płatności — subskrypcja jest już aktywna na tym Apple ID. To normalne zachowanie Apple.',
       investorProActivePending:
-        'Płatność została przyjęta. Trwa aktywacja — odśwież Profil za chwilę.',
+        'Płatność Apple została przyjęta. Trwa aktywacja Investor Pro na koncie — odśwież Profil za chwilę lub użyj „Przywróć zakupy”.',
     },
   },
   help: {

@@ -22,8 +22,9 @@ import { useThemeStore, ThemeMode } from '../store/useThemeStore';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { BlurView } from 'expo-blur';
 import { purchasePakietPlusConsumable, PAKIET_PLUS_PRICE_LABEL, restorePakietPlusPurchases } from '../services/iapPakietPlus';
-import { claimInvestorProSubscription, purchaseInvestorProSubscription } from '../services/iapInvestorPro';
-import { investorProPurchaseAlertCopy, investorProPurchaseErrorAlertCopy, investorProSubscriptionNeedsTransfer, promptInvestorProTransferAlert } from '../utils/investorProPurchaseFeedback';
+import { purchaseInvestorProSubscription, syncInvestorProEntitlement, transferInvestorProToCurrentAccount } from '../services/iapInvestorPro';
+import { IAPManager } from '../services/iapManager';
+import { investorProPurchaseAlertCopy, investorProPurchaseErrorAlertCopy, investorProSubscriptionNeedsTransfer, isNoAppleInvestorProSubscriptionMessage, promptInvestorProReassignAndSubscribeAlert, promptInvestorProTransferAlert } from '../utils/investorProPurchaseFeedback';
 import { fetchInvestorProStoreListing } from '../services/iapInvestorProListing';
 import type { SubscriptionStoreListing } from '../services/iapManager';
 import * as Notifications from 'expo-notifications';
@@ -3585,57 +3586,35 @@ function ProfileScreenLoggedIn({
           result.subscriptionConflict ||
           investorProSubscriptionNeedsTransfer(result.errorCode, result.message)
         ) {
-          promptInvestorProTransferAlert(t, () => {
-            void (async () => {
-              setIsRestoringPurchases(true);
-              try {
-                const transferResult = await claimInvestorProSubscription({
-                  allowSubscriptionTransfer: true,
-                });
-                if (!transferResult.ok) {
-                  const alertCopy = investorProPurchaseErrorAlertCopy(t, {
-                    errorCode: transferResult.errorCode,
-                    message: transferResult.message,
-                    alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
-                  });
-                  Alert.alert(alertCopy.title, alertCopy.body);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  return;
-                }
-                await refreshUser?.();
-                const patched = userAfterInvestorProPurchase(useAuthStore.getState().user, {
-                  backendRegistered: Boolean(transferResult.backendRegistered),
-                  isPro: transferResult.isPro,
-                  proExpiresAt: transferResult.proExpiresAt,
-                  extraListings: transferResult.extraListings,
-                  plusExpiresAt: transferResult.plusExpiresAt,
-                });
-                if (patched) {
-                  const merged = { ...useAuthStore.getState().user!, ...patched };
-                  useAuthStore.setState({ user: merged });
-                  await AsyncStorage.setItem('user_data', JSON.stringify(merged));
-                }
-                const mergedUser = patched ?? useAuthStore.getState().user;
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                const alertCopy = investorProPurchaseAlertCopy(transferResult, mergedUser, t, {
-                  hadProBeforePurchase: hasActiveInvestorProMembership(user),
-                });
-                Alert.alert(alertCopy.title, alertCopy.body);
-              } finally {
-                setIsRestoringPurchases(false);
-              }
-            })();
-          });
+          void promptInvestorProTransferFlow(hasActiveInvestorProMembership(user), 'restore', setIsRestoringPurchases);
         } else if (hasActiveInvestorProMembership(user)) {
           Alert.alert(
             t('profile.shop.alerts.investorProAlreadyActiveTitle'),
             t('profile.shop.alerts.investorProRestoreNoAppleSubBody'),
           );
         } else {
-          Alert.alert(
-            t('profile.shop.alerts.nothingToRestoreTitle'),
-            t('profile.shop.alerts.nothingToRestoreBody'),
-          );
+          const syncResult = await syncInvestorProEntitlement();
+          await refreshUser?.();
+          const syncedUser = useAuthStore.getState().user;
+          if (syncResult.ok || hasActiveInvestorProMembership(syncedUser)) {
+            if (syncResult.ok) {
+              await applyInvestorProPurchaseResult(syncResult, false);
+            } else {
+              Alert.alert(
+                t('profile.shop.alerts.investorProActiveTitle'),
+                t('profile.shop.alerts.investorProActivePending'),
+              );
+            }
+          } else if (
+            investorProSubscriptionNeedsTransfer(syncResult.errorCode, syncResult.message)
+          ) {
+            void promptInvestorProTransferFlow(false, 'restore', setIsRestoringPurchases);
+          } else {
+            Alert.alert(
+              t('profile.shop.alerts.nothingToRestoreTitle'),
+              t('profile.shop.alerts.nothingToRestoreBody'),
+            );
+          }
         }
       } else {
         Alert.alert(t('profile.shop.alerts.restoreFailedTitle'), result.message || t('profile.shop.alerts.restoreFailedBody'));
@@ -3703,6 +3682,8 @@ function ProfileScreenLoggedIn({
       proExpiresAt: result.proExpiresAt,
       extraListings: result.extraListings,
       plusExpiresAt: result.plusExpiresAt,
+      syncedExistingSubscription: result.syncedExistingSubscription,
+      subscriptionTransferred: result.subscriptionTransferred,
     });
     if (patched) {
       const merged = { ...useAuthStore.getState().user!, ...patched };
@@ -3714,6 +3695,50 @@ function ProfileScreenLoggedIn({
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const alertCopy = investorProPurchaseAlertCopy(result, mergedUser, t, { hadProBeforePurchase });
     Alert.alert(alertCopy.title, alertCopy.body);
+  };
+
+  const runInvestorProTransfer = (
+    setBusy: (value: boolean) => void,
+    hadProBeforePurchase: boolean,
+    _mode: 'restore' | 'purchase',
+  ) => {
+    void (async () => {
+      if (!token) return;
+      setBusy(true);
+      try {
+        const transferResult = await transferInvestorProToCurrentAccount(API_URL, token);
+
+        if (transferResult.cancelled) return;
+        if (!transferResult.ok) {
+          const alertCopy = investorProPurchaseErrorAlertCopy(t, {
+            errorCode: transferResult.errorCode,
+            message: transferResult.message,
+            alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
+          });
+          Alert.alert(alertCopy.title, alertCopy.body);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+        await applyInvestorProPurchaseResult(transferResult, hadProBeforePurchase);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const promptInvestorProTransferFlow = async (
+    hadProBeforePurchase: boolean,
+    mode: 'restore' | 'purchase',
+    setBusy: (value: boolean) => void,
+  ) => {
+    const hasAppleSub = await IAPManager.hasActiveInvestorProOnDevice();
+    if (hasAppleSub) {
+      promptInvestorProTransferAlert(t, () => runInvestorProTransfer(setBusy, hadProBeforePurchase, mode));
+      return;
+    }
+    promptInvestorProReassignAndSubscribeAlert(t, () =>
+      runInvestorProTransfer(setBusy, hadProBeforePurchase, 'purchase'),
+    );
   };
 
   const handleBuyInvestorPro = async () => {
@@ -3739,30 +3764,20 @@ function ProfileScreenLoggedIn({
       if (result.cancelled) return;
       if (!result.ok) {
         if (investorProSubscriptionNeedsTransfer(result.errorCode, result.message)) {
-          promptInvestorProTransferAlert(t, () => {
-            void (async () => {
-              setIsBuyingInvestorPro(true);
-              try {
-                const transferResult = await claimInvestorProSubscription({
-                  allowSubscriptionTransfer: true,
-                });
-                if (!transferResult.ok) {
-                  const alertCopy = investorProPurchaseErrorAlertCopy(t, {
-                    errorCode: transferResult.errorCode,
-                    message: transferResult.message,
-                    alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
-                  });
-                  Alert.alert(alertCopy.title, alertCopy.body);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  return;
-                }
-                await applyInvestorProPurchaseResult(transferResult, hadProBeforePurchase);
-              } finally {
-                setIsBuyingInvestorPro(false);
-              }
-            })();
-          });
+          void promptInvestorProTransferFlow(hadProBeforePurchase, 'purchase', setIsBuyingInvestorPro);
           return;
+        }
+        if (isNoAppleInvestorProSubscriptionMessage(result.message)) {
+          const syncResult = await syncInvestorProEntitlement();
+          await refreshUser?.();
+          if (syncResult.ok) {
+            await applyInvestorProPurchaseResult(syncResult, hadProBeforePurchase);
+            return;
+          }
+          if (investorProSubscriptionNeedsTransfer(syncResult.errorCode, syncResult.message)) {
+            void promptInvestorProTransferFlow(hadProBeforePurchase, 'purchase', setIsBuyingInvestorPro);
+            return;
+          }
         }
         const alertCopy = investorProPurchaseErrorAlertCopy(t, {
           errorCode: result.errorCode,

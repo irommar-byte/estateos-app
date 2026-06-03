@@ -73,6 +73,7 @@ export async function purchaseInvestorProSubscription(
 export async function claimInvestorProSubscription(options?: {
   allowSubscriptionTransfer?: boolean;
 }): Promise<PurchaseInvestorProResult> {
+  await IAPManager.retryPendingEntitlements();
   const result = await IAPManager.claimActiveInvestorProSubscription({
     allowSubscriptionTransfer: options?.allowSubscriptionTransfer,
   });
@@ -97,8 +98,43 @@ export async function claimInvestorProSubscription(options?: {
   return { ok: false, message: result.message, errorCode: result.errorCode };
 }
 
+function isNoAppleSubMessage(message?: string): boolean {
+  const text = String(message || '').trim();
+  return (
+    /nie ma aktywnej subskrypcji investor pro/i.test(text) ||
+    /no active investor pro subscription/i.test(text) ||
+    /нет активной подписки investor pro/i.test(text)
+  );
+}
+
 /**
- * Po zamknięciu naszego modala — krótkie opóźnienie, żeby iOS zdążył pokazać
+ * Przeniesienie subskrypcji Investor Pro na bieżące konto EstateOS.
+ * Najpierw sync aktywnej subskrypcji z App Store; jeśli wygasła — ponowny zakup z flagą transferu.
+ */
+export async function transferInvestorProToCurrentAccount(
+  apiUrl: string,
+  token: string,
+): Promise<PurchaseInvestorProResult> {
+  await IAPManager.retryPendingEntitlements();
+  const claim = await claimInvestorProSubscription({ allowSubscriptionTransfer: true });
+  if (claim.ok) return claim;
+
+  if (isNoAppleSubMessage(claim.message)) {
+    return purchaseInvestorProSubscription(apiUrl, token, {
+      allowSubscriptionTransfer: true,
+    });
+  }
+
+  return claim;
+}
+
+export async function syncInvestorProEntitlement(options?: {
+  allowSubscriptionTransfer?: boolean;
+}): Promise<PurchaseInvestorProResult> {
+  return claimInvestorProSubscription(options);
+}
+
+/**
  * natywny sheet subskrypcji App Store (StoreKit) bez konfliktu z Modal RN.
  */
 export async function presentInvestorProSubscriptionSheet(

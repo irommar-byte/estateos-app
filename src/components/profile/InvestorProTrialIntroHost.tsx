@@ -106,6 +106,8 @@ export default function InvestorProTrialIntroHost() {
         proExpiresAt: result.proExpiresAt,
         extraListings: result.extraListings,
         plusExpiresAt: result.plusExpiresAt,
+        syncedExistingSubscription: result.syncedExistingSubscription,
+        subscriptionTransferred: result.subscriptionTransferred,
       });
       if (patched) {
         const current = useAuthStore.getState().user;

@@ -5,6 +5,7 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
+import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
@@ -166,6 +167,12 @@ export async function POST(req: Request) {
           planType: isPartner ? 'AGENCY' : 'NONE',
         },
         select: MOBILE_USER_SELECT,
+      });
+
+      void sendTransactionalEmail({
+        to: user.email,
+        subject: buildWelcomeEmailSubject({ userName: user.name }),
+        html: buildWelcomeEmailHtml({ userName: user.name }),
       });
 
       const token = signMobileToken({ id: user.id, email: user.email, role: user.role });

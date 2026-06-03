@@ -64,29 +64,31 @@ export function userAfterInvestorProPurchase(
     backendRegistered?: boolean;
     extraListings?: number;
     plusExpiresAt?: string | null;
+    syncedExistingSubscription?: boolean;
+    subscriptionTransferred?: boolean;
   },
 ): Record<string, unknown> | null {
   if (!user) return null;
-  if (opts.isPro === true || opts.proExpiresAt) {
-    return {
-      ...user,
-      isPro: true,
-      planType: 'PRO',
-      ...(opts.proExpiresAt ? { proExpiresAt: opts.proExpiresAt } : {}),
-      ...(opts.extraListings != null ? { extraListings: opts.extraListings } : {}),
-      ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
-    };
-  }
-  if (opts.backendRegistered) {
-    const optimistic = new Date(Date.now() + DEFAULT_PRO_PERIOD_MS).toISOString();
-    return {
-      ...user,
-      isPro: true,
-      planType: 'PRO',
-      proExpiresAt: optimistic,
-      ...(opts.extraListings != null ? { extraListings: opts.extraListings } : {}),
-      ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
-    };
-  }
-  return user;
+
+  const shouldActivatePro =
+    opts.isPro === true ||
+    Boolean(opts.proExpiresAt) ||
+    Boolean(opts.backendRegistered) ||
+    Boolean(opts.syncedExistingSubscription) ||
+    Boolean(opts.subscriptionTransferred);
+
+  if (!shouldActivatePro) return user;
+
+  const proExpiresAt =
+    opts.proExpiresAt ||
+    new Date(Date.now() + DEFAULT_PRO_PERIOD_MS).toISOString();
+
+  return {
+    ...user,
+    isPro: true,
+    planType: 'PRO',
+    proExpiresAt,
+    ...(opts.extraListings != null ? { extraListings: opts.extraListings } : {}),
+    ...(opts.plusExpiresAt ? { plusExpiresAt: opts.plusExpiresAt } : {}),
+  };
 }

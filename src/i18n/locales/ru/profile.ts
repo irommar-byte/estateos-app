@@ -310,11 +310,15 @@ export const profile = {
         'Подписка с Apple ID на этом телефоне будет привязана к этому аккаунту EstateOS. Предыдущий аккаунт потеряет Investor Pro.\n\nПродолжить?',
       investorProTransferConfirmCta: 'Перенести на этот аккаунт',
       investorProTransferCancel: 'Отмена',
+      investorProReassignTitle: 'Подписка на другом аккаунте EstateOS',
+      investorProReassignBody:
+        'Этот Apple ID был связан с подпиской на другом аккаунте EstateOS, но в App Store сейчас нет активного периода. Можно оформить Investor Pro на этом аккаунте — связь будет перенесена.',
+      investorProReassignCta: 'Продолжить в App Store',
       investorProTransferredTitle: 'Investor Pro на этом аккаунте',
       investorProTransferredBody:
         'Подписка с вашего Apple ID перенесена на этот аккаунт EstateOS. Предыдущий аккаунт потерял доступ Pro.\n\nApp Store не покажет окно оплаты — подписка уже активна на этом Apple ID. Так работает Apple.',
       investorProActivePending:
-        'Платеж принят. Идет активация — обновите профиль через минуту.',
+        'Apple принял платеж. Активация Investor Pro на аккаунте — обновите профиль через минуту или нажмите «Восстановить покупки».',
     },
   },
   help: {

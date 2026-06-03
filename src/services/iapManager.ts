@@ -342,26 +342,61 @@ class IAPManagerImpl {
       const ready = await this.ensurePurchaseReady();
       if (!ready.ok) return ready.result;
 
-      if (!this.iap || typeof this.iap.getActiveSubscriptions !== 'function') {
-        return { ok: false, message: 'Sklep In-App nie jest dostępny.' };
-      }
-
-      const activeSubs = await this.iap.getActiveSubscriptions([
-        IAP_PRODUCT_IDS.INVESTOR_PRO,
-        'pl.estateos.app.pakiet_investor_pro',
-      ]);
-
-      for (const sub of activeSubs || []) {
-        if (!sub?.isActive) continue;
-        const productId = String(sub.productId || '');
-        if (!this.isKnownProductId(productId) && productId !== 'pl.estateos.app.pakiet_investor_pro') {
-          continue;
+      const verifyPayload = async (
+        payload: IapVerifyRequest,
+        purchase?: IapPurchase,
+      ): Promise<IapPurchaseResult | null> => {
+        const key = this.idempotencyKey(payload);
+        if (purchase) {
+          await this.savePending({ key, payload, raw: purchase, attempts: 0, lastTry: 0 });
         }
+        const verifyResult = await this.verifyOnBackend(payload, key);
+        const tx = this.transactionIdOf(payload);
+
+        if (verifyResult?.success) {
+          if (verifyResult.verified && purchase) {
+            try {
+              await this.iap!.finishTransaction({
+                purchase,
+                isConsumable: false,
+              });
+            } catch (e) {
+              if (__DEV__) console.log('[IAP] finishTransaction (claim) failed:', e);
+            }
+            await this.removePending(key);
+          }
+          return this.resultFromInvestorProVerify(verifyResult, payload.productId, tx, true);
+        }
+
+        if (verifyResult && verifyResult.success === false) {
+          const errorCode = String(
+            (verifyResult as { errorCode?: string; code?: string }).errorCode ??
+              (verifyResult as { code?: string }).code ??
+              '',
+          ).trim() || undefined;
+          return { ok: false, message: verifyResult.message, errorCode };
+        }
+
+        if (purchase) {
+          return {
+            ok: true,
+            productId: payload.productId,
+            transactionId: tx,
+            backendVerified: false,
+            syncedExistingSubscription: true,
+          };
+        }
+
+        return null;
+      };
+
+      const buildPayloadFromSub = (sub: Record<string, unknown>): IapVerifyRequest | null => {
+        const productId = String(sub.productId || '');
+        if (!this.isInvestorProProductId(productId)) return null;
         const jws = sub.purchaseToken ? String(sub.purchaseToken) : '';
         const tx = sub.transactionId ? String(sub.transactionId) : '';
-        if (!jws || !tx) continue;
-
-        const payload: IapVerifyRequest = {
+        if (!jws || !tx) return null;
+        return {
           platform: Platform.OS === 'ios' ? 'ios' : 'android',
           productId: productId as IapProductId,
           transactionId: tx,
@@ -375,31 +410,44 @@ class IAPManagerImpl {
           pendingPurchaseId: `${Platform.OS}:${tx}`,
           ...(options?.allowSubscriptionTransfer ? { allowSubscriptionTransfer: true } : {}),
         };
-        const key = this.idempotencyKey(payload);
-        const verifyResult = await this.verifyOnBackend(payload, key);
-        if (verifyResult?.success && verifyResult.verified) {
-          return {
-            ok: true,
-            productId: productId as IapProductId,
-            transactionId: tx,
-            backendVerified: true,
-            extraListings: verifyResult.extraListings,
-            isPro: verifyResult.isPro,
-            proExpiresAt: verifyResult.proExpiresAt,
-            plusExpiresAt: verifyResult.plusExpiresAt,
-            proCreditsGranted: verifyResult.proCreditsGranted,
-            syncedExistingSubscription: !verifyResult.subscriptionTransferred,
-            subscriptionTransferred: verifyResult.subscriptionTransferred,
-          };
+      };
+
+      if (this.iap && typeof this.iap.getActiveSubscriptions === 'function') {
+        const activeSubs = await this.iap.getActiveSubscriptions([
+          IAP_PRODUCT_IDS.INVESTOR_PRO,
+          'pl.estateos.app.pakiet_investor_pro',
+        ]);
+        for (const sub of activeSubs || []) {
+          if (sub?.isActive === false) continue;
+          const payload = buildPayloadFromSub(sub as Record<string, unknown>);
+          if (!payload) continue;
+          const result = await verifyPayload(payload);
+          if (result) return result;
         }
-        if (verifyResult && verifyResult.success === false) {
-          const errorCode = String(
-            (verifyResult as { errorCode?: string; code?: string }).errorCode ??
-              (verifyResult as { code?: string }).code ??
-              '',
-          ).trim() || undefined;
-          return { ok: false, message: verifyResult.message, errorCode };
+      }
+
+      const recoverable = await this.getRecoverableStorePurchases();
+      for (const purchase of recoverable) {
+        const productId = String(purchase.productId || '');
+        if (!this.isInvestorProProductId(productId)) continue;
+        const payload = this.buildVerifyPayload(purchase);
+        if (!payload) continue;
+        if (options?.allowSubscriptionTransfer) {
+          payload.allowSubscriptionTransfer = true;
         }
+        const result = await verifyPayload(payload, purchase);
+        if (result) return result;
+      }
+
+      const pending = await this.loadPending();
+      for (const rec of Object.values(pending)) {
+        if (!this.isInvestorProProductId(rec.payload.productId)) continue;
+        const payload: IapVerifyRequest = {
+          ...rec.payload,
+          ...(options?.allowSubscriptionTransfer ? { allowSubscriptionTransfer: true } : {}),
+        };
+        const result = await verifyPayload(payload, rec.raw);
+        if (result) return result;
       }
 
       return {
@@ -410,6 +458,39 @@ class IAPManagerImpl {
     } finally {
       this.activePurchaseOptions = null;
     }
+  }
+
+  /** Ponawia weryfikację zaległych paragonów (AsyncStorage + StoreKit). */
+  async retryPendingEntitlements(): Promise<void> {
+    await this.drainPending();
+  }
+
+  private isInvestorProProductId(productId: string): boolean {
+    return (
+      productId === IAP_PRODUCT_IDS.INVESTOR_PRO ||
+      productId === 'pl.estateos.app.pakiet_investor_pro'
+    );
+  }
+
+  private resultFromInvestorProVerify(
+    verifyResult: Extract<IapVerifyResponse, { success: true }>,
+    productId: IapProductId,
+    transactionId: string,
+    syncedExisting: boolean,
+  ): IapPurchaseResult {
+    return {
+      ok: true,
+      productId,
+      transactionId,
+      backendVerified: Boolean(verifyResult.verified),
+      extraListings: verifyResult.extraListings,
+      isPro: verifyResult.isPro,
+      proExpiresAt: verifyResult.proExpiresAt,
+      plusExpiresAt: verifyResult.plusExpiresAt,
+      proCreditsGranted: verifyResult.proCreditsGranted,
+      syncedExistingSubscription: syncedExisting && !verifyResult.subscriptionTransferred,
+      subscriptionTransferred: verifyResult.subscriptionTransferred,
+    };
   }
 
   /** Cena i trial z App Store / Play — do UI (sheet Apple i tak decyduje o trialu). */
@@ -785,7 +866,7 @@ class IAPManagerImpl {
     }
 
     // Backend rejected (success: false) lub nieosiągalny.
-    // Wszystko jedno — transakcja JEST w pending i ponowimy.
+    // Transakcja zostaje w pending — ponowimy w tle.
     if (!opts?.silent) {
       const errorCode =
         verifyResult && !verifyResult.success
@@ -795,12 +876,22 @@ class IAPManagerImpl {
                 '',
             ).trim() || undefined
           : undefined;
+
+      if (!verifyResult || (verifyResult.success === false && verifyResult.shouldRetry)) {
+        // Apple potwierdził — backend chwilowo niedostępny lub jeszcze weryfikuje.
+        this.resolveWaiterFor(payload.productId, {
+          ok: true,
+          productId: payload.productId,
+          transactionId: this.transactionIdOf(payload),
+          backendVerified: false,
+        });
+        void this.drainPending();
+        return true;
+      }
+
       this.resolveWaiterFor(payload.productId, {
         ok: false,
-        message:
-          verifyResult && !verifyResult.success
-            ? verifyResult.message
-            : 'Zakup potwierdzony przez Apple, ale serwer EstateOS™ jeszcze go nie zaksięgował. Dokończymy automatycznie, gdy odzyskamy łączność.',
+        message: verifyResult.message,
         errorCode,
       });
     }
@@ -1150,6 +1241,7 @@ class IAPManagerImpl {
   private async verifyOnBackend(
     payload: IapVerifyRequest,
     key: string,
+    attempt = 0,
   ): Promise<IapVerifyResponse | null> {
     const token = this.getToken();
     if (!token) {
@@ -1175,6 +1267,10 @@ class IAPManagerImpl {
       const data = (await res.json().catch(() => null)) as IapVerifyResponse | null;
       if (!data) {
         await this.bumpPendingAttempts(key);
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+          return this.verifyOnBackend(payload, key, attempt + 1);
+        }
         return null;
       }
       if (data.success === false && !data.shouldRetry) {
@@ -1189,6 +1285,10 @@ class IAPManagerImpl {
     } catch (e) {
       if (__DEV__) console.log('[IAP] verify network error:', e);
       await this.bumpPendingAttempts(key);
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+        return this.verifyOnBackend(payload, key, attempt + 1);
+      }
       return null;
     }
   }
@@ -1282,6 +1382,43 @@ class IAPManagerImpl {
   // -------------------------------------------------------------------------
   //  TEARDOWN (np. dla testów / dev-reload)
   // -------------------------------------------------------------------------
+
+  /** Czy App Store / Play zgłasza aktywną subskrypcję Investor Pro na tym urządzeniu. */
+  async hasActiveInvestorProOnDevice(): Promise<boolean> {
+    if (!this.iap) {
+      const ok = await this.init({ apiUrl: this.apiUrl, getToken: this.getToken });
+      if (!ok) return false;
+    }
+    const connected = await this.ensureConnected();
+    if (!connected) return false;
+
+    if (typeof this.iap!.getActiveSubscriptions === 'function') {
+      try {
+        const activeSubs = await this.iap!.getActiveSubscriptions([
+          IAP_PRODUCT_IDS.INVESTOR_PRO,
+          'pl.estateos.app.pakiet_investor_pro',
+        ]);
+        const hasActive = (activeSubs || []).some((sub) => {
+          if (!sub?.isActive) return false;
+          const productId = String(sub.productId || '');
+          return this.isInvestorProProductId(productId);
+        });
+        if (hasActive) return true;
+      } catch {
+        // Sandbox często zwraca pustą listę — sprawdzamy fallbacki poniżej.
+      }
+    }
+
+    const recoverable = await this.getRecoverableStorePurchases();
+    if (recoverable.some((p) => this.isInvestorProProductId(String(p.productId || '')))) {
+      return true;
+    }
+
+    const pending = await this.loadPending();
+    return Object.values(pending).some((rec) =>
+      this.isInvestorProProductId(String(rec.payload.productId || '')),
+    );
+  }
 
   async teardown(): Promise<void> {
     try {

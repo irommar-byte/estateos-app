@@ -84,8 +84,11 @@ function extractFirstName(userName?: string | null): string {
 }
 
 function emailLogoMarkHtml(size = 56): string {
-  const logoUrl = appUrl('/apple-touch-icon.png');
-  return `<img src="${logoUrl}" width="${size}" height="${size}" alt="EstateOS" style="display:block;width:${size}px;height:${size}px;border:0;border-radius:${Math.round(size * 0.24)}px;" />`;
+  const logoUrl =
+    process.env.EMAIL_LOGO_URL?.trim() ||
+    process.env.NEXT_PUBLIC_EMAIL_LOGO_URL?.trim() ||
+    appUrl('/apple-touch-icon.png');
+  return `<img src="${logoUrl}" width="${size}" height="${size}" alt="EstateOS" style="display:block;width:${size}px;height:${size}px;border:0;border-radius:${Math.round(size * 0.22)}px;" />`;
 }
 
 function emailBrandWordmarkHtml(fontSize = 15): string {
@@ -173,21 +176,40 @@ export function buildWelcomeEmailSubject(params: { userName?: string | null }): 
 export function buildWelcomeEmailHtml(params: { userName?: string | null }) {
   const firstName = escapeHtml(extractFirstName(params.userName));
   const panelUrl = appUrl('/moje-konto/crm');
+  const siteUrl = appUrl('/');
 
   const body = `
-    <p style="margin:0 0 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.02em;text-transform:uppercase;color:#86868b;">
-      Witamy w EstateOS
-    </p>
-    <h1 style="margin:0 0 18px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:34px;font-weight:700;line-height:1.12;letter-spacing:-0.03em;color:#1d1d1f;">
-      Cześć, ${firstName}.
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px 0;border-radius:16px;overflow:hidden;">
+      <tr>
+        <td style="padding:22px 24px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 55%,#0f766e 100%);">
+          <p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.72);">
+            EstateOS
+          </p>
+          <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.2;letter-spacing:-0.03em;color:#ffffff;">
+            Witaj, ${firstName}
+          </p>
+        </td>
+      </tr>
+    </table>
+    <h1 style="margin:0 0 16px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:32px;font-weight:700;line-height:1.15;letter-spacing:-0.03em;color:#1d1d1f;">
+      Twoje konto jest aktywne.
     </h1>
-    <p style="margin:0 0 14px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.55;letter-spacing:-0.01em;color:#424245;">
-      Twoje konto jest gotowe. Od teraz możesz dodawać oferty, prowadzić negocjacje i planować prezentacje nieruchomości — w aplikacji mobilnej i na stronie.
+    <p style="margin:0 0 14px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.58;letter-spacing:-0.01em;color:#424245;">
+      Od teraz możesz publikować oferty, prowadzić negocjacje w Dealroomie i planować prezentacje — w aplikacji i na <a href="${siteUrl}" style="color:#0071e3;text-decoration:none;">estateos.pl</a>.
     </p>
-    <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.55;letter-spacing:-0.01em;color:#424245;">
-      Wszystko, co robisz w jednym miejscu, synchronizuje się między mobile a web, żebyś mógł wracać do spraw w dowolnym momencie.
-    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 0 0;background:#f5f5f7;border-radius:14px;border:1px solid rgba(0,0,0,0.05);">
+      <tr>
+        <td style="padding:18px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.65;color:#1d1d1f;">
+          <p style="margin:0 0 10px 0;"><span style="color:#10b981;font-weight:700;">✓</span> Oferty i mapa w jednym ekosystemie</p>
+          <p style="margin:0 0 10px 0;"><span style="color:#10b981;font-weight:700;">✓</span> Negocjacje i kalendarz prezentacji</p>
+          <p style="margin:0;"><span style="color:#10b981;font-weight:700;">✓</span> Synchronizacja mobile ↔ web</p>
+        </td>
+      </tr>
+    </table>
     ${emailPrimaryButtonHtml(panelUrl, 'Otwórz panel')}
+    <p style="margin:24px 0 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:13px;line-height:1.5;color:#86868b;text-align:center;">
+      Jeśli to nie Ty zakładałeś konto, zignoruj tę wiadomość lub napisz na kontakt z aplikacji.
+    </p>
   `;
 
   return wrapTransactionalEmail(body);

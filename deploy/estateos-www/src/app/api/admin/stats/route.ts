@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
+import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
+import {
+  aggregateVisitorsFromVisits,
+  buildVisitorCountryStats,
+  type RawPageVisit,
+} from '@/lib/pageVisitAnalytics';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -28,20 +34,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS PageVisitLog (
-        id BIGINT NOT NULL AUTO_INCREMENT,
-        visitorHash VARCHAR(64) NOT NULL,
-        ip VARCHAR(64) NOT NULL,
-        country VARCHAR(8) NOT NULL DEFAULT 'PL',
-        path VARCHAR(191) NOT NULL DEFAULT '/',
-        userAgent VARCHAR(255) NULL,
-        createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        PRIMARY KEY (id),
-        KEY PageVisitLog_path_createdAt_idx (path, createdAt),
-        KEY PageVisitLog_hash_createdAt_idx (visitorHash, createdAt)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-    `);
+    await ensurePageVisitLogTable();
 
     const usersCount = await prisma.user.count();
     const totalOffers = await prisma.offer.count();
@@ -69,12 +62,18 @@ export async function GET() {
       take: 5000,
     });
 
-    const visitsRaw = await prisma.$queryRawUnsafe<any[]>(`
-      SELECT ip, country, path, createdAt
+    const visitsRaw = await prisma.$queryRawUnsafe<RawPageVisit[]>(`
+      SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt
       FROM PageVisitLog
       ORDER BY createdAt DESC
       LIMIT 5000
     `);
+
+    const visitors = aggregateVisitorsFromVisits(visitsRaw, 50);
+    const visitorCountries = buildVisitorCountryStats(visitors);
+    const plSharePct = visitorCountries.find((c) => c.countryCode === 'PL')?.sharePct ?? 0;
+    const geoFromEdge = visitors.filter((v) => v.geoSource === 'cloudflare' || v.geoSource === 'vercel').length;
+    const geoFromLookup = visitors.filter((v) => v.geoSource === 'ipapi').length;
 
     // BEZPIECZNE LICZENIE
     const totalValue = offersRaw.reduce((acc, curr) => {
@@ -97,6 +96,19 @@ export async function GET() {
       timeline: {
         offers: offersRaw,
         visits: visitsRaw,
+        visitors,
+        visitorCountries,
+        visitorGeoInsight: {
+          uniqueVisitors: visitors.length,
+          countriesDetected: visitorCountries.length,
+          polandPageViewSharePct: plSharePct,
+          geoFromEdge,
+          geoFromLookup,
+          note:
+            plSharePct >= 95 && geoFromLookup === 0
+              ? 'Prawie wszystkie wizyty mają kraj PL — sprawdź, czy strona jest za Cloudflare/Vercel (nagłówki geo). Nowe wizyty używają lookup IP, gdy brak nagłówka CDN.'
+              : null,
+        },
         users: usersTimelineRaw.map((u) => ({
           createdAt: u.createdAt,
           // W obecnym modelu user jest jednocześnie buyer + seller.

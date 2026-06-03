@@ -117,7 +117,7 @@ model PageVisitLog {
   id           BigInt   @id @default(autoincrement())
   visitorHash  String   @db.VarChar(64)
   ip           String   @db.VarChar(64)
-  country      String   @default("PL") @db.VarChar(8)
+  country      String   @default("UN") @db.VarChar(8)
   path         String   @default("/") @db.VarChar(191)
   userAgent    String?  @db.VarChar(255)
   createdAt    DateTime @default(now())

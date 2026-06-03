@@ -73,6 +73,18 @@ export function promptInvestorProTransferAlert(t: TFn, onTransfer: () => void): 
   );
 }
 
+/** Subskrypcja była na innym koncie EstateOS, ale w App Store nie ma już aktywnego okresu — nowy zakup z przeniesieniem powiązania. */
+export function promptInvestorProReassignAndSubscribeAlert(t: TFn, onContinue: () => void): void {
+  Alert.alert(
+    t('profile.shop.alerts.investorProReassignTitle'),
+    t('profile.shop.alerts.investorProReassignBody'),
+    [
+      { text: t('profile.shop.alerts.investorProTransferCancel'), style: 'cancel' },
+      { text: t('profile.shop.alerts.investorProReassignCta'), onPress: onContinue },
+    ],
+  );
+}
+
 export function investorProPurchaseAlertCopy(
   result: Extract<PurchaseInvestorProResult, { ok: true }>,
   user: Record<string, unknown> | null | undefined,
