@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
   View,
   useColorScheme,
+  type TextStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +24,82 @@ type Props = {
   enabled?: boolean;
 };
 
+const ROTATE_MS = 9000;
+const MARQUEE_PX_PER_SEC = 42;
+
+function truncateMiddle(text: string, max: number): string {
+  const s = text.trim();
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1).trim()}…`;
+}
+
+function TickerMarquee({ text, style }: { text: string; style: TextStyle }) {
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const [laneWidth, setLaneWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
+  const animRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const onLaneLayout = (e: LayoutChangeEvent) => {
+    setLaneWidth(e.nativeEvent.layout.width);
+  };
+
+  const onMeasureLayout = (e: LayoutChangeEvent) => {
+    setTextWidth(e.nativeEvent.layout.width);
+  };
+
+  useEffect(() => {
+    animRef.current?.stop();
+    scrollX.setValue(0);
+
+    const overflow = textWidth - laneWidth;
+    if (overflow <= 4 || laneWidth <= 0 || textWidth <= 0) return;
+
+    const distance = overflow + 32;
+    const duration = Math.max(6000, Math.round((distance / MARQUEE_PX_PER_SEC) * 1000));
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1200),
+        Animated.timing(scrollX, {
+          toValue: -distance,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.delay(900),
+        Animated.timing(scrollX, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    animRef.current = loop;
+    loop.start();
+    return () => {
+      loop.stop();
+    };
+  }, [text, textWidth, laneWidth, scrollX]);
+
+  return (
+    <View style={styles.marqueeLane} onLayout={onLaneLayout}>
+      <View style={styles.measureWrap} pointerEvents="none">
+        <Text style={[style, styles.measureText]} onLayout={onMeasureLayout} numberOfLines={1}>
+          {text}
+        </Text>
+      </View>
+      <Animated.Text
+        numberOfLines={1}
+        style={[style, styles.marqueeText, { transform: [{ translateX: scrollX }] }]}
+      >
+        {text}
+      </Animated.Text>
+    </View>
+  );
+}
+
 export default function OpenHouseLiveTicker({ enabled = true }: Props) {
   const { t, locale } = useI18n();
   const insets = useSafeAreaInsets();
@@ -33,8 +111,8 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
 
   const [items, setItems] = useState<OpenHouseTickerItem[]>([]);
   const [index, setIndex] = useState(0);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  const barOpacity = useRef(new Animated.Value(0)).current;
+  const messageOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!enabled) return;
@@ -44,8 +122,11 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
       const next = await fetchOpenHouseTicker(token);
       if (cancelled) return;
       setItems(next);
+      setIndex(0);
       if (next.length) {
-        Animated.timing(opacity, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+        Animated.timing(barOpacity, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+      } else {
+        barOpacity.setValue(0);
       }
     };
 
@@ -55,36 +136,34 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [enabled, token, opacity]);
+  }, [enabled, token, barOpacity]);
 
   useEffect(() => {
-    if (!items.length) return;
-    translateX.setValue(40);
-    Animated.parallel([
-      Animated.timing(translateX, {
+    if (items.length <= 1) return;
+    const timer = setInterval(() => {
+      Animated.timing(messageOpacity, {
         toValue: 0,
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
+        duration: 280,
         useNativeDriver: true,
-      }),
-      Animated.sequence([
-        Animated.delay(5200),
-        Animated.timing(translateX, {
-          toValue: -40,
-          duration: 420,
-          easing: Easing.in(Easing.cubic),
+      }).start(({ finished }) => {
+        if (!finished) return;
+        setIndex((prev) => (prev + 1) % items.length);
+        Animated.timing(messageOpacity, {
+          toValue: 1,
+          duration: 360,
           useNativeDriver: true,
-        }),
-      ]),
-    ]).start(({ finished }) => {
-      if (finished) setIndex((prev) => (prev + 1) % items.length);
-    });
-  }, [index, items, translateX]);
+        }).start();
+      });
+    }, ROTATE_MS);
+    return () => clearInterval(timer);
+  }, [items.length, messageOpacity]);
 
   const active = items[index % Math.max(items.length, 1)];
   const label = useMemo(() => {
-    if (!active?.startsAt) {
-      return `${active?.city ?? ''} · ${active?.title ?? ''}`.trim();
+    if (!active) return '';
+    const shortTitle = truncateMiddle(active.title ?? '', 36);
+    if (!active.startsAt) {
+      return `${active.city ?? ''} · ${shortTitle}`.trim();
     }
     const date = new Date(active.startsAt).toLocaleString(localeToDateFormat(locale), {
       weekday: 'short',
@@ -95,7 +174,7 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
     });
     return t('openHouse.ticker.openHouseInvite', {
       city: active.city,
-      title: active.title,
+      title: shortTitle,
       date,
       spots: String(active.spotsLeft),
     });
@@ -105,13 +184,7 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
 
   return (
     <Animated.View
-      style={[
-        styles.wrap,
-        {
-          top: insets.top + 4,
-          opacity,
-        },
-      ]}
+      style={[styles.wrap, { top: insets.top + 4, opacity: barOpacity }]}
       pointerEvents="box-none"
     >
       <Pressable
@@ -133,12 +206,14 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
         >
           <View style={styles.liveDotWrap}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveLabel}>{t('openHouse.ticker.label')}</Text>
+            <Text style={styles.liveLabel} numberOfLines={1}>
+              {t('openHouse.ticker.label')}
+            </Text>
           </View>
-          <Animated.Text numberOfLines={1} style={[styles.message, { transform: [{ translateX }] }]}>
-            {label}
-          </Animated.Text>
-          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+          <Animated.View style={[styles.messageWrap, { opacity: messageOpacity }]}>
+            <TickerMarquee text={label} style={styles.message} />
+          </Animated.View>
+          <Ionicons name="chevron-forward" size={16} color="#FFFFFF" style={styles.chevron} />
         </LinearGradient>
       </Pressable>
     </Animated.View>
@@ -162,20 +237,22 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   gradient: {
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
   liveDotWrap: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingRight: 8,
+    paddingRight: 10,
+    marginRight: 2,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: 'rgba(255,255,255,0.35)',
+    maxWidth: 108,
   },
   liveDot: {
     width: 8,
@@ -187,13 +264,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
-  message: {
+  messageWrap: {
     flex: 1,
+    minWidth: 0,
+    marginHorizontal: 8,
+  },
+  marqueeLane: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  measureWrap: {
+    position: 'absolute',
+    opacity: 0,
+    left: 0,
+    top: 0,
+    flexDirection: 'row',
+  },
+  measureText: {
+    flexShrink: 0,
+  },
+  marqueeText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  message: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chevron: {
+    flexShrink: 0,
   },
 });

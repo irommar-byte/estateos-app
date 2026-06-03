@@ -23,6 +23,7 @@ import {
   fetchPublishedOpenHouseEvents,
 } from '../services/openHouseService';
 import type { OpenHouseEventRecord, OpenHouseReservationRecord } from '../contracts/openHouseContract';
+import { resolveMediaUrl } from '../utils/userAvatar';
 
 type Tab = 'discover' | 'host' | 'reservations';
 
@@ -79,13 +80,15 @@ export default function OpenHouseHubScreen() {
         })
       : '—';
 
+    const thumbUri = resolveMediaUrl(item.offer.imageUrl);
+
     return (
       <Pressable
         onPress={() => navigation.navigate('OpenHouseEvent', { eventId: item.id })}
         style={[styles.card, { backgroundColor: card }]}
       >
-        {item.offer.imageUrl ? (
-          <Image source={{ uri: item.offer.imageUrl }} style={styles.thumb} contentFit="cover" />
+        {thumbUri ? (
+          <Image source={{ uri: thumbUri }} style={styles.thumb} contentFit="cover" />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>
             <Ionicons name="home-outline" size={24} color="#F59E0B" />

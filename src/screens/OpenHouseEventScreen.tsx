@@ -26,6 +26,7 @@ import {
 } from '../services/openHouseService';
 import { normalizeListingCurrency } from '../money/convert';
 import { formatAmountWithCurrency } from '../money/format';
+import { resolveMediaUrl } from '../utils/userAvatar';
 
 export default function OpenHouseEventScreen() {
   const navigation = useNavigation<any>();
@@ -144,6 +145,7 @@ export default function OpenHouseEventScreen() {
   const listingCurrency = normalizeListingCurrency(event.offer.priceCurrency);
   const priceLabel = formatAmountWithCurrency(event.offer.price, listingCurrency);
   const hasAnyReservation = event.slots.some((s) => s.reservations.length > 0);
+  const heroUri = resolveMediaUrl(event.offer.imageUrl);
 
   return (
     <View style={[styles.root, { backgroundColor: bg, paddingTop: insets.top }]}>
@@ -159,9 +161,13 @@ export default function OpenHouseEventScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 120, gap: 16 }}>
         <View style={[styles.section, { backgroundColor: card }]}>
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.propertySection')}</Text>
-          {event.offer.imageUrl ? (
-            <Image source={{ uri: event.offer.imageUrl }} style={styles.hero} contentFit="cover" />
-          ) : null}
+          {heroUri ? (
+            <Image source={{ uri: heroUri }} style={styles.hero} contentFit="cover" />
+          ) : (
+            <View style={[styles.hero, styles.heroFallback]}>
+              <Ionicons name="image-outline" size={40} color="#F59E0B" />
+            </View>
+          )}
           <Text style={[styles.propertyTitle, { color: text }]}>{event.offer.title}</Text>
           <Text style={{ color: muted }}>
             {event.offer.city} · {event.offer.district}
@@ -332,6 +338,11 @@ const styles = StyleSheet.create({
   },
   hostHintText: { flex: 1, fontSize: 14, lineHeight: 20 },
   hero: { width: '100%', height: 180, borderRadius: 14 },
+  heroFallback: {
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   propertyTitle: { fontSize: 20, fontWeight: '800', marginTop: 4 },
   price: { fontSize: 16, fontWeight: '700' },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
