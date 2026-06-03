@@ -1,10 +1,17 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
-import { splitStreetAndBuildingNumber } from '@/lib/offerStreetFields';
-import { stageOtodomImportPublication, type OtodomPublicationInput } from '@/lib/otodomImportPublication';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
 import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
+import {
+  consumeAndReserveImportPublication,
+  deleteOfferAfterImportPaymentFailure,
+  ImportPublicationError,
+  publicationInputToRedemption,
+  type OtodomPublicationInput,
+} from '@/lib/otodomImportPublication';
 import { createOffer } from '@/lib/services/offer.service';
 import {
   acquireOfferUploadLock,
@@ -61,22 +68,10 @@ export async function draftToOfferCreateBody(
   userId: number,
   presentation: { title: string; descriptionHtml: string },
 ) {
-  if (draft.lat == null || draft.lng == null) {
-    throw new Error('Brak współrzędnych GPS — nie można utworzyć oferty.');
-  }
-  if (!draft.title?.trim()) {
-    throw new Error('Brak tytułu ogłoszenia.');
-  }
-  if (draft.price == null || draft.price <= 0) {
-    throw new Error('Brak poprawnej ceny.');
-  }
-  if (draft.area == null || draft.area <= 0) {
-    throw new Error('Brak poprawnego metrażu.');
-  }
+  assertOtodomImportDraftReady(draft);
 
   const { city, district, street } = await resolveOtodomImportLocationFields(draft);
-  const streetLine = street || String(draft.street || '').trim();
-  const { streetName, buildingNumber } = splitStreetAndBuildingNumber(streetLine);
+  const country = await inferCountryFromCoordinates(draft.lat, draft.lng);
   const features = draft.features || [];
 
   return {
@@ -91,18 +86,18 @@ export async function draftToOfferCreateBody(
     adminFee: draft.adminFee != null && draft.adminFee > 0 ? draft.adminFee : null,
     deposit: draft.deposit != null && draft.deposit > 0 ? draft.deposit : null,
     area: draft.area,
+    plotArea: draft.plotArea != null && draft.plotArea > 0 ? draft.plotArea : null,
     rooms: draft.rooms,
     floor: draft.floor,
     totalFloors: draft.totalFloors,
     yearBuilt: draft.yearBuilt,
     city,
     district,
-    street: streetName || streetLine,
-    buildingNumber: buildingNumber || null,
+    street: street || draft.street,
     lat: draft.lat,
     lng: draft.lng,
-    localityCountryCode: draft.localityCountryCode || 'PL',
-    localityCountry: 'Polska',
+    localityCountryCode: country.localityCountryCode,
+    localityCountry: country.localityCountry,
     isExactLocation: true,
     hasBalcony: featureIncludes(features, ['balkon']),
     hasElevator: featureIncludes(features, ['winda']),
@@ -214,8 +209,8 @@ export async function importOtodomImagesForOffer(params: {
 
 export async function createOfferFromOtodomDraft(
   draft: OtodomImportDraft,
-  ownerUserId: number,
-  publication?: OtodomPublicationInput | null,
+  adminUserId: number,
+  publication?: OtodomPublicationInput | unknown,
 ) {
   const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (existing) {
@@ -223,35 +218,27 @@ export async function createOfferFromOtodomDraft(
       ok: false as const,
       code: 'ALREADY_IMPORTED' as const,
       existingOfferId: existing.id,
-      message: `Ta oferta źródłowa (#${draft.externalId}) jest już w bazie jako #${existing.id} (${existing.status}).`,
+      message: `Ta oferta OtoDom (#${draft.externalId}) jest już w bazie jako #${existing.id} (${existing.status}).`,
     };
   }
 
   const presentation = await buildOtodomPresentationCopy(draft);
-  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation);
+  const body = await draftToOfferCreateBody(draft, adminUserId, presentation);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {
     throw new Error('Nie udało się odczytać ID nowej oferty.');
   }
 
-  if (publication) {
-    await stageOtodomImportPublication({
-      userId: ownerUserId,
-      offerId,
-      publication,
-    });
-  }
-
   await upsertImportedOfferPrivateSnapshot({
     offerId,
-    userId: ownerUserId,
+    userId: adminUserId,
     draft,
   });
 
   const imageResult = await importOtodomImagesForOffer({
     offerId,
-    ownerUserId,
+    ownerUserId: adminUserId,
     imageUrls: draft.imageUrls,
     source: draft.source,
   });
@@ -260,6 +247,28 @@ export async function createOfferFromOtodomDraft(
     where: { id: offerId },
     select: { id: true, title: true, status: true, city: true, district: true, images: true },
   });
+
+  if (publication && typeof publication === 'object') {
+    const redemption = publicationInputToRedemption(publication as OtodomPublicationInput);
+    if (redemption) {
+      try {
+        await consumeAndReserveImportPublication({
+          offerId,
+          userId: adminUserId,
+          redemption,
+        });
+      } catch (error) {
+        await deleteOfferAfterImportPaymentFailure(offerId);
+        if (error instanceof ImportPublicationError) {
+          if (error.code === 'PUBLICATION_REQUIRES_PLUS') {
+            throw new Error('NO_PLUS_CREDIT_AVAILABLE');
+          }
+          throw new Error(error.message);
+        }
+        throw error;
+      }
+    }
+  }
 
   return {
     ok: true as const,

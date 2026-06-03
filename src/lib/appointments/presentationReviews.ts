@@ -39,7 +39,6 @@ export async function submitPresentationReview(input: {
     const review = await prisma.review.create({
       data: {
         dealId: appointment.dealId,
-        appointmentId,
         reviewerId,
         revieweeId: targetId,
         rating,

@@ -2,6 +2,8 @@
  * Państwo oferty — zapis w DB + wnioskowanie z współrzędnych / miasta gdy brak jawnych pól.
  */
 
+import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
+
 const DEFAULT_COUNTRY_LABEL = 'Polska';
 const DEFAULT_COUNTRY_CODE = 'PL';
 
@@ -179,6 +181,42 @@ function inferCountryIsoFromCoordinates(lat: number, lng: number): string | null
   return null;
 }
 
+/** Async — Mapbox reverse gdy bbox nie obejmuje kraju (np. Japonia). */
+export async function inferCountryFromCoordinates(
+  lat: number | null | undefined,
+  lng: number | null | undefined,
+): Promise<{ localityCountry: string; localityCountryCode: string }> {
+  const latN = Number(lat);
+  const lngN = Number(lng);
+  if (!Number.isFinite(latN) || !Number.isFinite(lngN)) {
+    return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
+  }
+  if (isCoordinatesInPoland(latN, lngN)) {
+    return { localityCountry: DEFAULT_COUNTRY_LABEL, localityCountryCode: DEFAULT_COUNTRY_CODE };
+  }
+  const fromBbox = inferCountryIsoFromCoordinates(latN, lngN);
+  if (fromBbox) {
+    return {
+      localityCountry: countryLabelFromIso(fromBbox),
+      localityCountryCode: fromBbox,
+    };
+  }
+  const feature = await fetchMapboxReverseFeature(latN, lngN);
+  const context = Array.isArray(feature?.context) ? feature.context : [];
+  const countryItem = context.find((item: { id?: string }) =>
+    String(item?.id || '').startsWith('country'),
+  ) as { text?: string; text_pl?: string; short_code?: string } | undefined;
+  const code = String(countryItem?.short_code || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^COUNTRY:/, '');
+  const name = String(countryItem?.text_pl || countryItem?.text || '').trim();
+  if (code) {
+    return { localityCountry: name || countryLabelFromIso(code), localityCountryCode: code };
+  }
+  return { localityCountry: name || 'Inny kraj', localityCountryCode: 'XX' };
+}
+
 /** Publiczne — do geokodowania forward (np. Berlin → DE). */
 export function inferCountryIsoFromCity(city: string): string | null {
   const norm = normalizeMatch(city);
@@ -292,4 +330,24 @@ export function offerListingCountryLabel(raw: Record<string, unknown>): string {
     lat: raw.lat,
     lng: raw.lng,
   }).localityCountry;
+}
+
+export async function resolvePersistedLocalityFieldsAsync(
+  input: LocalityPersistInput,
+): Promise<{ localityCountry: string; localityCountryCode: string }> {
+  const sync = resolvePersistedLocalityFields(input);
+  const lat = Number(input.lat);
+  const lng = Number(input.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return sync;
+  }
+  if (
+    isCoordinatesInPoland(lat, lng) ||
+    (sync.localityCountryCode &&
+      sync.localityCountryCode !== DEFAULT_COUNTRY_CODE &&
+      !isDefaultCountryPlaceholder(sync.localityCountryCode, sync.localityCountry))
+  ) {
+    return sync;
+  }
+  return inferCountryFromCoordinates(lat, lng);
 }

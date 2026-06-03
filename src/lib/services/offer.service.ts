@@ -33,7 +33,11 @@ import {
   assertPlotAreaRequired,
   resolvePlotAreaForPersistence,
 } from '@/lib/offerPlotAreaValidate';
-import { resolvePersistedLocalityFields } from '@/lib/offerLocalityCountry';
+import {
+  inferCountryFromCoordinates,
+  resolvePersistedLocalityFields,
+  resolvePersistedLocalityFieldsAsync,
+} from '@/lib/offerLocalityCountry';
 
 /** Błąd walidacji pól oferty — mapowany na HTTP 4xx w API mobilnym. */
 export class OfferValidationError extends Error {
@@ -223,28 +227,37 @@ export async function ensureOfferLocalityCountryColumns() {
       `UPDATE \`Offer\` SET \`localityCountryCode\` = 'PL' WHERE \`localityCountryCode\` IS NULL OR TRIM(\`localityCountryCode\`) = ''`
     );
 
-    const batch = await prisma.offer.findMany({
-      select: { id: true, city: true, lat: true, lng: true, localityCountry: true, localityCountryCode: true },
-    });
+    const batch = await prisma.$queryRaw<
+      Array<{
+        id: number;
+        city: string | null;
+        lat: number | null;
+        lng: number | null;
+        localityCountry: string | null;
+        localityCountryCode: string | null;
+      }>
+    >`SELECT id, city, lat, lng, localityCountry, localityCountryCode FROM Offer`;
     for (const row of batch) {
-      const resolved = resolvePersistedLocalityFields({
+      let resolved = resolvePersistedLocalityFields({
         localityCountry: row.localityCountry,
         localityCountryCode: row.localityCountryCode,
         city: row.city,
         lat: row.lat,
         lng: row.lng,
       });
+      if (!resolved.localityCountryCode && row.lat != null && row.lng != null) {
+        resolved = await inferCountryFromCoordinates(row.lat, row.lng);
+      }
       if (
         resolved.localityCountryCode !== String(row.localityCountryCode || '').trim().toUpperCase() ||
         resolved.localityCountry !== String(row.localityCountry || '').trim()
       ) {
-        await prisma.offer.update({
-          where: { id: row.id },
-          data: {
-            localityCountry: resolved.localityCountry,
-            localityCountryCode: resolved.localityCountryCode,
-          },
-        });
+        await prisma.$executeRawUnsafe(
+          'UPDATE `Offer` SET `localityCountry` = ?, `localityCountryCode` = ? WHERE `id` = ?',
+          resolved.localityCountry,
+          resolved.localityCountryCode,
+          row.id,
+        );
       }
     }
 
@@ -340,6 +353,7 @@ export async function createOffer(body: any) {
     lng: Number(lng),
     city: locationValidation.city,
     district: locationValidation.district,
+    localityCountryCode: body.localityCountryCode ?? body.countryCode ?? null,
   });
 
   const verificationMeta = buildOfferVerificationMeta({
@@ -361,7 +375,7 @@ export async function createOffer(body: any) {
     agentCommissionPercent = v.value;
   }
 
-  const localityFields = resolvePersistedLocalityFields({
+  const localityFields = await resolvePersistedLocalityFieldsAsync({
     localityCountry: body.localityCountry,
     localityCountryCode: body.localityCountryCode,
     city: locationValidation.city,
@@ -556,6 +570,8 @@ export async function updateOffer(body: any) {
       lng: nextLng,
       city: locationValidation.city,
       district: locationValidation.district,
+      localityCountryCode:
+        body.localityCountryCode ?? body.countryCode ?? (existing as { localityCountryCode?: string }).localityCountryCode ?? null,
     });
   }
 
@@ -611,7 +627,7 @@ export async function updateOffer(body: any) {
       })
     : {};
 
-  const localityFields = resolvePersistedLocalityFields({
+  const localityFields = await resolvePersistedLocalityFieldsAsync({
     localityCountry: body.localityCountry ?? (existing as { localityCountry?: string }).localityCountry,
     localityCountryCode:
       body.localityCountryCode ?? (existing as { localityCountryCode?: string }).localityCountryCode,

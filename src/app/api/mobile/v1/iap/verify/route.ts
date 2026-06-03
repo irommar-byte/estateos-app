@@ -5,7 +5,14 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { mobileBearerUserId, readJson } from '@/lib/mobileApiAuth';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
-import { buildPakietPlusUserUpdate, isPakietPlusProductId } from '@/lib/mobileIapEntitlements';
+import {
+  buildInvestorProSubscriptionUserUpdate,
+  buildPakietPlusUserUpdate,
+  extractSubscriptionExpiresAtFromJws,
+  isInvestorProProductId,
+  isPakietPlusProductId,
+  isSupportedIapProductId,
+} from '@/lib/mobileIapEntitlements';
 
 export async function POST(req: Request) {
   const userId = mobileBearerUserId(req);
@@ -28,11 +35,84 @@ export async function POST(req: Request) {
   if (!productId) {
     return NextResponse.json({ success: false, message: 'Brak productId' }, { status: 400 });
   }
-  if (!isPakietPlusProductId(productId)) {
-    return NextResponse.json({ success: false, message: 'Nieobsługiwany productId Pakietu Plus' }, { status: 400 });
+  if (!isSupportedIapProductId(productId)) {
+    return NextResponse.json({ success: false, message: 'Nieobsługiwany productId IAP' }, { status: 400 });
   }
 
+  const isPlus = isPakietPlusProductId(productId);
+  const isInvestorPro = isInvestorProProductId(productId);
+
   await ensureMobileIapTables();
+
+  let subscriptionTransferred = false;
+  let subscriptionOwnerKey: string | null = null;
+
+  /** Jedna subskrypcja Apple = jedno konto EstateOS naraz; można przenieść na bieżące logowanie. */
+  if (isInvestorPro) {
+    subscriptionOwnerKey = originalTransactionId || transactionId;
+    if (subscriptionOwnerKey) {
+      const subscriptionOwners = await prisma.$queryRawUnsafe<Array<{ userId: number }>>(
+        `
+          SELECT userId
+          FROM MobileIapPurchase
+          WHERE productId = ?
+            AND entitlementGrantedAt IS NOT NULL
+            AND (
+              originalTransactionId = ?
+              OR (originalTransactionId IS NULL AND transactionId = ?)
+            )
+          ORDER BY entitlementGrantedAt ASC
+          LIMIT 1
+        `,
+        productId,
+        subscriptionOwnerKey,
+        subscriptionOwnerKey,
+      );
+      const subscriptionOwnerUserId = subscriptionOwners[0]?.userId;
+      const allowSubscriptionTransfer = Boolean(body?.allowSubscriptionTransfer);
+      if (subscriptionOwnerUserId != null && subscriptionOwnerUserId !== userId) {
+        if (!allowSubscriptionTransfer) {
+          return NextResponse.json(
+            {
+              success: false,
+              verified: false,
+              message:
+                'Subskrypcja z Apple ID na tym telefonie jest przypisana do innego konta EstateOS. Możesz przenieść ją na to konto albo zalogować się na właściwe. Własna subskrypcja wymaga własnego Apple ID w App Store.',
+              code: 'SUBSCRIPTION_LINKED_TO_OTHER_ACCOUNT',
+              errorCode: 'SUBSCRIPTION_LINKED_TO_OTHER_ACCOUNT',
+              shouldRetry: false,
+            },
+            { status: 409 },
+          );
+        }
+        subscriptionTransferred = true;
+        await prisma.user.update({
+          where: { id: subscriptionOwnerUserId },
+          data: {
+            isPro: false,
+            proExpiresAt: null,
+            planType: 'NONE',
+          },
+        });
+        await prisma.$executeRawUnsafe(
+          `
+            UPDATE MobileIapPurchase
+            SET userId = ?
+            WHERE productId = ?
+              AND (
+                originalTransactionId = ?
+                OR (originalTransactionId IS NULL AND transactionId = ?)
+              )
+          `,
+          userId,
+          productId,
+          subscriptionOwnerKey,
+          subscriptionOwnerKey,
+        );
+      }
+    }
+  }
+
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO MobileIapPurchase
@@ -60,7 +140,8 @@ export async function POST(req: Request) {
   );
 
   const purchaseKeys = [pendingPurchaseId, transactionId, originalTransactionId].filter(Boolean);
-  const alreadyGranted = purchaseKeys.length
+  const subscriptionTxKeys = [pendingPurchaseId, transactionId].filter(Boolean);
+  const alreadyGrantedPlus = purchaseKeys.length
     ? await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
         `
           SELECT id
@@ -80,10 +161,33 @@ export async function POST(req: Request) {
         ...purchaseKeys
       )
     : [];
+  const investorProKeys = [...subscriptionTxKeys, originalTransactionId].filter(Boolean);
+  const alreadyGrantedInvestorPro =
+    isInvestorPro && investorProKeys.length
+      ? await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+          `
+          SELECT id
+          FROM MobileIapPurchase
+          WHERE productId = ?
+            AND entitlementGrantedAt IS NOT NULL
+            AND (
+              pendingPurchaseId IN (${investorProKeys.map(() => '?').join(',')})
+              OR transactionId IN (${investorProKeys.map(() => '?').join(',')})
+              OR originalTransactionId IN (${investorProKeys.map(() => '?').join(',')})
+            )
+          LIMIT 1
+        `,
+          productId,
+          ...investorProKeys,
+          ...investorProKeys,
+          ...investorProKeys
+        )
+      : [];
+  const alreadyGranted = isInvestorPro ? alreadyGrantedInvestorPro : alreadyGrantedPlus;
 
   const current = await prisma.user.findUnique({
     where: { id: userId },
-    select: { extraListings: true, plusExpiresAt: true },
+    select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true },
   });
   if (!current) {
     return NextResponse.json({ success: false, message: 'Użytkownik nie istnieje' }, { status: 404 });
@@ -91,20 +195,85 @@ export async function POST(req: Request) {
 
   let plusExpiresAt = current.plusExpiresAt;
   let extraListings = current.extraListings;
+  let proExpiresAt = current.proExpiresAt;
+  let isPro = current.isPro;
   let entitlementGranted = false;
-  if (!deferPublicationConsume && alreadyGranted.length === 0) {
-    const update = buildPakietPlusUserUpdate();
+  let investorProGranted = false;
+
+  const shouldGrantPlus = isPlus && !deferPublicationConsume && alreadyGranted.length === 0;
+  const shouldGrantInvestorPro = isInvestorPro && alreadyGranted.length === 0;
+
+  if (shouldGrantPlus) {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
-      data: update,
-      select: { extraListings: true, plusExpiresAt: true },
+      data: buildPakietPlusUserUpdate(),
+      select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true, planType: true },
     });
     extraListings = updatedUser.extraListings;
     plusExpiresAt = updatedUser.plusExpiresAt;
+    isPro = updatedUser.isPro;
+    proExpiresAt = updatedUser.proExpiresAt;
     entitlementGranted = true;
   }
 
-  if (purchaseKeys.length && !deferPublicationConsume) {
+  let proCreditsGranted = false;
+
+  if (isInvestorPro) {
+    const jws =
+      body?.jwsRepresentation ?? body?.receipt ?? body?.receiptData ?? receipt ?? null;
+    const subscriptionExpiresAt = extractSubscriptionExpiresAtFromJws(
+      jws != null ? String(jws) : null,
+    );
+
+    /** Kredyty tylko przy pierwszym przypisaniu subskrypcji lub nowym okresie rozliczeniowym (nowy transactionId). */
+    let grantMonthlyCredits = shouldGrantInvestorPro;
+    if (!grantMonthlyCredits && transactionId) {
+      const txAlreadyCredited = await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+        `
+          SELECT id
+          FROM MobileIapPurchase
+          WHERE productId = ?
+            AND transactionId = ?
+            AND entitlementGrantedAt IS NOT NULL
+          LIMIT 1
+        `,
+        productId,
+        transactionId,
+      );
+      grantMonthlyCredits = txAlreadyCredited.length === 0 && alreadyGranted.length > 0;
+    }
+
+    const slotsBefore = Number(current.extraListings ?? 0);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: buildInvestorProSubscriptionUserUpdate(
+        subscriptionExpiresAt,
+        current.proExpiresAt,
+        current.plusExpiresAt,
+        undefined,
+        { grantMonthlyCredits },
+      ),
+      select: { extraListings: true, plusExpiresAt: true, isPro: true, proExpiresAt: true, planType: true },
+    });
+
+    extraListings = updatedUser.extraListings;
+    plusExpiresAt = updatedUser.plusExpiresAt;
+    isPro = updatedUser.isPro;
+    proExpiresAt = updatedUser.proExpiresAt;
+    proCreditsGranted =
+      grantMonthlyCredits && Number(updatedUser.extraListings ?? 0) > slotsBefore;
+
+    if (shouldGrantInvestorPro || updatedUser.isPro) {
+      entitlementGranted = entitlementGranted || shouldGrantInvestorPro;
+      if (updatedUser.isPro) investorProGranted = true;
+    }
+  }
+
+  if (
+    purchaseKeys.length &&
+    (shouldGrantPlus || shouldGrantInvestorPro || (isInvestorPro && isPro))
+  ) {
     await prisma.$executeRawUnsafe(
       `
         UPDATE MobileIapPurchase
@@ -130,14 +299,24 @@ export async function POST(req: Request) {
     success: true,
     verified: true,
     status: 'VERIFIED',
-    publicationConsumeDeferred: deferPublicationConsume,
+    publicationConsumeDeferred: isPlus ? deferPublicationConsume : false,
     pendingPurchaseId,
     productId,
     transactionId,
-    extraListings: deferPublicationConsume ? 0 : extraListings,
+    extraListings: isPlus && deferPublicationConsume ? 0 : extraListings,
     plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null,
+    isPro: Boolean(isPro),
+    proExpiresAt: proExpiresAt ? new Date(proExpiresAt).toISOString() : null,
+    investorProGranted,
+    proCreditsGranted,
+    subscriptionTransferred,
     backendRegistered: true,
     entitlementGranted,
-    entitlements: { plus: true, plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null },
+    entitlements: {
+      plus: isPlus,
+      plusExpiresAt: plusExpiresAt ? new Date(plusExpiresAt).toISOString() : null,
+      investorPro: isInvestorPro,
+      proExpiresAt: proExpiresAt ? new Date(proExpiresAt).toISOString() : null,
+    },
   });
 }

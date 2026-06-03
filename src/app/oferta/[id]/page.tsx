@@ -15,7 +15,7 @@ import {
   formatOfferCondition,
   formatOfferPropertyType,
 } from "@/lib/offerDisplayLabels";
-import { formatParamDisplayValue } from "@/lib/formatParamDisplay";
+import { isOutsidePolandBounds } from "@/lib/location/locationNameMatch";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
@@ -108,9 +108,18 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [publicProfileId, setPublicProfileId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>({
-    name: locale === "pl" ? "Polska" : "Poland",
-    code: "PL",
+  const initialCountryName = String(offer?.localityCountry || "").trim();
+  const initialCountryCode = String(offer?.localityCountryCode || "").trim().toUpperCase();
+  const [resolvedCountry, setResolvedCountry] = useState<{ name: string; code: string }>(() => {
+    if (initialCountryName && initialCountryCode) {
+      return { name: initialCountryName, code: initialCountryCode };
+    }
+    const lat = Number(offer?.lat);
+    const lng = Number(offer?.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && isOutsidePolandBounds(lat, lng)) {
+      return { name: locale === "pl" ? "Inny kraj" : "Other country", code: "" };
+    }
+    return { name: locale === "pl" ? "Polska" : "Poland", code: "PL" };
   });
 
   const openGallery = (index: number) => {
@@ -263,6 +272,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     { label: t.street, value: isLocked ? t.hiddenLocation : streetLine || t.noData },
   ].filter((p) => p.value);
 
+  const yearBuiltLabel = formatOfferBuildYear(offer);
+  const adminFeeRaw = offer.adminFee ?? offer.rent;
+  const adminFeeLabel =
+    adminFeeRaw != null && Number(adminFeeRaw) > 0
+      ? `${Number(adminFeeRaw).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
+      : null;
+
   const mainParams = [
     {
       label: propertyTypeRaw === 'PLOT' ? t.plotArea : t.area,
@@ -278,14 +294,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
             label: t.pricePerSqm,
             value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
           },
-          { label: t.rooms, value: offer.rooms },
-          { label: t.floor, value: offer.floor },
+          { label: t.rooms, value: offer.rooms != null && offer.rooms !== '' ? String(offer.rooms) : null },
+          { label: t.floor, value: offer.floor != null && offer.floor !== '' ? String(offer.floor) : null },
+          { label: t.buildYear, value: yearBuiltLabel },
           {
             label: t.standard,
             value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
           },
+          { label: t.heating, value: offer.heating ? String(offer.heating) : null },
+          ...(isRent ? [{ label: t.rentFee, value: adminFeeLabel }] : []),
         ]),
-  ].filter((p) => p.value);
+  ].filter((p) => p.value != null && p.value !== '');
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
   const agentCommissionLine = agentCommissionInfo
@@ -302,7 +321,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       label: t.furnished,
       value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    { label: t.rentFee, value: offer.rent ? `${String(offer.rent).replace(/\D/g, "")} PLN` : null },
+    {
+      label: t.rentFee,
+      value:
+        offer.adminFee != null && Number(offer.adminFee) > 0
+          ? `${Number(offer.adminFee).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
+          : offer.rent
+            ? `${String(offer.rent).replace(/\D/g, "")} PLN`
+            : null,
+    },
     {
       label: t.availability,
       value: offer.availabilityDate
@@ -335,6 +362,19 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   useEffect(() => {
     if (!offer?.lat || !offer?.lng) return;
+    const lat = Number(offer.lat);
+    const lng = Number(offer.lng);
+    const storedCode = String(offer?.localityCountryCode || "").trim().toUpperCase();
+    const storedName = String(offer?.localityCountry || "").trim();
+    const pinOutsidePl = Number.isFinite(lat) && Number.isFinite(lng) && isOutsidePolandBounds(lat, lng);
+    const needsReverse =
+      pinOutsidePl && (!storedCode || storedCode === "PL") || !storedName || !storedCode;
+
+    if (!needsReverse && storedName && storedCode) {
+      setResolvedCountry({ name: storedName, code: storedCode });
+      return;
+    }
+
     let cancelled = false;
     fetch(`/api/location/reverse?lat=${encodeURIComponent(String(offer.lat))}&lng=${encodeURIComponent(String(offer.lng))}`, {
       cache: "no-store",
@@ -344,11 +384,10 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         if (cancelled || !data) return;
         const countryName = String(data.country || "").trim();
         const countryCode = String(data.countryCode || "").trim().toUpperCase();
-        if (countryName) {
-          setResolvedCountry({
-            name: countryName,
-            code: countryCode || "PL",
-          });
+        if (countryName && countryCode) {
+          setResolvedCountry({ name: countryName, code: countryCode });
+        } else if (countryName) {
+          setResolvedCountry({ name: countryName, code: storedCode || "" });
         }
       })
       .catch(() => {
@@ -357,7 +396,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     return () => {
       cancelled = true;
     };
-  }, [offer?.lat, offer?.lng]);
+  }, [offer?.lat, offer?.lng, offer?.localityCountry, offer?.localityCountryCode]);
 
   const countryFlag = resolvedCountry.code
     ? String.fromCodePoint(
@@ -689,7 +728,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     {locationParams.map((param, idx) => (
                       <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
+                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{param.value}</span>
                       </div>
                     ))}
                   </div>
@@ -715,7 +754,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     {mainParams.map((param, idx) => (
                       <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                         <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="text-lg font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
+                        <span className="text-lg font-bold text-[var(--eos-text)]">{param.value}</span>
                       </div>
                     ))}
                   </div>
@@ -728,7 +767,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       {buildingParams.map((param, idx) => (
                         <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                           <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                          <span className="text-base font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
+                          <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
                         </div>
                       ))}
                     </div>
@@ -755,7 +794,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                         {costsParams.map((param, idx) => (
                           <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
                             <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                            <span className="text-base font-bold text-[var(--eos-text)]">{formatParamDisplayValue(param.value)}</span>
+                            <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
                           </div>
                         ))}
                       </div>

@@ -72,7 +72,7 @@ export async function getPendingPresentationStep(
     if (!isReviewableOutcome(app.status)) continue;
     if (!isDealParticipant(app.deal, userId)) continue;
     const existing = await prisma.review.findFirst({
-      where: { appointmentId: app.id, reviewerId: userId },
+      where: { dealId: app.dealId, reviewerId: userId },
     });
     if (existing) continue;
     const counterparty = app.deal.buyerId === userId ? app.deal.seller : app.deal.buyer;
