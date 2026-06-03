@@ -476,6 +476,9 @@ enum AppointmentStatus {
   ACCEPTED
   DECLINED
   RESCHEDULED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
 }
 
 enum AppointmentType {
