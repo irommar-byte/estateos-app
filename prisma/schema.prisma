@@ -118,6 +118,11 @@ model PageVisitLog {
   visitorHash  String   @db.VarChar(64)
   ip           String   @db.VarChar(64)
   country      String   @default("UN") @db.VarChar(8)
+  city         String?  @db.VarChar(64)
+  regionName   String?  @db.VarChar(64)
+  isp          String?  @db.VarChar(128)
+  geoSource    String   @default("unknown") @db.VarChar(16)
+  deviceType   String   @default("unknown") @db.VarChar(16)
   path         String   @default("/") @db.VarChar(191)
   userAgent    String?  @db.VarChar(255)
   createdAt    DateTime @default(now())
@@ -162,6 +167,8 @@ model Offer {
   heating         String?
   city            String         @default("Warszawa")
   district        String         @default("OTHER")
+  localityCountry     String?    @default("Polska") @db.VarChar(64)
+  localityCountryCode String?    @default("PL") @db.VarChar(8)
   street          String?
   buildingNumber  String?
   lat             Float?
