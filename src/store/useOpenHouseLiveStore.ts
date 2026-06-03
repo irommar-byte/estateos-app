@@ -1,9 +1,18 @@
 import { create } from 'zustand';
 import type { OpenHouseTickerItem } from '../contracts/openHouseContract';
 
-export type LiveBannerPhase = 'hidden' | 'entering' | 'visible' | 'genie' | 'docked';
+export type LiveBannerPhase =
+  | 'hidden'
+  | 'hero'
+  | 'typing'
+  | 'genie'
+  | 'docked';
 
 type PlusAnchor = { x: number; y: number };
+
+function itemsSignature(items: OpenHouseTickerItem[]): string {
+  return items.map((i) => i.id).join('|');
+}
 
 type State = {
   items: OpenHouseTickerItem[];
@@ -11,15 +20,27 @@ type State = {
   phase: LiveBannerPhase;
   panelOpen: boolean;
   plusAnchor: PlusAnchor;
+  offerPillTopY: number;
+  reservedEventIds: number[];
+  /** Dla jakiej paczki ogłoszeń banner już się odtworzył. */
+  bannerPlayedForSig: string | null;
+  /** Użytkownik otworzył panel Live i „odczytał" komunikaty. */
+  livePanelAcknowledged: boolean;
   setItems: (items: OpenHouseTickerItem[]) => void;
   setIndex: (index: number | ((prev: number) => number)) => void;
   setPhase: (phase: LiveBannerPhase) => void;
   setPanelOpen: (open: boolean) => void;
   setPlusAnchor: (anchor: PlusAnchor) => void;
+  setOfferPillTopY: (y: number) => void;
+  setReservedEventIds: (ids: number[]) => void;
+  addReservedEventId: (eventId: number) => void;
+  removeReservedEventId: (eventId: number) => void;
+  markBannerPlayed: () => void;
   openPanel: () => void;
   closePanel: () => void;
   dockToPlus: () => void;
   showBanner: () => void;
+  hasLiveUnread: () => boolean;
 };
 
 export const useOpenHouseLiveStore = create<State>((set, get) => ({
@@ -28,7 +49,21 @@ export const useOpenHouseLiveStore = create<State>((set, get) => ({
   phase: 'hidden',
   panelOpen: false,
   plusAnchor: { x: 0, y: 0 },
-  setItems: (items) => set({ items, index: 0 }),
+  offerPillTopY: 0,
+  reservedEventIds: [],
+  bannerPlayedForSig: null,
+  livePanelAcknowledged: true,
+  setItems: (items) => {
+    const nextSig = itemsSignature(items);
+    const prevSig = itemsSignature(get().items);
+    set({
+      items,
+      index: 0,
+      ...(nextSig !== prevSig && prevSig !== ''
+        ? { bannerPlayedForSig: null, livePanelAcknowledged: true }
+        : {}),
+    });
+  },
   setIndex: (index) =>
     set((s) => ({
       index: typeof index === 'function' ? index(s.index) : index,
@@ -36,7 +71,27 @@ export const useOpenHouseLiveStore = create<State>((set, get) => ({
   setPhase: (phase) => set({ phase }),
   setPanelOpen: (panelOpen) => set({ panelOpen }),
   setPlusAnchor: (plusAnchor) => set({ plusAnchor }),
-  openPanel: () => set({ panelOpen: true, phase: 'docked' }),
+  setOfferPillTopY: (offerPillTopY) => set({ offerPillTopY }),
+  setReservedEventIds: (reservedEventIds) => set({ reservedEventIds }),
+  addReservedEventId: (eventId) =>
+    set((s) => ({
+      reservedEventIds: s.reservedEventIds.includes(eventId)
+        ? s.reservedEventIds
+        : [eventId, ...s.reservedEventIds],
+    })),
+  removeReservedEventId: (eventId) =>
+    set((s) => ({
+      reservedEventIds: s.reservedEventIds.filter((id) => id !== eventId),
+    })),
+  markBannerPlayed: () => {
+    const sig = itemsSignature(get().items);
+    set({
+      bannerPlayedForSig: sig,
+      phase: 'docked',
+      livePanelAcknowledged: false,
+    });
+  },
+  openPanel: () => set({ panelOpen: true, phase: 'docked', livePanelAcknowledged: true }),
   closePanel: () => set({ panelOpen: false }),
   dockToPlus: () => {
     const { phase } = get();
@@ -44,9 +99,16 @@ export const useOpenHouseLiveStore = create<State>((set, get) => ({
     set({ phase: 'genie' });
   },
   showBanner: () => {
-    const { items, phase } = get();
-    if (!items.length) return;
-    if (phase === 'visible' || phase === 'entering') return;
-    set({ phase: 'entering', panelOpen: false });
+    const { items, phase, panelOpen, bannerPlayedForSig } = get();
+    if (!items.length || panelOpen) return;
+    if (phase === 'hero' || phase === 'typing' || phase === 'genie') return;
+    const sig = itemsSignature(items);
+    if (bannerPlayedForSig === sig) return;
+    set({ phase: 'hero', panelOpen: false, index: 0 });
+  },
+  hasLiveUnread: () => {
+    const { items, livePanelAcknowledged, bannerPlayedForSig } = get();
+    const sig = itemsSignature(items);
+    return items.length > 0 && !livePanelAcknowledged && bannerPlayedForSig === sig;
   },
 }));

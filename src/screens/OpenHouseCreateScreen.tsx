@@ -234,7 +234,7 @@ export default function OpenHouseCreateScreen() {
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.create.stepSlots')}</Text>
           <Text style={{ color: muted, fontSize: 13 }}>
             {generatedCount > 0
-              ? `Powstanie ${generatedCount} terminów do rezerwacji.`
+              ? t('openHouse.create.slotsPreview', { n: String(generatedCount) })
               : t('openHouse.create.slotRequired')}
           </Text>
           <OpenHouseSlotBuilder

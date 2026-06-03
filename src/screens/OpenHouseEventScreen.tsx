@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,6 +31,8 @@ import {
 import { normalizeListingCurrency } from '../money/convert';
 import { formatAmountWithCurrency } from '../money/format';
 import { resolveMediaUrl } from '../utils/userAvatar';
+import { offerOpenHouseCalendarAfterReserve } from '../utils/openHouseCalendar';
+import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
 
 export default function OpenHouseEventScreen() {
   const navigation = useNavigation<any>();
@@ -57,7 +59,11 @@ export default function OpenHouseEventScreen() {
   const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
 
   const load = useCallback(async () => {
-    if (!Number.isFinite(eventId) || eventId <= 0) return;
+    if (!Number.isFinite(eventId) || eventId <= 0) {
+      setEvent(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const data = await fetchOpenHouseEvent(token, eventId);
     setEvent(
@@ -128,7 +134,18 @@ export default function OpenHouseEventScreen() {
       return;
     }
     setEvent(result.event);
-    Alert.alert(t('openHouse.event.title'), t('openHouse.event.reserveSuccess'));
+    useOpenHouseLiveStore.getState().addReservedEventId(result.event.id);
+    const slot = result.event.slots.find((s) => s.id === selectedSlotId);
+    if (slot) {
+      void offerOpenHouseCalendarAfterReserve({
+        eventTitle: result.event.title,
+        offer: result.event.offer,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+      });
+    } else {
+      Alert.alert(t('openHouse.event.title'), t('openHouse.event.reserveSuccess'));
+    }
   };
 
   const cancelMyReservation = async (reservationId: number) => {
@@ -141,6 +158,7 @@ export default function OpenHouseEventScreen() {
       return;
     }
     setEvent(result.event);
+    useOpenHouseLiveStore.getState().removeReservedEventId(result.event.id);
     Alert.alert(t('openHouse.event.title'), t('openHouse.event.cancelSuccess'));
   };
 
@@ -158,13 +176,15 @@ export default function OpenHouseEventScreen() {
           if (result.event) {
             setEvent(result.event);
             navigation.goBack();
+          } else {
+            Alert.alert(t('openHouse.event.title'), result.message || t('common.error'));
           }
         },
       },
     ]);
   };
 
-  if (loading || !event) {
+  if (loading) {
     return (
       <View style={[styles.center, { backgroundColor: bg, paddingTop: insets.top }]}>
         <ActivityIndicator color="#F59E0B" size="large" />
@@ -172,7 +192,32 @@ export default function OpenHouseEventScreen() {
     );
   }
 
+  if (!event) {
+    return (
+      <View style={[styles.center, { backgroundColor: bg, paddingTop: insets.top, paddingHorizontal: 24 }]}>
+        <Ionicons name="alert-circle-outline" size={48} color="#F59E0B" />
+        <Text style={[styles.errorTitle, { color: text }]}>{t('openHouse.event.loadError')}</Text>
+        <Text style={{ color: muted, textAlign: 'center', marginTop: 8, lineHeight: 20 }}>
+          {t('openHouse.event.loadErrorHint')}
+        </Text>
+        <Pressable onPress={() => navigation.goBack()} style={styles.errorBtn}>
+          <Text style={styles.errorBtnText}>{t('common.back')}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   const selectedSlot = event.slots.find((s) => s.id === selectedSlotId) ?? null;
+  const maxGuests = Math.min(5, selectedSlot?.capacity ?? 5);
+  const guestOptions = useMemo(
+    () => Array.from({ length: maxGuests }, (_, i) => i + 1),
+    [maxGuests]
+  );
+
+  useEffect(() => {
+    if (guestCount > maxGuests) setGuestCount(maxGuests);
+  }, [maxGuests, guestCount]);
+
   const myReservation = selectedSlot?.myReservation;
   const listingCurrency = normalizeListingCurrency(event.offer.priceCurrency);
   const priceLabel = formatAmountWithCurrency(event.offer.price, listingCurrency);
@@ -349,7 +394,7 @@ export default function OpenHouseEventScreen() {
           <View style={[styles.section, { backgroundColor: card }]}>
             <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.guestCount')}</Text>
             <View style={styles.guestRowControls}>
-              {[1, 2, 3, 4, 5].map((n) => (
+              {guestOptions.map((n) => (
                 <Pressable
                   key={`guest-${n}`}
                   onPress={() => setGuestCount(n)}
@@ -413,6 +458,15 @@ export default function OpenHouseEventScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorTitle: { fontSize: 18, fontWeight: '800', marginTop: 16, textAlign: 'center' },
+  errorBtn: {
+    marginTop: 20,
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  errorBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 15 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

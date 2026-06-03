@@ -32,6 +32,39 @@ export function formatOpenHouseLiveBroadcast(item: OpenHouseTickerItem, locale: 
   return `${head} · ${detail}`;
 }
 
+export function formatOpenHouseLiveLocation(item: OpenHouseTickerItem): string {
+  const parts = [item.city, item.district].filter(Boolean);
+  return parts.join(' · ');
+}
+
+export function formatOpenHouseLiveDateLong(
+  startsAt: string | null,
+  locale: AppLocale
+): string {
+  if (!startsAt) return '—';
+  return new Date(startsAt).toLocaleString(localeToDateFormat(locale), {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+export function formatOpenHouseLiveDateShort(
+  startsAt: string | null,
+  locale: AppLocale
+): string {
+  if (!startsAt) return '—';
+  return new Date(startsAt).toLocaleString(localeToDateFormat(locale), {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export type CountdownParts = {
   days: number;
   hours: number;

@@ -39,6 +39,7 @@ export default function OpenHouseHubScreen() {
 
   const [tab, setTab] = useState<Tab>('discover');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [events, setEvents] = useState<OpenHouseEventRecord[]>([]);
   const [reservations, setReservations] = useState<OpenHouseReservationRecord[]>([]);
 
@@ -48,18 +49,23 @@ export default function OpenHouseHubScreen() {
   const text = isDark ? '#FFFFFF' : '#000000';
   const muted = isDark ? 'rgba(235,235,245,0.55)' : '#8E8E93';
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (mode === 'initial') setLoading(true);
+    else setRefreshing(true);
     try {
       if (tab === 'discover') {
+        setReservations([]);
         setEvents(await fetchPublishedOpenHouseEvents(token));
-      } else if (tab === 'host' && token) {
-        setEvents(await fetchHostOpenHouseEvents(token));
-      } else if (tab === 'reservations' && token) {
-        setReservations(await fetchMyOpenHouseReservations(token));
+      } else if (tab === 'host') {
+        setReservations([]);
+        setEvents(token ? await fetchHostOpenHouseEvents(token) : []);
+      } else if (tab === 'reservations') {
+        setEvents([]);
+        setReservations(token ? await fetchMyOpenHouseReservations(token) : []);
       }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [tab, token]);
 
@@ -166,7 +172,7 @@ export default function OpenHouseHubScreen() {
         </View>
       )}
 
-      {loading ? (
+      {loading && listData.length === 0 ? (
         <ActivityIndicator style={{ marginTop: 40 }} color="#F59E0B" />
       ) : (
         <FlatList
@@ -182,7 +188,9 @@ export default function OpenHouseHubScreen() {
             )
           }
           contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: insets.bottom + 24 }}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} tintColor="#F59E0B" />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void load('refresh')} tintColor="#F59E0B" />
+          }
           ListEmptyComponent={<Text style={[styles.empty, { color: muted }]}>{emptyCopy}</Text>}
         />
       )}

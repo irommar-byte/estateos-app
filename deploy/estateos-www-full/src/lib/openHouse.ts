@@ -403,10 +403,15 @@ export async function updateOpenHouseEvent(
     );
     if (hasConfirmed) throw new Error('HAS_RESERVATIONS');
 
+    const normalized = normalizeSlots(input.replaceSlots);
+    const visitMode = parseOpenHouseVisitMode(String(event.visitMode ?? 'FLEX'));
+    const expanded = expandSlotWindows(normalized, visitMode);
+    if (expanded.length > 48) throw new Error('TOO_MANY_SLOTS');
+
     await prisma.$transaction([
       prisma.openHouseSlot.deleteMany({ where: { eventId } }),
       prisma.openHouseSlot.createMany({
-        data: normalizeSlots(input.replaceSlots).map((slot) => ({ ...slot, eventId })),
+        data: expanded.map((slot) => ({ ...slot, eventId })),
       }),
     ]);
   }

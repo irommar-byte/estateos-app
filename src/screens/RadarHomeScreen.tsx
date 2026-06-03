@@ -32,6 +32,7 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { useThemeStore } from '../store/useThemeStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1169,6 +1170,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     const tabBase = Platform.OS === 'ios' ? 18 : 14;
     return tabBase + insets.bottom;
   }, [insets.bottom]);
+  const liveBannerAnchorRef = useRef<View>(null);
+  const setOfferPillTopY = useOpenHouseLiveStore((s) => s.setOfferPillTopY);
+  const measureLiveBannerAnchor = useCallback(() => {
+    requestAnimationFrame(() => {
+      liveBannerAnchorRef.current?.measureInWindow((_x, y) => {
+        if (Number.isFinite(y) && y > 40) setOfferPillTopY(y);
+      });
+    });
+  }, [setOfferPillTopY]);
+  useFocusEffect(
+    useCallback(() => {
+      measureLiveBannerAnchor();
+    }, [measureLiveBannerAnchor])
+  );
   const radarButtonTop = useMemo(
     // Snap spacing: stały rytm pionowy niezależnie od rozmiaru iPhone.
     () => topBarTop + topUiSpacing.radarTopOffset,
@@ -4526,7 +4541,12 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           const reasonIcon = isEmpty ? 'alert-circle' : offerDisplayReason.icon;
           const canRefocusSearchArea = !!activeAdvancedMapBounds;
           return (
-            <View style={styles.offerReasonRow} pointerEvents="box-none">
+            <View
+              ref={liveBannerAnchorRef}
+              onLayout={measureLiveBannerAnchor}
+              style={styles.offerReasonRow}
+              pointerEvents="box-none"
+            >
               <Pressable
                 disabled={!canRefocusSearchArea}
                 onPress={() => {

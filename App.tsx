@@ -289,8 +289,10 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   // Kąty: 180° lewo = Discovery, 270° góra = Live, 0° prawo = jasny motyw
   const openLivePanel = useOpenHouseLiveStore((s) => s.openPanel);
-  const liveDocked = useOpenHouseLiveStore((s) => s.phase === 'docked');
-  const liveCount = useOpenHouseLiveStore((s) => s.items.length);
+  const liveUnread = useOpenHouseLiveStore((s) => {
+    const sig = s.items.map((i) => i.id).join('|');
+    return s.items.length > 0 && !s.livePanelAcknowledged && s.bannerPlayedForSig === sig;
+  });
   const setPlusAnchor = useOpenHouseLiveStore((s) => s.setPlusAnchor);
 
   const quickActions = useMemo(
@@ -562,7 +564,7 @@ const FloatingNextButton = ({ onPress }: any) => {
           alignItems: 'center'
         }}>
           <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
-          {liveDocked && liveCount > 0 && !isArrow ? (
+          {liveUnread && !isArrow ? (
             <View style={styles.livePlusBadge}>
               <View style={styles.livePlusDot} />
             </View>
