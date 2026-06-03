@@ -237,11 +237,12 @@ model FavoriteOffer {
 }
 
 model OpenHouseEvent {
-  id          Int             @id @default(autoincrement())
+  id          Int                 @id @default(autoincrement())
   offerId     Int
   hostUserId  Int
-  title       String?         @db.VarChar(255)
-  description String?         @db.Text
+  title       String?             @db.VarChar(255)
+  description String?             @db.Text
+  visitMode   OpenHouseVisitMode  @default(FLEX)
   status      OpenHouseStatus @default(DRAFT)
   publishedAt DateTime?
   createdAt   DateTime        @default(now())
@@ -656,6 +657,12 @@ enum PropertyCondition {
   NEEDS_RENOVATION
   DEVELOPER_STATE
   NOT_APPLICABLE
+}
+
+enum OpenHouseVisitMode {
+  FLEX
+  SLOT_30
+  SLOT_60
 }
 
 enum OpenHouseStatus {
