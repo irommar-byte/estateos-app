@@ -49,28 +49,57 @@ function DetailMarquee({ text, style }: { text: string; style: object }) {
   }, [shouldScroll, loopDistance, scrollX, text]);
 
   return (
-    <View style={marqueeStyles.lane} onLayout={(e) => setLaneWidth(e.nativeEvent.layout.width)}>
-      <Text style={[style, marqueeStyles.measure]} onLayout={(e: LayoutChangeEvent) => setTextWidth(e.nativeEvent.layout.width)}>
-        {text}
-      </Text>
-      {shouldScroll ? (
-        <Animated.View style={[marqueeStyles.track, { transform: [{ translateX: scrollX }] }]}>
-          <Text style={style}>{text}</Text>
-          <Text style={style}>{MARQUEE_GAP}</Text>
-          <Text style={style}>{text}</Text>
-          <Text style={style}>{MARQUEE_GAP}</Text>
-        </Animated.View>
-      ) : (
-        <Text style={style}>{text}</Text>
-      )}
+    <View style={marqueeStyles.root}>
+      <View style={marqueeStyles.measureShell} pointerEvents="none">
+        <View
+          style={marqueeStyles.measureSegment}
+          onLayout={(e: LayoutChangeEvent) => setTextWidth(e.nativeEvent.layout.width)}
+        >
+          <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+            {text}
+          </Text>
+        </View>
+      </View>
+      <View style={marqueeStyles.lane} onLayout={(e) => setLaneWidth(e.nativeEvent.layout.width)}>
+        {shouldScroll ? (
+          <Animated.View style={[marqueeStyles.track, { transform: [{ translateX: scrollX }] }]}>
+            <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+              {text}
+            </Text>
+            <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+              {MARQUEE_GAP}
+            </Text>
+            <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+              {text}
+            </Text>
+            <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+              {MARQUEE_GAP}
+            </Text>
+          </Animated.View>
+        ) : (
+          <Text style={[style, marqueeStyles.textLine]} numberOfLines={1}>
+            {text}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
 
 const marqueeStyles = StyleSheet.create({
+  root: { flex: 1, minWidth: 0 },
+  measureShell: {
+    position: 'absolute',
+    top: -200,
+    left: 0,
+    opacity: 0,
+    height: 0,
+    overflow: 'visible',
+  },
+  measureSegment: { flexDirection: 'row', flexShrink: 0 },
   lane: { flex: 1, minWidth: 0, overflow: 'hidden', justifyContent: 'center' },
-  measure: { position: 'absolute', opacity: 0, left: 0, top: 0 },
-  track: { flexDirection: 'row', alignItems: 'center' },
+  track: { flexDirection: 'row', alignItems: 'center', flexWrap: 'nowrap' },
+  textLine: { flexShrink: 0 },
 });
 
 type Props = {
