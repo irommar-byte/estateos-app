@@ -18,9 +18,10 @@ import { useThemeStore } from '../store/useThemeStore';
 import { useI18n } from '../i18n';
 import { API_URL } from '../config/network';
 import OpenHouseSlotBuilder from '../components/openHouse/OpenHouseSlotBuilder';
-import type { OpenHouseSlotDraft } from '../contracts/openHouseContract';
+import type { OpenHouseSlotDraft, OpenHouseVisitMode } from '../contracts/openHouseContract';
 import {
   createOpenHouseEvent,
+  estimateOpenHouseSlotCount,
   slotDraftToApiPayload,
 } from '../services/openHouseService';
 
@@ -30,7 +31,7 @@ function defaultSlots(): OpenHouseSlotDraft[] {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() + 1);
-  return [{ date: d, startHour: '10:00', endHour: '11:00', capacity: 8 }];
+  return [{ date: d, startHour: '10:00', endHour: '14:00', capacity: 8 }];
 }
 
 export default function OpenHouseCreateScreen() {
@@ -49,6 +50,7 @@ export default function OpenHouseCreateScreen() {
   const [selectedOfferId, setSelectedOfferId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [visitMode, setVisitMode] = useState<OpenHouseVisitMode>('SLOT_60');
   const [slots, setSlots] = useState<OpenHouseSlotDraft[]>(defaultSlots);
 
   const bg = isDark ? '#000000' : '#F2F2F7';
@@ -82,9 +84,14 @@ export default function OpenHouseCreateScreen() {
     })();
   }, [token, user?.id]);
 
+  const generatedCount = useMemo(
+    () => estimateOpenHouseSlotCount(slots, visitMode),
+    [slots, visitMode]
+  );
+
   const canSubmit = useMemo(
-    () => Boolean(token && selectedOfferId && slots.length),
-    [token, selectedOfferId, slots.length]
+    () => Boolean(token && selectedOfferId && slots.length && generatedCount > 0 && generatedCount <= 48),
+    [token, selectedOfferId, slots.length, generatedCount]
   );
 
   const publish = async (asDraft = false) => {
@@ -98,6 +105,7 @@ export default function OpenHouseCreateScreen() {
       offerId: selectedOfferId,
       title: title.trim() || undefined,
       description: description.trim() || undefined,
+      visitMode,
       slots: slotDraftToApiPayload(slots),
       publish: !asDraft,
     });
@@ -185,8 +193,56 @@ export default function OpenHouseCreateScreen() {
         </View>
 
         <View style={[styles.section, { backgroundColor: card }]}>
+          <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.create.visitModeSection')}</Text>
+          {(
+            [
+              ['FLEX', t('openHouse.create.visitModeFlex'), t('openHouse.create.visitModeFlexHint')],
+              ['SLOT_30', t('openHouse.create.visitModeSlot30'), t('openHouse.create.visitModeSlot30Hint')],
+              ['SLOT_60', t('openHouse.create.visitModeSlot60'), t('openHouse.create.visitModeSlot60Hint')],
+            ] as const
+          ).map(([mode, label, hint]) => {
+            const selected = visitMode === mode;
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => {
+                  setVisitMode(mode);
+                  if (mode !== 'FLEX') {
+                    setSlots((prev) => prev.map((s) => ({ ...s, capacity: 1 })));
+                  }
+                }}
+                style={[
+                  styles.modeRow,
+                  { borderColor: border, backgroundColor: selected ? 'rgba(245,158,11,0.12)' : 'transparent' },
+                ]}
+              >
+                <Ionicons
+                  name={selected ? 'radio-button-on' : 'radio-button-off'}
+                  size={20}
+                  color={selected ? '#F59E0B' : '#C7C7CC'}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.offerTitle, { color: text }]}>{label}</Text>
+                  <Text style={{ color: muted, fontSize: 12, lineHeight: 17, marginTop: 2 }}>{hint}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={[styles.section, { backgroundColor: card }]}>
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.create.stepSlots')}</Text>
-          <OpenHouseSlotBuilder isDark={isDark} slots={slots} onChange={setSlots} />
+          <Text style={{ color: muted, fontSize: 13 }}>
+            {generatedCount > 0
+              ? `Powstanie ${generatedCount} terminów do rezerwacji.`
+              : t('openHouse.create.slotRequired')}
+          </Text>
+          <OpenHouseSlotBuilder
+            isDark={isDark}
+            visitMode={visitMode}
+            slots={slots}
+            onChange={setSlots}
+          />
         </View>
 
         <Pressable
@@ -226,6 +282,14 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   offerTitle: { fontSize: 15, fontWeight: '700' },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
   input: {
     borderWidth: 1,
     borderRadius: 12,

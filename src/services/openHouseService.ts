@@ -3,6 +3,7 @@ import type {
   OpenHouseEventRecord,
   OpenHouseReservationRecord,
   OpenHouseTickerItem,
+  OpenHouseVisitMode,
 } from '../contracts/openHouseContract';
 
 function authHeaders(token: string | null): HeadersInit {
@@ -79,6 +80,7 @@ export async function createOpenHouseEvent(
     offerId: number;
     title?: string;
     description?: string;
+    visitMode?: OpenHouseVisitMode;
     slots: Array<{ startsAt: string; endsAt: string; capacity: number }>;
     publish?: boolean;
   }
@@ -142,6 +144,26 @@ export async function cancelOpenHouseReservation(
     return { message: json?.message || 'Nie udało się anulować rezerwacji.' };
   }
   return { event: json.event };
+}
+
+export function estimateOpenHouseSlotCount(
+  drafts: Array<{ date: Date; startHour: string; endHour: string; capacity: number }>,
+  visitMode: OpenHouseVisitMode
+): number {
+  const windows = slotDraftToApiPayload(drafts);
+  if (visitMode === 'FLEX') return windows.length;
+  const stepMs = visitMode === 'SLOT_30' ? 30 * 60 * 1000 : 60 * 60 * 1000;
+  let count = 0;
+  for (const w of windows) {
+    const start = new Date(w.startsAt).getTime();
+    const end = new Date(w.endsAt).getTime();
+    let cursor = start;
+    while (cursor + stepMs <= end) {
+      count += 1;
+      cursor += stepMs;
+    }
+  }
+  return count;
 }
 
 export function slotDraftToApiPayload(

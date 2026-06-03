@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       offerId: Number(body.offerId),
       title: body.title ?? null,
       description: body.description ?? null,
+      visitMode: body.visitMode ?? 'FLEX',
       slots: Array.isArray(body.slots) ? body.slots : [],
       publish: body.publish !== false,
     });

@@ -8,26 +8,27 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { buildOpenHouseDays, buildOpenHouseHours } from '../../services/openHouseService';
-import type { OpenHouseSlotDraft } from '../../contracts/openHouseContract';
+import type { OpenHouseSlotDraft, OpenHouseVisitMode } from '../../contracts/openHouseContract';
 import { useI18n, localeToDateFormat } from '../../i18n';
 
 type Props = {
   isDark: boolean;
+  visitMode: OpenHouseVisitMode;
   slots: OpenHouseSlotDraft[];
   onChange: (slots: OpenHouseSlotDraft[]) => void;
 };
 
-function defaultSlot(): OpenHouseSlotDraft {
+function defaultSlot(visitMode: OpenHouseVisitMode): OpenHouseSlotDraft {
   const days = buildOpenHouseDays(1);
   return {
     date: days[0],
     startHour: '10:00',
-    endHour: '11:00',
-    capacity: 8,
+    endHour: '14:00',
+    capacity: visitMode === 'FLEX' ? 8 : 1,
   };
 }
 
-export default function OpenHouseSlotBuilder({ isDark, slots, onChange }: Props) {
+export default function OpenHouseSlotBuilder({ isDark, visitMode, slots, onChange }: Props) {
   const { t, locale } = useI18n();
   const days = useMemo(() => buildOpenHouseDays(21), []);
   const hours = useMemo(() => buildOpenHouseHours(), []);
@@ -39,7 +40,7 @@ export default function OpenHouseSlotBuilder({ isDark, slots, onChange }: Props)
   const chipActive = isDark ? 'rgba(245,158,11,0.28)' : 'rgba(245,158,11,0.18)';
   const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
 
-  const active = slots[activeSlotIndex] ?? defaultSlot();
+  const active = slots[activeSlotIndex] ?? defaultSlot(visitMode);
 
   const updateActive = (patch: Partial<OpenHouseSlotDraft>) => {
     const next = slots.map((slot, idx) => (idx === activeSlotIndex ? { ...slot, ...patch } : slot));
@@ -47,13 +48,13 @@ export default function OpenHouseSlotBuilder({ isDark, slots, onChange }: Props)
   };
 
   const addSlot = () => {
-    onChange([...slots, defaultSlot()]);
+    onChange([...slots, defaultSlot(visitMode)]);
     setActiveSlotIndex(slots.length);
   };
 
   const removeSlot = (idx: number) => {
     const next = slots.filter((_, i) => i !== idx);
-    onChange(next.length ? next : [defaultSlot()]);
+    onChange(next.length ? next : [defaultSlot(visitMode)]);
     setActiveSlotIndex(0);
   };
 
@@ -131,9 +132,13 @@ export default function OpenHouseSlotBuilder({ isDark, slots, onChange }: Props)
         })}
       </ScrollView>
 
-      <Text style={[styles.sectionLabel, { color: muted }]}>{t('openHouse.create.slotCapacity')}</Text>
+      <Text style={[styles.sectionLabel, { color: muted }]}>
+        {visitMode === 'FLEX'
+          ? t('openHouse.create.slotCapacityFlex')
+          : t('openHouse.create.slotCapacity')}
+      </Text>
       <View style={styles.capacityRow}>
-        {[4, 6, 8, 10, 12, 16].map((cap) => {
+        {(visitMode === 'FLEX' ? [4, 6, 8, 10, 12, 16] : [1, 2, 3, 4, 5]).map((cap) => {
           const selected = active.capacity === cap;
           return (
             <Pressable

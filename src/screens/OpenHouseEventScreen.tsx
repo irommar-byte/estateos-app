@@ -17,7 +17,11 @@ import { Image } from 'expo-image';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { useI18n, localeToDateFormat } from '../i18n';
-import type { OpenHouseEventRecord, OpenHouseSlotRecord } from '../contracts/openHouseContract';
+import type {
+  OpenHouseEventRecord,
+  OpenHouseSlotRecord,
+  OpenHouseVisitMode,
+} from '../contracts/openHouseContract';
 import {
   cancelOpenHouseReservation,
   fetchOpenHouseEvent,
@@ -56,10 +60,21 @@ export default function OpenHouseEventScreen() {
     if (!Number.isFinite(eventId) || eventId <= 0) return;
     setLoading(true);
     const data = await fetchOpenHouseEvent(token, eventId);
-    setEvent(data);
+    setEvent(
+      data
+        ? {
+            ...data,
+            visitMode: (data.visitMode ?? 'FLEX') as OpenHouseVisitMode,
+          }
+        : null
+    );
     if (data?.slots?.length) {
-      const firstOpen = data.slots.find((s) => !s.isFull && !s.myReservation) ?? data.slots[0];
-      setSelectedSlotId(firstOpen?.id ?? null);
+      const booked = data.slots.find((s) => s.myReservation);
+      if (booked) setSelectedSlotId(booked.id);
+      else if (data.visitMode === 'FLEX' && data.slots.length === 1) setSelectedSlotId(data.slots[0].id);
+      else setSelectedSlotId(null);
+    } else {
+      setSelectedSlotId(null);
     }
     setLoading(false);
   }, [eventId, token]);
@@ -70,24 +85,41 @@ export default function OpenHouseEventScreen() {
     }, [load])
   );
 
-  const formatSlot = (slot: OpenHouseSlotRecord) =>
-    `${new Date(slot.startsAt).toLocaleString(localeToDateFormat(locale), {
+  const formatSlot = (slot: OpenHouseSlotRecord, visitMode: OpenHouseVisitMode = 'FLEX') => {
+    const fmt = localeToDateFormat(locale);
+    const start = new Date(slot.startsAt);
+    const end = new Date(slot.endsAt);
+    const durationMs = end.getTime() - start.getTime();
+    if (visitMode !== 'FLEX' && durationMs <= 65 * 60 * 1000) {
+      const day = start.toLocaleDateString(fmt, { weekday: 'short', day: 'numeric', month: 'short' });
+      const t1 = start.toLocaleTimeString(fmt, { hour: '2-digit', minute: '2-digit' });
+      const t2 = end.toLocaleTimeString(fmt, { hour: '2-digit', minute: '2-digit' });
+      return `${day} · ${t1} – ${t2}`;
+    }
+    return `${start.toLocaleString(fmt, {
       weekday: 'short',
       day: 'numeric',
       month: 'short',
       hour: '2-digit',
       minute: '2-digit',
-    })} – ${new Date(slot.endsAt).toLocaleTimeString(localeToDateFormat(locale), {
+    })} – ${end.toLocaleTimeString(fmt, { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  const formatSlotChip = (slot: OpenHouseSlotRecord) =>
+    new Date(slot.startsAt).toLocaleTimeString(localeToDateFormat(locale), {
       hour: '2-digit',
       minute: '2-digit',
-    })}`;
+    });
 
   const reserve = async () => {
     if (!token) {
       Alert.alert(t('openHouse.event.title'), t('openHouse.event.loginRequired'));
       return;
     }
-    if (!selectedSlotId) return;
+    if (!selectedSlotId) {
+      Alert.alert(t('openHouse.event.title'), t('openHouse.event.pickSlotRequired'));
+      return;
+    }
     setSubmitting(true);
     const result = await reserveOpenHouseSlot(token, selectedSlotId, { guestCount, note });
     setSubmitting(false);
@@ -146,6 +178,8 @@ export default function OpenHouseEventScreen() {
   const priceLabel = formatAmountWithCurrency(event.offer.price, listingCurrency);
   const hasAnyReservation = event.slots.some((s) => s.reservations.length > 0);
   const heroUri = resolveMediaUrl(event.offer.imageUrl);
+  const isTimedBooking = event.visitMode !== 'FLEX';
+  const upcomingSlots = event.slots.filter((s) => new Date(s.endsAt).getTime() > Date.now());
 
   return (
     <View style={[styles.root, { backgroundColor: bg, paddingTop: insets.top }]}>
@@ -195,46 +229,104 @@ export default function OpenHouseEventScreen() {
         ) : null}
 
         <View style={[styles.section, { backgroundColor: card }]}>
-          <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.slotsSection')}</Text>
-          {event.slots.map((slot) => {
-            const selected = slot.id === selectedSlotId;
-            const booked = Boolean(slot.myReservation);
-            return (
-              <Pressable
-                key={slot.id}
-                disabled={slot.isFull && !booked}
-                onPress={() => setSelectedSlotId(slot.id)}
-                style={[
-                  styles.slotRow,
-                  {
-                    borderColor: selected ? '#F59E0B' : border,
-                    backgroundColor: selected ? 'rgba(245,158,11,0.1)' : 'transparent',
-                    opacity: slot.isFull && !booked ? 0.55 : 1,
-                  },
-                ]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.slotTime, { color: text }]}>{formatSlot(slot)}</Text>
-                  <Text style={{ color: muted, fontSize: 13 }}>
-                    {event.isHost
-                      ? t('openHouse.event.slotOccupancy', {
-                          reserved: slot.reservedCount,
-                          capacity: slot.capacity,
-                        })
-                      : slot.isFull
-                        ? t('openHouse.event.full')
-                        : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
-                  </Text>
-                </View>
-                {booked ? (
-                  <View style={styles.bookedBadge}>
-                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                    <Text style={styles.bookedText}>{t('openHouse.event.reservedCta')}</Text>
+          <Text style={[styles.sectionTitle, { color: text }]}>
+            {!event.isHost && isTimedBooking
+              ? t('openHouse.event.pickHourSection')
+              : t('openHouse.event.slotsSection')}
+          </Text>
+          {!event.isHost && isTimedBooking ? (
+            <Text style={{ color: muted, fontSize: 13, lineHeight: 18 }}>{t('openHouse.event.pickHourHint')}</Text>
+          ) : null}
+          {!event.isHost && event.visitMode === 'FLEX' && event.slots.length === 1 ? (
+            <Text style={{ color: muted, fontSize: 13, lineHeight: 18 }}>{t('openHouse.event.flexWindowHint')}</Text>
+          ) : null}
+
+          {!event.isHost && isTimedBooking ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.hourChipRow}>
+              {upcomingSlots.map((slot) => {
+                const selected = slot.id === selectedSlotId;
+                const booked = Boolean(slot.myReservation);
+                const disabled = slot.isFull && !booked;
+                return (
+                  <Pressable
+                    key={slot.id}
+                    disabled={disabled}
+                    onPress={() => setSelectedSlotId(slot.id)}
+                    style={[
+                      styles.hourChip,
+                      {
+                        borderColor: selected ? '#F59E0B' : border,
+                        backgroundColor: selected ? 'rgba(245,158,11,0.16)' : 'transparent',
+                        opacity: disabled ? 0.45 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.hourChipTime, { color: text }]}>{formatSlotChip(slot)}</Text>
+                    <Text style={{ color: muted, fontSize: 11 }}>
+                      {booked
+                        ? t('openHouse.event.reservedCta')
+                        : slot.isFull
+                          ? t('openHouse.event.full')
+                          : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            event.slots.map((slot) => {
+              const selected = slot.id === selectedSlotId;
+              const booked = Boolean(slot.myReservation);
+              return (
+                <Pressable
+                  key={slot.id}
+                  disabled={slot.isFull && !booked}
+                  onPress={() => setSelectedSlotId(slot.id)}
+                  style={[
+                    styles.slotRow,
+                    {
+                      borderColor: selected ? '#F59E0B' : border,
+                      backgroundColor: selected ? 'rgba(245,158,11,0.1)' : 'transparent',
+                      opacity: slot.isFull && !booked ? 0.55 : 1,
+                    },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.slotTime, { color: text }]}>
+                      {formatSlot(slot, event.visitMode)}
+                    </Text>
+                    <Text style={{ color: muted, fontSize: 13 }}>
+                      {event.isHost
+                        ? t('openHouse.event.slotOccupancy', {
+                            reserved: slot.reservedCount,
+                            capacity: slot.capacity,
+                          })
+                        : slot.isFull
+                          ? t('openHouse.event.full')
+                          : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
+                    </Text>
                   </View>
-                ) : null}
-              </Pressable>
-            );
-          })}
+                  {booked ? (
+                    <View style={styles.bookedBadge}>
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                      <Text style={styles.bookedText}>{t('openHouse.event.reservedCta')}</Text>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            })
+          )}
+
+          {!event.isHost && selectedSlot && !myReservation ? (
+            <View style={[styles.selectedSlotBanner, { borderColor: 'rgba(245,158,11,0.45)' }]}>
+              <Ionicons name="time-outline" size={18} color="#F59E0B" />
+              <Text style={{ color: text, fontWeight: '700', flex: 1 }}>
+                {t('openHouse.event.selectedSlot', {
+                  time: formatSlot(selectedSlot, event.visitMode),
+                })}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {event.isHost && hasAnyReservation ? (
@@ -245,7 +337,7 @@ export default function OpenHouseEventScreen() {
                 <View key={`guest-${r.id}`} style={[styles.guestRow, { borderColor: border }]}>
                   <Text style={{ color: text, fontWeight: '700' }}>{r.userName}</Text>
                   <Text style={{ color: muted, fontSize: 13 }}>
-                    {formatSlot(slot)} · {r.guestCount} os.
+                    {formatSlot(slot, event.visitMode)} · {r.guestCount} os.
                   </Text>
                 </View>
               ))
@@ -305,7 +397,11 @@ export default function OpenHouseEventScreen() {
             {submitting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryBtnText}>{t('openHouse.event.reserveCta')}</Text>
+              <Text style={styles.primaryBtnText}>
+                {!selectedSlot
+                  ? t('openHouse.event.pickSlotCta')
+                  : t('openHouse.event.reserveCta')}
+              </Text>
             )}
           </Pressable>
         )}
@@ -356,6 +452,26 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   slotTime: { fontSize: 15, fontWeight: '700' },
+  hourChipRow: { marginTop: 4 },
+  hourChip: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 8,
+    minWidth: 88,
+    alignItems: 'center',
+  },
+  hourChipTime: { fontSize: 16, fontWeight: '800' },
+  selectedSlotBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+  },
   bookedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   bookedText: { color: '#10B981', fontWeight: '700', fontSize: 12 },
   guestRow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 2 },

@@ -1,3 +1,5 @@
+export type OpenHouseVisitMode = 'FLEX' | 'SLOT_30' | 'SLOT_60';
+
 export type OpenHouseTickerItem = {
   id: string;
   type: 'OPEN_HOUSE';
@@ -41,6 +43,7 @@ export type OpenHouseEventRecord = {
   hostUserId: number;
   title: string;
   description: string | null;
+  visitMode: OpenHouseVisitMode;
   status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' | 'COMPLETED';
   publishedAt: string | null;
   createdAt: string;
@@ -80,6 +83,8 @@ export type OpenHouseSlotDraft = {
   endHour: string;
   capacity: number;
 };
+
+export type OpenHouseWindowDraft = OpenHouseSlotDraft;
 
 export type OpenHouseReservationRecord = {
   reservationId: number;

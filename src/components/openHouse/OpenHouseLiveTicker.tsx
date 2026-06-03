@@ -24,14 +24,9 @@ type Props = {
   enabled?: boolean;
 };
 
-const ROTATE_MS = 9000;
-const MARQUEE_PX_PER_SEC = 42;
-
-function truncateMiddle(text: string, max: number): string {
-  const s = text.trim();
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1).trim()}…`;
-}
+const ROTATE_MS = 14000;
+const MARQUEE_PX_PER_SEC = 52;
+const MARQUEE_GAP = '   ◆   ';
 
 function TickerMarquee({ text, style }: { text: string; style: TextStyle }) {
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -39,63 +34,47 @@ function TickerMarquee({ text, style }: { text: string; style: TextStyle }) {
   const [textWidth, setTextWidth] = useState(0);
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
 
-  const onLaneLayout = (e: LayoutChangeEvent) => {
-    setLaneWidth(e.nativeEvent.layout.width);
-  };
-
-  const onMeasureLayout = (e: LayoutChangeEvent) => {
-    setTextWidth(e.nativeEvent.layout.width);
-  };
+  const shouldScroll = textWidth > laneWidth + 6 && laneWidth > 0 && textWidth > 0;
+  const loopDistance = textWidth + 56;
 
   useEffect(() => {
     animRef.current?.stop();
     scrollX.setValue(0);
+    if (!shouldScroll) return;
 
-    const overflow = textWidth - laneWidth;
-    if (overflow <= 4 || laneWidth <= 0 || textWidth <= 0) return;
-
-    const distance = overflow + 32;
-    const duration = Math.max(6000, Math.round((distance / MARQUEE_PX_PER_SEC) * 1000));
-
+    const duration = Math.max(7000, Math.round((loopDistance / MARQUEE_PX_PER_SEC) * 1000));
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(1200),
-        Animated.timing(scrollX, {
-          toValue: -distance,
-          duration,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.delay(900),
-        Animated.timing(scrollX, {
-          toValue: 0,
-          duration: 500,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
+      Animated.timing(scrollX, {
+        toValue: -loopDistance,
+        duration,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
     );
-
     animRef.current = loop;
     loop.start();
-    return () => {
-      loop.stop();
-    };
-  }, [text, textWidth, laneWidth, scrollX]);
+    return () => loop.stop();
+  }, [shouldScroll, loopDistance, scrollX, text]);
+
+  const onMeasure = (e: LayoutChangeEvent) => {
+    setTextWidth(e.nativeEvent.layout.width);
+  };
 
   return (
-    <View style={styles.marqueeLane} onLayout={onLaneLayout}>
-      <View style={styles.measureWrap} pointerEvents="none">
-        <Text style={[style, styles.measureText]} onLayout={onMeasureLayout} numberOfLines={1}>
-          {text}
-        </Text>
-      </View>
-      <Animated.Text
-        numberOfLines={1}
-        style={[style, styles.marqueeText, { transform: [{ translateX: scrollX }] }]}
-      >
+    <View style={styles.marqueeLane} onLayout={(e) => setLaneWidth(e.nativeEvent.layout.width)}>
+      <Text pointerEvents="none" style={[style, styles.hiddenMeasure]} onLayout={onMeasure}>
         {text}
-      </Animated.Text>
+      </Text>
+      {shouldScroll ? (
+        <Animated.View style={[styles.marqueeTrack, { transform: [{ translateX: scrollX }] }]}>
+          <Text style={style}>{text}</Text>
+          <Text style={style}>{MARQUEE_GAP}</Text>
+          <Text style={style}>{text}</Text>
+          <Text style={style}>{MARQUEE_GAP}</Text>
+        </Animated.View>
+      ) : (
+        <Text style={style}>{text}</Text>
+      )}
     </View>
   );
 }
@@ -161,9 +140,9 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
   const active = items[index % Math.max(items.length, 1)];
   const label = useMemo(() => {
     if (!active) return '';
-    const shortTitle = truncateMiddle(active.title ?? '', 36);
+    const fullTitle = (active.title ?? '').trim();
     if (!active.startsAt) {
-      return `${active.city ?? ''} · ${shortTitle}`.trim();
+      return `${active.city ?? ''} · ${fullTitle}`.trim();
     }
     const date = new Date(active.startsAt).toLocaleString(localeToDateFormat(locale), {
       weekday: 'short',
@@ -174,7 +153,7 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
     });
     return t('openHouse.ticker.openHouseInvite', {
       city: active.city,
-      title: shortTitle,
+      title: fullTitle,
       date,
       spots: String(active.spotsLeft),
     });
@@ -278,25 +257,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
   },
-  measureWrap: {
+  hiddenMeasure: {
     position: 'absolute',
     opacity: 0,
     left: 0,
     top: 0,
-    flexDirection: 'row',
-  },
-  measureText: {
     flexShrink: 0,
   },
-  marqueeText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
+  marqueeTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   message: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+    flexShrink: 0,
   },
   chevron: {
     flexShrink: 0,

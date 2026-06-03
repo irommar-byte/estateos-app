@@ -6,6 +6,13 @@ export type OpenHouseSlotInput = {
   capacity?: number;
 };
 
+export type OpenHouseVisitMode = 'FLEX' | 'SLOT_30' | 'SLOT_60';
+
+export function parseOpenHouseVisitMode(raw: unknown): OpenHouseVisitMode {
+  if (raw === 'SLOT_30' || raw === 'SLOT_60') return raw;
+  return 'FLEX';
+}
+
 const OFFER_SELECT = {
   id: true,
   title: true,
@@ -102,6 +109,7 @@ export function serializeOpenHouseEvent(
     hostUserId: number;
     title: string | null;
     description: string | null;
+    visitMode: string;
     status: string;
     publishedAt: Date | null;
     createdAt: Date;
@@ -158,6 +166,7 @@ export function serializeOpenHouseEvent(
     hostUserId: event.hostUserId,
     title: event.title || event.offer.title,
     description: event.description,
+    visitMode: parseOpenHouseVisitMode(event.visitMode),
     status: event.status,
     publishedAt: event.publishedAt?.toISOString() ?? null,
     createdAt: event.createdAt.toISOString(),
@@ -291,12 +300,38 @@ export async function getPublishedEventForOffer(offerId: number, viewerUserId?: 
   return serializeOpenHouseEvent(event, viewerUserId);
 }
 
+function expandSlotWindows(
+  windows: Array<{ startsAt: Date; endsAt: Date; capacity: number }>,
+  mode: OpenHouseVisitMode
+) {
+  if (mode === 'FLEX') return windows;
+
+  const stepMs = mode === 'SLOT_30' ? 30 * 60 * 1000 : 60 * 60 * 1000;
+  const expanded: Array<{ startsAt: Date; endsAt: Date; capacity: number }> = [];
+
+  for (const window of windows) {
+    let cursor = window.startsAt.getTime();
+    const endMs = window.endsAt.getTime();
+    while (cursor + stepMs <= endMs) {
+      expanded.push({
+        startsAt: new Date(cursor),
+        endsAt: new Date(cursor + stepMs),
+        capacity: window.capacity,
+      });
+      cursor += stepMs;
+    }
+  }
+
+  return expanded;
+}
+
 export async function createOpenHouseEvent(
   hostUserId: number,
   input: {
     offerId: number;
     title?: string | null;
     description?: string | null;
+    visitMode?: OpenHouseVisitMode | string | null;
     slots: OpenHouseSlotInput[];
     publish?: boolean;
   }
@@ -309,9 +344,14 @@ export async function createOpenHouseEvent(
     throw new Error('OFFER_NOT_FOUND');
   }
 
-  const slots = normalizeSlots(input.slots);
+  const visitMode = parseOpenHouseVisitMode(input.visitMode);
+  const windows = normalizeSlots(input.slots);
+  const slots = expandSlotWindows(windows, visitMode);
   if (!slots.length) {
     throw new Error('SLOTS_REQUIRED');
+  }
+  if (slots.length > 48) {
+    throw new Error('TOO_MANY_SLOTS');
   }
 
   const existingPublished = await prisma.openHouseEvent.findFirst({
@@ -328,6 +368,7 @@ export async function createOpenHouseEvent(
       hostUserId,
       title: input.title?.trim() || null,
       description: input.description?.trim() || null,
+      visitMode,
       status: input.publish ? 'PUBLISHED' : 'DRAFT',
       publishedAt: input.publish ? new Date() : null,
       slots: {
@@ -511,6 +552,12 @@ export function mapOpenHouseError(error: unknown): { code: string; message: stri
       return { code, message: 'Nie znaleziono aktywnej oferty.', status: 404 };
     case 'SLOTS_REQUIRED':
       return { code, message: 'Dodaj co najmniej jeden termin.', status: 400 };
+    case 'TOO_MANY_SLOTS':
+      return {
+        code,
+        message: 'Za dużo terminów — skróć okno czasowe lub wybierz rzadsze sloty.',
+        status: 400,
+      };
     case 'ALREADY_PUBLISHED':
       return { code, message: 'Ta oferta ma już opublikowany dzień otwarty.', status: 409 };
     case 'NOT_FOUND':
