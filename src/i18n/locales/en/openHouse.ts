@@ -81,6 +81,10 @@ export const openHouse = {
     hostViewTitle: 'Your open house',
     hostNoGuests: 'No guests booked yet — share your listing or wait for reservations.',
     slotOccupancy: '{{reserved}}/{{capacity}} spots taken',
+    slotTaken: 'Taken',
+    viewGuestCard: 'Profile: {{name}}',
+    viewGuestCardHint: 'Tap to view guest profile',
+    guestCountShort: '{{count}} guest(s)',
   },
   live: {
     panelTitle: 'Live',

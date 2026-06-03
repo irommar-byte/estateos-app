@@ -323,6 +323,9 @@ export const offer = {
       locationCircleHint:
         'Właściciel ukrył dokładny adres — pokazujemy obszar ok. 250 m, a środek tarczy jest celowo przesunięty (budynek leży gdzieś wewnątrz okręgu).',
     },
+    hero: {
+      openGallery: 'Otwórz galerię zdjęć',
+    },
     gallery: {
       counter: '{{current}} z {{total}}',
     },

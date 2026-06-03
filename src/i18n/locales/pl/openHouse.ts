@@ -81,6 +81,10 @@ export const openHouse = {
     hostViewTitle: 'Twój dzień otwarty',
     hostNoGuests: 'Brak zapisanych gości — udostępnij link z ogłoszenia lub poczekaj na rezerwacje.',
     slotOccupancy: '{{reserved}}/{{capacity}} miejsc zajętych',
+    slotTaken: 'Zajęty',
+    viewGuestCard: 'Wizytówka: {{name}}',
+    viewGuestCardHint: 'Dotknij, aby zobaczyć profil gościa',
+    guestCountShort: '{{count}} os.',
   },
   live: {
     panelTitle: 'Na żywo',

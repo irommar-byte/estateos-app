@@ -1362,7 +1362,11 @@ export default function Step2_Location({ theme }: { theme: any }) {
           style={styles.map} 
           userInterfaceStyle={isDark ? "dark" : "light"} 
           showsBuildings={true} 
-          pitchEnabled={true} 
+          scrollEnabled
+          zoomEnabled
+          zoomTapEnabled
+          pitchEnabled={true}
+          rotateEnabled={false}
           initialRegion={{ latitude: draft.lat || 52.2297, longitude: draft.lng || 21.0122, latitudeDelta: 0.05, longitudeDelta: 0.05 }} 
           onRegionChangeComplete={handleRegionChangeComplete} 
         />

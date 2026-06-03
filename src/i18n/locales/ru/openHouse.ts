@@ -81,6 +81,10 @@ export const openHouse = {
     hostViewTitle: 'Ваш день открытых дверей',
     hostNoGuests: 'Пока нет гостей — поделитесь объявлением или дождитесь бронирований.',
     slotOccupancy: 'Занято {{reserved}}/{{capacity}}',
+    slotTaken: 'Занято',
+    viewGuestCard: 'Профиль: {{name}}',
+    viewGuestCardHint: 'Нажмите, чтобы открыть профиль гостя',
+    guestCountShort: '{{count}} чел.',
   },
   live: {
     panelTitle: 'В эфире',

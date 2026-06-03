@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
   useColorScheme,
 } from 'react-native';
@@ -33,6 +35,27 @@ import { formatAmountWithCurrency } from '../money/format';
 import { resolveMediaUrl } from '../utils/userAvatar';
 import { offerOpenHouseCalendarAfterReserve } from '../utils/openHouseCalendar';
 import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
+import { API_URL } from '../config/network';
+import ProfilePublicHeader from '../components/ProfilePublicHeader';
+import ProfileReputationBlock from '../components/ProfileReputationBlock';
+import { ChevronRight, X } from 'lucide-react-native';
+
+/** Termin niedostępny dla gościa (zajęty przez kogoś innego lub pełny). */
+function isSlotUnavailableForGuest(
+  slot: OpenHouseSlotRecord,
+  visitMode: OpenHouseVisitMode,
+  isHost: boolean
+): boolean {
+  if (isHost) return false;
+  if (slot.myReservation) return false;
+  if (slot.isFull) return true;
+  if (visitMode !== 'FLEX' && slot.reservedCount > 0) return true;
+  return false;
+}
+
+function isSlotMarkedTaken(slot: OpenHouseSlotRecord, visitMode: OpenHouseVisitMode): boolean {
+  return slot.isFull || (visitMode !== 'FLEX' && slot.reservedCount > 0);
+}
 
 export default function OpenHouseEventScreen() {
   const navigation = useNavigation<any>();
@@ -51,6 +74,9 @@ export default function OpenHouseEventScreen() {
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
   const [guestCount, setGuestCount] = useState(1);
   const [note, setNote] = useState('');
+  const [guestProfileUserId, setGuestProfileUserId] = useState<number | null>(null);
+  const [guestProfileData, setGuestProfileData] = useState<any>(null);
+  const [guestProfileLoading, setGuestProfileLoading] = useState(false);
 
   const bg = isDark ? '#000000' : '#F2F2F7';
   const card = isDark ? '#1C1C1E' : '#FFFFFF';
@@ -131,6 +157,26 @@ export default function OpenHouseEventScreen() {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+  const openGuestProfile = async (userId: number) => {
+    if (!Number.isFinite(userId) || userId <= 0) return;
+    setGuestProfileUserId(userId);
+    setGuestProfileData(null);
+    setGuestProfileLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/users/${userId}/public`);
+      const data = await res.json();
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || t('offer.detail.alerts.profileFetchFailed'));
+      }
+      setGuestProfileData(data);
+    } catch {
+      Alert.alert(t('openHouse.event.title'), t('offer.detail.alerts.profileLoadFailed'));
+      setGuestProfileUserId(null);
+    } finally {
+      setGuestProfileLoading(false);
+    }
+  };
 
   const reserve = async () => {
     if (!token) {
@@ -295,7 +341,9 @@ export default function OpenHouseEventScreen() {
               {upcomingSlots.map((slot) => {
                 const selected = slot.id === selectedSlotId;
                 const booked = Boolean(slot.myReservation);
-                const disabled = slot.isFull && !booked;
+                const taken = isSlotUnavailableForGuest(slot, event.visitMode, event.isHost);
+                const disabled = taken;
+                const markedTaken = isSlotMarkedTaken(slot, event.visitMode);
                 return (
                   <Pressable
                     key={slot.id}
@@ -304,18 +352,31 @@ export default function OpenHouseEventScreen() {
                     style={[
                       styles.hourChip,
                       {
-                        borderColor: selected ? '#F59E0B' : border,
-                        backgroundColor: selected ? 'rgba(245,158,11,0.16)' : 'transparent',
-                        opacity: disabled ? 0.45 : 1,
+                        borderColor: selected ? '#F59E0B' : markedTaken ? 'rgba(142,142,147,0.35)' : border,
+                        backgroundColor: selected
+                          ? 'rgba(245,158,11,0.16)'
+                          : markedTaken
+                            ? isDark
+                              ? 'rgba(142,142,147,0.22)'
+                              : 'rgba(142,142,147,0.14)'
+                            : 'transparent',
+                        opacity: disabled ? 0.72 : 1,
                       },
                     ]}
                   >
-                    <Text style={[styles.hourChipTime, { color: text }]}>{formatSlotChip(slot)}</Text>
+                    <Text
+                      style={[
+                        styles.hourChipTime,
+                        { color: markedTaken && !selected ? muted : text },
+                      ]}
+                    >
+                      {formatSlotChip(slot)}
+                    </Text>
                     <Text style={{ color: muted, fontSize: 11 }}>
                       {booked
                         ? t('openHouse.event.reservedCta')
-                        : slot.isFull
-                          ? t('openHouse.event.full')
+                        : markedTaken
+                          ? t('openHouse.event.slotTaken')
                           : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
                     </Text>
                   </Pressable>
@@ -326,22 +387,35 @@ export default function OpenHouseEventScreen() {
             event.slots.map((slot) => {
               const selected = slot.id === selectedSlotId;
               const booked = Boolean(slot.myReservation);
+              const taken = isSlotUnavailableForGuest(slot, event.visitMode, event.isHost);
+              const markedTaken = isSlotMarkedTaken(slot, event.visitMode);
               return (
                 <Pressable
                   key={slot.id}
-                  disabled={slot.isFull && !booked}
+                  disabled={taken}
                   onPress={() => setSelectedSlotId(slot.id)}
                   style={[
                     styles.slotRow,
                     {
-                      borderColor: selected ? '#F59E0B' : border,
-                      backgroundColor: selected ? 'rgba(245,158,11,0.1)' : 'transparent',
-                      opacity: slot.isFull && !booked ? 0.55 : 1,
+                      borderColor: selected ? '#F59E0B' : markedTaken ? 'rgba(142,142,147,0.35)' : border,
+                      backgroundColor: selected
+                        ? 'rgba(245,158,11,0.1)'
+                        : markedTaken
+                          ? isDark
+                            ? 'rgba(142,142,147,0.2)'
+                            : 'rgba(142,142,147,0.12)'
+                          : 'transparent',
+                      opacity: taken ? 0.78 : 1,
                     },
                   ]}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.slotTime, { color: text }]}>
+                    <Text
+                      style={[
+                        styles.slotTime,
+                        { color: markedTaken && !selected ? muted : text },
+                      ]}
+                    >
                       {formatSlot(slot, event.visitMode)}
                     </Text>
                     <Text style={{ color: muted, fontSize: 13 }}>
@@ -350,15 +424,21 @@ export default function OpenHouseEventScreen() {
                             reserved: slot.reservedCount,
                             capacity: slot.capacity,
                           })
-                        : slot.isFull
-                          ? t('openHouse.event.full')
-                          : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
+                        : booked
+                          ? t('openHouse.event.reservedCta')
+                          : markedTaken
+                            ? t('openHouse.event.slotTaken')
+                            : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
                     </Text>
                   </View>
                   {booked ? (
                     <View style={styles.bookedBadge}>
                       <Ionicons name="checkmark-circle" size={16} color="#10B981" />
                       <Text style={styles.bookedText}>{t('openHouse.event.reservedCta')}</Text>
+                    </View>
+                  ) : markedTaken && event.isHost ? (
+                    <View style={styles.takenBadge}>
+                      <Text style={styles.takenBadgeText}>{t('openHouse.event.slotTaken')}</Text>
                     </View>
                   ) : null}
                 </Pressable>
@@ -383,12 +463,25 @@ export default function OpenHouseEventScreen() {
             <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.reservationsSection')}</Text>
             {event.slots.flatMap((slot) =>
               slot.reservations.map((r) => (
-                <View key={`guest-${r.id}`} style={[styles.guestRow, { borderColor: border }]}>
-                  <Text style={{ color: text, fontWeight: '700' }}>{r.userName}</Text>
-                  <Text style={{ color: muted, fontSize: 13 }}>
-                    {formatSlot(slot, event.visitMode)} · {r.guestCount} os.
-                  </Text>
-                </View>
+                <Pressable
+                  key={`guest-${r.id}`}
+                  onPress={() => void openGuestProfile(r.userId)}
+                  style={({ pressed }) => [
+                    styles.guestRow,
+                    { borderColor: border, opacity: pressed ? 0.82 : 1 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('openHouse.event.viewGuestCard', { name: r.userName })}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: text, fontWeight: '700' }}>{r.userName}</Text>
+                    <Text style={{ color: muted, fontSize: 13 }}>
+                      {formatSlot(slot, event.visitMode)} · {t('openHouse.event.guestCountShort', { count: r.guestCount })}
+                    </Text>
+                    <Text style={styles.guestCardHint}>{t('openHouse.event.viewGuestCardHint')}</Text>
+                  </View>
+                  <ChevronRight size={18} color="#F59E0B" />
+                </Pressable>
               ))
             )}
           </View>
@@ -440,8 +533,19 @@ export default function OpenHouseEventScreen() {
         ) : (
           <Pressable
             onPress={() => void reserve()}
-            disabled={submitting || !selectedSlot || selectedSlot.isFull}
-            style={[styles.primaryBtn, (submitting || !selectedSlot || selectedSlot.isFull) && { opacity: 0.6 }]}
+            disabled={
+              submitting ||
+              !selectedSlot ||
+              isSlotUnavailableForGuest(selectedSlot, event.visitMode, false)
+            }
+            style={[
+              styles.primaryBtn,
+              (submitting ||
+                !selectedSlot ||
+                isSlotUnavailableForGuest(selectedSlot, event.visitMode, false)) && {
+                opacity: 0.6,
+              },
+            ]}
           >
             {submitting ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -455,6 +559,58 @@ export default function OpenHouseEventScreen() {
           </Pressable>
         )}
       </View>
+
+      <Modal
+        visible={guestProfileUserId != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setGuestProfileUserId(null);
+          setGuestProfileData(null);
+        }}
+      >
+        <View style={styles.profileOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setGuestProfileUserId(null);
+              setGuestProfileData(null);
+            }}
+          />
+          <View style={[styles.profileCard, { backgroundColor: card }]}>
+            <View style={styles.profileHeaderRow}>
+              <Text style={[styles.profileTitle, { color: text }]}>{t('offer.detail.profile.title')}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setGuestProfileUserId(null);
+                  setGuestProfileData(null);
+                }}
+                style={styles.profileCloseBtn}
+              >
+                <X size={18} color={isDark ? '#FFF' : '#111'} />
+              </TouchableOpacity>
+            </View>
+            {guestProfileLoading ? (
+              <ActivityIndicator color="#F59E0B" style={{ marginVertical: 24 }} />
+            ) : (
+              <>
+                <ProfilePublicHeader
+                  user={guestProfileData?.user || guestProfileData}
+                  idLabel={t('offer.detail.profile.idLabel', {
+                    id: guestProfileData?.user?.id || guestProfileUserId || '-',
+                  })}
+                  isDark={isDark}
+                />
+                <ProfileReputationBlock
+                  reviews={Array.isArray(guestProfileData?.reviews) ? guestProfileData.reviews : []}
+                  reviewsCountLabel={(count) => t('offer.detail.profile.reviewsCount', { count })}
+                  isDark={isDark}
+                />
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -532,7 +688,49 @@ const styles = StyleSheet.create({
   },
   bookedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   bookedText: { color: '#10B981', fontWeight: '700', fontSize: 12 },
-  guestRow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 2 },
+  guestRow: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  guestCardHint: { color: '#F59E0B', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  takenBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(142,142,147,0.18)',
+  },
+  takenBadgeText: { color: '#8E8E93', fontSize: 11, fontWeight: '700' },
+  profileOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  profileCard: {
+    borderRadius: 20,
+    padding: 18,
+    maxHeight: '78%',
+  },
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  profileTitle: { fontSize: 18, fontWeight: '800' },
+  profileCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(142,142,147,0.16)',
+  },
   guestRowControls: { flexDirection: 'row', gap: 8 },
   guestChip: {
     width: 42,

@@ -415,9 +415,9 @@ const FloatingNextButton = ({ onPress }: any) => {
   const panResponder = useMemo(
     () => PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true, // Zatrzymuje Map/ScrollView przed przejęciem dotyku
+      onMoveShouldSetPanResponderCapture: () => false,
       onPanResponderGrant: () => {
         if (__DEV__) console.log('[PLUS] grant');
         clearLongPressTimer();

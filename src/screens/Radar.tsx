@@ -446,7 +446,11 @@ export default function Radar({ theme, route }: any) {
         userInterfaceStyle={isDark ? "dark" : "light"}
         showsUserLocation={true}
         showsBuildings={true}
+        scrollEnabled
+        zoomEnabled
+        zoomTapEnabled
         pitchEnabled={true}
+        rotateEnabled={false}
         initialRegion={{ latitude: 52.2297, longitude: 21.0122, latitudeDelta: 0.1, longitudeDelta: 0.1 }}
         {...(Platform.OS === 'ios'
           ? {}

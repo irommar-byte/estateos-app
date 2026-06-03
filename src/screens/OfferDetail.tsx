@@ -1236,8 +1236,16 @@ export default function OfferDetail({ route, navigation }: any) {
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#ffffff' }]}>
-      <Animated.View style={[styles.imageContainer, imageAnimatedStyle]}>
-        <Pressable onPress={() => openGallery(0)} style={{ flex: 1 }}>
+      <Animated.View
+        style={[styles.imageContainer, imageAnimatedStyle]}
+        pointerEvents="box-none"
+      >
+        <Pressable
+          onPress={() => openGallery(0)}
+          style={styles.heroImagePressable}
+          accessibilityRole="button"
+          accessibilityLabel={t('offer.detail.hero.openGallery')}
+        >
           <Image source={{ uri: imagesToShow[0] }} style={styles.mainImage} contentFit="cover" transition={500} />
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.4)']}
@@ -1245,6 +1253,23 @@ export default function OfferDetail({ route, navigation }: any) {
             pointerEvents="none"
           />
         </Pressable>
+        {imagesToShow.length > 0 ? (
+          <Pressable
+            onPress={() => openGallery(0)}
+            style={styles.heroGalleryBtn}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel={t('offer.detail.hero.openGallery')}
+          >
+            <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <Maximize color="#FFFFFF" size={20} strokeWidth={2} />
+            {imagesToShow.length > 1 ? (
+              <View style={styles.heroGalleryCount}>
+                <Text style={styles.heroGalleryCountText}>{imagesToShow.length}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        ) : null}
       </Animated.View>
 
       <View style={[styles.topBar, { top: Math.max(12, insets.top + 6) }]}>
@@ -1286,9 +1311,13 @@ export default function OfferDetail({ route, navigation }: any) {
         onScroll={scrollHandler}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        pointerEvents="box-none"
         contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 12 }}
       >
-        <View style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}>
+        <View
+          style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}
+          pointerEvents="auto"
+        >
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
@@ -1953,7 +1982,10 @@ export default function OfferDetail({ route, navigation }: any) {
             <View style={styles.locationMiniMapWrap}>
               <MapView
                 style={styles.locationMiniMap}
-                pointerEvents="none"
+                scrollEnabled
+                zoomEnabled
+                zoomTapEnabled
+                rotateEnabled={false}
                 initialRegion={{
                   latitude: mapCoordinate.latitude,
                   longitude: mapCoordinate.longitude,
@@ -2385,8 +2417,35 @@ export default function OfferDetail({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT },
+  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 3 },
+  heroImagePressable: { flex: 1 },
   mainImage: { width: '100%', height: '100%' },
+  heroGalleryBtn: {
+    position: 'absolute',
+    right: 18,
+    bottom: 52,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  heroGalleryCount: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroGalleryCountText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   topBar: { position: 'absolute', top: 55, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topBarRight: { flexDirection: 'row' },
   glassButton: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },

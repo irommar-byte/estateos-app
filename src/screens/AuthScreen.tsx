@@ -32,6 +32,8 @@ import {
   flagEmojiFromIso2,
 } from '../utils/phoneRegions';
 import { useI18n } from '../i18n';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AuthLanguageFlags from '../components/AuthLanguageFlags';
 
 // --- LUKSUSOWE IKONY WALIDACJI ---
 const StatusIcon = ({ status }: { status: string }) => {
@@ -257,6 +259,7 @@ export default function AuthScreen({
   embedded?: boolean;
 }) {
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' ? false : true));
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
@@ -531,7 +534,13 @@ export default function AuthScreen({
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
-      
+      <View
+        style={[styles.langFlagsBar, { top: insets.top + (Platform.OS === 'ios' ? 10 : 14) }]}
+        pointerEvents="box-none"
+      >
+        <AuthLanguageFlags isDark={isDark} />
+      </View>
+
       <FormShell style={formShellStyle}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25, paddingTop: Platform.OS === 'ios' ? 80 : 50, paddingBottom: 50 }}>
           
@@ -719,6 +728,12 @@ export default function AuthScreen({
 }
 
 const styles = StyleSheet.create({
+  langFlagsBar: {
+    position: 'absolute',
+    right: 22,
+    zIndex: 20,
+    alignItems: 'flex-end',
+  },
   iconWrapper: { width: 80, height: 80, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: 25, alignSelf: 'center', borderWidth: 1 },
   title: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 30, letterSpacing: -0.5 },
   roleSwitchContainer: { flexDirection: 'row', borderRadius: 16, padding: 4 },

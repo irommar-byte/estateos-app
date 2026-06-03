@@ -3983,7 +3983,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   return (
     <>
-    <View style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}>
+    <View
+      style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}
+      pointerEvents="box-none"
+    >
       <RadarMapComponent
         ref={mapRef}
         style={[
@@ -3991,6 +3994,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           !showOnlyFavorites && radarBrowseMode === 'GALLERY' && { opacity: 0 },
         ]}
         pointerEvents={!showOnlyFavorites && radarBrowseMode === 'GALLERY' ? 'none' : 'auto'}
+        scrollEnabled
+        zoomEnabled
+        zoomTapEnabled
+        rotateEnabled={false}
         onLayout={(e: any) => {
           const { width: w, height: h } = e.nativeEvent.layout;
           setMapLayout({ width: w, height: h });
@@ -4806,8 +4813,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </Animated.View>
       )}
 
-      {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && (
-      <View style={styles.offersPreviewContainer}>
+      {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && !showAreaPicker && (
+      <View style={styles.offersPreviewContainer} pointerEvents="box-none">
         {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
             Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
             z parametrami. Gdy brak ofert, ta sama karta zmienia ton (severity
@@ -5032,10 +5039,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       />
       
       {showAreaPicker && (
-        <View style={styles.areaPickerOverlay} pointerEvents="box-none">
-          {/* PRZYCIEMNIENIE TŁA */}
+        <>
+          {/* Warstwy osobno (bez pełnoekranowego flex-wrapa) — środek ekranu przepuszcza gesty do MapView. */}
           <View style={styles.areaDimLayer} pointerEvents="none" />
-          {/* SOCZEWKA */}
           <View
             pointerEvents="none"
             style={[
@@ -5077,7 +5083,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               />
             </Animated.View>
           </View>
-          {/* GÓRA */}
           <View style={styles.areaPickerTop} pointerEvents="box-none">
             <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerTopGlass}>
               <Text style={styles.areaPickerTitle}>{t('radar.home.areaPickerTitle')}</Text>
@@ -5086,7 +5091,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               </Text>
             </BlurView>
           </View>
-          {/* DÓŁ */}
           <View style={styles.areaPickerBottom} pointerEvents="box-none">
             <BlurView intensity={92} tint={isDark ? 'dark' : 'light'} style={styles.areaPickerBottomGlass}>
               <View style={styles.areaRadiusHeader}>
@@ -5136,7 +5140,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               </View>
             </BlurView>
           </View>
-        </View>
+        </>
       )}
       
       <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
@@ -6469,13 +6473,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '500',
   },
-  areaPickerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 120,
-    justifyContent: 'space-between',
-  },
   areaDimLayer: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   areaBackdropBlur: { position: 'absolute' },
@@ -6484,8 +6484,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 121,
   },
   areaPickerTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 122,
     paddingTop: Platform.OS === 'ios' ? 56 : 26,
     paddingHorizontal: 16,
   },
@@ -6511,6 +6517,11 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   areaPickerBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 122,
     paddingHorizontal: 16,
     paddingBottom: Platform.OS === 'ios' ? 28 : 14,
   },

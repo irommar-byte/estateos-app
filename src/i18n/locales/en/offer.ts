@@ -322,6 +322,9 @@ export const offer = {
       locationCircleHint:
         'The owner hid the exact address — we show an area of approx. 250 m, and the circle center is deliberately offset (the building lies somewhere inside the circle).',
     },
+    hero: {
+      openGallery: 'Open photo gallery',
+    },
     gallery: {
       counter: '{{current}} of {{total}}',
     },
