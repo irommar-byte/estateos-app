@@ -1,6 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'Na żywo',
+    alertHeadline: 'Uwaga! Dzień otwarty',
     openHouseInvite: '{{city}} · {{title}} · {{date}} · wolne miejsca: {{spots}}',
     tapToReserve: 'Dotknij, aby zobaczyć i zarezerwować termin',
   },
@@ -77,6 +78,13 @@ export const openHouse = {
     hostViewTitle: 'Twój dzień otwarty',
     hostNoGuests: 'Brak zapisanych gości — udostępnij link z ogłoszenia lub poczekaj na rezerwacje.',
     slotOccupancy: '{{reserved}}/{{capacity}} miejsc zajętych',
+  },
+  live: {
+    panelTitle: 'Na żywo',
+    panelSubtitle: 'Aktywne dni otwarte — wybierz termin',
+    panelLive: 'LIVE',
+    ringLabel: 'Live',
+    discoveryRing: 'Discovery',
   },
   offerBanner: {
     title: 'Dzień otwartych drzwi',

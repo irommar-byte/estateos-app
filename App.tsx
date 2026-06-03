@@ -6,7 +6,8 @@ import OfferDetail from './src/screens/OfferDetail';
 import OpenHouseHubScreen from './src/screens/OpenHouseHubScreen';
 import OpenHouseCreateScreen from './src/screens/OpenHouseCreateScreen';
 import OpenHouseEventScreen from './src/screens/OpenHouseEventScreen';
-import OpenHouseLiveTicker from './src/components/openHouse/OpenHouseLiveTicker';
+import OpenHouseLiveOrchestrator from './src/components/openHouse/OpenHouseLiveOrchestrator';
+import { useOpenHouseLiveStore } from './src/store/useOpenHouseLiveStore';
 import CircularLabelRing from './src/components/CircularLabelRing';
 import { IAPManager } from './src/services/iapManager';
 import { API_URL } from './src/config/network';
@@ -286,28 +287,33 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
   };
 
-  // Ustawione kąty: 180° (lewo) = tryb ciemny, 270° (góra) = Discovery, 0° (prawo) = tryb jasny
+  // Kąty: 180° lewo = Discovery, 270° góra = Live, 0° prawo = jasny motyw
+  const openLivePanel = useOpenHouseLiveStore((s) => s.openPanel);
+  const liveDocked = useOpenHouseLiveStore((s) => s.phase === 'docked');
+  const liveCount = useOpenHouseLiveStore((s) => s.items.length);
+  const setPlusAnchor = useOpenHouseLiveStore((s) => s.setPlusAnchor);
+
   const quickActions = useMemo(
     () => [
-      {
-        key: 'THEME_DARK',
-        label: 'Ciemny',
-        icon: 'moon',
-        angleDeg: 180,
-        distance: 90,
-        tint: '#818CF8',
-        glassBg: resolvedDark ? 'rgba(129,140,248,0.32)' : 'rgba(99,102,241,0.22)',
-        target: () => setThemeMode('dark'),
-      },
       {
         key: 'DISCOVERY',
         label: 'Discovery',
         icon: 'sparkles',
-        angleDeg: 270,
-        distance: 105,
+        angleDeg: 180,
+        distance: 90,
         tint: '#D4AF37',
         glassBg: resolvedDark ? 'rgba(212,175,55,0.28)' : 'rgba(212,175,55,0.2)',
         target: () => navigation.navigate('EstateDiscovery'),
+      },
+      {
+        key: 'LIVE',
+        label: 'Live',
+        icon: 'radio',
+        angleDeg: 270,
+        distance: 105,
+        tint: '#F59E0B',
+        glassBg: resolvedDark ? 'rgba(245,158,11,0.32)' : 'rgba(245,158,11,0.22)',
+        target: () => openLivePanel(),
       },
       {
         key: 'THEME_LIGHT',
@@ -320,7 +326,7 @@ const FloatingNextButton = ({ onPress }: any) => {
         target: () => setThemeMode('light'),
       },
     ],
-    [navigation, resolvedDark, setThemeMode],
+    [navigation, resolvedDark, setThemeMode, openLivePanel],
   );
 
   const clearLongPressTimer = useCallback(() => {
@@ -545,7 +551,7 @@ const FloatingNextButton = ({ onPress }: any) => {
           elevation: 6,
         }}
       />
-      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { buttonLayoutRef.current = { x: x + w/2, y: y + h/2 }; if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, centerX: x + w/2, centerY: y + h/2 }); }); }); }}>
+      <View ref={buttonRef} collapsable={false} {...panResponder.panHandlers} onLayout={() => { requestAnimationFrame(() => { buttonRef.current?.measureInWindow((x, y, w, h) => { const anchor = { x: x + w / 2, y: y + h / 2 }; buttonLayoutRef.current = anchor; setPlusAnchor(anchor); if (__DEV__) console.log('[PLUS] measureInWindow', { x, y, w, h, ...anchor }); }); }); }}>
         <Animated.View style={{
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
           width: 80,
@@ -556,6 +562,11 @@ const FloatingNextButton = ({ onPress }: any) => {
           alignItems: 'center'
         }}>
           <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
+          {liveDocked && liveCount > 0 && !isArrow ? (
+            <View style={styles.livePlusBadge}>
+              <View style={styles.livePlusDot} />
+            </View>
+          ) : null}
 
           {/*
             ╔══════════════════════════════════════════════════════════╗
@@ -904,7 +915,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
 
   return (
     <View style={{ flex: 1 }}>
-      <OpenHouseLiveTicker enabled={splashDone} />
+      <OpenHouseLiveOrchestrator enabled={splashDone} />
     <Tab.Navigator
       /**
        * RN 0.81 + bottom-tabs `animation: 'shift'` + domyślne detach inactive screens
@@ -1561,5 +1572,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 18,
+  },
+  livePlusBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#10b981',
+  },
+  livePlusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#F59E0B',
   },
 });

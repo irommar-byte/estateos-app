@@ -1,6 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'Live',
+    alertHeadline: 'Open house alert',
     openHouseInvite: '{{city}} · {{title}} · {{date}} · spots left: {{spots}}',
     tapToReserve: 'Tap to view and reserve a slot',
   },
@@ -77,6 +78,13 @@ export const openHouse = {
     hostViewTitle: 'Your open house',
     hostNoGuests: 'No guests booked yet — share your listing or wait for reservations.',
     slotOccupancy: '{{reserved}}/{{capacity}} spots taken',
+  },
+  live: {
+    panelTitle: 'Live',
+    panelSubtitle: 'Active open houses near you',
+    panelLive: 'LIVE',
+    ringLabel: 'Live',
+    discoveryRing: 'Discovery',
   },
   offerBanner: {
     title: 'Open house',

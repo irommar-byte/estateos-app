@@ -1,6 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'В эфире',
+    alertHeadline: 'Внимание! День открытых дверей',
     openHouseInvite: '{{city}} · {{title}} · {{date}} · мест: {{spots}}',
     tapToReserve: 'Нажмите, чтобы посмотреть и забронировать',
   },
@@ -77,6 +78,13 @@ export const openHouse = {
     hostViewTitle: 'Ваш день открытых дверей',
     hostNoGuests: 'Пока нет гостей — поделитесь объявлением или дождитесь бронирований.',
     slotOccupancy: 'Занято {{reserved}}/{{capacity}}',
+  },
+  live: {
+    panelTitle: 'В эфире',
+    panelSubtitle: 'Активные дни открытых дверей',
+    panelLive: 'LIVE',
+    ringLabel: 'Live',
+    discoveryRing: 'Discovery',
   },
   offerBanner: {
     title: 'День открытых дверей',
