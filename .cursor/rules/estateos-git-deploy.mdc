@@ -1,0 +1,30 @@
+---
+description: Obowiązkowy Git, commit, push i deploy EstateOS — agent pilnuje sam
+globs:
+alwaysApply: true
+---
+
+# EstateOS — agent odpowiada za Git i deploy
+
+Przed **jakimkolwiek** `git commit`, `git push` lub deployem na VPS przeczytaj i wykonaj:
+
+`deploy/AGENT_GIT_DEPLOY_PLAYBOOK.md`
+
+## Nie negocjuj z użytkownikiem
+
+- Nie tłumacz się, że gałęzie się „rozjechały” — zsynchronizuj według playbooka (mapowanie `deploy/estateos-www-full/` → worktree `estateos-recovery-deploy`).
+- Nie kończ zadania z samym push na `mobile-canonical-20260514`, jeśli zmieniłeś API/backend — wymagany push na `recovery-local-snapshot` + deploy VPS.
+- Sam wykonujesz commit, push, build recovery, `ssh estateos` deploy, smoke/curl — chyba że brak dostępu SSH.
+
+## Szybta mapa
+
+| Zmiana | Gałąź | Katalog |
+|--------|-------|---------|
+| Mobilka | `mobile-canonical-20260514` | `/Users/marian/apple-style-app` |
+| Produkcja www/API | `recovery-local-snapshot` | `/Users/marian/estateos-recovery-deploy` |
+
+VPS: `~/estateos`, `git pull` + `npm run deploy:server-only` (nie samo `pm2 restart`).
+
+Zakazy: pełny rsync www-full→recovery, merge mobilka↔recovery, `prisma db push --accept-data-loss` na prod bez analizy, commit `.env`.
+
+Po zadaniu: checklist §9 w playbooku + krótki raport (co commit, jaka gałąź, co na VPS, testy).

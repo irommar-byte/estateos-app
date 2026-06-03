@@ -2,6 +2,9 @@
 
 **Jedyne źródło prawdy** dla wdrożeń WWW/API na produkcję (zweryfikowane na VPS 2026-05-25).
 
+> **Agenci Cursor:** przed commit/push/deploy przeczytaj obowiązkowo  
+> **[AGENT_GIT_DEPLOY_PLAYBOOK.md](./AGENT_GIT_DEPLOY_PLAYBOOK.md)** — mapa gałęzi, worktree, checklisty, zakazy.
+
 Backend (**estateos.pl**) jest wdrażany **z Git na VPS**:
 
 | | |
@@ -11,12 +14,13 @@ Backend (**estateos.pl**) jest wdrażany **z Git na VPS**:
 
 ## Workflow
 
-**Lokalnie:**
+**Lokalnie (gałąź `recovery-local-snapshot`, katalog worktree `/Users/marian/estateos-recovery-deploy`):**
 
 ```bash
+cd /Users/marian/estateos-recovery-deploy
 git add .
 git commit -m "opis zmian"
-git push
+git push origin recovery-local-snapshot
 ```
 
 **Na VPS — standard (Next.js / API):**
