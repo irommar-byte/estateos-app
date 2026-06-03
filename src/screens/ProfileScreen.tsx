@@ -3596,6 +3596,7 @@ function ProfileScreenLoggedIn({
                   const alertCopy = investorProPurchaseErrorAlertCopy(t, {
                     errorCode: transferResult.errorCode,
                     message: transferResult.message,
+                    alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
                   });
                   Alert.alert(alertCopy.title, alertCopy.body);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -3625,6 +3626,11 @@ function ProfileScreenLoggedIn({
               }
             })();
           });
+        } else if (hasActiveInvestorProMembership(user)) {
+          Alert.alert(
+            t('profile.shop.alerts.investorProAlreadyActiveTitle'),
+            t('profile.shop.alerts.investorProRestoreNoAppleSubBody'),
+          );
         } else {
           Alert.alert(
             t('profile.shop.alerts.nothingToRestoreTitle'),
@@ -3718,6 +3724,10 @@ function ProfileScreenLoggedIn({
     }
 
     if (hasActiveInvestorProMembership(user)) {
+      Alert.alert(
+        t('profile.shop.alerts.investorProAlreadyActiveTitle'),
+        t('profile.shop.alerts.investorProAlreadyActiveBody'),
+      );
       return;
     }
 
@@ -3740,6 +3750,7 @@ function ProfileScreenLoggedIn({
                   const alertCopy = investorProPurchaseErrorAlertCopy(t, {
                     errorCode: transferResult.errorCode,
                     message: transferResult.message,
+                    alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
                   });
                   Alert.alert(alertCopy.title, alertCopy.body);
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -3756,6 +3767,7 @@ function ProfileScreenLoggedIn({
         const alertCopy = investorProPurchaseErrorAlertCopy(t, {
           errorCode: result.errorCode,
           message: result.message,
+          alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
         });
         Alert.alert(alertCopy.title, alertCopy.body);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -4097,6 +4109,19 @@ function ProfileScreenLoggedIn({
         <ProfileShopSection
           isDark={isDark}
           sectionTitle={t('profile.shop.sectionTitle')}
+          hubTitle={t('profile.shop.membershipHubTitle')}
+          hubSubtitle={t('profile.shop.membershipHubSubtitle')}
+          proActiveShort={t('profile.shop.membershipHubProActive')}
+          proInactiveShort={t('profile.shop.membershipHubProInactive')}
+          creditsShort={t('profile.shop.membershipHubCredits')}
+          couponsShort={t('profile.shop.membershipHubCoupons')}
+          proShort={t('profile.shop.membershipHubProLabel')}
+          publicationCredits={hasPlusPublicationAvailable ? plusSlots : 0}
+          couponCount={bonusCouponCards.length}
+          hasInvestorProActive={hasInvestorProActive}
+          defaultHubExpanded={
+            !hasInvestorProActive || !hasPlusPublicationAvailable || bonusCouponCards.length > 0
+          }
           bonusCoupons={{
             cards: bonusCouponCards,
             title: t('profile.shop.bonusCouponsTitle'),
@@ -4116,7 +4141,6 @@ function ProfileScreenLoggedIn({
             buyLabel: t('profile.shop.buyPlus'),
             buySubtitle: t('profile.shop.buyPlusSubtitle', { price: PAKIET_PLUS_PRICE_LABEL }),
             buying: isBuyingPakietPlus,
-            defaultExpanded: !hasPlusPublicationAvailable,
             footer: (
               <Text style={styles.sectionFooter}>
                 {Platform.OS === 'ios'
@@ -4139,7 +4163,6 @@ function ProfileScreenLoggedIn({
             buySubtitle: investorProBuySubtitle,
             buying: isBuyingInvestorPro,
             isActive: hasInvestorProActive,
-            defaultExpanded: !hasInvestorProActive,
             footer: (
               <Text style={styles.sectionFooter}>
                 {t('profile.shop.investorProFooter')}

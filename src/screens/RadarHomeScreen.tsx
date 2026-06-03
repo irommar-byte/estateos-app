@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   ScrollView,
   Keyboard,
@@ -76,9 +77,16 @@ import CurrencySegmentControl from '../components/CurrencySegmentControl';
 import AdvancedFilterSegment from '../components/AdvancedFilterSegment';
 import PolandScopeNote from '../components/PolandScopeNote';
 import JellyReveal from '../components/JellyReveal';
+import RadarOfferGallery, {
+  type GalleryCountryFilter,
+  type GalleryPropertyFilter,
+  type GallerySortFilter,
+  type GalleryTransactionFilter,
+} from '../components/radar/RadarOfferGallery';
+import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
 import { advancedPriceBoundsToPln, convertBetweenCurrencies } from '../money/convert';
 import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../money/format';
-import { resolveOfferListingPrice } from '../money/offerPrice';
+import { parseOfferNumericPrice, resolveOfferListingPrice } from '../money/offerPrice';
 import type { ListingCurrency } from '../money/types';
 import { useMoneyContext } from '../money/useMoneyContext';
 import { localeToDateFormat, useI18n } from '../i18n';
@@ -973,6 +981,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [activeIndex, setActiveIndex] = useState(0);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [showOnlyFavorites, setShowOnlyFavorites] = useState(!!route?.params?.favoritesOnly);
+  const [radarBrowseMode, setRadarBrowseMode] = useState<'RADAR' | 'GALLERY'>('RADAR');
+  const [galleryTransactionFilter, setGalleryTransactionFilter] = useState<GalleryTransactionFilter>('ALL');
+  const [galleryCountryFilter, setGalleryCountryFilter] = useState<GalleryCountryFilter>('ALL');
+  const [galleryPropertyFilter, setGalleryPropertyFilter] = useState<GalleryPropertyFilter>('ALL');
+  const [gallerySortFilter, setGallerySortFilter] = useState<GallerySortFilter>('NEWEST');
   const [favoritesMapScope, setFavoritesMapScope] = useState<'FAVORITES' | 'MINE'>('MINE');
   const [unreadDealroomMessagesCount, setUnreadDealroomMessagesCount] = useState(0);
   const [userLocation, setUserLocation] = useState<UserLocation>(null);
@@ -1189,6 +1202,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     () => topBarTop + topUiSpacing.radarTopOffset,
     [topBarTop, topUiSpacing.radarTopOffset]
   );
+  /** Bezpośrednio pod paskiem wyszukiwania — bez luki na mapę. */
+  const browseChromeTop = useMemo(() => topBarTop + 76, [topBarTop]);
+  const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY';
+  const isGalleryLightChrome = isGalleryBrowse && !isDark;
   /** Modal „Wyszukiwanie rozszerzone”: niemal pełny ekran — bez obcinania jak przy ~74%. */
   const advancedSheetMaxHeight = useMemo(
     () => Math.round(height - insets.top - Math.max(insets.bottom, 10) - 6),
@@ -1199,6 +1216,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const favoritesHeartBeat = useRef(new Animated.Value(1)).current;
   const favoritesAuraPulse = useRef(new Animated.Value(0)).current;
   const modeIslandOpacity = useRef(new Animated.Value(1)).current;
+  const galleryFade = useRef(new Animated.Value(0)).current;
+  const gallerySlide = useRef(new Animated.Value(14)).current;
   const modeIslandTranslateY = useRef(new Animated.Value(0)).current;
   const modeIslandScale = useRef(new Animated.Value(1)).current;
   const lastLiveActivityFingerprintRef = useRef('');
@@ -1243,6 +1262,79 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       Animated.spring(modeIslandScale, { toValue: 1, friction: 8, tension: 115, useNativeDriver: true }),
     ]).start();
   }, [showOnlyFavorites, favoritesMapScope, modeIslandOpacity, modeIslandScale, modeIslandTranslateY]);
+
+  useEffect(() => {
+    if (showOnlyFavorites || radarBrowseMode !== 'GALLERY') {
+      Animated.parallel([
+        Animated.timing(galleryFade, { toValue: 0, duration: 160, useNativeDriver: true }),
+        Animated.timing(gallerySlide, { toValue: 14, duration: 160, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
+    galleryFade.setValue(0);
+    gallerySlide.setValue(18);
+    Animated.parallel([
+      Animated.spring(galleryFade, { toValue: 1, friction: 8, tension: 72, useNativeDriver: true }),
+      Animated.spring(gallerySlide, { toValue: 0, friction: 9, tension: 78, useNativeDriver: true }),
+    ]).start();
+  }, [galleryFade, gallerySlide, radarBrowseMode, showOnlyFavorites]);
+
+  const hasActiveGalleryFilters = useMemo(
+    () =>
+      galleryTransactionFilter !== 'ALL' ||
+      galleryCountryFilter !== 'ALL' ||
+      galleryPropertyFilter !== 'ALL' ||
+      gallerySortFilter !== 'NEWEST',
+    [galleryTransactionFilter, galleryCountryFilter, galleryPropertyFilter, gallerySortFilter],
+  );
+
+  const clearGalleryFilters = useCallback(() => {
+    setGalleryTransactionFilter('ALL');
+    setGalleryCountryFilter('ALL');
+    setGalleryPropertyFilter('ALL');
+    setGallerySortFilter('NEWEST');
+  }, []);
+
+  const ensureGalleryLocation = useCallback(async (): Promise<boolean> => {
+    if (userLocation) return true;
+    try {
+      const perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted') {
+        const req = await Location.requestForegroundPermissionsAsync();
+        if (req.status !== 'granted') {
+          Alert.alert(
+            t('radar.home.galleryLocationDeniedTitle'),
+            t('radar.home.galleryLocationDeniedBody'),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('radar.home.galleryLocationSettings'), onPress: () => Linking.openSettings() },
+            ],
+          );
+          return false;
+        }
+      }
+      const loc = await refreshUserLocation();
+      if (!loc) {
+        Alert.alert(t('radar.home.galleryLocationFailedTitle'), t('radar.home.galleryLocationFailedBody'));
+        return false;
+      }
+      return true;
+    } catch {
+      Alert.alert(t('radar.home.galleryLocationFailedTitle'), t('radar.home.galleryLocationFailedBody'));
+      return false;
+    }
+  }, [refreshUserLocation, t, userLocation]);
+
+  const handleGallerySortChange = useCallback(
+    async (sort: GallerySortFilter) => {
+      if (sort === 'NEAREST') {
+        const ok = await ensureGalleryLocation();
+        if (!ok) return;
+      }
+      setGallerySortFilter(sort);
+    },
+    [ensureGalleryLocation],
+  );
 
   const pulseHaptic = useCallback(async (style: Haptics.ImpactFeedbackStyle | 'selection' | 'success') => {
     try {
@@ -1347,8 +1439,23 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         latitudeDelta: 0.12,
         longitudeDelta: 0.08,
       }, 500);
+      return nextLoc;
     } catch {
-      // noop
+      return null;
+    }
+  }, []);
+
+  const refreshUserLocation = useCallback(async (): Promise<UserLocation> => {
+    try {
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const nextLoc = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+      };
+      setUserLocation(nextLoc);
+      return nextLoc;
+    } catch {
+      return null;
     }
   }, []);
 
@@ -2122,6 +2229,100 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   const activeOffers = filteredOffers;
+
+  const galleryOffers = useMemo(() => {
+    if (showOnlyFavorites || radarBrowseMode !== 'GALLERY') return [];
+
+    const myId = Number(user?.id || 0);
+    const base =
+      blockedIds.size > 0 ? offers.filter((o) => !isBlockedMapOffer(o, blockedIds)) : offers;
+    const browseOffers =
+      myId > 0 ? base.filter((o) => !isMapOfferOwnedByUser(o, myId)) : base;
+
+    let list = browseOffers;
+    if (normalizedSearchTokens.length > 0) {
+      list = list.filter((o) =>
+        normalizedSearchTokens.every((tok) => haystackForOffer(o).includes(tok)),
+      );
+    }
+    if (hasAdvancedFiltersActive) {
+      list = list.filter((o) => offerMatchesAdvancedFilters(o, advancedFilters, rate));
+    }
+    if (galleryTransactionFilter !== 'ALL') {
+      list = list.filter(
+        (o) => String(o.raw?.transactionType || '').toUpperCase() === galleryTransactionFilter,
+      );
+    }
+    if (galleryCountryFilter === 'PL') {
+      list = list.filter((o) => offerListingCountryIso(o.raw) === 'PL');
+    } else if (galleryCountryFilter === 'ABROAD') {
+      list = list.filter((o) => {
+        const code = offerListingCountryIso(o.raw);
+        return !!code && code !== 'PL';
+      });
+    }
+    if (galleryPropertyFilter !== 'ALL') {
+      const filterType =
+        galleryPropertyFilter === 'PREMISES' ? 'COMMERCIAL' : galleryPropertyFilter;
+      list = list.filter((o) =>
+        propertyTypeMatchesFilter(
+          String(o.raw?.propertyType || o.raw?.type || ''),
+          filterType as AdvancedFilters['propertyType'],
+        ),
+      );
+    }
+
+    const offerPublishedAtMs = (raw: Record<string, unknown>) => {
+      const value = raw?.publishedAt || raw?.published_at || raw?.createdAt || raw?.created_at;
+      const ms = new Date(String(value || '')).getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    };
+    const offerAreaValue = (o: MapOffer) => {
+      const raw = o.raw?.area ?? o.area;
+      const direct = parseOfferNumericPrice(raw);
+      if (Number.isFinite(direct) && direct > 0) return direct;
+      const match = String(raw || '').match(/[\d]+([.,]\d+)?/);
+      return match ? parseFloat(match[0].replace(',', '.')) : 0;
+    };
+
+    const sorted = [...list];
+    sorted.sort((a, b) => {
+      switch (gallerySortFilter) {
+        case 'PRICE_ASC':
+          return resolveOfferListingPrice(a.raw, rate).plnAmount - resolveOfferListingPrice(b.raw, rate).plnAmount;
+        case 'PRICE_DESC':
+          return resolveOfferListingPrice(b.raw, rate).plnAmount - resolveOfferListingPrice(a.raw, rate).plnAmount;
+        case 'AREA_DESC':
+          return offerAreaValue(b) - offerAreaValue(a);
+        case 'NEAREST':
+          if (!userLocation) return 0;
+          return (
+            distanceKm(userLocation.latitude, userLocation.longitude, a.lat, a.lng) -
+            distanceKm(userLocation.latitude, userLocation.longitude, b.lat, b.lng)
+          );
+        case 'NEWEST':
+        default:
+          return offerPublishedAtMs(b.raw) - offerPublishedAtMs(a.raw);
+      }
+    });
+    return sorted;
+  }, [
+    showOnlyFavorites,
+    radarBrowseMode,
+    offers,
+    blockedIds,
+    user?.id,
+    normalizedSearchTokens,
+    haystackForOffer,
+    hasAdvancedFiltersActive,
+    advancedFilters,
+    rate,
+    galleryTransactionFilter,
+    galleryCountryFilter,
+    galleryPropertyFilter,
+    gallerySortFilter,
+    userLocation,
+  ]);
 
   const searchFooterMatchCount = useMemo(() => {
     if (normalizedSearchTokens.length === 0) return searchOnlyMatchCount;
@@ -3782,10 +3983,14 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   return (
     <>
-    <View style={styles.container}>
+    <View style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}>
       <RadarMapComponent
         ref={mapRef}
-        style={StyleSheet.absoluteFillObject}
+        style={[
+          StyleSheet.absoluteFillObject,
+          !showOnlyFavorites && radarBrowseMode === 'GALLERY' && { opacity: 0 },
+        ]}
+        pointerEvents={!showOnlyFavorites && radarBrowseMode === 'GALLERY' ? 'none' : 'auto'}
         onLayout={(e: any) => {
           const { width: w, height: h } = e.nativeEvent.layout;
           setMapLayout({ width: w, height: h });
@@ -3974,10 +4179,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <View style={[styles.topBarContainer, { top: topBarTop }]}>
         <View style={styles.searchBarSlot}>
           <BlurView
-            intensity={isDark ? 80 : 90}
+            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
             style={[
               styles.searchGlass,
+              isGalleryLightChrome && styles.searchGlassGalleryLight,
               showOnlyFavorites && {
                 backgroundColor: favoritesScopeBg,
                 borderColor: isMineScope ? 'rgba(16,185,129,0.55)' : 'rgba(247,119,178,0.55)',
@@ -4031,22 +4237,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
 
         <Pressable
-          style={({ pressed }) => [styles.filterButtonWrap, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [
+            styles.filterButtonWrap,
+            isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
+            pressed && { opacity: 0.8 },
+          ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
           }}
         >
           <BlurView
-            intensity={isDark ? 80 : 90}
+            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+            style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
           >
             <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
           </BlurView>
         </Pressable>
         <Pressable
-          style={({ pressed }) => [styles.filterButtonWrap, pressed && { opacity: 0.8 }]}
+          style={({ pressed }) => [
+            styles.filterButtonWrap,
+            isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
+            pressed && { opacity: 0.8 },
+          ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setDraftAdvancedFilters(advancedFilters);
@@ -4055,9 +4269,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           accessibilityLabel={t('radar.home.advancedSearch')}
         >
           <BlurView
-            intensity={isDark ? 80 : 90}
+            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.filterGlass, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
+            style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
           >
             <Ionicons
               name="options"
@@ -4437,17 +4651,29 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       )}
 
-      {!showOnlyFavorites && (
+      {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
         <Animated.View
           style={[
-            styles.radarToggleContainer,
+            styles.favorFloatingIslandWrap,
             {
-              top: radarButtonTop,
+              top: browseChromeTop,
               opacity: modeIslandOpacity,
               transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
             },
           ]}
         >
+          <RadarBrowseModeRail
+            mode={radarBrowseMode}
+            isDark={isDark}
+            radarLabel={t('radar.home.browseModeRadar')}
+            galleryLabel={t('radar.home.browseModeGallery')}
+            onSelectRadar={() => setRadarBrowseMode('RADAR')}
+            onSelectGallery={() => {
+              setRadarBrowseMode('GALLERY');
+              setShowRadarMatchesOnly(false);
+            }}
+          />
+          <JellyReveal visible key="radar-calibration-pill">
           <View style={styles.radarHeroWrap}>
             {isRadarActive && (
               <View pointerEvents="none" style={styles.radarPulseLayer}>
@@ -4510,15 +4736,77 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       ]}
                     >
                       {radarActiveScopeLine}
-            </Text>
+                    </Text>
                   ) : null}
                 </View>
-          </BlurView>
-        </Pressable>
-      </View>
+              </BlurView>
+            </Pressable>
+          </View>
+          </JellyReveal>
         </Animated.View>
       )}
 
+      {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !isSearchFocused && (
+        <Animated.View
+          style={[
+            styles.galleryOverlay,
+            {
+              top: 0,
+              opacity: galleryFade,
+              transform: [{ translateY: gallerySlide }],
+              backgroundColor: isDark ? '#000000' : '#E9ECF2',
+            },
+          ]}
+        >
+          <View style={[styles.galleryOverlayInner, { paddingTop: browseChromeTop }]}>
+          <RadarOfferGallery
+            headerTop={
+              <RadarBrowseModeRail
+                mode={radarBrowseMode}
+                isDark={isDark}
+                radarLabel={t('radar.home.browseModeRadar')}
+                galleryLabel={t('radar.home.browseModeGallery')}
+                onSelectRadar={() => setRadarBrowseMode('RADAR')}
+                onSelectGallery={() => {
+                  setRadarBrowseMode('GALLERY');
+                  setShowRadarMatchesOnly(false);
+                }}
+              />
+            }
+            offers={galleryOffers}
+            isDark={isDark}
+            bottomInset={bottomCardsInset + 64}
+            favorites={favorites}
+            transactionFilter={galleryTransactionFilter}
+            countryFilter={galleryCountryFilter}
+            propertyFilter={galleryPropertyFilter}
+            sortFilter={gallerySortFilter}
+            hasActiveFilters={hasActiveGalleryFilters}
+            userLocation={userLocation}
+            locale={locale}
+            onTransactionFilterChange={setGalleryTransactionFilter}
+            onCountryFilterChange={setGalleryCountryFilter}
+            onPropertyFilterChange={setGalleryPropertyFilter}
+            onSortFilterChange={handleGallerySortChange}
+            onClearFilters={clearGalleryFilters}
+            onPressOffer={(item) => {
+              Haptics.selectionAsync();
+              navigation.navigate('OfferDetail', { offer: item.raw });
+            }}
+            onToggleFavorite={toggleFavorite}
+            formatPrice={formatOffer}
+            formatPublishDate={(raw) => formatOfferPublishDate(raw, locale)}
+            isOfferVerified={(offerId, raw) => {
+              const ownVerifiedFromEndpoint = ownerLegalByOfferId[Number(offerId || 0)] === true;
+              return isOfferLegallyVerified(raw, ownVerifiedFromEndpoint);
+            }}
+            t={t}
+          />
+          </View>
+        </Animated.View>
+      )}
+
+      {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && (
       <View style={styles.offersPreviewContainer}>
         {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
             Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
@@ -4682,6 +4970,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           />
         )}
       </View>
+      )}
 
       <RadarCalibrationModal
         visible={showCalibration}
@@ -5446,6 +5735,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  containerGalleryLight: {
+    backgroundColor: '#E9ECF2',
+  },
   
   // --- STYL LUKSUSOWEJ SOCZEWKI KALIBRACJI ---
   lensWrapper: {
@@ -5545,6 +5837,12 @@ const styles = StyleSheet.create({
   favoritesScopeHalfActiveMine: {
     backgroundColor: 'rgba(16,185,129,0.16)',
   },
+  favoritesScopeHalfActiveRadar: {
+    backgroundColor: 'rgba(16,185,129,0.16)',
+  },
+  favoritesScopeHalfActiveGallery: {
+    backgroundColor: 'rgba(99,102,241,0.18)',
+  },
   favoritesScopeDivider: {
     width: StyleSheet.hairlineWidth,
     alignSelf: 'stretch',
@@ -5568,6 +5866,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+  },
+  searchGlassGalleryLight: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
   },
   searchInput: {
     flex: 1,
@@ -5699,10 +6004,19 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 5,
   },
+  filterButtonWrapGalleryLight: {
+    borderColor: 'rgba(15,23,42,0.08)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+  },
   filterGlass: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  filterGlassGalleryLight: {
+    backgroundColor: 'rgba(255,255,255,0.96)',
   },
   filterActiveDot: {
     position: 'absolute',
@@ -5855,6 +6169,17 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     zIndex: 22,
     elevation: 22,
+  },
+  galleryOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 18,
+    elevation: 18,
+  },
+  galleryOverlayInner: {
+    flex: 1,
   },
   radarHeroWrap: {
     alignItems: 'center',

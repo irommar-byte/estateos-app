@@ -1,20 +1,22 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, Text } from 'react-native';
+import ProfileMembershipHub from './ProfileMembershipHub';
 import type { ProfilePromoCardRecord } from '../../contracts/profilePromoContract';
-import BonusCouponsSection from './BonusCouponsSection';
-import PlusPackageShopPanel from './PlusPackageShopPanel';
-import InvestorProShopPanel from './InvestorProShopPanel';
-import ProfileCardShell from './ProfileCardShell';
-import {
-  profileShopLeatherFaceStyle,
-  profileShopLeatherPressedBg,
-  profileShopLeatherShellStyle,
-} from './profileCardElevation';
 
 type Props = {
   isDark: boolean;
   sectionTitle: string;
+  hubTitle: string;
+  hubSubtitle: string;
+  proActiveShort: string;
+  proInactiveShort: string;
+  creditsShort: string;
+  couponsShort: string;
+  proShort: string;
+  publicationCredits: number;
+  couponCount: number;
+  hasInvestorProActive: boolean;
+  defaultHubExpanded?: boolean;
   bonusCoupons: {
     cards: ProfilePromoCardRecord[];
     title: string;
@@ -35,7 +37,6 @@ type Props = {
     buySubtitle: string;
     footer: React.ReactNode;
     buying: boolean;
-    defaultExpanded: boolean;
     onBuy: () => void;
   };
   investorPro: {
@@ -50,7 +51,6 @@ type Props = {
     footer: React.ReactNode;
     buying: boolean;
     isActive: boolean;
-    defaultExpanded: boolean;
     onBuy: () => void;
   };
   restore: {
@@ -61,68 +61,20 @@ type Props = {
   };
 };
 
-function ShopLeatherCard({
-  isDark,
-  children,
-}: {
-  isDark: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <ProfileCardShell
-      isDark={isDark}
-      style={profileShopLeatherShellStyle(isDark)}
-      faceStyle={profileShopLeatherFaceStyle(isDark)}
-    >
-      {children}
-    </ProfileCardShell>
-  );
-}
-
-function ShopRestoreRow({
-  isDark,
-  restoreLabel,
-  restoreSubtitle,
-  restoring,
-  onRestore,
-}: {
-  isDark: boolean;
-  restoreLabel: string;
-  restoreSubtitle: string;
-  restoring: boolean;
-  onRestore: () => void;
-}) {
-  const pressedBg = profileShopLeatherPressedBg(isDark);
-
-  return (
-    <Pressable
-      onPress={onRestore}
-      disabled={restoring}
-      style={({ pressed }) => [
-        styles.restoreRow,
-        pressed && { backgroundColor: pressedBg },
-        restoring && { opacity: 0.7 },
-      ]}
-    >
-      <View style={[styles.restoreIcon, { backgroundColor: '#0A84FF' }]}>
-        {restoring ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Ionicons name="refresh-circle" size={22} color="#FFFFFF" />
-        )}
-      </View>
-      <View style={styles.restoreBody}>
-        <Text style={[styles.restoreTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>{restoreLabel}</Text>
-        <Text style={styles.restoreSubtitle}>{restoreSubtitle}</Text>
-      </View>
-      {!restoring && <Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-    </Pressable>
-  );
-}
-
 export default function ProfileShopSection({
   isDark,
   sectionTitle,
+  hubTitle,
+  hubSubtitle,
+  proActiveShort,
+  proInactiveShort,
+  creditsShort,
+  couponsShort,
+  proShort,
+  publicationCredits,
+  couponCount,
+  hasInvestorProActive,
+  defaultHubExpanded,
   bonusCoupons,
   plus,
   investorPro,
@@ -132,82 +84,24 @@ export default function ProfileShopSection({
     <>
       <Text style={styles.sectionTitle}>{sectionTitle}</Text>
 
-      <ProfileCardShell isDark={isDark}>
-        <BonusCouponsSection
-          embedded
-          cards={bonusCoupons.cards}
-          isDark={isDark}
-          title={bonusCoupons.title}
-          subtitle={bonusCoupons.subtitle}
-          swipeHint={bonusCoupons.swipeHint}
-          dismissHint={bonusCoupons.dismissHint}
-          emptyHint={bonusCoupons.emptyHint}
-          onRequestDismiss={bonusCoupons.onRequestDismiss}
-        />
-      </ProfileCardShell>
-
-      <View style={styles.packagesStack}>
-        <ShopLeatherCard isDark={isDark}>
-          <PlusPackageShopPanel
-            embedded
-            leatherSurface
-            isDark={isDark}
-            showRestore={false}
-            title={plus.title}
-            plusSlots={plus.plusSlots}
-            hasPlusAvailable={plus.hasPlusAvailable}
-            counterLabel={plus.counterLabel}
-            expiryLabel={plus.expiryLabel}
-            daysLabel={plus.daysLabel}
-            buyLabel={plus.buyLabel}
-            buySubtitle={plus.buySubtitle}
-            restoreLabel={restore.label}
-            restoreSubtitle={restore.subtitle}
-            restoring={restore.restoring}
-            buying={plus.buying}
-            defaultExpanded={plus.defaultExpanded}
-            footer={plus.footer}
-            onBuy={plus.onBuy}
-            onRestore={restore.onRestore}
-          />
-        </ShopLeatherCard>
-
-        <ShopLeatherCard isDark={isDark}>
-          <InvestorProShopPanel
-            embedded
-            leatherSurface
-            isDark={isDark}
-            showRestore={false}
-            title={investorPro.title}
-            statusLabel={investorPro.statusLabel}
-            metaLabel={investorPro.metaLabel}
-            expiryLabel={investorPro.expiryLabel}
-            trialBadge={investorPro.trialBadge}
-            priceLine={investorPro.priceLine}
-            buyLabel={investorPro.buyLabel}
-            buySubtitle={investorPro.buySubtitle}
-            restoreLabel={restore.label}
-            restoreSubtitle={restore.subtitle}
-            restoring={restore.restoring}
-            buying={investorPro.buying}
-            isActive={investorPro.isActive}
-            defaultExpanded={investorPro.defaultExpanded}
-            footer={investorPro.footer}
-            onBuy={investorPro.onBuy}
-            onRestore={restore.onRestore}
-          />
-        </ShopLeatherCard>
-
-        <ShopLeatherCard isDark={isDark}>
-          <ShopRestoreRow
-            isDark={isDark}
-            restoreLabel={restore.label}
-            restoreSubtitle={restore.subtitle}
-            restoring={restore.restoring}
-            onRestore={restore.onRestore}
-          />
-        </ShopLeatherCard>
-      </View>
+      <ProfileMembershipHub
+        isDark={isDark}
+        hubTitle={hubTitle}
+        hubSubtitle={hubSubtitle}
+        proActiveShort={proActiveShort}
+        proInactiveShort={proInactiveShort}
+        creditsShort={creditsShort}
+        couponsShort={couponsShort}
+        proShort={proShort}
+        publicationCredits={publicationCredits}
+        couponCount={couponCount}
+        hasInvestorProActive={hasInvestorProActive}
+        defaultExpanded={defaultHubExpanded}
+        bonusCoupons={bonusCoupons}
+        plus={plus}
+        investorPro={investorPro}
+        restore={restore}
+      />
     </>
   );
 }
@@ -221,35 +115,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 8,
     marginLeft: 16,
-  },
-  packagesStack: {
-    marginTop: 10,
-    gap: 10,
-  },
-  restoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  restoreIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  restoreBody: { flex: 1, paddingRight: 4 },
-  restoreTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  restoreSubtitle: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 2,
-    lineHeight: 16,
   },
 });

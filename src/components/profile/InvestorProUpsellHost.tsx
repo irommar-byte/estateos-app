@@ -81,6 +81,7 @@ export default function InvestorProUpsellHost() {
         const alertCopy = investorProPurchaseErrorAlertCopy(t, {
           errorCode: result.errorCode,
           message: result.message,
+          alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
         });
         Alert.alert(alertCopy.title, alertCopy.body);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

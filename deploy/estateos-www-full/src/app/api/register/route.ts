@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import { encryptSession } from '@/lib/sessionUtils';
 import { cookies } from 'next/headers';
 import { PlanType, Role } from '@prisma/client';
-import { buildWelcomeEmailHtml, sendTransactionalEmail } from '@/lib/email/transactional';
+import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 
     void sendTransactionalEmail({
       to: user.email,
-      subject: 'Witamy w EstateOS',
+      subject: buildWelcomeEmailSubject({ userName: user.name }),
       html: buildWelcomeEmailHtml({ userName: user.name }),
     });
 

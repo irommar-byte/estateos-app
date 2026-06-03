@@ -150,6 +150,14 @@ export const profile = {
   },
   shop: {
     sectionTitle: 'Zakupy i sklep',
+    membershipHubTitle: 'Pakiety, kupony i kredyty',
+    membershipHubSubtitle: 'Dotknij, aby rozwinąć — status aktualizuje się na żywo.',
+    membershipHubProActive: 'Aktywny',
+    membershipHubProInactive: 'Brak',
+    membershipHubProLabel: 'Pro',
+    membershipHubCredits: 'Kredyty',
+    membershipHubCoupons: 'Kupony',
+    membershipHubPlus: 'Plus',
     bonusCouponsTitle: 'Kupony bonusowe',
     bonusCouponsSubtitle:
       'Darmowe ogłoszenie, kupony urodzinowe i prezenty od zespołu — przesuwaj karty w prawo w kółko.',
@@ -288,6 +296,11 @@ export const profile = {
       investorProAlreadyActiveTitle: 'Subskrypcja już aktywna',
       investorProAlreadyActiveBody:
         'Masz już aktywny Investor Pro na tym koncie. Zarządzaj subskrypcją w Ustawienia → Apple ID → Subskrypcje.',
+      investorProRestoreNoAppleSubBody:
+        'Na koncie EstateOS masz już aktywny Investor Pro (ważny do daty w profilu). Apple na tym urządzeniu nie zgłosiło osobnej subskrypcji — to normalne po promocji, nadaniu przez admina lub gdy subskrypcja jest na innym Apple ID. Aby kupić lub anulować w App Store: Ustawienia → Apple ID → Subskrypcje.',
+      investorProSyncAppStoreTitle: 'Brak subskrypcji na tym Apple ID',
+      investorProNoAppleSubBody:
+        'Na tym Apple ID nie ma aktywnej subskrypcji Investor Pro. Jeśli masz subskrypcję na innym Apple ID, zmień konto w Ustawienia → Apple ID → Media i zakupy.',
       investorProLinkedTitle: 'Subskrypcja przypisana do konta',
       investorProLinkedBody:
         'Na tym Apple ID jest aktywna subskrypcja Investor Pro (np. z wcześniejszego testu). Przypisaliśmy ją do tego konta EstateOS — App Store nie pokaże okna płatności, dopóki subskrypcja trwa na tym Apple ID. Jedna subskrypcja Apple = jedno konto EstateOS.',

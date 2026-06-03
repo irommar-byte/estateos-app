@@ -110,3 +110,39 @@ export function profileShopLeatherFaceStyle(isDark: boolean): ViewStyle {
 export function profileShopLeatherPressedBg(isDark: boolean): string {
   return isDark ? 'rgba(210,180,140,0.1)' : 'rgba(139,115,85,0.1)';
 }
+
+/** Głęboki cień hubu pakietów — wzmocniony przy aktywnym Investor Pro. */
+export function profileMembershipHubShellStyle(isDark: boolean, proActive: boolean): ViewStyle {
+  const base = profilePremiumCardShellStyle(isDark, 20);
+  if (!proActive) return base;
+  return {
+    ...base,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: proActive ? 14 : 10 },
+    shadowOpacity: isDark
+      ? Platform.OS === 'ios'
+        ? 0.42
+        : 0.32
+      : Platform.OS === 'ios'
+        ? 0.26
+        : 0.2,
+    shadowRadius: 26,
+    elevation: 16,
+  };
+}
+
+export function profileMembershipHubFaceStyle(isDark: boolean, proActive: boolean): ViewStyle {
+  return {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: profileShopLeatherBg(isDark),
+    borderColor: proActive
+      ? isDark
+        ? 'rgba(251,191,36,0.38)'
+        : 'rgba(245,158,11,0.34)'
+      : isDark
+        ? 'rgba(210,180,140,0.22)'
+        : 'rgba(139,115,85,0.18)',
+  };
+}

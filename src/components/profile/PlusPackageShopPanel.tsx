@@ -24,6 +24,7 @@ type Props = {
   restoring: boolean;
   buying: boolean;
   defaultExpanded?: boolean;
+  collapsible?: boolean;
   embedded?: boolean;
   leatherSurface?: boolean;
   showRestore?: boolean;
@@ -47,6 +48,7 @@ export default function PlusPackageShopPanel({
   restoring,
   buying,
   defaultExpanded = true,
+  collapsible = true,
   embedded = false,
   leatherSurface = false,
   showRestore = true,
@@ -55,6 +57,7 @@ export default function PlusPackageShopPanel({
   onRestore,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const isBodyVisible = collapsible ? expanded : true;
   const panelBg = leatherSurface ? profileShopLeatherBg(isDark) : isDark ? '#1C1C1E' : '#FFFFFF';
   const pressedBg = leatherSurface ? profileShopLeatherPressedBg(isDark) : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
   const panelBorder = leatherSurface
@@ -87,8 +90,9 @@ export default function PlusPackageShopPanel({
       ]}
     >
       <Pressable
-        onPress={() => setExpanded((v) => !v)}
-        style={({ pressed }) => [styles.statusRow, pressed && { opacity: 0.92 }]}
+        onPress={collapsible ? () => setExpanded((v) => !v) : undefined}
+        disabled={!collapsible}
+        style={({ pressed }) => [styles.statusRow, pressed && collapsible && { opacity: 0.92 }]}
       >
         <View style={[styles.slotBadge, { backgroundColor: `${accent}18`, borderColor: `${accent}44` }]}>
           <Text style={[styles.slotNumber, { color: accent }]}>{hasPlusAvailable ? plusSlots : '0'}</Text>
@@ -112,15 +116,17 @@ export default function PlusPackageShopPanel({
           <View style={[styles.statusIcon, { backgroundColor: accent }]}>
             <Ionicons name={hasPlusAvailable ? 'checkmark-circle' : 'bag-add'} size={22} color="#FFFFFF" />
           </View>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={isDark ? '#8E8E93' : '#C7C7CC'}
-          />
+          {collapsible ? (
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={isDark ? '#8E8E93' : '#C7C7CC'}
+            />
+          ) : null}
         </View>
       </Pressable>
 
-      {expanded ? (
+      {isBodyVisible ? (
         <>
           <View style={[styles.divider, { backgroundColor: divider }]} />
 

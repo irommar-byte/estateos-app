@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,12 +8,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { profileShopLeatherBg, profileShopLeatherPressedBg } from './profileCardElevation';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import ProfileInvestorProVipBadge from './ProfileInvestorProVipBadge';
+import ProfileGoldCrown from './ProfileGoldCrown';
 
 type Props = {
   isDark: boolean;
@@ -31,6 +27,7 @@ type Props = {
   buying: boolean;
   isActive: boolean;
   defaultExpanded?: boolean;
+  collapsible?: boolean;
   embedded?: boolean;
   leatherSurface?: boolean;
   showRestore?: boolean;
@@ -39,70 +36,8 @@ type Props = {
   onRestore: () => void;
 };
 
-function ActiveProDiamond({ size = 28 }: { size?: number }) {
-  const shakeX = useSharedValue(0);
-  const sparkleSeq = useRef(0);
-  const [sparkles, setSparkles] = useState<Array<{ id: string; x: number; y: number }>>([]);
-
-  const spawnSparkleBurst = (count = 4) => {
-    const batch = Array.from({ length: count }, () => {
-      sparkleSeq.current += 1;
-      return {
-        id: `sparkle-${sparkleSeq.current}`,
-        x: (Math.random() - 0.5) * 44,
-        y: (Math.random() - 0.5) * 44,
-      };
-    });
-    setSparkles((prev) => [...prev.slice(-10), ...batch]);
-    for (const sparkle of batch) {
-      setTimeout(() => {
-        setSparkles((prev) => prev.filter((s) => s.id !== sparkle.id));
-      }, 780);
-    }
-  };
-
-  useEffect(() => {
-    const runShake = () => {
-      shakeX.value = withSequence(
-        withTiming(-5, { duration: 42 }),
-        withTiming(5, { duration: 42 }),
-        withTiming(-4, { duration: 38 }),
-        withTiming(4, { duration: 38 }),
-        withTiming(0, { duration: 34 }),
-      );
-      setTimeout(() => spawnSparkleBurst(4), 170);
-    };
-
-    const firstShake = setTimeout(runShake, 1200);
-    const shakeTimer = setInterval(runShake, 4800);
-    return () => {
-      clearTimeout(firstShake);
-      clearInterval(shakeTimer);
-    };
-  }, [shakeX]);
-
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shakeX.value }],
-  }));
-
-  return (
-    <View style={styles.diamondWrap} pointerEvents="none">
-      {sparkles.map((sparkle) => (
-        <View
-          key={sparkle.id}
-          style={[
-            styles.sparkle,
-            { transform: [{ translateX: sparkle.x }, { translateY: sparkle.y }] },
-          ]}
-        >
-          <Ionicons name="sparkles" size={13} color="#FDE68A" />
-        </View>
-      ))}
-      <Animated.View style={[shakeStyle, styles.diamondIcon]}>
-        <Ionicons name="diamond" size={size} color="#FBBF24" />
-      </Animated.View>
-    </View>
-  );
+function ActiveProVipBadge({ size = 36 }: { size?: number }) {
+  return <ProfileInvestorProVipBadge size={size} />;
 }
 
 export default function InvestorProShopPanel({
@@ -121,6 +56,7 @@ export default function InvestorProShopPanel({
   buying,
   isActive,
   defaultExpanded = true,
+  collapsible = true,
   embedded = false,
   leatherSurface = false,
   showRestore = true,
@@ -129,6 +65,7 @@ export default function InvestorProShopPanel({
   onRestore,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const isBodyVisible = collapsible ? expanded : true;
   const panelBg = leatherSurface ? profileShopLeatherBg(isDark) : isDark ? '#1C1C1E' : '#FFFFFF';
   const pressedBg = leatherSurface ? profileShopLeatherPressedBg(isDark) : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
   const panelBorder = leatherSurface
@@ -180,8 +117,9 @@ export default function InvestorProShopPanel({
       ) : null}
 
       <Pressable
-        onPress={() => setExpanded((v) => !v)}
-        style={({ pressed }) => [styles.statusRow, pressed && { opacity: 0.92 }]}
+        onPress={collapsible ? () => setExpanded((v) => !v) : undefined}
+        disabled={!collapsible}
+        style={({ pressed }) => [styles.statusRow, pressed && collapsible && { opacity: 0.92 }]}
       >
         <View
           style={[
@@ -191,9 +129,9 @@ export default function InvestorProShopPanel({
           ]}
         >
           {isActive ? (
-            <ActiveProDiamond size={30} />
+            <ActiveProVipBadge size={40} />
           ) : (
-            <Ionicons name="diamond" size={28} color={accent} />
+            <ProfileGoldCrown size={36} />
           )}
         </View>
         <View style={styles.statusCopy}>
@@ -218,15 +156,17 @@ export default function InvestorProShopPanel({
               <Ionicons name="sparkles" size={22} color="#FFFFFF" />
             </View>
           )}
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={isDark ? '#8E8E93' : '#C7C7CC'}
-          />
+          {collapsible ? (
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={isDark ? '#8E8E93' : '#C7C7CC'}
+            />
+          ) : null}
         </View>
       </Pressable>
 
-      {expanded ? (
+      {isBodyVisible ? (
         <>
           {!isActive ? (
             <>
@@ -358,25 +298,6 @@ const styles = StyleSheet.create({
   slotBadgeActive: {
     borderColor: 'rgba(251,191,36,0.85)',
     backgroundColor: 'rgba(245,158,11,0.22)',
-  },
-  diamondWrap: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'visible',
-  },
-  diamondIcon: {
-    zIndex: 2,
-  },
-  sparkle: {
-    position: 'absolute',
-    left: '50%',
-    top: '50%',
-    marginLeft: -7,
-    marginTop: -7,
-    zIndex: 3,
-    opacity: 0.95,
   },
   statusCopy: { flex: 1, minWidth: 0 },
   packageTitle: {

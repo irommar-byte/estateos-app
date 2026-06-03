@@ -150,6 +150,14 @@ export const profile = {
   },
   shop: {
     sectionTitle: 'Purchases & store',
+    membershipHubTitle: 'Packages, coupons & credits',
+    membershipHubSubtitle: 'Tap to expand — status updates live.',
+    membershipHubProActive: 'Active',
+    membershipHubProInactive: 'None',
+    membershipHubProLabel: 'Pro',
+    membershipHubCredits: 'Credits',
+    membershipHubCoupons: 'Coupons',
+    membershipHubPlus: 'Plus',
     bonusCouponsTitle: 'Bonus coupons',
     bonusCouponsSubtitle:
       'Free listing, birthday coupons and team gifts — swipe cards right to cycle.',
@@ -286,6 +294,11 @@ export const profile = {
       investorProAlreadyActiveTitle: 'Subscription already active',
       investorProAlreadyActiveBody:
         'Investor Pro is already active on this EstateOS account. Manage it in Settings → Apple ID → Subscriptions.',
+      investorProRestoreNoAppleSubBody:
+        'Investor Pro is already active on this EstateOS account (see the expiry date in Profile). Apple did not report a separate subscription on this device — that is normal after a promo, admin grant, or when the subscription is on another Apple ID. To buy or cancel in the App Store: Settings → Apple ID → Subscriptions.',
+      investorProSyncAppStoreTitle: 'No subscription on this Apple ID',
+      investorProNoAppleSubBody:
+        'There is no active Investor Pro subscription on this Apple ID. If your subscription is on another Apple ID, switch the account in Settings → Apple ID → Media & Purchases.',
       investorProLinkedTitle: 'Subscription linked to account',
       investorProLinkedBody:
         'This Apple ID has an active Investor Pro subscription (e.g. from an earlier test). We linked it to this EstateOS account — the App Store payment sheet will not appear while that subscription is active on this Apple ID. One Apple subscription = one EstateOS account.',

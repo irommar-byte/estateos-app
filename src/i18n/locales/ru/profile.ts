@@ -150,6 +150,14 @@ export const profile = {
   },
   shop: {
     sectionTitle: 'Покупки и магазин',
+    membershipHubTitle: 'Пакеты, купоны и кредиты',
+    membershipHubSubtitle: 'Нажмите, чтобы развернуть — статус обновляется в реальном времени.',
+    membershipHubProActive: 'Активен',
+    membershipHubProInactive: 'Нет',
+    membershipHubProLabel: 'Pro',
+    membershipHubCredits: 'Кредиты',
+    membershipHubCoupons: 'Купоны',
+    membershipHubPlus: 'Plus',
     bonusCouponsTitle: 'Бонусные купоны',
     bonusCouponsSubtitle:
       'Бесплатное объявление, именинные купоны и подарки от команды — свайп вправо по кругу.',
@@ -286,6 +294,11 @@ export const profile = {
       investorProAlreadyActiveTitle: 'Подписка уже активна',
       investorProAlreadyActiveBody:
         'Investor Pro уже активен на этом аккаунте EstateOS. Управление: Настройки → Apple ID → Подписки.',
+      investorProRestoreNoAppleSubBody:
+        'На аккаунте EstateOS Investor Pro уже активен (срок в профиле). Apple на этом устройстве не сообщил отдельную подписку — это нормально после промо, выдачи админом или если подписка на другом Apple ID. Покупка/отмена в App Store: Настройки → Apple ID → Подписки.',
+      investorProSyncAppStoreTitle: 'Нет подписки на этом Apple ID',
+      investorProNoAppleSubBody:
+        'На этом Apple ID нет активной подписки Investor Pro. Если подписка на другом Apple ID, смените аккаунт: Настройки → Apple ID → Медиа и покупки.',
       investorProLinkedTitle: 'Подписка привязана к аккаунту',
       investorProLinkedBody:
         'На этом Apple ID есть активная подписка Investor Pro (например, с прошлого теста). Мы привязали её к этому аккаунту EstateOS — окно оплаты App Store не появится, пока подписка активна на этом Apple ID. Одна подписка Apple = один аккаунт EstateOS.',
