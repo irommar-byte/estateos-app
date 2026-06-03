@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createHash } from "crypto";
+import { ensurePageVisitLogTable } from "@/lib/pageVisitLogTable";
+import { parseDeviceType, resolveVisitGeo } from "@/lib/visitGeo";
 
 const PAGE_VISIT_WINDOW_MINUTES = 30;
 
@@ -24,29 +26,17 @@ function hashVisitor(raw: string): string {
 }
 
 async function ensurePageVisitTable() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS PageVisitLog (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      visitorHash VARCHAR(64) NOT NULL,
-      ip VARCHAR(64) NOT NULL,
-      country VARCHAR(8) NOT NULL DEFAULT 'PL',
-      path VARCHAR(191) NOT NULL DEFAULT '/',
-      userAgent VARCHAR(255) NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      KEY PageVisitLog_path_createdAt_idx (path, createdAt),
-      KEY PageVisitLog_hash_createdAt_idx (visitorHash, createdAt)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  await ensurePageVisitLogTable();
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const ip = getClientIp(req).slice(0, 64);
-    const country = (req.headers.get("cf-ipcountry") || req.headers.get("x-vercel-ip-country") || "PL").toUpperCase().slice(0, 8);
+    const geo = await resolveVisitGeo(req, ip);
     const path = normalizePath(body?.path);
     const userAgent = (req.headers.get("user-agent") || "").slice(0, 255);
+    const deviceType = parseDeviceType(userAgent);
     const visitorHash = hashVisitor(`${ip}|${userAgent}`);
 
     await ensurePageVisitTable();
@@ -70,12 +60,17 @@ export async function POST(req: Request) {
       counted = true;
       await prisma.$executeRawUnsafe(
         `
-          INSERT INTO PageVisitLog (visitorHash, ip, country, path, userAgent, createdAt)
-          VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(3))
+          INSERT INTO PageVisitLog (visitorHash, ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3))
         `,
         visitorHash,
         ip,
-        country,
+        geo.countryCode,
+        geo.city,
+        geo.regionName,
+        geo.isp,
+        geo.geoSource,
+        deviceType,
         path,
         userAgent
       );

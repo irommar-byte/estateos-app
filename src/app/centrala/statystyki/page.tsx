@@ -4,22 +4,37 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowLeft, TrendingUp, Users, Building, Banknote, Briefcase, User, 
-  Eye, UserCheck, UserPlus, Home, Building2, Globe, Map as MapIcon, Calculator, BarChart3
+  Eye, UserCheck, UserPlus, Home, Building2, Globe, Map as MapIcon, Calculator, BarChart3,
+  Monitor, Smartphone, Tablet, Bot, Shield
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import {
-  ESTATEOS_TIMEZONE,
-  formatDateTimePl,
-  getWarsawDay,
-  getWarsawHour,
-  getWarsawYm,
-  getWarsawYmd,
-  parseIsoOrDbUtc,
-} from "@/lib/datetime/warsaw";
+import { flagEmojiFromCountryCode } from '@/lib/visitGeo';
 
-const getFlagEmoji = (countryCode: string) => {
-  if (!countryCode || countryCode === 'UNKNOWN') return '🌍';
-  return countryCode.toUpperCase().replace(/./g, char => String.fromCodePoint(char.charCodeAt(0) + 127397));
+const ESTATEOS_TIMEZONE = 'Europe/Warsaw';
+
+const formatDateTimePl = (value: Date) =>
+  value.toLocaleString('pl-PL', {
+    timeZone: ESTATEOS_TIMEZONE,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+const deviceIcon = (deviceType: string) => {
+  switch (String(deviceType || '').toLowerCase()) {
+    case 'mobile':
+      return <Smartphone size={14} className="text-blue-400" />;
+    case 'tablet':
+      return <Tablet size={14} className="text-violet-400" />;
+    case 'bot':
+      return <Bot size={14} className="text-amber-400" />;
+    case 'desktop':
+      return <Monitor size={14} className="text-emerald-400" />;
+    default:
+      return <Monitor size={14} className="text-gray-500" />;
+  }
 };
 
 const TABS = [
@@ -34,13 +49,6 @@ const TABS = [
 const PERIODS = ['Ostatnie 30 Dni', 'Ten Rok', 'Godziny Szczytu', 'Dni Szczytu'];
 const PROPERTY_TYPES = ['Wszystkie', 'Mieszkanie', 'Dom', 'Działka', 'Komercyjne'];
 
-const MARKET_FILTER_TO_ENUM: Record<string, string> = {
-  Mieszkanie: 'FLAT',
-  Dom: 'HOUSE',
-  Działka: 'PLOT',
-  Komercyjne: 'COMMERCIAL',
-};
-
 const processChartData = (period: string, timeline: any) => {
   if (!timeline) return [];
   const now = new Date();
@@ -54,31 +62,23 @@ const processChartData = (period: string, timeline: any) => {
   } else if (period === 'Ostatnie 30 Dni') {
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now); d.setDate(d.getDate() - i);
-      buckets.push({
-        name: d.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', timeZone: ESTATEOS_TIMEZONE }),
-        dateMatch: getWarsawYmd(d),
-        pageViews: 0, uniqueViews: 0, offers: 0, agencies: 0, privateUsers: 0, buyers: 0, sellers: 0, uniqueIps: new Set(),
-      });
+      buckets.push({ name: d.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short' }), dateMatch: d.toISOString().split('T')[0], pageViews: 0, uniqueViews: 0, offers: 0, agencies: 0, privateUsers: 0, buyers: 0, sellers: 0, uniqueIps: new Set() });
     }
   } else {
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      buckets.push({
-        name: d.toLocaleDateString('pl-PL', { month: 'short', timeZone: ESTATEOS_TIMEZONE }),
-        dateMatch: getWarsawYm(d),
-        pageViews: 0, uniqueViews: 0, offers: 0, agencies: 0, privateUsers: 0, buyers: 0, sellers: 0, uniqueIps: new Set(),
-      });
+      buckets.push({ name: d.toLocaleDateString('pl-PL', { month: 'short' }), dateMatch: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, '0')}`, pageViews: 0, uniqueViews: 0, offers: 0, agencies: 0, privateUsers: 0, buyers: 0, sellers: 0, uniqueIps: new Set() });
     }
   }
 
   const assignToBucket = (dateStr: string, callback: (bucket: any) => void) => {
-    const d = parseIsoOrDbUtc(dateStr);
-    if (!d) return;
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return;
     let match: any;
-    if (period === 'Godziny Szczytu') match = buckets.find(b => b.hourMatch === getWarsawHour(d));
-    else if (period === 'Dni Szczytu') match = buckets.find(b => b.dayMatch === getWarsawDay(d));
-    else if (period === 'Ostatnie 30 Dni') match = buckets.find(b => b.dateMatch === getWarsawYmd(d));
-    else match = buckets.find(b => b.dateMatch === getWarsawYm(d));
+    if (period === 'Godziny Szczytu') match = buckets.find(b => b.hourMatch === d.getHours());
+    else if (period === 'Dni Szczytu') match = buckets.find(b => b.dayMatch === d.getDay());
+    else if (period === 'Ostatnie 30 Dni') match = buckets.find(b => b.dateMatch === d.toISOString().split('T')[0]);
+    else match = buckets.find(b => b.dateMatch === d.toISOString().substring(0, 7));
     if (match) callback(match);
   };
 
@@ -106,21 +106,20 @@ export default function Statystyki() {
   const chartData = useMemo(() => processChartData(activePeriod, stats?.timeline), [activePeriod, stats]);
   
   const visitorsList = useMemo(() => {
-    if (!stats?.timeline?.visits) return [];
-    const vMap = new Map();
-    stats.timeline.visits.forEach((v: any) => {
-      const existing = vMap.get(v.ip);
-      const visitAt = parseIsoOrDbUtc(v.createdAt);
-      if (!visitAt) return;
-      if (!existing || visitAt > existing.lastVisit) {
-        vMap.set(v.ip, { ip: v.ip, country: v.country, count: (existing?.count || 0) + 1, mainPageViews: (existing?.mainPageViews || 0) + (v.path === '/' ? 1 : 0), lastVisit: visitAt, path: v.path });
-      } else {
-        existing.count++;
-        if (v.path === '/') existing.mainPageViews++;
-      }
-    });
-    return Array.from(vMap.values()).sort((a: any, b: any) => b.lastVisit - a.lastVisit).slice(0, 50);
+    if (Array.isArray(stats?.timeline?.visitors) && stats.timeline.visitors.length > 0) {
+      return stats.timeline.visitors;
+    }
+    return [];
   }, [stats]);
+
+  const visitorCountries = useMemo(() => {
+    if (Array.isArray(stats?.timeline?.visitorCountries)) {
+      return stats.timeline.visitorCountries;
+    }
+    return [];
+  }, [stats]);
+
+  const visitorInsight = stats?.timeline?.visitorGeoInsight ?? null;
 
   // SILNIK ANALIZY RYNKU (Liczy cenę za m2 na bieżąco)
   const marketData = useMemo(() => {
@@ -128,10 +127,7 @@ export default function Statystyki() {
     
     // Bierzemy tylko aktywne lub weryfikowane oferty
     let filtered = stats.timeline.offers.filter((o: any) => String(o.status || '').toUpperCase() !== 'REJECTED');
-    if (marketFilter !== 'Wszystkie') {
-      const enumType = MARKET_FILTER_TO_ENUM[marketFilter] ?? marketFilter;
-      filtered = filtered.filter((o: any) => String(o.propertyType || '').toUpperCase() === enumType);
-    }
+    if (marketFilter !== 'Wszystkie') filtered = filtered.filter((o: any) => o.propertyType === marketFilter);
 
     let totalWarsawPrice = 0;
     let totalWarsawArea = 0;
@@ -166,11 +162,11 @@ export default function Statystyki() {
     return { avgWarsawSqm, districts, maxDistrictPrice };
   }, [stats, marketFilter]);
 
-  if (!stats) return <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  if (!stats) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] p-8 md:p-12 font-sans selection:bg-emerald-500/30 selection:text-[var(--eos-text)]">
-      <button onClick={() => router.push('/centrala')} className="flex items-center gap-2 text-[var(--eos-muted)] hover:text-[var(--eos-text)] mb-12 text-[10px] font-black uppercase tracking-[0.4em] transition-all">
+    <div className="theme-aware-dashboard min-h-screen bg-[#050505] text-white p-8 md:p-12 font-sans selection:bg-emerald-500 selection:text-white">
+      <button onClick={() => router.push('/centrala')} className="flex items-center gap-2 text-gray-500 hover:text-white mb-12 text-[10px] font-black uppercase tracking-[0.4em] transition-all">
         <ArrowLeft size={14}/> Centrala
       </button>
       
@@ -179,7 +175,7 @@ export default function Statystyki() {
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
           <div>
             <h1 className="text-6xl font-black tracking-tighter italic mb-4">Analityka<span className="text-emerald-500">.</span></h1>
-            <p className="text-[var(--eos-muted)] text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
+            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
               <TrendingUp size={14} className="text-emerald-500"/> Raport Systemowy EstateOS
             </p>
           </div>
@@ -264,34 +260,123 @@ export default function Statystyki() {
         {/* MODUŁ 2: LIVE IP TRACKER */}
         <AnimatePresence>
           {showVisitors && (
-            // ... (tutaj kod trackera, pozostaje bez zmian)
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-16">
               <div className="bg-[#0a0a0a] border border-blue-500/20 rounded-[32px] p-8 shadow-[0_0_50px_rgba(59,130,246,0.05)]">
-                <h3 className="text-xl font-black mb-2 flex items-center gap-3 text-[var(--eos-text)]"><Globe className="text-blue-500"/> Rejestr Odwiedzających (Top 50 powracających)</h3>
-                <p className="text-[11px] text-[var(--eos-muted)] mb-6">
-                  Czas w strefie {ESTATEOS_TIMEZONE.replace("_", " ")} (czas polski).
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-8">
+                  <div>
+                    <h3 className="text-xl font-black mb-2 flex items-center gap-3">
+                      <Globe className="text-blue-500"/> Rejestr odwiedzających
+                    </h3>
+                    <p className="text-gray-500 text-xs max-w-2xl leading-relaxed">
+                      Top 50 adresów IP (zagregowane). Kraj po nagłówku CDN lub lookup IP — nie zakładamy domyślnie Polski.
+                      Czas: {ESTATEOS_TIMEZONE.replace('_', ' ')}.
+                    </p>
+                  </div>
+                  {visitorInsight ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 min-w-[280px]">
+                      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Unikalni IP</p>
+                        <p className="text-2xl font-black">{visitorInsight.uniqueVisitors}</p>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Kraje</p>
+                        <p className="text-2xl font-black">{visitorInsight.countriesDetected}</p>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">PL (wizyty)</p>
+                        <p className="text-2xl font-black">{visitorInsight.polandPageViewSharePct}%</p>
+                      </div>
+                      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Lookup IP</p>
+                        <p className="text-2xl font-black">{visitorInsight.geoFromLookup}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {visitorInsight?.note ? (
+                  <div className="mb-6 flex gap-3 items-start bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3 text-amber-200/90 text-xs leading-relaxed">
+                    <Shield size={16} className="shrink-0 mt-0.5" />
+                    <span>{visitorInsight.note}</span>
+                  </div>
+                ) : null}
+
+                {visitorCountries.length > 0 ? (
+                  <div className="mb-8">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Rozkład krajów (po liczbie odsłon)</p>
+                    <div className="flex flex-wrap gap-2">
+                      {visitorCountries.map((c: any) => (
+                        <div key={c.countryCode} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm">
+                          <span className="text-lg">{c.flag || flagEmojiFromCountryCode(c.countryCode)}</span>
+                          <span className="font-bold">{c.countryName}</span>
+                          <span className="text-gray-500 text-xs">{c.pageViews} odsł. · {c.sharePct}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="overflow-x-auto rounded-2xl border border-white/10">
+                  <table className="w-full text-left border-collapse min-w-[1100px]">
                     <thead>
-                      <tr className="border-b border-[var(--eos-border)] text-[var(--eos-text)] text-[10px] font-black uppercase tracking-widest">
-                        <th className="pb-4 pl-4">Kraj</th>
-                        <th className="pb-4">Adres IP</th>
-                        <th className="pb-4">Ostatnia Aktywność</th>
-                        <th className="pb-4 text-center">Wszystkie Wejścia</th>
-                        <th className="pb-4 text-center text-emerald-600 dark:text-emerald-400">Wejścia Główne (Mapa)</th>
+                      <tr className="border-b border-white/10 text-gray-500 text-[10px] uppercase tracking-widest bg-white/[0.02]">
+                        <th className="py-4 pl-4 pr-2">Kraj</th>
+                        <th className="py-4 pr-2">Lokalizacja</th>
+                        <th className="py-4 pr-2">Adres IP</th>
+                        <th className="py-4 pr-2">Urządzenie</th>
+                        <th className="py-4 pr-2">Ostatnia aktywność</th>
+                        <th className="py-4 pr-2 text-center">Odsłony</th>
+                        <th className="py-4 pr-2 text-center text-emerald-500">Mapa (/)</th>
+                        <th className="py-4 pr-4">Ścieżki</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {visitorsList.map((v: any, i) => (
-                        <tr key={i} className="border-b border-[var(--eos-border)] hover:bg-[var(--eos-input)] transition-colors">
-                          <td className="py-4 pl-4 text-2xl">{getFlagEmoji(v.country)}</td>
-                          <td className="py-4 font-mono text-sm tracking-wider text-[var(--eos-text)]">{v.ip}</td>
-                          <td className="py-4 text-[var(--eos-muted)] text-xs tabular-nums">{formatDateTimePl(v.lastVisit)}</td>
-                          <td className="py-4 text-center font-black text-lg text-[var(--eos-text)]">{v.count}</td>
-                          <td className="py-4 text-center font-black text-lg text-emerald-600 dark:text-emerald-400">{v.mainPageViews}</td>
+                      {visitorsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center text-gray-500 text-sm">
+                            Brak zarejestrowanych wizyt — tracker zapisuje nowe wejścia po wdrożeniu.
+                          </td>
                         </tr>
-                      ))}
+                      ) : (
+                        visitorsList.map((v: any) => (
+                          <tr key={v.ip} className="border-b border-white/5 hover:bg-white/5 transition-colors align-top">
+                            <td className="py-4 pl-4 pr-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-2xl">{v.flag || flagEmojiFromCountryCode(v.countryCode)}</span>
+                                <div>
+                                  <p className="font-bold text-sm text-white">{v.countryName}</p>
+                                  <p className="text-[10px] text-gray-500 font-mono">{v.countryCode}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 pr-2 text-xs text-gray-300 max-w-[160px]">
+                              <p>{[v.city, v.regionName].filter(Boolean).join(', ') || '—'}</p>
+                              {v.isp ? <p className="text-[10px] text-gray-500 mt-1 truncate" title={v.isp}>{v.isp}</p> : null}
+                              <p className="text-[10px] text-blue-400/80 mt-1">{v.geoSourceLabel || v.geoSource}</p>
+                              {v.isRelay ? <p className="text-[10px] text-amber-400/90 mt-0.5">VPN / relay</p> : null}
+                            </td>
+                            <td className="py-4 pr-2 font-mono text-sm tracking-wider text-white">{v.ip}</td>
+                            <td className="py-4 pr-2">
+                              <div className="flex items-center gap-2 text-xs text-gray-400 capitalize">
+                                {deviceIcon(v.deviceType)}
+                                {v.deviceType || 'unknown'}
+                              </div>
+                            </td>
+                            <td className="py-4 pr-2 text-gray-400 text-xs tabular-nums whitespace-nowrap">
+                              {formatDateTimePl(new Date(v.lastVisit))}
+                              <p className="text-[10px] text-gray-600 mt-1">pierwsze: {formatDateTimePl(new Date(v.firstVisit))}</p>
+                            </td>
+                            <td className="py-4 pr-2 text-center font-black text-lg text-white">{v.count}</td>
+                            <td className="py-4 pr-2 text-center font-black text-lg text-emerald-500">{v.mainPageViews}</td>
+                            <td className="py-4 pr-4 text-[11px] text-gray-400 leading-relaxed max-w-[200px]">
+                              {(v.topPaths || []).map((p: string) => (
+                                <p key={p} className="truncate" title={p}>{p}</p>
+                              ))}
+                              {v.uniquePaths > 3 ? <p className="text-gray-600">+{v.uniquePaths - 3} ścieżek</p> : null}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

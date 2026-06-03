@@ -4,8 +4,8 @@ import bcrypt from 'bcrypt';
 import { verifyMobileToken } from '@/lib/jwtMobile';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
-import { enrichMobileUserWithPublicationFlags } from '@/lib/userPublicationFlags';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
+import { buildWelcomeEmailHtml, buildWelcomeEmailSubject, sendTransactionalEmail } from '@/lib/email/transactional';
 import {
   buildPhoneLookupVariants,
   extractPhoneFromBody,
@@ -61,9 +61,7 @@ async function performMobileLogin(emailRaw: unknown, passwordRaw: unknown) {
 
   return NextResponse.json({
     success: true,
-    user: fullUser
-      ? await enrichMobileUserWithPublicationFlags({ ...shapeMobileUser(fullUser), hasPasskey })
-      : null,
+    user: fullUser ? { ...shapeMobileUser(fullUser), hasPasskey } : null,
     token,
   });
 }
@@ -90,10 +88,7 @@ export async function GET(req: Request) {
     }
 
     const hasPasskey = await userHasRegisteredPasskey(userId);
-    return NextResponse.json({
-      success: true,
-      user: await enrichMobileUserWithPublicationFlags({ ...shapeMobileUser(user), hasPasskey }),
-    });
+    return NextResponse.json({ success: true, user: { ...shapeMobileUser(user), hasPasskey } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
     return NextResponse.json({ success: false, message }, { status: 500 });
@@ -172,6 +167,12 @@ export async function POST(req: Request) {
           planType: isPartner ? 'AGENCY' : 'NONE',
         },
         select: MOBILE_USER_SELECT,
+      });
+
+      void sendTransactionalEmail({
+        to: user.email,
+        subject: buildWelcomeEmailSubject({ userName: user.name }),
+        html: buildWelcomeEmailHtml({ userName: user.name }),
       });
 
       const token = signMobileToken({ id: user.id, email: user.email, role: user.role });

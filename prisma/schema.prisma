@@ -117,7 +117,7 @@ model PageVisitLog {
   id           BigInt   @id @default(autoincrement())
   visitorHash  String   @db.VarChar(64)
   ip           String   @db.VarChar(64)
-  country      String   @default("PL") @db.VarChar(8)
+  country      String   @default("UN") @db.VarChar(8)
   path         String   @default("/") @db.VarChar(191)
   userAgent    String?  @db.VarChar(255)
   createdAt    DateTime @default(now())
@@ -166,8 +166,6 @@ model Offer {
   buildingNumber  String?
   lat             Float?
   lng             Float?
-  localityCountry     String?    @default("Polska") @db.VarChar(64)
-  localityCountryCode String?    @default("PL") @db.VarChar(8)
   isExactLocation Boolean        @default(true)
   images          String?        @db.Text
   videoUrl        String?
@@ -232,13 +230,12 @@ model FavoriteOffer {
 }
 
 model OpenHouseEvent {
-  id          Int                 @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   offerId     Int
   hostUserId  Int
-  title       String?             @db.VarChar(255)
-  description String?             @db.Text
-  visitMode   OpenHouseVisitMode  @default(FLEX)
-  status      OpenHouseStatus     @default(DRAFT)
+  title       String?         @db.VarChar(255)
+  description String?         @db.Text
+  status      OpenHouseStatus @default(DRAFT)
   publishedAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -479,9 +476,6 @@ enum AppointmentStatus {
   ACCEPTED
   DECLINED
   RESCHEDULED
-  COMPLETED
-  NO_SHOW
-  CANCELLED
 }
 
 enum AppointmentType {
@@ -652,12 +646,6 @@ enum PropertyCondition {
   NEEDS_RENOVATION
   DEVELOPER_STATE
   NOT_APPLICABLE
-}
-
-enum OpenHouseVisitMode {
-  FLEX
-  SLOT_30
-  SLOT_60
 }
 
 enum OpenHouseStatus {
