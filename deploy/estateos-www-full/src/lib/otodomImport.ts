@@ -97,6 +97,129 @@ function parseFloor(raw: unknown): number | null {
   return parseNumber(value);
 }
 
+const OLX_WORD_NUMBERS: Record<string, number> = {
+  zero: 0,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+  more: 12,
+};
+
+export function capitalizeImportTitle(title: string): string {
+  const trimmed = String(title || '').trim();
+  if (!trimmed) return trimmed;
+  const first = trimmed.charAt(0);
+  const upper = first.toLocaleUpperCase('pl-PL');
+  if (first === upper) return trimmed;
+  return upper + trimmed.slice(1);
+}
+
+function parseOlxNumericToken(raw: unknown): number | null {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const fromDigits = parseNumber(text);
+  if (fromDigits != null) return fromDigits;
+  const word = text.toLowerCase();
+  if (OLX_WORD_NUMBERS[word] != null) return OLX_WORD_NUMBERS[word];
+  const roomsInText = text.match(/(\d+)\s*pok/i);
+  if (roomsInText) return parseNumber(roomsInText[1]);
+  return null;
+}
+
+function findOlxParamRow(
+  params: Array<Record<string, unknown>>,
+  keys: string[],
+  nameHints: string[] = [],
+): Record<string, unknown> | null {
+  for (const key of keys) {
+    const row = params.find((entry) => String(entry.key ?? '') === key);
+    if (row) return row;
+  }
+  if (nameHints.length) {
+    const row = params.find((entry) => {
+      const name = String(entry.name ?? '').toLowerCase();
+      return nameHints.some((hint) => name.includes(hint));
+    });
+    if (row) return row;
+  }
+  return null;
+}
+
+function parseOlxParamNumber(
+  params: Array<Record<string, unknown>>,
+  keys: string[],
+  nameHints: string[] = [],
+): number | null {
+  const row = findOlxParamRow(params, keys, nameHints);
+  if (!row) return null;
+  const label = String(row.value ?? '').trim();
+  const normalized = String(row.normalizedValue ?? '').trim();
+  return parseOlxNumericToken(label) ?? parseOlxNumericToken(normalized);
+}
+
+function parseOlxParamText(
+  params: Array<Record<string, unknown>>,
+  keys: string[],
+  nameHints: string[] = [],
+): string | null {
+  const row = findOlxParamRow(params, keys, nameHints);
+  if (!row) return null;
+  const label = String(row.value ?? '').trim();
+  const normalized = String(row.normalizedValue ?? '').trim();
+  const text = label || normalized;
+  return text || null;
+}
+
+function enrichOlxFieldsFromText(input: {
+  title: string;
+  descriptionText: string;
+  features: string[];
+}): {
+  rooms: number | null;
+  yearBuilt: number | null;
+  heating: string | null;
+  adminFee: number | null;
+} {
+  const blob = [input.title, input.descriptionText, ...input.features].join('\n');
+  const plain = decodeImportHtmlText(blob);
+
+  const rooms =
+    parseNumber(plain.match(/(\d+)\s*pok(?:ó|o)j(?:e|ów|owy|owe|owa)?/i)?.[1]) ??
+    parseNumber(plain.match(/(\d+)\s*[-–]\s*pokojow/i)?.[1]) ??
+    parseNumber(plain.match(/(\d+)-pokojow/i)?.[1]) ??
+    parseNumber(plain.match(/liczba\s+pokoi[:\s]*(\d+)/i)?.[1]);
+
+  const yearBuilt =
+    parseNumber(plain.match(/rok\s*(?:budowy|budow[yai]|konstrukcji)[:\s]*(\d{4})/i)?.[1]) ??
+    parseNumber(plain.match(/(?:zbudowan[eoy]|budyn(?:ek|ku))\s+(?:w\s+)?(?:roku\s+)?(\d{4})/i)?.[1]) ??
+    parseNumber(plain.match(/\bz\s+(19\d{2}|20\d{2})\s+r\.?\b/i)?.[1]);
+
+  const heatingMatch =
+    plain.match(/ogrzewani[eę][:\s]+([^.\n;]+)/i) ??
+    plain.match(/(?:typ|rodzaj)\s+ogrzewania[:\s]+([^.\n;]+)/i);
+  let heating = heatingMatch ? heatingMatch[1].trim() : null;
+  if (heating) {
+    heating = heating.replace(/\s{2,}/g, ' ').slice(0, 80);
+    if (heating.length < 3) heating = null;
+  }
+
+  const adminFee =
+    parseNumber(plain.match(/czynsz(?:\s+administracyjny|\s+do\s+administracji)?[:\s]*(\d[\d\s.,]*)\s*(?:zł|pln)/i)?.[1]) ??
+    parseNumber(plain.match(/opłat[aey]\s+administracyjn[aey][^0-9]{0,24}(\d[\d\s.,]*)\s*(?:zł|pln)/i)?.[1]) ??
+    parseNumber(plain.match(/(?:\+|plus)\s*czynsz[^0-9]{0,16}(\d[\d\s.,]*)\s*(?:zł|pln)/i)?.[1]);
+
+  return { rooms, yearBuilt, heating, adminFee };
+}
+
 function characteristicsMap(ad: RawAd): Map<string, { value: string; label: string }> {
   const map = new Map<string, { value: string; label: string }>();
   const list = ad.characteristics;
@@ -406,7 +529,7 @@ export function parseOtodomAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     externalId: parseNumber(ad.id) ?? 0,
     externalUrl: String(ad.url ?? sourceUrl),
     slug: String(ad.slug ?? ''),
-    title: String(ad.title ?? '').trim(),
+    title: capitalizeImportTitle(String(ad.title ?? '').trim()),
     transactionType: mapTransactionType(adCategory.type),
     propertyType: mapPropertyType(adCategory.name),
     price: parseNumber(chars.get('price')?.value),
@@ -508,33 +631,59 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     ? ad.photos.map((photo) => String(photo ?? '').trim()).filter((value) => Boolean(value))
     : [];
 
+  const title = capitalizeImportTitle(String(ad.title ?? '').trim());
+  const descriptionHtml = String(ad.description ?? '');
+  const descriptionText = stripHtml(descriptionHtml);
+  const features = params
+    .map((entry) => {
+      const name = String(entry.name ?? '').trim();
+      const value = String(entry.value ?? '').trim();
+      return name && value ? `${name}: ${value}` : '';
+    })
+    .filter((value) => Boolean(value));
+
+  const textHints = enrichOlxFieldsFromText({ title, descriptionText, features });
+
+  const rooms =
+    parseOlxParamNumber(params, ['rooms', 'rooms_num', 'number_of_rooms'], ['liczba pokoi', 'pokoi']) ??
+    textHints.rooms;
+  const yearBuilt =
+    parseOlxParamNumber(params, ['buildyear', 'build_year', 'construction_year', 'year_built'], ['rok budowy']) ??
+    textHints.yearBuilt;
+  const heating =
+    parseOlxParamText(params, ['heating', 'heating_type'], ['ogrzewanie']) ?? textHints.heating;
+  const adminFee =
+    parseOlxParamNumber(params, ['rent', 'czynsz', 'admin_fee', 'monthly_rent', 'fee'], ['czynsz', 'opłat administr']) ??
+    textHints.adminFee;
+
   return {
     source: 'OLX',
     externalId: parseNumber(ad.id) ?? 0,
     externalUrl: String(ad.url ?? sourceUrl),
     slug: String(ad.urlPath ?? ''),
-    title: String(ad.title ?? '').trim(),
+    title,
     transactionType: mapOlxTransactionType(ad),
     propertyType: mapOlxPropertyType(ad),
     price: parseNumber(((ad.price ?? {}) as Record<string, unknown>).regularPrice
       ? (((ad.price ?? {}) as Record<string, unknown>).regularPrice as Record<string, unknown>).value
       : null),
     priceCurrency: 'PLN',
-    adminFee: null,
-    deposit: null,
-    area: parseNumber(map('m')?.value ?? map('m')?.label),
+    adminFee: adminFee != null && adminFee > 0 ? adminFee : null,
+    deposit: parseOlxParamNumber(params, ['deposit', 'kaucja'], ['kaucja']),
+    area: parseOlxParamNumber(params, ['m'], ['powierzchnia']) ?? parseNumber(map('m')?.label),
     plotArea:
-      parseNumber(map('plot_area')?.value ?? map('plot_area')?.label) ??
-      parseNumber(map('terrain_area')?.value ?? map('terrain_area')?.label) ??
-      parseNumber(map('dzialka')?.value ?? map('dzialka')?.label),
-    rooms: parseNumber(map('rooms')?.value ?? map('rooms')?.label),
-    floor: parseFloor(map('floor_select')?.value ?? map('floor')?.value),
-    totalFloors: null,
-    yearBuilt: parseNumber(map('buildyear')?.value ?? map('build_year')?.value),
+      parseOlxParamNumber(params, ['plot_area', 'terrain_area', 'dzialka'], ['działk', 'dzialk']) ??
+      parseNumber(map('plot_area')?.label ?? map('terrain_area')?.label ?? map('dzialka')?.label),
+    rooms,
+    floor:
+      parseFloor(map('floor_select')?.value ?? map('floor_select')?.label) ??
+      parseFloor(map('floor')?.value ?? map('floor')?.label),
+    totalFloors: parseOlxParamNumber(params, ['floornumber', 'building_floors', 'floors'], ['liczba pięter', 'pięter w budynku']),
+    yearBuilt,
     condition: map('market')?.label ?? null,
     conditionCode: map('market')?.value ?? null,
-    heating: map('heating')?.label ?? null,
-    heatingCode: map('heating')?.value ?? null,
+    heating,
+    heatingCode: map('heating')?.value ?? (heating ? heating.toLowerCase().replace(/\s+/g, '_') : null),
     buildingType: map('builttype')?.label ?? map('building_type')?.label ?? null,
     city,
     district,
@@ -543,13 +692,9 @@ export function parseOlxAd(ad: RawAd, sourceUrl: string): OtodomImportDraft {
     lat: parseNumber(mapData.lat),
     lng: parseNumber(mapData.lon),
     localityCountryCode: 'PL',
-    descriptionHtml: String(ad.description ?? ''),
-    descriptionText: stripHtml(String(ad.description ?? '')),
-    features: params.map((entry) => {
-      const name = String(entry.name ?? '').trim();
-      const value = String(entry.value ?? '').trim();
-      return name && value ? `${name}: ${value}` : '';
-    }).filter((value) => Boolean(value)),
+    descriptionHtml,
+    descriptionText,
+    features,
     imageUrls: images,
     imageCount: images.length,
     agency: user
@@ -783,7 +928,7 @@ function parseNierOnlineHtml(html: string, sourceUrl: string): OtodomImportDraft
     externalId: hashStringToPositiveInt(cleanCanonical),
     externalUrl: cleanCanonical,
     slug,
-    title: title || 'Oferta z Nieruchomosci-Online',
+    title: capitalizeImportTitle(title || 'Oferta z Nieruchomosci-Online'),
     transactionType,
     propertyType,
     price,

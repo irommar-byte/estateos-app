@@ -80,3 +80,33 @@ export function profilePremiumCardShellStyle(isDark: boolean, radius = 20): View
         }),
   };
 }
+
+/** Delikatny skórzany ton — wspólny dla Pakiet Plus, Investor Pro i Przywróć zakupy. */
+export function profileShopLeatherBg(isDark: boolean): string {
+  return isDark ? '#2E2924' : '#F3EBE0';
+}
+
+export function profileShopLeatherShellStyle(isDark: boolean): ViewStyle {
+  return {
+    borderRadius: 14,
+    shadowColor: isDark ? '#000000' : '#8B7355',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: isDark ? (Platform.OS === 'ios' ? 0.38 : 0.28) : Platform.OS === 'ios' ? 0.14 : 0.1,
+    shadowRadius: 14,
+    elevation: 7,
+  };
+}
+
+export function profileShopLeatherFaceStyle(isDark: boolean): ViewStyle {
+  return {
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: profileShopLeatherBg(isDark),
+    borderColor: isDark ? 'rgba(210,180,140,0.2)' : 'rgba(139,115,85,0.16)',
+  };
+}
+
+export function profileShopLeatherPressedBg(isDark: boolean): string {
+  return isDark ? 'rgba(210,180,140,0.1)' : 'rgba(139,115,85,0.1)';
+}

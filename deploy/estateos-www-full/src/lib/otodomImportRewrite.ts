@@ -1,4 +1,5 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { capitalizeImportTitle } from '@/lib/otodomImport';
 
 export type OtodomPresentationCopy = {
   title: string;
@@ -80,13 +81,13 @@ function refineTitle(draft: OtodomImportDraft): string {
   if (location) parts.push(`— ${location}`);
 
   const generated = parts.join(' ').replace(/\s+/g, ' ').trim();
-  if (!original || original.length < 8) return generated;
+  if (!original || original.length < 8) return capitalizeImportTitle(generated);
 
   if (normalizeForCompare(original) === normalizeForCompare(generated)) {
-    return original;
+    return capitalizeImportTitle(original);
   }
 
-  return generated.length >= 16 ? generated : original;
+  return capitalizeImportTitle(generated.length >= 16 ? generated : original);
 }
 
 function normalizeForCompare(value: string): string {
@@ -207,7 +208,7 @@ Odpowiedz wyłącznie JSON: {"title":"...","descriptionHtml":"..."}`;
     if (!title || !descriptionHtml) return null;
 
     return {
-      title,
+      title: capitalizeImportTitle(title),
       descriptionHtml,
       descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
     };

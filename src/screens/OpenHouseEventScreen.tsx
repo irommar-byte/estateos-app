@@ -91,6 +91,21 @@ export default function OpenHouseEventScreen() {
     }, [load])
   );
 
+  const selectedSlot = useMemo(() => {
+    if (!event || !selectedSlotId) return null;
+    return event.slots.find((s) => s.id === selectedSlotId) ?? null;
+  }, [event, selectedSlotId]);
+
+  const maxGuests = Math.min(5, selectedSlot?.capacity ?? 5);
+  const guestOptions = useMemo(
+    () => Array.from({ length: maxGuests }, (_, i) => i + 1),
+    [maxGuests]
+  );
+
+  useEffect(() => {
+    if (guestCount > maxGuests) setGuestCount(maxGuests);
+  }, [maxGuests, guestCount]);
+
   const formatSlot = (slot: OpenHouseSlotRecord, visitMode: OpenHouseVisitMode = 'FLEX') => {
     const fmt = localeToDateFormat(locale);
     const start = new Date(slot.startsAt);
@@ -206,17 +221,6 @@ export default function OpenHouseEventScreen() {
       </View>
     );
   }
-
-  const selectedSlot = event.slots.find((s) => s.id === selectedSlotId) ?? null;
-  const maxGuests = Math.min(5, selectedSlot?.capacity ?? 5);
-  const guestOptions = useMemo(
-    () => Array.from({ length: maxGuests }, (_, i) => i + 1),
-    [maxGuests]
-  );
-
-  useEffect(() => {
-    if (guestCount > maxGuests) setGuestCount(maxGuests);
-  }, [maxGuests, guestCount]);
 
   const myReservation = selectedSlot?.myReservation;
   const listingCurrency = normalizeListingCurrency(event.offer.priceCurrency);

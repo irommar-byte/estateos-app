@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { profileShopLeatherBg, profileShopLeatherPressedBg } from './profileCardElevation';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -31,6 +32,7 @@ type Props = {
   isActive: boolean;
   defaultExpanded?: boolean;
   embedded?: boolean;
+  leatherSurface?: boolean;
   showRestore?: boolean;
   footer?: React.ReactNode;
   onBuy: () => void;
@@ -120,21 +122,33 @@ export default function InvestorProShopPanel({
   isActive,
   defaultExpanded = true,
   embedded = false,
+  leatherSurface = false,
   showRestore = true,
   footer,
   onBuy,
   onRestore,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const panelBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const panelBorder = isActive
+  const panelBg = leatherSurface ? profileShopLeatherBg(isDark) : isDark ? '#1C1C1E' : '#FFFFFF';
+  const pressedBg = leatherSurface ? profileShopLeatherPressedBg(isDark) : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const panelBorder = leatherSurface
+    ? isDark
+      ? 'rgba(210,180,140,0.24)'
+      : 'rgba(139,115,85,0.18)'
+    : isActive
     ? isDark
       ? 'rgba(251,191,36,0.72)'
       : 'rgba(245,158,11,0.78)'
     : isDark
       ? 'rgba(245,158,11,0.32)'
       : 'rgba(245,158,11,0.42)';
-  const divider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const divider = leatherSurface
+    ? isDark
+      ? 'rgba(210,180,140,0.16)'
+      : 'rgba(139,115,85,0.12)'
+    : isDark
+      ? 'rgba(255,255,255,0.08)'
+      : 'rgba(0,0,0,0.06)';
   const accent = isActive ? '#F59E0B' : '#0A84FF';
 
   return (
@@ -223,7 +237,7 @@ export default function InvestorProShopPanel({
                 disabled={buying}
                 style={({ pressed }) => [
                   styles.actionRow,
-                  pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                  pressed && { backgroundColor: pressedBg },
                   buying && { opacity: 0.7 },
                 ]}
               >
@@ -251,7 +265,7 @@ export default function InvestorProShopPanel({
               disabled={restoring}
               style={({ pressed }) => [
                 styles.actionRow,
-                pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                pressed && { backgroundColor: pressedBg },
                 restoring && { opacity: 0.7 },
               ]}
             >

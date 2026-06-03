@@ -6,6 +6,11 @@ import BonusCouponsSection from './BonusCouponsSection';
 import PlusPackageShopPanel from './PlusPackageShopPanel';
 import InvestorProShopPanel from './InvestorProShopPanel';
 import ProfileCardShell from './ProfileCardShell';
+import {
+  profileShopLeatherFaceStyle,
+  profileShopLeatherPressedBg,
+  profileShopLeatherShellStyle,
+} from './profileCardElevation';
 
 type Props = {
   isDark: boolean;
@@ -56,6 +61,24 @@ type Props = {
   };
 };
 
+function ShopLeatherCard({
+  isDark,
+  children,
+}: {
+  isDark: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <ProfileCardShell
+      isDark={isDark}
+      style={profileShopLeatherShellStyle(isDark)}
+      faceStyle={profileShopLeatherFaceStyle(isDark)}
+    >
+      {children}
+    </ProfileCardShell>
+  );
+}
+
 function ShopRestoreRow({
   isDark,
   restoreLabel,
@@ -69,13 +92,15 @@ function ShopRestoreRow({
   restoring: boolean;
   onRestore: () => void;
 }) {
+  const pressedBg = profileShopLeatherPressedBg(isDark);
+
   return (
     <Pressable
       onPress={onRestore}
       disabled={restoring}
       style={({ pressed }) => [
         styles.restoreRow,
-        pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+        pressed && { backgroundColor: pressedBg },
         restoring && { opacity: 0.7 },
       ]}
     >
@@ -103,8 +128,6 @@ export default function ProfileShopSection({
   investorPro,
   restore,
 }: Props) {
-  const dividerColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-
   return (
     <>
       <Text style={styles.sectionTitle}>{sectionTitle}</Text>
@@ -121,66 +144,70 @@ export default function ProfileShopSection({
           emptyHint={bonusCoupons.emptyHint}
           onRequestDismiss={bonusCoupons.onRequestDismiss}
         />
-
-        <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-
-        <PlusPackageShopPanel
-          embedded
-          isDark={isDark}
-          showRestore={false}
-          title={plus.title}
-          plusSlots={plus.plusSlots}
-          hasPlusAvailable={plus.hasPlusAvailable}
-          counterLabel={plus.counterLabel}
-          expiryLabel={plus.expiryLabel}
-          daysLabel={plus.daysLabel}
-          buyLabel={plus.buyLabel}
-          buySubtitle={plus.buySubtitle}
-          restoreLabel={restore.label}
-          restoreSubtitle={restore.subtitle}
-          restoring={restore.restoring}
-          buying={plus.buying}
-          defaultExpanded={plus.defaultExpanded}
-          footer={plus.footer}
-          onBuy={plus.onBuy}
-          onRestore={restore.onRestore}
-        />
-
-        <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-
-        <InvestorProShopPanel
-          embedded
-          isDark={isDark}
-          showRestore={false}
-          title={investorPro.title}
-          statusLabel={investorPro.statusLabel}
-          metaLabel={investorPro.metaLabel}
-          expiryLabel={investorPro.expiryLabel}
-          trialBadge={investorPro.trialBadge}
-          priceLine={investorPro.priceLine}
-          buyLabel={investorPro.buyLabel}
-          buySubtitle={investorPro.buySubtitle}
-          restoreLabel={restore.label}
-          restoreSubtitle={restore.subtitle}
-          restoring={restore.restoring}
-          buying={investorPro.buying}
-          isActive={investorPro.isActive}
-          defaultExpanded={investorPro.defaultExpanded}
-          footer={investorPro.footer}
-          onBuy={investorPro.onBuy}
-          onRestore={restore.onRestore}
-        />
-
-        <View style={[styles.divider, { backgroundColor: dividerColor }]} />
-
-        <ShopRestoreRow
-          isDark={isDark}
-          restoreLabel={restore.label}
-          restoreSubtitle={restore.subtitle}
-          restoring={restore.restoring}
-          onRestore={restore.onRestore}
-        />
       </ProfileCardShell>
+
+      <View style={styles.packagesStack}>
+        <ShopLeatherCard isDark={isDark}>
+          <PlusPackageShopPanel
+            embedded
+            leatherSurface
+            isDark={isDark}
+            showRestore={false}
+            title={plus.title}
+            plusSlots={plus.plusSlots}
+            hasPlusAvailable={plus.hasPlusAvailable}
+            counterLabel={plus.counterLabel}
+            expiryLabel={plus.expiryLabel}
+            daysLabel={plus.daysLabel}
+            buyLabel={plus.buyLabel}
+            buySubtitle={plus.buySubtitle}
+            restoreLabel={restore.label}
+            restoreSubtitle={restore.subtitle}
+            restoring={restore.restoring}
+            buying={plus.buying}
+            defaultExpanded={plus.defaultExpanded}
+            footer={plus.footer}
+            onBuy={plus.onBuy}
+            onRestore={restore.onRestore}
+          />
+        </ShopLeatherCard>
+
+        <ShopLeatherCard isDark={isDark}>
+          <InvestorProShopPanel
+            embedded
+            leatherSurface
+            isDark={isDark}
+            showRestore={false}
+            title={investorPro.title}
+            statusLabel={investorPro.statusLabel}
+            metaLabel={investorPro.metaLabel}
+            expiryLabel={investorPro.expiryLabel}
+            trialBadge={investorPro.trialBadge}
+            priceLine={investorPro.priceLine}
+            buyLabel={investorPro.buyLabel}
+            buySubtitle={investorPro.buySubtitle}
+            restoreLabel={restore.label}
+            restoreSubtitle={restore.subtitle}
+            restoring={restore.restoring}
+            buying={investorPro.buying}
+            isActive={investorPro.isActive}
+            defaultExpanded={investorPro.defaultExpanded}
+            footer={investorPro.footer}
+            onBuy={investorPro.onBuy}
+            onRestore={restore.onRestore}
+          />
+        </ShopLeatherCard>
+
+        <ShopLeatherCard isDark={isDark}>
+          <ShopRestoreRow
+            isDark={isDark}
+            restoreLabel={restore.label}
+            restoreSubtitle={restore.subtitle}
+            restoring={restore.restoring}
+            onRestore={restore.onRestore}
+          />
+        </ShopLeatherCard>
+      </View>
     </>
   );
 }
@@ -195,9 +222,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 16,
   },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    marginHorizontal: 16,
+  packagesStack: {
+    marginTop: 10,
+    gap: 10,
   },
   restoreRow: {
     flexDirection: 'row',

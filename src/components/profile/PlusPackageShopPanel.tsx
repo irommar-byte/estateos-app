@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { profileShopLeatherBg, profileShopLeatherPressedBg } from './profileCardElevation';
 
 type Props = {
   isDark: boolean;
@@ -24,6 +25,7 @@ type Props = {
   buying: boolean;
   defaultExpanded?: boolean;
   embedded?: boolean;
+  leatherSurface?: boolean;
   showRestore?: boolean;
   footer?: React.ReactNode;
   onBuy: () => void;
@@ -46,21 +48,33 @@ export default function PlusPackageShopPanel({
   buying,
   defaultExpanded = true,
   embedded = false,
+  leatherSurface = false,
   showRestore = true,
   footer,
   onBuy,
   onRestore,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const panelBg = isDark ? '#1C1C1E' : '#FFFFFF';
-  const panelBorder = hasPlusAvailable
+  const panelBg = leatherSurface ? profileShopLeatherBg(isDark) : isDark ? '#1C1C1E' : '#FFFFFF';
+  const pressedBg = leatherSurface ? profileShopLeatherPressedBg(isDark) : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const panelBorder = leatherSurface
+    ? isDark
+      ? 'rgba(210,180,140,0.24)'
+      : 'rgba(139,115,85,0.18)'
+    : hasPlusAvailable
     ? isDark
       ? 'rgba(16,185,129,0.55)'
       : 'rgba(16,185,129,0.62)'
     : isDark
       ? 'rgba(16,185,129,0.28)'
       : 'rgba(16,185,129,0.35)';
-  const divider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const divider = leatherSurface
+    ? isDark
+      ? 'rgba(210,180,140,0.16)'
+      : 'rgba(139,115,85,0.12)'
+    : isDark
+      ? 'rgba(255,255,255,0.08)'
+      : 'rgba(0,0,0,0.06)';
   const accent = hasPlusAvailable ? '#10B981' : '#0A84FF';
 
   return (
@@ -115,7 +129,7 @@ export default function PlusPackageShopPanel({
             disabled={buying}
             style={({ pressed }) => [
               styles.actionRow,
-              pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+              pressed && { backgroundColor: pressedBg },
               buying && { opacity: 0.7 },
             ]}
           >
@@ -141,7 +155,7 @@ export default function PlusPackageShopPanel({
               disabled={restoring}
               style={({ pressed }) => [
                 styles.actionRow,
-                pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' },
+                pressed && { backgroundColor: pressedBg },
                 restoring && { opacity: 0.7 },
               ]}
             >

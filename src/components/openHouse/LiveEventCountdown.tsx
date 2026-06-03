@@ -7,6 +7,7 @@ type Props = {
   startsAt: string | null;
   accent?: string;
   muted?: string;
+  compact?: boolean;
 };
 
 function pad2(n: number) {
@@ -18,16 +19,18 @@ function Unit({
   label,
   accent,
   muted,
+  compact,
 }: {
   value: string;
   label: string;
   accent: string;
   muted: string;
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.unit}>
-      <Text style={[styles.unitValue, { color: accent }]}>{value}</Text>
-      <Text style={[styles.unitLabel, { color: muted }]}>{label}</Text>
+    <View style={[styles.unit, compact && styles.unitCompact]}>
+      <Text style={[compact ? styles.unitValueCompact : styles.unitValue, { color: accent }]}>{value}</Text>
+      {!compact ? <Text style={[styles.unitLabel, { color: muted }]}>{label}</Text> : null}
     </View>
   );
 }
@@ -36,6 +39,7 @@ export default function LiveEventCountdown({
   startsAt,
   accent = '#10B981',
   muted = 'rgba(16,185,129,0.65)',
+  compact = false,
 }: Props) {
   const { t } = useI18n();
   const [parts, setParts] = useState(() => getCountdownParts(startsAt));
@@ -49,7 +53,17 @@ export default function LiveEventCountdown({
 
   if (parts.past) {
     return (
-      <Text style={[styles.past, { color: muted }]}>{t('openHouse.live.countdownStarted')}</Text>
+      <Text style={[compact ? styles.pastCompact : styles.past, { color: muted }]}>
+        {t('openHouse.live.countdownStarted')}
+      </Text>
+    );
+  }
+
+  if (compact) {
+    return (
+      <Text style={[styles.inlineCompact, { color: accent }]}>
+        {pad2(parts.days)}:{pad2(parts.hours)}:{pad2(parts.minutes)}:{pad2(parts.seconds)}
+      </Text>
     );
   }
 
@@ -74,8 +88,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   unit: { alignItems: 'center', minWidth: 36 },
+  unitCompact: { minWidth: 0 },
   unitValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  unitValueCompact: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
   unitLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 2 },
   sep: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
   past: { fontSize: 12, fontWeight: '700', marginTop: 8 },
+  pastCompact: { fontSize: 10, fontWeight: '700' },
+  inlineCompact: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });

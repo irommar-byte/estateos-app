@@ -17,12 +17,14 @@ import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
 import { useI18n, getAppLocale } from '../../i18n';
 import { formatOpenHouseLiveDetail } from './openHouseLiveFormat';
 
-const HERO_HOLD_MS = 1600;
-const MORPH_MS = 720;
-const AFTER_TYPE_MS = 7000;
-const ENTER_RISE = 48;
-const TYPE_MS = 28;
+const HERO_HOLD_MS = 1400;
+const MORPH_MS = 480;
+const AFTER_TYPE_MS = 2000;
+const ENTER_RISE = 40;
+const TYPE_MS = 26;
 const GENIE_MS = 620;
+/** Stała wysokość — bez poszerzania po morphie. */
+const BANNER_H = 46;
 
 function useTypewriter(text: string, active: boolean, msPerChar = TYPE_MS) {
   const [visible, setVisible] = useState('');
@@ -51,6 +53,54 @@ function useTypewriter(text: string, active: boolean, msPerChar = TYPE_MS) {
 
   return { visible, done };
 }
+
+/** Tekst literka po literce; gdy rośnie — góra znika, widoczny ogon (teleprompter). */
+function TypewriterTeleprompter({
+  text,
+  active,
+  textStyle,
+  cursorStyle,
+  laneHeight = 32,
+  msPerChar = TYPE_MS,
+  onDoneChange,
+}: {
+  text: string;
+  active: boolean;
+  textStyle: object;
+  cursorStyle: object;
+  laneHeight?: number;
+  msPerChar?: number;
+  onDoneChange?: (done: boolean) => void;
+}) {
+  const { visible, done } = useTypewriter(text, active, msPerChar);
+
+  useEffect(() => {
+    onDoneChange?.(done);
+  }, [done, onDoneChange]);
+
+  return (
+    <View style={[teleStyles.lane, { height: laneHeight }]}>
+      <View style={teleStyles.inner}>
+        <Text style={textStyle}>
+          {visible}
+          {active && !done ? <Text style={cursorStyle}>|</Text> : null}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const teleStyles = StyleSheet.create({
+  lane: {
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  inner: {
+    justifyContent: 'flex-end',
+  },
+});
 
 type Props = {
   bottom: number;
@@ -89,29 +139,20 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
     return formatOpenHouseLiveDetail(active, locale);
   }, [active, locale]);
 
-  const isTyping = phase === 'typing';
-  const { visible: typedDetail, done: typingDone } = useTypewriter(detail, isTyping);
+  const [typingDone, setTypingDone] = useState(false);
   const isGenie = phase === 'genie';
 
+  useEffect(() => {
+    if (phase !== 'typing') setTypingDone(false);
+  }, [phase]);
+
   const heroOpacity = morphT.interpolate({
-    inputRange: [0, 0.55, 1],
-    outputRange: [1, 0.35, 0],
-  });
-  const heroScale = morphT.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 0.78],
-  });
-  const heroShiftY = morphT.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -6],
+    inputRange: [0, 0.45, 1],
+    outputRange: [1, 0, 0],
   });
   const compactOpacity = morphT.interpolate({
-    inputRange: [0, 0.2, 1],
-    outputRange: [0, 0.55, 1],
-  });
-  const compactScale = morphT.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.9, 1],
+    inputRange: [0, 0.35, 1],
+    outputRange: [0, 0, 1],
   });
 
   const clearHideTimer = useCallback(() => {
@@ -143,7 +184,7 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
     Animated.timing(morphT, {
       toValue: 1,
       duration: MORPH_MS,
-      easing: Easing.bezier(0.33, 0, 0.18, 1),
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (finished) setPhase('typing');
@@ -223,8 +264,6 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
     const seq = sequenceKeyRef.current;
     resetMotion();
     translateY.setValue(ENTER_RISE);
-    scaleX.setValue(0.96);
-    scaleY.setValue(0.96);
 
     Animated.parallel([
       Animated.spring(translateY, {
@@ -233,21 +272,9 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
         tension: 68,
         useNativeDriver: true,
       }),
-      Animated.spring(scaleX, {
-        toValue: 1,
-        friction: 9,
-        tension: 76,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleY, {
-        toValue: 1,
-        friction: 9,
-        tension: 76,
-        useNativeDriver: true,
-      }),
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 360,
+        duration: 340,
         useNativeDriver: true,
       }),
     ]).start(({ finished }) => {
@@ -257,7 +284,7 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
         runMorphToCompact();
       }, HERO_HOLD_MS);
     });
-  }, [clearHideTimer, schedule, resetMotion, translateY, scaleX, scaleY, opacity, runMorphToCompact]);
+  }, [clearHideTimer, schedule, resetMotion, translateY, opacity, runMorphToCompact]);
 
   useEffect(() => {
     if (phase === 'hero' && items.length) runHeroEnter();
@@ -288,8 +315,8 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
   if (phase === 'hidden' || phase === 'docked') return null;
 
   const alertHead = t('openHouse.ticker.alertHeadline');
-  const showHeroLayer = phase === 'hero';
-  const showCompactLayer = phase === 'hero' || phase === 'typing' || phase === 'genie';
+  const showHero = phase === 'hero';
+  const showCompact = phase === 'hero' || phase === 'typing' || phase === 'genie';
 
   return (
     <Animated.View
@@ -325,35 +352,18 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
               end={{ x: 1, y: 0 }}
               style={styles.gradient}
             >
-              {showHeroLayer ? (
-                <Animated.View
-                  style={[
-                    styles.heroBlock,
-                    styles.layer,
-                    {
-                      opacity: heroOpacity,
-                      transform: [{ scale: heroScale }, { translateY: heroShiftY }],
-                    },
-                  ]}
-                  pointerEvents="auto"
-                >
+              {showHero ? (
+                <Animated.View style={[styles.heroBlock, { opacity: heroOpacity }]} pointerEvents="none">
                   <View style={styles.liveDotLg} />
-                  <Text style={styles.heroText}>{alertHead}</Text>
+                  <Text style={styles.heroText} numberOfLines={1}>
+                    {alertHead}
+                  </Text>
                 </Animated.View>
               ) : null}
 
-              {showCompactLayer ? (
+              {showCompact ? (
                 <Animated.View
-                  style={[
-                    styles.compactRow,
-                    phase === 'hero' ? styles.layer : null,
-                    phase === 'hero'
-                      ? {
-                          opacity: compactOpacity,
-                          transform: [{ scale: compactScale }],
-                        }
-                      : null,
-                  ]}
+                  style={[styles.compactRow, { opacity: phase === 'hero' ? compactOpacity : 1 }]}
                   pointerEvents={phase === 'hero' ? 'none' : 'auto'}
                 >
                   <View style={styles.alertBlock}>
@@ -363,14 +373,18 @@ export default function OpenHouseLiveBanner({ bottom }: Props) {
                     </Text>
                   </View>
                   <View style={styles.detailWrap}>
-                    <Text style={styles.detailText}>
-                      {phase === 'typing' ? typedDetail : phase === 'hero' ? '' : detail}
-                      {phase === 'typing' && !typingDone ? (
-                        <Text style={styles.cursor}>|</Text>
-                      ) : null}
-                    </Text>
+                    {phase === 'typing' || phase === 'genie' ? (
+                      <TypewriterTeleprompter
+                        text={detail}
+                        active={phase === 'typing'}
+                        textStyle={styles.detailText}
+                        cursorStyle={styles.cursor}
+                        laneHeight={32}
+                        onDoneChange={setTypingDone}
+                      />
+                    ) : null}
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#FFFFFF" style={styles.chevron} />
+                  <Ionicons name="chevron-forward" size={14} color="#FFFFFF" style={styles.chevron} />
                 </Animated.View>
               ) : null}
             </LinearGradient>
@@ -393,94 +407,93 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   pressable: {
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 10,
   },
   pressableGenie: {
     overflow: 'visible',
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
   },
   cardBody: {
-    minHeight: 52,
+    height: BANNER_H,
   },
   gradient: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    height: BANNER_H,
+    paddingHorizontal: 12,
     justifyContent: 'center',
-    minHeight: 52,
-  },
-  layer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
   heroBlock: {
+    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingHorizontal: 12,
   },
   liveDotLg: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#FFFFFF',
   },
   heroText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.45,
     textTransform: 'uppercase',
-    textAlign: 'center',
+    flexShrink: 1,
   },
   compactRow: {
+    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    minHeight: 44,
+    gap: 8,
+    paddingHorizontal: 12,
   },
   alertBlock: {
     flexShrink: 0,
-    maxWidth: 118,
+    maxWidth: 108,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingRight: 10,
+    gap: 5,
+    paddingRight: 8,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: 'rgba(255,255,255,0.35)',
   },
   liveDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: '#FFFFFF',
   },
   alertText: {
     flex: 1,
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: 0.35,
     textTransform: 'uppercase',
-    lineHeight: 13,
+    lineHeight: 11,
   },
   detailWrap: {
     flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
+    height: 32,
+    overflow: 'hidden',
   },
   detailText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '600',
-    lineHeight: 18,
+    lineHeight: 14,
   },
   cursor: {
     color: 'rgba(255,255,255,0.85)',
