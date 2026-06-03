@@ -1,7 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'Na żywo',
-    openHouseInvite: '{city} · {title} · {date} · wolne miejsca: {spots}',
+    openHouseInvite: '{{city}} · {{title}} · {{date}} · wolne miejsca: {{spots}}',
     tapToReserve: 'Dotknij, aby zobaczyć i zarezerwować termin',
   },
   hub: {
@@ -15,8 +15,8 @@ export const openHouse = {
     emptyHost: 'Nie masz jeszcze zaplanowanych dni otwartych.',
     emptyReservations: 'Nie masz aktywnych rezerwacji.',
     proRequired: 'Funkcja dostępna w pakiecie Inwestor Pro.',
-    spotsLeft: '{n} wolnych miejsc',
-    nextSlot: 'Najbliższy termin: {date}',
+    spotsLeft: '{{n}} wolnych miejsc',
+    nextSlot: 'Najbliższy termin: {{date}}',
     viewDetails: 'Szczegóły',
   },
   create: {
@@ -60,10 +60,13 @@ export const openHouse = {
     cancelSuccess: 'Rezerwacja anulowana.',
     manageCancel: 'Anuluj wydarzenie',
     confirmCancelEvent: 'Czy na pewno chcesz anulować ten dzień otwarty?',
+    hostViewTitle: 'Twój dzień otwarty',
+    hostNoGuests: 'Brak zapisanych gości — udostępnij link z ogłoszenia lub poczekaj na rezerwacje.',
+    slotOccupancy: '{{reserved}}/{{capacity}} miejsc zajętych',
   },
   offerBanner: {
     title: 'Dzień otwartych drzwi',
-    subtitle: 'Najbliższy termin: {date} · {spots} wolnych miejsc',
+    subtitle: 'Najbliższy termin: {{date}} · {{spots}} wolnych miejsc',
     cta: 'Zarezerwuj wizytę',
   },
 };

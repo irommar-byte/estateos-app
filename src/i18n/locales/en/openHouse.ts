@@ -1,7 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'Live',
-    openHouseInvite: '{city} · {title} · {date} · spots left: {spots}',
+    openHouseInvite: '{{city}} · {{title}} · {{date}} · spots left: {{spots}}',
     tapToReserve: 'Tap to view and reserve a slot',
   },
   hub: {
@@ -15,8 +15,8 @@ export const openHouse = {
     emptyHost: 'You have no open house events yet.',
     emptyReservations: 'You have no active reservations.',
     proRequired: 'Available with Investor Pro.',
-    spotsLeft: '{n} spots left',
-    nextSlot: 'Next slot: {date}',
+    spotsLeft: '{{n}} spots left',
+    nextSlot: 'Next slot: {{date}}',
     viewDetails: 'Details',
   },
   create: {
@@ -60,10 +60,13 @@ export const openHouse = {
     cancelSuccess: 'Reservation cancelled.',
     manageCancel: 'Cancel event',
     confirmCancelEvent: 'Cancel this open house event?',
+    hostViewTitle: 'Your open house',
+    hostNoGuests: 'No guests booked yet — share your listing or wait for reservations.',
+    slotOccupancy: '{{reserved}}/{{capacity}} spots taken',
   },
   offerBanner: {
     title: 'Open house',
-    subtitle: 'Next slot: {date} · {spots} spots left',
+    subtitle: 'Next slot: {{date}} · {{spots}} spots left',
     cta: 'Book a visit',
   },
 };

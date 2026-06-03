@@ -115,6 +115,9 @@ export default function OpenHouseLiveTicker({ enabled = true }: Props) {
       pointerEvents="box-none"
     >
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={t('openHouse.ticker.tapToReserve')}
         onPress={() => navigation.navigate('OpenHouseEvent', { eventId: active.eventId })}
         style={({ pressed }) => [styles.pressable, pressed && { opacity: 0.92 }]}
       >

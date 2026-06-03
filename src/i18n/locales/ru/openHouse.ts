@@ -1,7 +1,7 @@
 export const openHouse = {
   ticker: {
     label: 'В эфире',
-    openHouseInvite: '{city} · {title} · {date} · мест: {spots}',
+    openHouseInvite: '{{city}} · {{title}} · {{date}} · мест: {{spots}}',
     tapToReserve: 'Нажмите, чтобы посмотреть и забронировать',
   },
   hub: {
@@ -15,8 +15,8 @@ export const openHouse = {
     emptyHost: 'У вас пока нет запланированных событий.',
     emptyReservations: 'Нет активных бронирований.',
     proRequired: 'Доступно в пакете Investor Pro.',
-    spotsLeft: 'Свободно мест: {n}',
-    nextSlot: 'Ближайший слот: {date}',
+    spotsLeft: 'Свободно мест: {{n}}',
+    nextSlot: 'Ближайший слот: {{date}}',
     viewDetails: 'Подробнее',
   },
   create: {
@@ -60,10 +60,13 @@ export const openHouse = {
     cancelSuccess: 'Бронь отменена.',
     manageCancel: 'Отменить событие',
     confirmCancelEvent: 'Отменить это событие?',
+    hostViewTitle: 'Ваш день открытых дверей',
+    hostNoGuests: 'Пока нет гостей — поделитесь объявлением или дождитесь бронирований.',
+    slotOccupancy: 'Занято {{reserved}}/{{capacity}}',
   },
   offerBanner: {
     title: 'День открытых дверей',
-    subtitle: 'Ближайший слот: {date} · свободно: {spots}',
+    subtitle: 'Ближайший слот: {{date}} · свободно: {{spots}}',
     cta: 'Записаться',
   },
 };

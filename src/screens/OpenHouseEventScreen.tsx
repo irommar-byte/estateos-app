@@ -24,7 +24,8 @@ import {
   reserveOpenHouseSlot,
   updateOpenHouseEvent,
 } from '../services/openHouseService';
-import { formatCurrencySuffix } from '../money/format';
+import { normalizeListingCurrency } from '../money/convert';
+import { formatAmountWithCurrency } from '../money/format';
 
 export default function OpenHouseEventScreen() {
   const navigation = useNavigation<any>();
@@ -140,6 +141,9 @@ export default function OpenHouseEventScreen() {
 
   const selectedSlot = event.slots.find((s) => s.id === selectedSlotId) ?? null;
   const myReservation = selectedSlot?.myReservation;
+  const listingCurrency = normalizeListingCurrency(event.offer.priceCurrency);
+  const priceLabel = formatAmountWithCurrency(event.offer.price, listingCurrency);
+  const hasAnyReservation = event.slots.some((s) => s.reservations.length > 0);
 
   return (
     <View style={[styles.root, { backgroundColor: bg, paddingTop: insets.top }]}>
@@ -148,7 +152,7 @@ export default function OpenHouseEventScreen() {
           <Ionicons name="chevron-back" size={28} color={text} />
         </Pressable>
         <Text style={[styles.title, { color: text }]} numberOfLines={1}>
-          {event.title}
+          {event.isHost ? t('openHouse.event.hostViewTitle') : event.title}
         </Text>
       </View>
 
@@ -164,7 +168,7 @@ export default function OpenHouseEventScreen() {
             {event.offer.street ? ` · ${event.offer.street}` : ''}
           </Text>
           <Text style={[styles.price, { color: text }]}>
-            {formatCurrencySuffix(event.offer.price, event.offer.priceCurrency as any)} · {event.offer.area} m²
+            {priceLabel} · {event.offer.area} m²
             {event.offer.rooms ? ` · ${event.offer.rooms} pok.` : ''}
           </Text>
           {event.description ? <Text style={{ color: muted, lineHeight: 20 }}>{event.description}</Text> : null}
@@ -176,6 +180,13 @@ export default function OpenHouseEventScreen() {
             <Ionicons name="open-outline" size={16} color="#F59E0B" />
           </Pressable>
         </View>
+
+        {event.isHost && !hasAnyReservation ? (
+          <View style={[styles.hostHint, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.35)' }]}>
+            <Ionicons name="people-outline" size={20} color="#F59E0B" />
+            <Text style={[styles.hostHintText, { color: text }]}>{t('openHouse.event.hostNoGuests')}</Text>
+          </View>
+        ) : null}
 
         <View style={[styles.section, { backgroundColor: card }]}>
           <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.slotsSection')}</Text>
@@ -199,9 +210,14 @@ export default function OpenHouseEventScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.slotTime, { color: text }]}>{formatSlot(slot)}</Text>
                   <Text style={{ color: muted, fontSize: 13 }}>
-                    {slot.isFull
-                      ? t('openHouse.event.full')
-                      : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
+                    {event.isHost
+                      ? t('openHouse.event.slotOccupancy', {
+                          reserved: slot.reservedCount,
+                          capacity: slot.capacity,
+                        })
+                      : slot.isFull
+                        ? t('openHouse.event.full')
+                        : t('openHouse.hub.spotsLeft', { n: slot.spotsLeft })}
                   </Text>
                 </View>
                 {booked ? (
@@ -215,7 +231,7 @@ export default function OpenHouseEventScreen() {
           })}
         </View>
 
-        {event.isHost && event.slots.some((s) => s.reservations.length > 0) ? (
+        {event.isHost && hasAnyReservation ? (
           <View style={[styles.section, { backgroundColor: card }]}>
             <Text style={[styles.sectionTitle, { color: text }]}>{t('openHouse.event.reservationsSection')}</Text>
             {event.slots.flatMap((slot) =>
@@ -305,6 +321,16 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 20, fontWeight: '800' },
   section: { borderRadius: 16, padding: 16, gap: 10 },
   sectionTitle: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  hostHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginHorizontal: 16,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  hostHintText: { flex: 1, fontSize: 14, lineHeight: 20 },
   hero: { width: '100%', height: 180, borderRadius: 14 },
   propertyTitle: { fontSize: 20, fontWeight: '800', marginTop: 4 },
   price: { fontSize: 16, fontWeight: '700' },
