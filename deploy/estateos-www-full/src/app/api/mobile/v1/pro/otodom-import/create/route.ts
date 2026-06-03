@@ -5,14 +5,7 @@ import { computeIsProActive } from '@/lib/mobileUserShape';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
-import {
-  consumeAndReserveImportPublication,
-  deleteOfferAfterImportPaymentFailure,
-  ImportPublicationError,
-  type ImportRedemptionInput,
-} from '@/lib/otodomImportPublication';
-import { ImportDraftValidationError, issuesFromCreateErrorMessage } from '@/lib/importDraftValidate';
-import { getCreatePublicationQuote } from '@/lib/offerPublication';
+import type { OtodomPublicationInput } from '@/lib/otodomImportPublication';
 
 async function requireInvestorPro(req: Request) {
   const auth = await authorizeMobile(req);
@@ -56,19 +49,26 @@ function isImportDraft(value: unknown): value is OtodomImportDraft {
   );
 }
 
-function parseRedemption(body: Record<string, unknown>): ImportRedemptionInput | null {
-  const source = String(body?.redemption && typeof body.redemption === 'object'
-    ? (body.redemption as Record<string, unknown>).source
-    : '').trim().toLowerCase();
-  if (source !== 'plus_credit' && source !== 'bonus_coupon' && source !== 'plus_iap') {
-    return null;
+function redemptionToPublication(body: Record<string, unknown>): OtodomPublicationInput | null {
+  const redemption = body?.redemption;
+  if (!redemption || typeof redemption !== 'object') return null;
+  const row = redemption as Record<string, unknown>;
+  const source = String(row.source || '').trim().toLowerCase();
+
+  if (source === 'plus_credit') {
+    return { consumePlusPublication: true };
   }
-  const redemption = body.redemption as Record<string, unknown>;
-  return {
-    source,
-    couponId: String(redemption.couponId || '').trim() || undefined,
-    transactionId: String(redemption.transactionId || '').trim() || undefined,
-  };
+  if (source === 'bonus_coupon') {
+    const bonusCouponId = String(row.couponId || '').trim();
+    if (!bonusCouponId) return null;
+    return { kind: 'bonus_coupon', bonusCouponId };
+  }
+  if (source === 'plus_iap') {
+    const iapTransactionId = String(row.transactionId || '').trim();
+    if (!iapTransactionId) return null;
+    return { kind: 'plus_iap', iapTransactionId };
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -104,21 +104,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const quote = await getCreatePublicationQuote({ userId: gate.userId });
-    const redemption = parseRedemption(body as Record<string, unknown>);
-    if (!redemption) {
+    const publication = redemptionToPublication(body as Record<string, unknown>);
+    if (!publication) {
       return NextResponse.json(
         {
           success: false,
-          errorCode: 'ENTITLEMENT_REQUIRED',
-          message: 'Przed utworzeniem oferty wybierz wykorzystanie kredytu Plus albo kuponu.',
-          quote,
+          code: 'PUBLICATION_REQUIRED',
+          message: 'Przed utworzeniem oferty wybierz kredyt Plus, kupon lub zakup IAP.',
         },
         { status: 422 }
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, gate.userId);
+    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication);
     if (!result.ok) {
       return NextResponse.json(
         {
@@ -133,69 +131,29 @@ export async function POST(req: Request) {
       );
     }
 
-    let payment: Awaited<ReturnType<typeof consumeAndReserveImportPublication>>;
-    try {
-      payment = await consumeAndReserveImportPublication({
-        offerId: result.offerId,
-        userId: gate.userId,
-        redemption,
-      });
-    } catch (paymentError) {
-      await deleteOfferAfterImportPaymentFailure(result.offerId);
-      if (paymentError instanceof ImportPublicationError) {
-        return NextResponse.json(
-          {
-            success: false,
-            errorCode: paymentError.code,
-            message: paymentError.message,
-            quote,
-          },
-          { status: paymentError.status }
-        );
-      }
-      throw paymentError;
-    }
-
     return NextResponse.json({
       success: true,
       offerId: result.offerId,
       offer: result.offer,
       images: result.images,
       presentation: result.presentation,
-      redemption: payment.kind,
-      publicationReserved: true,
-      wallet: {
-        extraListings: payment.extraListings,
-        plusExpiresAt: payment.plusExpiresAt,
-      },
       editUrl: result.editUrl,
       publicUrl: result.publicUrl,
+      publicationReserved: true,
+      redemption: body.redemption ?? null,
       message:
         result.images.uploaded > 0
-          ? `Utworzono ofertę #${result.offerId} (PENDING) z ${result.images.uploaded} zdjęciami. Publikacja opłacona.`
-          : `Utworzono ofertę #${result.offerId} (PENDING). Publikacja opłacona. Zdjęcia uzupełnij ręcznie.`,
+          ? `Utworzono ofertę #${result.offerId} z ${result.images.uploaded} zdjęciami.`
+          : `Utworzono ofertę #${result.offerId}. Uzupełnij zdjęcia w edycji.`,
     });
   } catch (error) {
-    if (error instanceof ImportDraftValidationError) {
+    const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
+    if (message === 'NO_PLUS_CREDIT_AVAILABLE') {
       return NextResponse.json(
-        {
-          success: false,
-          code: error.code,
-          issues: error.issues,
-          message: error.message,
-        },
-        { status: 422 },
+        { success: false, code: 'NO_PLUS_CREDIT', message: 'Brak dostępnego kredytu Pakietu Plus.' },
+        { status: 409 }
       );
     }
-    const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
-    return NextResponse.json(
-      {
-        success: false,
-        code: 'NEEDS_USER_INPUT',
-        issues: issuesFromCreateErrorMessage(message),
-        message,
-      },
-      { status: 422 },
-    );
+    return NextResponse.json({ success: false, message }, { status: 422 });
   }
 }

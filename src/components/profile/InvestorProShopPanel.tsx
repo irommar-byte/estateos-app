@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -39,14 +39,18 @@ type Props = {
 
 function ActiveProDiamond({ size = 28 }: { size?: number }) {
   const shakeX = useSharedValue(0);
-  const [sparkles, setSparkles] = useState<Array<{ id: number; x: number; y: number }>>([]);
+  const sparkleSeq = useRef(0);
+  const [sparkles, setSparkles] = useState<Array<{ id: string; x: number; y: number }>>([]);
 
   const spawnSparkleBurst = (count = 4) => {
-    const batch = Array.from({ length: count }, (_, index) => ({
-      id: Date.now() + index + Math.floor(Math.random() * 1000),
-      x: (Math.random() - 0.5) * 44,
-      y: (Math.random() - 0.5) * 44,
-    }));
+    const batch = Array.from({ length: count }, () => {
+      sparkleSeq.current += 1;
+      return {
+        id: `sparkle-${sparkleSeq.current}`,
+        x: (Math.random() - 0.5) * 44,
+        y: (Math.random() - 0.5) * 44,
+      };
+    });
     setSparkles((prev) => [...prev.slice(-10), ...batch]);
     for (const sparkle of batch) {
       setTimeout(() => {
