@@ -236,6 +236,9 @@ export const radar = {
     allCountriesTotal: '{{count}} listings total',
     selectCountryHint:
       'Only countries with listings in our database are shown — a new country appears automatically when offers are added. Pick one below.',
+    countriesLoading: 'Loading countries…',
+    countriesEmpty:
+      'No listings in “{{mode}}” mode. Switch Buy/Rent or wait for offers to load.',
     countryReadyHint:
       'You can apply filters now — all listings in the selected country will appear on the map.',
     extraParamsTitle: 'Additional parameters',

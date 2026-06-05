@@ -125,7 +125,13 @@ export async function GET(req: Request) {
         ? offers
         : offers.filter((offer: any) => publicVisibleIds.has(Number(offer.id)));
 
-    const offerIds = visibleOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
+    // Po utracie rekordów OfferPublication (np. drift schematu) nie chowaj całego rynku.
+    const publicationGatedOffers =
+      publicVisibleIds !== null && visibleOffers.length === 0 && offers.length > 0
+        ? offers
+        : visibleOffers;
+
+    const offerIds = publicationGatedOffers.map((o) => Number(o.id)).filter((id) => Number.isFinite(id));
     if (!offerIds.length) {
       return NextResponse.json({ success: true, offers: [] }, {
         headers: { 'Cache-Control': 'no-store, max-age=0' },
@@ -145,7 +151,7 @@ export async function GET(req: Request) {
     );
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
 
-    const normalizedOffers = visibleOffers.map((offer: any) => {
+    const normalizedOffers = publicationGatedOffers.map((offer: any) => {
       const viewsCount = viewsMap.get(Number(offer.id)) || 0;
       const legalOffer = applyLegalStatusOverride(offer, legalOverrides);
       return enrichOfferWithLegalAliases({ ...legalOffer, views: viewsCount, viewsCount });

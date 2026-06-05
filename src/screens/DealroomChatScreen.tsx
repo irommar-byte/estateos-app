@@ -50,6 +50,8 @@ import PresentationCountdown from '../components/dealroom/PresentationCountdown'
 import ReportSheet from '../components/ReportSheet';
 import { useI18n, t } from '../i18n';
 import BlockUserSheet from '../components/BlockUserSheet';
+import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessageButton';
+import { openDirectContactChat } from '../utils/openDirectContact';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
 import {
   parseDealEvent,
@@ -364,6 +366,7 @@ export default function DealroomChatScreen() {
   const [mySubmittedReview, setMySubmittedReview] = useState<{ rating: number; review: string; senderId: number | null } | null>(null);
   const [isCounterpartyReviewsOpen, setIsCounterpartyReviewsOpen] = useState(false);
   const [counterpartyPublicProfile, setCounterpartyPublicProfile] = useState<any>(null);
+  const [contactWriteLoading, setContactWriteLoading] = useState(false);
   const [counterpartyProfileLoading, setCounterpartyProfileLoading] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
@@ -2470,6 +2473,19 @@ export default function DealroomChatScreen() {
                 ) : null}
               </ScrollView>
             )}
+            <ProfileWriteMessageButton
+              peerName={counterpartyName}
+              loading={contactWriteLoading}
+              onPress={() => {
+                const peerId = Number(counterpartyUserId || 0);
+                if (!peerId || peerId === Number(user?.id || 0)) return;
+                setContactWriteLoading(true);
+                void openDirectContactChat(navigation, token, peerId, counterpartyName).finally(() => {
+                  setContactWriteLoading(false);
+                  setIsCounterpartyReviewsOpen(false);
+                });
+              }}
+            />
             <Pressable style={styles.reviewModalCloseBtn} onPress={() => setIsCounterpartyReviewsOpen(false)}>
               <Text style={styles.reviewModalCloseTxt}>{t('dealroom.chat.reviewModal.close')}</Text>
             </Pressable>

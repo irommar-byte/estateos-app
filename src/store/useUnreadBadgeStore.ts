@@ -28,17 +28,24 @@ import { create } from 'zustand';
 interface UnreadBadgeState {
   /** Liczba dealroomów wymagających uwagi (suma kart z czerwoną kropką). */
   unreadDealCount: number;
+  /** Nieprzeczytane wiadomości w EstateOS™ Contact. */
+  unreadContactCount: number;
   /** Setter — wywoływany z `DealroomListScreen` po każdym przeliczeniu. */
   setUnreadDealCount: (count: number) => void;
+  setUnreadContactCount: (count: number) => void;
 }
 
 export const useUnreadBadgeStore = create<UnreadBadgeState>((set) => ({
   unreadDealCount: 0,
+  unreadContactCount: 0,
   setUnreadDealCount: (count: number) =>
     set((prev) => {
       const next = Math.max(0, Math.round(Number(count) || 0));
-      // Mikrooptymalizacja — nie wymuszamy re-renderu jeśli wartość się nie zmieniła.
-      // `App.tsx` przerysowuje cały tab bar przy każdej zmianie state'u licznika.
       return prev.unreadDealCount === next ? prev : { ...prev, unreadDealCount: next };
+    }),
+  setUnreadContactCount: (count: number) =>
+    set((prev) => {
+      const next = Math.max(0, Math.round(Number(count) || 0));
+      return prev.unreadContactCount === next ? prev : { ...prev, unreadContactCount: next };
     }),
 }));

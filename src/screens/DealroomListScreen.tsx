@@ -20,7 +20,7 @@ import {
 } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { promptPushNotificationsForMessagesTab } from '../hooks/usePushNotifications';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore } from '../store/useAuthStore';
@@ -41,6 +41,16 @@ import EliteStatusBadges from '../components/EliteStatusBadges';
 import UserRegionFlag from '../components/UserRegionFlag';
 import { formatLocationLabel } from '../constants/locationEcosystem';
 import { useI18n, t } from '../i18n';
+import MessagesSegmentControl, { type MessagesSegment } from '../components/messaging/MessagesSegmentControl';
+import ContactThreadsList from '../components/messaging/ContactThreadsList';
+import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessageButton';
+import {
+  fetchContactThreads,
+  sumContactUnread,
+  type ContactThreadRow,
+} from '../services/contactService';
+import { useContactThreadPrefsStore } from '../store/useContactThreadPrefsStore';
+import { openDirectContactChat } from '../utils/openDirectContact';
 
 /** Kolejność ID na liście — pierwsze na górze sekcji (jak pinezka w Mail). */
 const DEALROOM_PINS_STORAGE_KEY = '@EstateOS_dealroom_pins';
@@ -1104,6 +1114,7 @@ const emptyStateStyles = StyleSheet.create({
 export default function DealroomListScreen() {
   const { t } = useI18n();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { token, user } = useAuthStore() as any; 
   
   const themeMode = useThemeStore((s) => s.themeMode);
@@ -1159,6 +1170,11 @@ export default function DealroomListScreen() {
     active: false,
     finalized: false,
   });
+  const [messagesSegment, setMessagesSegment] = useState<MessagesSegment>('dealrooms');
+  const [contactThreads, setContactThreads] = useState<ContactThreadRow[]>([]);
+  const [contactLoading, setContactLoading] = useState(false);
+  const getContactDisplayName = useContactThreadPrefsStore((s) => s.getDisplayName);
+  const [contactWriteLoading, setContactWriteLoading] = useState(false);
   const [collapsedSectionsHydrated, setCollapsedSectionsHydrated] = useState(false);
   const [expandedOfferStacks, setExpandedOfferStacks] = useState<Record<string, boolean>>({});
 
@@ -1166,6 +1182,7 @@ export default function DealroomListScreen() {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
+    void useContactThreadPrefsStore.getState().hydrate();
   }, []);
 
   // Hydratacja stanu zwinięcia sekcji z AsyncStorage — odzwierciedla wybór
@@ -1388,10 +1405,47 @@ export default function DealroomListScreen() {
    * bez czekania na pełną synchronizację licznika wiadomości.
    */
   const setUnreadBadgeCount = useUnreadBadgeStore((state) => state.setUnreadDealCount);
+  const setUnreadContactBadgeCount = useUnreadBadgeStore((state) => state.setUnreadContactCount);
   useEffect(() => {
     const attentionCount = Object.values(dealNeedsAttentionById).filter(Boolean).length;
     setUnreadBadgeCount(attentionCount);
   }, [dealNeedsAttentionById, setUnreadBadgeCount]);
+
+  const loadContactThreads = useCallback(async () => {
+    if (!token) {
+      setContactThreads([]);
+      setUnreadContactBadgeCount(0);
+      setContactLoading(false);
+      return;
+    }
+    setContactLoading(true);
+    try {
+      const rows = await fetchContactThreads(token);
+      setContactThreads(rows);
+      setUnreadContactBadgeCount(sumContactUnread(rows));
+    } catch {
+      setContactThreads([]);
+    } finally {
+      setContactLoading(false);
+    }
+  }, [token, setUnreadContactBadgeCount]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const seg = route.params?.messagesSegment;
+      if (seg === 'contact' || seg === 'dealrooms') {
+        setMessagesSegment(seg);
+      }
+    }, [route.params?.messagesSegment]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadContactThreads();
+      const timer = setInterval(() => void loadContactThreads(), 5000);
+      return () => clearInterval(timer);
+    }, [loadContactThreads])
+  );
 
   const sectionNeedsAttention = useMemo(
     () => ({
@@ -2367,12 +2421,39 @@ export default function DealroomListScreen() {
           <ChevronLeft size={30} color={COLORS.textMain} strokeWidth={2.5} />
         </Pressable>
         <View style={styles.headerTextWrapper}>
-          <Text style={styles.headerSubtitle}>{t('dealroom.list.headerSubtitle')}</Text>
-          <Text style={styles.headerTitle}>{t('dealroom.list.headerTitle')}</Text>
+          <Text style={styles.headerSubtitle}>{t('tabs.messages')}</Text>
+          <Text style={styles.headerTitle}>
+            {messagesSegment === 'contact' ? t('contact.brand') : t('contact.brandDealrooms')}
+          </Text>
         </View>
       </BlurView>
 
-      {loading ? (
+      <MessagesSegmentControl
+        value={messagesSegment}
+        onChange={setMessagesSegment}
+        contactUnread={sumContactUnread(contactThreads)}
+        dealroomUnread={Object.values(dealNeedsAttentionById).filter(Boolean).length}
+      />
+
+      {messagesSegment === 'contact' ? (
+        <View style={styles.contactListWrap}>
+          <ContactThreadsList
+            threads={contactThreads}
+            loading={contactLoading}
+            colors={COLORS}
+            isDark={isDark}
+            token={token}
+            onOpenThread={(thread) => {
+              navigation.navigate('ContactChat', {
+                threadId: thread.id,
+                peerUserId: thread.peerUserId,
+                peerName: getContactDisplayName(thread.id, thread.peerUserName),
+              });
+            }}
+            onThreadsChanged={loadContactThreads}
+          />
+        </View>
+      ) : loading ? (
         <View style={styles.loaderCenter} />
       ) : visibleDeals.length === 0 ? (
         <DealroomsEmptyState
@@ -2685,6 +2766,22 @@ export default function DealroomListScreen() {
                     </Pressable>
                   ))}
                 </RNScrollView>
+
+                <ProfileWriteMessageButton
+                  peerName={selectedProfile?.user?.name}
+                  loading={contactWriteLoading}
+                  variant={isDark ? 'dark' : 'light'}
+                  onPress={() => {
+                    const peerId = Number(selectedProfile?.user?.id || selectedProfileId || 0);
+                    if (!peerId || peerId === Number(user?.id || 0)) return;
+                    setContactWriteLoading(true);
+                    void openDirectContactChat(navigation, token, peerId, selectedProfile?.user?.name).finally(() => {
+                      setContactWriteLoading(false);
+                      setSelectedProfileId(null);
+                      setSelectedPartnerDeal(null);
+                    });
+                  }}
+                />
               </>
             )}
           </Animated.View>
@@ -2712,6 +2809,7 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   
   loaderCenter: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 50, paddingTop: 16 },
+  contactListWrap: { flex: 1, paddingTop: 8 },
 
   phaseSection: { marginBottom: 28 },
   phaseSectionSurfaceStarted: {

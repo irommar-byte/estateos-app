@@ -59,6 +59,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { deriveOfferDealPresentation } from '../utils/offerDealPresentation';
 import ProfilePublicHeader from '../components/ProfilePublicHeader';
 import ProfileReputationBlock from '../components/ProfileReputationBlock';
+import ProfileWriteMessageButton from '../components/messaging/ProfileWriteMessageButton';
+import { openDirectContactChat } from '../utils/openDirectContact';
 import LegalVerifiedShieldBadge from '../components/LegalVerifiedShieldBadge';
 import { API_URL } from '../config/network';
 import { findWebOfferById } from '../utils/webOffersFallback';
@@ -151,7 +153,7 @@ export default function OfferDetail({ route, navigation }: any) {
    * w kolorze karty** na końcu treści (zamiast przezroczystego paddingu) — inaczej
    * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
-  const [bottomBarHeight, setBottomBarHeight] = useState(160);
+  const [bottomBarHeight, setBottomBarHeight] = useState(240);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -450,6 +452,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [activeProfileData, setActiveProfileData] = useState<any>(null);
   const [activeProfileLoading, setActiveProfileLoading] = useState(false);
   const [activeProfileUserId, setActiveProfileUserId] = useState<number | null>(null);
+  const [contactWriteLoading, setContactWriteLoading] = useState(false);
   const [reviewerNameCache, setReviewerNameCache] = useState<Record<number, string>>({});
   const [profileHistory, setProfileHistory] = useState<number[]>([]);
   const [ownerLegalVerifiedOverride, setOwnerLegalVerifiedOverride] = useState<boolean | null>(null);
@@ -1251,7 +1254,8 @@ export default function OfferDetail({ route, navigation }: any) {
         >
           <Image source={{ uri: imagesToShow[0] }} style={styles.mainImage} contentFit="cover" transition={500} />
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.4)']}
+            colors={['transparent', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.52)']}
+            locations={[0, 0.55, 1]}
             style={styles.heroGradient}
             pointerEvents="none"
           />
@@ -1334,11 +1338,27 @@ export default function OfferDetail({ route, navigation }: any) {
             {
               backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
               marginTop: -HERO_SHEET_OVERLAP,
-              paddingBottom: bottomBarHeight + 16,
             },
           ]}
           pointerEvents="auto"
         >
+          <LinearGradient
+            pointerEvents="none"
+            colors={
+              isDark
+                ? ['rgba(0,0,0,0.72)', 'rgba(0,0,0,0.28)', 'transparent']
+                : ['rgba(0,0,0,0.16)', 'rgba(0,0,0,0.06)', 'transparent']
+            }
+            locations={[0, 0.45, 1]}
+            style={styles.sheetTopShade}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.sheetDragHandle,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.16)' },
+            ]}
+          />
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
@@ -1558,19 +1578,33 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={styles.negotiationMemoryText}>{dealPresentation.priceNegotiation.body}</Text>
             </View>
           ) : null}
+          {/*
+            Stały blok w kolorze karty — rezerwuje miejsce pod fixed bottom bar
+            (cena + prowizja + Spotkanie / Negocjuj). Bez tego ScrollView (zIndex 2)
+            przykrywa pasek i zabiera dotyk.
+          */}
+          <View
+            pointerEvents="none"
+            style={{
+              height: bottomBarHeight + 12,
+              marginHorizontal: -24,
+              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+            }}
+          />
         </View>
       </Animated.ScrollView>
 
       {/* --- NOWY, LUKSUSOWY BOTTOM BAR APPLE-STYLE --- */}
       <View
         style={styles.bottomBarContainer}
+        pointerEvents="box-none"
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           // Aktualizujemy tylko gdy zmiana > 2px, żeby nie wpadać w pętlę re-renderów.
           if (Math.abs(h - bottomBarHeight) > 2) setBottomBarHeight(h);
         }}
       >
-        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, isDark && { backgroundColor: 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
+        <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, isDark && { backgroundColor: 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           
           {/* TOP ROW: Cena (z meta-pigułkami) + ROI / status cenowy / sprzedawca */}
           <View style={styles.bottomBarTopRow}>
@@ -2143,6 +2177,30 @@ export default function OfferDetail({ route, navigation }: any) {
                   isDark
                 />
 
+                {!isOwner ? (
+                  <ProfileWriteMessageButton
+                    peerName={activeProfileData?.user?.name}
+                    loading={contactWriteLoading}
+                    onPress={() => {
+                      const peerId = Number(
+                        activeProfileData?.user?.id || activeProfileUserId || offer?.userId || 0
+                      );
+                      if (!peerId) return;
+                      setContactWriteLoading(true);
+                      void openDirectContactChat(
+                        navigation,
+                        token,
+                        peerId,
+                        activeProfileData?.user?.name
+                      ).finally(() => {
+                        setContactWriteLoading(false);
+                        setIsOwnerProfileOpen(false);
+                        setProfileHistory([]);
+                      });
+                    }}
+                  />
+                ) : null}
+
                 <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator={false}>
                   {!Array.isArray(activeProfileData?.reviews) || activeProfileData.reviews.length === 0 ? (
                     <Text style={styles.profileMuted}>{t('offer.detail.profile.noReviews')}</Text>
@@ -2499,9 +2557,39 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 240,
+    height: 280,
   },
-  contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 10 },
+  contentSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    padding: 24,
+    paddingTop: 12,
+    overflow: 'visible',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -16 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 18,
+  },
+  sheetTopShade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 36,
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    zIndex: 1,
+  },
+  sheetDragHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    marginBottom: 12,
+    zIndex: 2,
+  },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
   topMetaBadgesRow: {
     flexDirection: 'row',
@@ -2666,11 +2754,17 @@ const styles = StyleSheet.create({
   galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
   
   // --- ZMIENIONA SEKCJA BOTTOM BAR ---
-  bottomBarContainer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  bottomBarContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 30,
+    elevation: 30,
+  },
   bottomBar: { 
     paddingHorizontal: 20, 
     paddingTop: 16, 
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24, 
     borderTopWidth: 1, 
     borderTopColor: 'rgba(255,255,255,0.4)',
     backgroundColor: 'rgba(255,255,255,0.65)',

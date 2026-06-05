@@ -236,6 +236,9 @@ export const radar = {
     allCountriesTotal: 'Łącznie {{count}} ogłoszeń',
     selectCountryHint:
       'Lista obejmuje tylko kraje z ogłoszeniami w bazie — nowe państwo pojawi się automatycznie po dodaniu ofert. Wybierz kraj poniżej.',
+    countriesLoading: 'Ładowanie listy państw…',
+    countriesEmpty:
+      'Brak ogłoszeń w trybie „{{mode}}”. Przełącz Kupno/Najem lub poczekaj na załadowanie ofert.',
     countryReadyHint:
       'Możesz od razu zastosować filtry — zobaczysz wszystkie ogłoszenia w wybranym państwie.',
     extraParamsTitle: 'Dodatkowe parametry',

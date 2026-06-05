@@ -53,6 +53,9 @@ model User {
   dealsAsBuyer         Deal[]                   @relation("DealBuyer")
   dealsAsSeller        Deal[]                   @relation("DealSeller")
   sentDealMessages     DealMessage[]            @relation("SentDealMessages")
+  contactThreadsAsLow  ContactThread[]          @relation("ContactThreadLow")
+  contactThreadsAsHigh ContactThread[]          @relation("ContactThreadHigh")
+  sentContactMessages  ContactMessage[]         @relation("SentContactMessages")
   offers               Offer[]
   legalVerificationRequests LegalVerificationRequest[]
   reviewsReceived      Review[]                 @relation("ReviewsReceived")
@@ -117,7 +120,12 @@ model PageVisitLog {
   id           BigInt   @id @default(autoincrement())
   visitorHash  String   @db.VarChar(64)
   ip           String   @db.VarChar(64)
-  country      String   @default("PL") @db.VarChar(8)
+  country      String   @default("UN") @db.VarChar(8)
+  city         String?  @db.VarChar(64)
+  regionName   String?  @db.VarChar(64)
+  isp          String?  @db.VarChar(128)
+  geoSource    String   @default("unknown") @db.VarChar(16)
+  deviceType   String   @default("unknown") @db.VarChar(16)
   path         String   @default("/") @db.VarChar(191)
   userAgent    String?  @db.VarChar(255)
   createdAt    DateTime @default(now())
@@ -162,6 +170,8 @@ model Offer {
   heating         String?
   city            String         @default("Warszawa")
   district        String         @default("OTHER")
+  localityCountry     String?    @default("Polska") @db.VarChar(64)
+  localityCountryCode String?    @default("PL") @db.VarChar(8)
   street          String?
   buildingNumber  String?
   lat             Float?
@@ -402,6 +412,39 @@ model DealMessage {
 
   @@index([dealId])
   @@index([senderId], map: "DealMessage_senderId_fkey")
+}
+
+model ContactThread {
+  id         Int              @id @default(autoincrement())
+  userLowId  Int
+  userHighId Int
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  userLow    User             @relation("ContactThreadLow", fields: [userLowId], references: [id], onDelete: Cascade)
+  userHigh   User             @relation("ContactThreadHigh", fields: [userHighId], references: [id], onDelete: Cascade)
+  messages   ContactMessage[]
+
+  @@unique([userLowId, userHighId])
+  @@index([userLowId])
+  @@index([userHighId])
+  @@index([updatedAt])
+}
+
+model ContactMessage {
+  id         Int           @id @default(autoincrement())
+  threadId   Int
+  senderId   Int
+  content    String        @db.Text
+  attachment String?
+  isRead     Boolean       @default(false)
+  /// JSON map: userId (string) → emoji tapback (❤️ 👍 …)
+  reactions  String?       @db.Text
+  createdAt  DateTime      @default(now())
+  thread     ContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender     User          @relation("SentContactMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([senderId])
 }
 
 model Appointment {

@@ -5,12 +5,13 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldSuppressDealPushForActiveChat } from '../utils/activeDealroomPush';
+import { shouldSuppressContactPushForActiveChat } from '../utils/activeContactPush';
 import type { Notification } from 'expo-notifications';
 import { API_URL } from '../config/network';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification: Notification) => {
-    if (shouldSuppressDealPushForActiveChat(notification)) {
+    if (shouldSuppressDealPushForActiveChat(notification) || shouldSuppressContactPushForActiveChat(notification)) {
       return {
         shouldShowBanner: false,
         shouldShowList: false,

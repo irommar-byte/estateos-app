@@ -69,6 +69,7 @@ import {
   offerListingCountryIso,
 } from '../constants/locationEcosystem';
 import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
+import { useFloatingChatsLayoutStore } from '../store/useFloatingChatsLayoutStore';
 import { getOfferLifecycleState, isOfferClosed } from '../utils/offerLifecycle';
 import { syncRadarLiveActivity } from '../services/radarLiveActivityService';
 import { API_URL } from '../config/network';
@@ -337,6 +338,37 @@ function isMapOfferOwnedByUser(offer: MapOffer, userId: number): boolean {
   return extractOfferOwnerCandidateIds(offer).includes(userId);
 }
 
+function extractRawOfferOwnerCandidateIds(raw: Record<string, unknown>): number[] {
+  return [
+    raw?.userId,
+    raw?.ownerId,
+    raw?.sellerId,
+    raw?.authorId,
+    raw?.createdById,
+    (raw?.user as { id?: unknown } | undefined)?.id,
+    (raw?.owner as { id?: unknown } | undefined)?.id,
+    (raw?.seller as { id?: unknown } | undefined)?.id,
+    (raw?.createdBy as { id?: unknown } | undefined)?.id,
+  ]
+    .map((v) => Number(v || 0))
+    .filter((v) => Number.isFinite(v) && v > 0);
+}
+
+function isBlockedRawOffer(raw: Record<string, unknown>, blockedIds: Set<number>): boolean {
+  if (blockedIds.size === 0) return false;
+  return extractRawOfferOwnerCandidateIds(raw).some((id) => blockedIds.has(id));
+}
+
+function isRawOfferOwnedByUser(raw: Record<string, unknown>, userId: number): boolean {
+  if (!userId) return false;
+  return extractRawOfferOwnerCandidateIds(raw).includes(userId);
+}
+
+function offerTransactionTypeMatches(raw: Record<string, unknown>, transactionType: 'SELL' | 'RENT'): boolean {
+  const rawTx = String(raw?.transactionType || 'SELL').toUpperCase();
+  return rawTx === transactionType;
+}
+
 type AdvancedLocationMode = 'CITY' | 'MAP';
 type AdvancedMapBounds = {
   centerLat: number;
@@ -459,9 +491,7 @@ function offerMatchesAdvancedFilters(
   const rawRooms = Number(String(offer.raw?.rooms ?? '').replace(/[^\d]/g, '')) || 0;
   const rawDistrict = normalizeSearchText(String(offer.raw?.district || '').trim());
   const rawPropertyType = String(offer.raw?.propertyType || '').toUpperCase();
-  const rawTransactionType = String(offer.raw?.transactionType || '').toUpperCase();
-
-  if (rawTransactionType !== filters.transactionType) return false;
+  if (!offerTransactionTypeMatches(offer.raw, filters.transactionType)) return false;
 
   const { minPln, maxPln } = advancedPriceBoundsToPln(
     filters.minPrice,
@@ -972,6 +1002,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [offers, setOffers] = useState<MapOffer[]>([]);
+  /** Pełny katalog aktywnych ofert (także bez współrzędnych) — do listy państw w wyszukiwaniu rozszerzonym. */
+  const [catalogRawOffers, setCatalogRawOffers] = useState<Record<string, unknown>[]>([]);
   const blockedIds = useBlockedUsersStore((s) => s.blockedIds) ?? EMPTY_BLOCKED_ID_SET;
   /** Własne ogłoszenia z `includeAll` — mogą być ACTIVE w profilu, ale poza publicznym feedem Radaru. */
   const [ownerMapOffers, setOwnerMapOffers] = useState<MapOffer[]>([]);
@@ -1199,6 +1231,15 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     useCallback(() => {
       measureLiveBannerAnchor();
     }, [measureLiveBannerAnchor])
+  );
+  useFocusEffect(
+    useCallback(() => {
+      const top = topBarTop + 56;
+      useFloatingChatsLayoutStore.getState().setAnchor({ mode: 'radarFilter', top, right: 19 });
+      return () => {
+        useFloatingChatsLayoutStore.getState().setAnchor({ mode: 'default' });
+      };
+    }, [topBarTop])
   );
   const radarButtonTop = useMemo(
     // Snap spacing: stały rytm pionowy niezależnie od rozmiaru iPhone.
@@ -1667,36 +1708,53 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       : offersAfterBlocks;
   }, [offers, blockedIds, user?.id]);
 
+  const catalogBrowseBase = useMemo(() => {
+    const myId = Number(user?.id || 0);
+    const afterBlocks =
+      blockedIds.size > 0
+        ? catalogRawOffers.filter((o) => !isBlockedRawOffer(o, blockedIds))
+        : catalogRawOffers;
+    return myId > 0
+      ? afterBlocks.filter((o) => !isRawOfferOwnedByUser(o, myId))
+      : afterBlocks;
+  }, [catalogRawOffers, blockedIds, user?.id]);
+
   const advancedLocationFacetForCounts = draftAdvancedFilters.localityCountryCode.trim()
     ? ('country' as AdvancedLocationFacet)
     : undefined;
 
   const countriesWithOffers = useMemo(() => {
-    const pool = advancedFilterBrowseBase.filter((offer) =>
-      offerMatchesAdvancedFilters(offer, draftAdvancedFilters, rate, 'country'),
-    );
-
     const map = new Map<string, { code: string; label: string; count: number }>();
-    for (const offer of pool) {
-      const code = offerListingCountryIso(offer.raw);
+    let total = 0;
+    for (const raw of catalogBrowseBase) {
+      if (!offerTransactionTypeMatches(raw, draftAdvancedFilters.transactionType)) continue;
+      const code = offerListingCountryIso(raw);
       if (!code) continue;
+      total += 1;
       const label = countryLabelInOwnLanguageUpper(code);
       const prev = map.get(code);
       if (prev) prev.count += 1;
       else map.set(code, { code, label, count: 1 });
     }
     return {
-      total: pool.length,
+      total,
       countries: [...map.values()].sort(
         (a, b) => b.count - a.count || a.label.localeCompare(b.label, 'pl'),
       ),
     };
-  }, [advancedFilterBrowseBase, draftAdvancedFilters, rate]);
+  }, [catalogBrowseBase, draftAdvancedFilters.transactionType]);
 
-  const countryFilterEntries = useMemo(
-    () => (Array.isArray(countriesWithOffers.countries) ? countriesWithOffers.countries : []),
-    [countriesWithOffers.countries],
-  );
+  const countryFilterEntries = useMemo(() => {
+    const dynamic = countriesWithOffers.countries;
+    if (dynamic.length > 0) return dynamic;
+    return [
+      {
+        code: 'PL',
+        label: countryLabelInOwnLanguageUpper('PL'),
+        count: 0,
+      },
+    ];
+  }, [countriesWithOffers.countries]);
 
   const draftAdvancedLocationReady = isAdvancedLocationReadyForApply(draftAdvancedFilters);
   const draftOfferIdReady = draftOfferIdInput.replace(/\D/g, '').length > 0;
@@ -1982,10 +2040,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       try {
         const applyRawOfferList = (rawList: any[]) => {
           const activeOnly = rawList.filter((o: any) => !isOfferClosed(o));
+          setCatalogRawOffers(activeOnly);
           const mapped = activeOnly
             .map((o: any) => mapRawOffer(o))
             .filter((m: MapOffer | null): m is MapOffer => m !== null);
-            setOffers(mapped);
+          setOffers(mapped);
         };
 
         const res = await fetch(`${API_URL}/api/mobile/v1/offers`);
@@ -4295,7 +4354,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           ]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setDraftAdvancedFilters(advancedFilters);
+            setDraftAdvancedFilters({
+              ...advancedFilters,
+              localityCountryCode: advancedFilters.localityCountryCode.trim() || 'PL',
+            });
             setShowAdvancedSearch(true);
           }}
           accessibilityLabel={t('radar.home.advancedSearch')}
@@ -5246,6 +5308,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       {t('radar.advancedSearch.selectCountryHint')}
                     </Text>
                   ) : null}
+                  {countryFilterEntries.length === 0 && loading ? (
+                    <Text
+                      style={[
+                        styles.advancedHint,
+                        {
+                          marginTop: 4,
+                          marginBottom: 4,
+                          color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)',
+                        },
+                      ]}
+                    >
+                      {t('radar.advancedSearch.countriesLoading')}
+                    </Text>
+                  ) : (
                   <View style={[styles.advancedRow, styles.advancedCountryRow]}>
                     {countryFilterEntries.map((entry) => {
                       const active = draftAdvancedFilters.localityCountryCode === entry.code;
@@ -5291,60 +5367,63 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       );
                     })}
                   </View>
+                  )}
                 </View>
 
                 {draftSelectedCountry ? (
-                  <>
-                    <Text
-                      style={[
-                        styles.advancedHint,
-                        {
-                          marginTop: 4,
-                          marginBottom: 10,
-                          color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)',
-                        },
-                      ]}
-                    >
-                      {t('radar.advancedSearch.countryReadyHint')}
+                  <Text
+                    style={[
+                      styles.advancedHint,
+                      {
+                        marginTop: 4,
+                        marginBottom: 10,
+                        color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)',
+                      },
+                    ]}
+                  >
+                    {t('radar.advancedSearch.countryReadyHint')}
+                  </Text>
+                ) : null}
+
+                <Pressable
+                  onPress={() => setAdvancedExtrasExpanded((v) => !v)}
+                  style={({ pressed }) => [
+                    styles.advancedExtrasHeader,
+                    {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                      opacity: pressed ? 0.88 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.advancedExtrasHeaderCopy}>
+                    <Text style={[styles.advancedExtrasTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
+                      {t('radar.advancedSearch.extraParamsTitle')}
                     </Text>
+                    <Text style={[styles.advancedExtrasSub, { color: '#8E8E93' }]}>
+                      {t('radar.advancedSearch.extraParamsSubtitle')}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={advancedExtrasExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color="#8E8E93"
+                  />
+                </Pressable>
 
-                    <Pressable
-                      onPress={() => setAdvancedExtrasExpanded((v) => !v)}
-                      style={({ pressed }) => [
-                        styles.advancedExtrasHeader,
-                        {
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                          borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                          opacity: pressed ? 0.88 : 1,
-                        },
-                      ]}
-                    >
-                      <View style={styles.advancedExtrasHeaderCopy}>
-                        <Text style={[styles.advancedExtrasTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>
-                          {t('radar.advancedSearch.extraParamsTitle')}
-                        </Text>
-                        <Text style={[styles.advancedExtrasSub, { color: '#8E8E93' }]}>
-                          {t('radar.advancedSearch.extraParamsSubtitle')}
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name={advancedExtrasExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={20}
-                        color="#8E8E93"
-                      />
-                    </Pressable>
-
-                    <JellyReveal visible={advancedExtrasExpanded}>
-                      <View
-                        style={[
-                          styles.advancedSubPanel,
-                          {
-                            marginTop: 8,
-                            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-                            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-                          },
-                        ]}
-                      >
+                <JellyReveal visible={advancedExtrasExpanded}>
+                  <View
+                    style={[
+                      styles.advancedSubPanel,
+                      {
+                        marginTop: 8,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                      },
+                    ]}
+                  >
+              {draftSelectedCountry ? (
+                  <>
                   {draftIsPoland ? (
                     <>
                       <PolandScopeNote isDark={isDark} />
@@ -5527,6 +5606,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       </View>
                     </Pressable>
                   ) : null}
+                  </>
+              ) : (
+                <Text
+                  style={[
+                    styles.advancedHint,
+                    { marginBottom: 10, color: isDark ? 'rgba(235,235,245,0.55)' : 'rgba(60,60,67,0.72)' },
+                  ]}
+                >
+                  {t('radar.advancedSearch.selectCountryHint')}
+                </Text>
+              )}
 
                 <Text style={styles.advancedSection}>{t('radar.advancedSearch.propertyTypeSection')}</Text>
               <View style={styles.advancedRow}>
@@ -5735,10 +5825,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     editable={!advancedOfferIdBusy}
                   />
                 </View>
-                      </View>
-                    </JellyReveal>
-                  </>
-                ) : null}
+                  </View>
+                </JellyReveal>
             </ScrollView>
               <Pressable
                 style={[
@@ -6754,6 +6842,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 12,
     marginBottom: 12,
+    overflow: 'visible',
   },
   advancedExtrasHeader: {
     flexDirection: 'row',
@@ -6823,7 +6912,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   advancedCountryRow: {
-    paddingTop: 10,
+    paddingTop: 26,
+    paddingBottom: 4,
     overflow: 'visible',
   },
   advancedChip: {

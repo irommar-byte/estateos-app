@@ -10,6 +10,7 @@ import { report } from './report';
 import { tabs } from './tabs';
 import { appRating } from './appRating';
 import { openHouse } from './openHouse';
+import { contact } from './contact';
 
 export const pl = {
   common,
@@ -19,6 +20,7 @@ export const pl = {
   publication,
   report,
   dealroom,
+  contact,
   profile,
   offer,
   radar,

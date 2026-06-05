@@ -1,6 +1,7 @@
 import * as Device from "expo-device";
 import { usePushNotifications } from './src/hooks/usePushNotifications';
 import DealroomChatScreen from './src/screens/DealroomChatScreen';
+import ContactChatScreen from './src/screens/ContactChatScreen';
 import AppleSplashScreen from "./src/components/AppleSplashScreen";
 import OfferDetail from './src/screens/OfferDetail';
 import OpenHouseHubScreen from './src/screens/OpenHouseHubScreen';
@@ -21,7 +22,8 @@ import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, Scr
 
 import * as Notifications from "expo-notifications";
 
-import { createNavigationContainerRef } from "@react-navigation/native";
+import { navigationRef, flushNavigation } from './navigationRef';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import {
   NavigationContainer,
@@ -81,6 +83,7 @@ import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
 import SmsVerificationScreen from './src/screens/SmsVerificationScreen';
 import DealroomListScreen from './src/screens/DealroomListScreen';
+import FloatingChatsDock from './src/components/messaging/FloatingChatsDock';
 import EstateDiscoveryMode from './src/screens/EstateDiscoveryMode';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import OfferCommentsScreen from './src/screens/OfferCommentsScreen';
@@ -97,8 +100,6 @@ if (__DEV__) {
     console.log('[push] received (dev):', notification.request?.content?.title ?? '');
   });
 }
-
-const navigationRef = createNavigationContainerRef();
 
 const AddOfferStack = createNativeStackNavigator();
 function AddOfferNavigator({ theme }: { theme: any }) {
@@ -808,6 +809,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
    * odzwierciedlamy jego liczbę na tabBarBadge i na ikonie aplikacji.
    */
   const unreadDealCount = useUnreadBadgeStore((state) => state.unreadDealCount);
+  const unreadContactCount = useUnreadBadgeStore((state) => state.unreadContactCount);
+  const messagesTabBadgeCount = unreadDealCount + unreadContactCount;
   const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
 
   useEffect(() => { restoreSession(); }, []);
@@ -897,8 +900,8 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       void Notifications.setBadgeCountAsync(0).catch(() => undefined);
       return;
     }
-    void Notifications.setBadgeCountAsync(unreadDealCount).catch(() => undefined);
-  }, [unreadDealCount, token]);
+    void Notifications.setBadgeCountAsync(messagesTabBadgeCount).catch(() => undefined);
+  }, [messagesTabBadgeCount, token]);
 
   const resolvedTheme = themeMode === 'auto' ? (systemColorScheme ?? 'light') : themeMode;
   const currentColors = Colors[resolvedTheme];
@@ -1003,7 +1006,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
           // Natywny czerwony badge Apple-style — pokazuje DOKŁADNĄ liczbę
           // nieprzeczytanych wiadomości (1, 3, 12). React Navigation rysuje go
           // identycznie jak iOS rysuje badge na ikonie aplikacji.
-          tabBarBadge: unreadDealCount > 0 ? (unreadDealCount > 99 ? '99+' : unreadDealCount) : undefined,
+          tabBarBadge: messagesTabBadgeCount > 0 ? (messagesTabBadgeCount > 99 ? '99+' : messagesTabBadgeCount) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#FF3B30',
             color: '#FFFFFF',
@@ -1076,6 +1079,10 @@ type PushNavigationTarget =
       params: { dealId: number | string; offerId?: number | string; title?: string };
     }
   | {
+      screen: 'ContactChat';
+      params: { threadId: number | string; peerUserId?: number | string; peerName?: string };
+    }
+  | {
       screen: 'MainTabs';
       params: {
         screen: 'Radar' | 'Ulubione' | 'Wiadomości' | 'Profil';
@@ -1118,11 +1125,13 @@ const parsePushTargetFromResponse = (
     targetTypeNorm.includes('LISTING') ||
     targetTypeNorm.includes('PROPERTY') ||
     targetTypeNorm.includes('RADAR');
+  const targetTypeLooksContact = targetTypeNorm.includes('CONTACT');
   const targetTypeLooksDeal =
-    targetTypeNorm.includes('DEAL') ||
+    !targetTypeLooksContact &&
+    (targetTypeNorm.includes('DEAL') ||
     targetTypeNorm.includes('CHAT') ||
     targetTypeNorm.includes('THREAD') ||
-    targetTypeNorm.includes('CONVERSATION');
+    targetTypeNorm.includes('CONVERSATION'));
 
   const routeHint = String(
     firstDefined(
@@ -1178,6 +1187,23 @@ const parsePushTargetFromResponse = (
   const offerSemanticHint =
     /(ofert|offer|listing|nieruchomo|radar|aktywac|opublikow|dopasowan)/i.test(textHint) ||
     /(offer|listing|property|oferta|radar|match)/i.test(String(data.notificationType || '').toLowerCase());
+
+  const contactThreadId = parseNumericOrStringId(
+    firstDefined(data.threadId, data.contactThreadId, targetTypeLooksContact ? data.targetId : null)
+  );
+  const contactPeerUserId = parseNumericOrStringId(firstDefined(data.peerUserId, data.senderId, data.fromUserId));
+  const contactPeerName = String(firstDefined(data.peerName, data.senderName) || '').trim();
+
+  if (targetTypeLooksContact && contactThreadId) {
+    return {
+      screen: 'ContactChat',
+      params: {
+        threadId: contactThreadId,
+        ...(contactPeerUserId ? { peerUserId: contactPeerUserId } : {}),
+        ...(contactPeerName ? { peerName: contactPeerName } : {}),
+      },
+    };
+  }
 
   // 0) Priorytet backend dealroom: target='dealroom' / targetType='DEAL' / dealId.
   if (prioritizeDealroom && dealId) {
@@ -1381,7 +1407,7 @@ export default function App() {
 
     lastNavigationKeyRef.current = { key: navigationKey, at: now };
     if (__DEV__) console.log('[PUSH][NAVIGATE]', navigationKey);
-    if (target.screen === 'OfferDetail' || target.screen === 'DealroomChat') {
+    if (target.screen === 'OfferDetail' || target.screen === 'DealroomChat' || target.screen === 'ContactChat') {
       (navigationRef as any).dispatch(StackActions.push(target.screen, target.params));
     } else {
       (navigationRef as any).navigate(target.screen, target.params);
@@ -1466,6 +1492,7 @@ export default function App() {
 
   return (
     <>
+      <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <I18nProvider>
         <BonusCouponNotifyBootstrap />
@@ -1488,6 +1515,7 @@ export default function App() {
           ref={navigationRef}
           theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}
           onReady={() => {
+            flushNavigation();
             if (!pendingPushTargetRef.current) return;
             const pendingTarget = pendingPushTargetRef.current;
             pendingPushTargetRef.current = null;
@@ -1524,6 +1552,11 @@ export default function App() {
             <AppStack.Screen name="SmsVerification" component={SmsVerificationScreen} options={{ presentation: 'modal' }} />
             <AppStack.Screen name="DealroomList" component={DealroomListScreen} />
             <AppStack.Screen name="DealroomChat" component={DealroomChatScreen} />
+            <AppStack.Screen
+              name="ContactChat"
+              component={ContactChatScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
             <AppStack.Screen name="EstateDiscovery" component={EstateDiscoveryMode} />
             <AppStack.Screen name="AdminNativeImport" component={AdminNativeImportScreen} />
             <AppStack.Screen
@@ -1540,12 +1573,14 @@ export default function App() {
             <AppStack.Screen name="OpenHouseCreate" component={OpenHouseCreateScreen} />
             <AppStack.Screen name="OpenHouseEvent" component={OpenHouseEventScreen} />
           </AppStack.Navigator>
+          {!isSplashVisible ? <FloatingChatsDock /> : null}
         </NavigationContainer>
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}
         </View>
         </I18nProvider>
       </GestureHandlerRootView>
+      </SafeAreaProvider>
 
     </>
   );
