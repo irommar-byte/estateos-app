@@ -108,8 +108,10 @@ export default function BlockUserSheet({
   const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(17,24,39,0.08)';
   const danger = isDark ? '#FF453A' : '#FF3B30';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView
         intensity={isDark ? 55 : 70}
         tint={isDark ? 'dark' : 'light'}

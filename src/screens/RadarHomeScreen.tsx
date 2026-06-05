@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import ClusteredMapView from 'react-native-map-clustering';
 import MapViewCore, { Marker, Region, Circle } from 'react-native-maps';
+import MapGestureHost from '../components/MapGestureHost';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -783,8 +784,10 @@ const RadarAuthGateModal = ({
   const subtitleColor = isDark ? 'rgba(235,235,245,0.72)' : 'rgba(60,60,67,0.7)';
   const borderColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel} statusBarTranslucent>
+    <Modal visible transparent animationType="none" onRequestClose={onCancel} statusBarTranslucent>
       <Animated.View style={[authGateStyles.overlay, { opacity: fade }]}>
         <BlurView intensity={42} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} />
@@ -3985,8 +3988,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     <>
     <View
       style={[styles.container, isGalleryLightChrome && styles.containerGalleryLight]}
-      pointerEvents="box-none"
     >
+      <View style={styles.mapStage} collapsable={false}>
+      <MapGestureHost>
       <RadarMapComponent
         ref={mapRef}
         style={[
@@ -4139,6 +4143,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           );
         })}
       </RadarMapComponent>
+      </MapGestureHost>
+      </View>
+
+      <View style={styles.mapUiChrome} pointerEvents="box-none" collapsable={false}>
 
       {showOnlyFavorites && favoritesMapScope === 'FAVORITES' && (
         <View pointerEvents="none" style={styles.favoritesMapDecorLayer}>
@@ -4171,19 +4179,21 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       )}
 
-      {isSearchFocused && (
-        <Pressable
-          style={styles.searchBackdrop}
-          onPress={() => {
-            Keyboard.dismiss();
-            setIsSearchFocused(false);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel={t('radar.home.closeSearch')}
-        />
-      )}
+      {isSearchFocused ? (
+        <View style={styles.searchFocusLayer} pointerEvents="auto">
+          <Pressable
+            style={styles.searchDismissStrip}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsSearchFocused(false);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={t('radar.home.closeSearch')}
+          />
+        </View>
+      ) : null}
 
-      <View style={[styles.topBarContainer, { top: topBarTop }]}>
+      <View style={[styles.topBarContainer, { top: topBarTop }]} pointerEvents="auto">
         <View style={styles.searchBarSlot}>
           <BlurView
             intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
@@ -4294,6 +4304,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {showOnlyFavorites && (
         <Animated.View
+          pointerEvents="auto"
           style={[
             styles.favorFloatingIslandWrap,
             {
@@ -4476,7 +4487,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       )}
       
       {isSearchFocused && (
-        <View style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}>
+        <View
+          style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}
+          pointerEvents="auto"
+        >
           <BlurView
             intensity={isDark ? 85 : 95}
             tint={isDark ? 'dark' : 'light'}
@@ -4660,6 +4674,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
         <Animated.View
+          pointerEvents="auto"
           style={[
             styles.favorFloatingIslandWrap,
             {
@@ -4755,6 +4770,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !isSearchFocused && (
         <Animated.View
+          pointerEvents="auto"
           style={[
             styles.galleryOverlay,
             {
@@ -4814,7 +4830,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       )}
 
       {(showOnlyFavorites || radarBrowseMode !== 'GALLERY') && !showAreaPicker && (
-      <View style={styles.offersPreviewContainer} pointerEvents="box-none">
+      <View style={styles.offersPreviewContainer} pointerEvents="auto">
         {/* Pasek „Dlaczego widzę te oferty?" — glass-pill w stylu Apple.
             Renderowany ZAWSZE (poza loading) — gdy są oferty, pokazuje tryb
             z parametrami. Gdy brak ofert, ta sama karta zmienia ton (severity
@@ -4979,8 +4995,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       </View>
       )}
 
+      </View>
+
+      {showCalibration ? (
       <RadarCalibrationModal
-        visible={showCalibration}
+        visible
         calibrationSessionId={calibrationSessionId}
         isDark={isDark}
         variant="radar"
@@ -4995,9 +5014,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         recentRadarAreas={recentRadarAreasList}
         onPickRecentRadarArea={handlePickRecentRadarArea}
       />
+      ) : null}
 
+      {showFavoritesCalibration ? (
       <RadarCalibrationModal
-        visible={showFavoritesCalibration}
+        visible
         calibrationSessionId={favoritesCalibrationSessionId}
         isDark={isDark}
         variant="favorites"
@@ -5010,6 +5031,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         onApply={applyFavoritesCalibration}
         onOpenAreaPicker={openAreaPickerFromCalibration}
       />
+      ) : null}
 
       <RadarAuthGateModal
         visible={authGateContext !== null}
@@ -5143,7 +5165,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </>
       )}
       
-      <Modal visible={showAdvancedSearch} transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
+      {showAdvancedSearch ? (
+      <Modal visible transparent animationType="slide" onRequestClose={() => setShowAdvancedSearch(false)}>
         <View style={styles.advancedOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdvancedSearch(false)} />
           <View style={{ width: '100%', flex: 1, justifyContent: 'flex-end' }}>
@@ -5730,6 +5753,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </View>
         </View>
       </Modal>
+      ) : null}
     </View>
   </>);
 }
@@ -5738,6 +5762,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  mapStage: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  mapUiChrome: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   containerGalleryLight: {
     backgroundColor: '#E9ECF2',
@@ -5783,10 +5815,17 @@ const styles = StyleSheet.create({
   crosshairLeft: { width: 12, height: 2.5, left: 0 },
   crosshairRight: { width: 12, height: 2.5, right: 0 },
 
-  searchBackdrop: {
+  searchFocusLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
     zIndex: 8,
+  },
+  searchDismissStrip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 110,
+    backgroundColor: 'rgba(0,0,0,0.22)',
   },
   topBarContainer: {
     position: 'absolute',

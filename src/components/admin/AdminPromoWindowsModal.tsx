@@ -110,8 +110,10 @@ export default function AdminPromoWindowsModal({ visible, onClose, theme, onSent
   const subColor = theme.subtitle;
   const inputBg = theme.text === '#000' || theme.text === '#1d1d1f' ? '#F2F2F7' : '#2C2C2E';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: theme.background }]}>
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={12}>

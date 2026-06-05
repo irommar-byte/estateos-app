@@ -260,8 +260,10 @@ export default function ReportSheet({
   const cardSelectedBorder = isDark ? 'rgba(255,69,58,0.7)' : 'rgba(255,59,48,0.85)';
   const danger = isDark ? '#FF453A' : '#FF3B30';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView
         intensity={isDark ? 55 : 70}
         tint={isDark ? 'dark' : 'light'}

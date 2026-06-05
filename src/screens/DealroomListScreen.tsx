@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScrollView, Swipeable, RectButton } from 'react-native-gesture-handler';
 import Animated, { 
   FadeInDown, FadeIn, useAnimatedStyle, useSharedValue, 
-  withRepeat, withSequence, withTiming, withDelay, withSpring, Easing 
+  withRepeat, withSequence, withTiming, withDelay, withSpring, Easing,
 } from 'react-native-reanimated';
 // Wykorzystywane przez „Apple-spring stagger" przy pierwszym pokazaniu sekcji
 // po wejściu na ekran — `springify()` z sensownym `damping`/`stiffness` daje
@@ -1162,21 +1162,6 @@ export default function DealroomListScreen() {
   const [collapsedSectionsHydrated, setCollapsedSectionsHydrated] = useState(false);
   const [expandedOfferStacks, setExpandedOfferStacks] = useState<Record<string, boolean>>({});
 
-  /**
-   * Bramka „premium reveal" dla sekcji.
-   *
-   * Wcześniej, gdy użytkownik wchodził w „Wiadomości", lista próbowała się
-   * narysować równolegle z hydratacją grup, danymi wątków i obliczaniem faz
-   * — i widać było, jak elementy doczepiają się po kolei, co dawało wrażenie
-   * szarpania. Tutaj wymuszamy krótką (≈750 ms) chwilę zatrzymania, podczas
-   * której pokazujemy spokojny, animowany komunikat „przygotowywania
-   * portfolio". Po czasie ustawiamy `sectionsReady = true` i sekcje
-   * wystrzeliwują w dół jako spring-stagger — wszystko w jednym, pełnym
-   * gracji ruchu, bez gubionych klatek.
-   */
-  const [sectionsReady, setSectionsReady] = useState(false);
-  const sectionsReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
     if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -1277,26 +1262,6 @@ export default function DealroomListScreen() {
       void promptPushNotificationsForMessagesTab(token);
 
       setPhaseRefreshTick((t) => t + 1);
-
-      // Premium reveal: każde wejście w „Wiadomości" zaczyna od delikatnego
-      // „oddechu" (krótki loader) → sekcje wstrzykiwane są dopiero po nim,
-      // przez co cała animacja wjazdu odbywa się na statycznym tle bez
-      // konkurencji z hydratacją danych.
-      setSectionsReady(false);
-      if (sectionsReadyTimerRef.current) {
-        clearTimeout(sectionsReadyTimerRef.current);
-      }
-      sectionsReadyTimerRef.current = setTimeout(() => {
-        setSectionsReady(true);
-        sectionsReadyTimerRef.current = null;
-      }, 760);
-
-      return () => {
-        if (sectionsReadyTimerRef.current) {
-          clearTimeout(sectionsReadyTimerRef.current);
-          sectionsReadyTimerRef.current = null;
-        }
-      };
     }, [token])
   );
 
@@ -2407,13 +2372,8 @@ export default function DealroomListScreen() {
         </View>
       </BlurView>
 
-      {loading || !sectionsReady ? (
-        <Animated.View entering={FadeIn.duration(220)} style={styles.loaderCenter}>
-          <ActivityIndicator size="large" color={COLORS.gold} />
-          <Text style={styles.loaderText}>
-            {loading ? t('dealroom.list.loadingDeals') : t('dealroom.list.preparingPortfolio')}
-          </Text>
-        </Animated.View>
+      {loading ? (
+        <View style={styles.loaderCenter} />
       ) : visibleDeals.length === 0 ? (
         <DealroomsEmptyState
           colors={COLORS}
@@ -2434,13 +2394,6 @@ export default function DealroomListScreen() {
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {!phasesReady && visibleDeals.length > 0 ? (
-            <View style={styles.phaseBanner}>
-              <ActivityIndicator size="small" color={COLORS.gold} />
-              <Text style={styles.phaseBannerText}>{t('dealroom.list.arrangingPhases')}</Text>
-            </View>
-          ) : null}
-
           {!phasesReady
             ? dealsSortedFlat.map((deal, index) =>
                 renderDealCard(deal, index, dealPhaseById[Number(deal.id)] ?? 'started')
@@ -2757,24 +2710,8 @@ const createStyles = (colors: ReturnType<typeof getColors>) => StyleSheet.create
   headerSubtitle: { color: colors.gold, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 2 },
   headerTitle: { color: colors.textMain, fontSize: 28, fontWeight: '800', letterSpacing: 0.5 },
   
-  loaderCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loaderText: { color: colors.textSec, fontSize: 13, fontWeight: '500', marginTop: 16, letterSpacing: 0.5 },
-  
+  loaderCenter: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 50, paddingTop: 16 },
-
-  phaseBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 14,
-    borderRadius: 14,
-    backgroundColor: colors.cardSolid,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderHighlight,
-  },
-  phaseBannerText: { color: colors.textSec, fontSize: 13, fontWeight: '600' },
 
   phaseSection: { marginBottom: 28 },
   phaseSectionSurfaceStarted: {

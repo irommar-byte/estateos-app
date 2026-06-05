@@ -87,8 +87,10 @@ export default function BlockedUsersModal({ visible, onClose, isDark = true }: P
   const border = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(17,24,39,0.08)';
   const cardBg = isDark ? 'rgba(58,58,60,0.55)' : 'rgba(0,0,0,0.04)';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView
         intensity={isDark ? 55 : 70}
         tint={isDark ? 'dark' : 'light'}

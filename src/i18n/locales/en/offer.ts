@@ -324,9 +324,16 @@ export const offer = {
     },
     hero: {
       openGallery: 'Open photo gallery',
+      photoCount: '{{count}} photos',
     },
     gallery: {
       counter: '{{current}} of {{total}}',
+    },
+    floorPlan: {
+      sectionTitle: 'Floor plan',
+      enlarge: 'Enlarge floor plan',
+      emptyTitle: 'Floor plan unavailable',
+      emptySubtitle: 'No floor plan has been attached to this listing yet.',
     },
     offerId: 'Listing ID: {{id}}',
     profile: {

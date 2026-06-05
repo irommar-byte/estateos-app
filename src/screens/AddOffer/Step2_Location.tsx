@@ -1356,19 +1356,24 @@ export default function Step2_Location({ theme }: { theme: any }) {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
       
-      <View style={styles.mapContainer}>
-        <MapView 
-          ref={mapRef} 
-          style={styles.map} 
-          userInterfaceStyle={isDark ? "dark" : "light"} 
-          showsBuildings={true} 
+      <View style={styles.mapContainer} collapsable={false} pointerEvents="box-none">
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          userInterfaceStyle={isDark ? 'dark' : 'light'}
+          showsBuildings
           scrollEnabled
           zoomEnabled
           zoomTapEnabled
-          pitchEnabled={true}
+          pitchEnabled={false}
           rotateEnabled={false}
-          initialRegion={{ latitude: draft.lat || 52.2297, longitude: draft.lng || 21.0122, latitudeDelta: 0.05, longitudeDelta: 0.05 }} 
-          onRegionChangeComplete={handleRegionChangeComplete} 
+          initialRegion={{
+            latitude: draft.lat || 52.2297,
+            longitude: draft.lng || 21.0122,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+          onRegionChangeComplete={handleRegionChangeComplete}
         />
         <View style={styles.centerPinContainer} pointerEvents="none">{currentIsExact ? <RedNeedlePin /> : <BreathingCircle />}</View>
         <View style={[styles.mapGradient, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.4)' }]} pointerEvents="none" />
@@ -1378,7 +1383,14 @@ export default function Step2_Location({ theme }: { theme: any }) {
         <MapInteractionTip isDark={isDark} dismissed={userInteractedWithMap} t={t} />
       </View>
 
-      <ScrollView style={styles.controlsContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={styles.controlsShell} pointerEvents="box-none">
+        <ScrollView
+          style={styles.controlsContainer}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          pointerEvents="auto"
+        >
+          <View style={styles.controlsInner}>
         <AddOfferStepper currentStep={2} draft={draft} theme={theme} navigation={navigation} onBeforeStepChange={handleBeforeStepChange} />
         
         <Text style={[styles.header, { color: theme.text }]}>{t('addOffer.step2.header')}</Text>
@@ -1538,7 +1550,9 @@ export default function Step2_Location({ theme }: { theme: any }) {
         </View>
 
         <View style={{ height: 200 }} />
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </View>
 
       <Modal
         visible={showLocationConfirm}
@@ -1598,7 +1612,7 @@ export default function Step2_Location({ theme }: { theme: any }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  mapContainer: { height: '42%', width: '100%', position: 'relative' },
+  mapContainer: { height: '42%', width: '100%', position: 'relative', zIndex: 3 },
   map: { flex: 1 },
   mapGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   centerPinContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
@@ -1610,7 +1624,21 @@ const styles = StyleSheet.create({
   redWave: { position: 'absolute', width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(220, 38, 38, 0.4)', borderWidth: 2, borderColor: 'rgba(220, 38, 38, 0.8)', zIndex: 0, bottom: -10 },
   approximateArea: { width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(220, 38, 38, 0.2)', borderWidth: 3, borderColor: '#dc2626' },
   glowShadow: { shadowColor: '#dc2626', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 20, elevation: 15 },
-  controlsContainer: { flex: 1, padding: 20, borderTopLeftRadius: 30, borderTopRightRadius: 30, marginTop: -30, zIndex: 2 },
+  controlsShell: {
+    flex: 1,
+    marginTop: -30,
+    zIndex: 2,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    overflow: 'hidden',
+  },
+  controlsContainer: { flex: 1 },
+  controlsInner: {
+    padding: 20,
+    paddingTop: 34,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+  },
   header: { fontSize: 34, fontWeight: '800', marginBottom: 20, letterSpacing: -1 },
   glassCard: { padding: 18, borderRadius: 26, borderTopWidth: 1.5, borderLeftWidth: 1.5, marginBottom: 25, borderWidth: 1 },
   insetSlot: { borderRadius: 22, borderTopWidth: 2, borderLeftWidth: 1.5, borderBottomWidth: 1, marginBottom: 30, borderWidth: 1 }, 

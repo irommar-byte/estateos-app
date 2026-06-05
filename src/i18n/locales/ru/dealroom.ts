@@ -190,6 +190,8 @@ export const dealroom = {
       waitingResponse: 'Ваше предложение на сумму {{amount}} PLN ожидает ответа',
       proposedBy: '{{amount}} PLN предложено {{who}}',
       negotiating: 'Переговоры',
+      brokerRoleSuffix: ', брокер {{company}}',
+      profileLinkA11y: 'Профиль пользователя {{name}}',
     },
     postPresentation: {
       title: 'После презентации',

@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { useThemeStore } from '../../store/useThemeStore';
 import { useOpenHouseLiveStore } from '../../store/useOpenHouseLiveStore';
@@ -60,9 +60,14 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const openEvent = useCallback(
     (eventId: number) => {
       onClose();
-      navigation.navigate('OpenHouseEvent', { eventId });
+      navigation.dispatch(
+        CommonActions.navigate({
+          name: 'OpenHouseEvent',
+          params: { eventId },
+        }),
+      );
     },
-    [navigation, onClose]
+    [navigation, onClose],
   );
 
   const renderItem = useCallback(
@@ -136,8 +141,10 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
     [accent, cardBg, cardBorder, isDark, locale, muted, openEvent, reservedSet, t, text]
   );
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <BlurView intensity={isDark ? 50 : 60} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
       </Pressable>

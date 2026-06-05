@@ -499,9 +499,11 @@ export default function RadarCalibrationModal({
 
   const ritualFullscreen = showApplyRitual && !isFavoritesVariant;
 
+  if (!visible) return null;
+
   return (
     <Modal
-      visible={visible}
+      visible
       animationType={ritualFullscreen ? 'none' : 'slide'}
       transparent
       onRequestClose={ritualFullscreen ? undefined : onClose}

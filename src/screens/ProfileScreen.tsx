@@ -8,7 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '../store/useAuthStore';
 import { PasskeyService } from '../services/passkeyService';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { API_URL } from '../config/network';
 import { ESTATEOS_CONTACT_EMAIL, mailtoEstateosSubject } from '../constants/appContact';
 import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
@@ -45,6 +45,7 @@ import AdminBuyerSearchSection from '../components/admin/AdminBuyerSearchSection
 import AdminPromoWindowsModal from '../components/admin/AdminPromoWindowsModal';
 import AdminStatisticsModal from '../components/admin/AdminStatisticsModal';
 import ProfileShopSection from '../components/profile/ProfileShopSection';
+import InvestorProTrialIntroHost from '../components/profile/InvestorProTrialIntroHost';
 import ProfileCardShell from '../components/profile/ProfileCardShell';
 import { fetchUserProfilePromoCards } from '../services/profilePromoService';
 import {
@@ -287,8 +288,10 @@ const NotificationsSettingsModal = ({ visible, onClose, theme }) => {
           ? t('profile.notifications.notSet')
           : '—';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>{t('profile.notifications.title')}</Text>
@@ -1062,9 +1065,11 @@ const MyOffersModal = ({ visible, onClose, theme }) => {
     );
   };
 
+  if (!visible) return null;
+
   return (
     <>
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         
         <View style={[styles.modalHeader, { paddingVertical: 15, paddingHorizontal: 15 }]}>
@@ -1608,8 +1613,10 @@ const AdminUserProfileModal = ({ visible, userId, initialUser, onClose, theme })
     </View>
   );
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => onClose?.({ resumeUsersList: true })}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => onClose?.({ resumeUsersList: true })}>
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Karta Użytkownika</Text>
@@ -1943,8 +1950,10 @@ const AdminOffersModal = ({ visible, onClose, theme, onPendingCountChange }) => 
     return transactionFilter === 'RENT' ? isRent : !isRent;
   });
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Weryfikacja Ofert</Text>
@@ -2466,8 +2475,10 @@ const AdminUsersModal = ({ visible, onClose, onOpenUser, theme }) => {
   );
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Centrum Użytkowników</Text>
@@ -2566,8 +2577,10 @@ const AdminRadarAnalyticsModal = ({ visible, onClose, theme }) => {
   const cityRows = Array.isArray(data?.cityDistribution) ? data.cityDistribution : [];
   const cityMax = Math.max(1, ...cityRows.map((r) => Number(r?.count || 0)));
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Analityka Radaru</Text>
@@ -2755,7 +2768,7 @@ const AdminDealroomCheckModal = ({ visible, onClose, theme }) => {
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible animationType="slide" presentationStyle="pageSheet">
       <View style={[styles.modalContainer, { backgroundColor: theme.background }]}>
         <View style={styles.modalHeader}>
           <Text style={[styles.modalTitle, { color: theme.text }]}>Dealroom Check</Text>
@@ -2878,6 +2891,7 @@ function ProfileScreenLoggedIn({
   const dateLocale = localeToDateFormat(locale);
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const isProfileTabFocused = useIsFocused();
   const { user, logout, updateAvatar, token, deleteAccount, refreshUser } = useAuthStore();
   const themeMode = useThemeStore(s => s.themeMode);
   const setThemeMode = useThemeStore(s => s.setThemeMode);
@@ -3829,7 +3843,11 @@ function ProfileScreenLoggedIn({
         <ScrollView
           style={{ flex: 1, backgroundColor: profileScreenBg }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.container, { backgroundColor: profileScreenBg }]}
+          contentContainerStyle={[
+            styles.container,
+            { backgroundColor: profileScreenBg },
+            !hasInvestorProActive && { paddingBottom: 220 },
+          ]}
         >
         
         <ProfileCardShell isDark={isDark} variant="header" style={styles.headerCardShell} faceStyle={styles.headerCard}>
@@ -4443,6 +4461,11 @@ function ProfileScreenLoggedIn({
           </Text>
         </Pressable>
       </ScrollView>
+        <InvestorProTrialIntroHost
+          enabled={isProfileTabFocused}
+          isDark={isDark}
+          onPurchase={handleBuyInvestorPro}
+        />
       </View>
 
       <MyOffersModal visible={isMyOffersVisible} onClose={() => setIsMyOffersVisible(false)} theme={theme} />
@@ -4569,7 +4592,8 @@ function ProfileScreenLoggedIn({
         isDark={isDark}
       />
 
-      <Modal visible={isOwnPublicProfileOpen} transparent animationType="fade" onRequestClose={closePublicProfileModal}>
+      {isOwnPublicProfileOpen ? (
+      <Modal visible transparent animationType="fade" onRequestClose={closePublicProfileModal}>
         <View style={styles.profileOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closePublicProfileModal} />
           <View style={styles.profileCard}>
@@ -4670,6 +4694,7 @@ function ProfileScreenLoggedIn({
           </View>
         </View>
       </Modal>
+      ) : null}
 
     </>
   );

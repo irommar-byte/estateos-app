@@ -30,10 +30,7 @@ export default function AppRatingPromptHost() {
     };
   }, [evaluate]);
 
-  return (
-    <AppRatingPromptModal
-      visible={visible}
-      onClose={() => setVisible(false)}
-    />
-  );
+  if (!visible) return null;
+
+  return <AppRatingPromptModal visible onClose={() => setVisible(false)} />;
 }

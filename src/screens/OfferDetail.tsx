@@ -20,7 +20,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import ImageViewing from 'react-native-image-viewing';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -75,6 +75,9 @@ import { localeToDateFormat, useI18n } from '../i18n';
 
 const { width, height } = Dimensions.get('window');
 const IMG_HEIGHT = 450;
+/** Ile białej karty nachodzi na dół zdjęcia (zaokrąglone rogi). */
+const HERO_SHEET_OVERLAP = 40;
+const HERO_TAP_HEIGHT = IMG_HEIGHT - HERO_SHEET_OVERLAP;
 const EVENT_PREFIX = DEAL_EVENT_PREFIX;
 
 function parseDealEvent(content?: string) {
@@ -148,7 +151,7 @@ export default function OfferDetail({ route, navigation }: any) {
    * w kolorze karty** na końcu treści (zamiast przezroczystego paddingu) — inaczej
    * przy scrollu widać hero zdjęcia („szczelina" między kartą a bottom barem).
    */
-  const [bottomBarHeight, setBottomBarHeight] = useState(220);
+  const [bottomBarHeight, setBottomBarHeight] = useState(160);
   const heartScale = useSharedValue(1);
   const { user, token } = useAuthStore() as any;
   const isGuest = !user?.id;
@@ -1256,18 +1259,18 @@ export default function OfferDetail({ route, navigation }: any) {
         {imagesToShow.length > 0 ? (
           <Pressable
             onPress={() => openGallery(0)}
-            style={styles.heroGalleryBtn}
-            hitSlop={12}
+            style={styles.heroPhotoPill}
+            hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={t('offer.detail.hero.openGallery')}
           >
-            <BlurView intensity={55} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
-            <Maximize color="#FFFFFF" size={20} strokeWidth={2} />
-            {imagesToShow.length > 1 ? (
-              <View style={styles.heroGalleryCount}>
-                <Text style={styles.heroGalleryCountText}>{imagesToShow.length}</Text>
-              </View>
-            ) : null}
+            <BlurView intensity={68} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <View style={styles.heroPhotoPillInner} pointerEvents="none">
+              <Images color="#FFFFFF" size={15} strokeWidth={2.2} />
+              <Text style={styles.heroPhotoPillText}>
+                {t('offer.detail.hero.photoCount', { count: imagesToShow.length })}
+              </Text>
+            </View>
           </Pressable>
         ) : null}
       </Animated.View>
@@ -1312,10 +1315,28 @@ export default function OfferDetail({ route, navigation }: any) {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
         pointerEvents="box-none"
-        contentContainerStyle={{ paddingTop: IMG_HEIGHT - 40, paddingBottom: 12 }}
+        style={styles.scrollLayer}
+        contentContainerStyle={{ flexGrow: 0 }}
       >
+        {/*
+          Przezroczysty pas w ScrollView (nad zdjęciem) — tap otwiera galerię.
+          ScrollView ma wyższy zIndex niż hero, więc bez tego dotyk nie dociera do Pressable pod spodem.
+        */}
+        <Pressable
+          style={styles.heroTapStrip}
+          onPress={() => openGallery(0)}
+          accessibilityRole="button"
+          accessibilityLabel={t('offer.detail.hero.openGallery')}
+        />
         <View
-          style={[styles.contentSheet, { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }]}
+          style={[
+            styles.contentSheet,
+            {
+              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+              marginTop: -HERO_SHEET_OVERLAP,
+              paddingBottom: bottomBarHeight + 16,
+            },
+          ]}
           pointerEvents="auto"
         >
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
@@ -1457,9 +1478,15 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
 
           {/* RZUT NIERUCHOMOŚCI */}
-          <FloorPlanViewer 
-            imageUrl={offer?.floorPlanUrl ? (offer.floorPlanUrl.startsWith('/uploads') ? `${API_URL}${offer.floorPlanUrl}` : offer.floorPlanUrl) : 'https://images.unsplash.com/photo-1600607686527-6fb886090705?q=80&w=800&auto=format&fit=crop'} 
-            theme={theme} 
+          <FloorPlanViewer
+            imageUrl={
+              offer?.floorPlanUrl
+                ? offer.floorPlanUrl.startsWith('/uploads')
+                  ? `${API_URL}${offer.floorPlanUrl}`
+                  : offer.floorPlanUrl
+                : null
+            }
+            theme={theme}
           />
 
           {activeAmenities.length > 0 && (
@@ -1475,7 +1502,7 @@ export default function OfferDetail({ route, navigation }: any) {
           <Text style={[styles.sectionTitle, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.about')}</Text>
           <Text style={[styles.description, isDark && { color: '#d1d5db' }]}>{displayOffer.description}</Text>
 
-          <Text style={[styles.sectionTitle, { marginTop: 40 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.gallery')}</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 28 }, isDark && { color: '#ffffff' }]}>{t('offer.detail.sections.gallery')}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={width * 0.8 + 16} decelerationRate="fast" contentContainerStyle={styles.galleryContainer}>
             {imagesToShow.map((img, idx) => (
               <Pressable key={idx} onPress={() => openGallery(idx)}>
@@ -1531,19 +1558,6 @@ export default function OfferDetail({ route, navigation }: any) {
               <Text style={styles.negotiationMemoryText}>{dealPresentation.priceNegotiation.body}</Text>
             </View>
           ) : null}
-          {/*
-            Przezroczysty paddingBottom ScrollView pokazywał hero zdjęcia = „szczelina” między
-            białą kartą a dolnym paskiem. Ten blok ma ten sam kolor co contentSheet.
-          */}
-          <View
-            pointerEvents="none"
-            style={{
-              height: bottomBarHeight + (isOwner ? 72 : 40),
-              marginTop: 4,
-              marginHorizontal: -24,
-              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
-            }}
-          />
         </View>
       </Animated.ScrollView>
 
@@ -1954,17 +1968,34 @@ export default function OfferDetail({ route, navigation }: any) {
           setGalleryCurrentIndex(safe);
         }}
         doubleTapToZoomEnabled
-        swipeToCloseEnabled={false}
+        swipeToCloseEnabled
         presentationStyle="fullScreen"
-        FooterComponent={({ imageIndex }) => (
-          <View style={styles.galleryHeader}>
-            <Text style={styles.galleryCounter}>{t('offer.detail.gallery.counter', { current: (imageIndex ?? galleryCurrentIndex) + 1, total: imagesToShow.length })}</Text>
-              </View>
-            )}
-          />
+        backgroundColor="#000000F2"
+        HeaderComponent={({ imageIndex }) => (
+          <View style={[styles.galleryHeader, { paddingTop: Math.max(insets.top + 6, Platform.OS === 'ios' ? 54 : 36) }]}>
+            <TouchableOpacity
+              onPress={closeGallery}
+              style={styles.galleryCloseBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.close')}
+            >
+              <X color="#FFFFFF" size={20} strokeWidth={2.2} />
+            </TouchableOpacity>
+            <Text style={styles.galleryCounter}>
+              {t('offer.detail.gallery.counter', {
+                current: (imageIndex ?? galleryCurrentIndex) + 1,
+                total: imagesToShow.length,
+              })}
+            </Text>
+            <View style={styles.galleryHeaderSpacer} />
+          </View>
+        )}
+      />
 
+      {isLocationPreviewOpen ? (
       <Modal
-        visible={isLocationPreviewOpen}
+        visible
         transparent
         animationType="fade"
         onRequestClose={() => setIsLocationPreviewOpen(false)}
@@ -2020,6 +2051,7 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </View>
       </Modal>
+      ) : null}
 
       <BidActionModal
         visible={isBidModalOpen}
@@ -2057,7 +2089,8 @@ export default function OfferDetail({ route, navigation }: any) {
       />
 
       {/* --- MODALE --- */}
-      <Modal visible={isOwnerProfileOpen} transparent animationType="fade" onRequestClose={() => setIsOwnerProfileOpen(false)}>
+      {isOwnerProfileOpen ? (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setIsOwnerProfileOpen(false)}>
         <View style={styles.profileOverlay}>
           <Pressable
             style={StyleSheet.absoluteFill}
@@ -2145,9 +2178,11 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </View>
       </Modal>
+      ) : null}
 
       {/* --- OFF MARKET: BLOKADA 24H DLA NIE-PRO --- */}
-      <Modal visible={isOffMarketLocked && !isGuest} transparent animationType="fade">
+      {isOffMarketLocked && !isGuest ? (
+      <Modal visible transparent animationType="fade">
         <BlurView intensity={95} tint="dark" style={StyleSheet.absoluteFill}>
           <View style={styles.offMarketBackdrop} />
           <View style={styles.offMarketOverlay}>
@@ -2190,9 +2225,11 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </BlurView>
       </Modal>
+      ) : null}
 
       {/* --- GUEST GATE: DOSTĘP DO OFERTY DLA NIEZALOGOWANYCH --- */}
-      <Modal visible={isGuest && isGuestGateVisible} transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
+      {isGuest && isGuestGateVisible ? (
+      <Modal visible transparent animationType="fade" onRequestClose={() => navigation?.goBack()}>
         <BlurView intensity={72} tint="dark" style={StyleSheet.absoluteFill}>
           <View style={styles.guestGateBackdrop} />
           <View style={styles.offMarketOverlay}>
@@ -2225,9 +2262,11 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </BlurView>
       </Modal>
+      ) : null}
 
+      {isPhoneVerifyGateVisible ? (
       <Modal
-        visible={isPhoneVerifyGateVisible}
+        visible
         transparent
         animationType="fade"
         onRequestClose={() => setIsPhoneVerifyGateVisible(false)}
@@ -2264,6 +2303,7 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </BlurView>
       </Modal>
+      ) : null}
 
       {/*
         ====================================================================
@@ -2307,8 +2347,9 @@ export default function OfferDetail({ route, navigation }: any) {
       ) : null}
 
       {/* Action sheet z opcjami „⋯" — Apple Guideline 1.2 (Report + Block). */}
+      {isMoreMenuOpen ? (
       <Modal
-        visible={isMoreMenuOpen}
+        visible
         transparent
         animationType="fade"
         onRequestClose={() => setIsMoreMenuOpen(false)}
@@ -2377,6 +2418,7 @@ export default function OfferDetail({ route, navigation }: any) {
           </View>
         </Pressable>
       </Modal>
+      ) : null}
 
       <ReportSheet
         visible={isReportOpen}
@@ -2417,35 +2459,38 @@ export default function OfferDetail({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
-  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 3 },
+  imageContainer: { position: 'absolute', top: 0, left: 0, right: 0, height: IMG_HEIGHT, zIndex: 1 },
+  scrollLayer: { flex: 1, zIndex: 2 },
+  heroTapStrip: { height: HERO_TAP_HEIGHT, backgroundColor: 'transparent' },
   heroImagePressable: { flex: 1 },
   mainImage: { width: '100%', height: '100%' },
-  heroGalleryBtn: {
+  heroPhotoPill: {
     position: 'absolute',
     right: 18,
-    bottom: 52,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    bottom: 92,
+    borderRadius: 20,
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
+    borderColor: 'rgba(255,255,255,0.3)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  heroGalleryCount: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 4,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+  heroPhotoPillInner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  heroGalleryCountText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  heroPhotoPillText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.15,
+  },
   topBar: { position: 'absolute', top: 55, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', zIndex: 100 },
   topBarRight: { flexDirection: 'row' },
   glassButton: { width: 46, height: 46, borderRadius: 23, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
@@ -2456,7 +2501,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     height: 240,
   },
-  contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, minHeight: 800, shadowColor: '#000', shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 10 },
+  contentSheet: { backgroundColor: '#ffffff', borderTopLeftRadius: 36, borderTopRightRadius: 36, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: -12 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 10 },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
   topMetaBadgesRow: {
     flexDirection: 'row',
@@ -2615,7 +2660,7 @@ const styles = StyleSheet.create({
   amenitiesWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 32 },
   amenityPill: { backgroundColor: '#ffffff', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(17,24,39,0.08)', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
   amenityText: { color: '#1d1d1f', fontSize: 14, fontWeight: '600' },
-  offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 40, marginBottom: 20, letterSpacing: 0.5 },
+  offerIdText: { textAlign: 'center', color: '#86868b', fontSize: 12, marginTop: 24, marginBottom: 0, letterSpacing: 0.5 },
   
   galleryContainer: { paddingRight: 24 },
   galleryThumbnail: { width: width * 0.8, height: 220, borderRadius: 24, marginRight: 16, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
@@ -2885,9 +2930,31 @@ const styles = StyleSheet.create({
   editButtonSubtle: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0, 113, 227, 0.08)', alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginBottom: 24, gap: 8 },
   editButtonSubtleText: { color: '#0071e3', fontSize: 14, fontWeight: '700' },
 
-  galleryHeader: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, zIndex: 10 },
-  galleryCounter: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
-  galleryCloseBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  galleryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  galleryCounter: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    opacity: 0.92,
+  },
+  galleryCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  galleryHeaderSpacer: { width: 36 },
 
   offMarketBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.80)' },
   offMarketOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },

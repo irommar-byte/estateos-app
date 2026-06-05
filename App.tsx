@@ -76,7 +76,6 @@ const Colors = {
 import ProfileScreen from './src/screens/ProfileScreen';
 import BonusCouponNotifyBootstrap from './src/components/profile/BonusCouponNotifyBootstrap';
 import AppRatingPromptHost from './src/components/AppRatingPromptHost';
-import InvestorProTrialIntroHost from './src/components/profile/InvestorProTrialIntroHost';
 import InvestorProUpsellHost from './src/components/profile/InvestorProUpsellHost';
 import EditOfferScreen from './src/screens/EditOfferScreen';
 import TermsScreen from './src/screens/TermsScreen';
@@ -158,7 +157,8 @@ function parseAddOfferStepFromTabNavState(navState: any): number | null {
 // ======================================================================
 // KASKADOWY PLUSIK (APPLE GLASS) - ZABEZPIECZONY PANRESPONDER I KĄTY
 // ======================================================================
-const FloatingNextButton = ({ onPress }: any) => {
+const FloatingNextButton = (props: any) => {
+  const { onPress, style, children: _tabChildren, ...tabBarProps } = props;
   const draft = useOfferStore((s) => s.draft);
   const currentStep = useOfferStore((s) => s.currentStep);
   const setCurrentStep = useOfferStore((s) => s.setCurrentStep);
@@ -224,10 +224,6 @@ const FloatingNextButton = ({ onPress }: any) => {
     }
   }, [isValid, step, isFocused]);
 
-  // CROSSFADE NAPISÓW — przełączamy się PŁYNNIE między „DODAJ OFERTĘ"
-  // a „DALEJ" tylko przez zmianę opacity (oba SVG zawsze są zamontowane,
-  // pozycje i geometria stałe). Dzięki temu napis nie skacze pomiędzy
-  // ekranami i nie ma efektu „znika i pojawia się".
   const isArrowForLabel = isFocused && step > 0;
   useEffect(() => {
     Animated.parallel([
@@ -289,10 +285,7 @@ const FloatingNextButton = ({ onPress }: any) => {
 
   // Kąty: 180° lewo = Discovery, 270° góra = Live, 0° prawo = jasny motyw
   const openLivePanel = useOpenHouseLiveStore((s) => s.openPanel);
-  const liveUnread = useOpenHouseLiveStore((s) => {
-    const sig = s.items.map((i) => i.id).join('|');
-    return s.items.length > 0 && !s.livePanelAcknowledged && s.bannerPlayedForSig === sig;
-  });
+  const liveUnread = useOpenHouseLiveStore((s) => s.hasLiveUnread());
   const setPlusAnchor = useOpenHouseLiveStore((s) => s.setPlusAnchor);
 
   const quickActions = useMemo(
@@ -353,8 +346,8 @@ const FloatingNextButton = ({ onPress }: any) => {
   const closeQuickMenu = useCallback((toScale = 1) => {
     Animated.parallel([
       Animated.spring(holdScale, { toValue: toScale, friction: 7, tension: 90, useNativeDriver: true }),
-      Animated.timing(menuOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
-      Animated.timing(menuProgress, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(menuOpacity, { toValue: 0, duration: 90, useNativeDriver: true }),
+      Animated.timing(menuProgress, { toValue: 0, duration: 100, useNativeDriver: true }),
     ]).start(() => {
       setIsQuickMenuOpen(false);
       setHoveredAction(null);
@@ -486,8 +479,13 @@ const FloatingNextButton = ({ onPress }: any) => {
     ? 'rgba(0,0,0,0.70)'
     : 'rgba(15,23,42,0.62)';
 
+  const tabBarStyle = typeof style === 'function' ? style({ pressed: false }) : style;
+
   return (
-    <View style={{ top: -35, justifyContent: 'center', alignItems: 'center' }}>
+    <View
+      style={[tabBarStyle, { top: -35, justifyContent: 'center', alignItems: 'center' }]}
+      {...tabBarProps}
+    >
       {/*
         Diamentowy pierścień (108×108): krystalicznie przezroczysty z
         zewnętrznym halo światła. Wewnątrz dwa subtelne gradienty dają efekt
@@ -597,23 +595,15 @@ const FloatingNextButton = ({ onPress }: any) => {
               text="DODAJ OFERTĘ"
               arcPosition="top"
               buttonDiameter={108}
-              // Gap=17 → r≈77, czyli ~5 px POZA halo pierścienia
-              // diamentowego (shadowRadius:18 sięga do r≈72). Skrajne
-              // litery „DO" i „TĘ" przestają być wybielane przez halo.
               gap={17}
               fontSize={11.8}
               letterSpacing={2.2}
-              // arcFraction 0.62 zamiast 0.72 — skrajne litery
-              // skupiają się bliżej GÓRY łuku, daleko od bocznej
-              // krawędzi pierścienia gdzie halo jest najgęstsze.
               arcFraction={0.62}
               color={circularLabelColor}
               strokeColor={circularLabelStroke}
               strokeWidth={0.85}
               submerge
               submergeMidpoint={0.56}
-              // offset +60 → baseline napisu siada na linii krawędzi
-              // szkła tab bara (dolne połówki znikają w pasku).
               verticalOffset={60}
             />
           </Animated.View>
@@ -634,8 +624,6 @@ const FloatingNextButton = ({ onPress }: any) => {
               strokeWidth={0.55}
               submerge
               submergeMidpoint={0.5}
-              // offset −40 → baseline „DALEJ" w środku pasa szkła,
-              // między ikonami tab bara, bez nachodzenia.
               verticalOffset={-40}
             />
           </Animated.View>
@@ -724,7 +712,7 @@ const FloatingNextButton = ({ onPress }: any) => {
 }
 
 const Tab = createBottomTabNavigator();
-const LUXURY_TAB_PRESS_DELAY_MS = 68;
+const LUXURY_TAB_PRESS_DELAY_MS = 20;
 
 /**
  * Globalny Apple-style micro interaction dla zwykłych zakładek.
@@ -917,7 +905,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
 
   return (
     <View style={{ flex: 1 }}>
-      <OpenHouseLiveOrchestrator enabled={splashDone} />
     <Tab.Navigator
       /**
        * RN 0.81 + bottom-tabs `animation: 'shift'` + domyślne detach inactive screens
@@ -1072,6 +1059,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         )}
       </Tab.Screen>
     </Tab.Navigator>
+    {splashDone ? <OpenHouseLiveOrchestrator enabled /> : null}
     </View>
   );
 }
@@ -1481,9 +1469,6 @@ export default function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <I18nProvider>
         <BonusCouponNotifyBootstrap />
-        <AppRatingPromptHost />
-        <InvestorProTrialIntroHost />
-        <InvestorProUpsellHost />
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
         <PasskeyLaunchPrompt
           ready={!isSplashVisible}
@@ -1498,6 +1483,7 @@ export default function App() {
             });
           }}
         />
+        <View style={{ flex: 1 }}>
         <NavigationContainer
           ref={navigationRef}
           theme={resolvedTheme === 'dark' ? DarkTheme : DefaultTheme}
@@ -1555,6 +1541,9 @@ export default function App() {
             <AppStack.Screen name="OpenHouseEvent" component={OpenHouseEventScreen} />
           </AppStack.Navigator>
         </NavigationContainer>
+        {!isSplashVisible ? <AppRatingPromptHost /> : null}
+        {!isSplashVisible ? <InvestorProUpsellHost /> : null}
+        </View>
         </I18nProvider>
       </GestureHandlerRootView>
 

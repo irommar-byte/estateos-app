@@ -87,6 +87,7 @@ export default function JellyReveal({ visible, children, style }: Props) {
 
   return (
     <Animated.View
+      pointerEvents="box-none"
       style={[
         style,
         {

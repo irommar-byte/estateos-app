@@ -75,8 +75,10 @@ export default function AppRatingPromptModal({ visible, onClose }: Props) {
     resetAndClose();
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleThanksClose}>
+    <Modal visible transparent animationType="fade" onRequestClose={handleThanksClose}>
       <View style={styles.backdrop}>
         <View style={[styles.card, { backgroundColor: colors.bg, borderColor: colors.border }]}>
           {step === 'enjoy' ? (

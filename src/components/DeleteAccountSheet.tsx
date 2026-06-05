@@ -97,8 +97,10 @@ export default function DeleteAccountSheet({
   const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.08)';
   const pressedBg = profileShopLeatherPressedBg(isDark);
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView

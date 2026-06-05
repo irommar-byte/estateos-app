@@ -1,6 +1,7 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '../../i18n';
 
 type Props = {
@@ -12,6 +13,10 @@ type Props = {
   isDark: boolean;
 };
 
+/**
+ * Dolny panel (bez RN Modal) — nie przyciemnia ani nie blokuje całego ekranu.
+ * Górna część profilu pozostaje przewijalna i klikalna.
+ */
 export default function InvestorProTrialIntroModal({
   visible,
   priceLine,
@@ -21,47 +26,73 @@ export default function InvestorProTrialIntroModal({
   isDark,
 }: Props) {
   const { t } = useI18n();
+  const insets = useSafeAreaInsets();
   const bg = isDark ? '#1C1C1E' : '#FFFFFF';
   const text = isDark ? '#FFFFFF' : '#111111';
   const sub = isDark ? '#8E8E93' : '#6B7280';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onLater}>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { backgroundColor: bg }]}>
-          <View style={styles.badge}>
-            <Ionicons name="gift" size={22} color="#FFFFFF" />
-            <Text style={styles.badgeText}>{t('profile.shop.investorProTrialBadge')}</Text>
-          </View>
-          <Text style={[styles.title, { color: text }]}>{t('profile.shop.investorProTrialIntroTitle')}</Text>
-          <Text style={[styles.body, { color: sub }]}>{t('profile.shop.investorProTrialIntroBody')}</Text>
-          {priceLine ? <Text style={[styles.price, { color: text }]}>{priceLine}</Text> : null}
-          <Pressable style={[styles.cta, buying && styles.ctaDisabled]} disabled={buying} onPress={onSubscribe}>
-            <Text style={styles.ctaText}>
-              {buying ? t('profile.shop.restoring') : t('profile.shop.investorProTrialIntroCta')}
-            </Text>
-          </Pressable>
-          <Pressable onPress={onLater} disabled={buying} style={styles.laterBtn}>
-            <Text style={[styles.laterText, { color: sub }]}>{t('profile.shop.investorProTrialIntroLater')}</Text>
-          </Pressable>
+    <View style={styles.host} pointerEvents="box-none">
+      <View
+        style={[
+          styles.sheet,
+          {
+            backgroundColor: bg,
+            paddingBottom: Math.max(insets.bottom, 16) + 12,
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+          },
+        ]}
+        pointerEvents="auto"
+      >
+        <View style={styles.badge}>
+          <Ionicons name="gift" size={22} color="#FFFFFF" />
+          <Text style={styles.badgeText}>{t('profile.shop.investorProTrialBadge')}</Text>
         </View>
+        <Text style={[styles.title, { color: text }]}>{t('profile.shop.investorProTrialIntroTitle')}</Text>
+        <Text style={[styles.body, { color: sub }]}>{t('profile.shop.investorProTrialIntroBody')}</Text>
+        {priceLine ? <Text style={[styles.price, { color: text }]}>{priceLine}</Text> : null}
+        <Pressable
+          style={[styles.cta, buying && styles.ctaDisabled]}
+          disabled={buying}
+          onPress={onSubscribe}
+          accessibilityRole="button"
+        >
+          {buying ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.ctaText}>{t('profile.shop.investorProTrialIntroCta')}</Text>
+          )}
+        </Pressable>
+        <Pressable onPress={onLater} disabled={buying} style={styles.laterBtn} accessibilityRole="button">
+          <Text style={[styles.laterText, { color: sub }]}>{t('profile.shop.investorProTrialIntroLater')}</Text>
+        </Pressable>
       </View>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+  host: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 32,
+    elevation: 32,
   },
   sheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 22,
     paddingTop: 20,
-    paddingBottom: 34,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 16,
   },
   badge: {
     alignSelf: 'flex-start',
@@ -104,7 +135,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  ctaDisabled: { opacity: 0.7 },
+  ctaDisabled: { opacity: 0.85 },
   ctaText: {
     color: '#FFFFFF',
     fontSize: 17,

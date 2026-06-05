@@ -315,9 +315,16 @@ export const offer = {
     },
     hero: {
       openGallery: 'Открыть галерею фотографий',
+      photoCount: '{{count}} фото',
     },
     gallery: {
       counter: '{{current}} из {{total}}',
+    },
+    floorPlan: {
+      sectionTitle: 'План этажа',
+      enlarge: 'Увеличить план',
+      emptyTitle: 'План недоступен',
+      emptySubtitle: 'К этому объявлению пока не прикреплён план помещения.',
     },
     offerId: 'Идентификатор объявления: {{id}}',
     profile: {

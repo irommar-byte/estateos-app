@@ -31,8 +31,10 @@ export default function InvestorProUpsellModal({
   const titleKey = `profile.shop.investorProUpsell.${reason}.title` as const;
   const bodyKey = `profile.shop.investorProUpsell.${reason}.body` as const;
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onLater}>
+    <Modal visible transparent animationType="slide" onRequestClose={onLater}>
       <View style={styles.backdrop}>
         <View style={[styles.sheet, { backgroundColor: bg }]}>
           <View style={styles.badge}>

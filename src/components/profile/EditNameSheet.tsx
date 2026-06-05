@@ -103,8 +103,10 @@ export default function EditNameSheet({ visible, onClose, theme, isDark = false 
   const border = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.12)';
   const inputBg = isDark ? 'rgba(44,44,46,0.9)' : '#F2F2F7';
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView

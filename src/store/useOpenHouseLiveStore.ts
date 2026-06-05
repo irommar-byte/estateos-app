@@ -39,7 +39,8 @@ type State = {
   openPanel: () => void;
   closePanel: () => void;
   dockToPlus: () => void;
-  showBanner: () => void;
+  /** silent: tylko badge na „+”, bez animowanego paska na mapie */
+  showBanner: (options?: { silent?: boolean }) => void;
   hasLiveUnread: () => boolean;
 };
 
@@ -98,17 +99,20 @@ export const useOpenHouseLiveStore = create<State>((set, get) => ({
     if (phase === 'docked' || phase === 'genie' || phase === 'hidden') return;
     set({ phase: 'genie' });
   },
-  showBanner: () => {
+  showBanner: (options) => {
     const { items, phase, panelOpen, bannerPlayedForSig } = get();
     if (!items.length || panelOpen) return;
     if (phase === 'hero' || phase === 'typing' || phase === 'genie') return;
     const sig = itemsSignature(items);
     if (bannerPlayedForSig === sig) return;
+    if (options?.silent) {
+      set({ phase: 'docked', panelOpen: false, index: 0, livePanelAcknowledged: false });
+      return;
+    }
     set({ phase: 'hero', panelOpen: false, index: 0 });
   },
   hasLiveUnread: () => {
-    const { items, livePanelAcknowledged, bannerPlayedForSig } = get();
-    const sig = itemsSignature(items);
-    return items.length > 0 && !livePanelAcknowledged && bannerPlayedForSig === sig;
+    const { items, livePanelAcknowledged } = get();
+    return items.length > 0 && !livePanelAcknowledged;
   },
 }));

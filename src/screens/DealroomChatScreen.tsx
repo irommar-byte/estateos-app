@@ -7,8 +7,10 @@ import { ScrollView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { 
   ChevronLeft, Send, Paperclip, Check, CheckCheck, 
-  FileText, Play, Pause, CalendarClock, HandCoins, MoreHorizontal, Flag, Ban
+  FileText, Play, Pause, CalendarClock, HandCoins, MoreHorizontal, Flag, Ban, Star, User
 } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import EliteStatusBadges from '../components/EliteStatusBadges';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
@@ -109,22 +111,6 @@ function toUniquePositiveInts(values: unknown[]): number[] {
         .filter((v): v is number => Number.isFinite(v as number) && (v as number) > 0)
     )
   );
-}
-
-function formatActorLabel(msg: any, myUserId: any) {
-  if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return t('dealroom.chat.actorYou');
-  const fromPayload =
-    firstDefined(
-      msg?.senderName,
-      msg?.sender?.fullName,
-      msg?.sender?.name,
-      msg?.authorName,
-      msg?.userName,
-      msg?.user?.fullName,
-      msg?.user?.name
-    ) || '';
-  const clean = String(fromPayload).trim();
-  return clean || t('dealroom.chat.actorCounterparty');
 }
 
 function normalizeMediaUrl(raw: string | null | undefined): string | null {
@@ -364,6 +350,7 @@ export default function DealroomChatScreen() {
   const [listingOwnerUserId, setListingOwnerUserId] = useState<number | null>(null);
   const [counterpartyUserId, setCounterpartyUserId] = useState<number | null>(null);
   const [counterpartyName, setCounterpartyName] = useState<string>(() => t('dealroom.chat.otherParty'));
+  const [counterpartyCompanyName, setCounterpartyCompanyName] = useState<string | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isBlockOpen, setIsBlockOpen] = useState(false);
@@ -535,44 +522,105 @@ export default function DealroomChatScreen() {
     return current;
   }, [dealId, token, user?.id]);
 
-  const openCounterpartyReviews = useCallback(async () => {
-    if (!counterpartyUserId) return;
-    setIsCounterpartyReviewsOpen(true);
-    setCounterpartyProfileLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/users/${counterpartyUserId}/public`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && !data?.error) setCounterpartyPublicProfile(data);
-      } catch {
-      // noop
-    } finally {
-      setCounterpartyProfileLoading(false);
-    }
-  }, [counterpartyUserId, token]);
+  const applyCounterpartyPublicProfile = useCallback((data: any, fallbackName?: string) => {
+    const profileUser = data?.user || data;
+    const nextName = String(
+      firstDefined(
+        profileUser?.name,
+        profileUser?.fullName,
+        [profileUser?.firstName, profileUser?.lastName].filter(Boolean).join(' '),
+        data?.name,
+        fallbackName || ''
+      )
+    ).trim();
+    const nextCompany = String(
+      firstDefined(profileUser?.companyName, profileUser?.agencyName, data?.companyName) || ''
+    ).trim();
+    if (nextName) setCounterpartyName(nextName);
+    setCounterpartyCompanyName(nextCompany || null);
+    setCounterpartyPublicProfile(data);
+  }, []);
 
-  const openPublicReviewsProfile = useCallback(async (userId: number | null, fallbackName?: string) => {
-    if (!userId) return;
-    setCounterpartyProfileLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/users/${userId}/public`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && !data?.error) {
-        setCounterpartyPublicProfile(data);
-        const nextName = String(
-          firstDefined(data?.user?.name, data?.user?.fullName, data?.name, fallbackName || '')
-        ).trim();
-        if (nextName) setCounterpartyName(nextName);
+  const openCounterpartyPublicProfile = useCallback(
+    async (userId?: number | null, fallbackName?: string) => {
+      const targetId = Number(userId || counterpartyUserId || 0);
+      if (!targetId) return;
+      Haptics.selectionAsync();
+      setIsCounterpartyReviewsOpen(true);
+      setCounterpartyProfileLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/users/${targetId}/public`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && !data?.error) applyCounterpartyPublicProfile(data, fallbackName);
+      } catch {
+        // noop
+      } finally {
+        setCounterpartyProfileLoading(false);
       }
-    } catch {
-      // noop
-    } finally {
-      setCounterpartyProfileLoading(false);
+    },
+    [applyCounterpartyPublicProfile, counterpartyUserId, token]
+  );
+
+  const openCounterpartyReviews = useCallback(async () => {
+    await openCounterpartyPublicProfile(counterpartyUserId);
+  }, [counterpartyUserId, openCounterpartyPublicProfile]);
+
+  const openPublicReviewsProfile = useCallback(
+    async (userId: number | null, fallbackName?: string) => {
+      await openCounterpartyPublicProfile(userId, fallbackName);
+    },
+    [openCounterpartyPublicProfile]
+  );
+
+  useEffect(() => {
+    if (!counterpartyUserId) {
+      setCounterpartyCompanyName(null);
+      return;
     }
-  }, [token]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/users/${counterpartyUserId}/public`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok || data?.error) return;
+        applyCounterpartyPublicProfile(data);
+      } catch {
+        // noop
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyCounterpartyPublicProfile, counterpartyUserId, token]);
+
+  const formatActorLabel = useCallback(
+    (msg: any, myUserId: any) => {
+      if (String(msg?.senderId ?? '') === String(myUserId ?? '')) return t('dealroom.chat.actorYou');
+      const fromPayload =
+        firstDefined(
+          msg?.senderName,
+          msg?.sender?.fullName,
+          msg?.sender?.name,
+          msg?.authorName,
+          msg?.userName,
+          msg?.user?.fullName,
+          msg?.user?.name
+        ) || '';
+      const clean = String(fromPayload).trim();
+      if (clean) return clean;
+      const senderId = Number(msg?.senderId || 0);
+      if (senderId > 0 && senderId === Number(counterpartyUserId || 0)) {
+        return counterpartyName || t('dealroom.chat.otherParty');
+      }
+      if (senderId > 0) return t('dealroom.user.numbered', { id: senderId });
+      return t('dealroom.chat.otherParty');
+    },
+    [counterpartyName, counterpartyUserId, t]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1122,6 +1170,7 @@ export default function DealroomChatScreen() {
     latestAppointment,
     latestPendingAppointmentEntry,
     user?.id,
+    formatActorLabel,
     t,
   ]);
 
@@ -1134,7 +1183,41 @@ export default function DealroomChatScreen() {
     [dealStatusSnapshot, messages],
   );
 
+  const priceBrokerReply = useMemo(() => {
+    if (priceStatus === 'IDLE') return null;
+    if (ownerNeedsFinalDecision && !transactionFinalized) return null;
+    if (awaitingOwnerPriceFinalize) return null;
+    if (priceStatus === 'ACCEPTED' && acceptedPrice > 0) return null;
+    if (isWaitingForOtherOnPrice) return null;
+    const source = latestActionableBidFromOther || latestBid;
+    if (!source?.event?.amount) return null;
+    const action = String(source.event?.action || '').toUpperCase();
+    if (!['PROPOSED', 'COUNTERED'].includes(action)) return null;
+    if (String(source.msg?.senderId ?? '') === String(user?.id ?? '')) return null;
+    const proposerUserId = Number(source.msg?.senderId || counterpartyUserId || 0);
+    if (!proposerUserId) return null;
+    return {
+      proposerUserId,
+      displayName: formatActorLabel(source.msg, user?.id),
+      companyName: counterpartyCompanyName,
+    };
+  }, [
+    acceptedPrice,
+    awaitingOwnerPriceFinalize,
+    counterpartyCompanyName,
+    counterpartyUserId,
+    formatActorLabel,
+    isWaitingForOtherOnPrice,
+    latestActionableBidFromOther,
+    latestBid,
+    ownerNeedsFinalDecision,
+    priceStatus,
+    transactionFinalized,
+    user?.id,
+  ]);
+
   const priceStatusText = useMemo(() => {
+    if (priceBrokerReply) return null;
     if (priceStatus === 'IDLE') return t('dealroom.chat.priceStatus.idle');
     if (ownerNeedsFinalDecision && !transactionFinalized) {
       return t('dealroom.chat.priceStatus.ownerCta');
@@ -1157,9 +1240,11 @@ export default function DealroomChatScreen() {
   }, [
     acceptedPrice,
     awaitingOwnerPriceFinalize,
+    formatActorLabel,
     latestActionableBidFromOther,
     latestBid,
     isWaitingForOtherOnPrice,
+    priceBrokerReply,
     priceStatus,
     user?.id,
     ownerNeedsFinalDecision,
@@ -1881,7 +1966,25 @@ export default function DealroomChatScreen() {
                 </Animated.View>
               <View style={styles.negotiationTextWrap}>
                 <Text style={styles.negotiationTitle}>{t('dealroom.chat.priceSection')}</Text>
-                <Text style={styles.negotiationState}>{priceStatusText}</Text>
+                {priceBrokerReply ? (
+                  <Pressable
+                    onPress={() => void openCounterpartyPublicProfile(priceBrokerReply.proposerUserId, priceBrokerReply.displayName)}
+                    style={({ pressed }) => [pressed && { opacity: 0.72 }]}
+                    accessibilityRole="link"
+                    accessibilityLabel={t('dealroom.chat.priceStatus.profileLinkA11y', {
+                      name: priceBrokerReply.displayName,
+                    })}
+                  >
+                    <Text style={[styles.negotiationState, styles.negotiationSignerLink]}>
+                      {priceBrokerReply.displayName}
+                      {priceBrokerReply.companyName
+                        ? t('dealroom.chat.priceStatus.brokerRoleSuffix', { company: priceBrokerReply.companyName })
+                        : ''}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Text style={styles.negotiationState}>{priceStatusText}</Text>
+                )}
               </View>
               <Text style={styles.negotiationCaret}>{priceSectionExpanded ? '−' : '+'}</Text>
             </Pressable>
@@ -2295,12 +2398,59 @@ export default function DealroomChatScreen() {
         <View style={styles.reviewModalOverlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setIsCounterpartyReviewsOpen(false)} />
           <View style={styles.reviewModalCard}>
-            <Text style={styles.reviewModalTitle}>{t('dealroom.chat.reviewModal.title')}</Text>
-            <Text style={styles.reviewModalSubtitle}>{counterpartyName}</Text>
+            <Text style={styles.reviewModalTitle}>{t('dealroom.list.partnerCard.title')}</Text>
             {counterpartyProfileLoading ? (
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 18 }} />
             ) : (
-              <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  const profileUser = counterpartyPublicProfile?.user || counterpartyPublicProfile;
+                  const reviews = Array.isArray(counterpartyPublicProfile?.reviews)
+                    ? counterpartyPublicProfile.reviews
+                    : [];
+                  const avg =
+                    reviews.length > 0
+                      ? reviews.reduce((acc: number, r: any) => acc + Number(r?.rating || 0), 0) / reviews.length
+                      : 0;
+                  const avatarRaw = String(
+                    firstDefined(profileUser?.avatarUrl, profileUser?.avatar, profileUser?.photoUrl) || ''
+                  ).trim();
+                  const avatarUri = avatarRaw ? normalizeMediaUrl(avatarRaw) : null;
+                  return (
+                    <View style={styles.profileModalHero}>
+                      <View style={styles.profileModalAvatar}>
+                        {avatarUri ? (
+                          <Image source={{ uri: avatarUri }} style={styles.profileModalAvatarImage} contentFit="cover" />
+                        ) : (
+                          <User size={28} color={COLORS.primary} strokeWidth={2} />
+                        )}
+                      </View>
+                      <Text style={styles.profileModalName}>
+                        {String(firstDefined(profileUser?.name, profileUser?.fullName, counterpartyName) || counterpartyName)}
+                      </Text>
+                      <EliteStatusBadges subject={profileUser || counterpartyPublicProfile} isDark compact />
+                      <Text style={styles.reviewModalSubtitle}>
+                        {t('dealroom.list.partnerCard.systemId', {
+                          id: profileUser?.id || counterpartyUserId || '-',
+                        })}
+                      </Text>
+                      <View style={styles.profileModalRatingRow}>
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            size={12}
+                            color={s <= Math.round(avg) ? '#F59E0B' : COLORS.textMuted}
+                            fill={s <= Math.round(avg) ? '#F59E0B' : 'transparent'}
+                          />
+                        ))}
+                        <Text style={styles.profileModalRatingText}>
+                          {avg.toFixed(1)} ({reviews.length})
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })()}
+                <Text style={styles.profileModalSectionTitle}>{t('dealroom.list.partnerCard.recentReviews')}</Text>
                 {(Array.isArray(counterpartyPublicProfile?.reviews) ? counterpartyPublicProfile.reviews : []).slice(0, 8).map((r: any, idx: number) => (
                   <View key={`cp-rev-${r?.id || idx}`} style={styles.reviewItem}>
                     <Pressable
@@ -2502,6 +2652,30 @@ const styles = StyleSheet.create({
   negotiationTextWrap: { flex: 1 },
   negotiationTitle: { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   negotiationState: { color: COLORS.textBase, fontSize: 14, fontWeight: '600', marginTop: 2 },
+  negotiationSignerLink: { color: '#5AC8FA', textDecorationLine: 'underline', marginTop: 2 },
+  profileModalHero: { alignItems: 'center', marginBottom: 14 },
+  profileModalAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  profileModalAvatarImage: { width: '100%', height: '100%' },
+  profileModalName: { color: COLORS.textBase, fontSize: 17, fontWeight: '800', textAlign: 'center' },
+  profileModalRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
+  profileModalRatingText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '600', marginLeft: 4 },
+  profileModalSectionTitle: {
+    color: COLORS.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 4,
+  },
   negotiationCaret: { color: COLORS.textMuted, fontSize: 22, fontWeight: '300', paddingHorizontal: 8 },
   negotiationExpanded: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 },
   negotiationExpandedText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },

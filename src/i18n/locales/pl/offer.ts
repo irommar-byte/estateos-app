@@ -325,9 +325,16 @@ export const offer = {
     },
     hero: {
       openGallery: 'Otwórz galerię zdjęć',
+      photoCount: '{{count}} zdj.',
     },
     gallery: {
       counter: '{{current}} z {{total}}',
+    },
+    floorPlan: {
+      sectionTitle: 'Rzut / Plan nieruchomości',
+      enlarge: 'Powiększ rzut',
+      emptyTitle: 'Plan niedostępny',
+      emptySubtitle: 'Do tej oferty nie dołączono jeszcze planu lokalu.',
     },
     offerId: 'ID Oferty: {{id}}',
     profile: {

@@ -1,30 +1,34 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, InteractionManager, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import InvestorProTrialIntroModal from './InvestorProTrialIntroModal';
 import { useI18n } from '../../i18n';
-import { API_URL } from '../../config/network';
 import { useAuthStore } from '../../store/useAuthStore';
-import {
-  hasActiveInvestorProMembership,
-  userAfterInvestorProPurchase,
-} from '../../utils/investorProMembership';
+import { hasActiveInvestorProMembership } from '../../utils/investorProMembership';
 import { fetchInvestorProStoreListing } from '../../services/iapInvestorProListing';
-import { presentInvestorProSubscriptionSheet } from '../../services/iapInvestorPro';
-import { investorProPurchaseAlertCopy, investorProPurchaseErrorAlertCopy } from '../../utils/investorProPurchaseFeedback';
 import type { SubscriptionStoreListing } from '../../services/iapManager';
 
 const STORAGE_KEY = '@estateos:investorProTrialIntroShown:v1';
 const SHOW_DELAY_MS = 2200;
+/** Krótka przerwa po zamknięciu panelu przed sheetem App Store (bez RN Modal). */
+const SHEET_HANDOFF_MS = 280;
 
-export default function InvestorProTrialIntroHost() {
+type Props = {
+  /** Tylko na aktywnej zakładce Profil — nie pokazuj na innych ekranach. */
+  enabled?: boolean;
+  isDark?: boolean;
+  /** Ten sam flow co „Wypróbuj 3 dni” w sekcji sklepu profilu. */
+  onPurchase: () => Promise<void>;
+};
+
+export default function InvestorProTrialIntroHost({
+  enabled = true,
+  isDark = false,
+  onPurchase,
+}: Props) {
   const { t } = useI18n();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
-  const refreshUser = useAuthStore((s) => s.refreshUser);
 
   const [visible, setVisible] = useState(false);
   const [listing, setListing] = useState<SubscriptionStoreListing | null>(null);
@@ -43,7 +47,7 @@ export default function InvestorProTrialIntroHost() {
   }, []);
 
   useEffect(() => {
-    if (!token || !user?.id || hasPro) {
+    if (!enabled || !token || !user?.id || hasPro) {
       setVisible(false);
       return;
     }
@@ -68,70 +72,23 @@ export default function InvestorProTrialIntroHost() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [token, user?.id, hasPro]);
+  }, [enabled, token, user?.id, hasPro]);
 
   const handleSubscribe = useCallback(async () => {
     if (buying) return;
-    if (!token) {
-      Alert.alert(
-        t('profile.shop.alerts.loginRequiredTitle'),
-        t('profile.shop.alerts.investorProLoginBody'),
-      );
-      return;
-    }
-
     setBuying(true);
-    setVisible(false);
-    void AsyncStorage.setItem(STORAGE_KEY, '1');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const hadProBeforePurchase = hasActiveInvestorProMembership(user);
+    setVisible(false);
+    await AsyncStorage.setItem(STORAGE_KEY, '1');
     try {
-      const result = await presentInvestorProSubscriptionSheet(API_URL, token);
-      if (!result.ok) {
-        if (result.cancelled) return;
-        const alertCopy = investorProPurchaseErrorAlertCopy(t, {
-          errorCode: result.errorCode,
-          message: result.message,
-          alreadyHasEstateOsPro: hasActiveInvestorProMembership(useAuthStore.getState().user),
-        });
-        Alert.alert(alertCopy.title, alertCopy.body);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        return;
-      }
-
-      await refreshUser?.();
-      const patched = userAfterInvestorProPurchase(useAuthStore.getState().user as Record<string, unknown>, {
-        backendRegistered: Boolean(result.backendRegistered),
-        isPro: result.isPro,
-        proExpiresAt: result.proExpiresAt,
-        extraListings: result.extraListings,
-        plusExpiresAt: result.plusExpiresAt,
-        syncedExistingSubscription: result.syncedExistingSubscription,
-        subscriptionTransferred: result.subscriptionTransferred,
-      });
-      if (patched) {
-        const current = useAuthStore.getState().user;
-        if (current) {
-          const merged = { ...current, ...patched };
-          useAuthStore.setState({ user: merged });
-          await AsyncStorage.setItem('user_data', JSON.stringify(merged));
-        }
-      }
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const alertCopy = investorProPurchaseAlertCopy(
-        { ...result, ok: true as const },
-        patched ?? useAuthStore.getState().user,
-        t,
-        { hadProBeforePurchase },
-      );
-      Alert.alert(alertCopy.title, alertCopy.body);
+      await new Promise((resolve) => setTimeout(resolve, SHEET_HANDOFF_MS));
+      await onPurchase();
     } finally {
       setBuying(false);
     }
-  }, [buying, refreshUser, t, token]);
+  }, [buying, onPurchase]);
 
-  if ((!visible && !buying) || hasPro) return null;
+  if (hasPro || (!visible && !buying)) return null;
 
   return (
     <InvestorProTrialIntroModal
@@ -140,9 +97,7 @@ export default function InvestorProTrialIntroHost() {
       isDark={isDark}
       buying={buying}
       onSubscribe={() => {
-        InteractionManager.runAfterInteractions(() => {
-          void handleSubscribe();
-        });
+        void handleSubscribe();
       }}
       onLater={() => {
         void dismiss();

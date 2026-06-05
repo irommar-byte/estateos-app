@@ -264,9 +264,11 @@ export default function EditEmailSheet({
     return null;
   };
 
+  if (!visible) return null;
+
   if (emailVerified) {
     return (
-      <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Modal visible animationType="slide" transparent onRequestClose={onClose}>
         <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
           <View style={[styles.wrap, { paddingBottom: insets.bottom + 16 }]}>
@@ -286,7 +288,7 @@ export default function EditEmailSheet({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <BlurView intensity={isDark ? 55 : 70} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <KeyboardAvoidingView
