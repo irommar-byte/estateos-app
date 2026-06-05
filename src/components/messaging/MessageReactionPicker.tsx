@@ -19,9 +19,10 @@ type Props = {
   anchor: ReactionAnchor | null;
   onSelect: (emoji: string) => void;
   onDismiss: () => void;
+  isDark?: boolean;
 };
 
-export default function MessageReactionPicker({ anchor, onSelect, onDismiss }: Props) {
+export default function MessageReactionPicker({ anchor, onSelect, onDismiss, isDark = true }: Props) {
   const { width: screenW, height: screenH } = useWindowDimensions();
 
   if (!anchor) return null;
@@ -41,7 +42,7 @@ export default function MessageReactionPicker({ anchor, onSelect, onDismiss }: P
           exiting={FadeOut.duration(160)}
           style={[styles.barWrap, { top, left, width: barWidth }]}
         >
-          <BlurView intensity={92} tint="dark" style={styles.bar}>
+          <BlurView intensity={isDark ? 92 : 78} tint={isDark ? 'dark' : 'light'} style={[styles.bar, !isDark && styles.barLight]}>
             {MESSAGE_TAPBACKS.map((emoji) => {
               const active = anchor.currentEmoji === emoji;
               return (
@@ -109,6 +110,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     backgroundColor: 'rgba(28,28,30,0.92)',
+  },
+  barLight: {
+    borderColor: 'rgba(0,0,0,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
   },
   emojiBtn: {
     width: 40,

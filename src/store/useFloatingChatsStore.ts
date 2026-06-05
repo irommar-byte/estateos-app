@@ -55,5 +55,25 @@ export const useFloatingChatsStore = create<State>((set) => ({
     set((s) => ({
       entries: s.entries.map((e) => (e.threadId === threadId ? { ...e, unread: 0 } : e)),
     })),
-  syncEntries: (entries) => set({ entries: entries.slice(0, MAX_ENTRIES) }),
+  syncEntries: (entries) =>
+    set((s) => {
+      const next = entries.slice(0, MAX_ENTRIES);
+      if (
+        s.entries.length === next.length &&
+        s.entries.every((e, i) => {
+          const n = next[i];
+          return (
+            n &&
+            e.threadId === n.threadId &&
+            e.peerName === n.peerName &&
+            (e.peerImage ?? null) === (n.peerImage ?? null) &&
+            (e.unread ?? 0) === (n.unread ?? 0) &&
+            (e.lastPreview ?? '') === (n.lastPreview ?? '')
+          );
+        })
+      ) {
+        return s;
+      }
+      return { entries: next };
+    }),
 }));

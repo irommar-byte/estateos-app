@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
-import { CHAT_COLORS, chatThreadStyles as styles } from './chatTheme';
+import { getChatTheme } from './chatTheme';
 import MessageReactionPicker, { type ReactionAnchor } from './MessageReactionPicker';
 import { groupedReactionEmojis } from '../../utils/contactMessageReactions';
 
@@ -34,7 +34,7 @@ export type IMThreadMessage = {
   reactions?: Record<string, string>;
 };
 
-function TypingDot({ delay }: { delay: number }) {
+function TypingDot({ delay, dotStyle }: { delay: number; dotStyle: object }) {
   const translateY = useSharedValue(0);
   useEffect(() => {
     translateY.value = withRepeat(
@@ -51,7 +51,7 @@ function TypingDot({ delay }: { delay: number }) {
     );
   }, [delay, translateY]);
   const anim = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
-  return <Animated.View style={[styles.typingDot, anim]} />;
+  return <Animated.View style={[dotStyle, anim]} />;
 }
 
 type Props = {
@@ -65,6 +65,7 @@ type Props = {
   sending?: boolean;
   placeholder: string;
   onReact?: (messageId: number | string, emoji: string | null) => void;
+  isDark?: boolean;
 };
 
 export default function InstantMessageThread({
@@ -78,7 +79,9 @@ export default function InstantMessageThread({
   sending = false,
   placeholder,
   onReact,
+  isDark = true,
 }: Props) {
+  const { colors, styles } = useMemo(() => getChatTheme(isDark), [isDark]);
   const scrollRef = useRef<ScrollView>(null);
   const lastAutoScrolledMessageIdRef = useRef<string | number | null>(null);
   const bubbleRefs = useRef<Record<string, View | null>>({});
@@ -101,6 +104,40 @@ export default function InstantMessageThread({
 
   const canSend = Boolean(draft.trim()) && !sending;
   const reactionsEnabled = Boolean(onReact);
+
+  const inputRow = (
+    <View style={styles.inputRow}>
+      <TextInput
+        style={styles.textInput}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textMuted}
+        value={draft}
+        onChangeText={onDraftChange}
+        multiline
+        returnKeyType="send"
+        blurOnSubmit={false}
+        submitBehavior="submit"
+        onSubmitEditing={() => {
+          if (canSend) onSend();
+        }}
+        onFocus={() => {
+          closeReactionPicker();
+          setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+        }}
+      />
+      <Pressable
+        style={[styles.sendBtn, canSend && styles.sendBtnActive]}
+        onPress={onSend}
+        disabled={!canSend}
+      >
+        {sending ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <Send size={18} color={canSend ? '#fff' : colors.sendIconIdle} />
+        )}
+      </Pressable>
+    </View>
+  );
 
   const openReactionPicker = (msg: IMThreadMessage, isMe: boolean) => {
     if (!reactionsEnabled || !onReact) return;
@@ -136,7 +173,7 @@ export default function InstantMessageThread({
   if (loading) {
     return (
       <View style={styles.loaderCenter}>
-        <ActivityIndicator color={CHAT_COLORS.primary} />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -206,9 +243,9 @@ export default function InstantMessageThread({
                 {isMe ? (
                   <View style={{ marginLeft: 4 }}>
                     {msg.isRead ? (
-                      <CheckCheck size={14} color={CHAT_COLORS.primary} />
+                      <CheckCheck size={14} color={colors.primary} />
                     ) : (
-                      <Check size={14} color={CHAT_COLORS.textMuted} />
+                      <Check size={14} color={colors.textMuted} />
                     )}
                   </View>
                 ) : null}
@@ -220,52 +257,27 @@ export default function InstantMessageThread({
         {peerTyping ? (
           <Animated.View entering={FadeIn} style={[styles.msgWrapper, styles.msgThem]}>
             <View style={[styles.msgBubble, styles.msgBubbleThem, styles.typingBubble]}>
-              <TypingDot delay={0} />
-              <TypingDot delay={150} />
-              <TypingDot delay={300} />
+              <TypingDot delay={0} dotStyle={styles.typingDot} />
+              <TypingDot delay={150} dotStyle={styles.typingDot} />
+              <TypingDot delay={300} dotStyle={styles.typingDot} />
             </View>
           </Animated.View>
         ) : null}
       </ScrollView>
 
-      <BlurView intensity={80} tint="dark" style={styles.inputArea}>
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.textInput}
-            placeholder={placeholder}
-            placeholderTextColor={CHAT_COLORS.textMuted}
-            value={draft}
-            onChangeText={onDraftChange}
-            multiline
-            returnKeyType="send"
-            blurOnSubmit={false}
-            submitBehavior="submit"
-            onSubmitEditing={() => {
-              if (canSend) onSend();
-            }}
-            onFocus={() => {
-              closeReactionPicker();
-              setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
-            }}
-          />
-          <Pressable
-            style={[styles.sendBtn, canSend && styles.sendBtnActive]}
-            onPress={onSend}
-            disabled={!canSend}
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Send size={18} color={canSend ? '#fff' : 'rgba(255,255,255,0.4)'} />
-            )}
-          </Pressable>
-        </View>
-      </BlurView>
+      {isDark ? (
+        <BlurView intensity={80} tint="dark" style={styles.inputArea}>
+          {inputRow}
+        </BlurView>
+      ) : (
+        <View style={styles.inputArea}>{inputRow}</View>
+      )}
 
       <MessageReactionPicker
         anchor={reactionAnchor}
         onSelect={handleReactionSelect}
         onDismiss={closeReactionPicker}
+        isDark={isDark}
       />
     </>
   );

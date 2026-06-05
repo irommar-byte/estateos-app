@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,9 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { ChevronRight, GripVertical, MessageCircle, Pencil, Trash2 } from 'lucide-react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 import DraggableFlatList, { ScaleDecorator, type RenderItemParams } from 'react-native-draggable-flatlist';
 import * as Haptics from 'expo-haptics';
 import type { ContactThreadRow } from '../../services/contactService';
@@ -49,6 +47,78 @@ function syncFloatingFromVisible(visible: ContactThreadRow[], getDisplayName: (i
   useFloatingChatsStore.getState().syncEntries(entries);
 }
 
+type ThreadCardProps = {
+  thread: ContactThreadRow;
+  displayName: string;
+  colors: Colors;
+  isDark: boolean;
+  editMode: boolean;
+  drag?: () => void;
+  isActive?: boolean;
+  onRename: () => void;
+  onDelete: () => void;
+};
+
+const ThreadCard = React.memo(function ThreadCard({
+  thread,
+  displayName,
+  colors,
+  isDark,
+  editMode,
+  drag,
+  isActive,
+  onRename,
+  onDelete,
+}: ThreadCardProps) {
+  const { t } = useI18n();
+  const unread = Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0));
+  const cardBg = isDark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.98)';
+
+  return (
+    <View style={[styles.cardWrap, isActive && styles.cardDragging]}>
+      <View style={[styles.card, { backgroundColor: cardBg }]}>
+        {editMode ? (
+          <Pressable onLongPress={drag} delayLongPress={120} style={styles.dragHandle}>
+            <GripVertical size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+        <ContactPeerAvatar name={displayName} peer={thread.peer} size={46} isDark={isDark} />
+        <Pressable style={styles.body} disabled={!editMode} onPress={onRename}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.name, { color: colors.textMain }]} numberOfLines={1}>
+              {displayName}
+            </Text>
+            <View style={styles.directPill}>
+              <Text style={styles.directPillText}>{t('contact.list.directBadge')}</Text>
+            </View>
+          </View>
+          <Text style={[styles.preview, { color: colors.textMuted }]} numberOfLines={2}>
+            {thread.lastMessage || '—'}
+          </Text>
+        </Pressable>
+        <View style={styles.trailing}>
+          {editMode ? (
+            <View style={styles.editActions}>
+              <Pressable hitSlop={8} onPress={onRename} style={styles.iconBtn}>
+                <Pencil size={16} color={colors.textMuted} />
+              </Pressable>
+              <Pressable hitSlop={8} onPress={onDelete} style={styles.iconBtn}>
+                <Trash2 size={16} color="#FF3B30" />
+              </Pressable>
+            </View>
+          ) : unread > 0 ? (
+            <View style={styles.unreadDot}>
+              <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
+            </View>
+          ) : (
+            <ChevronRight size={18} color={colors.textMuted} />
+          )}
+        </View>
+      </View>
+    </View>
+  );
+});
+
 export default function ContactThreadsList({
   threads,
   loading,
@@ -71,6 +141,7 @@ export default function ContactThreadsList({
   const [localThreads, setLocalThreads] = useState<ContactThreadRow[]>([]);
   const [renameTarget, setRenameTarget] = useState<ContactThreadRow | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const floatingSyncedKeyRef = useRef('');
 
   useEffect(() => {
     void hydrate();
@@ -82,9 +153,19 @@ export default function ContactThreadsList({
   );
 
   useEffect(() => {
+    if (editMode) return;
     setLocalThreads(sortedThreads);
-    syncFloatingFromVisible(sortedThreads, getDisplayName);
-  }, [sortedThreads, getDisplayName]);
+    const syncKey = sortedThreads
+      .map(
+        (t) =>
+          `${t.id}:${t.lastMessage ?? ''}:${t.unread ?? t.unreadCount ?? 0}:${getDisplayName(t.id, t.peerUserName)}`,
+      )
+      .join('|');
+    if (syncKey !== floatingSyncedKeyRef.current) {
+      floatingSyncedKeyRef.current = syncKey;
+      syncFloatingFromVisible(sortedThreads, getDisplayName);
+    }
+  }, [sortedThreads, getDisplayName, editMode]);
 
   const confirmDelete = useCallback(
     (thread: ContactThreadRow) => {
@@ -113,93 +194,72 @@ export default function ContactThreadsList({
     [token, hideThread, getDisplayName, onThreadsChanged, t],
   );
 
-  const renderThreadCard = (
-    thread: ContactThreadRow,
-    drag?: () => void,
-    isActive?: boolean,
-  ) => {
-    const unread = Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0));
-    const displayName = getDisplayName(thread.id, thread.peerUserName);
+  const openRename = useCallback((thread: ContactThreadRow) => {
+    setRenameTarget(thread);
+    setRenameDraft(getDisplayName(thread.id, thread.peerUserName));
+  }, [getDisplayName]);
 
-    return (
-      <BlurView intensity={isDark ? 40 : 75} tint={isDark ? 'dark' : 'light'} style={styles.cardBlur}>
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.9)' },
-            isActive && styles.cardDragging,
-          ]}
-        >
-          {editMode ? (
-            <Pressable onLongPress={drag} delayLongPress={120} style={styles.dragHandle}>
-              <GripVertical size={18} color={colors.textMuted} />
-            </Pressable>
-          ) : null}
-          <ContactPeerAvatar name={displayName} peer={thread.peer} size={46} isDark={isDark} />
-          <Pressable
-            style={styles.body}
-            disabled={!editMode}
-            onPress={() => {
-              if (!editMode) return;
-              setRenameTarget(thread);
-              setRenameDraft(displayName);
-            }}
-          >
-            <View style={styles.titleRow}>
-              <Text style={[styles.name, { color: colors.textMain }]} numberOfLines={1}>
-                {displayName}
-              </Text>
-              <View style={styles.directPill}>
-                <Text style={styles.directPillText}>{t('contact.list.directBadge')}</Text>
-              </View>
-            </View>
-            <Text style={[styles.preview, { color: colors.textMuted }]} numberOfLines={2}>
-              {thread.lastMessage || '—'}
-            </Text>
-          </Pressable>
-          <View style={styles.trailing}>
-            {editMode ? (
-              <View style={styles.editActions}>
-                <Pressable
-                  hitSlop={8}
-                  onPress={() => {
-                    setRenameTarget(thread);
-                    setRenameDraft(displayName);
-                  }}
-                  style={styles.iconBtn}
-                >
-                  <Pencil size={16} color={colors.textMuted} />
-                </Pressable>
-                <Pressable hitSlop={8} onPress={() => confirmDelete(thread)} style={styles.iconBtn}>
-                  <Trash2 size={16} color="#FF3B30" />
-                </Pressable>
-              </View>
-            ) : unread > 0 ? (
-              <View style={styles.unreadDot}>
-                <Text style={styles.unreadText}>{unread > 9 ? '9+' : unread}</Text>
-              </View>
-            ) : (
-              <ChevronRight size={18} color={colors.textMuted} />
-            )}
-          </View>
+  const renderDraggableItem = useCallback(
+    ({ item, drag, isActive }: RenderItemParams<ContactThreadRow>) => (
+      <ScaleDecorator>
+        <View style={styles.rowWrap}>
+          <ThreadCard
+            thread={item}
+            displayName={getDisplayName(item.id, item.peerUserName)}
+            colors={colors}
+            isDark={isDark}
+            editMode
+            drag={drag}
+            isActive={isActive}
+            onRename={() => openRename(item)}
+            onDelete={() => confirmDelete(item)}
+          />
         </View>
-      </BlurView>
-    );
-  };
+      </ScaleDecorator>
+    ),
+    [colors, isDark, getDisplayName, openRename, confirmDelete],
+  );
 
-  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<ContactThreadRow>) => (
-    <ScaleDecorator>
-      <View style={styles.rowWrap}>{renderThreadCard(item, drag, isActive)}</View>
-    </ScaleDecorator>
+  const renderListItem = useCallback(
+    ({ item }: { item: ContactThreadRow }) => (
+      <View style={styles.rowWrap}>
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            onOpenThread(item);
+          }}
+          style={({ pressed }) => [pressed && { opacity: 0.92 }]}
+        >
+          <ThreadCard
+            thread={item}
+            displayName={getDisplayName(item.id, item.peerUserName)}
+            colors={colors}
+            isDark={isDark}
+            editMode={false}
+            onRename={() => openRename(item)}
+            onDelete={() => confirmDelete(item)}
+          />
+        </Pressable>
+      </View>
+    ),
+    [colors, isDark, getDisplayName, onOpenThread, openRename, confirmDelete],
   );
 
   const finishEditMode = useCallback(() => {
     setEditMode(false);
     void setOrder(localThreads.map((row) => row.id));
     syncFloatingFromVisible(localThreads, getDisplayName);
+    floatingSyncedKeyRef.current = localThreads
+      .map(
+        (t) =>
+          `${t.id}:${t.lastMessage ?? ''}:${t.unread ?? t.unreadCount ?? 0}:${getDisplayName(t.id, t.peerUserName)}`,
+      )
+      .join('|');
   }, [localThreads, setOrder, getDisplayName]);
 
-  if (loading) {
+  const showInitialLoader = loading && sortedThreads.length === 0;
+
+  if (showInitialLoader) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator color={colors.green || '#34C759'} />
@@ -208,17 +268,16 @@ export default function ContactThreadsList({
   }
 
   if (!sortedThreads.length) {
+    const emptyBg = isDark ? 'rgba(28,28,30,0.92)' : 'rgba(255,255,255,0.98)';
     return (
-      <Animated.View entering={FadeInDown.springify()} style={styles.emptyWrap}>
-        <BlurView intensity={isDark ? 36 : 70} tint={isDark ? 'dark' : 'light'} style={styles.emptyCard}>
-          <View style={[styles.emptyInner, { backgroundColor: isDark ? 'rgba(28,28,30,0.7)' : 'rgba(255,255,255,0.88)' }]}>
-            <MessageCircle size={32} color={colors.green || '#34C759'} strokeWidth={1.8} />
-            <Text style={[styles.emptyTitle, { color: colors.textMain }]}>{t('contact.empty.title')}</Text>
-            <Text style={[styles.emptySub, { color: colors.textMuted }]}>{t('contact.empty.subtitle')}</Text>
-            <Text style={[styles.emptyHint, { color: colors.textSec }]}>{t('contact.empty.hint')}</Text>
-          </View>
-        </BlurView>
-      </Animated.View>
+      <View style={styles.emptyWrap}>
+        <View style={[styles.emptyCard, { backgroundColor: emptyBg }]}>
+          <MessageCircle size={32} color={colors.green || '#34C759'} strokeWidth={1.8} />
+          <Text style={[styles.emptyTitle, { color: colors.textMain }]}>{t('contact.empty.title')}</Text>
+          <Text style={[styles.emptySub, { color: colors.textMuted }]}>{t('contact.empty.subtitle')}</Text>
+          <Text style={[styles.emptyHint, { color: colors.textSec }]}>{t('contact.empty.hint')}</Text>
+        </View>
+      </View>
     );
   }
 
@@ -255,21 +314,13 @@ export default function ContactThreadsList({
         <FlatList
           data={sortedThreads}
           keyExtractor={(item) => String(item.id)}
-          renderItem={({ item, index }) => (
-            <Animated.View entering={FadeInDown.delay(index * 40).springify()} style={styles.rowWrap}>
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  onOpenThread(item);
-                }}
-                style={({ pressed }) => [pressed && { opacity: 0.92 }]}
-              >
-                {renderThreadCard(item)}
-              </Pressable>
-            </Animated.View>
-          )}
+          renderItem={renderListItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews
+          windowSize={7}
+          initialNumToRender={8}
+          maxToRenderPerBatch={6}
         />
       )}
 
@@ -331,13 +382,18 @@ const styles = StyleSheet.create({
   toolbarBtnText: { fontSize: 15, fontWeight: '700' },
   listContent: { paddingHorizontal: 16, paddingBottom: 50, gap: 10 },
   rowWrap: { marginBottom: 0 },
-  cardBlur: { borderRadius: 18, overflow: 'hidden' },
+  cardWrap: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     gap: 12,
     borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   cardDragging: {
     shadowColor: '#000',
@@ -372,12 +428,13 @@ const styles = StyleSheet.create({
   },
   unreadText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   emptyWrap: { paddingHorizontal: 16, paddingTop: 8 },
-  emptyCard: { borderRadius: 22, overflow: 'hidden' },
-  emptyInner: {
+  emptyCard: {
     padding: 24,
     alignItems: 'center',
     borderRadius: 22,
     gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   emptyTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
   emptySub: { fontSize: 14, lineHeight: 20, textAlign: 'center' },

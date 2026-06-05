@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
@@ -22,9 +21,10 @@ import {
 } from '../services/contactService';
 import { setActiveContactThread } from '../utils/activeContactPush';
 import { useFloatingChatsStore } from '../store/useFloatingChatsStore';
+import { useThemeStore } from '../store/useThemeStore';
 import { useI18n } from '../i18n';
 import InstantMessageThread, { type IMThreadMessage } from '../components/messaging/InstantMessageThread';
-import { CHAT_COLORS } from '../components/messaging/chatTheme';
+import { getChatTheme } from '../components/messaging/chatTheme';
 
 const TYPING_PULSE_MS = 1500;
 
@@ -35,6 +35,8 @@ export default function ContactChatScreen() {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const userId = Number(useAuthStore((s) => s.user?.id) || 0);
+  const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
+  const { colors, headerStyles: styles } = useMemo(() => getChatTheme(isDark), [isDark]);
 
   const threadId = Number(route.params?.threadId || 0);
   const peerUserId = Number(route.params?.peerUserId || 0);
@@ -192,7 +194,7 @@ export default function ContactChatScreen() {
           style={({ pressed }) => [styles.backButton, pressed && styles.backButtonPressed]}
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         >
-          <ChevronLeft size={28} color={CHAT_COLORS.textBase} />
+          <ChevronLeft size={28} color={colors.textBase} />
         </Pressable>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerSubtitle}>{t('contact.chat.eyebrow')}</Text>
@@ -214,43 +216,8 @@ export default function ContactChatScreen() {
         sending={sending}
         placeholder={t('contact.chat.placeholder')}
         onReact={(messageId, emoji) => void onReact(messageId, emoji)}
+        isDark={isDark}
       />
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CHAT_COLORS.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: CHAT_COLORS.border,
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: -8,
-  },
-  backButtonPressed: { backgroundColor: 'rgba(255,255,255,0.1)' },
-  headerTextContainer: { flex: 1, marginLeft: 8 },
-  headerSubtitle: {
-    color: CHAT_COLORS.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    color: CHAT_COLORS.textBase,
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  headerSpacer: { width: 44 },
-});

@@ -1173,6 +1173,7 @@ export default function DealroomListScreen() {
   const [messagesSegment, setMessagesSegment] = useState<MessagesSegment>('dealrooms');
   const [contactThreads, setContactThreads] = useState<ContactThreadRow[]>([]);
   const [contactLoading, setContactLoading] = useState(false);
+  const contactLoadedOnceRef = useRef(false);
   const getContactDisplayName = useContactThreadPrefsStore((s) => s.getDisplayName);
   const [contactWriteLoading, setContactWriteLoading] = useState(false);
   const [collapsedSectionsHydrated, setCollapsedSectionsHydrated] = useState(false);
@@ -1416,15 +1417,36 @@ export default function DealroomListScreen() {
       setContactThreads([]);
       setUnreadContactBadgeCount(0);
       setContactLoading(false);
+      contactLoadedOnceRef.current = false;
       return;
     }
-    setContactLoading(true);
+    if (!contactLoadedOnceRef.current) {
+      setContactLoading(true);
+    }
     try {
       const rows = await fetchContactThreads(token);
-      setContactThreads(rows);
+      setContactThreads((prev) => {
+        if (
+          prev.length === rows.length &&
+          prev.every((p, i) => {
+            const r = rows[i];
+            if (!r || p.id !== r.id) return false;
+            if (p.lastMessage !== r.lastMessage) return false;
+            if (p.peerUserName !== r.peerUserName) return false;
+            if ((p.peer?.image ?? null) !== (r.peer?.image ?? null)) return false;
+            const pu = Math.max(0, Number(p.unread ?? p.unreadCount ?? 0));
+            const ru = Math.max(0, Number(r.unread ?? r.unreadCount ?? 0));
+            return pu === ru;
+          })
+        ) {
+          return prev;
+        }
+        return rows;
+      });
       setUnreadContactBadgeCount(sumContactUnread(rows));
+      contactLoadedOnceRef.current = true;
     } catch {
-      setContactThreads([]);
+      if (!contactLoadedOnceRef.current) setContactThreads([]);
     } finally {
       setContactLoading(false);
     }
