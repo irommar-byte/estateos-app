@@ -1209,6 +1209,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const browseChromeTop = useMemo(() => topBarTop + 76, [topBarTop]);
   const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY';
   const isGalleryLightChrome = isGalleryBrowse && !isDark;
+  /** iOS: po wyjściu z Galerii MapView potrafi „zamrozić” gesty — odświeżamy je jednym cyklem. */
+  const [mapInteract, setMapInteract] = useState(true);
+  const galleryWasActiveRef = useRef(false);
   /** Modal „Wyszukiwanie rozszerzone”: niemal pełny ekran — bez obcinania jak przy ~74%. */
   const advancedSheetMaxHeight = useMemo(
     () => Math.round(height - insets.top - Math.max(insets.bottom, 10) - 6),
@@ -1281,6 +1284,19 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       Animated.spring(gallerySlide, { toValue: 0, friction: 9, tension: 78, useNativeDriver: true }),
     ]).start();
   }, [galleryFade, gallerySlide, radarBrowseMode, showOnlyFavorites]);
+
+  useEffect(() => {
+    if (isGalleryBrowse) {
+      galleryWasActiveRef.current = true;
+      setMapInteract(false);
+      return;
+    }
+    if (!galleryWasActiveRef.current) return;
+    galleryWasActiveRef.current = false;
+    setMapInteract(false);
+    const frame = requestAnimationFrame(() => setMapInteract(true));
+    return () => cancelAnimationFrame(frame);
+  }, [isGalleryBrowse]);
 
   const hasActiveGalleryFilters = useMemo(
     () =>
@@ -3995,12 +4011,11 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         ref={mapRef}
         style={[
           StyleSheet.absoluteFillObject,
-          !showOnlyFavorites && radarBrowseMode === 'GALLERY' && { opacity: 0 },
+          isGalleryBrowse && { opacity: 0 },
         ]}
-        pointerEvents={!showOnlyFavorites && radarBrowseMode === 'GALLERY' ? 'none' : 'auto'}
-        scrollEnabled
-        zoomEnabled
-        zoomTapEnabled
+        scrollEnabled={mapInteract && !isGalleryBrowse}
+        zoomEnabled={mapInteract && !isGalleryBrowse}
+        zoomTapEnabled={mapInteract && !isGalleryBrowse}
         rotateEnabled={false}
         onLayout={(e: any) => {
           const { width: w, height: h } = e.nativeEvent.layout;
@@ -4674,7 +4689,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
       {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
         <Animated.View
-          pointerEvents="auto"
+          pointerEvents="box-none"
           style={[
             styles.favorFloatingIslandWrap,
             {
@@ -4774,7 +4789,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           style={[
             styles.galleryOverlay,
             {
-              top: 0,
               opacity: galleryFade,
               transform: [{ translateY: gallerySlide }],
               backgroundColor: isDark ? '#000000' : '#E9ECF2',
@@ -6214,10 +6228,7 @@ const styles = StyleSheet.create({
     elevation: 22,
   },
   galleryOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     zIndex: 18,
     elevation: 18,
   },

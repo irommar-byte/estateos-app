@@ -22,8 +22,10 @@ import type { OpenHouseSlotDraft, OpenHouseVisitMode } from '../contracts/openHo
 import {
   createOpenHouseEvent,
   estimateOpenHouseSlotCount,
+  fetchOpenHouseTicker,
   slotDraftToApiPayload,
 } from '../services/openHouseService';
+import { useOpenHouseLiveStore } from '../store/useOpenHouseLiveStore';
 
 type OfferRow = { id: number; title: string; city: string; district: string };
 
@@ -114,6 +116,13 @@ export default function OpenHouseCreateScreen() {
     if (!result.event) {
       Alert.alert(t('openHouse.create.title'), result.message || t('common.error'));
       return;
+    }
+
+    if (!asDraft && token) {
+      const ticker = await fetchOpenHouseTicker(token);
+      const live = useOpenHouseLiveStore.getState();
+      live.setItems(ticker);
+      if (ticker.length) live.showBanner();
     }
 
     Alert.alert(t('openHouse.create.successTitle'), t('openHouse.create.successBody'), [
