@@ -19,6 +19,7 @@ function loadTsModule(relPath) {
 }
 
 const period = loadTsModule('src/lib/investorProMembership.ts');
+const periodSource = fs.readFileSync(path.join(__dirname, '..', 'src/lib/investorProMembership.ts'), 'utf8');
 
 const grantSource = fs.readFileSync(path.join(__dirname, '..', 'src/lib/investorProGrant.ts'), 'utf8');
 const iapSource = fs.readFileSync(path.join(__dirname, '..', 'src/lib/mobileIapEntitlements.ts'), 'utf8');
@@ -32,9 +33,17 @@ const now = new Date('2026-06-08T12:00:00.000Z');
 const expiry = new Date('2026-07-08T12:00:00.000Z');
 const status = period.buildInvestorProPeriodStatus(expiry, now);
 assert.equal(status.daysLeft, 30);
-assert.ok(status.progressElapsed < 0.05, 'fresh period should not look almost expired');
+assert.ok(status.progressRemaining > 0.95, '30 days left should show a nearly full bar');
+assert.match(periodSource, /buildInvestorProBarPalette/);
 
 const mid = period.buildInvestorProPeriodStatus(new Date(now.getTime() + 15 * 86400000), now);
-assert.ok(mid.progressElapsed > 0.45 && mid.progressElapsed < 0.55);
+assert.ok(mid.progressRemaining > 0.45 && mid.progressRemaining < 0.55);
+
+const green = period.buildInvestorProBarPalette(1);
+const yellow = period.buildInvestorProBarPalette(0.5);
+const red = period.buildInvestorProBarPalette(0);
+assert.ok(green.hue > 100, 'full period should be greenish');
+assert.ok(yellow.hue > 35 && yellow.hue < 60, 'mid period should be yellowish');
+assert.ok(red.hue < 10, 'empty period should be reddish');
 
 console.log('regression-investor-pro: ok');

@@ -26,7 +26,7 @@ describe('investorProMembership', () => {
     ).toBe(false);
   });
 
-  it('builds countdown with elapsed progress in billing period', () => {
+  it('builds countdown with remaining-time progress', () => {
     const future = new Date(Date.now() + 15 * 86400000).toISOString();
     const c = buildProMembershipCountdown(future);
     expect(c?.daysLeft).toBe(15);
@@ -34,10 +34,17 @@ describe('investorProMembership', () => {
     expect(c?.progress).toBeLessThanOrEqual(0.55);
   });
 
-  it('starts a fresh monthly period near 0% elapsed progress', () => {
+  it('aligns bar fill with days left at period start', () => {
     const future = new Date(Date.now() + 30 * 86400000).toISOString();
     const c = buildProMembershipCountdown(future);
     expect(c?.daysLeft).toBe(30);
-    expect(c?.progress).toBeLessThanOrEqual(0.05);
+    expect(c?.progress).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it('shows low fill when renewal is near', () => {
+    const future = new Date(Date.now() + 2 * 86400000).toISOString();
+    const c = buildProMembershipCountdown(future);
+    expect(c?.daysLeft).toBeLessThanOrEqual(2);
+    expect(c?.progress).toBeLessThanOrEqual(0.1);
   });
 });

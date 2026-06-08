@@ -9,6 +9,9 @@ export type CrmExtendedDictionary = {
     dayMany: string;
     periodHint: string;
     creditsLine: string;
+    barCaption: string;
+    compactUntil: string;
+    creditsShort: string;
   };
   boot: { initLabel: string; greetings: string[] };
   verification: {
@@ -179,6 +182,9 @@ const pl: CrmExtendedDictionary = {
     dayMany: "dni",
     periodHint: "Subskrypcja miesięczna — po opłacie w App Store okres przedłuża się automatycznie.",
     creditsLine: "Kredyty publikacji w pakiecie: {n} (ważne do {date})",
+    barCaption: "Pasek: pozostało {n} z {total} dni bieżącego okresu",
+    compactUntil: "Do {date}",
+    creditsShort: "Kredyty EOS",
   },
   boot: {
     initLabel: "Inicjalizacja Systemów PRO",
@@ -366,6 +372,9 @@ const en: CrmExtendedDictionary = {
     dayMany: "days",
     periodHint: "Monthly subscription — renews automatically after App Store billing.",
     creditsLine: "Publication credits in plan: {n} (valid until {date})",
+    barCaption: "Bar: {n} of {total} days left in the current period",
+    compactUntil: "Until {date}",
+    creditsShort: "EOS credits",
   },
   boot: {
     initLabel: "Initializing PRO systems",

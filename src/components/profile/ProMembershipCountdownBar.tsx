@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useI18n } from '../../i18n';
-import { buildProMembershipCountdown } from '../../utils/investorProMembership';
+import { buildProMembershipCountdown, buildInvestorProBarGradientHex } from '../../utils/investorProMembership';
 import InsetMetalRecess from './InsetMetalRecess';
 
 type Props = {
@@ -27,6 +27,7 @@ export default function ProMembershipCountdownBar({ proExpiresAt, isDark = true 
   if (!countdown) return null;
 
   const fillFlex = Math.max(0.04, Math.min(0.96, countdown.progress));
+  const barColors = buildInvestorProBarGradientHex(countdown.progress);
   const statusText =
     countdown.labelKey === 'lastDay'
       ? t('profile.proExtras.countdown.lastDay', { hours: countdown.hoursLeft })
@@ -51,7 +52,7 @@ export default function ProMembershipCountdownBar({ proExpiresAt, isDark = true 
       <View style={[styles.track, isDark ? styles.trackDark : styles.trackLight]}>
         <View style={{ flex: fillFlex }}>
           <LinearGradient
-            colors={['#6B7280', '#D1D5DB', '#F9FAFB', '#9CA3AF']}
+            colors={barColors}
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={styles.fill}
