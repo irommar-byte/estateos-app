@@ -34,6 +34,7 @@ import {
   resolveServicingCompanyName,
   isAgentOrAgencySeller,
 } from "@/lib/sellerDisplay";
+import { resolveRentAdminFeeAmount, formatRentAdminFeeCostsLabel } from "@/lib/offers/rentAdminFeeDisplay";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
@@ -64,6 +65,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
+  const rentAdminFeeAmount = isRent ? resolveRentAdminFeeAmount(offer) : null;
+  const rentAdminFeeInline =
+    rentAdminFeeAmount != null
+      ? formatRentAdminFeeCostsLabel(rentAdminFeeAmount, locale === "en" ? "en" : "pl")
+      : null;
   const isDealRoom = offer.badges?.isPartner === true;
   const themeColors = {
     primaryBg: isDealRoom ? "bg-orange-500" : isRent ? "bg-blue-500" : "bg-emerald-500",
@@ -544,7 +550,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <p className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-2">{t.archivedTitle}</p>
                 <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest mb-4">{t.archivedSubtitle}</p>
                 <h2 className="text-2xl sm:text-3xl font-light text-white mb-4 tracking-tight leading-snug [text-wrap:balance]">{offer.title}</h2>
-                <p className="text-4xl sm:text-5xl font-light text-white tracking-tighter">{priceFormatted.primary}</p>
+                <p className="text-4xl sm:text-5xl font-light text-white tracking-tighter">
+                  <span>{priceFormatted.primary}</span>
+                  {rentAdminFeeInline ? (
+                    <span className="ml-2 text-2xl sm:text-3xl font-normal text-zinc-400">
+                      + {rentAdminFeeInline}
+                    </span>
+                  ) : null}
+                </p>
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="mt-2 text-sm font-semibold text-zinc-400">{priceFormatted.secondary}</p>
                 ) : null}
@@ -626,9 +639,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
-                <h2 className="mb-2 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
-                  {priceFormatted.primary}
+                <h2 className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
+                  <span>{priceFormatted.primary}</span>
+                  {rentAdminFeeInline ? (
+                    <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
+                      + {rentAdminFeeInline}
+                    </span>
+                  ) : null}
                 </h2>
+                {rentAdminFeeInline ? (
+                  <p className="eos-muted-copy -mt-1 mb-4 text-xs sm:text-sm">{t.rentCostsMonthlyHint}</p>
+                ) : null}
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
                 ) : (

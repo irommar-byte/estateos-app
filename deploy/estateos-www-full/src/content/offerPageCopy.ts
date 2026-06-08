@@ -46,6 +46,8 @@ export type OfferPageCopy = {
   furnishedYes: string;
   furnishedNo: string;
   rentFee: string;
+  rentAdditionalCosts: string;
+  rentCostsMonthlyHint: string;
   availability: string;
   aboutProperty: string;
   amenities: string;
@@ -124,6 +126,8 @@ const PL: OfferPageCopy = {
   furnishedYes: "Tak",
   furnishedNo: "Nie",
   rentFee: "Czynsz",
+  rentAdditionalCosts: "koszty",
+  rentCostsMonthlyHint: "Opłaty administracyjne — miesięcznie, poza czynszem najmu.",
   availability: "Dostępność",
   aboutProperty: "O nieruchomości",
   amenities: "Udogodnienia",
@@ -204,6 +208,8 @@ const EN: OfferPageCopy = {
   furnishedYes: "Yes",
   furnishedNo: "No",
   rentFee: "Service charge",
+  rentAdditionalCosts: "costs",
+  rentCostsMonthlyHint: "Administrative charges — monthly, on top of the rent.",
   availability: "Availability",
   aboutProperty: "About the property",
   amenities: "Amenities",
