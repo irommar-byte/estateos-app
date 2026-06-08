@@ -61,7 +61,7 @@ export default function HeroDepthEffect() {
   return (
     <section
       ref={ref}
-      className="relative h-[100svh] w-full overflow-hidden bg-[#050505]"
+      className="premium-hero-stage eos-cinematic-dark relative h-[100svh] w-full overflow-hidden bg-[#050505]"
     >
       <div className="absolute inset-0 h-full w-full overflow-hidden">
         <motion.div
@@ -147,11 +147,12 @@ export default function HeroDepthEffect() {
               initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 1.05, ease: customEase, delay: 0.1 }}
-              className="text-[17vw] font-light leading-[0.82] tracking-[-0.075em] text-white drop-shadow-[0_18px_60px_rgba(0,0,0,0.9)] sm:text-[13vw] lg:text-[9.5rem]"
+              className="eos-hero-wordmark overflow-visible px-[0.06em] text-[17vw] font-light leading-[1] tracking-[-0.04em] sm:text-[13vw] lg:text-[9.5rem]"
             >
-              <span className="font-semibold text-emerald-400">E</span>state
-              <span className="font-semibold text-emerald-400">OS</span>
-              <sup className="ml-1 align-super text-[0.18em] font-black tracking-normal text-white/80">TM</sup>
+              <span className="eos-hero-wordmark-accent font-semibold">E</span>
+              <span className="eos-hero-wordmark-body">state</span>
+              <span className="eos-hero-wordmark-accent font-semibold">OS</span>
+              <sup className="eos-hero-wordmark-tm">TM</sup>
             </motion.h1>
 
             <motion.p

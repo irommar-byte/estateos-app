@@ -498,6 +498,49 @@ html.light nav .eos-nav-link:hover {
   color: var(--eos-text);
 }
 
+html.light nav .eos-nav-primary-group {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+  box-shadow:
+    0 8px 24px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 1) !important;
+}
+
+html.light nav .eos-nav-link-primary {
+  color: #111827 !important;
+  font-weight: 900 !important;
+  background: transparent !important;
+}
+
+html.light nav .eos-nav-link-primary:hover {
+  color: #047857 !important;
+  background: rgba(16, 185, 129, 0.1) !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12) !important;
+}
+
+html.light nav .eos-nav-mark {
+  color: #059669 !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8faf9 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.06),
+    0 2px 10px rgba(15, 23, 42, 0.08) !important;
+}
+
+html.light nav .eos-nav-wordmark-body {
+  color: #111827 !important;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 1),
+    0 2px 0 rgba(15, 23, 42, 0.05),
+    0 3px 6px rgba(15, 23, 42, 0.08) !important;
+}
+
+
+html.light nav .eos-nav-wordmark-tm {
+  color: rgba(15, 23, 42, 0.38) !important;
+}
+
 html.light .premium-home-shell {
   background:
     radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.12), transparent 34%),
@@ -548,6 +591,93 @@ html.light .premium-home-shell {
 
 .premium-hero-scroll {
   color: rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Hero wordmark — kinowa głębia, żywa zieleń, bez ucinania liter */
+.eos-hero-wordmark {
+  color: #ffffff;
+  overflow: visible;
+  -webkit-font-smoothing: antialiased;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18),
+    0 2px 0 rgba(0, 0, 0, 0.3),
+    0 10px 28px rgba(0, 0, 0, 0.62),
+    0 22px 52px rgba(0, 0, 0, 0.42);
+}
+
+.eos-hero-wordmark-body {
+  color: #ffffff;
+  font-weight: 400;
+}
+
+.eos-hero-wordmark-accent {
+  display: inline-block;
+  padding-right: 0.04em;
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 38%, #10b981 68%, #059669 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.eos-hero-wordmark-tm {
+  margin-left: 0.12em;
+  font-size: 0.18em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: super;
+  color: rgba(255, 255, 255, 0.62);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Jasny motyw — hero zostaje kinowy (nie rozjaśniaj tła ani tekstu) */
+html.light .theme-aware-dashboard .premium-hero-stage {
+  background-color: #050505 !important;
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage [class*="bg-[#050505]"] {
+  background-color: #050505 !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage [class*="from-black"],
+html.light .theme-aware-dashboard .premium-hero-stage [class*="via-black"],
+html.light .theme-aware-dashboard .premium-hero-stage [class*="to-[#050505]"] {
+  --tw-gradient-from: rgb(0 0 0 / 0.72) var(--tw-gradient-from-position) !important;
+  --tw-gradient-via: rgb(0 0 0 / 0.34) var(--tw-gradient-via-position) !important;
+  --tw-gradient-to: rgb(5 5 5 / 1) var(--tw-gradient-to-position) !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark,
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-body,
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-tm {
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-body {
+  color: #ffffff !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-tm {
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+
+html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-accent {
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 38%, #10b981 68%, #059669 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+html.light nav .eos-nav-wordmark-accent {
+  background: linear-gradient(180deg, #14b8a6 0%, #10b981 42%, #059669 72%, #047857 100%) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  filter: none !important;
+  text-shadow: none !important;
 }
 
 /* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */

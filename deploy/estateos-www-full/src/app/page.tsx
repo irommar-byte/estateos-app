@@ -7,7 +7,7 @@ import SmoothScroll from "@/components/layout/SmoothScroll";
 import GlobalStats from "@/components/home/GlobalStats";
 import FeaturedGallery from "@/components/home/FeaturedGallery";
 import MarketPulseBar from "@/components/home/MarketPulseBar";
-import SignatureHighlights from "@/components/home/SignatureHighlights";
+import RadarLiveCounter from "@/components/home/RadarLiveCounter";
 import Footer from "@/components/layout/Footer";
 import { useLocale } from "@/contexts/LocaleContext";
 
@@ -35,7 +35,7 @@ export default function Home() {
           </div>
 
           <FeaturedGallery />
-          <SignatureHighlights />
+          <RadarLiveCounter />
 
           <div
             id="map-section"
