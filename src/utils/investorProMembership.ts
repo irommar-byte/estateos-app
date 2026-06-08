@@ -1,6 +1,15 @@
 import { isInvestorProIdentity } from './partnerIdentity';
 
-const DEFAULT_PRO_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+export const INVESTOR_PRO_BILLING_PERIOD_DAYS = 30;
+
+const DEFAULT_PRO_PERIOD_MS = INVESTOR_PRO_BILLING_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+
+export function inferInvestorProBillingPeriodDays(
+  daysLeft: number,
+  billingPeriodDays = INVESTOR_PRO_BILLING_PERIOD_DAYS,
+): number {
+  return Math.max(billingPeriodDays, daysLeft);
+}
 
 export function hasActiveInvestorProMembership(user: unknown): boolean {
   if (!user || typeof user !== 'object') return false;
@@ -39,7 +48,7 @@ export type ProMembershipCountdown = {
 
 export function buildProMembershipCountdown(
   proExpiresAt: unknown,
-  periodMs = DEFAULT_PRO_PERIOD_MS
+  billingPeriodDays = INVESTOR_PRO_BILLING_PERIOD_DAYS,
 ): ProMembershipCountdown | null {
   const expiresAtMs = parseProExpiryMs(proExpiresAt);
   if (!expiresAtMs || expiresAtMs <= Date.now()) return null;
@@ -47,7 +56,11 @@ export function buildProMembershipCountdown(
   const remainingMs = expiresAtMs - Date.now();
   const daysLeft = Math.max(0, Math.ceil(remainingMs / 86400000));
   const hoursLeft = Math.max(0, Math.ceil(remainingMs / 3600000));
-  const progress = Math.min(1, Math.max(0, remainingMs / periodMs));
+  const periodDays = inferInvestorProBillingPeriodDays(daysLeft, billingPeriodDays);
+  const periodMs = periodDays * 86400000;
+  const periodStartMs = expiresAtMs - periodMs;
+  const elapsedMs = Math.max(0, Date.now() - periodStartMs);
+  const progress = Math.min(1, Math.max(0, elapsedMs / periodMs));
 
   let labelKey: ProMembershipCountdown['labelKey'] = 'active';
   if (daysLeft <= 1) labelKey = 'lastDay';

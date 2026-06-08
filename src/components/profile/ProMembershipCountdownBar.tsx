@@ -26,7 +26,7 @@ export default function ProMembershipCountdownBar({ proExpiresAt, isDark = true 
 
   if (!countdown) return null;
 
-  const fillFlex = Math.max(0.04, countdown.progress);
+  const fillFlex = Math.max(0.04, Math.min(0.96, countdown.progress));
   const statusText =
     countdown.labelKey === 'lastDay'
       ? t('profile.proExtras.countdown.lastDay', { hours: countdown.hoursLeft })

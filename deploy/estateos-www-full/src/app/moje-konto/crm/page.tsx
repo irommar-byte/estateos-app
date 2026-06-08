@@ -41,21 +41,28 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
+import { buildInvestorProPeriodStatus } from "@/lib/investorProMembership";
+import { isPlusCreditActive } from "@/lib/offerListingLimits";
 
 const ProStatusBar = ({ user }: any) => {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const ps = dict.crm.proStatus;
   if (!user?.isPro || !user?.proExpiresAt) return null;
 
-  const now = new Date();
-  const expiry = new Date(user.proExpiresAt);
-  const total = 30;
-  const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-  const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
-  const ratio = Math.min(1, Math.max(0, daysLeft / total));
-  const hue = Math.round(120 * ratio);
+  const period = buildInvestorProPeriodStatus(user.proExpiresAt);
+  if (!period) return null;
+
+  const expiry = new Date(period.expiresAtMs);
+  const daysLeft = period.daysLeft;
+  const progress = period.progressElapsed * 100;
+  const urgency = Math.min(1, Math.max(0, 1 - period.progressElapsed));
+  const hue = Math.round(120 * urgency);
   const tone = `hsl(${hue} 95% 52%)`;
   const toneSoft = `hsl(${hue} 90% 42%)`;
+  const dayUnit = daysLeft === 1 ? ps.dayOne : ps.dayMany;
+  const creditsActive = isPlusCreditActive(user);
+  const creditsCount = creditsActive ? Number(user.extraListings ?? 0) : 0;
+  const creditsExpiry = creditsActive && user.plusExpiresAt ? new Date(user.plusExpiresAt) : null;
 
   return (
     <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-[var(--eos-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
@@ -65,9 +72,20 @@ const ProStatusBar = ({ user }: any) => {
             {ps.eyebrow}
           </p>
           <p className="text-sm sm:text-base text-[var(--eos-text)] font-bold">
-            {ps.validUntil} {expiry.toLocaleDateString()}
+            {ps.validUntil} {expiry.toLocaleDateString(locale === "en" ? "en-GB" : "pl-PL")}
           </p>
-          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">{fmtDict(ps.daysLeft, { n: daysLeft })}</p>
+          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">
+            {fmtDict(ps.daysLeft, { n: daysLeft, unit: dayUnit })}
+          </p>
+          <p className="mt-1 text-[10px] sm:text-xs text-[var(--eos-muted)]/90">{ps.periodHint}</p>
+          {creditsActive && creditsExpiry ? (
+            <p className="mt-2 text-[10px] sm:text-xs font-semibold text-emerald-500/90">
+              {fmtDict(ps.creditsLine, {
+                n: creditsCount,
+                date: creditsExpiry.toLocaleDateString(locale === "en" ? "en-GB" : "pl-PL"),
+              })}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="relative h-3 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] sm:h-3.5">
