@@ -4,6 +4,7 @@ import { notificationService } from '@/lib/services/notification.service';
 import { resolveContactUserId } from '@/lib/contactRequestAuth';
 import { contactPeerId } from '@/lib/contactThreadPair';
 import { parseContactReactions } from '@/lib/contactMessageReactions';
+import { buildContactMessagePushPayload } from '@/lib/contactPushPayload';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -139,18 +140,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     try {
-      await notificationService.sendPushToUser(receiverId, {
-        title: 'EstateOS™ Contact',
-        body: `${senderName}: ${shortPreview}`,
-        data: {
-          target: 'contact',
-          targetType: 'CONTACT',
-          threadId: String(threadId),
-          peerUserId: String(userId),
-          peerName: senderName,
-          notificationType: 'CONTACT_MESSAGE',
-        },
-      });
+      await notificationService.sendPushToUser(
+        receiverId,
+        buildContactMessagePushPayload({
+          senderName,
+          preview: shortPreview,
+          threadId,
+          senderUserId: userId,
+        }),
+      );
     } catch (pushErr) {
       console.error('[CONTACT WWW MSG PUSH]', pushErr);
     }
