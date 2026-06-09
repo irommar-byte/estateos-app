@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,
-  Crown,
   Home,
   LogIn,
   LogOut,
@@ -29,7 +28,12 @@ type CurrentUser = {
   name?: string | null;
   firstName?: string | null;
   lastName?: string | null;
-  user?: { id?: string | number; name?: string | null; firstName?: string | null; lastName?: string | null };
+  user?: {
+    id?: string | number;
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  };
 };
 
 export default function Navbar() {
@@ -124,29 +128,34 @@ export default function Navbar() {
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="group relative z-20 flex min-w-0 items-center gap-3 rounded-full px-1 text-left"
+          className="group relative z-20 flex shrink-0 items-center gap-3 rounded-full px-1 text-left"
           aria-label="EstateOS home"
         >
-          <span className="flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-xs font-black text-[var(--eos-accent)] shadow-[var(--eos-shadow-soft)]">
+          <span className="eos-nav-mark flex size-9 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[10px] font-black">
             EOS
           </span>
-          <span className="hidden min-w-0 truncate text-lg font-black uppercase italic tracking-tighter sm:block xl:text-xl">
-            <span className="text-[var(--eos-accent)]">E</span>state
-            <span className="text-[var(--eos-accent)]">OS</span>
-            <sup className="ml-0.5 text-[0.48em] not-italic text-[var(--eos-muted)]">TM</sup>
+          <span className="eos-nav-wordmark hidden sm:block">
+            <span className="eos-nav-wordmark-body">
+              <span className="eos-nav-wordmark-accent">E</span>state
+              <span className="eos-nav-wordmark-accent">OS</span>
+              <sup className="eos-nav-wordmark-tm">TM</sup>
+            </span>
           </span>
         </button>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-hidden lg:flex xl:gap-1 2xl:gap-2">
-          <button type="button" onClick={() => handleNavClick("/odkryj-mape", true)} className="eos-nav-link shrink min-w-0">
-            {dict.nav.discoverMap}
-          </button>
-          <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link shrink min-w-0">
-            {dict.nav.market}
-          </button>
-          <button type="button" onClick={() => handleNavClick("/cennik")} className="eos-nav-link shrink min-w-0 text-amber-500">
-            {dict.nav.elite}
-          </button>
+        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden lg:flex">
+          <div className="eos-nav-primary-group flex min-w-0 items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] xl:gap-1.5 xl:p-1.5">
+            <button
+              type="button"
+              onClick={() => handleNavClick("/odkryj-mape", true)}
+              className="eos-nav-link-primary shrink min-w-0"
+            >
+              {dict.nav.discoverMap}
+            </button>
+            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink min-w-0">
+              {dict.nav.market}
+            </button>
+          </div>
         </div>
 
         {user && (
@@ -244,9 +253,13 @@ export default function Navbar() {
                 )}
 
                 <div className="grid gap-2">
-                  <MobileNavButton icon={Home} label={dict.nav.discoverMap} onClick={() => handleNavClick("/odkryj-mape", true)} />
-                  <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} />
-                  <MobileNavButton icon={Crown} label={dict.nav.elite} accent="amber" onClick={() => handleNavClick("/cennik")} />
+                  <MobileNavButton
+                    icon={Home}
+                    label={dict.nav.discoverMap}
+                    onClick={() => handleNavClick("/odkryj-mape", true)}
+                    variant="primary"
+                  />
+                  <MobileNavButton icon={Building2} label={dict.nav.market} onClick={() => handleNavClick("/oferty")} variant="primary" />
                 </div>
 
                 <div className="h-px bg-[var(--eos-border)]" />
@@ -287,31 +300,117 @@ export default function Navbar() {
       <PresentationFlowOrchestrator />
 
       <style jsx>{`
-        .eos-nav-link {
-          border-radius: 999px;
-          padding: 0.42rem 0.45rem;
-          color: var(--eos-muted);
-          font-size: clamp(7px, 0.62vw, 10px);
-          font-weight: 900;
-          letter-spacing: clamp(0.06em, 0.11vw, 0.16em);
+        .eos-nav-wordmark {
+          overflow: visible;
+          padding-right: 0.12rem;
+        }
+        .eos-nav-mark {
+          background: linear-gradient(165deg, rgba(255, 255, 255, 0.1) 0%, rgba(52, 211, 153, 0.16) 100%);
+          color: #5eead4;
+          letter-spacing: 0.06em;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.16),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+            0 2px 10px rgba(0, 0, 0, 0.28);
+          transition: transform 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+        }
+        :global(.group:hover) .eos-nav-mark {
+          color: #6ee7b7;
+          transform: translateY(-1px);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.18),
+            inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+            0 4px 14px rgba(0, 0, 0, 0.32);
+        }
+        .eos-nav-wordmark-body {
+          display: inline-block;
+          overflow: visible;
+          padding-right: 0.08em;
+          font-size: clamp(1.02rem, 1.28vw, 1.28rem);
+          font-weight: 800;
+          font-style: normal;
+          letter-spacing: 0.04em;
           line-height: 1.2;
           text-transform: uppercase;
-          transition: color 0.2s ease, background-color 0.2s ease;
+          color: var(--eos-text);
+          -webkit-font-smoothing: antialiased;
+          text-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.22),
+            0 2px 0 rgba(0, 0, 0, 0.08),
+            0 3px 6px rgba(0, 0, 0, 0.12);
+          transition: color 0.25s ease, text-shadow 0.25s ease;
+        }
+        :global(.group:hover) .eos-nav-wordmark-body {
+          text-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.28),
+            0 2px 0 rgba(0, 0, 0, 0.06),
+            0 4px 8px rgba(0, 0, 0, 0.16);
+        }
+        .eos-nav-wordmark-accent {
+          display: inline-block;
+          padding-right: 0.05em;
+          background: linear-gradient(180deg, #6ee7b7 0%, #34d399 42%, #10b981 72%, #059669 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+        }
+        :global(.group:hover) .eos-nav-wordmark-accent {
+          background: linear-gradient(180deg, #7ef0c4 0%, #3ddda5 40%, #12c98e 70%, #06a676 100%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          color: transparent;
+        }
+        .eos-nav-wordmark-tm {
+          margin-left: 0.15em;
+          font-size: 0.38em;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          vertical-align: super;
+          color: var(--eos-muted);
+          text-shadow: none;
+        }
+        .eos-nav-primary-group {
+          box-shadow:
+            0 10px 28px rgba(0, 0, 0, 0.12),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        }
+        .eos-nav-link-primary {
+          border-radius: 999px;
+          padding: 0.62rem 0.85rem;
+          color: var(--eos-text);
+          font-size: clamp(10px, 0.78vw, 13px);
+          font-weight: 800;
+          letter-spacing: 0.12em;
+          line-height: 1.15;
+          text-transform: uppercase;
+          transition:
+            color 0.2s ease,
+            background-color 0.2s ease,
+            box-shadow 0.2s ease,
+            transform 0.2s ease;
           white-space: nowrap;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
         }
         @media (min-width: 1280px) {
-          .eos-nav-link {
-            padding: 0.55rem 0.65rem;
+          .eos-nav-link-primary {
+            padding: 0.72rem 1.05rem;
+            font-size: 12px;
+            letter-spacing: 0.14em;
           }
         }
         @media (min-width: 1536px) {
-          .eos-nav-link {
-            padding: 0.65rem 0.85rem;
+          .eos-nav-link-primary {
+            padding: 0.78rem 1.2rem;
+            font-size: 13px;
           }
         }
-        .eos-nav-link:hover {
-          background: var(--eos-input);
-          color: var(--eos-text);
+        .eos-nav-link-primary:hover {
+          background: var(--eos-accent-soft);
+          color: var(--eos-accent);
+          box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
+          transform: translateY(-1px);
         }
       `}</style>
     </nav>
@@ -323,11 +422,13 @@ function MobileNavButton({
   label,
   onClick,
   accent = "emerald",
+  variant = "default",
 }: {
   icon: typeof Home;
   label: string;
   onClick: () => void;
   accent?: "emerald" | "amber" | "red";
+  variant?: "default" | "primary";
 }) {
   const accentClass =
     accent === "amber"
@@ -336,11 +437,16 @@ function MobileNavButton({
         ? "text-red-500"
         : "text-[var(--eos-accent)]";
 
+  const primaryClass =
+    variant === "primary"
+      ? "rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-surface)] px-5 py-4 text-sm font-black tracking-[0.14em] shadow-[var(--eos-shadow-soft)]"
+      : "rounded-2xl px-4 py-3.5 text-xs font-bold tracking-[0.13em]";
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-left text-xs font-bold uppercase tracking-[0.13em] text-[var(--eos-text)] transition-colors hover:bg-[var(--eos-input)]"
+      className={`flex w-full items-center gap-4 text-left uppercase text-[var(--eos-text)] transition-colors hover:bg-[var(--eos-input)] ${primaryClass}`}
     >
       <Icon className={`size-5 shrink-0 ${accentClass}`} aria-hidden />
       {label}
