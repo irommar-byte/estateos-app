@@ -115,14 +115,31 @@ export const notificationService = {
     }
 
     const baseData = payload?.data && typeof payload.data === 'object' ? payload.data : {};
-    const messages: ExpoPushMessage[] = validDevices.map((d) => ({
-      to: d.expoPushToken,
-      title: String(payload?.title || 'Powiadomienie'),
-      body: String(payload?.body || ''),
-      sound: payload?.sound || 'default',
-      priority: payload?.priority || 'high',
-      data: baseData,
-    }));
+    const messages: ExpoPushMessage[] = validDevices.map((d) => {
+      const platform = String(d.platform || '').toUpperCase();
+      const msg: ExpoPushMessage & Record<string, unknown> = {
+        to: d.expoPushToken,
+        title: String(payload?.title || 'Powiadomienie'),
+        body: String(payload?.body || ''),
+        sound: payload?.sound || 'default',
+        priority: payload?.priority || 'high',
+        data: baseData,
+      };
+
+      if (payload?.subtitle) msg.subtitle = String(payload.subtitle);
+      if (platform === 'ANDROID') {
+        const channelId = payload?.channelId || payload?.android?.channelId;
+        if (channelId) msg.channelId = String(channelId);
+        if (payload?.android && typeof payload.android === 'object') {
+          msg.android = payload.android;
+        }
+      }
+      if (payload?.ios && typeof payload.ios === 'object') {
+        msg.ios = payload.ios;
+      }
+
+      return msg;
+    });
 
     const chunks = expo.chunkPushNotifications(messages);
     const ticketTokenPairs: Array<{ token: string; ticketId: string }> = [];

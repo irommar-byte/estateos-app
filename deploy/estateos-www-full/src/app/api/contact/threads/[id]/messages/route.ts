@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notificationService } from '@/lib/services/notification.service';
-import { parseMobileUserIdFromAuthHeader } from '@/lib/mobileAuthUserId';
+import { resolveContactUserId } from '@/lib/contactRequestAuth';
 import { contactPeerId } from '@/lib/contactThreadPair';
 import { parseContactReactions } from '@/lib/contactMessageReactions';
 import { buildContactMessagePushPayload } from '@/lib/contactPushPayload';
@@ -32,7 +32,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const threadId = parseInt(id, 10);
     if (!Number.isFinite(threadId)) return NextResponse.json({ error: 'Bad thread id' }, { status: 400 });
 
-    const userId = parseMobileUserIdFromAuthHeader(req.headers.get('authorization'));
+    const userId = await resolveContactUserId(req);
     if (!userId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
 
     const access = await assertThreadAccess(threadId, userId);
@@ -68,7 +68,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[CONTACT MSG GET]', message);
+    console.error('[CONTACT WWW MSG GET]', message);
     return NextResponse.json({ messages: [], error: message }, { status: 500 });
   }
 }
@@ -81,7 +81,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ success: false, error: 'Nieprawidłowy wątek.' }, { status: 400 });
     }
 
-    const userId = parseMobileUserIdFromAuthHeader(req.headers.get('authorization'));
+    const userId = await resolveContactUserId(req);
     if (!userId) return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
 
     const access = await assertThreadAccess(threadId, userId);
@@ -136,7 +136,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         },
       });
     } catch {
-      /* idempotency duplicate — ok */
+      /* idempotency duplicate */
     }
 
     try {
@@ -150,13 +150,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }),
       );
     } catch (pushErr) {
-      console.error('[CONTACT MSG PUSH]', pushErr);
+      console.error('[CONTACT WWW MSG PUSH]', pushErr);
     }
 
     return NextResponse.json({ success: true, message: newMessage });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[CONTACT MSG POST]', message);
+    console.error('[CONTACT WWW MSG POST]', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

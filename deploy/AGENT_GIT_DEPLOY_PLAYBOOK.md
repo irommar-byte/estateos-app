@@ -67,6 +67,20 @@ Przykłady:
 | `deploy/estateos-www-full/src/lib/openHouse.ts` | `src/lib/openHouse.ts` |
 | `deploy/estateos-www-full/prisma/schema.prisma` | `prisma/schema.prisma` (+ migracja SQL, §5) |
 
+### 3.1 Rejestr funkcji www (nie usuwać — zawsze sync recovery + kopia)
+
+Każda pozycja musi istnieć **równocześnie** na `recovery-local-snapshot` i w `deploy/estateos-www-full/` (oraz na VPS po deployu):
+
+| Obszar | Ścieżki / endpointy |
+|--------|---------------------|
+| Contact (DM użytkownik↔użytkownik) | `src/app/api/contact/threads/*`, `src/app/api/mobile/v1/contact/threads/*`, `src/app/moje-konto/wiadomosci/`, `src/components/contact/*`, modele `ContactThread` / `ContactMessage` w Prisma |
+| Powiadomienia Contact (grupowanie) | `src/app/api/notifications/route.ts` (`groupKey: contact-thread:{id}`), `src/components/NotificationCenter.tsx` |
+| Push Contact (grupowanie iOS/Android) | `src/lib/contactPushPayload.ts`, `src/lib/services/notification.service.ts` |
+| Admin użytkownicy (pełny podgląd) | `src/app/centrala/uzytkownicy/`, `src/components/admin/AdminUserDetailPanel.tsx`, `src/lib/adminUserDetail.ts` |
+| CRM PRO / Open House / Import | `src/components/ProWidget.tsx`, `src/components/crm/*`, `src/components/otodom/*`, `src/components/openHouse/*` |
+
+Przed usunięciem pliku z powyższych — **zatrzymaj się** i potwierdź z użytkownikiem. Commit tylko na mobilce bez recovery = regresja produkcji.
+
 **Mobilka (`src/`, `App.tsx`, `ios/`)** nie istnieje na gałęzi recovery — tam nie commitujesz plików RN.
 
 ---

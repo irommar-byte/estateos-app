@@ -16,6 +16,7 @@ type PhoneCountryInputProps = {
   onChangeE164: (e164: string) => void;
   disabled?: boolean;
   status?: 'idle' | 'checking' | 'available' | 'taken';
+  onFocusChange?: (focused: boolean) => void;
 };
 
 export default function PhoneCountryInput({
@@ -23,6 +24,7 @@ export default function PhoneCountryInput({
   onChangeE164,
   disabled,
   status = 'idle',
+  onFocusChange,
 }: PhoneCountryInputProps) {
   const [regionIso, setRegionIso] = useState(DEFAULT_PHONE_REGION_ISO);
   const [localDigits, setLocalDigits] = useState('');
@@ -72,10 +74,16 @@ export default function PhoneCountryInput({
         <input
           type="tel"
           inputMode="numeric"
+          autoComplete="tel-national"
           disabled={disabled}
           placeholder={region.iso2 === 'PL' ? '501 234 567' : 'numer krajowy'}
           className="min-w-0 flex-1 bg-transparent px-4 py-4 text-xl font-bold text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)]"
           value={formatLocalPhoneDisplay(region.iso2, localDigits)}
+          onFocus={() => {
+            setOpen(false);
+            onFocusChange?.(true);
+          }}
+          onBlur={() => onFocusChange?.(false)}
           onChange={(e) => {
             const max = region.localMaxDigits;
             const digits = e.target.value.replace(/\D/g, '').slice(0, max);

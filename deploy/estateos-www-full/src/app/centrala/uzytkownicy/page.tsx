@@ -1,30 +1,49 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
   Search,
   ShieldCheck,
-  Trash2,
-  X,
-  ExternalLink,
-  Mail,
   ChevronRight,
   Loader2,
   Building2,
   Crown,
-  Activity,
+  BadgeCheck,
+  Radar,
+  Smartphone,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { AdminUserDetail } from "@/lib/adminUserDetail";
+import AdminUserDetailPanel from "@/components/admin/AdminUserDetailPanel";
 
 type TabType = "PRIVATE" | "AGENCIES" | "PARTNER";
 
+function classifyUser(u: { isPro?: boolean; planType?: string | null; role?: string | null }) {
+  if (u.isPro) return "PARTNER" as const;
+  if (String(u.role || "").toUpperCase() === "AGENT") return "AGENCIES" as const;
+  if (String(u.planType || "").toUpperCase() === "AGENCY") return "AGENCIES" as const;
+  return "PRIVATE" as const;
+}
+
+function calculatePortfolio(offers: { price?: unknown }[] | undefined) {
+  if (!offers?.length) return 0;
+  return offers.reduce((acc, off) => acc + (parseFloat(String(off.price).replace(/\s/g, "")) || 0), 0);
+}
+
+function isVerifiedUser(u: AdminUserDetail) {
+  return Boolean(u.isVerified || u.emailVerifiedAt || u.phoneVerifiedAt);
+}
+
 export default function AdminUsers() {
-  const [users, setUsers] = useState<any[]>([]);
+  const router = useRouter();
+  const [users, setUsers] = useState<AdminUserDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('PRIVATE');
+  const [selectedUser, setSelectedUser] = useState<AdminUserDetail | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>("PRIVATE");
   const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchUsers = async () => {
@@ -32,28 +51,54 @@ export default function AdminUsers() {
       const res = await fetch("/api/admin/users");
       const data = await res.json();
       if (data.success) setUsers(data.users);
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    void fetchUsers();
+  }, []);
 
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = u.email.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (u.name && u.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    if (!matchesSearch) return false;
+  const segmentCounts = useMemo(() => {
+    const counts: Record<TabType, number> = { PRIVATE: 0, AGENCIES: 0, PARTNER: 0 };
+    for (const u of users) {
+      counts[classifyUser(u)] += 1;
+    }
+    return counts;
+  }, [users]);
 
-    if (activeTab === "PARTNER") return u.isPro === true;
-    if (activeTab === "AGENCIES") return String(u.planType || "") === "AGENCY" && !u.isPro;
-    if (activeTab === "PRIVATE") return !u.isPro && String(u.planType || "") !== "AGENCY";
+  const filteredUsers = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const qId = Number(q);
+    return users
+      .filter((u) => {
+        const seg = classifyUser(u);
+        if (seg !== activeTab) return false;
+        if (!q) return true;
+        if (Number.isFinite(qId) && qId > 0 && u.id === qId) return true;
+        return (
+          String(u.id).includes(q) ||
+          String(u.email || "").toLowerCase().includes(q) ||
+          String(u.name || "").toLowerCase().includes(q) ||
+          String(u.phone || "").toLowerCase().includes(q) ||
+          String(u.companyName || "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  }, [users, activeTab, searchTerm]);
 
-    return true;
-  });
+  const totalOffers = users.reduce((acc, u) => acc + (u.offers?.length || 0), 0);
+  const totalCapital = users.reduce((acc, u) => acc + calculatePortfolio(u.offers), 0);
+  const verifiedCount = users.filter(isVerifiedUser).length;
 
-  const calculatePortfolio = (offers: any[]) => {
-    if (!offers) return 0;
-    return offers.reduce((acc, off) => acc + (parseFloat(String(off.price).replace(/\s/g, '')) || 0), 0);
-  };
+  const tabs: { id: TabType; label: string; hint: string; icon: typeof Users }[] = [
+    { id: "PRIVATE", label: "Prywatni", hint: "Osoby fizyczne", icon: Users },
+    { id: "AGENCIES", label: "Agencje", hint: "Biura i agenci", icon: Building2 },
+    { id: "PARTNER", label: "Partner PRO", hint: "Status PRO / inwestor", icon: Crown },
+  ];
 
   const togglePro = async (id: number, isPro: boolean) => {
     try {
@@ -68,47 +113,26 @@ export default function AdminUsers() {
         alert(data?.error || "Nie udało się zmienić statusu PRO.");
         return;
       }
-      const patch = {
-        isPro: Boolean(data.isPro),
-        planType: data.planType,
-        proExpiresAt: data.proExpiresAt,
-      };
-      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
-      if (selectedUser?.id === id) {
-        setSelectedUser((prev: any) => (prev ? { ...prev, ...patch } : prev));
-      }
+      void fetchUsers();
     } catch {
       alert("Błąd sieci przy zmianie statusu PRO.");
     }
   };
 
-  const handleUpdate = async (id: string, payload: any) => {
+  const handleDelete = async (id: number) => {
+    if (!confirm("Czy na pewno usunąć tego użytkownika i powiązane dane? Operacji nie można cofnąć.")) return;
 
-
-    const res = await fetch("/api/admin/users", {
-      method: "PUT",
-      body: JSON.stringify({ id, ...payload })
-    });
-    if (res.ok) {
-      fetchUsers();
-      setSelectedUser((prev: any) => ({ ...prev, ...payload }));
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("⚠️ UWAGA: Czy na pewno chcesz CAŁKOWICIE usunąć tego użytkownika i jego oferty z bazy? Tej operacji nie można cofnąć.")) return;
-    
     setIsDeleting(true);
     try {
       const res = await fetch("/api/admin/users/delete", {
         method: "POST",
-        body: JSON.stringify({ id })
+        body: JSON.stringify({ id }),
       });
       if (res.ok) {
         setSelectedUser(null);
-        fetchUsers();
+        void fetchUsers();
       } else {
-        alert("Błąd podczas usuwania. Sprawdź logi serwera.");
+        alert("Błąd podczas usuwania.");
       }
     } catch (error) {
       console.error(error);
@@ -117,243 +141,240 @@ export default function AdminUsers() {
     }
   };
 
-  const tabs: { id: TabType; label: string; icon: typeof Users }[] = [
-    { id: "PRIVATE", label: "Prywatne", icon: Users },
-    { id: "AGENCIES", label: "Agencje", icon: Building2 },
-    { id: "PARTNER", label: "Partner", icon: Crown },
-  ];
+  const openContact = async (peerUserId: number, peerName?: string | null) => {
+    try {
+      const res = await fetch("/api/contact/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ peerUserId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.thread?.id) {
+        alert(data?.error || "Nie udało się otworzyć czatu.");
+        return;
+      }
+      const name = encodeURIComponent(peerName || "");
+      router.push(`/moje-konto/wiadomosci?thread=${data.thread.id}&peer=${peerUserId}${name ? `&name=${name}` : ""}`);
+    } catch {
+      alert("Błąd sieci przy otwieraniu czatu.");
+    }
+  };
+
+  const segmentLabel = tabs.find((t) => t.id === activeTab)?.label ?? "";
 
   return (
-    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] p-6 pt-32 md:p-16 md:pt-40">
-      <div className="max-w-7xl mx-auto">
-        <Link href="/centrala" className="text-white/40 hover:text-white mb-10 inline-block text-[10px] uppercase tracking-widest font-bold transition-colors">
-          ← Powrót do Centrali
+    <div className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] px-4 pb-16 pt-32 text-[var(--eos-text)] sm:px-6 md:px-12 md:pt-36">
+      <div className="mx-auto max-w-7xl">
+        <Link
+          href="/centrala"
+          className="mb-8 inline-block text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
+        >
+          ← Powrót do centrali
         </Link>
 
-        {/* HEADER STATS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-16">
-           <div className="bg-[#0a0a0a] border border-white/5 p-6 rounded-[2rem]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-2">Suma Użytkowników</p>
-              <h4 className="text-4xl font-black">{users.length}</h4>
-           </div>
-           <div className="bg-[#0a0a0a] border border-white/5 p-6 rounded-[2rem]">
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500/50 mb-2">Aktywne Oferty</p>
-              <h4 className="text-4xl font-black text-emerald-500">{users.reduce((acc, u) => acc + (u.offers?.length || 0), 0)}</h4>
-           </div>
-           <div className="bg-[#0a0a0a] border border-white/5 p-6 rounded-[2rem] md:col-span-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/30 mb-2">Kapitalizacja Bazy (Estymowana)</p>
-              <h4 className="text-4xl font-black">
-                {new Intl.NumberFormat('pl-PL').format(users.reduce((acc, u) => acc + calculatePortfolio(u.offers), 0))} PLN
-              </h4>
-           </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-10">
-          <h1 className="text-5xl lg:text-6xl font-black tracking-tighter">Segmentacja<span className="text-emerald-500">.</span></h1>
-          <div className="relative w-full md:w-96 group">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-emerald-500 transition-colors" size={20} />
-            <input 
-              type="text" 
-              placeholder="E-mail, nazwisko..."
-              className="w-full bg-[#0a0a0a] border border-white/5 rounded-2xl py-5 pl-14 pr-6 outline-none focus:border-emerald-500/50 transition-all font-medium"
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <header className="mb-10 border-b border-[var(--eos-border)] pb-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="mb-2 text-[10px] font-black uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-400">
+                Centrala · użytkownicy
+              </p>
+              <h1 className="text-4xl font-black tracking-tight md:text-5xl">
+                Użytkownicy
+                <span className="mt-1 block text-lg font-normal text-[var(--eos-muted)] md:text-xl">
+                  Pełny podgląd kont, radaru, weryfikacji i kanałów API
+                </span>
+              </h1>
+            </div>
+            <div className="group relative w-full lg:max-w-md">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--eos-subtle)] transition-colors group-focus-within:text-emerald-500"
+                size={18}
+              />
+              <input
+                type="search"
+                placeholder="Szukaj: ID, e-mail, imię, telefon, firma…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] py-3.5 pl-11 pr-4 text-sm outline-none placeholder:text-[var(--eos-muted)] focus:border-emerald-500/50"
+              />
+            </div>
           </div>
-        </div>
 
-        {/* APPLE-STYLE TABS (Sliding Segmented Control) */}
-        <div className="flex relative p-2 bg-[#18181b] rounded-full border border-white/10 w-fit mb-8 shadow-2xl">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={`relative z-10 px-6 md:px-8 py-3.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === tab.id ? 'text-black' : 'text-gray-400 hover:text-white'}`}
-            >
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="active-tab-pill"
-                  className={`absolute inset-0 rounded-full -z-10 ${
-                    tab.id === "PRIVATE"
-                      ? "bg-white shadow-[0_0_15px_rgba(255,255,255,0.3)]"
-                      : tab.id === "AGENCIES"
-                        ? "bg-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-                        : "bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.4)]"
-                  }`}
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-              <tab.icon size={16} /> <span className="hidden sm:block">{tab.label}</span>
-            </button>
-          ))}
-        </div>
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Konta</p>
+              <p className="text-3xl font-black tabular-nums">{users.length}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-5">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                Zweryfikowani
+              </p>
+              <p className="text-3xl font-black tabular-nums text-emerald-600 dark:text-emerald-400">{verifiedCount}</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Aktywne oferty</p>
+              <p className="text-3xl font-black tabular-nums">{totalOffers}</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5">
+              <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">Szac. portfele</p>
+              <p className="truncate text-2xl font-black tabular-nums md:text-3xl">
+                {new Intl.NumberFormat("pl-PL").format(totalCapital)} <span className="text-sm text-[var(--eos-muted)]">PLN</span>
+              </p>
+            </div>
+          </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* MAIN LIST */}
-          <div className="flex-1 space-y-3">
+          {!loading && (
+            <nav className="mt-8" aria-label="Segmenty użytkowników">
+              <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  const count = segmentCounts[tab.id];
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setSelectedUser(null);
+                      }}
+                      title={tab.hint}
+                      className={`flex shrink-0 items-center gap-2.5 rounded-xl border px-4 py-3 transition-all ${
+                        active
+                          ? tab.id === "AGENCIES"
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)]"
+                            : tab.id === "PARTNER"
+                              ? "border-amber-500/40 bg-amber-500/10 text-[var(--eos-text)]"
+                              : "border-[var(--eos-border-strong)] bg-[var(--eos-bg-elevated)] text-[var(--eos-text)]"
+                          : "border-transparent text-[var(--eos-muted)] hover:border-[var(--eos-border)] hover:bg-[var(--eos-card)]"
+                      }`}
+                    >
+                      <Icon
+                        size={16}
+                        className={
+                          active
+                            ? tab.id === "PARTNER"
+                              ? "text-amber-500"
+                              : tab.id === "AGENCIES"
+                                ? "text-emerald-500"
+                                : "text-[var(--eos-text)]"
+                            : "text-[var(--eos-subtle)]"
+                        }
+                      />
+                      <span className="text-left">
+                        <span className="block whitespace-nowrap text-[11px] font-black uppercase tracking-[0.12em]">{tab.label}</span>
+                        <span className="block whitespace-nowrap text-[9px] text-[var(--eos-subtle)]">{tab.hint}</span>
+                      </span>
+                      <span className="ml-1 min-w-[1.75rem] rounded-md bg-[var(--eos-border)]/60 px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--eos-subtle)]">
+                {filteredUsers.length} w segmencie · {segmentLabel}
+                {searchTerm ? ` · filtr „${searchTerm}"` : ""}
+              </p>
+            </nav>
+          )}
+        </header>
+
+        <div className="flex flex-col gap-8 lg:flex-row">
+          <div className="min-w-0 flex-1 space-y-2">
             {loading ? (
-              <div className="flex items-center gap-3 text-white/40"><Loader2 className="animate-spin" /> Wczytywanie systemów...</div>
+              <div className="flex items-center gap-3 py-16 text-[var(--eos-muted)]">
+                <Loader2 className="animate-spin text-emerald-500" size={20} />
+                <span className="text-sm font-medium">Wczytywanie użytkowników…</span>
+              </div>
             ) : filteredUsers.length === 0 ? (
-               <div className="p-10 border border-white/5 border-dashed rounded-[2rem] text-center text-white/30 font-medium">
-                 Brak użytkowników w tym segmencie.
-               </div>
-            ) : filteredUsers.map((u) => (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                key={u.id}
-                onClick={() => setSelectedUser(u)}
-                className={`group p-6 rounded-[2rem] border transition-all duration-300 flex items-center justify-between cursor-pointer ${selectedUser?.id === u.id ? 'bg-white/10 border-white/20' : 'bg-[#0a0a0a] border-white/5 hover:border-white/10'}`}
-              >
-                <div className="flex items-center gap-6">
-                  <div
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${
-                      u.isPro
-                        ? "bg-orange-500/20 text-orange-500"
-                        : String(u.planType || "") === "AGENCY"
-                          ? "bg-emerald-500/20 text-emerald-500"
-                          : "bg-white/5 text-white/40"
+              <div className="rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 p-12 text-center">
+                <p className="text-sm font-semibold">Brak użytkowników w tym segmencie</p>
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-[var(--eos-muted)]">
+                  {searchTerm
+                    ? "Zmień wyszukiwanie lub przełącz segment."
+                    : `W kategorii „${segmentLabel}” nie ma jeszcze zarejestrowanych kont.`}
+                </p>
+              </div>
+            ) : (
+              filteredUsers.map((u) => {
+                const selected = selectedUser?.id === u.id;
+                const seg = classifyUser(u);
+                const verified = isVerifiedUser(u);
+                return (
+                  <motion.button
+                    type="button"
+                    key={u.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    onClick={() => setSelectedUser(u)}
+                    className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all md:p-5 ${
+                      selected
+                        ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm"
+                        : "border-[var(--eos-border)] bg-[var(--eos-card)] hover:border-[var(--eos-border-strong)]"
                     }`}
                   >
-                    {u.name ? u.name[0] : u.email[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-black text-lg">{u.name || "Użytkownik"}</h3>
-                      {u.role === 'ADMIN' && <ShieldCheck size={14} className="text-emerald-500" />}
-                      {u.isPro && <Crown size={14} className="text-orange-500" />}
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div
+                        className={`flex size-11 shrink-0 items-center justify-center rounded-xl text-base font-black ${
+                          seg === "PARTNER"
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                            : seg === "AGENCIES"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : "bg-[var(--eos-border)] text-[var(--eos-muted)]"
+                        }`}
+                      >
+                        {(u.name || u.email || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-bold">{u.name || "Bez nazwy"}</span>
+                          <span className="rounded-md bg-[var(--eos-bg)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-[var(--eos-subtle)]">
+                            #{u.id}
+                          </span>
+                          {u.role === "ADMIN" ? <ShieldCheck size={14} className="shrink-0 text-emerald-500" /> : null}
+                          {u.isPro ? <Crown size={14} className="shrink-0 text-amber-500" /> : null}
+                          {verified ? <BadgeCheck size={14} className="shrink-0 text-emerald-500" /> : null}
+                          {u.devices.length > 0 ? <Smartphone size={13} className="shrink-0 text-[var(--eos-subtle)]" /> : null}
+                          {u.radar ? <Radar size={13} className="shrink-0 text-sky-500" /> : null}
+                        </div>
+                        <p className="truncate text-xs text-[var(--eos-muted)]">{u.email}</p>
+                        <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
+                          {u.radar?.city ? <span>{u.radar.city}</span> : null}
+                          {u.channels.length ? <span>{u.channels.slice(0, 2).join(" · ")}</span> : null}
+                          {u.lastLoginIp ? <span>IP {u.lastLoginIp}</span> : null}
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-[10px] font-bold text-white/30 tracking-wider uppercase">{u.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-8">
-                   <div className="hidden xl:block text-right">
-                      <p className="text-[9px] font-black text-white/20 uppercase mb-1">Aktywność</p>
-                      <p className="font-black text-white text-sm">{u.offers?.length || 0} Ofert</p>
-                   </div>
-                   <ChevronRight size={20} className="text-white/10 group-hover:text-white/50 transition-all group-hover:translate-x-1" />
-                </div>
-              </motion.div>
-            ))}
+                    <div className="flex shrink-0 items-center gap-4">
+                      <div className="hidden text-right sm:block">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Oferty</p>
+                        <p className="text-sm font-black tabular-nums">{u.offers?.length || 0}</p>
+                      </div>
+                      <ChevronRight size={18} className={selected ? "text-emerald-500" : "text-[var(--eos-subtle)]"} />
+                    </div>
+                  </motion.button>
+                );
+              })
+            )}
           </div>
 
-          {/* ADVANCED CONTROL DRAWER */}
           <AnimatePresence>
-            {selectedUser && (
-              <motion.div 
-                initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}
-                className="w-full lg:w-[450px] bg-[#0a0a0a] border border-white/10 rounded-[2.5rem] p-8 h-fit sticky top-32 shadow-2xl"
-              >
-                <div className="flex justify-between items-start mb-10">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center text-2xl font-black text-white/40">
-                      {selectedUser.name ? selectedUser.name[0] : '?'}
-                    </div>
-                    <div>
-                       <h2 className="text-2xl font-black leading-tight truncate max-w-[200px]">{selectedUser.name || 'Brak Danych'}</h2>
-                       <p className={`text-[9px] font-black tracking-widest uppercase mt-1 ${selectedUser.isPro ? 'text-orange-500' : 'text-emerald-500'}`}>
-                         {selectedUser.isPro ? 'Konto Agencji PRO' : 'Aktywny Profil'}
-                       </p>
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedUser(null)} className="p-2.5 bg-white/5 rounded-full hover:bg-white/10 transition-all"><X size={18}/></button>
-                </div>
-
-                {/* 1. MONITOR AKTYWNOŚCI */}
-                <div className="mb-8">
-                   <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 mb-3 flex items-center gap-2">
-                     <Activity size={12} className="text-emerald-500"/> Monitor Aktywności
-                   </h4>
-                   <div className="bg-[#111] border border-white/5 rounded-2xl p-5 space-y-4">
-                      <div className="flex justify-between items-center pb-4 border-b border-white/5">
-                         <span className="text-[10px] text-white/40 font-bold uppercase">Rejestracja</span>
-                         <span className="text-xs font-black text-white">
-                           {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString('pl-PL') : 'Brak danych'}
-                         </span>
-                      </div>
-                      <div className="flex justify-between items-center pb-4 border-b border-white/5">
-                         <span className="text-[10px] text-white/40 font-bold uppercase">Zainteresowanie</span>
-                         <span className="text-xs font-black text-emerald-500">
-                           {selectedUser.searchType === 'sprzedaz' ? 'Kupno Nieruchomości' : selectedUser.searchType === 'wynajem' ? 'Wynajem' : 'Nie określono'}
-                         </span>
-                      </div>
-                      <div className="flex justify-between items-center pb-4 border-b border-white/5">
-                         <span className="text-[10px] text-white/40 font-bold uppercase">Zadeklarowany Budżet</span>
-                         <span className="text-xs font-black text-white">
-                           {selectedUser.searchMaxPrice ? new Intl.NumberFormat('pl-PL').format(selectedUser.searchMaxPrice) + ' PLN' : 'Brak limitu'}
-                         </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                         <span className="text-[10px] text-white/40 font-bold uppercase">Lokalizacje</span>
-                         <span className="text-xs font-black text-white truncate max-w-[150px]" title={selectedUser.searchDistricts}>
-                           {selectedUser.searchDistricts ? selectedUser.searchDistricts.split(',').join(', ') : 'Dowolne'}
-                         </span>
-                      </div>
-                   </div>
-                </div>
-
-                {/* 2. STATYSTYKI FINANSOWE */}
-                <div className="grid grid-cols-2 gap-3 mb-8">
-                   <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                      <p className="text-[9px] font-black text-white/30 uppercase mb-1.5">Łączny Kapitał</p>
-                      <p className="text-lg font-black text-white truncate">
-                        {new Intl.NumberFormat('pl-PL').format(calculatePortfolio(selectedUser.offers))} <span className="text-[10px] text-white/40">PLN</span>
-                      </p>
-                   </div>
-                   <div className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
-                      <p className="text-[9px] font-black text-white/30 uppercase mb-1.5">Telefon</p>
-                      <p className="text-sm font-black text-white truncate">{selectedUser.phone || 'Brak numeru'}</p>
-                   </div>
-                </div>
-
-                {/* 3. OPERACYJNE PRZYCISKI DOWODZENIA */}
-                <div className="space-y-3 mb-8">
-                   <a 
-                    href={`mailto:${selectedUser.email}?subject=Wiadomość od EstateOS Administrator`}
-                    className="w-full bg-white text-black py-4 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-gray-200 transition-all shadow-xl shadow-white/5"
-                   >
-                     <Mail size={16}/> Kontakt Direct Mail
-                   </a>
-                   
-                   <div className="flex gap-3">
-                      <button 
-                        onClick={() => togglePro(selectedUser.id, selectedUser.isPro)}
-                        className={`flex-1 py-3.5 rounded-xl border font-black text-[9px] uppercase tracking-widest transition-all ${selectedUser.isPro ? 'border-orange-500/30 text-orange-500 bg-orange-500/10 hover:bg-orange-500/20' : 'border-white/10 text-white/50 hover:bg-white/5'}`}
-                      >
-                        {selectedUser.isPro ? 'Zabierz PRO' : 'Daj Status PRO'}
-                      </button>
-                      
-                      <button 
-                        onClick={() => handleDelete(selectedUser.id)}
-                        disabled={isDeleting}
-                        className="flex-1 py-3.5 rounded-xl border border-red-500/20 text-red-500 font-black text-[9px] uppercase tracking-widest hover:bg-red-500 hover:text-white hover:shadow-[0_0_20px_rgba(239,68,68,0.4)] transition-all flex justify-center items-center"
-                      >
-                        {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <><Trash2 size={14} className="mr-2"/> Usuń Konto</>}
-                      </button>
-                   </div>
-                </div>
-
-                {/* 4. AUDYT OGŁOSZEŃ */}
-                {selectedUser.offers && selectedUser.offers.length > 0 && (
-                  <div>
-                     <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 mb-3">Audyt Ofert Użytkownika ({selectedUser.offers.length})</h4>
-                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
-                        {selectedUser.offers.map((off: any) => (
-                          <div key={off.id} className="group/item flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl hover:border-white/20 transition-all">
-                             <div className="truncate pr-4">
-                                <p className="text-xs font-bold truncate group-hover/item:text-white transition-colors">{off.title}</p>
-                                <p className="text-[9px] text-white/30 font-black uppercase mt-0.5">
-                                  {off.status === 'ACTIVE' ? '● Aktywne' : off.status === 'ARCHIVED' ? '◌ Archiwum' : '○ Weryfikacja'}
-                                </p>
-                             </div>
-                             <Link href={`/oferta/${off.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white hover:text-black transition-all">
-                                <ExternalLink size={12}/>
-                             </Link>
-                          </div>
-                        ))}
-                     </div>
-                  </div>
-                )}
+            {selectedUser ? (
+              <motion.div initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 24 }}>
+                <AdminUserDetailPanel
+                  user={selectedUser}
+                  segmentLabel={segmentLabel}
+                  portfolioValue={calculatePortfolio(selectedUser.offers)}
+                  isDeleting={isDeleting}
+                  onClose={() => setSelectedUser(null)}
+                  onTogglePro={() => void togglePro(selectedUser.id, selectedUser.isPro)}
+                  onDelete={() => void handleDelete(selectedUser.id)}
+                  onOpenMessages={() => void openContact(selectedUser.id, selectedUser.name)}
+                />
               </motion.div>
-            )}
+            ) : null}
           </AnimatePresence>
         </div>
       </div>

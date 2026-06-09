@@ -46,6 +46,8 @@ model User {
   searchAmenities       String?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
+  lastLoginIp          String?                  @db.VarChar(64)
+  lastLoginAt          DateTime?
   accounts             Account[]
   proposedAppointments Appointment[]            @relation("ProposedAppointments")
   Authenticator        Authenticator[]
@@ -246,7 +248,7 @@ model OpenHouseEvent {
   title       String?             @db.VarChar(255)
   description String?             @db.Text
   visitMode   OpenHouseVisitMode  @default(FLEX)
-  status      OpenHouseStatus     @default(DRAFT)
+  status      OpenHouseStatus @default(DRAFT)
   publishedAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
@@ -437,7 +439,6 @@ model ContactMessage {
   content    String        @db.Text
   attachment String?
   isRead     Boolean       @default(false)
-  /// JSON map: userId (string) → emoji tapback (❤️ 👍 …)
   reactions  String?       @db.Text
   createdAt  DateTime      @default(now())
   thread     ContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)

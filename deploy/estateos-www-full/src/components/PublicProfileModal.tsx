@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
+import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import { buildReviewsDistribution } from "@/lib/reviewsDistribution";
 import { getBestUserAvatarUrl, isAgencyUser, resolveAgencyDisplayName } from "@/lib/userAvatar";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -45,8 +46,19 @@ export default function PublicProfileModal({
   const [showDistribution, setShowDistribution] = useState(false);
   const [viewUserId, setViewUserId] = useState<string | null>(userId);
   const [profileStack, setProfileStack] = useState<string[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    void fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        const id = Number(data?.id ?? data?.user?.id);
+        setCurrentUserId(res.ok && Number.isFinite(id) && id > 0 ? id : null);
+      })
+      .catch(() => setCurrentUserId(null));
+  }, []);
 
   useEffect(() => {
     if (isOpen && userId) {
@@ -184,6 +196,17 @@ export default function PublicProfileModal({
                 <p className="text-[11px] text-[var(--eos-muted)] mt-1">ID: {data.user.id}</p>
               </div>
             </div>
+
+            {viewUserId && Number(viewUserId) !== currentUserId ? (
+              <div className="flex justify-center">
+                <ProfileWriteMessageButton
+                  peerUserId={Number(viewUserId)}
+                  peerName={agencyName || data.user.displayName || data.user.publicName || data.user.name || undefined}
+                  currentUserId={currentUserId}
+                  variant="light"
+                />
+              </div>
+            ) : null}
 
             <button
               type="button"

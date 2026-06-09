@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
+import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
+import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
 import PremiumModeToggle from "@/components/ui/PremiumModeToggle";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -24,7 +26,15 @@ type CurrentUser = {
   id?: string | number;
   role?: string;
   plan?: string;
-  user?: { id?: string | number };
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  user?: {
+    id?: string | number;
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  };
 };
 
 export default function Navbar() {
@@ -159,15 +169,14 @@ export default function Navbar() {
           {user && (
             <>
               <PublicationWalletNavButton />
+              <ContactMessagesNavButton />
               <NotificationCenter />
             </>
           )}
 
           {user ? (
             <div className="ml-0.5 flex min-w-0 items-center gap-1 lg:gap-1.5 xl:gap-2">
-              <button type="button" onClick={() => router.push("/moje-konto")} className="eos-nav-link eos-nav-link-profile shrink min-w-0">
-                {dict.nav.profile}
-              </button>
+              <NavbarProfileChip user={user} />
               {isAdmin && (
                 <button
                   type="button"
@@ -202,6 +211,7 @@ export default function Navbar() {
           {user && (
             <>
               <PublicationWalletNavButton />
+              <ContactMessagesNavButton />
               <NotificationCenter />
             </>
           )}
@@ -325,20 +335,19 @@ export default function Navbar() {
           letter-spacing: 0.04em;
           line-height: 1.2;
           text-transform: uppercase;
-          color: rgba(255, 255, 255, 0.9);
+          color: var(--eos-text);
           -webkit-font-smoothing: antialiased;
           text-shadow:
             0 1px 0 rgba(255, 255, 255, 0.22),
-            0 2px 0 rgba(0, 0, 0, 0.18),
-            0 3px 6px rgba(0, 0, 0, 0.28);
+            0 2px 0 rgba(0, 0, 0, 0.08),
+            0 3px 6px rgba(0, 0, 0, 0.12);
           transition: color 0.25s ease, text-shadow 0.25s ease;
         }
         :global(.group:hover) .eos-nav-wordmark-body {
-          color: rgba(255, 255, 255, 0.96);
           text-shadow:
             0 1px 0 rgba(255, 255, 255, 0.28),
-            0 2px 0 rgba(0, 0, 0, 0.16),
-            0 4px 8px rgba(0, 0, 0, 0.32);
+            0 2px 0 rgba(0, 0, 0, 0.06),
+            0 4px 8px rgba(0, 0, 0, 0.16);
         }
         .eos-nav-wordmark-accent {
           display: inline-block;
@@ -362,7 +371,7 @@ export default function Navbar() {
           font-weight: 600;
           letter-spacing: 0.04em;
           vertical-align: super;
-          color: rgba(255, 255, 255, 0.38);
+          color: var(--eos-muted);
           text-shadow: none;
         }
         .eos-nav-primary-group {
@@ -405,32 +414,6 @@ export default function Navbar() {
           color: var(--eos-accent);
           box-shadow: 0 6px 18px rgba(16, 185, 129, 0.14);
           transform: translateY(-1px);
-        }
-        .eos-nav-link {
-          border-radius: 999px;
-          padding: 0.42rem 0.45rem;
-          color: var(--eos-muted);
-          font-size: clamp(7px, 0.62vw, 10px);
-          font-weight: 900;
-          letter-spacing: clamp(0.06em, 0.11vw, 0.16em);
-          line-height: 1.2;
-          text-transform: uppercase;
-          transition: color 0.2s ease, background-color 0.2s ease;
-          white-space: nowrap;
-        }
-        @media (min-width: 1280px) {
-          .eos-nav-link {
-            padding: 0.55rem 0.65rem;
-          }
-        }
-        @media (min-width: 1536px) {
-          .eos-nav-link {
-            padding: 0.65rem 0.85rem;
-          }
-        }
-        .eos-nav-link:hover {
-          background: var(--eos-input);
-          color: var(--eos-text);
         }
       `}</style>
     </nav>
