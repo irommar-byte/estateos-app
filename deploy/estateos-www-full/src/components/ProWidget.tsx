@@ -12,6 +12,7 @@ import {
 import OtodomImportProCard from "@/components/otodom/OtodomImportProCard";
 import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
 import AuctionProCard from "@/components/crm/AuctionProCard";
+import PulseUpcomingSchedule from "@/components/PulseUpcomingSchedule";
 
 type ProOfferRow = { id: number; title: string; city?: string; district?: string };
 
@@ -336,8 +337,8 @@ export default function ProWidget({
         </div>
 
         {/* KOLUMNA 3: PULS RYNKU (TABLICA DWORCOWA) */}
-        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col lg:flex-1">
-           <div className="flex items-center justify-between mb-6 relative z-10">
+        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col lg:flex-1 min-h-[420px] lg:min-h-0">
+           <div className="flex items-center justify-between mb-4 relative z-10 shrink-0">
               <div className="flex items-center gap-3">
                  <Newspaper className="text-white/30" size={16}/>
                  <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.3em] text-white/50">Puls Rynku</h3>
@@ -349,26 +350,33 @@ export default function ProWidget({
                  </span>
               </div>
            </div>
-           <div className="space-y-5 relative z-10 flex-1 overflow-hidden">
-              <div className="flex gap-4 items-start pb-4">
-                 <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-black border border-[#222] shadow-[inset_0_2px_5px_rgba(0,0,0,1)] flex items-center justify-center shrink-0">
-                    {headlines[newsIndex]?.type === "GLOBAL" ? (
-                      <Globe size={14} className="text-blue-500/80" />
-                    ) : (
-                      <TrendingUp size={14} className="text-emerald-500/80" />
-                    )}
-                 </div>
-                 <div className="flex-1 min-w-0 font-mono">
-                    <p className="text-[10px] md:text-[11px] font-bold text-emerald-400/90 leading-relaxed min-h-[40px] drop-shadow-[0_0_8px_rgba(16,185,129,0.2)]">
-                       <ScrambleText key={`${headlines[newsIndex]?.id}-${newsIndex}`} text={headlines[newsIndex]?.title ?? ""} />
-                    </p>
-                    <p className="text-[8px] md:text-[9px] text-white/20 mt-2 uppercase font-black tracking-widest">
-                       {headlines[newsIndex]?.source}
-                    </p>
+
+           <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+              <div className="shrink-0">
+                 <div className="flex gap-4 items-start">
+                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-black border border-[#222] shadow-[inset_0_2px_5px_rgba(0,0,0,1)] flex items-center justify-center shrink-0">
+                       {headlines[newsIndex]?.type === "GLOBAL" ? (
+                         <Globe size={14} className="text-blue-500/80" />
+                       ) : (
+                         <TrendingUp size={14} className="text-emerald-500/80" />
+                       )}
+                    </div>
+                    <div className="flex-1 min-w-0 font-mono">
+                       <p className="text-[10px] md:text-[11px] font-bold text-emerald-400/90 leading-relaxed min-h-[36px] drop-shadow-[0_0_8px_rgba(16,185,129,0.2)]">
+                          <ScrambleText key={`${headlines[newsIndex]?.id}-${newsIndex}`} text={headlines[newsIndex]?.title ?? ""} />
+                       </p>
+                       <p className="text-[8px] md:text-[9px] text-white/20 mt-1 uppercase font-black tracking-widest">
+                          {headlines[newsIndex]?.source}
+                       </p>
+                    </div>
                  </div>
               </div>
-              <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
-              <p className="text-[8px] text-white/20 uppercase tracking-[0.2em] text-center mt-4">
+
+              <div className="w-full h-px shrink-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+
+              <PulseUpcomingSchedule locale={locale} />
+
+              <p className="shrink-0 text-center text-[7px] text-white/15 uppercase tracking-[0.18em]">
                 {locale === "pl" ? "Połączenie z serwerem szyfrowane" : "Encrypted server connection"}
               </p>
            </div>
