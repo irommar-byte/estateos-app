@@ -162,3 +162,18 @@ export function contactAttachmentKind(
   if (mime === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
   return 'file';
 }
+
+export function formatContactLastMessagePreview(msg: {
+  content: string;
+  attachment?: string | null;
+}): string {
+  const { text, attachment } = parseContactMessageParts(msg);
+  if (text) return text;
+  if (!attachment) return '';
+  const kind = contactAttachmentKind(attachment);
+  if (kind === 'pdf') return '📎 Załącznik PDF';
+  if (kind === 'audio') return '🎵 Plik audio';
+  if (kind === 'image') return '🖼 Zdjęcie';
+  if (kind === 'video') return '🎬 Wideo';
+  return `📎 ${attachment.name || 'Załącznik'}`;
+}
