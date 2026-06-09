@@ -862,6 +862,19 @@ export default function CRMDashboard() {
     };
   }, [currentUser?.id]);
 
+  const activeOffersForProTools = useMemo(
+    () =>
+      (crmData.offers || [])
+        .filter((o: any) => String(o?.status || '').toUpperCase() === 'ACTIVE')
+        .map((o: any) => ({
+          id: Number(o.id),
+          title: String(o.title || ''),
+          city: String(o.city || ''),
+          district: String(o.district || ''),
+        }))
+        .filter((o: { id: number }) => Number.isFinite(o.id) && o.id > 0),
+    [crmData.offers],
+  );
 
   if (loading) return <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>;
 
@@ -1076,20 +1089,6 @@ export default function CRMDashboard() {
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
-
-  const activeOffersForProTools = useMemo(
-    () =>
-      (crmData.offers || [])
-        .filter((o: any) => String(o?.status || '').toUpperCase() === 'ACTIVE')
-        .map((o: any) => ({
-          id: Number(o.id),
-          title: String(o.title || ''),
-          city: String(o.city || ''),
-          district: String(o.district || ''),
-        }))
-        .filter((o: { id: number }) => Number.isFinite(o.id) && o.id > 0),
-    [crmData.offers],
-  );
 
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">

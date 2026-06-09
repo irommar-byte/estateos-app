@@ -51,6 +51,8 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
 
   const [emailStatus, setEmailStatus] = useState<FieldStatus>('idle');
   const [phoneStatus, setPhoneStatus] = useState<FieldStatus>('idle');
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [phoneFocused, setPhoneFocused] = useState(false);
   const emailTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const phoneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -69,6 +71,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
 
   useEffect(() => {
     if (emailTimer.current) clearTimeout(emailTimer.current);
+    if (emailFocused) return;
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || !trimmed.includes('@')) {
       setEmailStatus('idle');
@@ -86,10 +89,11 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
     return () => {
       if (emailTimer.current) clearTimeout(emailTimer.current);
     };
-  }, [email, checkExists]);
+  }, [email, emailFocused, checkExists]);
 
   useEffect(() => {
     if (phoneTimer.current) clearTimeout(phoneTimer.current);
+    if (phoneFocused) return;
     const e164 = normalizePhoneE164(phoneE164);
     if (!e164) {
       setPhoneStatus('idle');
@@ -107,7 +111,7 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
     return () => {
       if (phoneTimer.current) clearTimeout(phoneTimer.current);
     };
-  }, [phoneE164, checkExists]);
+  }, [phoneE164, phoneFocused, checkExists]);
 
   const handlePhoneChange = useCallback((v: string) => setPhoneE164(v), []);
 
@@ -248,19 +252,21 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onFocus={() => setEmailFocused(true)}
+          onBlur={() => setEmailFocused(false)}
           className={`eos-field ${
-            emailStatus === 'taken'
+            !emailFocused && emailStatus === 'taken'
               ? 'border-red-500/50'
-              : emailStatus === 'available'
+              : !emailFocused && emailStatus === 'available'
                 ? 'border-emerald-500/50'
                 : ''
           }`}
           placeholder="jan@example.com"
         />
-        {emailStatus === 'checking' && (
+        {!emailFocused && emailStatus === 'checking' && (
           <p className="eos-muted-copy mt-2 text-[10px] font-bold uppercase tracking-widest">{t.checkingEmail}</p>
         )}
-        {emailStatus === 'taken' && (
+        {!emailFocused && emailStatus === 'taken' && (
           <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-red-500">{t.emailTaken}</p>
         )}
       </div>
@@ -269,7 +275,8 @@ export default function RegisterForm({ afterRegisterPath }: { afterRegisterPath?
         valueE164={phoneE164}
         onChangeE164={handlePhoneChange}
         disabled={loading}
-        status={phoneStatus}
+        status={phoneFocused ? 'idle' : phoneStatus}
+        onFocusChange={setPhoneFocused}
       />
 
       <div>
