@@ -177,7 +177,7 @@ export default function OtodomImportProCard() {
         whileHover={{ scale: 1.01 }}
         whileTap={{ scale: 0.99 }}
         onClick={() => setPanelOpen(true)}
-        className="group relative w-full overflow-hidden rounded-2xl border border-[#D4AF37]/35 bg-gradient-to-br from-[#1a1508] via-[#0a0a0a] to-[#050505] p-5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(212,175,55,0.15)]"
+        className="group relative h-full w-full overflow-hidden rounded-2xl border border-[#D4AF37]/35 bg-gradient-to-br from-[#1a1508] via-[#0a0a0a] to-[#050505] p-4 sm:p-5 text-left shadow-[0_20px_50px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(212,175,55,0.15)]"
       >
         <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-[#D4AF37]/10 blur-2xl" />
         <div className="relative flex items-start gap-4">
@@ -188,7 +188,7 @@ export default function OtodomImportProCard() {
             <p className="text-[9px] font-black uppercase tracking-[0.28em] text-[#D4AF37]/90">
               Ekskluzywne narzędzie Pro
             </p>
-            <h3 className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-white/95">
+            <h3 className="mt-1 text-xs font-black uppercase leading-snug tracking-[0.1em] text-white/95 sm:text-sm sm:tracking-[0.12em]">
               Import z OtoDom + OLX + Nieruchomosci-Online
             </h3>
             <p className="mt-2 text-[11px] leading-relaxed text-white/45">

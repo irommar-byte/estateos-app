@@ -262,11 +262,12 @@ export default function ProWidget({
     <div className="bg-[#050505] border border-white/5 rounded-[2.5rem] relative overflow-hidden backdrop-blur-3xl shadow-[0_40px_100px_rgba(0,0,0,0.9)] mb-12">
       <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none"></div>
       
-      <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
+      <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10 lg:items-stretch">
         
-        {/* KOLUMNA 1: ZEGAR + STATYSTYKI Z WYKRESEM */}
-        <div className="flex flex-col gap-4">
-           <div className="bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] flex flex-col sm:flex-row lg:flex-col items-center gap-6 justify-center flex-1">
+        {/* KOLUMNA 1: ZEGAR + STATYSTYKI + IMPORT */}
+        <div className="flex flex-col gap-4 min-h-0">
+           <div className="flex flex-col gap-4 lg:flex-1">
+           <div className="bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] flex flex-col sm:flex-row lg:flex-col items-center gap-6 justify-center">
               {!isBooting && <AppleClock />}
               <div className="text-center sm:text-left lg:text-center">
                  <p className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.4em] text-white/30 mb-1">{today.toLocaleDateString('pl-PL', { weekday: 'long' })}</p>
@@ -300,11 +301,16 @@ export default function ProWidget({
                  </span>
               </div>
            </div>
+           </div>
 
+           <div className="mt-auto w-full shrink-0">
+             <OtodomImportProCard />
+           </div>
         </div>
 
-        {/* KOLUMNA 2: GŁĘBOKI KALENDARZ Z NOTATKAMI */}
-        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_10px_30px_rgba(0,0,0,1),0_10px_20px_rgba(0,0,0,0.5)] relative flex flex-col">
+        {/* KOLUMNA 2: KALENDARZ + DZIEŃ OTWARTYCH DRZWI */}
+        <div className="flex flex-col gap-4 min-h-0">
+        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_10px_30px_rgba(0,0,0,1),0_10px_20px_rgba(0,0,0,0.5)] relative flex flex-col lg:flex-1">
             <div className="flex justify-between items-center mb-6">
                 <button onClick={() => setMonthOffset(p => p - 1)} className="p-1.5 hover:bg-white/5 rounded-full text-white/30 hover:text-white transition-colors"><ChevronLeft size={16}/></button>
                 <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.3em] text-white/70">{months[currentMonth]} {currentYear}</h3>
@@ -332,15 +338,15 @@ export default function ProWidget({
                     );
                 })}
             </div>
+        </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <OtodomImportProCard />
+            <div className="mt-auto w-full shrink-0">
               <OpenHouseProCard activeOffers={activeOffers} onChanged={onProToolsChanged} />
             </div>
         </div>
 
         {/* KOLUMNA 3: PULS RYNKU (TABLICA DWORCOWA) */}
-        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col">
+        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col lg:h-full">
            <div className="flex items-center justify-between mb-6 relative z-10">
               <div className="flex items-center gap-3">
                  <Newspaper className="text-white/30" size={16}/>
