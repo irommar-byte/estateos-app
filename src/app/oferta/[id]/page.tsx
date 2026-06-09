@@ -19,6 +19,8 @@ import { isOutsidePolandBounds } from "@/lib/location/locationNameMatch";
 import AppointmentModal from "@/components/AppointmentModal";
 import BiddingModal from "@/components/BiddingModal";
 import OfferShareLink from "@/components/offer/OfferShareLink";
+import OfferDiscountPriceHero from "@/components/offer/OfferDiscountPriceHero";
+import OfferPriceHistoryProSection from "@/components/offer/OfferPriceHistoryProSection";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import OfferGalleryLightbox from "@/components/offer/OfferGalleryLightbox";
 import { offerPremarketUnlockMs } from "@/lib/offerPremarket";
@@ -62,6 +64,9 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const t = getOfferPageCopy(locale);
   const priceFormatted = formatOffer(offer);
   const listingPrice = resolveOfferListingPrice(offer, rate);
+  const isDiscounted = Boolean((offer as { isDiscounted?: boolean }).isDiscounted);
+  const discountPercent = Number((offer as { priceDiscountPercent?: number }).priceDiscountPercent) || 0;
+  const listPricePln = Number((offer as { listPricePln?: number }).listPricePln ?? (offer as { previousPrice?: number }).previousPrice ?? 0);
   const favoriteLabels =
     locale === 'en'
       ? { add: 'Save', remove: 'Saved' }
@@ -716,16 +721,28 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                     />
                   </div>
                 ) : null}
-                <h2 className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
-                  <span>{priceFormatted.primary}</span>
-                  {rentAdminFeeInline ? (
-                    <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
-                      + {rentAdminFeeInline}
-                    </span>
-                  ) : null}
-                </h2>
+                <div className="mb-2">
+                  {isDiscounted && discountPercent > 0 && listPricePln > 0 ? (
+                    <OfferDiscountPriceHero
+                      listPricePln={listPricePln}
+                      currentPrimary={priceFormatted.primary}
+                      discountPercent={discountPercent}
+                    />
+                  ) : (
+                    <h2 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
+                      <span>{priceFormatted.primary}</span>
+                      {rentAdminFeeInline ? (
+                        <span className="text-2xl font-normal text-[var(--eos-muted)] sm:text-4xl md:text-5xl">
+                          + {rentAdminFeeInline}
+                        </span>
+                      ) : null}
+                    </h2>
+                  )}
+                </div>
                 {rentAdminFeeInline ? (
-                  <p className="eos-muted-copy -mt-1 mb-4 text-xs sm:text-sm">{t.rentCostsMonthlyHint}</p>
+                  <p className="eos-muted-copy -mt-1 mb-4 text-xs sm:text-sm">
+                    {isDiscounted ? `+ ${rentAdminFeeInline}` : t.rentCostsMonthlyHint}
+                  </p>
                 ) : null}
                 {!isLocked && priceFormatted.secondary ? (
                   <p className="eos-muted-copy mb-6 text-sm font-semibold">{priceFormatted.secondary}</p>
@@ -803,6 +820,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   </div>
                 </div>
                 )}
+
+                <OfferPriceHistoryProSection
+                  offerId={Number(offer.id ?? offer._id)}
+                  enabled={Boolean(isPro && !isLocked)}
+                />
 
             </div>
           </div>

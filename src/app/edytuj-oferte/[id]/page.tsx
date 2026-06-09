@@ -7,6 +7,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import AgentCommissionEditor from '@/components/offer/AgentCommissionEditor';
+import PriceReductionPreview from '@/components/offer/PriceReductionPreview';
 import { isAgentCommissionAccount } from '@/lib/agentCommission';
 import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
@@ -309,6 +310,10 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                   <Sparkles className={iconGlow} size={20} />
                   <input value={formatNum(data.price || '')} onChange={e => updateData({ price: e.target.value })} className={`${inputPremium} font-mono font-bold text-emerald-400`} placeholder="Np. 1 250 000" />
                 </div>
+                <PriceReductionPreview
+                  listPricePln={Number(data.listPricePln ?? data.pricePln ?? data.price ?? 0)}
+                  draftPriceRaw={String(data.price || '')}
+                />
               </div>
               <div>
                 <label className={labelPremium}>Powierzchnia (m²)</label>

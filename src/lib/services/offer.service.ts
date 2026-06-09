@@ -17,6 +17,7 @@ import {
   extractVerificationMeta,
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
+import { syncOfferPriceHistory } from '@/lib/offerPriceHistory';
 import { validateAgentCommissionPercent } from '@/lib/agentCommission';
 import {
   isOfferAlterPrivilegeError,
@@ -453,7 +454,20 @@ export async function createOffer(body: any) {
   };
 
   try {
-    return await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
+    const created = await createOfferRecord(createData, MOBILE_OFFER_WRITE_RESPONSE_SELECT as any);
+    const pln = getCanonicalOfferPricePln(created);
+    if (pln > 0) {
+      await syncOfferPriceHistory({
+        offerId: Number(created.id),
+        price: Number(created.price),
+        pricePln: pln,
+        priceCurrency: String((created as { priceCurrency?: string }).priceCurrency || 'PLN'),
+        previousPricePln: 0,
+        previousListPricePln: null,
+        source: 'offer_create',
+      });
+    }
+    return created;
   } catch (error) {
     if (
       !isOfferLegalColumnMissingError(error) &&
@@ -467,7 +481,20 @@ export async function createOffer(body: any) {
     stripLegacyLegalColumns(fallbackData);
     stripMoneyColumns(fallbackData);
     stripLocalityColumns(fallbackData);
-    return createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
+    const fallbackCreated = await createOfferRecord(fallbackData, MOBILE_OFFER_PRISMA_SELECT as any);
+    const pln = getCanonicalOfferPricePln(fallbackCreated);
+    if (pln > 0) {
+      await syncOfferPriceHistory({
+        offerId: Number(fallbackCreated.id),
+        price: Number(fallbackCreated.price),
+        pricePln: pln,
+        priceCurrency: String((fallbackCreated as { priceCurrency?: string }).priceCurrency || 'PLN'),
+        previousPricePln: 0,
+        previousListPricePln: null,
+        source: 'offer_create',
+      });
+    }
+    return fallbackCreated;
   }
 }
 
@@ -759,6 +786,20 @@ export async function updateOffer(body: any) {
     });
   }
   const newPrice = getCanonicalOfferPricePln(updatedOffer);
+  if (Number.isFinite(oldPrice) && Number.isFinite(newPrice)) {
+    await syncOfferPriceHistory({
+      offerId: Number(updatedOffer.id),
+      price: Number(updatedOffer.price),
+      pricePln: newPrice,
+      priceCurrency: String((updatedOffer as { priceCurrency?: string }).priceCurrency || 'PLN'),
+      previousPricePln: oldPrice,
+      previousListPricePln:
+        (existing as { listPricePln?: number | null }).listPricePln != null
+          ? Number((existing as { listPricePln?: number | null }).listPricePln)
+          : null,
+      source: 'mobile_offers_put',
+    });
+  }
   if (Number.isFinite(oldPrice) && Number.isFinite(newPrice) && oldPrice !== newPrice) {
     await dispatchFavoritesPriceChangePush({
       offerId: Number(updatedOffer.id),

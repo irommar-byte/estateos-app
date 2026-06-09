@@ -13,6 +13,8 @@ import {
   BadgePercent,
   Gem,
   LayoutGrid,
+  MapPin,
+  Navigation,
 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
@@ -20,6 +22,8 @@ import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
+import { useUserLocation } from "@/hooks/useUserLocation";
+import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
 
 type CatalogOffer = {
   id: number;
@@ -38,6 +42,10 @@ type CatalogOffer = {
   oldPrice?: unknown;
   isLegalSafeVerified?: boolean | null;
   badges?: { isPartner?: boolean; isPro?: boolean } | null;
+  lat?: number | null;
+  lng?: number | null;
+  isDiscounted?: boolean | null;
+  priceDiscountPercent?: number | null;
 };
 
 type GallerySection = "all" | "sale" | "rent" | "newest" | "discounted" | "featured";
@@ -94,6 +102,29 @@ export default function CatalogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("all");
+  const { location, denied, pending, request } = useUserLocation();
+
+  const nearestCopy =
+    locale === "pl"
+      ? {
+          title: "Najbliższe nieruchomości",
+          lead: "Posortowane według odległości od Twojej lokalizacji.",
+          enable: "Udostępnij lokalizację",
+          denied: "Brak dostępu do lokalizacji — włącz ją w przeglądarce, aby zobaczyć odległości.",
+        }
+      : locale === "uk"
+        ? {
+            title: "Найближчі об'єкти",
+            lead: "Відсортовано за відстанню від вашої локації.",
+            enable: "Надати локацію",
+            denied: "Немає доступу до локації — увімкніть її в браузері.",
+          }
+        : {
+            title: "Nearest properties",
+            lead: "Sorted by distance from your location.",
+            enable: "Share location",
+            denied: "Location denied — enable it in the browser to see distances.",
+          };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,10 +166,28 @@ export default function CatalogPage() {
   });
 
   const discountedOffers = offers.filter((offer) => {
+    if (offer.isDiscounted) return true;
     const current = Number(offer.pricePln ?? offer.price ?? 0);
     const prev = Number(offer.previousPrice ?? offer.oldPrice ?? 0);
     return Number.isFinite(current) && Number.isFinite(prev) && prev > current && current > 0;
   });
+
+  const distanceByOfferId = new Map<number, number>();
+  if (location) {
+    for (const offer of offers) {
+      const lat = Number(offer.lat);
+      const lng = Number(offer.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      distanceByOfferId.set(offer.id, haversineKm(location.latitude, location.longitude, lat, lng));
+    }
+  }
+
+  const nearestOffers = location
+    ? [...offers]
+        .filter((o) => distanceByOfferId.has(o.id))
+        .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
+        .slice(0, 6)
+    : [];
 
   const featuredOffers = offers.filter(
     (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
@@ -186,6 +235,19 @@ export default function CatalogPage() {
             <p className="mt-5 max-w-2xl text-base md:text-lg font-light leading-relaxed text-[var(--eos-muted)]">
               {labels.lead}
             </p>
+            {!location ? (
+              <button
+                type="button"
+                onClick={request}
+                disabled={pending}
+                className="mt-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+              >
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+                {nearestCopy.enable}
+              </button>
+            ) : denied ? (
+              <p className="mt-4 text-xs text-[var(--eos-muted)]">{nearestCopy.denied}</p>
+            ) : null}
           </motion.div>
 
           {!loading && !error && offers.length > 0 && (
@@ -318,6 +380,17 @@ export default function CatalogPage() {
                           window.location.href = `/login?redirect=${encodeURIComponent(`/oferta/${offer.id}`)}`;
                         }}
                       />
+                      {offer.isDiscounted && Number(offer.priceDiscountPercent) > 0 ? (
+                        <span className="absolute bottom-3 left-3 z-10 rounded-full border border-red-500/40 bg-red-500/90 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-white">
+                          −{offer.priceDiscountPercent}%
+                        </span>
+                      ) : null}
+                      {distanceByOfferId.has(offer.id) ? (
+                        <span className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full border border-[var(--eos-border)] bg-black/55 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
+                          <MapPin className="size-3" />
+                          {formatDistanceKm(distanceByOfferId.get(offer.id)!, locale)}
+                        </span>
+                      ) : null}
                       {offer.imageUrl ? (
                         <Image
                           src={offer.imageUrl}
@@ -362,6 +435,47 @@ export default function CatalogPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {!loading && !error && nearestOffers.length > 0 ? (
+          <section className="mt-20 border-t border-[var(--eos-border)] pt-14">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--eos-text)] md:text-3xl">
+              {nearestCopy.title}
+            </h2>
+            <p className="mt-2 max-w-xl text-sm text-[var(--eos-muted)]">{nearestCopy.lead}</p>
+            <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+              {nearestOffers.map((offer) => (
+                <Link href={`/oferta/${offer.id}`} key={`near-${offer.id}`} className="group block">
+                  <article className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]">
+                    <div className="relative aspect-[4/3]">
+                      {offer.imageUrl ? (
+                        <Image
+                          src={offer.imageUrl}
+                          alt={offer.title || labels.offerImageAlt.replace("{id}", String(offer.id))}
+                          fill
+                          className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                          unoptimized
+                        />
+                      ) : null}
+                      <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-black">
+                        <MapPin className="size-3" />
+                        {formatDistanceKm(distanceByOfferId.get(offer.id)!, locale)}
+                      </span>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="line-clamp-2 font-bold text-[var(--eos-text)] group-hover:text-emerald-500">
+                        {offer.title?.trim() ||
+                          labels.offerTitleFallback.replace("{id}", String(offer.id))}
+                      </h3>
+                      <p className="mt-2 text-sm font-semibold tabular-nums text-[var(--eos-text)]">
+                        {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
+                      </p>
+                    </div>
+                  </article>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );

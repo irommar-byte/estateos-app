@@ -16,6 +16,7 @@ import {
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import { ensureOfferLocalityCountryColumns } from '@/lib/services/offer.service';
+import { ensureOfferPriceHistorySchema } from '@/lib/offerPriceHistory';
 import {
   enrichOfferMoneyFields,
   enrichOfferMoneyFieldsWithRate,
@@ -31,6 +32,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     await ensureOfferLocalityCountryColumns();
+    await ensureOfferPriceHistorySchema();
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,
@@ -128,9 +130,24 @@ export async function GET() {
       : null;
     const fx = { rate: listFxRate, date: listFxDate };
 
+    const listPriceRows = (await prisma.$queryRawUnsafe(
+      `SELECT id, listPricePln FROM \`Offer\` WHERE status IN ('ACTIVE')`,
+    )) as Array<{ id: number; listPricePln: number | null }>;
+    const listPriceMap = new Map(
+      listPriceRows.map((row) => [Number(row.id), Number(row.listPricePln)]),
+    );
+
     return NextResponse.json(
       visibleOffers.map((offer: any) =>
-        shapePublicListOffer(offer, {
+        shapePublicListOffer(
+          {
+            ...offer,
+            listPricePln:
+              listPriceMap.get(Number(offer.id)) ??
+              offer.pricePln ??
+              offer.price,
+          },
+          {
           viewsCount: viewsMap.get(Number(offer.id)) || 0,
           fx,
           legalOverrides,
