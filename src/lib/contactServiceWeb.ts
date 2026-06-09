@@ -20,6 +20,26 @@ export type ContactMessageRow = {
   createdAt: string;
 };
 
+export type ContactAttachmentMeta = {
+  url: string;
+  name: string;
+  mimeType: string;
+  size: number;
+};
+
+export type ContactThreadAttachmentsInfo = {
+  usageBytes: number;
+  limitBytes: number;
+  perFileLimitBytes: number;
+  attachments: Array<
+    ContactAttachmentMeta & {
+      messageId: number;
+      senderId: number;
+      createdAt: string;
+    }
+  >;
+};
+
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
 export async function fetchContactThreadsWeb(): Promise<{ threads: ContactThreadRow[]; totalUnread: number }> {
@@ -62,18 +82,55 @@ export async function fetchContactMessagesWeb(
   };
 }
 
-export async function sendContactMessageWeb(threadId: number, content: string): Promise<ContactMessageRow> {
+export async function sendContactMessageWeb(
+  threadId: number,
+  content: string,
+  attachment?: ContactAttachmentMeta | null
+): Promise<ContactMessageRow> {
   const res = await fetch(`/api/contact/threads/${threadId}/messages`, {
     method: 'POST',
     headers: jsonHeaders,
     credentials: 'include',
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, attachment: attachment ?? undefined }),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || !json?.message) {
     throw new Error(String(json?.error || 'Nie udało się wysłać wiadomości.'));
   }
   return json.message as ContactMessageRow;
+}
+
+export async function fetchContactAttachmentsWeb(threadId: number): Promise<ContactThreadAttachmentsInfo> {
+  const res = await fetch(`/api/contact/threads/${threadId}/attachments?t=${Date.now()}`, {
+    cache: 'no-store',
+    credentials: 'include',
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(json?.error || 'Nie udało się pobrać załączników.'));
+  return {
+    usageBytes: Number(json?.usageBytes) || 0,
+    limitBytes: Number(json?.limitBytes) || 100 * 1024 * 1024,
+    perFileLimitBytes: Number(json?.perFileLimitBytes) || 10 * 1024 * 1024,
+    attachments: Array.isArray(json?.attachments) ? json.attachments : [],
+  };
+}
+
+export async function uploadContactAttachmentWeb(
+  threadId: number,
+  file: File
+): Promise<ContactAttachmentMeta> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(`/api/contact/threads/${threadId}/attachments`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.attachment) {
+    throw new Error(String(json?.error || 'Nie udało się przesłać pliku.'));
+  }
+  return json.attachment as ContactAttachmentMeta;
 }
 
 export async function sendContactTypingWeb(threadId: number): Promise<void> {

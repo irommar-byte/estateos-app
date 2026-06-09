@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { notificationService } from '@/lib/services/notification.service';
 import { resolveContactUserId } from '@/lib/contactRequestAuth';
-import { contactPeerId } from '@/lib/contactThreadPair';
 import { parseContactReactions } from '@/lib/contactMessageReactions';
-import { buildContactMessagePushPayload } from '@/lib/contactPushPayload';
+import { parseContactAttachmentMeta } from '@/lib/contactAttachment';
+import { sendContactThreadMessage } from '@/lib/contactSendMessage';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const MESSAGE_DEDUP_WINDOW_MS = 10_000;
 
 const globalAny = global as typeof globalThis & { contactTypingStore?: Record<number, Record<number, number>> };
 if (!globalAny.contactTypingStore) globalAny.contactTypingStore = {};
@@ -87,73 +84,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const access = await assertThreadAccess(threadId, userId);
     if (!access.ok) return NextResponse.json({ success: false, error: access.error }, { status: access.status });
 
-    const body = (await req.json()) as { content?: string };
+    const body = (await req.json()) as { content?: string; attachment?: unknown };
     const content = String(body?.content ?? '').trim();
-    if (!content) {
-      return NextResponse.json({ success: false, error: 'Brak treści wiadomości.' }, { status: 400 });
-    }
+    const attachment = parseContactAttachmentMeta(body?.attachment);
 
-    const dedupSince = new Date(Date.now() - MESSAGE_DEDUP_WINDOW_MS);
-    const recentSame = await prisma.contactMessage.findFirst({
-      where: {
-        threadId,
-        senderId: userId,
-        content,
-        createdAt: { gte: dedupSince },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    const newMessage =
-      recentSame ||
-      (await prisma.contactMessage.create({
-        data: { threadId, senderId: userId, content, isRead: false },
-      }));
-
-    await prisma.contactThread.update({ where: { id: threadId }, data: { updatedAt: new Date() } });
-
-    const receiverId = contactPeerId(access.thread, userId);
-    const sender = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, email: true },
-    });
-    const senderName =
-      sender?.name?.trim() ||
-      (sender?.email ? String(sender.email).split('@')[0] : null) ||
-      `Użytkownik #${userId}`;
-    const shortPreview = content.slice(0, 120);
-
-    try {
-      await prisma.notification.create({
-        data: {
-          userId: receiverId,
-          idempotencyKey: `contact_msg:thread:${threadId}:msg:${newMessage.id}`,
-          title: 'EstateOS™ Contact',
-          body: `${senderName}: ${shortPreview}`,
-          type: 'MESSAGE',
-          targetType: 'CHAT',
-          targetId: String(threadId),
-        },
-      });
-    } catch {
-      /* idempotency duplicate */
-    }
-
-    try {
-      await notificationService.sendPushToUser(
-        receiverId,
-        buildContactMessagePushPayload({
-          senderName,
-          preview: shortPreview,
-          threadId,
-          senderUserId: userId,
-        }),
+    if (!content && !attachment) {
+      return NextResponse.json(
+        { success: false, error: 'Brak treści wiadomości ani załącznika.' },
+        { status: 400 }
       );
-    } catch (pushErr) {
-      console.error('[CONTACT WWW MSG PUSH]', pushErr);
     }
 
-    return NextResponse.json({ success: true, message: newMessage });
+    const result = await sendContactThreadMessage({
+      threadId,
+      userId,
+      content,
+      attachment,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+    }
+
+    return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[CONTACT WWW MSG POST]', message);
