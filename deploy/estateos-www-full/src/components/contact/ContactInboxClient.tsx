@@ -4,29 +4,50 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  ArrowDown,
   ArrowLeft,
   Check,
   CheckCheck,
+  ChevronDown,
+  ChevronUp,
+  FileText,
   Loader2,
   MessageCircle,
+  Paperclip,
+  Plus,
   Search,
   Send,
   ShieldCheck,
   Trash2,
   User,
+  X,
 } from "lucide-react";
+import ContactAttachmentBubble from "@/components/contact/ContactAttachmentBubble";
+import {
+  formatContactBytes,
+  isAllowedContactAttachment,
+  MAX_CONTACT_FILE_BYTES,
+  MAX_CONTACT_THREAD_BYTES,
+  parseContactMessageParts,
+} from "@/lib/contactAttachmentShared";
 import {
   ContactMessageRow,
+  ContactThreadAttachmentsInfo,
   ContactThreadRow,
   dispatchContactUnreadRefresh,
+  fetchContactAttachmentsWeb,
   fetchContactMessagesWeb,
   fetchContactThreadsWeb,
   initContactThreadWeb,
   sendContactMessageWeb,
   sendContactTypingWeb,
+  uploadContactAttachmentWeb,
 } from "@/lib/contactServiceWeb";
 
 type CurrentUser = { id: number; name?: string | null };
+
+const ACCEPTED_FILE_TYPES =
+  "image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.gif,.mp3,.mp4,.mov,.webm";
 
 export default function ContactInboxClient({ currentUser }: { currentUser: CurrentUser }) {
   const router = useRouter();
@@ -38,18 +59,62 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   const [isTyping, setIsTyping] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [draft, setDraft] = useState("");
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [findUserId, setFindUserId] = useState("");
   const [findError, setFindError] = useState<string | null>(null);
   const [findLoading, setFindLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [attachmentsInfo, setAttachmentsInfo] = useState<ContactThreadAttachmentsInfo | null>(null);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const draftInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<number | null>(null);
   const typingRef = useRef<number | null>(null);
+  const isUserScrolling = useRef(false);
+  const prevMsgCount = useRef(0);
+  const initializedScroll = useRef(false);
 
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeThreadId) ?? null,
     [threads, activeThreadId]
   );
+
+  const usageBytes = attachmentsInfo?.usageBytes ?? 0;
+  const limitBytes = attachmentsInfo?.limitBytes ?? MAX_CONTACT_THREAD_BYTES;
+  const usagePct = Math.min(100, (usageBytes / limitBytes) * 100);
+
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    isUserScrolling.current = false;
+    setShowScrollBottom(false);
+  }, []);
+
+  const handleChatScroll = useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserScrolling.current = distance > 100;
+    setShowScrollBottom(distance > 100);
+  }, []);
+
+  const loadAttachmentsInfo = useCallback(async (threadId: number) => {
+    setLoadingAttachments(true);
+    try {
+      const info = await fetchContactAttachmentsWeb(threadId);
+      setAttachmentsInfo(info);
+    } catch {
+      setAttachmentsInfo(null);
+    } finally {
+      setLoadingAttachments(false);
+    }
+  }, []);
 
   const loadThreads = useCallback(async () => {
     try {
@@ -69,20 +134,34 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     async (threadId: number) => {
       setActiveThreadId(threadId);
       setLoadingMessages(true);
+      setAttachmentsOpen(false);
+      initializedScroll.current = false;
+      prevMsgCount.current = 0;
       try {
         const data = await fetchContactMessagesWeb(threadId);
         setMessages(data.messages);
         setIsTyping(Boolean(data.isTyping));
         dispatchContactUnreadRefresh();
-        await loadThreads();
+        await Promise.all([loadThreads(), loadAttachmentsInfo(threadId)]);
       } catch {
         setMessages([]);
       } finally {
         setLoadingMessages(false);
       }
     },
-    [loadThreads]
+    [loadAttachmentsInfo, loadThreads]
   );
+
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     void loadThreads();
@@ -126,41 +205,91 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           setIsTyping(Boolean(data.isTyping));
         })
         .catch(() => undefined);
+      void loadAttachmentsInfo(activeThreadId);
     }, 3500);
     return () => {
       if (pollRef.current != null) window.clearInterval(pollRef.current);
     };
-  }, [activeThreadId]);
+  }, [activeThreadId, loadAttachmentsInfo]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    const currentCount = messages.length;
+    if (!initializedScroll.current && currentCount > 0 && !loadingMessages) {
+      window.setTimeout(() => scrollChatToBottom("auto"), 80);
+      initializedScroll.current = true;
+      prevMsgCount.current = currentCount;
+      return;
+    }
+    if (currentCount > prevMsgCount.current && !isUserScrolling.current) {
+      window.setTimeout(() => scrollChatToBottom("smooth"), 80);
+    }
+    prevMsgCount.current = currentCount;
+  }, [messages, isTyping, loadingMessages, scrollChatToBottom]);
+
+  const handleJumpToBottom = () => {
+    scrollChatToBottom("smooth");
+    window.setTimeout(() => draftInputRef.current?.focus(), 120);
+  };
+
+  const handlePickFile = (file: File | null) => {
+    if (!file) return;
+    if (file.size > MAX_CONTACT_FILE_BYTES) {
+      window.alert(`Plik jest za duży. Maksymalnie ${formatContactBytes(MAX_CONTACT_FILE_BYTES)} na załącznik.`);
+      return;
+    }
+    if (!isAllowedContactAttachment(file.type, file.name)) {
+      window.alert("Niedozwolony typ pliku.");
+      return;
+    }
+    if (usageBytes + file.size > limitBytes) {
+      window.alert("Przekroczono łączny limit 100 MB załączników w tej rozmowie.");
+      return;
+    }
+    setPendingFile(file);
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeThreadId || !draft.trim() || sending) return;
+    if (!activeThreadId || sending || uploading) return;
     const content = draft.trim();
-    setDraft("");
+    const fileSnapshot = pendingFile;
+    if (!content && !fileSnapshot) return;
+
     setSending(true);
+    setDraft("");
+    setPendingFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
     const optimistic: ContactMessageRow = {
       id: -Date.now(),
       threadId: activeThreadId,
       senderId: currentUser.id,
-      content,
+      content: content || (fileSnapshot ? `📎 ${fileSnapshot.name}` : ""),
       createdAt: new Date().toISOString(),
       isRead: false,
     };
     setMessages((prev) => [...prev, optimistic]);
+    isUserScrolling.current = false;
+    scrollChatToBottom("smooth");
+
     try {
-      const saved = await sendContactMessageWeb(activeThreadId, content);
+      let attachmentMeta = null;
+      if (fileSnapshot) {
+        setUploading(true);
+        attachmentMeta = await uploadContactAttachmentWeb(activeThreadId, fileSnapshot);
+        setUploading(false);
+      }
+      const saved = await sendContactMessageWeb(activeThreadId, content, attachmentMeta);
       setMessages((prev) => prev.map((m) => (m.id === optimistic.id ? saved : m)));
-      await loadThreads();
+      await Promise.all([loadThreads(), loadAttachmentsInfo(activeThreadId)]);
     } catch (err: unknown) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(content);
+      if (fileSnapshot) setPendingFile(fileSnapshot);
       window.alert(err instanceof Error ? err.message : "Nie udało się wysłać wiadomości.");
     } finally {
       setSending(false);
+      setUploading(false);
     }
   };
 
@@ -202,6 +331,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się usunąć wątku."));
       setActiveThreadId(null);
       setMessages([]);
+      setAttachmentsInfo(null);
       router.replace("/moje-konto/wiadomosci");
       await loadThreads();
     } catch (err: unknown) {
@@ -219,8 +349,8 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   };
 
   return (
-    <div className="theme-aware-dashboard mx-auto flex min-h-[calc(100dvh-6rem)] max-w-6xl flex-col gap-4 px-4 py-6 md:py-8">
-      <div className="flex items-center gap-3">
+    <div className="theme-aware-dashboard mx-auto flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] max-w-6xl flex-col gap-3 overflow-hidden px-4 py-4 md:py-6">
+      <div className="flex shrink-0 items-center gap-3">
         <button
           type="button"
           onClick={() => router.push("/moje-konto/crm")}
@@ -231,13 +361,13 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
         </button>
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">EstateOS™ Contact</p>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--eos-text)]">Wiadomości bezpośrednie</h1>
+          <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">Wiadomości bezpośrednie</h1>
         </div>
       </div>
 
-      <div className="grid min-h-[560px] flex-1 grid-cols-1 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)] md:grid-cols-[minmax(0,320px)_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-strong)] md:grid-cols-[minmax(0,320px)_1fr]">
         <aside className="flex min-h-0 flex-col border-b border-[var(--eos-border)] md:border-b-0 md:border-r">
-          <form onSubmit={handleFindUser} className="border-b border-[var(--eos-border)] p-3">
+          <form onSubmit={handleFindUser} className="shrink-0 border-b border-[var(--eos-border)] p-3">
             <label className="mb-1.5 block text-[9px] font-black uppercase tracking-[0.18em] text-[var(--eos-muted)]">
               Napisz po ID użytkownika
             </label>
@@ -313,7 +443,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           </div>
         </aside>
 
-        <section className="flex min-h-[420px] min-w-0 flex-col bg-[#080808] md:min-h-0">
+        <section className="relative flex min-h-0 min-w-0 flex-col bg-[#080808]">
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
               <MessageCircle className="size-10 text-emerald-500/50" />
@@ -321,27 +451,109 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
-                  <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+              <div className="shrink-0 border-b border-white/10 px-4 py-3 md:px-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-white/40">ID {activeThread.peerUserId}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 sm:flex">
+                      <ShieldCheck className="size-3.5" /> Contact
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteThread()}
+                      className="rounded-full p-2 text-white/40 hover:bg-red-500/10 hover:text-red-400"
+                      aria-label="Usuń rozmowę"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 sm:flex">
-                    <ShieldCheck className="size-3.5" /> Contact
-                  </span>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="min-w-[180px] flex-1">
+                    <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-white/45">
+                      <span>Załączniki rozmowy</span>
+                      <span>
+                        {formatContactBytes(usageBytes)} / {formatContactBytes(limitBytes)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          usagePct > 90 ? "bg-red-500" : usagePct > 70 ? "bg-amber-400" : "bg-emerald-500"
+                        }`}
+                        style={{ width: `${usagePct}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-[9px] text-white/30">
+                      Max {formatContactBytes(MAX_CONTACT_FILE_BYTES)} na plik · pozostało{" "}
+                      {formatContactBytes(Math.max(0, limitBytes - usageBytes))}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => void handleDeleteThread()}
-                    className="rounded-full p-2 text-white/40 hover:bg-red-500/10 hover:text-red-400"
-                    aria-label="Usuń rozmowę"
+                    onClick={() => setAttachmentsOpen((v) => !v)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/80 transition hover:bg-white/10"
                   >
-                    <Trash2 className="size-4" />
+                    <Paperclip className="size-3.5" />
+                    Pokaż załączniki
+                    {attachmentsOpen ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
                   </button>
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6 custom-scrollbar">
+              <AnimatePresence>
+                {attachmentsOpen ? (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="shrink-0 overflow-hidden border-b border-white/10 bg-[#0c0c0c]"
+                  >
+                    <div className="max-h-44 overflow-y-auto px-4 py-3 custom-scrollbar md:px-5">
+                      {loadingAttachments ? (
+                        <div className="flex items-center gap-2 text-xs text-white/40">
+                          <Loader2 className="size-4 animate-spin" /> Ładowanie…
+                        </div>
+                      ) : !attachmentsInfo?.attachments?.length ? (
+                        <p className="text-xs text-white/35">Brak załączników w tej rozmowie.</p>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {attachmentsInfo.attachments.map((att) => (
+                            <a
+                              key={`${att.messageId}-${att.url}`}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 transition hover:bg-white/10"
+                            >
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                                <FileText className="size-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-semibold text-white">{att.name}</p>
+                                <p className="text-[10px] text-white/40">
+                                  {formatContactBytes(att.size)} ·{" "}
+                                  {new Date(att.createdAt).toLocaleDateString("pl-PL")}
+                                </p>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+
+              <div
+                ref={chatScrollRef}
+                onScroll={handleChatScroll}
+                className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 custom-scrollbar"
+              >
                 {loadingMessages ? (
                   <div className="flex justify-center py-10">
                     <Loader2 className="size-6 animate-spin text-emerald-500" />
@@ -351,6 +563,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     <AnimatePresence initial={false}>
                       {messages.map((msg, i) => {
                         const isMe = msg.senderId === currentUser.id;
+                        const { text, attachment } = parseContactMessageParts(msg);
                         return (
                           <motion.div
                             key={msg.id || i}
@@ -377,9 +590,12 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                                     : "rounded-[1.6rem] rounded-bl-md border border-white/10 bg-white/5 text-white/90 backdrop-blur-md"
                                 }`}
                               >
-                                <p className={`text-[15px] leading-relaxed ${isMe ? "font-semibold" : "font-normal"}`}>
-                                  {msg.content}
-                                </p>
+                                {text ? (
+                                  <p className={`text-[15px] leading-relaxed ${isMe ? "font-semibold" : "font-normal"}`}>
+                                    {text}
+                                  </p>
+                                ) : null}
+                                {attachment ? <ContactAttachmentBubble attachment={attachment} isMe={isMe} /> : null}
                               </div>
                             </div>
                             <div className={`mt-1.5 flex items-center gap-1.5 ${isMe ? "mr-2" : "ml-10"}`}>
@@ -424,25 +640,80 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                         </motion.div>
                       ) : null}
                     </AnimatePresence>
-                    <div ref={messagesEndRef} />
                   </div>
                 )}
+
+                <AnimatePresence>
+                  {showScrollBottom ? (
+                    <motion.button
+                      type="button"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      onClick={handleJumpToBottom}
+                      className="sticky bottom-4 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-[#111]/95 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:bg-[#1a1a1a]"
+                    >
+                      <ArrowDown className="size-3.5 text-emerald-400" />
+                      Na dół
+                    </motion.button>
+                  ) : null}
+                </AnimatePresence>
               </div>
 
               <form
                 onSubmit={handleSend}
                 className="shrink-0 border-t border-white/10 bg-gradient-to-t from-[#080808] to-transparent p-4 md:p-5"
               >
+                {pendingFile ? (
+                  <div className="mx-auto mb-3 flex max-w-3xl items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
+                    <Paperclip className="size-4 shrink-0 text-emerald-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-semibold text-white">{pendingFile.name}</p>
+                      <p className="text-[10px] text-white/45">{formatContactBytes(pendingFile.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="rounded-full p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
+                      aria-label="Usuń załącznik"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                ) : null}
+
                 <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-[2rem] border border-white/10 bg-[#111] p-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40">
                   <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={ACCEPTED_FILE_TYPES}
+                    className="hidden"
+                    onChange={(e) => {
+                      handlePickFile(e.target.files?.[0] ?? null);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending || uploading}
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-emerald-400 disabled:opacity-40"
+                    aria-label="Dodaj załącznik"
+                  >
+                    {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
+                  </button>
+                  <input
+                    ref={draftInputRef}
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
                     placeholder="Napisz wiadomość…"
-                    className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                    className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/30"
                   />
                   <button
                     type="submit"
-                    disabled={!draft.trim() || sending}
+                    disabled={(!draft.trim() && !pendingFile) || sending || uploading}
                     className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black transition hover:bg-emerald-400 disabled:opacity-40"
                     aria-label="Wyślij"
                   >

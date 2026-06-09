@@ -73,7 +73,7 @@ Każda pozycja musi istnieć **równocześnie** na `recovery-local-snapshot` i w
 
 | Obszar | Ścieżki / endpointy |
 |--------|---------------------|
-| Contact (DM użytkownik↔użytkownik) | `src/app/api/contact/threads/*`, `src/app/api/mobile/v1/contact/threads/*`, `src/app/moje-konto/wiadomosci/`, `src/components/contact/*`, modele `ContactThread` / `ContactMessage` w Prisma |
+| Contact (DM użytkownik↔użytkownik) | `src/app/api/contact/threads/*`, `src/app/api/mobile/v1/contact/threads/*`, `src/app/moje-konto/wiadomosci/`, `src/components/contact/*`, `src/lib/contactAttachment*.ts`, `src/lib/upload/contactAttachmentUpload.ts`, modele `ContactThread` / `ContactMessage` w Prisma |
 | Powiadomienia Contact (grupowanie) | `src/app/api/notifications/route.ts` (`groupKey: contact-thread:{id}`), `src/components/NotificationCenter.tsx` |
 | Push Contact (grupowanie iOS/Android) | `src/lib/contactPushPayload.ts`, `src/lib/services/notification.service.ts` |
 | Admin użytkownicy (pełny podgląd) | `src/app/centrala/uzytkownicy/`, `src/components/admin/AdminUserDetailPanel.tsx`, `src/lib/adminUserDetail.ts` |

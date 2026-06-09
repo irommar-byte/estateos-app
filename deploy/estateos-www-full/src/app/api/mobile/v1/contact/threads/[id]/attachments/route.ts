@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { getWebFormData } from '@/lib/requestFormData';
 import { parseMobileUserIdFromAuthHeader } from '@/lib/mobileAuthUserId';
-import { parseContactReactions } from '@/lib/contactMessageReactions';
-import { parseContactAttachmentMeta } from '@/lib/contactAttachment';
-import { sendContactThreadMessage } from '@/lib/contactSendMessage';
+import { saveContactThreadAttachment } from '@/lib/upload/contactAttachmentUpload';
+import {
+  MAX_CONTACT_FILE_BYTES,
+  MAX_CONTACT_THREAD_BYTES,
+  listContactThreadAttachments,
+} from '@/lib/contactAttachment';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-const globalAny = global as typeof globalThis & { contactTypingStore?: Record<number, Record<number, number>> };
-if (!globalAny.contactTypingStore) globalAny.contactTypingStore = {};
 
 async function assertThreadAccess(threadId: number, userId: number) {
   const thread = await prisma.contactThread.findUnique({
@@ -27,7 +28,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   try {
     const { id } = await ctx.params;
     const threadId = parseInt(id, 10);
-    if (!Number.isFinite(threadId)) return NextResponse.json({ error: 'Bad thread id' }, { status: 400 });
+    if (!Number.isFinite(threadId)) {
+      return NextResponse.json({ error: 'Nieprawidłowy wątek.' }, { status: 400 });
+    }
 
     const userId = parseMobileUserIdFromAuthHeader(req.headers.get('authorization'));
     if (!userId) return NextResponse.json({ error: 'Brak autoryzacji' }, { status: 401 });
@@ -35,38 +38,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const access = await assertThreadAccess(threadId, userId);
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
-    await prisma.contactMessage.updateMany({
-      where: { threadId, senderId: { not: userId }, isRead: false },
-      data: { isRead: true },
-    });
-
-    const messages = await prisma.contactMessage.findMany({
-      where: { threadId },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    let isTyping = false;
-    const store = globalAny.contactTypingStore?.[threadId];
-    if (store) {
-      for (const [tUserId, timestamp] of Object.entries(store)) {
-        if (Number(tUserId) !== userId && Date.now() - timestamp < 4000) {
-          isTyping = true;
-          break;
-        }
-      }
-    }
+    const { usageBytes, attachments } = await listContactThreadAttachments(threadId);
 
     return NextResponse.json({
-      messages: messages.map((m) => ({
-        ...m,
-        reactions: parseContactReactions((m as { reactions?: unknown }).reactions),
-      })),
-      isTyping,
+      usageBytes,
+      limitBytes: MAX_CONTACT_THREAD_BYTES,
+      perFileLimitBytes: MAX_CONTACT_FILE_BYTES,
+      attachments,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[CONTACT MSG GET]', message);
-    return NextResponse.json({ messages: [], error: message }, { status: 500 });
+    console.error('[CONTACT MOBILE ATTACHMENTS GET]', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -82,33 +65,50 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (!userId) return NextResponse.json({ success: false, error: 'Brak autoryzacji' }, { status: 401 });
 
     const access = await assertThreadAccess(threadId, userId);
-    if (!access.ok) return NextResponse.json({ success: false, error: access.error }, { status: access.status });
-
-    const body = (await req.json()) as { content?: string; attachment?: unknown };
-    const content = String(body?.content ?? '').trim();
-    const attachment = parseContactAttachmentMeta(body?.attachment);
-
-    if (!content && !attachment) {
-      return NextResponse.json(
-        { success: false, error: 'Brak treści wiadomości ani załącznika.' },
-        { status: 400 }
-      );
+    if (!access.ok) {
+      return NextResponse.json({ success: false, error: access.error }, { status: access.status });
     }
 
-    const result = await sendContactThreadMessage({
+    let formData: FormData;
+    try {
+      formData = await getWebFormData(req);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Błąd formularza.' }, { status: 400 });
+    }
+
+    const file = (formData.get('file') ||
+      formData.get('attachment') ||
+      formData.get('document')) as File | null;
+
+    if (!file || typeof file.arrayBuffer !== 'function') {
+      return NextResponse.json({ success: false, error: 'Brak pliku.' }, { status: 400 });
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const result = await saveContactThreadAttachment({
       threadId,
       userId,
-      content,
-      attachment,
+      buffer,
+      mimeType: String(file.type || ''),
+      originalFilename: String((file as File & { name?: string }).name || 'zalacznik'),
     });
+
     if (!result.ok) {
       return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
 
-    return NextResponse.json({ success: true, message: result.message });
+    return NextResponse.json({
+      success: true,
+      attachment: {
+        url: result.url,
+        name: result.name,
+        mimeType: result.mimeType,
+        size: result.size,
+      },
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error('[CONTACT MSG POST]', message);
+    console.error('[CONTACT MOBILE ATTACHMENTS POST]', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
