@@ -8,7 +8,7 @@ import {
   eventCountdownState,
   splitCountdown,
   type UpcomingScheduleEvent,
-} from "@/lib/crm/upcomingScheduleEvents";
+} from "@/lib/crm/upcomingScheduleShared";
 
 const ROTATE_MS = 9_000;
 const FETCH_MS = 60_000;
