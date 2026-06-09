@@ -394,7 +394,9 @@ export default function PublicProfileModal({
                           </div>
                         </div>
                         <span className="text-[8px] text-[var(--eos-subtle)] uppercase tracking-widest shrink-0">
-                          {new Date(r.createdAt).toLocaleDateString(locale === "en" ? "en-GB" : "pl-PL")}
+                          {new Date(r.createdAt).toLocaleDateString(
+                          locale === "en" ? "en-GB" : locale === "uk" ? "uk-UA" : "pl-PL"
+                        )}
                         </span>
                       </div>
                       <p className="text-xs text-[var(--eos-muted)] leading-relaxed">{r.comment || p.reviewNoComment}</p>

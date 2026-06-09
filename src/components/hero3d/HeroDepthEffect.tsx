@@ -203,7 +203,7 @@ export default function HeroDepthEffect() {
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-8 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-3 text-white/30 sm:flex">
-          <span className="text-[9px] font-black uppercase tracking-[0.28em]">Scroll</span>
+          <span className="text-[9px] font-black uppercase tracking-[0.28em]">{dict.hero.scroll}</span>
           <motion.span
             className="h-12 w-px bg-gradient-to-b from-white/60 to-transparent"
             animate={reduceMotion ? undefined : { scaleY: [0.35, 1, 0.35], opacity: [0.25, 0.75, 0.25] }}

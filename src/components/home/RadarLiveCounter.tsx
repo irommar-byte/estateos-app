@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Radar, Sparkles, Users } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
+import { numberFormatLocale } from "@/i18n/config";
 import {
   getTotalRadarCount,
   msUntilNextRadarCountChange,
@@ -229,7 +230,7 @@ export default function RadarLiveCounter() {
                         transition={{ type: "spring", stiffness: 400, damping: 18 }}
                         className="text-4xl font-black tabular-nums leading-none tracking-tight text-white"
                       >
-                        {displayCount.toLocaleString(locale === "pl" ? "pl-PL" : "en-US")}
+                        {displayCount.toLocaleString(numberFormatLocale(locale))}
                       </motion.span>
                       <Users size={18} className="mb-1 text-[#D4AF37]/80" aria-hidden />
 

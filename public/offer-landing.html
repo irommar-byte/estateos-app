@@ -930,10 +930,11 @@
   function resolvePageLocale() {
     var params = new URLSearchParams(window.location.search);
     var q = params.get('lang') || params.get('locale');
-    if (q === 'en' || q === 'pl') return q;
-    var cookieMatch = document.cookie.match(/(?:^|;\s*)estateos_lang=(pl|en)(?:;|$)/);
+    if (q === 'en' || q === 'pl' || q === 'uk') return q;
+    var cookieMatch = document.cookie.match(/(?:^|;\s*)estateos_lang=(pl|en|uk)(?:;|$)/);
     if (cookieMatch) return cookieMatch[1];
     var nav = (navigator.language || '').toLowerCase();
+    if (nav.indexOf('uk') === 0 || nav.indexOf('ua') === 0) return 'uk';
     if (nav.indexOf('en') === 0) return 'en';
     return 'pl';
   }
@@ -1080,6 +1081,75 @@
       areaUnit: ' m²',
       priceOfOffer: ' of listed price',
     },
+    uk: {
+      sheetBrand: 'Візитівка',
+      sheetLead: 'Компактний перегляд оголошення — повний контакт у застосунку EstateOS™.',
+      sectionDescription: 'Опис',
+      sectionLocation: 'Локація',
+      sectionFloorPlan: 'План / розкладка',
+      descriptionHint: 'Повний опис у застосунку EstateOS™',
+      qrHeading: 'Застосунок EstateOS™',
+      qrLead: 'Відскануйте, щоб переглянути нерухомість у застосунку.',
+      qrIntro: 'Якщо застосунок ще не встановлено — система запропонує завантаження, а після встановлення відкриє це оголошення.',
+      qrAlt: 'QR-код — відкрити оголошення в EstateOS',
+      agentQrLabel: 'Відскануйте оголошення',
+      trustNote: 'Галерея та параметри — без реєстрації. Контакт із власником, цінова пропозиція та презентація потребують безкоштовного акаунта на платформі з верифікованими користувачами.',
+      openApp: 'Відкрити в застосунку EstateOS™',
+      registerCta: 'Створити акаунт і зв\'язатися',
+      printBrochure: 'Друкувати',
+      copyLink: 'Копіювати посилання для повідомлення',
+      perMonth: '/ місяць',
+      perMonthShort: ' / міс',
+      specArea: 'Площа',
+      specRooms: 'Кімнати',
+      specFloor: 'Поверх',
+      specYear: 'Рік будівництва',
+      specCondition: 'Стан',
+      specPlot: 'Ділянка',
+      forRent: 'в оренду',
+      forSale: 'на продаж',
+      countryDefault: 'Польща',
+      agentKickerAgent: 'Ваш радник · EstateOS™',
+      agentKickerContact: 'Контакт до оголошення · EstateOS™',
+      agentBadge: 'ВІЗИТІВКА',
+      agentTagline: 'Розумний ринок нерухомості — матеріал для передачі клієнту.',
+      agentDefaultName: 'Агент з нерухомості',
+      agentPhonePrefix: 'тел. ',
+      refPrefix: 'Ref. ',
+      commissionNone: 'Ціна <strong>без комісії посередника</strong> (0%).',
+      commissionInPrice: 'У ціні <strong>{amount}</strong> комісія посередника ({pct} від ціни оголошення).',
+      mapExactPrefix: 'Точка на мапі: ',
+      mapExactFallback: 'Розташування нерухомості на мапі.',
+      mapAreaPrefix: 'Околиці: ',
+      mapAreaSuffix: ' (без точної адреси на мапі).',
+      mapAreaFallback: 'Перегляд околиці без точної мітки.',
+      floorPlanAria: 'Відкрити план повним розміром',
+      loading: 'Завантаження оголошення…',
+      noPhoto: 'Немає фото',
+      photoError: 'Не вдалося завантажити фото',
+      thumbLabel: 'Мініатюра ',
+      shareFooter: 'EstateOS™ — відскануйте QR на візитівці або відкрийте посилання в застосунку.',
+      shareOgSuffix: '. Відскануйте QR або відкрийте в застосунку EstateOS™.',
+      toastShared: 'Візитівку оголошення поділено.',
+      toastCopied: 'Текст скопійовано — вставте в SMS, email або чат.',
+      toastLinkCopied: 'Посилання скопійовано: ',
+      toastCopyManual: 'Скопіюйте вручну: ',
+      toastPrintFail: 'Не вдалося відкрити діалог друку.',
+      platformTitle: 'Платформа EstateOS™',
+      platformLeadHtml: '<span class="highlight">Розумний ринок нерухомості</span> — Radar, Dealroom і безпечний контакт в одному застосунку.',
+      soonLabel: 'Незабаром',
+      fatalInvalidId: 'Невірна адреса — немає ідентифікатора оголошення в /o/{id}.',
+      fatalLoadError: 'Не вдалося завантажити оголошення ({msg}).',
+      fallbackSummary: 'Візитівка нерухомості · EstateOS™',
+      heroLoadFail: 'Не вдалося завантажити дані',
+      offerFallback: 'Оголошення',
+      offerTitleFallback: 'Оголошення #',
+      mapAlt: 'Мапа околиці',
+      floorPlanAlt: 'План приміщення',
+      heroAlt: 'Фото нерухомості',
+      areaUnit: ' m²',
+      priceOfOffer: ' від ціни оголошення',
+    },
   };
 
   function t(key) {
@@ -1168,6 +1238,12 @@
   I18N.en.amenityElevator = 'Elevator';
   I18N.en.amenityStorage = 'Storage / cellar';
   I18N.en.amenityFurnished = 'Furnished';
+  I18N.uk.amenityBalcony = 'Балкон';
+  I18N.uk.amenityGarden = 'Сад';
+  I18N.uk.amenityParking = 'Парковка';
+  I18N.uk.amenityElevator = 'Ліфт';
+  I18N.uk.amenityStorage = 'Комора / підвал';
+  I18N.uk.amenityFurnished = 'З меблями';
 
   function labelProperty(raw, fromApi, fromApiEn) {
     if (LOCALE === 'en' && fromApiEn) return fromApiEn;

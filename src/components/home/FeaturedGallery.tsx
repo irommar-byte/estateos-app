@@ -150,7 +150,7 @@ export default function FeaturedGallery() {
           {featured.map((offer, index) => {
             const location =
               [offer.city, offer.district].filter(Boolean).join(", ") ||
-              (locale === "en" ? "Poland" : "Polska");
+              dict.homePremium.countryDefault;
             const hasActiveDealRoom = negotiatingOfferIds.has(Number(offer.id));
             const priceInfo = formatOffer(offer);
             const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
@@ -176,9 +176,7 @@ export default function FeaturedGallery() {
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
                   <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
-                    {isRent
-                      ? (locale === "en" ? "Rent" : "Wynajem")
-                      : (locale === "en" ? "Sale" : "Sprzedaż")}
+                    {isRent ? dict.map.forRent : dict.map.forSale}
                   </div>
                   {isKwVerified ? (
                     <LegalVerifiedShieldBadge
@@ -212,7 +210,7 @@ export default function FeaturedGallery() {
                         <span className="truncate">{location}</span>
                       </div>
                       <h3 className="line-clamp-2 text-xl font-semibold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] sm:text-2xl">
-                        {offer.title || (locale === "en" ? "Listing" : "Oferta")}
+                        {offer.title || dict.homePremium.listingFallback}
                       </h3>
                       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/85">
                         <span className="text-sm font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">

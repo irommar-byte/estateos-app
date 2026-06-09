@@ -3,6 +3,8 @@
 import { Loader2, MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getOfferModalsDictionary } from "@/i18n/offerModalsDictionary";
 import { dispatchContactUnreadRefresh, initContactThreadWeb } from "@/lib/contactServiceWeb";
 
 type Props = {
@@ -21,6 +23,8 @@ export default function ProfileWriteMessageButton({
   className = "",
 }: Props) {
   const router = useRouter();
+  const { locale } = useLocale();
+  const copy = getOfferModalsDictionary(locale);
   const [loading, setLoading] = useState(false);
 
   const selfId = Number(currentUserId);
@@ -39,7 +43,7 @@ export default function ProfileWriteMessageButton({
       const name = encodeURIComponent(peerName || thread.peerUserName || "");
       router.push(`/moje-konto/wiadomosci?thread=${thread.id}&peer=${peerUserId}${name ? `&name=${name}` : ""}`);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Nie udało się otworzyć czatu.";
+      const message = err instanceof Error ? err.message : copy.writeMessageError;
       window.alert(message);
     } finally {
       setLoading(false);
@@ -65,7 +69,7 @@ export default function ProfileWriteMessageButton({
       ) : (
         <MessageCircle className="size-4" strokeWidth={2.2} aria-hidden />
       )}
-      Napisz
+      {copy.writeMessage}
     </button>
   );
 }

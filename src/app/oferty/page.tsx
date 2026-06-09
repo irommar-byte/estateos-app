@@ -54,11 +54,12 @@ const SECTION_ORDER: GallerySection[] = [
 function formatPriceLabel(
   offer: CatalogOffer,
   formatOffer: ReturnType<typeof useFormatOfferPrice>["formatOffer"],
+  perMonthSuffix: string,
 ): string {
   const info = formatOffer(offer);
   if (info.listingAmount <= 0) return "—";
   const tx = normalizeTransactionType(offer.transactionType);
-  return tx === "rent" ? `${info.primary} / mc` : info.primary;
+  return tx === "rent" ? `${info.primary} ${perMonthSuffix}` : info.primary;
 }
 
 function formatAreaLabel(offer: CatalogOffer): string {
@@ -70,9 +71,9 @@ function formatAreaLabel(offer: CatalogOffer): string {
   return `${s} m²`;
 }
 
-function formatLocationLabel(offer: CatalogOffer): string {
+function formatLocationLabel(offer: CatalogOffer, countryDefault: string): string {
   const parts = [offer.district, offer.city].map((p) => String(p || "").trim()).filter(Boolean);
-  return parts.length ? parts.join(" · ") : "Polska";
+  return parts.length ? parts.join(" · ") : countryDefault;
 }
 
 const sectionIcons: Record<GallerySection, typeof LayoutGrid> = {
@@ -320,7 +321,10 @@ export default function CatalogPage() {
                       {offer.imageUrl ? (
                         <Image
                           src={offer.imageUrl}
-                          alt={offer.title || `Oferta ${offer.id}`}
+                          alt={
+                            offer.title?.trim() ||
+                            labels.offerImageAlt.replace("{id}", String(offer.id))
+                          }
                           fill
                           sizes="(max-width: 768px) 100vw, 50vw"
                           className="object-cover transition duration-700 ease-out group-hover:scale-[1.03]"
@@ -335,15 +339,16 @@ export default function CatalogPage() {
                     <div className="flex items-end justify-between gap-4 px-0.5">
                       <div className="min-w-0">
                         <h2 className="text-xl md:text-2xl font-bold tracking-tight text-[var(--eos-text)] transition-colors group-hover:text-emerald-600 dark:group-hover:text-emerald-400 line-clamp-2">
-                          {offer.title?.trim() || `Oferta #${offer.id}`}
+                          {offer.title?.trim() ||
+                            labels.offerTitleFallback.replace("{id}", String(offer.id))}
                         </h2>
                         <p className="mt-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--eos-muted)]">
-                          {formatAreaLabel(offer)} · {formatLocationLabel(offer)}
+                          {formatAreaLabel(offer)} · {formatLocationLabel(offer, labels.countryDefault)}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-lg md:text-xl font-bold tabular-nums text-[var(--eos-text)]">
-                          {formatPriceLabel(offer, formatOffer)}
+                          {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
                         </p>
                         <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-subtle)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                           {labels.discover}

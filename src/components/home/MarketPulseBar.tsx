@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { numberFormatLocale } from "@/i18n/config";
 
 type LiveStats = {
   metrics?: {
@@ -12,7 +13,7 @@ type LiveStats = {
 
 export default function MarketPulseBar() {
   const reduceMotion = useReducedMotion();
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const [activeOffers, setActiveOffers] = useState<number | null>(null);
 
   useEffect(() => {
@@ -48,7 +49,7 @@ export default function MarketPulseBar() {
           <span className="relative inline-flex size-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.85)]" />
         </span>
         <span className="text-[9px] font-black uppercase tracking-[0.22em] text-emerald-400/90">
-          {dict.pulse.liveFrom}: {activeOffers.toLocaleString("en-US")} {dict.homePremium.livePulseActive}
+          {dict.pulse.liveFrom}: {activeOffers.toLocaleString(numberFormatLocale(locale))} {dict.homePremium.livePulseActive}
         </span>
       </div>
     </motion.div>

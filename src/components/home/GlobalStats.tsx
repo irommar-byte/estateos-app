@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { numberFormatLocale } from "@/i18n/config";
+import type { Locale } from "@/i18n/config";
 
 type LiveStats = {
   metrics?: {
@@ -13,8 +15,8 @@ type LiveStats = {
   };
 };
 
-function compact(value: number, locale: string) {
-  return new Intl.NumberFormat(locale === "pl" ? "pl-PL" : "en-US", {
+function compact(value: number, locale: Locale) {
+  return new Intl.NumberFormat(numberFormatLocale(locale), {
     notation: value >= 10000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   }).format(value);

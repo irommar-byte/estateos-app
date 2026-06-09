@@ -50,6 +50,26 @@ export type CrmExtendedDictionary = {
     openHousePublishError: string;
     openHouseCancelConfirm: string;
     openHouseCancelError: string;
+    openHouseOptionalTitle: string;
+    openHouseOptionalDescription: string;
+    exclusiveBadge: string;
+    auctionTitle: string;
+    auctionSubtitle: string;
+    auctionSoon: string;
+    openHouseSpotsLeft: string;
+    importModalLead: string;
+    importLinkLabel: string;
+    importHint: string;
+    importPreviewLabel: string;
+    importPayCreate: string;
+    importEditLink: string;
+    importPreviewLink: string;
+    importPubTitle: string;
+    importPubSubtitle: string;
+    importBuyPlusHint: string;
+    importUrlEmpty: string;
+    importWalletError: string;
+    importSourceOfferFallback: string;
   };
   proWidget: {
     investmentDemand: string;
@@ -259,8 +279,8 @@ const pl: CrmExtendedDictionary = {
     eyebrow: "Investor Pro",
     title: "Narzędzia premium",
     lead: "Import ofert z portali i organizacja dni otwartych — w jednym miejscu.",
-    importTitle: "Import z portali",
-    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — wklej link i opublikuj ofertę.",
+    importTitle: "Import z OtoDom + OLX + Nieruchomosci-Online",
+    importSubtitle: "Przenieś ogłoszenie na EstateOS — z opłatą publikacji jak przy zwykłym wystawieniu.",
     importTag: "Import",
     openHouseTitle: "Dzień otwartych drzwi",
     openHouseSubtitle: "Zaplanuj terminy wizyt i rezerwacje gości przy swojej ofercie.",
@@ -292,6 +312,28 @@ const pl: CrmExtendedDictionary = {
     openHousePublishError: "Nie udało się opublikować.",
     openHouseCancelConfirm: "Anulować ten dzień otwarty?",
     openHouseCancelError: "Nie udało się anulować.",
+    openHouseOptionalTitle: "Tytuł (opcjonalnie)",
+    openHouseOptionalDescription: "Informacje dla gości (opcjonalnie)",
+    exclusiveBadge: "Ekskluzywne narzędzie Pro",
+    auctionTitle: "Licytacje online",
+    auctionSubtitle: "Transparentne licytacje ofert — moduł aktywujemy w najbliższym czasie.",
+    auctionSoon: "Wkrótce",
+    openHouseSpotsLeft: "wolnych miejsc",
+    importModalLead:
+      "Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
+    importLinkLabel: "Link ogłoszenia (auto detect)",
+    importHint: "Wskazówka: skopiuj link z OtoDom, OLX lub Nieruchomosci-Online, kliknij pole powyżej — wklei się sam.",
+    importPreviewLabel: "Podgląd",
+    importPayCreate: "Opłać i utwórz na EstateOS",
+    importEditLink: "Edytuj",
+    importPreviewLink: "Podgląd",
+    importPubTitle: "Opłata za publikację importu",
+    importPubSubtitle:
+      "Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty na 30 dni. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
+    importBuyPlusHint: "Kup Pakiet Plus w portfelu publikacji, a następnie ponów import.",
+    importUrlEmpty: "Wklej link do oferty z OtoDom, OLX lub Nieruchomosci-Online.",
+    importWalletError: "Nie udało się pobrać portfela publikacji.",
+    importSourceOfferFallback: "Oferta źródłowa",
   },
   proWidget: {
     investmentDemand: "Popyt inwestycyjny",
@@ -521,8 +563,8 @@ const en: CrmExtendedDictionary = {
     eyebrow: "Investor Pro",
     title: "Premium tools",
     lead: "Portal import and open house scheduling in one place.",
-    importTitle: "Portal import",
-    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — paste a link and publish.",
+    importTitle: "Import from OtoDom + OLX + Nieruchomosci-Online",
+    importSubtitle: "Move a listing to EstateOS — same publication fee as a standard listing.",
     importTag: "Import",
     openHouseTitle: "Open house day",
     openHouseSubtitle: "Schedule visit slots and guest reservations for your listing.",
@@ -554,6 +596,28 @@ const en: CrmExtendedDictionary = {
     openHousePublishError: "Could not publish.",
     openHouseCancelConfirm: "Cancel this open house?",
     openHouseCancelError: "Could not cancel.",
+    openHouseOptionalTitle: "Title (optional)",
+    openHouseOptionalDescription: "Notes for guests (optional)",
+    exclusiveBadge: "Exclusive Pro tool",
+    auctionTitle: "Online auctions",
+    auctionSubtitle: "Transparent listing auctions — module coming soon.",
+    auctionSoon: "Coming soon",
+    openHouseSpotsLeft: "spots left",
+    importModalLead:
+      "Paste a listing link — click the field and the URL from your clipboard fills in automatically. Before conversion you choose a coupon or Plus credit. After payment the listing goes to review with publication reserved.",
+    importLinkLabel: "Listing link (auto detect)",
+    importHint: "Tip: copy a link from OtoDom, OLX, or Nieruchomosci-Online, click the field above — it pastes itself.",
+    importPreviewLabel: "Preview",
+    importPayCreate: "Pay & create on EstateOS",
+    importEditLink: "Edit",
+    importPreviewLink: "Preview",
+    importPubTitle: "Import publication fee",
+    importPubSubtitle:
+      "Import from OtoDom, OLX, or Nieruchomosci-Online uses the same coupon or credit as a standard 30-day listing. After payment the listing goes to review with publication reserved.",
+    importBuyPlusHint: "Buy a Plus package in the publication wallet, then retry the import.",
+    importUrlEmpty: "Paste a listing link from OtoDom, OLX, or Nieruchomosci-Online.",
+    importWalletError: "Could not load publication wallet.",
+    importSourceOfferFallback: "Source listing",
   },
   proWidget: {
     investmentDemand: "Investment demand",
@@ -772,8 +836,8 @@ const uk: CrmExtendedDictionary = {
     eyebrow: "Investor Pro",
     title: "Преміум-інструменти",
     lead: "Імпорт оголошень з порталів і організація днів відкритих дверей — в одному місці.",
-    importTitle: "Імпорт з порталів",
-    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — вставте посилання та опублікуйте.",
+    importTitle: "Імпорт з OtoDom + OLX + Nieruchomosci-Online",
+    importSubtitle: "Перенесіть оголошення на EstateOS — з такою ж оплатою публікації, як при звичайному розміщенні.",
     importTag: "Імпорт",
     openHouseTitle: "День відкритих дверей",
     openHouseSubtitle: "Заплануйте візити та бронювання гостей для вашого оголошення.",
@@ -805,6 +869,28 @@ const uk: CrmExtendedDictionary = {
     openHousePublishError: "Не вдалося опублікувати.",
     openHouseCancelConfirm: "Скасувати цей день відкритих дверей?",
     openHouseCancelError: "Не вдалося скасувати.",
+    openHouseOptionalTitle: "Назва (необов'язково)",
+    openHouseOptionalDescription: "Інформація для гостей (необов'язково)",
+    exclusiveBadge: "Ексклюзивний інструмент Pro",
+    auctionTitle: "Онлайн-аукціони",
+    auctionSubtitle: "Прозорі аукціони оголошень — модуль незабаром.",
+    auctionSoon: "Незабаром",
+    openHouseSpotsLeft: "вільних місць",
+    importModalLead:
+      "Вставте посилання на оголошення — натисніть поле, і адреса з буфера вставиться автоматично. Перед конверсією оберіть купон або кредит Plus. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
+    importLinkLabel: "Посилання на оголошення (auto detect)",
+    importHint: "Підказка: скопіюйте посилання з OtoDom, OLX або Nieruchomosci-Online, натисніть поле вище — воно вставиться само.",
+    importPreviewLabel: "Попередній перегляд",
+    importPayCreate: "Оплатити та створити на EstateOS",
+    importEditLink: "Редагувати",
+    importPreviewLink: "Перегляд",
+    importPubTitle: "Оплата за публікацію імпорту",
+    importPubSubtitle:
+      "Імпорт з OtoDom, OLX або Nieruchomosci-Online використовує той самий купон або кредит, що й звичайне розміщення на 30 днів. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
+    importBuyPlusHint: "Купіть Pakiet Plus у гаманці публікацій, потім повторіть імпорт.",
+    importUrlEmpty: "Вставте посилання на оголошення з OtoDom, OLX або Nieruchomosci-Online.",
+    importWalletError: "Не вдалося завантажити гаманець публікацій.",
+    importSourceOfferFallback: "Вихідне оголошення",
   },
   proWidget: {
     investmentDemand: "Інвестиційний попит",

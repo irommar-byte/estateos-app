@@ -7,6 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { Hand, Lock, LocateFixed, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { numberFormatLocale } from "@/i18n/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { useDisplayCurrency } from "@/contexts/DisplayCurrencyContext";
@@ -231,7 +232,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showMapGuide, setShowMapGuide] = useState(false);
   const sliderChangingRef = useRef(false);
 
-  const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
+  const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
     transactionMode === "rent" ? dict.map.maxRentLabel : dict.map.maxPriceLabel;
   const isEurDisplay = preference === "EUR";
@@ -317,20 +318,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const token = String(data?.mapboxToken || "").trim();
         setMapboxToken(token || null);
         if (!token) {
-          setMapInitError(
-            locale === "pl"
-              ? "Brak klucza Mapbox na serwerze (NEXT_PUBLIC_MAPBOX_TOKEN lub MAPBOX_TOKEN)."
-              : "Mapbox token missing on server (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN).",
-          );
+          setMapInitError(dict.map.tokenMissing);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setMapInitError(
-            locale === "pl"
-              ? "Nie udało się pobrać konfiguracji mapy."
-              : "Could not load map configuration.",
-          );
+          setMapInitError(dict.map.configError);
         }
       });
     return () => {
@@ -585,11 +578,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
     map.current.on("load", onLoad);
     map.current.on("error", (e) => {
       console.error("Mapbox error:", e);
-      setMapInitError(
-        locale === "pl"
-          ? "Mapa nie załadowała się — sprawdź token Mapbox i domenę w panelu Mapbox."
-          : "Map failed to load — check Mapbox token and allowed URLs.",
-      );
+      setMapInitError(dict.map.loadError);
     });
 
     return () => {
@@ -764,7 +753,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
             }}
             className="absolute right-3 top-3 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
           >
-            OK
+            {dict.map.guideOk}
           </button>
           <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
             {dict.map.guideTitle}
@@ -795,7 +784,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
         onClick={() => setShowMapGuide(true)}
         className="absolute bottom-16 right-4 z-20 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:right-6"
       >
-        {locale === "pl" ? "Instrukcja" : "Guide"}
+        {dict.map.guideButton}
       </button>
 
       {mapInitError && (

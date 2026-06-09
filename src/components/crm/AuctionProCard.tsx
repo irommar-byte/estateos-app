@@ -1,15 +1,21 @@
 "use client";
 
+import { useLocale } from "@/contexts/LocaleContext";
+import { getDictionary } from "@/i18n/dictionaries";
 import ProToolBadge from "@/components/crm/ProToolBadge";
 
 export default function AuctionProCard() {
+  const { locale } = useLocale();
+  const copy = getDictionary(locale).crm.proTools;
+
   return (
     <ProToolBadge
       icon="gavel"
-      title="Licytacje online"
-      subtitle="Transparentne licytacje ofert — moduł aktywujemy w najbliższym czasie."
+      badgeLabel={copy.exclusiveBadge}
+      title={copy.auctionTitle}
+      subtitle={copy.auctionSubtitle}
       comingSoon
-      soonLabel="Wkrótce"
+      soonLabel={copy.auctionSoon}
     />
   );
 }
