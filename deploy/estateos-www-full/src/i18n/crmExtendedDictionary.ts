@@ -13,6 +13,41 @@ export type CrmExtendedDictionary = {
     compactUntil: string;
     creditsShort: string;
   };
+  proTools: {
+    eyebrow: string;
+    title: string;
+    lead: string;
+    importTitle: string;
+    importSubtitle: string;
+    importTag: string;
+    openHouseTitle: string;
+    openHouseSubtitle: string;
+    openHouseTag: string;
+    footer: string;
+    importModalTitle: string;
+    importUrlPlaceholder: string;
+    importAnalyze: string;
+    importCreate: string;
+    importSuccess: string;
+    importNoCredit: string;
+    openHouseModalTitle: string;
+    openHouseCreateTab: string;
+    openHouseListTab: string;
+    openHousePickOffer: string;
+    openHouseNoOffers: string;
+    openHousePublish: string;
+    openHouseSuccess: string;
+    openHouseEmpty: string;
+    openHouseCancel: string;
+    openHouseViewOffer: string;
+    visitModeFlex: string;
+    visitMode30: string;
+    visitMode60: string;
+    slotDay: string;
+    slotFrom: string;
+    slotTo: string;
+    slotCapacity: string;
+  };
   boot: { initLabel: string; greetings: string[] };
   verification: {
     bannerTitle: string;
@@ -185,6 +220,41 @@ const pl: CrmExtendedDictionary = {
     barCaption: "Pasek: pozostało {n} z {total} dni bieżącego okresu",
     compactUntil: "Do {date}",
     creditsShort: "Kredyty EOS",
+  },
+  proTools: {
+    eyebrow: "Investor Pro",
+    title: "Narzędzia premium",
+    lead: "Import ofert z portali i organizacja dni otwartych — w jednym miejscu.",
+    importTitle: "Import z portali",
+    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — wklej link i opublikuj ofertę.",
+    importTag: "Import",
+    openHouseTitle: "Dzień otwartych drzwi",
+    openHouseSubtitle: "Zaplanuj terminy wizyt i rezerwacje gości przy swojej ofercie.",
+    openHouseTag: "Pro",
+    footer: "Funkcje dostępne dla aktywnego pakietu Investor Pro.",
+    importModalTitle: "Import oferty z portalu",
+    importUrlPlaceholder: "https://www.otodom.pl/... lub OLX / Nieruchomosci-Online",
+    importAnalyze: "Analizuj link",
+    importCreate: "Utwórz ofertę",
+    importSuccess: "Oferta została utworzona.",
+    importNoCredit: "Brak kredytu Pakietu Plus — kup pakiet, aby opublikować import.",
+    openHouseModalTitle: "Dzień otwartych drzwi",
+    openHouseCreateTab: "Nowy",
+    openHouseListTab: "Moje wydarzenia",
+    openHousePickOffer: "Wybierz ogłoszenie",
+    openHouseNoOffers: "Brak aktywnych ogłoszeń.",
+    openHousePublish: "Opublikuj dzień otwarty",
+    openHouseSuccess: "Dzień otwarty opublikowany.",
+    openHouseEmpty: "Nie masz jeszcze zaplanowanych dni otwartych.",
+    openHouseCancel: "Anuluj wydarzenie",
+    openHouseViewOffer: "Zobacz ogłoszenie",
+    visitModeFlex: "Dowolna godzina w przedziale",
+    visitMode30: "Sloty co 30 min",
+    visitMode60: "Sloty co 60 min",
+    slotDay: "Dzień",
+    slotFrom: "Od",
+    slotTo: "Do",
+    slotCapacity: "Limit gości",
   },
   boot: {
     initLabel: "Inicjalizacja Systemów PRO",
@@ -375,6 +445,41 @@ const en: CrmExtendedDictionary = {
     barCaption: "Bar: {n} of {total} days left in the current period",
     compactUntil: "Until {date}",
     creditsShort: "EOS credits",
+  },
+  proTools: {
+    eyebrow: "Investor Pro",
+    title: "Premium tools",
+    lead: "Portal import and open house scheduling in one place.",
+    importTitle: "Portal import",
+    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — paste a link and publish.",
+    importTag: "Import",
+    openHouseTitle: "Open house day",
+    openHouseSubtitle: "Schedule visit slots and guest reservations for your listing.",
+    openHouseTag: "Pro",
+    footer: "Available for active Investor Pro members.",
+    importModalTitle: "Import listing from portal",
+    importUrlPlaceholder: "https://www.otodom.pl/... or OLX / Nieruchomosci-Online",
+    importAnalyze: "Analyze link",
+    importCreate: "Create listing",
+    importSuccess: "Listing created.",
+    importNoCredit: "No Plus Package credit — buy a package to publish the import.",
+    openHouseModalTitle: "Open house day",
+    openHouseCreateTab: "New",
+    openHouseListTab: "My events",
+    openHousePickOffer: "Select listing",
+    openHouseNoOffers: "No active listings.",
+    openHousePublish: "Publish open house",
+    openHouseSuccess: "Open house published.",
+    openHouseEmpty: "No open house events yet.",
+    openHouseCancel: "Cancel event",
+    openHouseViewOffer: "View listing",
+    visitModeFlex: "Flexible arrival window",
+    visitMode30: "30-minute slots",
+    visitMode60: "60-minute slots",
+    slotDay: "Day",
+    slotFrom: "From",
+    slotTo: "To",
+    slotCapacity: "Guest limit",
   },
   boot: {
     initLabel: "Initializing PRO systems",

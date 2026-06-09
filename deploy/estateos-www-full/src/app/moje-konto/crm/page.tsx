@@ -3,10 +3,13 @@ import PasskeyToggle from "@/components/PasskeyToggle";
 import DealRoom from "@/components/crm/DealRoom";
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
+import ProProfileToolsCard from "@/components/crm/ProProfileToolsCard";
+import ProPortalImportModal from "@/components/crm/ProPortalImportModal";
+import ProOpenHouseManageModal from "@/components/crm/ProOpenHouseManageModal";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
@@ -535,6 +538,8 @@ export default function CRMDashboard() {
   }, [crmData]);
 
   const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
+  const [proImportOpen, setProImportOpen] = useState(false);
+  const [proOpenHouseOpen, setProOpenHouseOpen] = useState(false);
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -1072,6 +1077,20 @@ export default function CRMDashboard() {
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
 
+  const activeOffersForProTools = useMemo(
+    () =>
+      (crmData.offers || [])
+        .filter((o: any) => String(o?.status || '').toUpperCase() === 'ACTIVE')
+        .map((o: any) => ({
+          id: Number(o.id),
+          title: String(o.title || ''),
+          city: String(o.city || ''),
+          district: String(o.district || ''),
+        }))
+        .filter((o: { id: number }) => Number.isFinite(o.id) && o.id > 0),
+    [crmData.offers],
+  );
+
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
@@ -1180,6 +1199,33 @@ export default function CRMDashboard() {
         </motion.div>
 
         <ProStatusBar user={currentUser} compact />
+
+        {isPremium ? (
+          <>
+            <ProProfileToolsCard
+              copy={c.proTools}
+              onImport={() => setProImportOpen(true)}
+              onOpenHouse={() => setProOpenHouseOpen(true)}
+            />
+            <ProPortalImportModal
+              isOpen={proImportOpen}
+              copy={c.proTools}
+              onClose={() => setProImportOpen(false)}
+              onCreated={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+            <ProOpenHouseManageModal
+              isOpen={proOpenHouseOpen}
+              copy={c.proTools}
+              activeOffers={activeOffersForProTools}
+              onClose={() => setProOpenHouseOpen(false)}
+              onChanged={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+          </>
+        ) : null}
 
         {isPremium && <ProWidget currentUser={currentUser} />}
 

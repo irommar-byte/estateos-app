@@ -27,6 +27,9 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
+import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
+import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
+import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
@@ -135,6 +138,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
   const [negotiatorsCount, setNegotiatorsCount] = useState(0);
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
+  const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
+  const [isOpenHouseModalOpen, setIsOpenHouseModalOpen] = useState(false);
   const isLegalKwVerified = isOfferLegallyVerified(offer);
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
@@ -187,6 +192,39 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     };
     fetchNegotiations();
   }, [offer]);
+
+  useEffect(() => {
+    const offerId = offer.id || offer._id;
+    if (!offerId || isArchived) {
+      setOpenHouseEvent(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/offers/${offerId}/open-house`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const event = data?.event as OpenHouseEventRecord | null;
+        if (
+          event &&
+          event.status === "PUBLISHED" &&
+          event.totalSpotsLeft > 0
+        ) {
+          setOpenHouseEvent(event);
+        } else {
+          setOpenHouseEvent(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOpenHouseEvent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer, isArchived]);
+
+  const showOpenHouseBanner = Boolean(openHouseEvent);
+  const openOpenHouseModal = () => setIsOpenHouseModalOpen(true);
 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
@@ -444,7 +482,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
             {!isArchived ? (
             <div
-              className="pointer-events-auto w-full"
+              className="pointer-events-auto flex w-full flex-col gap-3"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-2.5 rounded-3xl border border-white/10 bg-zinc-950/85 px-3 py-3 shadow-2xl backdrop-blur-3xl sm:gap-x-4 sm:gap-y-3 sm:px-5 sm:py-3.5 hover:border-white/20 transition-all duration-300">
@@ -526,6 +564,20 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 </div>
 
               </div>
+
+            {showOpenHouseBanner && openHouseEvent ? (
+              <OpenHouseOfferBanner
+                variant="hero"
+                event={openHouseEvent}
+                locale={locale === "en" ? "en" : "pl"}
+                copy={{
+                  title: t.openHouse.bannerTitle,
+                  subtitle: t.openHouse.bannerSubtitle,
+                  cta: t.openHouse.bannerCta,
+                }}
+                onPress={openOpenHouseModal}
+              />
+            ) : null}
             </div>
             ) : null}
           </div>
@@ -639,6 +691,21 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
+                {showOpenHouseBanner && openHouseEvent && !isLocked ? (
+                  <div className="mb-6 sm:hidden">
+                    <OpenHouseOfferBanner
+                      variant="inline"
+                      event={openHouseEvent}
+                      locale={locale === "en" ? "en" : "pl"}
+                      copy={{
+                        title: t.openHouse.bannerTitle,
+                        subtitle: t.openHouse.bannerSubtitle,
+                        cta: t.openHouse.bannerCta,
+                      }}
+                      onPress={openOpenHouseModal}
+                    />
+                  </div>
+                ) : null}
                 <h2 className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-4xl font-light tracking-tighter text-[var(--eos-text)] sm:text-6xl md:text-7xl">
                   <span>{priceFormatted.primary}</span>
                   {rentAdminFeeInline ? (
@@ -956,6 +1023,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         isOpen={!!publicProfileId} 
         userId={publicProfileId} 
         onClose={() => setPublicProfileId(null)} 
+      />
+
+      <OpenHouseReserveModal
+        isOpen={isOpenHouseModalOpen}
+        eventId={openHouseEvent?.id ?? null}
+        currentUser={currentUser}
+        locale={locale}
+        onClose={() => setIsOpenHouseModalOpen(false)}
+        onRequireAuth={() => {
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        }}
       />
     </main>
   );

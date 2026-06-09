@@ -77,6 +77,33 @@ export type OfferPageCopy = {
   authRequired: string;
   submitBid: string;
   listingPriceIncludesCommission: string;
+  openHouse: {
+    bannerTitle: string;
+    bannerSubtitle: (date: string, spots: number) => string;
+    bannerCta: string;
+    modalTitle: string;
+    modalSubtitle: string;
+    slotsSection: string;
+    pickHourSection: string;
+    pickHourHint: string;
+    flexWindowHint: string;
+    pickSlotRequired: string;
+    guestCount: string;
+    note: string;
+    notePlaceholder: string;
+    reserveCta: string;
+    reservedCta: string;
+    cancelReservation: string;
+    slotTaken: string;
+    spotsLeft: (n: number) => string;
+    loginRequired: string;
+    reserveSuccess: string;
+    reserveSuccessHint: string;
+    loadError: string;
+    loadErrorHint: string;
+    errorGeneric: string;
+    close: string;
+  };
 };
 
 const PL: OfferPageCopy = {
@@ -159,6 +186,33 @@ const PL: OfferPageCopy = {
   submitBid: "Złóż ofertę",
   listingPriceIncludesCommission:
     "To finalna cena brutto: tyle widzisz, tyle płacisz — bez dopłat. Z tej kwoty rozliczana jest prowizja pośrednika wskazana w ofercie.",
+  openHouse: {
+    bannerTitle: "Dzień otwartych drzwi",
+    bannerSubtitle: (date, spots) => `Najbliższy termin: ${date} · ${spots} wolnych miejsc`,
+    bannerCta: "Zarezerwuj wizytę",
+    modalTitle: "Dzień otwarty",
+    modalSubtitle: "Wybierz termin wizyty",
+    slotsSection: "Terminy wizyt",
+    pickHourSection: "Wybierz godzinę wizyty",
+    pickHourHint: "Dotknij wolnej godziny — dopiero potem potwierdź rezerwację.",
+    flexWindowHint: "Możesz przyjść w dowolnym momencie w tym przedziale.",
+    pickSlotRequired: "Wybierz konkretną godzinę wizyty.",
+    guestCount: "Liczba osób",
+    note: "Notatka dla gospodarza (opcjonalnie)",
+    notePlaceholder: "Np. przyjadę z partnerem, proszę o kontakt na WhatsApp…",
+    reserveCta: "Zarezerwuj ten termin",
+    reservedCta: "Masz rezerwację",
+    cancelReservation: "Anuluj rezerwację",
+    slotTaken: "Zajęty",
+    spotsLeft: (n) => `${n} wolnych miejsc`,
+    loginRequired: "Zaloguj się, aby zarezerwować termin.",
+    reserveSuccess: "Termin zarezerwowany",
+    reserveSuccessHint: "Organizator otrzyma powiadomienie o Twojej wizycie.",
+    loadError: "Nie udało się wczytać wydarzenia",
+    loadErrorHint: "Wydarzenie mogło wygasnąć lub zostało anulowane.",
+    errorGeneric: "Coś poszło nie tak. Spróbuj ponownie.",
+    close: "Zamknij",
+  },
 };
 
 const EN: OfferPageCopy = {
@@ -240,6 +294,33 @@ const EN: OfferPageCopy = {
   submitBid: "Submit offer",
   listingPriceIncludesCommission:
     "This is the final gross price: what you see is what you pay, with no surcharge. The intermediary commission shown in this listing is settled from that amount.",
+  openHouse: {
+    bannerTitle: "Open house day",
+    bannerSubtitle: (date, spots) => `Next slot: ${date} · ${spots} spots left`,
+    bannerCta: "Book a visit",
+    modalTitle: "Open house",
+    modalSubtitle: "Pick your visit time",
+    slotsSection: "Visit slots",
+    pickHourSection: "Choose a visit time",
+    pickHourHint: "Tap an available hour, then confirm your booking.",
+    flexWindowHint: "You may arrive anytime within this window.",
+    pickSlotRequired: "Please select a specific visit time.",
+    guestCount: "Guests",
+    note: "Note for the host (optional)",
+    notePlaceholder: "E.g. arriving with a partner, please call on WhatsApp…",
+    reserveCta: "Book this slot",
+    reservedCta: "You are booked",
+    cancelReservation: "Cancel booking",
+    slotTaken: "Taken",
+    spotsLeft: (n) => `${n} spots left`,
+    loginRequired: "Sign in to book a visit.",
+    reserveSuccess: "Visit booked",
+    reserveSuccessHint: "The host will be notified about your visit.",
+    loadError: "Could not load this event",
+    loadErrorHint: "The event may have expired or been cancelled.",
+    errorGeneric: "Something went wrong. Please try again.",
+    close: "Close",
+  },
 };
 
 export function getOfferPageCopy(locale: Locale): OfferPageCopy {
