@@ -24,11 +24,14 @@ import * as Haptics from 'expo-haptics';
 import { getChatTheme } from './chatTheme';
 import MessageReactionPicker, { type ReactionAnchor } from './MessageReactionPicker';
 import { groupedReactionEmojis } from '../../utils/contactMessageReactions';
+import { parseContactMessageParts } from '../../utils/contactAttachment';
+import ContactMessageAttachment from './ContactMessageAttachment';
 
 export type IMThreadMessage = {
   id: number | string;
   senderId: number | string;
   content: string;
+  attachment?: string | null;
   createdAt: string;
   isRead?: boolean;
   reactions?: Record<string, string>;
@@ -195,8 +198,8 @@ export default function InstantMessageThread({
       >
         {messages.map((msg, index) => {
           const isMe = String(msg.senderId ?? '') === String(currentUserId);
-          const body = String(msg.content || '').trim();
-          if (!body) return null;
+          const { text, attachment } = parseContactMessageParts(msg);
+          if (!text && !attachment) return null;
           const reactionEmojis = groupedReactionEmojis(msg.reactions ?? {});
           const isLifted = reactionAnchor?.messageId === msg.id;
 
@@ -222,7 +225,12 @@ export default function InstantMessageThread({
                   ]}
                 >
                   <View style={[styles.msgBubble, isMe ? styles.msgBubbleMe : styles.msgBubbleThem]}>
-                    <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{body}</Text>
+                    {text ? (
+                      <Text style={[styles.msgText, isMe && styles.msgTextMe]}>{text}</Text>
+                    ) : null}
+                    {attachment ? (
+                      <ContactMessageAttachment attachment={attachment} isMe={isMe} isDark={isDark} />
+                    ) : null}
                   </View>
                 </Pressable>
               </View>

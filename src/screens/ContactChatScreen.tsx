@@ -161,6 +161,7 @@ export default function ContactChatScreen() {
     id: m.id,
     senderId: m.senderId,
     content: m.content,
+    attachment: m.attachment,
     createdAt: m.createdAt,
     isRead: m.isRead,
     reactions: m.reactions,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseMobileUserIdFromAuthHeader } from '@/lib/mobileAuthUserId';
 import { contactPeerId, contactThreadPair } from '@/lib/contactThreadPair';
+import { formatContactLastMessagePreview } from '@/lib/contactAttachmentShared';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -35,7 +36,7 @@ function formatThreadRow(
     updatedAt: Date;
     userLow: { id: number; name: string | null; email: string | null; image: string | null };
     userHigh: { id: number; name: string | null; email: string | null; image: string | null };
-    messages: Array<{ id: number; content: string; createdAt: Date; senderId: number }>;
+    messages: Array<{ id: number; content: string; attachment?: string | null; createdAt: Date; senderId: number }>;
   },
   viewerId: number,
   unread: number
@@ -57,7 +58,7 @@ function formatThreadRow(
       email: peer?.email || null,
       image: peer?.image || null,
     },
-    lastMessage: lastMsg?.content || '',
+    lastMessage: lastMsg ? formatContactLastMessagePreview(lastMsg) : '',
     time: (lastMsg?.createdAt || thread.updatedAt).toISOString(),
     unread,
     unreadCount: unread,
@@ -78,7 +79,7 @@ export async function GET(req: Request) {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, content: true, createdAt: true, senderId: true },
+          select: { id: true, content: true, attachment: true, createdAt: true, senderId: true },
         },
       },
       orderBy: { updatedAt: 'desc' },
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { id: true, content: true, createdAt: true, senderId: true },
+          select: { id: true, content: true, attachment: true, createdAt: true, senderId: true },
         },
       },
     });

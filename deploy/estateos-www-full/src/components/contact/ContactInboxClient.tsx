@@ -29,6 +29,8 @@ import {
   MAX_CONTACT_FILE_BYTES,
   MAX_CONTACT_THREAD_BYTES,
   parseContactMessageParts,
+  formatContactLastMessagePreview,
+  CONTACT_ATTACHMENT_PREFIX,
 } from "@/lib/contactAttachmentShared";
 import {
   ContactMessageRow,
@@ -433,7 +435,16 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                           </span>
                         ) : null}
                       </div>
-                      <p className="truncate text-xs text-[var(--eos-muted)]">{thread.lastMessage || "Brak wiadomości"}</p>
+                      <p className="truncate text-xs text-[var(--eos-muted)]">
+                        {(() => {
+                          const raw = String(thread.lastMessage || "");
+                          if (!raw) return "Brak wiadomości";
+                          if (raw.includes(CONTACT_ATTACHMENT_PREFIX)) {
+                            return formatContactLastMessagePreview({ content: raw }) || "Brak wiadomości";
+                          }
+                          return raw;
+                        })()}
+                      </p>
                       <p className="text-[10px] text-[var(--eos-subtle)]">ID {thread.peerUserId}</p>
                     </div>
                   </button>

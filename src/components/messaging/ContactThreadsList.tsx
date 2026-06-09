@@ -22,6 +22,7 @@ import {
 } from '../../store/useContactThreadPrefsStore';
 import { useFloatingChatsStore } from '../../store/useFloatingChatsStore';
 import ContactPeerAvatar from './ContactPeerAvatar';
+import { formatContactLastMessagePreview } from '../../utils/contactAttachment';
 
 type Colors = Record<string, string>;
 
@@ -35,6 +36,15 @@ type Props = {
   onThreadsChanged?: () => void;
 };
 
+function threadPreview(raw?: string | null): string {
+  const text = String(raw || '').trim();
+  if (!text) return '—';
+  if (text.includes('[[CONTACT_ATTACHMENT]]')) {
+    return formatContactLastMessagePreview({ content: text }) || '—';
+  }
+  return text;
+}
+
 function syncFloatingFromVisible(visible: ContactThreadRow[], getDisplayName: (id: number, fb: string) => string) {
   const entries = visible.slice(0, 4).map((thread) => ({
     threadId: thread.id,
@@ -42,7 +52,7 @@ function syncFloatingFromVisible(visible: ContactThreadRow[], getDisplayName: (i
     peerName: getDisplayName(thread.id, thread.peerUserName),
     peerImage: thread.peer?.image ?? null,
     unread: Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0)),
-    lastPreview: thread.lastMessage,
+    lastPreview: threadPreview(thread.lastMessage),
   }));
   useFloatingChatsStore.getState().syncEntries(entries);
 }
@@ -93,7 +103,7 @@ const ThreadCard = React.memo(function ThreadCard({
             </View>
           </View>
           <Text style={[styles.preview, { color: colors.textMuted }]} numberOfLines={2}>
-            {thread.lastMessage || '—'}
+            {threadPreview(thread.lastMessage)}
           </Text>
         </Pressable>
         <View style={styles.trailing}>

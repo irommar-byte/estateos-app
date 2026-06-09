@@ -1,5 +1,6 @@
 import { API_URL } from '../config/network';
 import { parseContactReactions } from '../utils/contactMessageReactions';
+import { formatContactLastMessagePreview } from '../utils/contactAttachment';
 
 export type ContactThreadRow = {
   id: number;
@@ -157,6 +158,12 @@ export function contactThreadToFloatingEntry(
     peerName: displayName?.trim() || thread.peerUserName,
     peerImage: thread.peer?.image ?? null,
     unread: Math.max(0, Number(thread.unread ?? thread.unreadCount ?? 0)),
-    lastPreview: thread.lastMessage,
+    lastPreview: (() => {
+      const raw = String(thread.lastMessage || '');
+      if (raw.includes('[[CONTACT_ATTACHMENT]]')) {
+        return formatContactLastMessagePreview({ content: raw }) || undefined;
+      }
+      return thread.lastMessage;
+    })(),
   };
 }
