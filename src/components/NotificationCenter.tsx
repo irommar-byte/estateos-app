@@ -10,6 +10,7 @@ import {
   Diamond,
   Flame,
   Info,
+  MessageCircle,
   ShieldAlert,
   Star,
   X,
@@ -155,6 +156,9 @@ export default function NotificationCenter() {
     if (title.includes("Deal Room") || title.includes("Wiadomość") || type === "DEAL_UPDATE") {
       return { icon: Briefcase, color: "text-emerald-500", bg: "bg-emerald-500/10" };
     }
+    if (title.includes("Contact") || type === "MESSAGE") {
+      return { icon: MessageCircle, color: "text-emerald-500", bg: "bg-emerald-500/10" };
+    }
     if (title.includes("Oferta Zakupu") || title.includes("💎")) {
       return { icon: Diamond, color: "text-blue-500", bg: "bg-blue-500/10" };
     }
@@ -235,7 +239,7 @@ export default function NotificationCenter() {
                     return (
                       <button
                         type="button"
-                        key={notification.id}
+                        key={notification.groupKey || String(notification.id)}
                         onClick={() => handleNotificationClick(notification)}
                         className={`group relative w-full border-b border-[var(--eos-border)] p-5 text-left transition-colors hover:bg-[var(--eos-input)] ${
                           !notification.isRead ? "bg-[var(--eos-accent-soft)]" : ""

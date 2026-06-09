@@ -165,6 +165,22 @@ export async function GET(req: Request) {
       } else if (n.type === 'APPOINTMENT' && dealId) {
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
         groupKey = `deal-activity:${dealId}`;
+      } else if (
+        (n.type === 'MESSAGE' || String(n.title || '').includes('Contact')) &&
+        (n.targetType === 'CHAT' || String(n.targetType || '').toUpperCase() === 'CONTACT')
+      ) {
+        const threadId = Number(n.targetId);
+        const colonMatch = baseBody.match(/^([^:]+):\s*([\s\S]+)$/);
+        const senderName = colonMatch?.[1]?.trim() || null;
+        const preview = colonMatch?.[2]?.trim() || baseBody;
+        title = senderName || 'Wiadomość bezpośrednia';
+        message = preview;
+        if (Number.isFinite(threadId) && threadId > 0) {
+          link = `/moje-konto/wiadomosci?thread=${threadId}`;
+          groupKey = `contact-thread:${threadId}`;
+        } else {
+          groupKey = senderName ? `contact-sender:${senderName.toLowerCase()}` : `contact:${n.id}`;
+        }
       } else if (offerId) {
         message = `Oferta: ${shortOfferTitle}. ${baseBody}`;
       }
