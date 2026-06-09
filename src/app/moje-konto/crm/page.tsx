@@ -7,9 +7,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
-import ProProfileToolsCard from "@/components/crm/ProProfileToolsCard";
-import ProPortalImportModal from "@/components/crm/ProPortalImportModal";
-import ProOpenHouseManageModal from "@/components/crm/ProOpenHouseManageModal";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
@@ -538,8 +535,6 @@ export default function CRMDashboard() {
   }, [crmData]);
 
   const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
-  const [proImportOpen, setProImportOpen] = useState(false);
-  const [proOpenHouseOpen, setProOpenHouseOpen] = useState(false);
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -1200,33 +1195,14 @@ export default function CRMDashboard() {
         <ProStatusBar user={currentUser} compact />
 
         {isPremium ? (
-          <>
-            <ProProfileToolsCard
-              copy={c.proTools}
-              onImport={() => setProImportOpen(true)}
-              onOpenHouse={() => setProOpenHouseOpen(true)}
-            />
-            <ProPortalImportModal
-              isOpen={proImportOpen}
-              copy={c.proTools}
-              onClose={() => setProImportOpen(false)}
-              onCreated={() => {
-                if (currentUser?.id) void fetchData(currentUser.id);
-              }}
-            />
-            <ProOpenHouseManageModal
-              isOpen={proOpenHouseOpen}
-              copy={c.proTools}
-              activeOffers={activeOffersForProTools}
-              onClose={() => setProOpenHouseOpen(false)}
-              onChanged={() => {
-                if (currentUser?.id) void fetchData(currentUser.id);
-              }}
-            />
-          </>
+          <ProWidget
+            currentUser={currentUser}
+            activeOffers={activeOffersForProTools}
+            onProToolsChanged={() => {
+              if (currentUser?.id) void fetchData(currentUser.id);
+            }}
+          />
         ) : null}
-
-        {isPremium && <ProWidget currentUser={currentUser} />}
 
         <div className="flex justify-center mb-8 sm:mb-10 relative z-20">
           <div className="w-full md:w-auto max-w-full overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

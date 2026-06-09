@@ -10,6 +10,9 @@ import {
   type PulseHeadline,
 } from "@/types/marketPulse";
 import OtodomImportProCard from "@/components/otodom/OtodomImportProCard";
+import OpenHouseProCard from "@/components/openHouse/OpenHouseProCard";
+
+type ProOfferRow = { id: number; title: string; city?: string; district?: string };
 
 const FALLBACK_HEADLINES_PL: PulseHeadline[] = [
   {
@@ -139,7 +142,17 @@ export const AppleClock = ({ isBooting = false }: { isBooting?: boolean }) => {
 };
 
 // --- GŁÓWNY WIDGET PRO ---
-export default function ProWidget({ currentUser, isBooting = false }: { currentUser: any, isBooting?: boolean }) {
+export default function ProWidget({
+  currentUser,
+  isBooting = false,
+  activeOffers = [],
+  onProToolsChanged,
+}: {
+  currentUser: any;
+  isBooting?: boolean;
+  activeOffers?: ProOfferRow[];
+  onProToolsChanged?: () => void;
+}) {
   const { locale } = useLocale();
   const [avgPrice, setAvgPrice] = useState<number | null>(null);
   const [demandLabel, setDemandLabel] = useState<string>("—");
@@ -288,8 +301,6 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
               </div>
            </div>
 
-           <OtodomImportProCard />
-
         </div>
 
         {/* KOLUMNA 2: GŁĘBOKI KALENDARZ Z NOTATKAMI */}
@@ -320,6 +331,11 @@ export default function ProWidget({ currentUser, isBooting = false }: { currentU
                         </div>
                     );
                 })}
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <OtodomImportProCard />
+              <OpenHouseProCard activeOffers={activeOffers} onChanged={onProToolsChanged} />
             </div>
         </div>
 
