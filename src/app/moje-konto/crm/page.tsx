@@ -1,15 +1,18 @@
 "use client";
 import PasskeyToggle from "@/components/PasskeyToggle";
 import DealRoom from "@/components/crm/DealRoom";
-import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
 import { Check } from "lucide-react";
 import { useUserMode } from '@/contexts/UserModeContext';
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import ProWidget, { AppleClock } from "@/components/ProWidget";
+import ProProfileToolsCard from "@/components/crm/ProProfileToolsCard";
+import ProPortalImportModal from "@/components/crm/ProPortalImportModal";
+import ProOpenHouseManageModal from "@/components/crm/ProOpenHouseManageModal";
 import ReviewsModal from "@/components/ReviewsModal";
 import OfferRenewalModal from "@/components/offer/OfferRenewalModal";
+import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
 import { Briefcase, ArrowRight, ShieldCheck, ChevronLeft, ArchiveX, Calendar, Crown, Plus, Phone, CheckCircle, Loader2, Star, ChevronDown, Building2, DollarSign, Wallet, X, Radar, Send, Clock, FileText, Lock, Unlock, Activity, TrendingUp, Wifi, RefreshCcw, Sparkles, Edit2, ExternalLink, Home, Key, LayoutGrid, CalendarDays, SlidersHorizontal, MapPin, Target, MessageSquare } from 'lucide-react';
 import OfferFavoriteButton from '@/components/offer/OfferFavoriteButton';
@@ -41,46 +44,104 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
+import { buildInvestorProPeriodStatus, buildInvestorProBarPalette } from "@/lib/investorProMembership";
+import { isPlusCreditActive } from "@/lib/offerListingLimits";
 
-const ProStatusBar = ({ user }: any) => {
-  const { dict } = useLocale();
+const ProStatusBar = ({ user, compact = false }: { user: any; compact?: boolean }) => {
+  const { dict, locale } = useLocale();
   const ps = dict.crm.proStatus;
   if (!user?.isPro || !user?.proExpiresAt) return null;
 
-  const now = new Date();
-  const expiry = new Date(user.proExpiresAt);
-  const total = 30;
-  const daysLeft = Math.max(0, Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-  const progress = Math.min(100, Math.max(0, (daysLeft / total) * 100));
-  const ratio = Math.min(1, Math.max(0, daysLeft / total));
-  const hue = Math.round(120 * ratio);
-  const tone = `hsl(${hue} 95% 52%)`;
-  const toneSoft = `hsl(${hue} 90% 42%)`;
+  const period = buildInvestorProPeriodStatus(user.proExpiresAt);
+  if (!period) return null;
+
+  const expiry = new Date(period.expiresAtMs);
+  const daysLeft = period.daysLeft;
+  const progress = period.progressRemaining * 100;
+  const palette = buildInvestorProBarPalette(period.progressRemaining);
+  const dayUnit = daysLeft === 1 ? ps.dayOne : ps.dayMany;
+  const dateLocale = locale === "en" ? "en-GB" : "pl-PL";
+  const expiryLabel = expiry.toLocaleDateString(dateLocale);
+  const creditsActive = isPlusCreditActive(user);
+  const creditsCount = creditsActive ? Number(user.extraListings ?? 0) : 0;
+
+  if (compact) {
+    return (
+      <div className="mb-5 sm:mb-6 px-1 sm:px-2 md:px-4">
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 px-4 py-3 backdrop-blur-xl sm:flex-row sm:items-center sm:gap-4">
+          <div className="min-w-0 shrink-0 sm:w-[11rem]">
+            <p
+              className="text-[9px] font-black uppercase tracking-[0.22em]"
+              style={{ color: palette.tone }}
+            >
+              {ps.eyebrow}
+            </p>
+            <p className="mt-0.5 truncate text-xs font-semibold text-[var(--eos-text)]">
+              {fmtDict(ps.compactUntil, { date: expiryLabel })}
+            </p>
+            <p className="text-[10px] text-[var(--eos-muted)]">
+              {fmtDict(ps.daysLeft, { n: daysLeft, unit: dayUnit })}
+            </p>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="relative h-2 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${Math.max(progress, daysLeft > 0 ? 3 : 0)}%`,
+                  background: `linear-gradient(90deg, ${palette.toneSoft}, ${palette.tone})`,
+                  boxShadow: `0 0 16px ${palette.glow}`,
+                }}
+              />
+            </div>
+            <p className="mt-1 text-[9px] text-[var(--eos-muted)]/75">
+              {fmtDict(ps.barCaption, { n: daysLeft, total: period.periodDays })}
+            </p>
+          </div>
+
+          {creditsActive ? (
+            <div className="shrink-0 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-center sm:text-right">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-400/90">
+                {ps.creditsShort}
+              </p>
+              <p className="text-sm font-black tabular-nums text-emerald-400">{creditsCount}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-5 sm:mb-6 rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 bg-gradient-to-b from-white/[0.07] to-white/[0.03] backdrop-blur-2xl border border-[var(--eos-border)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: tone }}>
+          <p className="text-[10px] sm:text-xs tracking-[0.22em] sm:tracking-[0.3em] font-black mb-1" style={{ color: palette.tone }}>
             {ps.eyebrow}
           </p>
           <p className="text-sm sm:text-base text-[var(--eos-text)] font-bold">
-            {ps.validUntil} {expiry.toLocaleDateString()}
+            {ps.validUntil} {expiryLabel}
           </p>
-          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">{fmtDict(ps.daysLeft, { n: daysLeft })}</p>
+          <p className="text-xs sm:text-sm text-[var(--eos-muted)]">
+            {fmtDict(ps.daysLeft, { n: daysLeft, unit: dayUnit })}
+          </p>
+          <p className="mt-1 text-[10px] sm:text-xs text-[var(--eos-muted)]/90">{ps.periodHint}</p>
         </div>
       </div>
       <div className="relative h-3 w-full overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] sm:h-3.5">
-        <div className="absolute inset-0 opacity-25" style={{ background: `linear-gradient(90deg, ${toneSoft}, ${tone})` }} />
         <div
-          className="relative h-full rounded-full transition-all duration-700"
+          className="relative h-full rounded-full transition-all duration-700 ease-out"
           style={{
-            width: `${progress}%`,
-            background: `linear-gradient(90deg, ${toneSoft}, ${tone})`,
-            boxShadow: `0 0 24px color-mix(in srgb, ${tone} 70%, transparent)`,
+            width: `${Math.max(progress, daysLeft > 0 ? 4 : 0)}%`,
+            background: `linear-gradient(90deg, ${palette.toneSoft}, ${palette.tone})`,
+            boxShadow: `0 0 24px ${palette.glow}`,
           }}
         />
       </div>
+      <p className="mt-2 text-[10px] text-[var(--eos-muted)]/80">
+        {fmtDict(ps.barCaption, { n: daysLeft, total: period.periodDays })}
+      </p>
     </div>
   );
 };
@@ -477,6 +538,8 @@ export default function CRMDashboard() {
   }, [crmData]);
 
   const [activeTab, setActiveTab] = useState<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'>('radar');
+  const [proImportOpen, setProImportOpen] = useState(false);
+  const [proOpenHouseOpen, setProOpenHouseOpen] = useState(false);
   const [offerSectionFilter, setOfferSectionFilter] = useState<'ACTIVE' | 'PENDING' | 'COMPLETED'>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -1014,6 +1077,20 @@ export default function CRMDashboard() {
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: Array<'radar' | 'my_offers' | 'offers' | 'planowanie' | 'transakcje'> = ['radar', 'my_offers', 'offers', 'planowanie', 'transakcje'];
 
+  const activeOffersForProTools = useMemo(
+    () =>
+      (crmData.offers || [])
+        .filter((o: any) => String(o?.status || '').toUpperCase() === 'ACTIVE')
+        .map((o: any) => ({
+          id: Number(o.id),
+          title: String(o.title || ''),
+          city: String(o.city || ''),
+          district: String(o.district || ''),
+        }))
+        .filter((o: { id: number }) => Number.isFinite(o.id) && o.id > 0),
+    [crmData.offers],
+  );
+
   return (
     <div className="theme-aware-dashboard crm-dashboard-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pt-14 sm:pt-16 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       <AnimatePresence>
@@ -1024,7 +1101,6 @@ export default function CRMDashboard() {
       </AnimatePresence>
 
       <div className="max-w-7xl mx-auto">
-        <ProStatusBar user={currentUser} />
         <PresentationFlowBanner variant="crm" />
 
         {currentUser &&
@@ -1121,6 +1197,35 @@ export default function CRMDashboard() {
             )}
           </div>
         </motion.div>
+
+        <ProStatusBar user={currentUser} compact />
+
+        {isPremium ? (
+          <>
+            <ProProfileToolsCard
+              copy={c.proTools}
+              onImport={() => setProImportOpen(true)}
+              onOpenHouse={() => setProOpenHouseOpen(true)}
+            />
+            <ProPortalImportModal
+              isOpen={proImportOpen}
+              copy={c.proTools}
+              onClose={() => setProImportOpen(false)}
+              onCreated={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+            <ProOpenHouseManageModal
+              isOpen={proOpenHouseOpen}
+              copy={c.proTools}
+              activeOffers={activeOffersForProTools}
+              onClose={() => setProOpenHouseOpen(false)}
+              onChanged={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+          </>
+        ) : null}
 
         {isPremium && <ProWidget currentUser={currentUser} />}
 
@@ -1792,7 +1897,7 @@ export default function CRMDashboard() {
                            <ArchiveX size={14} className="text-red-300" /> {c.offers.pause}
                         </button>
                       </div>
-                      {isListingsTab && (
+                      {isListingsTab ? (
                         <button
                           type="button"
                           onClick={() => setCommentModalOffer({ id: Number(offer.id), title: String(offer.title || '') })}
@@ -1800,7 +1905,7 @@ export default function CRMDashboard() {
                         >
                           <MessageSquare size={14} className="text-blue-300" /> Komentarz
                         </button>
-                      )}
+                      ) : null}
 
                     </div>
                   </div>
