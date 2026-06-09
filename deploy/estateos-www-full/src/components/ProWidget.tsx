@@ -155,7 +155,9 @@ export default function ProWidget({
   activeOffers?: ProOfferRow[];
   onProToolsChanged?: () => void;
 }) {
-  const { locale } = useLocale();
+  const { locale, dict } = useLocale();
+  const pw = dict.crm.proWidget;
+  const dateTag = locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB";
   const [avgPrice, setAvgPrice] = useState<number | null>(null);
   const [demandLabel, setDemandLabel] = useState<string>("—");
   const [headlines, setHeadlines] = useState<PulseHeadline[]>(FALLBACK_HEADLINES_PL);
@@ -183,7 +185,7 @@ export default function ProWidget({
     const d = i - firstDay + 1;
     return (d > 0 && d <= daysInMonth) ? d : null;
   });
-  const months = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+  const months = pw.months;
 
   const fetchPulse = useCallback(async () => {
     try {
@@ -250,7 +252,7 @@ export default function ProWidget({
         });
         setSelectedDate(null);
       }
-    } catch(e) { alert("Save error notatki"); }
+    } catch(e) { alert(pw.noteSaveError); }
   };
 
   const openNoteModal = (day: number) => {
@@ -261,32 +263,32 @@ export default function ProWidget({
   };
 
   return (
-    <div className="bg-[#050505] border border-white/5 rounded-[2.5rem] relative overflow-hidden backdrop-blur-3xl shadow-[0_40px_100px_rgba(0,0,0,0.9)] mb-12">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent pointer-events-none"></div>
+    <div className="eos-pro-widget eos-pro-shell relative mb-12 overflow-hidden rounded-[2.5rem] backdrop-blur-3xl">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent"></div>
       
       <div className="relative z-10 flex flex-col gap-6 p-6 md:p-8">
         <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
         
         {/* KOLUMNA 1: ZEGAR + STATYSTYKI */}
         <div className="flex flex-col gap-4">
-           <div className="bg-[#0a0a0a] border border-[#222] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] flex flex-col sm:flex-row lg:flex-col items-center gap-6 justify-center lg:flex-1">
+           <div className="eos-pro-panel eos-pro-panel-inset flex flex-col items-center justify-center gap-6 rounded-3xl p-6 sm:flex-row lg:flex-col lg:flex-1">
               {!isBooting && <AppleClock />}
               <div className="text-center sm:text-left lg:text-center">
-                 <p className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.4em] text-white/30 mb-1">{today.toLocaleDateString('pl-PL', { weekday: 'long' })}</p>
-                 <h1 className="text-4xl md:text-5xl font-black text-white/90 tracking-tighter tabular-nums leading-none drop-shadow-2xl">{today.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</h1>
+                 <p className="eos-pro-subtle mb-1 text-[10px] font-black uppercase tracking-[0.4em] md:text-[11px]">{today.toLocaleDateString(dateTag, { weekday: 'long' })}</p>
+                 <h1 className="text-4xl font-black tabular-nums leading-none tracking-tighter text-[var(--eos-text)] drop-shadow-sm md:text-5xl">{today.toLocaleTimeString(dateTag, { hour: '2-digit', minute: '2-digit' })}</h1>
               </div>
            </div>
            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 shadow-[inset_0_2px_10px_rgba(0,0,0,1)] flex flex-col justify-between h-[80px]">
-                 <div className="flex justify-between items-start">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center"><Activity size={12} className="text-emerald-500" /></div>
-                    <span className="text-white/80 font-black text-xs md:text-sm drop-shadow-md tabular-nums">{demandLabel}</span>
+              <div className="eos-pro-panel eos-pro-panel-inset flex h-[80px] flex-col justify-between rounded-2xl p-4">
+                 <div className="flex items-start justify-between">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/10"><Activity size={12} className="text-emerald-500" /></div>
+                    <span className="text-xs font-black tabular-nums text-[var(--eos-text)] drop-shadow-sm md:text-sm">{demandLabel}</span>
                  </div>
-                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30">
-                   {locale === "pl" ? "Popyt inwestycyjny" : "Investment demand"}
+                 <span className="eos-pro-subtle text-[8px] font-black uppercase tracking-widest md:text-[9px]">
+                   {pw.investmentDemand}
                  </span>
               </div>
-              <div className="bg-[#0a0a0a] border border-[#222] rounded-2xl p-4 shadow-[inset_0_2px_10px_rgba(0,0,0,1)] flex flex-col justify-between h-[80px] relative overflow-hidden group">
+              <div className="eos-pro-panel eos-pro-panel-inset group relative flex h-[80px] flex-col justify-between overflow-hidden rounded-2xl p-4">
                  <div className="absolute bottom-0 left-0 right-0 h-12 opacity-30 group-hover:opacity-60 transition-opacity duration-500">
                     <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
                        <defs><linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10b981" stopOpacity="0.4"/><stop offset="100%" stopColor="#10b981" stopOpacity="0"/></linearGradient></defs>
@@ -298,23 +300,23 @@ export default function ProWidget({
                     <div className="w-6 h-6 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20"><LineChart size={12} className="text-emerald-500" /></div>
                     <span className="text-emerald-400 font-black text-[11px] md:text-xs tracking-tight tabular-nums drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{avgPrice ? `${avgPrice.toLocaleString('pl-PL')} zł/m²` : '...'}</span>
                  </div>
-                 <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white/30 relative z-10">
-                   {locale === "pl" ? "Średnia rynkowa" : "Market average"}
+                 <span className="eos-pro-subtle relative z-10 text-[8px] font-black uppercase tracking-widest md:text-[9px]">
+                   {pw.marketAverage}
                  </span>
               </div>
            </div>
         </div>
 
         {/* KOLUMNA 2: KALENDARZ */}
-        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_10px_30px_rgba(0,0,0,1),0_10px_20px_rgba(0,0,0,0.5)] relative flex flex-col lg:flex-1">
-            <div className="flex justify-between items-center mb-6">
-                <button onClick={() => setMonthOffset(p => p - 1)} className="p-1.5 hover:bg-white/5 rounded-full text-white/30 hover:text-white transition-colors"><ChevronLeft size={16}/></button>
-                <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.3em] text-white/70">{months[currentMonth]} {currentYear}</h3>
-                <button onClick={() => setMonthOffset(p => p + 1)} className="p-1.5 hover:bg-white/5 rounded-full text-white/30 hover:text-white transition-colors"><ChevronRight size={16}/></button>
+        <div className="eos-pro-panel eos-pro-panel-inset relative flex flex-col rounded-3xl p-6 lg:flex-1">
+            <div className="mb-6 flex items-center justify-between">
+                <button onClick={() => setMonthOffset(p => p - 1)} className="eos-pro-subtle rounded-full p-1.5 transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"><ChevronLeft size={16}/></button>
+                <h3 className="eos-pro-muted text-[10px] font-black uppercase tracking-[0.3em] md:text-[11px]">{months[currentMonth]} {currentYear}</h3>
+                <button onClick={() => setMonthOffset(p => p + 1)} className="eos-pro-subtle rounded-full p-1.5 transition-colors hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"><ChevronRight size={16}/></button>
             </div>
-            <div className="grid grid-cols-7 gap-x-1 gap-y-2 text-center flex-1 content-start">
-                {['Pn','Wt','Śr','Cz','Pt','So','Nd'].map((d, i) => (
-                   <div key={d} className={`text-[8px] md:text-[9px] font-black uppercase tracking-widest ${i >= 5 ? 'text-red-500/80 drop-shadow-[0_0_5px_rgba(239,68,68,0.4)]' : 'text-white/20'} mb-3`}>{d}</div>
+            <div className="grid flex-1 grid-cols-7 content-start gap-x-1 gap-y-2 text-center">
+                {pw.weekdays.map((d, i) => (
+                   <div key={d} className={`mb-3 text-[8px] font-black uppercase tracking-widest md:text-[9px] ${i >= 5 ? 'text-red-500/80' : 'eos-pro-subtle'}`}>{d}</div>
                 ))}
                 {days.map((day, i) => {
                     const isWeekend = i % 7 === 5 || i % 7 === 6;
@@ -323,10 +325,10 @@ export default function ProWidget({
                     const hasNote = dStr && notes.some(n => n.date === dStr);
 
                     return (
-                        <div key={i} onClick={() => day && openNoteModal(day)} className={`h-8 md:h-10 flex flex-col items-center justify-center text-[11px] md:text-xs font-black rounded-xl transition-all duration-300 relative
-                            ${isToday ? 'bg-gradient-to-br from-[#333] to-[#111] border border-white/20 text-white shadow-[0_5px_15px_rgba(0,0,0,0.8)] z-10' : 
-                              isWeekend ? 'text-red-500/60' : 'text-white/50'}
-                            ${!day ? 'opacity-0' : 'hover:bg-white/5 cursor-pointer shadow-[inset_0_2px_5px_rgba(0,0,0,0.5)] border border-transparent hover:border-white/5'}
+                        <div key={i} onClick={() => day && openNoteModal(day)} className={`relative flex h-8 flex-col items-center justify-center rounded-xl text-[11px] font-black transition-all duration-300 md:h-10 md:text-xs
+                            ${isToday ? 'z-10 border border-[var(--eos-border-strong)] bg-[var(--eos-input)] text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]' : 
+                              isWeekend ? 'text-red-500/70' : 'eos-pro-muted'}
+                            ${!day ? 'opacity-0' : 'cursor-pointer border border-transparent hover:border-[var(--eos-border)] hover:bg-[var(--eos-input)]'}
                         `}>
                             {day}
                             {hasNote && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></div>}
@@ -337,24 +339,24 @@ export default function ProWidget({
         </div>
 
         {/* KOLUMNA 3: PULS RYNKU (TABLICA DWORCOWA) */}
-        <div className="bg-[#080808] border border-[#1a1a1a] rounded-3xl p-6 shadow-[inset_0_5px_20px_rgba(0,0,0,1)] relative overflow-hidden flex flex-col lg:flex-1 min-h-[420px] lg:min-h-0">
-           <div className="flex items-center justify-between mb-4 relative z-10 shrink-0">
+        <div className="eos-pro-panel eos-pro-panel-inset relative flex min-h-[420px] flex-col overflow-hidden rounded-3xl p-6 lg:min-h-0 lg:flex-1">
+           <div className="relative z-10 mb-4 flex shrink-0 items-center justify-between">
               <div className="flex items-center gap-3">
-                 <Newspaper className="text-white/30" size={16}/>
-                 <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.3em] text-white/50">Puls Rynku</h3>
+                 <Newspaper className="eos-pro-subtle" size={16}/>
+                 <h3 className="eos-pro-muted text-[10px] font-black uppercase tracking-[0.3em] md:text-[11px]">{pw.pulseTitle}</h3>
               </div>
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-black/50 border border-emerald-500/20 rounded-full shadow-inner">
-                 <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pulseLive ? "bg-emerald-500" : "bg-amber-500"}`}></div>
-                 <span className={`text-[7px] font-black uppercase tracking-widest ${pulseLive ? "text-emerald-500/70" : "text-amber-500/70"}`}>
-                   {pulseLive ? (locale === "pl" ? "Live" : "Live") : locale === "pl" ? "Sync…" : "Sync…"}
+              <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-[var(--eos-input)] px-2 py-1 shadow-inner">
+                 <div className={`h-1.5 w-1.5 animate-pulse rounded-full ${pulseLive ? "bg-emerald-500" : "bg-amber-500"}`}></div>
+                 <span className={`text-[7px] font-black uppercase tracking-widest ${pulseLive ? "text-emerald-600 dark:text-emerald-500/70" : "text-amber-600 dark:text-amber-500/70"}`}>
+                   {pulseLive ? pw.pulseLive : pw.pulseSync}
                  </span>
               </div>
            </div>
 
            <div className="relative z-10 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
               <div className="shrink-0">
-                 <div className="flex gap-4 items-start">
-                    <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-black border border-[#222] shadow-[inset_0_2px_5px_rgba(0,0,0,1)] flex items-center justify-center shrink-0">
+                 <div className="flex items-start gap-4">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] md:h-10 md:w-10">
                        {headlines[newsIndex]?.type === "GLOBAL" ? (
                          <Globe size={14} className="text-blue-500/80" />
                        ) : (
@@ -365,19 +367,19 @@ export default function ProWidget({
                        <p className="text-[10px] md:text-[11px] font-bold text-emerald-400/90 leading-relaxed min-h-[36px] drop-shadow-[0_0_8px_rgba(16,185,129,0.2)]">
                           <ScrambleText key={`${headlines[newsIndex]?.id}-${newsIndex}`} text={headlines[newsIndex]?.title ?? ""} />
                        </p>
-                       <p className="text-[8px] md:text-[9px] text-white/20 mt-1 uppercase font-black tracking-widest">
+                       <p className="text-[8px] font-black uppercase tracking-widest eos-pro-subtle mt-1 md:text-[9px]">
                           {headlines[newsIndex]?.source}
                        </p>
                     </div>
                  </div>
               </div>
 
-              <div className="w-full h-px shrink-0 bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+              <div className="h-px w-full shrink-0 bg-gradient-to-r from-transparent via-[var(--eos-border)] to-transparent"></div>
 
-              <PulseUpcomingSchedule locale={locale} />
+              <PulseUpcomingSchedule locale={locale} copy={dict.crm.pulseSchedule} />
 
-              <p className="shrink-0 text-center text-[7px] text-white/15 uppercase tracking-[0.18em]">
-                {locale === "pl" ? "Połączenie z serwerem szyfrowane" : "Encrypted server connection"}
+              <p className="eos-pro-subtle shrink-0 text-center text-[7px] uppercase tracking-[0.18em]">
+                {pw.encryptedConnection}
               </p>
            </div>
         </div>
@@ -392,7 +394,7 @@ export default function ProWidget({
       </div>
 
       {/* PASEK AKTYWNOŚCI NA DOLE (TICKER) */}
-      <div className="w-full h-12 md:h-14 border-t border-[#1a1a1a] bg-black/80 shadow-[inset_0_5px_15px_rgba(0,0,0,1)] overflow-hidden relative flex items-center rounded-b-[2.5rem]">
+      <div className="eos-pro-ticker relative flex h-12 w-full items-center overflow-hidden rounded-b-[2.5rem] border-t border-[var(--eos-border)] md:h-14">
           <div className="absolute inset-y-0 left-0 w-16 md:w-32 bg-gradient-to-r from-black to-transparent z-10 pointer-events-none"></div>
           <div className="absolute inset-y-0 right-0 w-16 md:w-32 bg-gradient-to-l from-black to-transparent z-10 pointer-events-none"></div>
           
@@ -402,8 +404,8 @@ export default function ProWidget({
                 return (
                   <div key={`${e.id}-${i}`} className="flex items-center gap-3 shrink-0">
                      <Icon size={14} className={e.color}/>
-                     <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-white/40">{e.text}</span>
-                     <div className="w-1.5 h-1.5 rounded-full bg-white/5 ml-8 md:ml-12"></div>
+                     <span className="eos-pro-muted shrink-0 text-[9px] font-black uppercase tracking-widest md:text-[10px]">{e.text}</span>
+                     <div className="ml-8 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--eos-border)] md:ml-12"></div>
                   </div>
                 );
               })}
@@ -413,27 +415,27 @@ export default function ProWidget({
       {/* POPUP NOTATKI */}
       <AnimatePresence>
         {selectedDate && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-xl flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
-             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-[#0a0a0a] border border-[#222] p-6 md:p-8 rounded-[2rem] w-full max-w-md shadow-[0_50px_100px_rgba(0,0,0,1),inset_0_2px_10px_rgba(255,255,255,0.02)]">
-                <div className="flex justify-between items-center mb-6">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="eos-modal-backdrop fixed inset-0 z-[999999] flex items-start justify-center overflow-y-auto p-4 pt-10 pb-10 sm:pt-20 sm:pb-20">
+             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="eos-modal-surface eos-modal-shell eos-themed-modal my-auto w-full max-w-md rounded-[2rem] border p-6 md:p-8">
+                <div className="mb-6 flex items-center justify-between">
                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center border border-white/10"><PenTool size={16} className="text-white/50"/></div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]"><PenTool size={16} className="eos-pro-muted"/></div>
                       <div>
-                         <h3 className="text-white font-black text-sm uppercase tracking-widest">Twoja Notatka</h3>
-                         <p className="text-emerald-500 text-[10px] font-bold tracking-widest">{selectedDate}</p>
+                         <h3 className="text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">{pw.noteTitle}</h3>
+                         <p className="text-[10px] font-bold tracking-widest text-emerald-600 dark:text-emerald-500">{selectedDate}</p>
                       </div>
                    </div>
-                   <button onClick={() => setSelectedDate(null)} className="p-2 bg-black hover:bg-white/10 rounded-full text-white/50 transition-colors border border-white/5"><X size={16}/></button>
+                   <button onClick={() => setSelectedDate(null)} className="rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-2 transition-colors hover:bg-[var(--eos-border)] eos-pro-muted"><X size={16}/></button>
                 </div>
                 <textarea 
                    autoFocus
                    value={noteText}
                    onChange={e => setNoteText(e.target.value)}
-                   placeholder="Wpisz tajne informacje dla tego dnia (np. negocjacje, spotkanie z klientem)..."
-                   className="w-full h-32 bg-black border border-[#222] rounded-xl p-4 text-xs text-white/80 font-medium placeholder-white/20 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all resize-none shadow-inner custom-scrollbar"
+                   placeholder={pw.notePlaceholder}
+                   className="custom-scrollbar h-32 w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-xs font-medium text-[var(--eos-text)] shadow-inner transition-all placeholder:text-[var(--eos-subtle)] focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
                 />
-                <button onClick={handleSaveNote} className="w-full mt-6 py-4 rounded-xl bg-gradient-to-b from-[#222] to-[#111] hover:from-[#333] hover:to-[#222] border border-[#333] text-[10px] font-black uppercase tracking-widest text-white shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all flex items-center justify-center gap-2">
-                   Zapisz w chmurze
+                <button onClick={handleSaveNote} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--eos-border-strong)] bg-[var(--eos-input)] py-4 text-[10px] font-black uppercase tracking-widest text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)] transition-all hover:bg-[var(--eos-border)]">
+                   {pw.noteSaveCloud}
                 </button>
              </motion.div>
           </motion.div>

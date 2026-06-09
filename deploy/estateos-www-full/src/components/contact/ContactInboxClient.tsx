@@ -454,7 +454,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           </div>
         </aside>
 
-        <section className="relative flex min-h-0 min-w-0 flex-col bg-[#080808]">
+        <section className="eos-contact-panel relative flex min-h-0 min-w-0 flex-col">
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
               <MessageCircle className="size-10 text-emerald-500/50" />
@@ -522,7 +522,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="shrink-0 overflow-hidden border-b border-white/10 bg-[#0c0c0c]"
+                    className="eos-contact-panel shrink-0 overflow-hidden border-b border-[var(--eos-border)]"
                   >
                     <div className="max-h-44 overflow-y-auto px-4 py-3 custom-scrollbar md:px-5">
                       {loadingAttachments ? (

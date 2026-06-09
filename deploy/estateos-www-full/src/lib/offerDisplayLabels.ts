@@ -2,6 +2,8 @@
  * Etykiety ofert na WWW — bez surowych ENUMów (FLAT, READY, …) w UI.
  */
 
+import type { Locale } from "@/i18n/config";
+
 export type OfferConditionKey =
   | "READY"
   | "DEVELOPER"
@@ -59,7 +61,7 @@ export function normalizeOfferCondition(raw: unknown): OfferConditionKey | null 
 
 export function formatOfferCondition(
   raw: unknown,
-  locale: "pl" | "en" = "pl",
+  locale: Locale = "pl",
 ): string | null {
   const key = normalizeOfferCondition(raw);
   if (!key) {
@@ -69,7 +71,7 @@ export function formatOfferCondition(
     if (upper === leftover && /^[A-Z_]+$/.test(upper)) return null;
     return leftover;
   }
-  return locale === "en" ? CONDITION_LABELS_EN[key] : CONDITION_LABELS_PL[key];
+  return locale === "en" || locale === "uk" ? CONDITION_LABELS_EN[key] : CONDITION_LABELS_PL[key];
 }
 
 const PROPERTY_TYPE_ALIASES: Record<string, string> = {
@@ -115,7 +117,7 @@ export function normalizeOfferPropertyType(raw: unknown): string | null {
 
 export function formatOfferPropertyType(
   raw: unknown,
-  locale: "pl" | "en" = "pl",
+  locale: Locale = "pl",
 ): string | null {
   const canon = normalizeOfferPropertyType(raw);
   if (!canon) {
@@ -125,7 +127,7 @@ export function formatOfferPropertyType(
     if (upper === leftover && /^[A-Z_]+$/.test(upper)) return null;
     return leftover;
   }
-  const map = locale === "en" ? PROPERTY_TYPE_LABELS_EN : PROPERTY_TYPE_LABELS_PL;
+  const map = locale === "en" || locale === "uk" ? PROPERTY_TYPE_LABELS_EN : PROPERTY_TYPE_LABELS_PL;
   return map[canon] ?? null;
 }
 

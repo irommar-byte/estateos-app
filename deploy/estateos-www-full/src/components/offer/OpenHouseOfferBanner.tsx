@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ChevronRight, DoorOpen } from "lucide-react";
+import type { Locale } from "@/i18n/config";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 
 type Copy = {
@@ -12,17 +13,18 @@ type Copy = {
 
 type Props = {
   event: OpenHouseEventRecord;
-  locale: "pl" | "en";
+  locale: Locale;
   copy: Copy;
   onPress: () => void;
   variant?: "hero" | "inline";
 };
 
-function formatNextSlot(iso: string | null, locale: "pl" | "en"): string {
+function formatNextSlot(iso: string | null, locale: Locale): string {
   if (!iso) return "—";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(locale === "pl" ? "pl-PL" : "en-GB", {
+  const tag = locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB";
+  return date.toLocaleString(tag, {
     weekday: "short",
     day: "numeric",
     month: "short",

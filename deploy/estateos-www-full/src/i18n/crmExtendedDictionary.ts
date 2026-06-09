@@ -47,6 +47,40 @@ export type CrmExtendedDictionary = {
     slotFrom: string;
     slotTo: string;
     slotCapacity: string;
+    openHousePublishError: string;
+    openHouseCancelConfirm: string;
+    openHouseCancelError: string;
+  };
+  proWidget: {
+    investmentDemand: string;
+    marketAverage: string;
+    pulseTitle: string;
+    pulseLive: string;
+    pulseSync: string;
+    encryptedConnection: string;
+    noteTitle: string;
+    notePlaceholder: string;
+    noteSave: string;
+    noteSaveCloud: string;
+    noteSaveError: string;
+    weekdays: string[];
+    months: string[];
+  };
+  pulseSchedule: {
+    section: string;
+    empty: string;
+    emptyHint: string;
+    live: string;
+    pending: string;
+    days: string;
+    hours: string;
+    minutes: string;
+    seconds: string;
+    starts: string;
+    prevEvent: string;
+    nextEvent: string;
+    detailsLink: string;
+    eventLabel: string;
   };
   boot: { initLabel: string; greetings: string[] };
   verification: {
@@ -255,6 +289,43 @@ const pl: CrmExtendedDictionary = {
     slotFrom: "Od",
     slotTo: "Do",
     slotCapacity: "Limit gości",
+    openHousePublishError: "Nie udało się opublikować.",
+    openHouseCancelConfirm: "Anulować ten dzień otwarty?",
+    openHouseCancelError: "Nie udało się anulować.",
+  },
+  proWidget: {
+    investmentDemand: "Popyt inwestycyjny",
+    marketAverage: "Średnia rynkowa",
+    pulseTitle: "Puls Rynku",
+    pulseLive: "Live",
+    pulseSync: "Sync…",
+    encryptedConnection: "Połączenie z serwerem szyfrowane",
+    noteTitle: "Twoja Notatka",
+    notePlaceholder: "Wpisz tajne informacje dla tego dnia (np. negocjacje, spotkanie z klientem)…",
+    noteSave: "Zapisz",
+    noteSaveCloud: "Zapisz w chmurze",
+    noteSaveError: "Błąd zapisu notatki",
+    weekdays: ["Pn", "Wt", "Śr", "Cz", "Pt", "So", "Nd"],
+    months: [
+      "Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec",
+      "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień",
+    ],
+  },
+  pulseSchedule: {
+    section: "Twój harmonogram",
+    empty: "Brak zaplanowanych wydarzeń",
+    emptyHint: "Prezentacje i dni otwarte pojawią się tutaj.",
+    live: "Trwa teraz",
+    pending: "Oczekuje",
+    days: "Dni",
+    hours: "Godz",
+    minutes: "Min",
+    seconds: "Sek",
+    starts: "Start",
+    prevEvent: "Poprzednie wydarzenie",
+    nextEvent: "Następne wydarzenie",
+    detailsLink: "Szczegóły →",
+    eventLabel: "Wydarzenie",
   },
   boot: {
     initLabel: "Inicjalizacja Systemów PRO",
@@ -480,6 +551,43 @@ const en: CrmExtendedDictionary = {
     slotFrom: "From",
     slotTo: "To",
     slotCapacity: "Guest limit",
+    openHousePublishError: "Could not publish.",
+    openHouseCancelConfirm: "Cancel this open house?",
+    openHouseCancelError: "Could not cancel.",
+  },
+  proWidget: {
+    investmentDemand: "Investment demand",
+    marketAverage: "Market average",
+    pulseTitle: "Market Pulse",
+    pulseLive: "Live",
+    pulseSync: "Sync…",
+    encryptedConnection: "Encrypted server connection",
+    noteTitle: "Your note",
+    notePlaceholder: "Private notes for this day (e.g. negotiations, client meeting)…",
+    noteSave: "Save",
+    noteSaveCloud: "Save to cloud",
+    noteSaveError: "Could not save note",
+    weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    months: [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ],
+  },
+  pulseSchedule: {
+    section: "Your schedule",
+    empty: "No scheduled events",
+    emptyHint: "Presentations and open houses will appear here.",
+    live: "Live now",
+    pending: "Pending",
+    days: "Days",
+    hours: "Hrs",
+    minutes: "Min",
+    seconds: "Sec",
+    starts: "Starts",
+    prevEvent: "Previous event",
+    nextEvent: "Next event",
+    detailsLink: "Details →",
+    eventLabel: "Event",
   },
   boot: {
     initLabel: "Initializing PRO systems",
@@ -657,8 +765,111 @@ const en: CrmExtendedDictionary = {
   reviewsModalUserFallback: "Investor",
 };
 
+const uk: CrmExtendedDictionary = {
+  ...en,
+  proTools: {
+    ...en.proTools,
+    eyebrow: "Investor Pro",
+    title: "Преміум-інструменти",
+    lead: "Імпорт оголошень з порталів і організація днів відкритих дверей — в одному місці.",
+    importTitle: "Імпорт з порталів",
+    importSubtitle: "OtoDom, OLX, Nieruchomosci-Online — вставте посилання та опублікуйте.",
+    importTag: "Імпорт",
+    openHouseTitle: "День відкритих дверей",
+    openHouseSubtitle: "Заплануйте візити та бронювання гостей для вашого оголошення.",
+    openHouseTag: "Pro",
+    footer: "Функції доступні з активним пакетом Investor Pro.",
+    importModalTitle: "Імпорт оголошення з порталу",
+    importUrlPlaceholder: "https://www.otodom.pl/... або OLX / Nieruchomosci-Online",
+    importAnalyze: "Аналізувати посилання",
+    importCreate: "Створити оголошення",
+    importSuccess: "Оголошення створено.",
+    importNoCredit: "Немає кредиту Pakiet Plus — купіть пакет для публікації імпорту.",
+    openHouseModalTitle: "День відкритих дверей",
+    openHouseCreateTab: "Новий",
+    openHouseListTab: "Мої події",
+    openHousePickOffer: "Оберіть оголошення",
+    openHouseNoOffers: "Немає активних оголошень.",
+    openHousePublish: "Опублікувати день відкритих дверей",
+    openHouseSuccess: "День відкритих дверей опубліковано.",
+    openHouseEmpty: "У вас ще немає запланованих днів відкритих дверей.",
+    openHouseCancel: "Скасувати подію",
+    openHouseViewOffer: "Переглянути оголошення",
+    visitModeFlex: "Будь-який час у вікні",
+    visitMode30: "Слоти по 30 хв",
+    visitMode60: "Слоти по 60 хв",
+    slotDay: "День",
+    slotFrom: "Від",
+    slotTo: "До",
+    slotCapacity: "Ліміт гостей",
+    openHousePublishError: "Не вдалося опублікувати.",
+    openHouseCancelConfirm: "Скасувати цей день відкритих дверей?",
+    openHouseCancelError: "Не вдалося скасувати.",
+  },
+  proWidget: {
+    investmentDemand: "Інвестиційний попит",
+    marketAverage: "Середня ринкова",
+    pulseTitle: "Пульс ринку",
+    pulseLive: "Live",
+    pulseSync: "Sync…",
+    encryptedConnection: "З'єднання з сервером зашифровано",
+    noteTitle: "Ваша нотатка",
+    notePlaceholder: "Приватні нотатки на цей день (напр. переговори, зустріч з клієнтом)…",
+    noteSave: "Зберегти",
+    noteSaveCloud: "Зберегти в хмарі",
+    noteSaveError: "Помилка збереження нотатки",
+    weekdays: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
+    months: [
+      "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
+      "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",
+    ],
+  },
+  pulseSchedule: {
+    section: "Ваш розклад",
+    empty: "Немає запланованих подій",
+    emptyHint: "Презентації та дні відкритих дверей з'являться тут.",
+    live: "Зараз триває",
+    pending: "Очікує",
+    days: "Дні",
+    hours: "Год",
+    minutes: "Хв",
+    seconds: "Сек",
+    starts: "Початок",
+    prevEvent: "Попередня подія",
+    nextEvent: "Наступна подія",
+    detailsLink: "Деталі →",
+    eventLabel: "Подія",
+  },
+  boot: {
+    initLabel: "Ініціалізація систем PRO",
+    greetings: [
+      "Система готова. Ваш хід, {name}.",
+      "Вітаємо, {name} — ринок чекає на ваші інвестиції.",
+      "Доброго дня, {name}. Новий день — нові можливості.",
+      "Захист PRO активний. Гарного дня, {name}.",
+    ],
+  },
+  verification: {
+    bannerTitle: "Верифікація акаунта",
+    both: "Підтвердіть телефон (SMS) та e-mail, щоб розблокувати повний функціонал.",
+    phoneOnly: "Підтвердіть телефон SMS, щоб розблокувати повний функціонал.",
+    emailOnly: "Підтвердіть e-mail, щоб розблокувати повний функціонал.",
+    cta: "Верифікувати зараз",
+    verifiedBadge: "Акаунт верифіковано",
+    confirmEmail: "Підтвердити e-mail",
+    confirmPhone: "Підтвердити телефон SMS",
+  },
+  welcome: "Вітаємо",
+  alerts: {
+    ...en.alerts,
+    network: "Помилка з'єднання з сервером.",
+  },
+};
+
 export function getCrmExtended(locale: Locale): CrmExtendedDictionary {
-  return locale === "pl" ? pl : en;
+  if (locale === "pl") return pl;
+  if (locale === "uk") return uk;
+  return en;
 }
 
 export function fmtDict(template: string, vars: Record<string, string | number>): string {

@@ -317,37 +317,65 @@ input:-webkit-autofill:active {
 }
 
 /* TWARDY, ODPORNY NA BŁĘDY STYL CHECKBOXA */
-.estate-checkbox {
+.estate-checkbox,
+.eos-form-checkbox {
     width: 24px;
     height: 24px;
-    border-radius: 6px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 7px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    background-color: rgba(255, 255, 255, 0.08);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     flex-shrink: 0;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
 }
-.estate-checkbox:hover {
-    border-color: rgba(16, 185, 129, 0.5);
-    background-color: rgba(255, 255, 255, 0.1);
+.estate-checkbox:hover,
+.eos-form-checkbox:hover {
+    border-color: rgba(16, 185, 129, 0.55);
+    background-color: rgba(255, 255, 255, 0.12);
 }
-.estate-checkbox.checked {
+.estate-checkbox.checked,
+.eos-form-checkbox.checked {
     background-color: #10b981;
-    border-color: #10b981;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    border-color: #059669;
+    box-shadow:
+      0 0 0 1px rgba(16, 185, 129, 0.35),
+      0 0 18px rgba(16, 185, 129, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
-.estate-checkbox svg {
+.estate-checkbox svg,
+.eos-form-checkbox svg {
     color: #000000;
     opacity: 0;
     transform: scale(0.5);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
-.estate-checkbox.checked svg {
+.estate-checkbox.checked svg,
+.eos-form-checkbox.checked svg {
     opacity: 1;
     transform: scale(1);
+}
+
+html.light .estate-checkbox,
+html.light .eos-form-checkbox {
+    border-color: rgba(15, 23, 42, 0.28);
+    background-color: #ffffff;
+    box-shadow:
+      inset 0 1px 2px rgba(15, 23, 42, 0.06),
+      0 1px 0 rgba(255, 255, 255, 0.9);
+}
+html.light .estate-checkbox:hover,
+html.light .eos-form-checkbox:hover {
+    border-color: rgba(16, 185, 129, 0.55);
+    background-color: #f8fafc;
+}
+html.light .estate-checkbox.checked,
+html.light .eos-form-checkbox.checked {
+    background-color: #10b981;
+    border-color: #059669;
 }
 /* ----------------------------------------- */
 
@@ -498,49 +526,6 @@ html.light nav .eos-nav-link:hover {
   color: var(--eos-text);
 }
 
-html.light nav .eos-nav-primary-group {
-  background: linear-gradient(180deg, #ffffff 0%, #f3f4f6 100%) !important;
-  border-color: rgba(15, 23, 42, 0.1) !important;
-  box-shadow:
-    0 8px 24px rgba(15, 23, 42, 0.08),
-    0 2px 6px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 1) !important;
-}
-
-html.light nav .eos-nav-link-primary {
-  color: #111827 !important;
-  font-weight: 900 !important;
-  background: transparent !important;
-}
-
-html.light nav .eos-nav-link-primary:hover {
-  color: #047857 !important;
-  background: rgba(16, 185, 129, 0.1) !important;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12) !important;
-}
-
-html.light nav .eos-nav-mark {
-  color: #059669 !important;
-  background: linear-gradient(180deg, #ffffff 0%, #f8faf9 100%) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.06),
-    0 2px 10px rgba(15, 23, 42, 0.08) !important;
-}
-
-html.light nav .eos-nav-wordmark-body {
-  color: #111827 !important;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 1),
-    0 2px 0 rgba(15, 23, 42, 0.05),
-    0 3px 6px rgba(15, 23, 42, 0.08) !important;
-}
-
-
-html.light nav .eos-nav-wordmark-tm {
-  color: rgba(15, 23, 42, 0.38) !important;
-}
-
 html.light .premium-home-shell {
   background:
     radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.12), transparent 34%),
@@ -591,93 +576,6 @@ html.light .premium-home-shell {
 
 .premium-hero-scroll {
   color: rgba(255, 255, 255, 0.45) !important;
-}
-
-/* Hero wordmark — kinowa głębia, żywa zieleń, bez ucinania liter */
-.eos-hero-wordmark {
-  color: #ffffff;
-  overflow: visible;
-  -webkit-font-smoothing: antialiased;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.18),
-    0 2px 0 rgba(0, 0, 0, 0.3),
-    0 10px 28px rgba(0, 0, 0, 0.62),
-    0 22px 52px rgba(0, 0, 0, 0.42);
-}
-
-.eos-hero-wordmark-body {
-  color: #ffffff;
-  font-weight: 400;
-}
-
-.eos-hero-wordmark-accent {
-  display: inline-block;
-  padding-right: 0.04em;
-  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 38%, #10b981 68%, #059669 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-
-.eos-hero-wordmark-tm {
-  margin-left: 0.12em;
-  font-size: 0.18em;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  vertical-align: super;
-  color: rgba(255, 255, 255, 0.62);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-}
-
-/* Jasny motyw — hero zostaje kinowy (nie rozjaśniaj tła ani tekstu) */
-html.light .theme-aware-dashboard .premium-hero-stage {
-  background-color: #050505 !important;
-  color: #ffffff !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage [class*="bg-[#050505]"] {
-  background-color: #050505 !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage [class*="from-black"],
-html.light .theme-aware-dashboard .premium-hero-stage [class*="via-black"],
-html.light .theme-aware-dashboard .premium-hero-stage [class*="to-[#050505]"] {
-  --tw-gradient-from: rgb(0 0 0 / 0.72) var(--tw-gradient-from-position) !important;
-  --tw-gradient-via: rgb(0 0 0 / 0.34) var(--tw-gradient-via-position) !important;
-  --tw-gradient-to: rgb(5 5 5 / 1) var(--tw-gradient-to-position) !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark,
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-body,
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-tm {
-  color: #ffffff !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-body {
-  color: #ffffff !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-tm {
-  color: rgba(255, 255, 255, 0.62) !important;
-}
-
-html.light .theme-aware-dashboard .premium-hero-stage .eos-hero-wordmark-accent {
-  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 38%, #10b981 68%, #059669 100%) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
-}
-
-html.light nav .eos-nav-wordmark-accent {
-  background: linear-gradient(180deg, #14b8a6 0%, #10b981 42%, #059669 72%, #047857 100%) !important;
-  -webkit-background-clip: text !important;
-  background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
-  filter: none !important;
-  text-shadow: none !important;
 }
 
 /* Przełączniki segmentowe — zawsze czytelny aktywny stan (sprzedaż/wynajem, motyw) */
@@ -964,8 +862,12 @@ html.light .theme-aware-dashboard [class*="placeholder-white/"]::placeholder {
 html.light .theme-aware-dashboard [class*="bg-[#050505]"],
 html.light .theme-aware-dashboard [class*="bg-[#000]"],
 html.light .theme-aware-dashboard [class*="bg-[#020202]"],
+html.light .theme-aware-dashboard [class*="bg-[#030712]"],
+html.light .theme-aware-dashboard [class*="bg-[#060606]"],
 html.light .theme-aware-dashboard [class*="bg-[#080808]"],
 html.light .theme-aware-dashboard [class*="bg-[#0a0a0a]"],
+html.light .theme-aware-dashboard [class*="bg-[#0b0b0d]"],
+html.light .theme-aware-dashboard [class*="bg-[#0c0c0c]"],
 html.light .theme-aware-dashboard [class*="bg-[#0f0f11]"],
 html.light .theme-aware-dashboard [class*="bg-[#1a1a1a]"],
 html.light .theme-aware-dashboard [class*="bg-[#111]"],
@@ -1467,29 +1369,164 @@ html.dark button[class*="bg-[#111]"]:hover {
   animation: luxurySweep 1.5s ease-in-out infinite;
 }
 
+/* Pro Widget — theme-aware premium panels (CRM dashboard) */
+.eos-pro-widget {
+  color: var(--eos-text);
+}
+
+.eos-pro-shell {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  box-shadow: var(--eos-shadow-strong);
+  color: var(--eos-text);
+}
+
+.eos-pro-panel {
+  background: var(--eos-bg-elevated);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-panel-inset {
+  box-shadow: inset 0 5px 20px rgba(0, 0, 0, 0.85);
+}
+
+html.light .eos-pro-panel-inset {
+  box-shadow:
+    var(--eos-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.eos-pro-schedule-box {
+  background: var(--eos-bg-elevated);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-schedule-box {
+  box-shadow: inset 0 4px 24px rgba(0, 0, 0, 0.65);
+}
+
+html.light .eos-pro-schedule-box {
+  box-shadow:
+    var(--eos-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.eos-pro-muted {
+  color: var(--eos-muted);
+}
+
+.eos-pro-subtle {
+  color: var(--eos-subtle);
+}
+
+.eos-pro-countdown-unit {
+  background: var(--eos-input);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-countdown-unit {
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.75);
+}
+
+html.light .eos-pro-countdown-unit {
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.eos-pro-ticker {
+  background: var(--eos-glass);
+  border-color: var(--eos-border);
+}
+
+html.light .eos-pro-ticker {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+html.light .eos-pro-ticker [class*="from-black"],
+html.light .eos-pro-ticker [class*="to-black"] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.96) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0) var(--tw-gradient-to-position) !important;
+}
+
+.eos-contact-panel {
+  background: var(--eos-bg-elevated);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
+}
+
+.eos-themed-modal {
+  background-color: var(--eos-card);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
+}
+
+.eos-themed-modal input,
+.eos-themed-modal select,
+.eos-themed-modal textarea {
+  background-color: var(--eos-input);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
+}
+
 .eos-modal-backdrop {
-  background: rgba(15, 23, 42, 0.34);
-  backdrop-filter: blur(14px);
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(16px) saturate(1.05);
 }
 
 .eos-modal-surface {
   border: 1px solid var(--eos-border);
-  background: linear-gradient(180deg, rgba(12, 12, 14, 0.95) 0%, rgba(9, 9, 11, 0.98) 100%);
-  box-shadow: var(--eos-shadow-strong);
+  background: linear-gradient(180deg, rgba(14, 14, 16, 0.98) 0%, rgba(8, 8, 10, 0.99) 100%);
+  color: var(--eos-text);
+}
+
+.eos-modal-shell {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 2px 0 rgba(255, 255, 255, 0.03) inset,
+    0 24px 48px rgba(0, 0, 0, 0.55),
+    0 48px 96px rgba(0, 0, 0, 0.45);
+}
+
+.eos-modal-panel {
+  border: 1px solid var(--eos-border);
+  background: var(--eos-input);
+  border-radius: 1rem;
+}
+
+.eos-modal-muted {
+  color: var(--eos-muted);
+}
+
+.eos-modal-subtle {
+  color: var(--eos-subtle);
 }
 
 html.light .eos-modal-backdrop {
-  background: rgba(15, 23, 42, 0.14);
-  backdrop-filter: blur(18px) saturate(1.15);
+  background: rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(20px) saturate(1.2);
 }
 
 html.light .eos-modal-surface {
-  border-color: rgba(15, 23, 42, 0.14);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 252, 0.97) 100%);
+  border-color: rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99) 0%, rgba(248, 250, 252, 0.98) 100%);
+  color: var(--eos-text);
+}
+
+html.light .eos-modal-shell {
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.98) inset,
-    0 10px 30px rgba(15, 23, 42, 0.11),
-    0 24px 60px rgba(15, 23, 42, 0.1);
+    0 0 0 1px rgba(255, 255, 255, 0.95) inset,
+    0 1px 0 rgba(255, 255, 255, 1) inset,
+    0 8px 16px rgba(15, 23, 42, 0.06),
+    0 20px 40px rgba(15, 23, 42, 0.1),
+    0 40px 80px rgba(15, 23, 42, 0.12),
+    0 64px 120px rgba(15, 23, 42, 0.08);
+}
+
+html.light .eos-modal-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(15, 23, 42, 0.1);
 }
 
 @media print {
