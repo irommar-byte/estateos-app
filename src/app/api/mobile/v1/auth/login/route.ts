@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { signMobileToken } from '@/lib/jwtMobile';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
+import { recordUserLogin } from '@/lib/recordUserLogin';
 import { MOBILE_USER_SELECT, shapeMobileUser } from '@/lib/mobileUserShape';
 import { userHasRegisteredPasskey } from '@/lib/mobilePasskeyStatus';
 
@@ -45,6 +46,8 @@ export async function POST(req: Request) {
       select: MOBILE_USER_SELECT,
     });
     const hasPasskey = await userHasRegisteredPasskey(user.id);
+
+    void recordUserLogin(user.id, ip);
 
     return NextResponse.json({
       success: true,

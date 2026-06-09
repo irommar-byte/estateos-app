@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
+import { shapeAdminUserDetail } from '@/lib/adminUserDetail';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -21,6 +22,28 @@ async function requireAdmin() {
   });
 }
 
+const USER_ADMIN_INCLUDE = {
+  offers: {
+    select: { id: true, title: true, price: true, status: true },
+    orderBy: { createdAt: 'desc' as const },
+  },
+  radarPreference: true,
+  radarSearchHistory: {
+    orderBy: { searchedAt: 'desc' as const },
+    take: 8,
+  },
+  discoveryProfile: true,
+  devices: {
+    orderBy: { lastSyncedAt: 'desc' as const },
+  },
+  _count: {
+    select: {
+      sessions: true,
+      Authenticator: true,
+    },
+  },
+};
+
 export async function GET() {
   try {
     const admin = await requireAdmin();
@@ -28,17 +51,17 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const users = await prisma.user.findMany({
-      include: {
-        offers: {
-          select: { id: true, title: true, price: true, status: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
+    const rows = await prisma.user.findMany({
+      include: USER_ADMIN_INCLUDE,
+      orderBy: { createdAt: 'desc' },
     });
+
+    const users = rows.map((row) => shapeAdminUserDetail(row as Parameters<typeof shapeAdminUserDetail>[0]));
+
     return NextResponse.json({ success: true, users });
   } catch (error) {
-    return NextResponse.json({ success: false, error: "Błąd bazy" }, { status: 500 });
+    console.error('[ADMIN USERS GET]', error);
+    return NextResponse.json({ success: false, error: 'Błąd bazy' }, { status: 500 });
   }
 }
 
@@ -56,7 +79,7 @@ export async function PUT(req: Request) {
     }
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { role, name, email }
+      data: { role, name, email },
     });
     return NextResponse.json({ success: true, user: updated });
   } catch (error) {

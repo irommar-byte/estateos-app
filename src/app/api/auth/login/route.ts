@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { encryptSession, resolveSessionSecret } from '@/lib/sessionUtils';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
 import { getClientIp, logEvent } from '@/lib/observability';
+import { recordUserLogin } from '@/lib/recordUserLogin';
 import { buildPhoneLookupVariants } from '@/lib/phoneE164';
 
 export async function POST(req: Request) {
@@ -114,6 +115,8 @@ export async function POST(req: Request) {
       path: '/',
       maxAge: 60 * 60 * 24 * 30,
     });
+
+    void recordUserLogin(user.id, ip);
 
     return response;
   } catch (error) {

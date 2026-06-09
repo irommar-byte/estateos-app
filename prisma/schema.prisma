@@ -46,6 +46,8 @@ model User {
   searchAmenities       String?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
+  lastLoginIp          String?                  @db.VarChar(64)
+  lastLoginAt          DateTime?
   accounts             Account[]
   proposedAppointments Appointment[]            @relation("ProposedAppointments")
   Authenticator        Authenticator[]
