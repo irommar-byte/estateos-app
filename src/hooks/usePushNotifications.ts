@@ -5,7 +5,13 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { shouldSuppressDealPushForActiveChat } from '../utils/activeDealroomPush';
-import { shouldSuppressContactPushForActiveChat } from '../utils/activeContactPush';
+import {
+  isContactPushNotification,
+  resolveContactPushDisplayBody,
+  resolveContactPushDisplayTitle,
+  resolveContactPushThreadIdentifier,
+  shouldSuppressContactPushForActiveChat,
+} from '../utils/activeContactPush';
 import type { Notification } from 'expo-notifications';
 import { API_URL } from '../config/network';
 
@@ -19,6 +25,55 @@ Notifications.setNotificationHandler({
         shouldSetBadge: true,
       };
     }
+
+    if (isContactPushNotification(notification)) {
+      const existingThread = String(notification.request.content.threadIdentifier || '').trim();
+      if (existingThread) {
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        };
+      }
+
+      const threadIdentifier = resolveContactPushThreadIdentifier(notification);
+      const title = resolveContactPushDisplayTitle(notification);
+      const body = resolveContactPushDisplayBody(notification);
+      const data = notification.request.content.data;
+
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            subtitle: 'EstateOS Contact',
+            body,
+            threadIdentifier,
+            data: {
+              ...(typeof data === 'object' && data != null ? data : {}),
+              threadIdentifier,
+            },
+          },
+          trigger: null,
+        });
+      } catch {
+        /* fallback: pokaż oryginalne powiadomienie */
+        return {
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        };
+      }
+
+      return {
+        shouldShowBanner: false,
+        shouldShowList: false,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      };
+    }
+
     return {
       shouldShowBanner: true,
       shouldShowList: true,
@@ -159,6 +214,12 @@ export async function registerPushNotifications(
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#10b981',
+      });
+      await Notifications.setNotificationChannelAsync('contact-messages', {
+        name: 'Wiadomości bezpośrednie',
+        importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#10b981',
       });
