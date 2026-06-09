@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
+import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
 import PresentationFlowOrchestrator from "@/components/presentation/PresentationFlowOrchestrator";
@@ -168,6 +169,7 @@ export default function Navbar() {
           {user && (
             <>
               <PublicationWalletNavButton />
+              <ContactMessagesNavButton />
               <NotificationCenter />
             </>
           )}
@@ -209,6 +211,7 @@ export default function Navbar() {
           {user && (
             <>
               <PublicationWalletNavButton />
+              <ContactMessagesNavButton />
               <NotificationCenter />
             </>
           )}

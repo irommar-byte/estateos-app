@@ -29,6 +29,7 @@ import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadg
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
+import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
@@ -525,6 +526,15 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                       })()}
                   </div>
                 </button>
+
+                {!isOwner && (offer?.user?.id || offer?.userId) ? (
+                  <ProfileWriteMessageButton
+                    peerUserId={Number(offer?.user?.id || offer?.userId)}
+                    peerName={sellerLabel}
+                    currentUserId={currentUser?.id}
+                    variant="offer"
+                  />
+                ) : null}
 
                 <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 sm:gap-x-4">
                   <div className="flex flex-col items-center justify-center">

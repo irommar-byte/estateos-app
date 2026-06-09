@@ -16,6 +16,7 @@ export default function FloatingPreferencesDock() {
   const { dict } = useLocale();
   const [open, setOpen] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
   const introTimerRef = useRef<number | null>(null);
 
@@ -61,6 +62,13 @@ export default function FloatingPreferencesDock() {
     } catch {
       /* noop */
     }
+
+    void fetch("/api/user/profile", { cache: "no-store", credentials: "include" })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        setIsLoggedIn(Boolean(res.ok && (data?.id || data?.user?.id)));
+      })
+      .catch(() => setIsLoggedIn(false));
 
     return () => {
       clearHideTimer();
@@ -120,7 +128,7 @@ export default function FloatingPreferencesDock() {
                 <p className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
                   {dict.theme.label}
                 </p>
-                <CompactThemeSwitcher />
+                <CompactThemeSwitcher showMessages={isLoggedIn} />
               </div>
               <div className="space-y-1">
                 <p className="px-1 text-[9px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
