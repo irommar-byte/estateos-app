@@ -118,7 +118,7 @@ export default function ProOpenHouseManageModal({
       });
       const data = await res.json();
       if (!res.ok || !data?.event) {
-        setError(data?.message || "Nie udało się opublikować.");
+        setError(data?.message || copy.openHousePublishError);
         return;
       }
       setSuccess(copy.openHouseSuccess);
@@ -126,14 +126,14 @@ export default function ProOpenHouseManageModal({
       await loadEvents();
       onChanged?.();
     } catch {
-      setError("Błąd połączenia.");
+      setError(copy.openHousePublishError);
     } finally {
       setSubmitting(false);
     }
   };
 
   const cancelEvent = async (eventId: number) => {
-    if (!window.confirm("Anulować ten dzień otwarty?")) return;
+    if (!window.confirm(copy.openHouseCancelConfirm)) return;
     setSubmitting(true);
     setError("");
     try {
@@ -145,13 +145,13 @@ export default function ProOpenHouseManageModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data?.message || "Nie udało się anulować.");
+        setError(data?.message || copy.openHouseCancelError);
         return;
       }
       await loadEvents();
       onChanged?.();
     } catch {
-      setError("Błąd połączenia.");
+      setError(copy.openHouseCancelError);
     } finally {
       setSubmitting(false);
     }
@@ -167,7 +167,7 @@ export default function ProOpenHouseManageModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/85 backdrop-blur-md"
+            className="eos-modal-backdrop absolute inset-0"
             onClick={onClose}
           />
           <motion.div
@@ -175,28 +175,28 @@ export default function ProOpenHouseManageModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative my-auto w-full max-w-xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0a0a] shadow-2xl"
+            className="eos-modal-surface eos-modal-shell eos-themed-modal relative my-auto w-full max-w-xl overflow-hidden rounded-[2rem] border"
           >
-            <div className="flex items-center justify-between border-b border-white/5 px-6 py-5">
+            <div className="flex items-center justify-between border-b border-[var(--eos-border)] px-6 py-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 dark:text-amber-400">
                   <DoorOpen size={20} />
                 </div>
-                <h3 className="text-lg font-black text-white">{copy.openHouseModalTitle}</h3>
+                <h3 className="text-lg font-black text-[var(--eos-text)]">{copy.openHouseModalTitle}</h3>
               </div>
-              <button type="button" onClick={onClose} className="rounded-full bg-white/5 p-2 text-white/50">
+              <button type="button" onClick={onClose} className="eos-pro-muted rounded-full bg-[var(--eos-input)] p-2 transition hover:bg-[var(--eos-border)]">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex gap-2 border-b border-white/5 px-6 py-3">
+            <div className="flex gap-2 border-b border-[var(--eos-border)] px-6 py-3">
               {(["create", "list"] as const).map((key) => (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setTab(key)}
                   className={`rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest ${
-                    tab === key ? "bg-amber-500/20 text-amber-300" : "text-white/40"
+                    tab === key ? "bg-amber-500/20 text-amber-600 dark:text-amber-300" : "eos-pro-muted"
                   }`}
                 >
                   {key === "create" ? copy.openHouseCreateTab : copy.openHouseListTab}
@@ -212,7 +212,7 @@ export default function ProOpenHouseManageModal({
                 activeOffers.length ? (
                   <>
                     <div>
-                      <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-white/40">
+                      <p className="eos-pro-muted mb-2 text-[10px] font-black uppercase tracking-widest">
                         {copy.openHousePickOffer}
                       </p>
                       <div className="space-y-2">
@@ -224,11 +224,11 @@ export default function ProOpenHouseManageModal({
                             className={`w-full rounded-xl border px-4 py-3 text-left ${
                               offerId === offer.id
                                 ? "border-amber-500/50 bg-amber-500/10"
-                                : "border-white/10 bg-white/[0.02]"
+                                : "border-[var(--eos-border)] bg-[var(--eos-input)]"
                             }`}
                           >
-                            <p className="text-sm font-semibold text-white">{offer.title}</p>
-                            <p className="text-xs text-white/45">
+                            <p className="text-sm font-semibold text-[var(--eos-text)]">{offer.title}</p>
+                            <p className="eos-pro-muted text-xs">
                               #{offer.id} · {offer.city} · {offer.district}
                             </p>
                           </button>
@@ -251,7 +251,7 @@ export default function ProOpenHouseManageModal({
                           className={`rounded-xl border px-2 py-2 text-[10px] font-bold leading-snug ${
                             visitMode === mode
                               ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                              : "border-white/10 text-white/50"
+                              : "border-[var(--eos-border)] eos-pro-muted"
                           }`}
                         >
                           {label}
@@ -268,7 +268,7 @@ export default function ProOpenHouseManageModal({
                           type="date"
                           value={day}
                           onChange={(e) => setDay(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                       <label className="block">
@@ -281,7 +281,7 @@ export default function ProOpenHouseManageModal({
                           max={visitMode === "FLEX" ? 50 : 5}
                           value={capacity}
                           onChange={(e) => setCapacity(Number(e.target.value) || 1)}
-                          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                       <label className="block">
@@ -291,7 +291,7 @@ export default function ProOpenHouseManageModal({
                         <select
                           value={startHour}
                           onChange={(e) => setStartHour(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
                         >
                           {hours.map((h) => (
                             <option key={h} value={h}>
@@ -307,7 +307,7 @@ export default function ProOpenHouseManageModal({
                         <select
                           value={endHour}
                           onChange={(e) => setEndHour(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
                         >
                           {hours.map((h) => (
                             <option key={h} value={h}>

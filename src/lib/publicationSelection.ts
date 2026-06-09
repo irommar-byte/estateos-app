@@ -32,18 +32,24 @@ export function publicationSelectionToRedemption(
   return { action: "buy_plus" };
 }
 
+import type { Locale } from "@/i18n/config";
+
 export function publicationSelectionLabel(
   selection: PublicationSelection,
-  locale: "pl" | "en" = "pl",
+  locale: Locale = "pl",
 ): string {
   if (selection === "pay_renewal") {
+    if (locale === "uk") return "Оплатити продовження";
     return locale === "en" ? "Pay renewal" : "Opłać odnowienie";
   }
   if (selection === "buy_plus") {
+    if (locale === "uk") return "Перейти до оплати";
     return locale === "en" ? "Go to payment" : "Przejdź do płatności";
   }
   if (selection === "plus_credit") {
+    if (locale === "uk") return "Опублікувати кредитом Plus";
     return locale === "en" ? "Publish with Plus credit" : "Opublikuj kredytem Plus";
   }
+  if (locale === "uk") return "Опублікувати купоном";
   return locale === "en" ? "Publish with coupon" : "Opublikuj kuponem";
 }

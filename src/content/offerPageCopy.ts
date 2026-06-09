@@ -324,5 +324,6 @@ const EN: OfferPageCopy = {
 };
 
 export function getOfferPageCopy(locale: Locale): OfferPageCopy {
-  return locale === "pl" ? PL : EN;
+  if (locale === "pl") return PL;
+  return EN;
 }

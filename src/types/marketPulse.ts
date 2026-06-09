@@ -31,6 +31,11 @@ export function demandLabelForLevel(level: DemandLevel, locale: Locale): string 
     if (level === "medium") return "Umiarkowany";
     return "Stabilny";
   }
+  if (locale === "uk") {
+    if (level === "high") return "Високий";
+    if (level === "medium") return "Помірний";
+    return "Стабільний";
+  }
   if (level === "high") return "High";
   if (level === "medium") return "Moderate";
   return "Stable";

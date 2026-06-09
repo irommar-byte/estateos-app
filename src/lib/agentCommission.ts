@@ -272,12 +272,16 @@ export function describeOfferAgentCommission(
 /** Tekst informacyjny na stronie oferty (kupujący). */
 export function formatBuyerAgentCommissionLine(
   info: AgentCommissionDescribe,
-  locale: "pl" | "en" = "pl",
+  locale: import("@/i18n/config").Locale = "pl",
 ): string {
   if (info.isZero) {
+    if (locale === "uk") return "Немає комісії агента для цього оголошення.";
     return locale === "en"
       ? "No agent commission on this listing."
       : "Brak prowizji agenta przy tej ofercie.";
+  }
+  if (locale === "uk") {
+    return `Ціна оголошення — остаточна брутто-сuma (не підвищується). Після угоди покупець виплачує агенту ${info.amountLabel} (${info.percentLabel} ціни) як брутто-комісію напряму поза платформою.`;
   }
   return locale === "en"
     ? `The listing price is the final gross amount (not increased). After the sale, the buyer pays ${info.amountLabel} (${info.percentLabel} of that price) as gross agent commission directly to the agent.`

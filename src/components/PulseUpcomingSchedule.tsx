@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarClock, ChevronLeft, ChevronRight, DoorOpen, MapPin, Presentation } from "lucide-react";
+import type { Locale } from "@/i18n/config";
+import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 import {
   eventCountdownState,
   splitCountdown,
@@ -13,52 +15,47 @@ import {
 const ROTATE_MS = 9_000;
 const FETCH_MS = 60_000;
 
+function localeTag(locale: Locale): string {
+  if (locale === "pl") return "pl-PL";
+  if (locale === "uk") return "uk-UA";
+  return "en-GB";
+}
+
 function kindIcon(kind: UpcomingScheduleEvent["kind"]) {
   if (kind === "presentation") return Presentation;
   return DoorOpen;
 }
 
 function kindAccent(kind: UpcomingScheduleEvent["kind"]) {
-  if (kind === "presentation") return "text-purple-400";
-  if (kind === "open_house_host") return "text-emerald-400";
-  return "text-sky-400";
+  if (kind === "presentation") return "text-purple-500 dark:text-purple-400";
+  if (kind === "open_house_host") return "text-emerald-600 dark:text-emerald-400";
+  return "text-sky-600 dark:text-sky-400";
 }
 
 function CountdownUnit({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex min-w-[44px] flex-col items-center">
-      <div className="flex h-10 w-full min-w-[44px] items-center justify-center rounded-xl border border-white/10 bg-black/60 px-1 shadow-[inset_0_2px_8px_rgba(0,0,0,0.9)]">
-        <span className="text-lg font-black tabular-nums tracking-tight text-white/95">
+      <div className="eos-pro-countdown-unit flex h-10 w-full min-w-[44px] items-center justify-center rounded-xl px-1">
+        <span className="text-lg font-black tabular-nums tracking-tight text-[var(--eos-text)]">
           {String(value).padStart(2, "0")}
         </span>
       </div>
-      <span className="mt-1 text-[7px] font-black uppercase tracking-[0.18em] text-white/30">{label}</span>
+      <span className="eos-pro-subtle mt-1 text-[7px] font-black uppercase tracking-[0.18em]">{label}</span>
     </div>
   );
 }
 
-export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
-  const isPl = locale !== "en";
+type Props = {
+  locale: Locale;
+  copy: CrmExtendedDictionary["pulseSchedule"];
+};
+
+export default function PulseUpcomingSchedule({ locale, copy }: Props) {
   const [events, setEvents] = useState<UpcomingScheduleEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
   const [now, setNow] = useState(() => Date.now());
-
-  const labels = useMemo(
-    () => ({
-      section: isPl ? "Twój harmonogram" : "Your schedule",
-      empty: isPl ? "Brak zaplanowanych wydarzeń" : "No scheduled events",
-      emptyHint: isPl ? "Prezentacje i dni otwarte pojawią się tutaj." : "Presentations and open houses will appear here.",
-      live: isPl ? "Trwa teraz" : "Live now",
-      pending: isPl ? "Oczekuje" : "Pending",
-      days: isPl ? "Dni" : "Days",
-      hours: isPl ? "Godz" : "Hrs",
-      minutes: isPl ? "Min" : "Min",
-      seconds: isPl ? "Sek" : "Sec",
-      starts: isPl ? "Start" : "Starts",
-    }),
-    [isPl]
-  );
+  const dateTag = localeTag(locale);
 
   const load = useCallback(async () => {
     try {
@@ -110,7 +107,7 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
 
   const active = visibleEvents[index] ?? null;
   const Icon = active ? kindIcon(active.kind) : CalendarClock;
-  const accent = active ? kindAccent(active.kind) : "text-white/40";
+  const accent = active ? kindAccent(active.kind) : "eos-pro-subtle";
 
   const countdown = useMemo(() => {
     if (!active) return null;
@@ -129,27 +126,27 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <CalendarClock size={14} className="text-white/35" />
-          <p className="text-[8px] font-black uppercase tracking-[0.22em] text-white/40">{labels.section}</p>
+          <CalendarClock size={14} className="eos-pro-subtle" />
+          <p className="eos-pro-muted text-[8px] font-black uppercase tracking-[0.22em]">{copy.section}</p>
         </div>
         {visibleEvents.length > 1 ? (
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => shift(-1)}
-              className="rounded-full p-1 text-white/30 transition hover:bg-white/5 hover:text-white/70"
-              aria-label={isPl ? "Poprzednie wydarzenie" : "Previous event"}
+              className="eos-pro-subtle rounded-full p-1 transition hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
+              aria-label={copy.prevEvent}
             >
               <ChevronLeft size={14} />
             </button>
-            <span className="min-w-[28px] text-center text-[8px] font-black tabular-nums text-white/35">
+            <span className="eos-pro-subtle min-w-[28px] text-center text-[8px] font-black tabular-nums">
               {index + 1}/{visibleEvents.length}
             </span>
             <button
               type="button"
               onClick={() => shift(1)}
-              className="rounded-full p-1 text-white/30 transition hover:bg-white/5 hover:text-white/70"
-              aria-label={isPl ? "Następne wydarzenie" : "Next event"}
+              className="eos-pro-subtle rounded-full p-1 transition hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
+              aria-label={copy.nextEvent}
             >
               <ChevronRight size={14} />
             </button>
@@ -157,16 +154,16 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
         ) : null}
       </div>
 
-      <div className="relative min-h-[168px] flex-1 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#060606] p-4 shadow-[inset_0_4px_24px_rgba(0,0,0,0.85)]">
+      <div className="eos-pro-schedule-box relative min-h-[168px] flex-1 overflow-hidden rounded-2xl p-4">
         {loading && visibleEvents.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/10 border-t-emerald-500/80" />
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--eos-border)] border-t-emerald-500/80" />
           </div>
         ) : !active ? (
           <div className="flex h-full flex-col items-center justify-center px-2 text-center">
-            <CalendarClock size={22} className="mb-3 text-white/15" />
-            <p className="text-[11px] font-bold text-white/45">{labels.empty}</p>
-            <p className="mt-1 max-w-[220px] text-[9px] leading-relaxed text-white/25">{labels.emptyHint}</p>
+            <CalendarClock size={22} className="eos-pro-subtle mb-3 opacity-60" />
+            <p className="eos-pro-muted text-[11px] font-bold">{copy.empty}</p>
+            <p className="eos-pro-subtle mt-1 max-w-[220px] text-[9px] leading-relaxed">{copy.emptyHint}</p>
           </div>
         ) : (
           <AnimatePresence mode="wait">
@@ -179,21 +176,21 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
               className="flex h-full flex-col"
             >
               <div className="mb-3 flex items-start gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/50">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
                   <Icon size={15} className={accent} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className={`text-[9px] font-black uppercase tracking-[0.16em] ${accent}`}>{active.title}</p>
                     {active.status === "pending" ? (
-                      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-amber-400/90">
-                        {labels.pending}
+                      <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400/90">
+                        {copy.pending}
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-1 truncate text-[12px] font-bold text-white/85">{active.subtitle}</p>
+                  <p className="mt-1 truncate text-[12px] font-bold text-[var(--eos-text)]">{active.subtitle}</p>
                   {active.location ? (
-                    <p className="mt-1 flex items-center gap-1 truncate text-[9px] text-white/35">
+                    <p className="eos-pro-subtle mt-1 flex items-center gap-1 truncate text-[9px]">
                       <MapPin size={10} className="shrink-0" />
                       {active.location}
                     </p>
@@ -207,27 +204,27 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
                     <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-70" />
                     <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
                   </span>
-                  <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-400">
-                    {labels.live}
+                  <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
+                    {copy.live}
                   </span>
                 </div>
               ) : countdown?.parts ? (
                 <div className="mt-auto">
-                  <p className="mb-2 text-center text-[8px] font-black uppercase tracking-[0.2em] text-white/25">
-                    {labels.starts}{" "}
-                    {new Date(active.startsAt).toLocaleString(isPl ? "pl-PL" : "en-GB", {
+                  <p className="eos-pro-subtle mb-2 text-center text-[8px] font-black uppercase tracking-[0.2em]">
+                    {copy.starts}{" "}
+                    {new Date(active.startsAt).toLocaleString(dateTag, {
                       weekday: "short",
-                      day: "2-digit",
+                      day: "numeric",
                       month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
                   </p>
                   <div className="flex items-start justify-center gap-2">
-                    <CountdownUnit value={countdown.parts.days} label={labels.days} />
-                    <CountdownUnit value={countdown.parts.hours} label={labels.hours} />
-                    <CountdownUnit value={countdown.parts.minutes} label={labels.minutes} />
-                    <CountdownUnit value={countdown.parts.seconds} label={labels.seconds} />
+                    <CountdownUnit value={countdown.parts.days} label={copy.days} />
+                    <CountdownUnit value={countdown.parts.hours} label={copy.hours} />
+                    <CountdownUnit value={countdown.parts.minutes} label={copy.minutes} />
+                    <CountdownUnit value={countdown.parts.seconds} label={copy.seconds} />
                   </div>
                 </div>
               ) : null}
@@ -235,9 +232,9 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
               {active.href ? (
                 <Link
                   href={active.href}
-                  className="mt-3 block text-center text-[8px] font-black uppercase tracking-[0.18em] text-white/30 transition hover:text-emerald-400/80"
+                  className="eos-pro-subtle mt-3 block text-center text-[8px] font-black uppercase tracking-[0.18em] transition hover:text-emerald-600 dark:hover:text-emerald-400/80"
                 >
-                  {isPl ? "Szczegóły →" : "Details →"}
+                  {copy.detailsLink}
                 </Link>
               ) : null}
             </motion.div>
@@ -252,9 +249,9 @@ export default function PulseUpcomingSchedule({ locale }: { locale: string }) {
                 type="button"
                 onClick={() => setIndex(i)}
                 className={`h-1 rounded-full transition-all ${
-                  i === index ? "w-4 bg-emerald-500/80" : "w-1 bg-white/15 hover:bg-white/30"
+                  i === index ? "w-4 bg-emerald-500/80" : "w-1 bg-[var(--eos-border)] hover:bg-[var(--eos-muted)]"
                 }`}
-                aria-label={`${isPl ? "Wydarzenie" : "Event"} ${i + 1}`}
+                aria-label={`${copy.eventLabel} ${i + 1}`}
               />
             ))}
           </div>

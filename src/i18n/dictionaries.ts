@@ -5,6 +5,7 @@ import type { AuthDictionary } from "./authDictionary";
 import { getAuthDictionary } from "./authDictionary";
 import type { CrmExtendedDictionary } from "./crmExtendedDictionary";
 import { getCrmExtended } from "./crmExtendedDictionary";
+import { buildUkDictionary } from "./dictionaryUk";
 
 export type Dictionary = {
   auth: AuthDictionary;
@@ -25,6 +26,7 @@ export type Dictionary = {
     logout: string;
     langPl: string;
     langEn: string;
+    langUk: string;
     language: string;
   };
   theme: {
@@ -402,6 +404,7 @@ const pl: Dictionary = {
     logout: "Wyloguj",
     langPl: "PL",
     langEn: "EN",
+    langUk: "UA",
     language: "Język",
   },
   theme: {
@@ -413,7 +416,7 @@ const pl: Dictionary = {
   prefsDock: {
     introTitle: "Ustawienia wyświetlania",
     introBody:
-      "Tu zmienisz motyw (jasny/ciemny), język (PL/EN) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
+      "Tu zmienisz motyw (jasny/ciemny), język (PL / EN / UA) i walutę cen (PLN, EUR lub waluta oferty). Panel chowa się sam — otwórz go ponownie ikoną koła zębatego.",
     showSettings: "Pokaż ustawienia",
     hideSettings: "Schowaj ustawienia",
   },
@@ -805,6 +808,7 @@ const en: Dictionary = {
     logout: "Log out",
     langPl: "PL",
     langEn: "EN",
+    langUk: "UA",
     language: "Language",
   },
   theme: {
@@ -816,7 +820,7 @@ const en: Dictionary = {
   prefsDock: {
     introTitle: "Display settings",
     introBody:
-      "Adjust theme (light/dark), language (PL/EN), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
+      "Adjust theme (light/dark), language (PL / EN / UA), and price currency (PLN, EUR, or listing currency). The panel auto-hides — reopen it with the gear icon.",
     showSettings: "Show settings",
     hideSettings: "Hide settings",
   },
@@ -1188,7 +1192,9 @@ const en: Dictionary = {
   },
 };
 
-export const dictionaries: Record<Locale, Dictionary> = { pl, en };
+const uk = buildUkDictionary(en);
+
+export const dictionaries: Record<Locale, Dictionary> = { pl, en, uk };
 
 export type FullDictionary = Dictionary & {
   crm: Dictionary["crm"] & CrmExtendedDictionary;

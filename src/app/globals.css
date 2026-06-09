@@ -862,8 +862,12 @@ html.light .theme-aware-dashboard [class*="placeholder-white/"]::placeholder {
 html.light .theme-aware-dashboard [class*="bg-[#050505]"],
 html.light .theme-aware-dashboard [class*="bg-[#000]"],
 html.light .theme-aware-dashboard [class*="bg-[#020202]"],
+html.light .theme-aware-dashboard [class*="bg-[#030712]"],
+html.light .theme-aware-dashboard [class*="bg-[#060606]"],
 html.light .theme-aware-dashboard [class*="bg-[#080808]"],
 html.light .theme-aware-dashboard [class*="bg-[#0a0a0a]"],
+html.light .theme-aware-dashboard [class*="bg-[#0b0b0d]"],
+html.light .theme-aware-dashboard [class*="bg-[#0c0c0c]"],
 html.light .theme-aware-dashboard [class*="bg-[#0f0f11]"],
 html.light .theme-aware-dashboard [class*="bg-[#1a1a1a]"],
 html.light .theme-aware-dashboard [class*="bg-[#111]"],
@@ -1363,6 +1367,107 @@ html.dark button[class*="bg-[#111]"]:hover {
 
 .group:hover .pricing-pro-cta-sheen {
   animation: luxurySweep 1.5s ease-in-out infinite;
+}
+
+/* Pro Widget — theme-aware premium panels (CRM dashboard) */
+.eos-pro-widget {
+  color: var(--eos-text);
+}
+
+.eos-pro-shell {
+  background: var(--eos-card);
+  border: 1px solid var(--eos-border);
+  box-shadow: var(--eos-shadow-strong);
+  color: var(--eos-text);
+}
+
+.eos-pro-panel {
+  background: var(--eos-bg-elevated);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-panel-inset {
+  box-shadow: inset 0 5px 20px rgba(0, 0, 0, 0.85);
+}
+
+html.light .eos-pro-panel-inset {
+  box-shadow:
+    var(--eos-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.eos-pro-schedule-box {
+  background: var(--eos-bg-elevated);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-schedule-box {
+  box-shadow: inset 0 4px 24px rgba(0, 0, 0, 0.65);
+}
+
+html.light .eos-pro-schedule-box {
+  box-shadow:
+    var(--eos-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.eos-pro-muted {
+  color: var(--eos-muted);
+}
+
+.eos-pro-subtle {
+  color: var(--eos-subtle);
+}
+
+.eos-pro-countdown-unit {
+  background: var(--eos-input);
+  border: 1px solid var(--eos-border);
+  color: var(--eos-text);
+}
+
+html.dark .eos-pro-countdown-unit {
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.75);
+}
+
+html.light .eos-pro-countdown-unit {
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.eos-pro-ticker {
+  background: var(--eos-glass);
+  border-color: var(--eos-border);
+}
+
+html.light .eos-pro-ticker {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+html.light .eos-pro-ticker [class*="from-black"],
+html.light .eos-pro-ticker [class*="to-black"] {
+  --tw-gradient-from: rgba(255, 255, 255, 0.96) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgba(255, 255, 255, 0) var(--tw-gradient-to-position) !important;
+}
+
+.eos-contact-panel {
+  background: var(--eos-bg-elevated);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
+}
+
+.eos-themed-modal {
+  background-color: var(--eos-card);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
+}
+
+.eos-themed-modal input,
+.eos-themed-modal select,
+.eos-themed-modal textarea {
+  background-color: var(--eos-input);
+  border-color: var(--eos-border);
+  color: var(--eos-text);
 }
 
 .eos-modal-backdrop {

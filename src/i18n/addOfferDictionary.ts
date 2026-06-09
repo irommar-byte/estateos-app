@@ -368,7 +368,9 @@ const en: AddOfferDictionary = {
 };
 
 export function getAddOfferDictionary(locale: Locale): AddOfferDictionary {
-  return locale === "en" ? en : pl;
+  if (locale === "en") return en;
+  if (locale === "uk") return en;
+  return pl;
 }
 
 /** Klucze udogodnień → pole słownika */

@@ -1,8 +1,14 @@
 "use client";
 
 import { useLocale } from "@/contexts/LocaleContext";
-import type { Locale } from "@/i18n/config";
+import { LOCALE_FLAGS, type Locale } from "@/i18n/config";
 import EosSegmentedControl from "@/components/ui/EosSegmentedControl";
+
+const LOCALE_LABELS: Record<Locale, { short: string; title: string }> = {
+  pl: { short: "PL", title: "Polski" },
+  en: { short: "EN", title: "English" },
+  uk: { short: "UA", title: "Українська" },
+};
 
 export default function LanguageSwitcher({ className = "" }: { className?: string }) {
   const { locale, setLocale, dict } = useLocale();
@@ -15,10 +21,12 @@ export default function LanguageSwitcher({ className = "" }: { className?: strin
         onChange={setLocale}
         ariaLabel={dict.nav.language}
         compact
-        options={[
-          { value: "pl", label: dict.nav.langPl, title: dict.nav.langPl },
-          { value: "en", label: dict.nav.langEn, title: dict.nav.langEn },
-        ]}
+        options={(["pl", "en", "uk"] as const).map((code) => ({
+          value: code,
+          label: LOCALE_LABELS[code].short,
+          title: LOCALE_LABELS[code].title,
+          icon: <span className="text-base leading-none">{LOCALE_FLAGS[code]}</span>,
+        }))}
       />
     </div>
   );
