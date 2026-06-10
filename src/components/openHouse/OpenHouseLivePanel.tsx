@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  FlatList,
   Modal,
   Pressable,
-  SectionList,
   StyleSheet,
   Text,
   View,
@@ -31,7 +31,7 @@ import ScrollingNewsLine from './ScrollingNewsLine';
 import { fetchLiveAuctionEvents } from '../../services/auctionService';
 import { formatAmountWithCurrency } from '../../money/format';
 import { normalizeListingCurrency } from '../../money/convert';
-import { auctionCountdownMs, auctionHasStarted } from '../../utils/auctionUi';
+import { auctionHasStarted } from '../../utils/auctionUi';
 import { formatLiveDistanceKm } from '../../utils/liveDistance';
 import { openDirectContactChat } from '../../utils/openDirectContact';
 
@@ -40,9 +40,7 @@ type Props = {
   onClose: () => void;
 };
 
-type SectionRow =
-  | { kind: 'open_house'; item: OpenHouseTickerItem }
-  | { kind: 'auction'; item: AuctionEventRecord };
+type LiveDivision = 'open_house' | 'auction';
 
 export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const navigation = useNavigation<any>();
@@ -63,6 +61,7 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const [auctionEvents, setAuctionEvents] = useState<AuctionEventRecord[]>([]);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
+  const [division, setDivision] = useState<LiveDivision>('open_house');
 
   useEffect(() => {
     if (!visible) return;
@@ -95,24 +94,35 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
     });
   }, [items, reservedSet]);
 
-  const sections = useMemo(() => {
-    const out: Array<{ title: string; accent: string; data: SectionRow[] }> = [];
-    if (sortedOpenHouse.length) {
-      out.push({
-        title: t('openHouse.live.sectionOpenHouse'),
-        accent: '#10B981',
-        data: sortedOpenHouse.map((item) => ({ kind: 'open_house' as const, item })),
-      });
+  const divisionTabs = useMemo(
+    () =>
+      [
+        {
+          key: 'open_house' as const,
+          label: t('openHouse.live.sectionOpenHouse'),
+          accent: '#10B981',
+          count: sortedOpenHouse.length,
+          icon: 'home-outline' as const,
+        },
+        {
+          key: 'auction' as const,
+          label: t('openHouse.live.sectionAuction'),
+          accent: '#8B5CF6',
+          count: auctionEvents.length,
+          icon: 'hammer-outline' as const,
+        },
+      ] as const,
+    [sortedOpenHouse.length, auctionEvents.length, t],
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    if (division === 'open_house' && sortedOpenHouse.length === 0 && auctionEvents.length > 0) {
+      setDivision('auction');
+    } else if (division === 'auction' && auctionEvents.length === 0 && sortedOpenHouse.length > 0) {
+      setDivision('open_house');
     }
-    if (auctionEvents.length) {
-      out.push({
-        title: t('openHouse.live.sectionAuction'),
-        accent: '#8B5CF6',
-        data: auctionEvents.map((item) => ({ kind: 'auction' as const, item })),
-      });
-    }
-    return out;
-  }, [sortedOpenHouse, auctionEvents, t]);
+  }, [visible, division, sortedOpenHouse.length, auctionEvents.length]);
 
   const openOpenHouse = useCallback(
     (eventId: number) => {
@@ -334,26 +344,63 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
             <Ionicons name="close" size={18} color={text} />
           </Pressable>
         </View>
-        <SectionList
-          sections={sections}
-          keyExtractor={(row) => (row.kind === 'open_house' ? row.item.id : `auc-${row.item.id}`)}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <View style={[styles.sectionDot, { backgroundColor: section.accent }]} />
-              <Text style={[styles.sectionTitle, { color: text }]}>{section.title}</Text>
-            </View>
-          )}
-          renderItem={({ item: row }) =>
-            row.kind === 'open_house' ? renderOpenHouseCard(row.item) : renderAuctionCard(row.item)
-          }
-          contentContainerStyle={{ gap: 8, paddingBottom: 16 }}
-          stickySectionHeadersEnabled={false}
-          ListEmptyComponent={
-            <Text style={{ color: muted, textAlign: 'center', marginTop: 32, fontSize: 13 }}>
-              {t('openHouse.live.panelEmpty')}
-            </Text>
-          }
-        />
+
+        <View style={[styles.segmented, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }]}>
+          {divisionTabs.map((tab) => {
+            const active = division === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setDivision(tab.key)}
+                style={[
+                  styles.segment,
+                  active && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF' },
+                ]}
+              >
+                <Ionicons name={tab.icon} size={14} color={active ? tab.accent : muted} />
+                <Text
+                  style={[styles.segmentLabel, { color: active ? text : muted }]}
+                  numberOfLines={2}
+                >
+                  {tab.label}
+                </Text>
+                <View style={[styles.segmentBadge, { backgroundColor: active ? `${tab.accent}22` : 'transparent' }]}>
+                  <Text style={[styles.segmentBadgeText, { color: active ? tab.accent : muted }]}>{tab.count}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.divisionLead, { color: muted }]}>
+          {division === 'open_house' ? t('openHouse.live.openHouseLead') : t('openHouse.live.auctionLead')}
+        </Text>
+
+        {division === 'open_house' ? (
+          <FlatList
+            data={sortedOpenHouse}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => renderOpenHouseCard(item)}
+            contentContainerStyle={{ gap: 8, paddingBottom: 16, flexGrow: 1 }}
+            ListEmptyComponent={
+              <Text style={{ color: muted, textAlign: 'center', marginTop: 32, fontSize: 13 }}>
+                {t('openHouse.live.openHouseEmpty')}
+              </Text>
+            }
+          />
+        ) : (
+          <FlatList
+            data={auctionEvents}
+            keyExtractor={(item) => `auc-${item.id}`}
+            renderItem={({ item }) => renderAuctionCard(item)}
+            contentContainerStyle={{ gap: 8, paddingBottom: 16, flexGrow: 1 }}
+            ListEmptyComponent={
+              <Text style={{ color: muted, textAlign: 'center', marginTop: 32, fontSize: 13 }}>
+                {t('openHouse.live.auctionEmpty')}
+              </Text>
+            }
+          />
+        )}
       </View>
     </Modal>
   );
@@ -384,16 +431,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionHeader: {
+  segmented: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 6,
-    paddingHorizontal: 2,
+    gap: 6,
+    padding: 4,
+    borderRadius: 14,
+    marginBottom: 10,
   },
-  sectionDot: { width: 8, height: 8, borderRadius: 4 },
-  sectionTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  segment: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 11,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  segmentLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 12,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  segmentBadge: {
+    minWidth: 22,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  segmentBadgeText: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  divisionLead: { fontSize: 12, lineHeight: 16, marginBottom: 8, paddingHorizontal: 2 },
   card: {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,

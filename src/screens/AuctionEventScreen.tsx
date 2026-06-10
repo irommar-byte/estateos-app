@@ -33,6 +33,7 @@ import {
   formatAuctionCountdown,
 } from '../utils/auctionUi';
 import { openDirectContactChat } from '../utils/openDirectContact';
+import { resolveMediaUrl } from '../utils/userAvatar';
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return '00:00:00';
