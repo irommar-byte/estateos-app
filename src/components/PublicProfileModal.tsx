@@ -6,14 +6,11 @@ import {
   X,
   Star,
   Briefcase,
-  CalendarCheck,
-  AlertCircle,
   Home,
   Eye,
   User,
   ChevronDown,
   ChevronUp,
-  Info,
 } from "lucide-react";
 import Link from "next/link";
 import EliteStatusBadges from "@/components/ui/EliteStatusBadges";
@@ -117,12 +114,6 @@ export default function PublicProfileModal({
   const { averageRating, totalReviews, distribution } = buildReviewsDistribution(reviews);
   const avatarUrl = getBestUserAvatarUrl(data?.user);
   const agencyName = isAgencyUser(data?.user) ? resolveAgencyDisplayName(data?.user) : null;
-
-  const pres = data?.stats?.presentations ?? {
-    held: data?.stats?.completed ?? 0,
-    noShow: data?.stats?.noShow ?? 0,
-    scheduled: (data?.stats?.completed ?? 0) + (data?.stats?.noShow ?? 0),
-  };
 
   const modalContent = (
     <div className="theme-aware-dashboard fixed inset-0 z-[999999] flex items-start overflow-y-auto pt-10 pb-10 sm:pt-20 sm:pb-20 justify-center p-4">
@@ -279,43 +270,6 @@ export default function PublicProfileModal({
               </AnimatePresence>
             </button>
 
-            <div>
-              <h4 className="text-[10px] font-black text-[var(--eos-subtle)] uppercase tracking-[0.2em] mb-1 text-center">
-                {p.presentationHistory}
-              </h4>
-              {pres.scheduled > 0 ? (
-                <p className="text-[9px] text-center text-[var(--eos-muted)] mb-3">
-                  {fmtPresentation(p.scheduledOf, { n: pres.scheduled })}
-                </p>
-              ) : null}
-              <div className="grid grid-cols-2 gap-3">
-                <div
-                  className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4 flex flex-col items-center text-center"
-                  title={p.heldHint}
-                >
-                  <CalendarCheck size={22} className="text-emerald-500 mb-2" />
-                  <span className="text-2xl font-black">{pres.held}</span>
-                  <span className="text-[8px] font-bold text-[var(--eos-muted)] uppercase tracking-widest mt-1">{p.held}</span>
-                  <p className="text-[8px] text-[var(--eos-subtle)] mt-2 leading-snug flex items-start gap-1">
-                    <Info size={10} className="shrink-0 mt-0.5" />
-                    {p.heldHint}
-                  </p>
-                </div>
-                <div
-                  className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 flex flex-col items-center text-center"
-                  title={p.noShowHint}
-                >
-                  <AlertCircle size={22} className="text-red-500 mb-2" />
-                  <span className="text-2xl font-black">{pres.noShow}</span>
-                  <span className="text-[8px] font-bold text-[var(--eos-muted)] uppercase tracking-widest mt-1">{p.noShow}</span>
-                  <p className="text-[8px] text-[var(--eos-subtle)] mt-2 leading-snug flex items-start gap-1">
-                    <Info size={10} className="shrink-0 mt-0.5" />
-                    {p.noShowHint}
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {data.offers.length > 0 && (
               <div>
                 <h4 className="text-[10px] font-black text-[var(--eos-subtle)] uppercase tracking-[0.2em] mb-3 text-center">
@@ -394,9 +348,7 @@ export default function PublicProfileModal({
                           </div>
                         </div>
                         <span className="text-[8px] text-[var(--eos-subtle)] uppercase tracking-widest shrink-0">
-                          {new Date(r.createdAt).toLocaleDateString(
-                          locale === "en" ? "en-GB" : locale === "uk" ? "uk-UA" : "pl-PL"
-                        )}
+                          {new Date(r.createdAt).toLocaleDateString(locale === "en" ? "en-GB" : "pl-PL")}
                         </span>
                       </div>
                       <p className="text-xs text-[var(--eos-muted)] leading-relaxed">{r.comment || p.reviewNoComment}</p>
