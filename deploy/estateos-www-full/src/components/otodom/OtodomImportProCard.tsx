@@ -7,6 +7,8 @@ import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
 import { pasteHttpUrlFromClipboard } from "@/lib/clipboardPaste";
 import ProToolBadge from "@/components/crm/ProToolBadge";
+import { useLocale } from "@/contexts/LocaleContext";
+import { getDictionary } from "@/i18n/dictionaries";
 import PublicationChoiceModal, {
   type PublicationCouponOption,
   type PublicationRedemption,
@@ -28,6 +30,8 @@ const OtodomImportLocationPreview = dynamic(
 );
 
 export default function OtodomImportProCard() {
+  const { locale } = useLocale();
+  const copy = getDictionary(locale).crm.proTools;
   const [panelOpen, setPanelOpen] = useState(false);
   const [otodomUrl, setOtodomUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,16 +61,16 @@ export default function OtodomImportProCard() {
   };
 
   const loadWallet = useCallback(async () => {
-    const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store" });
+    const res = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.success) {
-      throw new Error(String(data?.error || data?.message || "Nie udało się pobrać portfela publikacji."));
+      throw new Error(String(data?.error || data?.message || copy.importWalletError));
     }
     const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
     setWalletCoupons(coupons);
     setWalletPlusCredits(Number(data.plusCredits || 0));
     setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
-  }, []);
+  }, [copy.importWalletError, locale]);
 
   const handleUrlFocus = () => {
     void pasteHttpUrlFromClipboard(setOtodomUrl, otodomUrl);
@@ -75,7 +79,7 @@ export default function OtodomImportProCard() {
   const handleAnalyze = async () => {
     const url = otodomUrl.trim();
     if (!url) {
-      setError("Wklej link do oferty z OtoDom, OLX lub Nieruchomosci-Online.");
+      setError(copy.importUrlEmpty);
       return;
     }
     setLoading(true);
@@ -166,28 +170,28 @@ export default function OtodomImportProCard() {
     <>
       <ProToolBadge
         icon="crown"
-        title="Import z OtoDom + OLX + Nieruchomosci-Online"
-        subtitle="Przenieś ogłoszenie na EstateOS — z opłatą publikacji jak przy zwykłym wystawieniu."
+        badgeLabel={copy.exclusiveBadge}
+        title={copy.importTitle}
+        subtitle={copy.importSubtitle}
         onClick={() => setPanelOpen(true)}
       />
 
       <EosModal
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
-        title="Import ogłoszenia"
-        badge="Pro · OtoDom + OLX + Nieruchomosci-Online"
+        title={copy.importModalTitle}
+        badge={`Pro · OtoDom + OLX + Nieruchomosci-Online`}
         icon={<Link2 size={18} />}
         maxWidth="max-w-3xl"
       >
         <div className="space-y-5">
           <p className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
-            Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją
-            wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.
+            {copy.importModalLead}
           </p>
 
           <div className="eos-modal-panel p-4">
             <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-subtle)]">
-              Link ogłoszenia (auto detect)
+              {copy.importLinkLabel}
             </label>
             <div className="flex flex-col gap-3 sm:flex-row">
               <input
@@ -198,7 +202,7 @@ export default function OtodomImportProCard() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void handleAnalyze();
                 }}
-                placeholder="https://www.otodom.pl/... lub https://www.olx.pl/d/oferta/... lub https://...nieruchomosci-online.pl/...html"
+                placeholder={copy.importUrlPlaceholder}
                 className="flex-1 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg-elevated)] px-4 py-3.5 text-sm text-[var(--eos-text)] shadow-[inset_0_1px_2px_rgba(15,23,42,0.06)] outline-none transition-colors focus:border-emerald-500/45 focus:ring-2 focus:ring-emerald-500/15"
               />
               <button
@@ -208,11 +212,11 @@ export default function OtodomImportProCard() {
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3.5 text-xs font-black uppercase tracking-wider text-black shadow-[0_12px_28px_rgba(16,185,129,0.28)] disabled:opacity-60"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-                Analizuj
+                {copy.importAnalyze}
               </button>
             </div>
             <p className="mt-2 text-[11px] text-[var(--eos-subtle)]">
-              Wskazówka: skopiuj link z OtoDom, OLX lub Nieruchomosci-Online, kliknij pole powyżej — wklei się sam.
+              {copy.importHint}
             </p>
           </div>
 
@@ -225,7 +229,7 @@ export default function OtodomImportProCard() {
           {draft ? (
             <div className="space-y-4">
               <div className="eos-modal-panel p-4">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Podgląd</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">{copy.importPreviewLabel}</p>
                 <p className="mt-2 text-sm font-semibold text-[var(--eos-text)]">
                   {presentation?.title ?? draft.title}
                 </p>
@@ -272,7 +276,7 @@ export default function OtodomImportProCard() {
                 className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 py-4 text-xs font-black uppercase tracking-wider text-emerald-600 shadow-[0_12px_32px_rgba(16,185,129,0.12)] transition-colors hover:bg-emerald-500/15 disabled:opacity-60 dark:text-emerald-400"
               >
                 <PlusCircle size={16} />
-                Opłać i utwórz na EstateOS
+                {copy.importPayCreate}
               </button>
 
               {createMessage ? (
@@ -291,7 +295,7 @@ export default function OtodomImportProCard() {
                     href={createdLinks.editUrl}
                     className="inline-flex items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-2 text-xs font-bold uppercase text-[var(--eos-text)]"
                   >
-                    Edytuj <ExternalLink size={12} />
+                    {copy.importEditLink} <ExternalLink size={12} />
                   </a>
                   <a
                     href={createdLinks.publicUrl}
@@ -299,7 +303,7 @@ export default function OtodomImportProCard() {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/5 px-4 py-2 text-xs font-bold uppercase text-blue-600 dark:text-blue-300"
                   >
-                    Podgląd <ExternalLink size={12} />
+                    {copy.importPreviewLink} <ExternalLink size={12} />
                   </a>
                 </div>
               ) : null}
@@ -311,8 +315,8 @@ export default function OtodomImportProCard() {
       <PublicationChoiceModal
         isOpen={pubOpen}
         onClose={() => setPubOpen(false)}
-        title="Opłata za publikację importu"
-        subtitle="Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty na 30 dni. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
+        title={copy.importPubTitle}
+        subtitle={copy.importPubSubtitle}
         coupons={walletCoupons}
         hasPlusCredit={walletHasPlusCredit}
         plusCredits={walletPlusCredits}
@@ -322,7 +326,7 @@ export default function OtodomImportProCard() {
             return;
           }
           if (result.action === "buy_plus") {
-            setCreateError("Kup Pakiet Plus w portfelu publikacji, a następnie ponów import.");
+            setCreateError(copy.importBuyPlusHint);
             setPubOpen(false);
             return;
           }
@@ -334,7 +338,7 @@ export default function OtodomImportProCard() {
 
       <OtodomCreateConfirmModal
         open={confirmOpen}
-        title={presentation?.title ?? draft?.title ?? "Oferta źródłowa"}
+        title={presentation?.title ?? draft?.title ?? copy.importSourceOfferFallback}
         imageCount={draft?.imageCount ?? 0}
         confirming={creating}
         variant="pro"

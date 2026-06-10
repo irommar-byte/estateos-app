@@ -1,6 +1,10 @@
 import type { Locale } from "./config";
+import {
+  getAddOfferFormExtended,
+  type AddOfferFormExtended,
+} from "./addOfferFormExtended";
 
-export type AddOfferDictionary = {
+export type AddOfferDictionary = AddOfferFormExtended & {
   formBadge: string;
   title: string;
   titleHighlight: string;
@@ -119,7 +123,7 @@ export type AddOfferDictionary = {
   thumbAlt: string;
 };
 
-const pl: AddOfferDictionary = {
+const pl: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
   formBadge: "Formularz EstateOS Premium",
   title: "Dodaj",
   titleHighlight: "Ofertę.",
@@ -243,7 +247,7 @@ const pl: AddOfferDictionary = {
   thumbAlt: "Miniatura",
 };
 
-const en: AddOfferDictionary = {
+const en: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
   formBadge: "EstateOS Premium form",
   title: "Add",
   titleHighlight: "listing.",
@@ -367,10 +371,137 @@ const en: AddOfferDictionary = {
   thumbAlt: "Thumbnail",
 };
 
+const uk: Omit<AddOfferDictionary, keyof AddOfferFormExtended> = {
+  formBadge: "Форма EstateOS Premium",
+  title: "Додати",
+  titleHighlight: "оголошення.",
+  stepLabel: "Крок",
+  stepOf: "з",
+  stepExperience: "EstateOS Form Experience",
+  sell: "Продаж",
+  rent: "Оренда",
+  step1Title: "Тип нерухомості",
+  step2Title: "Локація та карта",
+  step3Title: "Параметри та ціна",
+  step4Title: "Опис та зручності",
+  step5Title: "Фото",
+  step6Title: "Публікація",
+  conditionLabel: "Стан оздоблення",
+  locationExact: "Точна (шпилька)",
+  locationApprox: "Приблизна (область)",
+  locationVisibilityTitle: "Публічна видимість:",
+  locationVisibilityBody:
+    "При точній локації показуємо назву вулиці (і номер будинку для квартир). При приблизній — лише орієнтовний район.",
+  searchAddress: "Пошук адреси *",
+  searchAddressPlaceholder: "напр. Bernardyńska 8, Kalwaria Zebrzydowska",
+  myLocationLabel: "Моя локація",
+  myLocationDenied: "Немає доступу до локації. Дозвольте в налаштуваннях браузера.",
+  myLocationUnsupported: "Ваш браузер не підтримує геолокацію.",
+  cityPlaceholder: "напр. Kraków або Kalwaria Zebrzydowska",
+  buildingNumberRequired: "Потрібен номер будинку перед комою.",
+  city: "Місто *",
+  district: "Район *",
+  areaLabel: "Область / осел",
+  areaPlaceholder: "напр. осел / село / частина міста",
+  localityLabel: "Населений пункт",
+  countryLabel: "Країна",
+  localityAutoHint:
+    "Визначається з карти та адреси (геокодування). Пересуньте шпильку або введіть повну адресу.",
+  countryAutoHint: "Визначається з карти та контексту геокодування.",
+  apartmentNumber: "№ квартири",
+  apartmentPlaceholder: "напр. 12",
+  landRegistry: "№ KW (необов'язково)",
+  landRegistryPlaceholder: "напр. WA1M/00000000/0",
+  pinError: "Не вдалося встановити шпильку. Оберіть адресу з підказок.",
+  price: "Ціна *",
+  priceCurrency: "Валюта ціни",
+  pricePln: "PLN",
+  priceEur: "EUR",
+  nbpApprox: "Орієнтовний перерахунок (NBP):",
+  area: "Площа (м²) *",
+  rooms: "Кількість кімнат",
+  floor: "Поверх",
+  description: "Опис оголошення",
+  descriptionPlaceholder: "Почніть писати опис…",
+  amenities: "Зручності",
+  heating: "Опалення",
+  photos: "Галерея фото",
+  photosMain: "Головне",
+  photosUpload: "Додати фото",
+  photosError: "Помилка",
+  photosDrag: "Перетягніть фото або натисніть, щоб додати",
+  agencyName: "Назва агентства",
+  agencyPlaceholder: "Введіть назву агентства…",
+  commission: "Комісія агента (%)",
+  prev: "Назад",
+  next: "Далі",
+  publish: "Опублікувати оголошення",
+  publishing: "Публікація…",
+  limitReached: "Досягнуто ліміт активних оголошень. Розширте план у тарифах.",
+  verifyAccount: "Підтвердіть e-mail і телефон, щоб публікувати оголошення.",
+  serverError: "Не вдалося зберегти оголошення",
+  serverErrorHint: "Перевірте введені дані.",
+  propertyFlat: "Квартира",
+  propertyHouse: "Будинок",
+  propertyPlot: "Ділянка",
+  propertyCommercial: "Комерційна",
+  conditionReady: "Готове",
+  conditionRenovation: "Потребує ремонту",
+  conditionDeveloper: "Від забудовника",
+  amenityBalcony: "Балкон",
+  amenityGarage: "Гараж / паркінг",
+  amenityStorage: "Комора / госп.",
+  amenityGarden: "Садок",
+  amenityDuplex: "Дворівневе",
+  amenityElevator: "Ліфт",
+  amenityAc: "Кондиціонер",
+  heatingCity: "Центральне",
+  heatingGas: "Газове",
+  heatingElectric: "Електричне",
+  heatingHeatPump: "Тепловий насос",
+  heatingCoal: "Вугілля / пелети",
+  heatingOther: "Інше",
+  selectPlaceholder: "Оберіть…",
+  mapLoading: "Завантаження карти…",
+  aptNumberPlaceholder: "напр. 12",
+  landRegistryExample: "WA1M/00012345/9",
+  docVerificationTitle: "Верифікація книги постійних прав",
+  docVerificationOptionalBadge: "Необов'язково",
+  docVerificationIntro:
+    "Можна пропустити — оголошення опублікується без значка. Номер приміщення та KW дозволяють перевірити власність і виділити оголошення.",
+  docVerificationApartmentLabel: "№ приміщення (необов'язково)",
+  docVerificationApartmentHintNonFlat: "Активне для квартир — для будинку чи ділянки не потрібно.",
+  docVerificationKwLabel: "Номер KW (необов'язково)",
+  docVerificationKwHint:
+    "Формат: 4 символи · 8 цифр · контрольна цифра — напр. WA1M/00012345/9.",
+  docVerificationKwFormatError:
+    "Невірний формат KW. Потрібно: WA1M/00012345/9 (4 символи / 8 цифр / 1 цифра).",
+  docVerificationPrivacy:
+    "Дані захищені і не публікуються. Після верифікації EstateOS оголошення отримує значок довіри на сторінці.",
+  docVerificationStatusReady: "Готово до перевірки",
+  docVerificationStatusSkip: "Пропущено",
+  docVerificationBenefit1: "Більше довіри покупців",
+  docVerificationBenefit2: "Виділення у списку",
+  docVerificationBenefit3: "3D-значок на сторінці",
+  docVerificationPreviewKicker: "Ваш значок після верифікації",
+  docVerificationPreviewBody:
+    "Так виглядатиме значок на оголошенні — для покупців, які шукають підтверджену власність.",
+  docVerificationBadgeLabel: "Верифіковано",
+  docVerificationBadgeInactiveLabel: "Не верифіковано",
+  docVerificationBadgeSublabel: "EstateOS™ Quality Shield",
+  docVerificationPreviewTrust: "Видно лише після успішної верифікації",
+  rentPlaceholder: "напр. 1500",
+  descriptionPlaceholderAttr: "Почніть писати преміум-опис…",
+  agencyNamePlaceholder: "Введіть назву агентства…",
+  floorPlanAlt: "План",
+  thumbAlt: "Мініатюра",
+};
+
 export function getAddOfferDictionary(locale: Locale): AddOfferDictionary {
-  if (locale === "en") return en;
-  if (locale === "uk") return en;
-  return pl;
+  const extended = getAddOfferFormExtended(locale);
+  if (locale === "en") return { ...en, ...extended };
+  if (locale === "uk") return { ...uk, ...extended };
+  return { ...pl, ...extended };
 }
 
 /** Klucze udogodnień → pole słownika */

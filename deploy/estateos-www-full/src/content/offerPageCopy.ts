@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n/config";
+import { UK } from "@/i18n/offerPageCopyUk";
 
 export type OfferPageCopy = {
   backToMap: string;
@@ -325,5 +326,6 @@ const EN: OfferPageCopy = {
 
 export function getOfferPageCopy(locale: Locale): OfferPageCopy {
   if (locale === "pl") return PL;
+  if (locale === "uk") return UK;
   return EN;
 }

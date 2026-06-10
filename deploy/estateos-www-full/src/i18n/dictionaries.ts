@@ -94,6 +94,7 @@ export type Dictionary = {
     ctaMap: string;
     ctaList: string;
     exploreMap: string;
+    scroll: string;
   };
   homeAppPitch: {
     eyebrow: string;
@@ -174,6 +175,8 @@ export type Dictionary = {
     galleryPriceLabel: string;
     galleryAreaLabel: string;
     galleryRoomsLabel: string;
+    countryDefault: string;
+    listingFallback: string;
     mapEyebrow: string;
     mapTitle: string;
     mapTitleHighlight: string;
@@ -226,6 +229,11 @@ export type Dictionary = {
     guideHoverZoom: string;
     hoverZoomHint: string;
     hoverZoomActive: string;
+    guideButton: string;
+    guideOk: string;
+    tokenMissing: string;
+    configError: string;
+    loadError: string;
   };
   footer: {
     rights: string;
@@ -334,6 +342,9 @@ export type Dictionary = {
     };
     errorUnexpected: string;
     errorNetwork: string;
+    countryDefault: string;
+    offerTitleFallback: string;
+    offerImageAlt: string;
   };
   editOffer: {
     noAccess: string;
@@ -475,6 +486,7 @@ const pl: Dictionary = {
     ctaMap: "Szukaj na mapie",
     ctaList: "Dodaj swoją ofertę",
     exploreMap: "Mapa ofert",
+    scroll: "Przewiń",
   },
   homeAppPitch: {
     eyebrow: "Radar Inwestycji",
@@ -563,6 +575,8 @@ const pl: Dictionary = {
     galleryPriceLabel: "Cena",
     galleryAreaLabel: "Powierzchnia",
     galleryRoomsLabel: "pokoje",
+    countryDefault: "Polska",
+    listingFallback: "Oferta",
     mapEyebrow: "Rynek na żywo",
     mapTitle: "Mapa",
     mapTitleHighlight: "ofert",
@@ -621,6 +635,11 @@ const pl: Dictionary = {
     guideHoverZoom: "Najedź kursorem na pinezkę, aby płynnie przybliżyć lokalizację.",
     hoverZoomHint: "Najedź na pinezkę, aby przybliżyć",
     hoverZoomActive: "Przybliżanie do pinezki",
+    guideButton: "Instrukcja",
+    guideOk: "OK",
+    tokenMissing: "Brak klucza Mapbox na serwerze (NEXT_PUBLIC_MAPBOX_TOKEN lub MAPBOX_TOKEN).",
+    configError: "Nie udało się pobrać konfiguracji mapy.",
+    loadError: "Mapa nie załadowała się — sprawdź token Mapbox i domenę w panelu Mapbox.",
   },
   footer: {
     rights: "© 2026 EstateOS™. Wszelkie prawa zastrzeżone.",
@@ -731,6 +750,9 @@ const pl: Dictionary = {
     },
     errorUnexpected: "Niespodziewany format odpowiedzi serwera.",
     errorNetwork: "Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.",
+    countryDefault: "Polska",
+    offerTitleFallback: "Oferta #{id}",
+    offerImageAlt: "Oferta {id}",
   },
   editOffer: {
     noAccess: "Brak dostępu lub oferty.",
@@ -879,6 +901,7 @@ const en: Dictionary = {
     ctaMap: "Search on the map",
     ctaList: "Add your listing",
     exploreMap: "Listing map",
+    scroll: "Scroll",
   },
   homeAppPitch: {
     eyebrow: "Investment Radar",
@@ -967,6 +990,8 @@ const en: Dictionary = {
     galleryPriceLabel: "Price",
     galleryAreaLabel: "Area",
     galleryRoomsLabel: "rooms",
+    countryDefault: "Poland",
+    listingFallback: "Listing",
     mapEyebrow: "Live market",
     mapTitle: "Listing",
     mapTitleHighlight: "map",
@@ -1025,6 +1050,11 @@ const en: Dictionary = {
     guideHoverZoom: "Hover a pin to smoothly zoom into that location.",
     hoverZoomHint: "Hover a pin to zoom",
     hoverZoomActive: "Zooming to pin",
+    guideButton: "Guide",
+    guideOk: "OK",
+    tokenMissing: "Mapbox token missing on server (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN).",
+    configError: "Could not load map configuration.",
+    loadError: "Map failed to load — check Mapbox token and allowed URLs.",
   },
   footer: {
     rights: "© 2026 EstateOS™. All rights reserved.",
@@ -1135,6 +1165,9 @@ const en: Dictionary = {
     },
     errorUnexpected: "Unexpected server response format.",
     errorNetwork: "No server connection. Check your network and try again.",
+    countryDefault: "Poland",
+    offerTitleFallback: "Listing #{id}",
+    offerImageAlt: "Listing {id}",
   },
   editOffer: {
     noAccess: "No access or listing not found.",

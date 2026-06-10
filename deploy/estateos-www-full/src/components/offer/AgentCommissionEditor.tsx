@@ -1,26 +1,35 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AGENT_COMMISSION_DEFAULT_PERCENT,
-  AGENT_COMMISSION_MAX,
   AGENT_COMMISSION_MIN_NONZERO,
   AGENT_COMMISSION_STEP,
   AGENT_COMMISSION_ZERO_PERCENT,
   commissionAmountInputToPercent,
   computeAgentCommissionAmount,
   formatPercentLabel,
-  formatPlnAmount,
-  maxAgentCommissionAmountPln,
-  isZeroCommissionPercent,
   parseAgentCommissionPercent,
-  type AgentCommissionInputMode,
+  previewPercentFromAmountDraft,
+  roundToQuarter,
+  shouldWarnCommissionPercentDraft,
 } from "@/lib/agentCommission";
+import type { AddOfferDictionary } from "@/i18n/addOfferDictionary";
 
 type Props = {
   priceRaw: string | number;
   percentValue: string;
   onPercentChange: (value: string) => void;
+  ao: Pick<
+    AddOfferDictionary,
+    | "commissionEditorNote"
+    | "commissionPercentField"
+    | "commissionAmountField"
+    | "commissionStepPct"
+    | "commissionAmountFromPrice"
+    | "commissionAmountComputed"
+    | "commissionInvalidWarning"
+  >;
   className?: string;
 };
 
@@ -28,130 +37,116 @@ export default function AgentCommissionEditor({
   priceRaw,
   percentValue,
   onPercentChange,
+  ao,
   className = "",
 }: Props) {
-  const [mode, setMode] = useState<AgentCommissionInputMode>("percent");
+  const [percentDraft, setPercentDraft] = useState(percentValue);
   const [amountDraft, setAmountDraft] = useState("");
-
-  const percentParsed = parseAgentCommissionPercent(percentValue);
-  const commissionAmount = useMemo(() => {
-    if (isZeroCommissionPercent(percentParsed)) return 0;
-    return computeAgentCommissionAmount(priceRaw, percentParsed);
-  }, [percentParsed, priceRaw]);
+  const [percentFocused, setPercentFocused] = useState(false);
+  const [amountFocused, setAmountFocused] = useState(false);
 
   useEffect(() => {
-    if (mode !== "amount") return;
-    if (commissionAmount > 0 && !amountDraft) {
-      setAmountDraft(String(commissionAmount));
+    if (percentFocused || amountFocused) return;
+    setPercentDraft(percentValue);
+    const p = parseAgentCommissionPercent(percentValue);
+    if (p !== null && p > 0) {
+      setAmountDraft(String(computeAgentCommissionAmount(priceRaw, p)));
+    } else if (!percentValue.trim()) {
+      setAmountDraft("");
     }
-  }, [mode, commissionAmount, amountDraft]);
+  }, [percentValue, priceRaw, percentFocused, amountFocused]);
 
-  const inRange =
-    percentParsed !== null &&
-    (percentParsed === AGENT_COMMISSION_ZERO_PERCENT ||
-      (percentParsed >= AGENT_COMMISSION_MIN_NONZERO && percentParsed <= AGENT_COMMISSION_MAX));
+  const percentPreview = previewPercentFromAmountDraft(priceRaw, amountDraft);
+  const showWarning = shouldWarnCommissionPercentDraft(percentDraft, {
+    isFocused: percentFocused || amountFocused,
+  });
 
-  const maxCommissionPln = useMemo(() => maxAgentCommissionAmountPln(priceRaw), [priceRaw]);
-
-  const syncPercentFromAmount = (amountText: string) => {
-    const synced = commissionAmountInputToPercent(priceRaw, amountText);
-    if (!synced) return;
-    if (String(synced.amountPln) !== amountText.replace(/\D/g, "")) {
-      setAmountDraft(String(synced.amountPln));
-    }
-    onPercentChange(String(synced.percent).replace(".", ","));
-  };
-
-  const adjustPercent = (delta: number) => {
-    const base = percentParsed ?? AGENT_COMMISSION_DEFAULT_PERCENT;
-    if (delta > 0 && base === 0) {
-      onPercentChange(String(AGENT_COMMISSION_MIN_NONZERO).replace(".", ","));
+  const commitPercentDraft = () => {
+    const trimmed = percentDraft.trim();
+    if (!trimmed) {
+      setPercentDraft("");
+      setAmountDraft("");
+      onPercentChange("");
       return;
     }
-    if (delta < 0 && base <= AGENT_COMMISSION_MIN_NONZERO) {
+    const parsed = parseAgentCommissionPercent(trimmed);
+    if (parsed === null) return;
+    if (parsed === 0) {
+      setPercentDraft("0");
+      setAmountDraft("0");
       onPercentChange("0");
       return;
     }
-    const next = Math.min(
-      AGENT_COMMISSION_MAX,
-      Math.max(AGENT_COMMISSION_ZERO_PERCENT, Math.round((base + delta) * 4) / 4),
-    );
-    onPercentChange(String(next).replace(".", ","));
-    if (mode === "amount") {
-      setAmountDraft(String(computeAgentCommissionAmount(priceRaw, next)));
+    const next = String(Math.max(AGENT_COMMISSION_MIN_NONZERO, parsed)).replace(".", ",");
+    setPercentDraft(next);
+    setAmountDraft(String(computeAgentCommissionAmount(priceRaw, parsed)));
+    onPercentChange(next);
+  };
+
+  const commitAmountDraft = () => {
+    const trimmed = amountDraft.trim();
+    if (!trimmed) {
+      setAmountDraft("");
+      setPercentDraft("");
+      onPercentChange("");
+      return;
     }
+    const synced = commissionAmountInputToPercent(priceRaw, trimmed);
+    if (!synced) return;
+    setAmountDraft(String(synced.amountPln));
+    const next = String(synced.percent).replace(".", ",");
+    setPercentDraft(next);
+    onPercentChange(next);
+  };
+
+  const adjustPercent = (delta: number) => {
+    const base = parseAgentCommissionPercent(percentDraft) ?? AGENT_COMMISSION_DEFAULT_PERCENT;
+    if (delta > 0 && base === 0) {
+      const v = String(AGENT_COMMISSION_MIN_NONZERO).replace(".", ",");
+      setPercentDraft(v);
+      setAmountDraft(String(computeAgentCommissionAmount(priceRaw, AGENT_COMMISSION_MIN_NONZERO)));
+      onPercentChange(v);
+      return;
+    }
+    if (delta < 0 && base <= AGENT_COMMISSION_MIN_NONZERO) {
+      setPercentDraft("0");
+      setAmountDraft("0");
+      onPercentChange("0");
+      return;
+    }
+    const next = Math.max(AGENT_COMMISSION_ZERO_PERCENT, roundToQuarter(base + delta));
+    const v = String(next).replace(".", ",");
+    setPercentDraft(v);
+    setAmountDraft(String(computeAgentCommissionAmount(priceRaw, next)));
+    onPercentChange(v);
   };
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Prowizja agenta</span>
-        <span className="text-[9px] font-black uppercase tracking-wider text-orange-400/90 border border-orange-500/30 rounded-full px-2 py-0.5">
-          max. {AGENT_COMMISSION_MAX}%
-        </span>
-        <div className="flex rounded-full border border-white/10 overflow-hidden ml-auto">
-          {(["percent", "amount"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                setMode(m);
-                if (m === "amount" && commissionAmount > 0) {
-                  setAmountDraft(String(commissionAmount));
-                }
-              }}
-              className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
-                mode === m ? "bg-orange-500 text-black" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {m === "percent" ? "%" : "PLN"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <p className="text-xs text-zinc-400 leading-relaxed">
-        <strong className="text-zinc-200">Cena ofertowa to ostateczna kwota brutto</strong> — nie podwyższamy jej o
-        prowizję. Po transakcji kupujący z tej kwoty wypłaca agentowi uzgodnioną prowizję (od{" "}
-        {AGENT_COMMISSION_MIN_NONZERO}% do <strong className="text-zinc-200">maks. {AGENT_COMMISSION_MAX}%</strong> ceny
-        lub 0% bez prowizji). Prowizja jest <strong className="text-zinc-300">brutto</strong> (z VAT), płatna
-        bezpośrednio agentowi.
-      </p>
-      {maxCommissionPln > 0 ? (
-        <p className="text-[10px] text-zinc-500">
-          Przy tej cenie maks. kwota prowizji: <span className="text-orange-400/90">{formatPlnAmount(maxCommissionPln)}</span>
-        </p>
-      ) : null}
+      <p className="text-xs text-zinc-400 leading-relaxed">{ao.commissionEditorNote}</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 block">
-            {mode === "percent" ? "Procent" : "Kwota (PLN)"}
+            {ao.commissionPercentField}
           </label>
-          {mode === "percent" ? (
-            <div className="flex items-center gap-2">
-              <input
-                className={`flex-1 ${inRange ? "" : "border-red-500/50"} w-full bg-[#080808] border border-white/10 rounded-2xl text-white text-lg py-3 px-4 outline-none focus:border-orange-500/50`}
-                value={percentValue}
-                onChange={(e) => onPercentChange(e.target.value.replace(/[^0-9.,]/g, ""))}
-                inputMode="decimal"
-                placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace(".", ",")}
-              />
-              <span className="text-white font-bold">%</span>
-            </div>
-          ) : (
+          <div className="flex items-center gap-2">
             <input
-              className="w-full bg-[#080808] border border-white/10 rounded-2xl text-white text-lg py-3 px-4 outline-none focus:border-orange-500/50"
-              value={amountDraft}
-              onChange={(e) => {
-                const cleaned = e.target.value.replace(/[^\d]/g, "");
-                setAmountDraft(cleaned);
-                syncPercentFromAmount(cleaned);
+              className={`flex-1 w-full bg-[#080808] border rounded-2xl text-white text-lg py-3 px-4 outline-none focus:border-orange-500/50 ${
+                showWarning ? "border-red-500/50" : "border-white/10"
+              }`}
+              value={percentDraft}
+              onChange={(e) => setPercentDraft(e.target.value.replace(/[^0-9.,]/g, ""))}
+              onFocus={() => setPercentFocused(true)}
+              onBlur={() => {
+                setPercentFocused(false);
+                commitPercentDraft();
               }}
-              inputMode="numeric"
-              placeholder="np. 37000"
+              inputMode="decimal"
+              placeholder={String(AGENT_COMMISSION_DEFAULT_PERCENT).replace(".", ",")}
             />
-          )}
+            <span className="text-white font-bold">%</span>
+          </div>
           <div className="flex items-center gap-2 mt-2">
             <button
               type="button"
@@ -167,31 +162,39 @@ export default function AgentCommissionEditor({
             >
               +
             </button>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Krok {AGENT_COMMISSION_STEP}%</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+              {ao.commissionStepPct.replace("{step}", String(AGENT_COMMISSION_STEP))}
+            </span>
           </div>
         </div>
-        <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
-          <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-1">
-            {mode === "percent" ? "Z ceny ofertowej" : "Odpowiada"}
-          </p>
-          <p className="text-2xl font-black text-orange-400">
-            {mode === "percent"
-              ? commissionAmount > 0
-                ? formatPlnAmount(commissionAmount)
-                : "—"
-              : percentParsed !== null
-                ? formatPercentLabel(percentParsed)
-                : "—"}
-          </p>
+
+        <div>
+          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 block">
+            {ao.commissionAmountField}
+          </label>
+          <input
+            className="w-full bg-[#080808] border border-white/10 rounded-2xl text-white text-lg py-3 px-4 outline-none focus:border-orange-500/50"
+            value={amountDraft}
+            onChange={(e) => setAmountDraft(e.target.value.replace(/[^\d]/g, ""))}
+            onFocus={() => setAmountFocused(true)}
+            onBlur={() => {
+              setAmountFocused(false);
+              commitAmountDraft();
+            }}
+            inputMode="numeric"
+            placeholder="np. 37000"
+          />
           <p className="text-xs text-zinc-500 mt-2">
-            Wypłata z ceny ofertowej brutto po transakcji (max. {AGENT_COMMISSION_MAX}%)
+            {percentPreview !== null && percentPreview > 0
+              ? ao.commissionAmountComputed.replace("{pct}", formatPercentLabel(percentPreview))
+              : ao.commissionAmountFromPrice}
           </p>
         </div>
       </div>
 
-      {!inRange && percentValue.trim() !== "" ? (
+      {showWarning ? (
         <p className="text-xs text-red-400">
-          Dozwolone: 0% (bez prowizji) lub {AGENT_COMMISSION_MIN_NONZERO}–{AGENT_COMMISSION_MAX}% co {AGENT_COMMISSION_STEP}%.
+          {ao.commissionInvalidWarning.replace("{min}", String(AGENT_COMMISSION_MIN_NONZERO))}
         </p>
       ) : null}
     </div>

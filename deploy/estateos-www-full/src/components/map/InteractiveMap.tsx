@@ -7,6 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { Hand, Lock, LocateFixed, MousePointer2, Move, ZoomIn } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocale } from "@/contexts/LocaleContext";
+import { numberFormatLocale } from "@/i18n/config";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { useDisplayCurrency } from "@/contexts/DisplayCurrencyContext";
@@ -32,6 +33,115 @@ function getOfferFilterPrice(offer: { pricePln?: unknown; price?: unknown }): nu
 const OFFER_PIN_BASE =
   "px-4 py-2 backdrop-blur-2xl border text-[11px] font-black tracking-widest rounded-full cursor-pointer transition-all duration-300 ease-out";
 
+const OFFERS_SOURCE_ID = "offers";
+const CLUSTER_LAYER_ID = "clustered-point";
+const UNCLUSTER_LAYER_ID = "unclustered-point";
+
+function clusterBubbleDimensions(points: number) {
+  if (points >= 50) return { diameter: 64, halo: 82, fontSize: 19 };
+  if (points >= 25) return { diameter: 58, halo: 76, fontSize: 18 };
+  if (points >= 15) return { diameter: 54, halo: 72, fontSize: 17 };
+  if (points >= 10) return { diameter: 50, halo: 68, fontSize: 17 };
+  if (points >= 8) return { diameter: 46, halo: 62, fontSize: 16 };
+  if (points >= 4) return { diameter: 42, halo: 56, fontSize: 16 };
+  return { diameter: 38, halo: 52, fontSize: 15 };
+}
+
+function formatClusterCount(n: number) {
+  if (n >= 10000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
+
+function clusterAccentHex(mode: "sale" | "rent") {
+  return mode === "rent" ? "#2563eb" : "#10b981";
+}
+
+function buildClusterMarkerElement(
+  count: number,
+  accent: string,
+  onActivate: () => void,
+): HTMLDivElement {
+  const { diameter, halo, fontSize } = clusterBubbleDimensions(count);
+  const outer = document.createElement("div");
+  outer.className = "relative z-30 flex items-center justify-center cursor-pointer";
+  outer.style.width = `${halo}px`;
+  outer.style.height = `${halo}px`;
+
+  const haloEl = document.createElement("div");
+  haloEl.className = "absolute rounded-full";
+  haloEl.style.width = `${halo}px`;
+  haloEl.style.height = `${halo}px`;
+  haloEl.style.background = `radial-gradient(circle, ${accent}66 0%, ${accent}22 55%, transparent 72%)`;
+
+  const disk = document.createElement("div");
+  disk.className =
+    "relative flex items-center justify-center rounded-full border-2 border-white/90 font-black text-white tabular-nums transition-transform duration-300 hover:scale-110 active:scale-95";
+  disk.style.width = `${diameter}px`;
+  disk.style.height = `${diameter}px`;
+  disk.style.fontSize = `${fontSize}px`;
+  disk.style.background = `linear-gradient(145deg, ${accent} 0%, ${accent}dd 100%)`;
+  disk.style.boxShadow = `0 8px 28px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.35)`;
+  disk.textContent = formatClusterCount(count);
+  disk.onclick = (e) => {
+    e.stopPropagation();
+    onActivate();
+  };
+
+  outer.appendChild(haloEl);
+  outer.appendChild(disk);
+  return outer;
+}
+
+function ensureOffersClusterLayers(mapInstance: mapboxgl.Map) {
+  if (!mapInstance.getSource(OFFERS_SOURCE_ID)) {
+    mapInstance.addSource(OFFERS_SOURCE_ID, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      cluster: true,
+      clusterMaxZoom: 14,
+      clusterRadius: 56,
+    });
+  }
+  if (!mapInstance.getLayer(CLUSTER_LAYER_ID)) {
+    mapInstance.addLayer({
+      id: CLUSTER_LAYER_ID,
+      type: "circle",
+      source: OFFERS_SOURCE_ID,
+      filter: ["has", "point_count"],
+      paint: { "circle-radius": 0, "circle-opacity": 0 },
+    });
+  }
+  if (!mapInstance.getLayer(UNCLUSTER_LAYER_ID)) {
+    mapInstance.addLayer({
+      id: UNCLUSTER_LAYER_ID,
+      type: "circle",
+      source: OFFERS_SOURCE_ID,
+      filter: ["!", ["has", "point_count"]],
+      paint: { "circle-radius": 0, "circle-opacity": 0 },
+    });
+  }
+}
+
+function syncOffersGeoJson(mapInstance: mapboxgl.Map, offers: any[]) {
+  const source = mapInstance.getSource(OFFERS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+  if (!source) return;
+  const features = offers
+    .filter((offer) => offer.lng != null && offer.lat != null)
+    .map((offer) => ({
+      type: "Feature" as const,
+      properties: {
+        id: offer.id,
+        transactionType: offer.transactionType,
+      },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [Number(offer.lng), Number(offer.lat)] as [number, number],
+      },
+    }));
+  source.setData({ type: "FeatureCollection", features });
+}
+
 function offerPinColorClasses(transactionType: unknown) {
   const tx = normalizeTransactionType(transactionType);
 
@@ -52,6 +162,43 @@ const MAP_STYLE = {
   dark: "mapbox://styles/mapbox/dark-v11",
 } as const;
 
+function distributeOverlappingPins(offers: any[]) {
+  const byCoord = new Map<string, any[]>();
+  offers.forEach((offer) => {
+    const lng = Number(offer?.lng);
+    const lat = Number(offer?.lat);
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
+    const key = `${lng.toFixed(6)}:${lat.toFixed(6)}`;
+    const arr = byCoord.get(key) || [];
+    arr.push(offer);
+    byCoord.set(key, arr);
+  });
+
+  const out = new Map<number, [number, number]>();
+  byCoord.forEach((arr) => {
+    const sorted = [...arr].sort((a, b) => Number(a.id) - Number(b.id));
+    if (sorted.length === 1) {
+      const o = sorted[0];
+      out.set(Number(o.id), [Number(o.lng), Number(o.lat)]);
+      return;
+    }
+    // Rozstawienie po okręgu: pin-y nie nakładają się na siebie przy tym samym adresie.
+    const ringStepMeters = 18;
+    const centerLng = Number(sorted[0].lng);
+    const centerLat = Number(sorted[0].lat);
+    const latMeters = 111_320;
+    const lngMeters = 111_320 * Math.cos((centerLat * Math.PI) / 180);
+    sorted.forEach((offer, idx) => {
+      const angle = (2 * Math.PI * idx) / sorted.length;
+      const radiusMeters = ringStepMeters * (1 + Math.floor(idx / 10));
+      const dLat = (Math.sin(angle) * radiusMeters) / latMeters;
+      const dLng = lngMeters !== 0 ? (Math.cos(angle) * radiusMeters) / lngMeters : 0;
+      out.set(Number(offer.id), [centerLng + dLng, centerLat + dLat]);
+    });
+  });
+  return out;
+}
+
 export default function InteractiveMap({ immersive = false }: Props) {
   const { dict, locale } = useLocale();
   const { resolvedTheme } = useTheme();
@@ -61,14 +208,15 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const appliedMapTheme = useRef<"light" | "dark" | null>(null);
-  const autoRotateTimerRef = useRef<number | null>(null);
+  const updateMarkersRef = useRef<() => void>(() => {});
+  const autoRotateFrameRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef<number>(Date.now());
   const hoverFocusActiveRef = useRef(false);
   const canHoverRef = useRef(false);
-
+  
   const [allOffers, setAllOffers] = useState<any[]>([]);
   const [filteredOffers, setFilteredOffers] = useState<any[]>([]);
-
+  
   const [transactionMode, setTransactionMode] = useState<"sale" | "rent">("sale");
   const [priceMax, setPriceMax] = useState<number>(50_000_000);
   const [priceMaxRent, setPriceMaxRent] = useState<number>(50_000);
@@ -82,8 +230,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
   const [showTeaser, setShowTeaser] = useState(false);
   const [activeHoverPinId, setActiveHoverPinId] = useState<number | null>(null);
   const [showMapGuide, setShowMapGuide] = useState(false);
+  const sliderChangingRef = useRef(false);
 
-  const priceLocale = locale === "pl" ? "pl-PL" : "en-US";
+  const priceLocale = numberFormatLocale(locale);
   const maxPriceLabel =
     transactionMode === "rent" ? dict.map.maxRentLabel : dict.map.maxPriceLabel;
   const isEurDisplay = preference === "EUR";
@@ -125,8 +274,25 @@ export default function InteractiveMap({ immersive = false }: Props) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     canHoverRef.current = window.matchMedia("(hover: hover)").matches;
-    const dismissed = window.localStorage.getItem("estateos_map_guide_dismissed");
+    const dismissed = window.sessionStorage.getItem("estateos_map_guide_dismissed");
     setShowMapGuide(dismissed !== "1");
+  }, []);
+
+  const focusPin = useCallback((offerId: number, coords: [number, number]) => {
+    if (!map.current || !canHoverRef.current) return;
+    if (!Number.isFinite(offerId)) return;
+    hoverFocusActiveRef.current = true;
+    setActiveHoverPinId(offerId);
+    lastInteractionAtRef.current = Date.now();
+    map.current.flyTo({
+      center: coords,
+      zoom: 16.2,
+      pitch: 58,
+      bearing: -12,
+      speed: 0.42,
+      curve: 1.42,
+      essential: true,
+    });
   }, []);
 
   useEffect(() => {
@@ -152,20 +318,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const token = String(data?.mapboxToken || "").trim();
         setMapboxToken(token || null);
         if (!token) {
-          setMapInitError(
-            locale === "pl"
-              ? "Brak klucza Mapbox na serwerze (NEXT_PUBLIC_MAPBOX_TOKEN lub MAPBOX_TOKEN)."
-              : "Mapbox token missing on server (NEXT_PUBLIC_MAPBOX_TOKEN or MAPBOX_TOKEN).",
-          );
+          setMapInitError(dict.map.tokenMissing);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setMapInitError(
-            locale === "pl"
-              ? "Nie udało się pobrać konfiguracji mapy."
-              : "Could not load map configuration.",
-          );
+          setMapInitError(dict.map.configError);
         }
       });
     return () => {
@@ -218,96 +376,111 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
   const updateMarkers = useCallback(() => {
     if (!map.current) return;
+    if (!map.current.getLayer(CLUSTER_LAYER_ID)) return;
+
+    const mapInstance = map.current;
+    const offerById = new Map(filteredOffers.map((offer) => [String(offer.id), offer]));
+    const distributed = distributeOverlappingPins(filteredOffers);
     const newMarkers: Record<string, boolean> = {};
+    const accent = clusterAccentHex(transactionMode);
 
-    filteredOffers
-      .filter((offer) => offer.lng != null && offer.lat != null)
-      .forEach((offer) => {
-        const id = `offer-${offer.id}`;
-        const coords: [number, number] = [Number(offer.lng), Number(offer.lat)];
-        newMarkers[id] = true;
+    const rendered = mapInstance.queryRenderedFeatures({
+      layers: [CLUSTER_LAYER_ID, UNCLUSTER_LAYER_ID],
+    });
 
-        if (!markersRef.current[id]) {
-          const outerEl = document.createElement("div");
-          outerEl.className = "z-30 relative";
-          const innerEl = document.createElement("div");
-          const tx = normalizeTransactionType(offer.transactionType);
-          innerEl.className = offerPinColorClasses(offer.transactionType);
-          innerEl.innerText = formatPinLabel(offer, tx === "rent");
+    for (const feature of rendered) {
+      if (feature.geometry.type !== "Point") continue;
+      const renderCoords = feature.geometry.coordinates as [number, number];
+      const props = feature.properties ?? {};
+      const isCluster = Boolean(props.cluster);
+      const markerId = isCluster ? `cluster-${props.cluster_id}` : `offer-${props.id}`;
+      if (newMarkers[markerId]) continue;
+      newMarkers[markerId] = true;
+
+      if (isCluster) {
+        const count = Number(props.point_count) || 0;
+        if (!markersRef.current[markerId]) {
+          const clusterEl = buildClusterMarkerElement(count, accent, () => {
+            const source = mapInstance.getSource(OFFERS_SOURCE_ID) as mapboxgl.GeoJSONSource;
+            source.getClusterExpansionZoom(Number(props.cluster_id), (err, zoom) => {
+              if (err || !map.current || zoom == null) return;
+              mapInstance.easeTo({ center: renderCoords, zoom: zoom + 0.5, duration: 650, essential: true });
+            });
+          });
+          markersRef.current[markerId] = new mapboxgl.Marker({ element: clusterEl })
+            .setLngLat(renderCoords)
+            .addTo(mapInstance);
+        } else {
+          markersRef.current[markerId].setLngLat(renderCoords);
+          const disk = markersRef.current[markerId].getElement()?.lastElementChild as
+            | HTMLElement
+            | undefined;
+          if (disk) disk.textContent = formatClusterCount(count);
+        }
+        continue;
+      }
+
+      const offer = offerById.get(String(props.id));
+      if (!offer) continue;
+
+      const coords: [number, number] =
+        distributed.get(Number(offer.id)) || [Number(offer.lng), Number(offer.lat)];
+
+      if (!markersRef.current[markerId]) {
+        const outerEl = document.createElement("div");
+        outerEl.className = "z-30 relative";
+        const innerEl = document.createElement("div");
+        const tx = normalizeTransactionType(offer.transactionType);
+        innerEl.className = offerPinColorClasses(offer.transactionType);
+        innerEl.innerText = formatPinLabel(offer, tx === "rent");
           innerEl.onclick = (e) => {
             e.stopPropagation();
-            const win = window as Window & {
-              isLoggedIn?: boolean;
-              triggerTeaser?: () => void;
-            };
-            if (win.isLoggedIn) {
-              window.location.href = `/oferta/${offer.id}`;
-            } else {
-              win.triggerTeaser?.();
-            }
+          const win = window as Window & {
+            isLoggedIn?: boolean;
+            triggerTeaser?: () => void;
           };
-          innerEl.onmouseenter = () => {
-            if (!map.current || !canHoverRef.current) return;
-            const id = Number(offer.id);
-            if (!Number.isFinite(id)) return;
-            if (activeHoverPinId === id || map.current.isMoving()) return;
-            hoverFocusActiveRef.current = true;
-            setActiveHoverPinId(id);
-            lastInteractionAtRef.current = Date.now();
-            map.current.flyTo({
-              center: coords,
-              zoom: 16.2,
-              pitch: 58,
-              bearing: -12,
-              speed: 0.42,
-              curve: 1.42,
-              essential: true,
-            });
+          if (win.isLoggedIn) {
+            window.location.href = `/oferta/${offer.id}`;
+          } else {
+            win.triggerTeaser?.();
+          }
+        };
+        innerEl.onmouseenter = () => {
+          if (sliderChangingRef.current) return;
+          focusPin(Number(offer.id), coords);
+        };
+        innerEl.onmouseover = innerEl.onmouseenter;
+        innerEl.onmouseleave = () => {
+          if (!canHoverRef.current) return;
+          hoverFocusActiveRef.current = false;
+          setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
+        };
+
+        outerEl.appendChild(innerEl);
+        markersRef.current[markerId] = new mapboxgl.Marker({ element: outerEl })
+          .setLngLat(coords)
+          .addTo(mapInstance);
+        } else {
+        markersRef.current[markerId].setLngLat(coords);
+        const rootEl = markersRef.current[markerId].getElement();
+        const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
+        if (pinEl) {
+          const tx = normalizeTransactionType(offer.transactionType);
+          pinEl.className = offerPinColorClasses(offer.transactionType);
+          pinEl.innerText = formatPinLabel(offer, tx === "rent");
+          pinEl.onmouseenter = () => {
+            if (sliderChangingRef.current) return;
+            focusPin(Number(offer.id), coords);
           };
-          innerEl.onmouseleave = () => {
+          pinEl.onmouseover = pinEl.onmouseenter;
+          pinEl.onmouseleave = () => {
             if (!canHoverRef.current) return;
             hoverFocusActiveRef.current = false;
             setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
           };
-
-          outerEl.appendChild(innerEl);
-          markersRef.current[id] = new mapboxgl.Marker({ element: outerEl })
-            .setLngLat(coords)
-            .addTo(map.current!);
-        } else {
-          markersRef.current[id].setLngLat(coords);
-          const rootEl = markersRef.current[id].getElement();
-          const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
-          if (pinEl) {
-            const tx = normalizeTransactionType(offer.transactionType);
-            pinEl.className = offerPinColorClasses(offer.transactionType);
-            pinEl.innerText = formatPinLabel(offer, tx === "rent");
-            pinEl.onmouseenter = () => {
-              if (!map.current || !canHoverRef.current) return;
-              const idNum = Number(offer.id);
-              if (!Number.isFinite(idNum)) return;
-              if (activeHoverPinId === idNum || map.current.isMoving()) return;
-              hoverFocusActiveRef.current = true;
-              setActiveHoverPinId(idNum);
-              lastInteractionAtRef.current = Date.now();
-              map.current.flyTo({
-                center: coords,
-                zoom: 16.2,
-                pitch: 58,
-                bearing: -12,
-                speed: 0.42,
-                curve: 1.42,
-                essential: true,
-              });
-            };
-            pinEl.onmouseleave = () => {
-              if (!canHoverRef.current) return;
-              hoverFocusActiveRef.current = false;
-              setActiveHoverPinId((prev) => (prev === Number(offer.id) ? null : prev));
-            };
-          }
         }
-      });
+      }
+    }
 
     for (const id of Object.keys(markersRef.current)) {
       if (!newMarkers[id]) {
@@ -315,13 +488,18 @@ export default function InteractiveMap({ immersive = false }: Props) {
         const pinEl = rootEl?.firstElementChild as HTMLElement | undefined;
         if (pinEl) {
           pinEl.onmouseenter = null;
+          pinEl.onmouseover = null;
           pinEl.onmouseleave = null;
         }
         markersRef.current[id].remove();
         delete markersRef.current[id];
       }
     }
-  }, [filteredOffers, formatPinLabel, rate, activeHoverPinId]);
+  }, [filteredOffers, focusPin, formatPinLabel, transactionMode]);
+
+  useEffect(() => {
+    updateMarkersRef.current = updateMarkers;
+  }, [updateMarkers]);
 
   useEffect(() => {
     if (!mapboxToken || !mapContainer.current || map.current) return;
@@ -392,18 +570,15 @@ export default function InteractiveMap({ immersive = false }: Props) {
         /* 3D warstwa opcjonalna — kafelki mapy muszą działać bez niej */
       }
 
-      updateMarkers();
+      ensureOffersClusterLayers(map.current);
+      syncOffersGeoJson(map.current, filteredOffers);
       setMapLoaded(true);
     };
 
     map.current.on("load", onLoad);
     map.current.on("error", (e) => {
       console.error("Mapbox error:", e);
-      setMapInitError(
-        locale === "pl"
-          ? "Mapa nie załadowała się — sprawdź token Mapbox i domenę w panelu Mapbox."
-          : "Map failed to load — check Mapbox token and allowed URLs.",
-      );
+      setMapInitError(dict.map.loadError);
     });
 
     return () => {
@@ -413,7 +588,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
       setMapLoaded(false);
       markersRef.current = {};
     };
-  }, [mapboxToken, immersive, locale, resolvedTheme, updateMarkers]);
+  }, [mapboxToken, immersive, locale, resolvedTheme]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
@@ -424,16 +599,32 @@ export default function InteractiveMap({ immersive = false }: Props) {
       map.current.setStyle(nextStyle);
       map.current.once("style.load", () => {
         if (!map.current) return;
-        updateMarkers();
+        ensureOffersClusterLayers(map.current);
+        syncOffersGeoJson(map.current, filteredOffers);
+        updateMarkersRef.current();
       });
     } catch {
       /* noop */
     }
-  }, [resolvedTheme, mapLoaded, updateMarkers]);
+  }, [resolvedTheme, mapLoaded, filteredOffers]);
 
   useEffect(() => {
-    if (!mapLoaded) return;
-    updateMarkers();
+    if (!map.current || !mapLoaded) return;
+    ensureOffersClusterLayers(map.current);
+    syncOffersGeoJson(map.current, filteredOffers);
+    map.current.triggerRepaint();
+  }, [filteredOffers, mapLoaded]);
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const handler = () => updateMarkersRef.current();
+    map.current.on("render", handler);
+    map.current.on("idle", handler);
+    handler();
+    return () => {
+      map.current?.off("render", handler);
+      map.current?.off("idle", handler);
+    };
   }, [mapLoaded, updateMarkers]);
 
   useEffect(() => {
@@ -452,22 +643,19 @@ export default function InteractiveMap({ immersive = false }: Props) {
     mapInstance.on("touchstart", markInteraction);
     mapInstance.on("wheel", markInteraction);
 
-    const tick = window.setInterval(() => {
+    const spin = () => {
       if (!map.current) return;
-      if (hoverFocusActiveRef.current) return;
-      const now = Date.now();
-      const idleForMs = now - lastInteractionAtRef.current;
-      const zoom = map.current.getZoom();
-      if (idleForMs < 2200 || zoom > 4.8 || map.current.isMoving()) return;
-
-      map.current.easeTo({
-        bearing: map.current.getBearing() + 6,
-        duration: 2600,
-        easing: (t) => t,
-      });
-    }, 2800);
-
-    autoRotateTimerRef.current = tick;
+      if (!hoverFocusActiveRef.current) {
+        const now = Date.now();
+        const idleForMs = now - lastInteractionAtRef.current;
+        const zoom = map.current.getZoom();
+        if (idleForMs > 1600 && zoom <= 4.8) {
+          map.current.setBearing(map.current.getBearing() + 0.03);
+        }
+      }
+      autoRotateFrameRef.current = window.requestAnimationFrame(spin);
+    };
+    autoRotateFrameRef.current = window.requestAnimationFrame(spin);
 
     return () => {
       mapInstance.off("dragstart", markInteraction);
@@ -477,9 +665,9 @@ export default function InteractiveMap({ immersive = false }: Props) {
       mapInstance.off("mousedown", markInteraction);
       mapInstance.off("touchstart", markInteraction);
       mapInstance.off("wheel", markInteraction);
-      if (autoRotateTimerRef.current) {
-        window.clearInterval(autoRotateTimerRef.current);
-        autoRotateTimerRef.current = null;
+      if (autoRotateFrameRef.current) {
+        window.cancelAnimationFrame(autoRotateFrameRef.current);
+        autoRotateFrameRef.current = null;
       }
     };
   }, [mapLoaded]);
@@ -560,12 +748,12 @@ export default function InteractiveMap({ immersive = false }: Props) {
             onClick={() => {
               setShowMapGuide(false);
               if (typeof window !== "undefined") {
-                window.localStorage.setItem("estateos_map_guide_dismissed", "1");
+                window.sessionStorage.setItem("estateos_map_guide_dismissed", "1");
               }
             }}
             className="absolute right-3 top-3 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)]"
           >
-            OK
+            {dict.map.guideOk}
           </button>
           <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
             {dict.map.guideTitle}
@@ -574,16 +762,16 @@ export default function InteractiveMap({ immersive = false }: Props) {
             <div className="flex items-center gap-2">
               <Move className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guidePan}</span>
-            </div>
+                </div>
             <div className="flex items-center gap-2">
               <Hand className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guidePinch}</span>
-            </div>
+              </div>
             <div className="flex items-center gap-2">
               <MousePointer2 className="h-4 w-4 text-emerald-400" />
               <span>{dict.map.guideHoverZoom}</span>
-            </div>
-          </div>
+                </div>
+              </div>
         </motion.aside>
       )}
 
@@ -591,11 +779,18 @@ export default function InteractiveMap({ immersive = false }: Props) {
         <ZoomIn className={`h-3.5 w-3.5 ${activeHoverPinId ? "text-emerald-400" : "text-[var(--eos-muted)]"}`} />
         <span>{activeHoverPinId ? dict.map.hoverZoomActive : dict.map.hoverZoomHint}</span>
       </div>
+      <button
+        type="button"
+        onClick={() => setShowMapGuide(true)}
+        className="absolute bottom-16 right-4 z-20 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)]/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] transition-colors hover:text-[var(--eos-text)] sm:right-6"
+      >
+        {dict.map.guideButton}
+      </button>
 
       {mapInitError && (
         <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[var(--eos-bg)]/95 p-6 text-center">
           <p className="max-w-md text-sm leading-relaxed text-[var(--eos-muted)]">{mapInitError}</p>
-        </div>
+                </div>
       )}
 
       {!mapboxToken && !mapInitError && (
@@ -603,7 +798,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
           <p className="text-xs font-bold uppercase tracking-widest text-[var(--eos-muted)]">
             {dict.addOffer.mapLoading}
           </p>
-        </div>
+              </div>
       )}
 
       <div className="absolute left-1/2 top-4 z-30 flex w-[92%] max-w-lg -translate-x-1/2 flex-col items-center gap-3 sm:top-6 sm:gap-4">
@@ -625,8 +820,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
             )}
             <span className="relative z-10">{dict.map.forSale}</span>
           </button>
-          <button
-            type="button"
+                          <button
+                            type="button"
             onClick={() => setTransactionMode("rent")}
             className={`relative flex min-w-[120px] items-center justify-center rounded-full px-8 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
               transactionMode === "rent"
@@ -641,8 +836,8 @@ export default function InteractiveMap({ immersive = false }: Props) {
               />
             )}
             <span className="relative z-10">{dict.map.forRent}</span>
-          </button>
-        </div>
+                    </button>
+                </div>
 
         <div className="interactive-map-controls flex w-full items-center gap-4 rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-4 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl sm:p-5">
           <div className="flex flex-1 flex-col gap-3">
@@ -669,6 +864,22 @@ export default function InteractiveMap({ immersive = false }: Props) {
                   ? setPriceMaxRentUi(Number(e.target.value))
                   : setPriceMaxUi(Number(e.target.value))
               }
+              onMouseDown={() => {
+                sliderChangingRef.current = true;
+                hoverFocusActiveRef.current = false;
+              }}
+              onMouseUp={() => {
+                sliderChangingRef.current = false;
+                lastInteractionAtRef.current = Date.now();
+              }}
+              onTouchStart={() => {
+                sliderChangingRef.current = true;
+                hoverFocusActiveRef.current = false;
+              }}
+              onTouchEnd={() => {
+                sliderChangingRef.current = false;
+                lastInteractionAtRef.current = Date.now();
+              }}
               aria-label={maxPriceLabel}
               className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,255,255,0.5)]"
               style={{
@@ -679,18 +890,18 @@ export default function InteractiveMap({ immersive = false }: Props) {
 
           <div className="mx-1 h-10 w-px bg-[var(--eos-border)]" />
 
-          <button
-            type="button"
+            <button
+              type="button"
             onClick={locateUser}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] transition-all hover:border-emerald-500/40 hover:bg-[var(--eos-surface-strong)] active:scale-95"
             title={dict.map.locateMe}
             aria-label={dict.map.locateMe}
           >
             <LocateFixed className="h-5 w-5 text-[var(--eos-text)]" />
-          </button>
+            </button>
         </div>
       </div>
-
+    
       <AnimatePresence>
         {showTeaser && (
           <motion.div
@@ -717,7 +928,7 @@ export default function InteractiveMap({ immersive = false }: Props) {
               <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-3xl border border-emerald-500/20 bg-emerald-500/10 shadow-[inset_0_0_20px_rgba(16,185,129,0.2)]">
                 <Lock className="text-emerald-500" size={32} />
               </div>
-
+              
               <h2 className="mb-4 text-3xl font-black tracking-tighter text-white">
                 <span className="text-emerald-400">{dict.map.teaserTitleHighlight}</span>{" "}
                 {dict.map.teaserTitle}

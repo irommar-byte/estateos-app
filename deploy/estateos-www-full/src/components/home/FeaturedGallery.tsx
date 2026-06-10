@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Briefcase, MapPin } from "lucide-react";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
+import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useLocale } from "@/contexts/LocaleContext";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 
@@ -21,6 +23,7 @@ type Offer = {
   imageUrl?: string | null;
   images?: unknown;
   transactionType?: string | null;
+  isLegalSafeVerified?: boolean | null;
   badges?: {
     isPartner?: boolean;
     isInvestorPro?: boolean;
@@ -147,10 +150,12 @@ export default function FeaturedGallery() {
           {featured.map((offer, index) => {
             const location =
               [offer.city, offer.district].filter(Boolean).join(", ") ||
-              (locale === "en" ? "Poland" : "Polska");
+              dict.homePremium.countryDefault;
             const hasActiveDealRoom = negotiatingOfferIds.has(Number(offer.id));
             const priceInfo = formatOffer(offer);
             const isRent = String(offer.transactionType || "").toLowerCase().includes("rent");
+            const offerCopy = getOfferPageCopy(locale);
+            const isKwVerified = offer.isLegalSafeVerified === true;
             return (
               <motion.article
                 key={offer.id}
@@ -171,10 +176,17 @@ export default function FeaturedGallery() {
                   <div className="absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-black/55 to-transparent" />
 
                   <div className="absolute left-5 top-5 rounded-full border border-white/25 bg-black/65 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.35)]">
-                    {isRent
-                      ? (locale === "en" ? "Rent" : "Wynajem")
-                      : (locale === "en" ? "Sale" : "Sprzedaż")}
+                    {isRent ? dict.map.forRent : dict.map.forSale}
                   </div>
+                  {isKwVerified ? (
+                    <LegalVerifiedShieldBadge
+                      variant="card"
+                      active
+                      label={offerCopy.legalVerifiedKw}
+                      sublabel={offerCopy.legalVerifiedKwSublabel}
+                      className="absolute left-5 top-[3.25rem] z-10"
+                    />
+                  ) : null}
                   <OfferFavoriteButton
                     offerId={offer.id}
                     variant="icon"
@@ -191,14 +203,14 @@ export default function FeaturedGallery() {
                     </div>
                   )}
 
-                  <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-7">
+                  <div className="eos-on-media absolute bottom-0 left-0 right-0 p-6 sm:p-7">
                     <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-md shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
                       <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
                         <MapPin className="size-3.5 shrink-0" />
                         <span className="truncate">{location}</span>
                       </div>
                       <h3 className="line-clamp-2 text-xl font-semibold leading-snug text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)] sm:text-2xl">
-                        {offer.title || (locale === "en" ? "Listing" : "Oferta")}
+                        {offer.title || dict.homePremium.listingFallback}
                       </h3>
                       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/85">
                         <span className="text-sm font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">

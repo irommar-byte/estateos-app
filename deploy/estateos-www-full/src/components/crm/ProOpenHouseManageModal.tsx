@@ -321,15 +321,15 @@ export default function ProOpenHouseManageModal({
                     <input
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Tytuł (opcjonalnie)"
-                      className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white"
+                      placeholder={copy.openHouseOptionalTitle}
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
                     />
                     <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       rows={2}
-                      placeholder="Informacje dla gości (opcjonalnie)"
-                      className="w-full resize-none rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white"
+                      placeholder={copy.openHouseOptionalDescription}
+                      className="w-full resize-none rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)]"
                     />
 
                     <button
@@ -359,8 +359,8 @@ export default function ProOpenHouseManageModal({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-white">{event.title}</p>
-                          <p className="mt-1 text-xs text-white/45">
-                            {event.status} · {event.totalSpotsLeft} wolnych miejsc
+                          <p className="mt-1 text-xs text-[var(--eos-muted)]">
+                            {event.status} · {event.totalSpotsLeft} {copy.openHouseSpotsLeft}
                           </p>
                         </div>
                         <Link

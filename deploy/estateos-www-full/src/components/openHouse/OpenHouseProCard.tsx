@@ -22,8 +22,9 @@ export default function OpenHouseProCard({ activeOffers, onChanged }: Props) {
     <>
       <ProToolBadge
         icon="door"
-        title="Dzień otwartych drzwi"
-        subtitle="Zaplanuj terminy wizyt i rezerwacje gości przy swojej ofercie."
+        badgeLabel={copy.exclusiveBadge}
+        title={copy.openHouseTitle}
+        subtitle={copy.openHouseSubtitle}
         onClick={() => setPanelOpen(true)}
       />
 

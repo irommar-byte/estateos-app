@@ -10,6 +10,7 @@ type Props = {
   icon: ProToolIconKind;
   title: string;
   subtitle: string;
+  badgeLabel?: string;
   onClick?: () => void;
   comingSoon?: boolean;
   soonLabel?: string;
@@ -120,6 +121,7 @@ export default function ProToolBadge({
   icon,
   title,
   subtitle,
+  badgeLabel = "Ekskluzywne narzędzie Pro",
   onClick,
   comingSoon = false,
   soonLabel,
@@ -132,7 +134,7 @@ export default function ProToolBadge({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[9px] font-black uppercase tracking-[0.28em] text-[#D4AF37]/90">
-            Ekskluzywne narzędzie Pro
+            {badgeLabel}
           </p>
           <h3 className="mt-1 text-xs font-black uppercase leading-snug tracking-[0.1em] text-white/95 sm:text-sm sm:tracking-[0.12em]">
             {title}
