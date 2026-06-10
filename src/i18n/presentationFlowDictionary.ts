@@ -15,6 +15,8 @@ export type PresentationFlowDictionary = {
     scheduledOf: string;
     otherOffers: string;
     reviewsSection: string;
+    reviewsSectionHint: string;
+    reviewsPolicyHint: string;
     noReviewsUser: string;
     reviewNoComment: string;
     reviewerFallback: string;
@@ -82,8 +84,13 @@ const pl: PresentationFlowDictionary = {
     noShowHint: 'Umówiony termin minął — druga strona nie przyszła',
     scheduledOf: 'z {n} zakończonych umówień',
     otherOffers: 'Inne oferty ({n})',
-    reviewsSection: 'Opinie po prezentacjach',
-    noReviewsUser: 'Brak opinii dla tego użytkownika.',
+    reviewsSection: 'Opinie po transakcjach',
+    reviewsSectionHint:
+      'Opinie wystawia się wyłącznie po uzgodnieniu ceny i potwierdzeniu wycofania oferty — nie po samych prezentacjach.',
+    reviewsPolicyHint:
+      'Oceny na profilu dotyczą zakończonych transakcji (cena ustalona, oferta wycofana), nie wizyt prezentacyjnych.',
+    noReviewsUser:
+      'Brak opinii po transakcjach. Opinie pojawiają się dopiero po uzgodnieniu ceny i potwierdzeniu wycofania oferty.',
     reviewNoComment: 'Bez komentarza',
     reviewerFallback: 'Użytkownik #{id}',
     backToProfile: 'Wróć do poprzedniego profilu',
@@ -152,8 +159,13 @@ const en: PresentationFlowDictionary = {
     noShowHint: 'Accepted slot passed — counterparty did not attend',
     scheduledOf: 'of {n} closed bookings',
     otherOffers: 'Other listings ({n})',
-    reviewsSection: 'Reviews after viewings',
-    noReviewsUser: 'No reviews for this user yet.',
+    reviewsSection: 'Reviews after transactions',
+    reviewsSectionHint:
+      'Reviews can only be left after the price is agreed and the owner confirms withdrawing the listing — not after viewings alone.',
+    reviewsPolicyHint:
+      'Profile ratings reflect completed transactions (price agreed, listing withdrawn), not presentation visits.',
+    noReviewsUser:
+      'No transaction reviews yet. Reviews appear only after the price is agreed and the listing is withdrawn.',
     reviewNoComment: 'No comment',
     reviewerFallback: 'User #{id}',
     backToProfile: 'Back to previous profile',
@@ -208,80 +220,8 @@ const en: PresentationFlowDictionary = {
   },
 };
 
-const uk: PresentationFlowDictionary = {
-  profile: {
-    title: "Профіль користувача",
-    loading: "Завантаження профілю…",
-    loadError: "Не вдалося завантажити профіль.",
-    reviewsNone: "Немає відгуків",
-    reviewsCount: "{n} відгуків",
-    presentationHistory: "Історія презентацій",
-    held: "Відбулися",
-    heldHint: "Зустрічі, що відбулися за домовленістю",
-    noShow: "Неявка",
-    noShowHint: "Термін минув — контрагент не прийшов",
-    scheduledOf: "з {n} завершених записів",
-    otherOffers: "Інші оголошення ({n})",
-    reviewsSection: "Відгуки після переглядів",
-    noReviewsUser: "Немає відгуків для цього користувача.",
-    reviewNoComment: "Без коментаря",
-    reviewerFallback: "Користувач #{id}",
-    backToProfile: "Назад до попереднього профілю",
-  },
-  outcome: {
-    badge: "Підсумок візиту",
-    title: "Як завершився перегляд?",
-    subtitle: "Це впливає на репутацію обох сторін. Оберіть результат відповідно до факту.",
-    offerLabel: "Нерухомість",
-    dateLabel: "Термін",
-    counterpartyLabel: "Контрагент",
-    instructionTitle: "Як це працює",
-    instructionBody:
-      "Через 2 години після запланованого часу просимо закрити візит. Потім кожна сторона може залишити коротку оцінку. Раннє скасування не вважається неявкою.",
-    completedTitle: "Презентація відбулася",
-    completedDesc: "Зустріч на місці або онлайн відбулася.",
-    noShowTitle: "Контрагент не прийшов",
-    noShowDesc: "Термін був прийнятий, але друга сторона не з'явилася.",
-    cancelledTitle: "Скасовано до візиту",
-    cancelledDesc: "Візит не відбувся — скасовано або перенесено вчасно.",
-    noteLabel: "Нотатка (необов'язково)",
-    notePlaceholder: "Напр. чекав 20 хв за адресою…",
-    submit: "Зберегти результат візиту",
-    submitting: "Збереження…",
-    successTitle: "Результат збережено",
-    successBody: "Незабаром попросимо коротко оцінити контрагента.",
-    tooEarlyTitle: "Занадто рано",
-    tooEarlyBody: "Закрити візит можна через 2 години після запланованого часу.",
-    dismiss: "Нагадати пізніше",
-  },
-  review: {
-    badge: "Оцінка після візиту",
-    title: "Оцініть контрагента",
-    subtitle: "Оцініть співпрацю з {name}. Відгук з'явиться в профілі після збереження.",
-    instructionTitle: "Підказка",
-    instructionBody:
-      "Оцінюйте комунікацію, пунктуальність і надійність — не саму нерухомість. Одна пара відгуків на кожен завершений візит.",
-    starsRequired: "Оберіть оцінку зірками (1–5).",
-    commentLabel: "Коментар",
-    commentPlaceholder: "Напр. пунктуальний, конкретний, рекомендую…",
-    commentHint: "До ~500 символів. Без чутливих даних і лайки.",
-    submit: "Опублікувати відгук",
-    submitting: "Публікація…",
-    successTitle: "Дякуємо",
-    successBody: "Відгук збережено і доповнює профіль контрагента.",
-    dismiss: "Закрити",
-  },
-  hints: {
-    navbarPending: "У вас є незавершене підсумкування візиту або оцінка контрагента.",
-    crmBanner: "Доповніть результат презентації — це впливає на статистику та відгуки.",
-    dealRoomBanner: "Після терміну презентації закрийте візит і оцініть контрагента.",
-  },
-};
-
 export function getPresentationFlowDictionary(locale: Locale): PresentationFlowDictionary {
-  if (locale === "pl") return pl;
-  if (locale === "uk") return uk;
-  return en;
+  return locale === 'en' ? en : pl;
 }
 
 export function fmtPresentation(s: string, vars: Record<string, string | number>): string {

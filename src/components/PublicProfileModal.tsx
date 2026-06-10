@@ -270,6 +270,10 @@ export default function PublicProfileModal({
               </AnimatePresence>
             </button>
 
+            <p className="text-center text-[10px] leading-relaxed text-[var(--eos-muted)] px-2">
+              {p.reviewsPolicyHint}
+            </p>
+
             {data.offers.length > 0 && (
               <div>
                 <h4 className="text-[10px] font-black text-[var(--eos-subtle)] uppercase tracking-[0.2em] mb-3 text-center">
@@ -313,9 +317,12 @@ export default function PublicProfileModal({
 
             {reviews.length > 0 ? (
               <div>
-                <h4 className="text-[10px] font-black text-[var(--eos-subtle)] uppercase tracking-[0.2em] mb-3 text-center">
+                <h4 className="text-[10px] font-black text-[var(--eos-subtle)] uppercase tracking-[0.2em] mb-1 text-center">
                   {p.reviewsSection}
                 </h4>
+                <p className="mb-3 text-center text-[9px] leading-relaxed text-[var(--eos-muted)] px-1">
+                  {p.reviewsSectionHint}
+                </p>
                 <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
                   {reviews.slice(0, 8).map((r: any) => {
                     const reviewerLabel =
