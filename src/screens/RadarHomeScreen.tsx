@@ -2942,6 +2942,39 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     return buildRadarActiveScopeLine(radarFilters, radarMapBounds);
   }, [isRadarActive, radarFilters, radarMapBounds]);
 
+  const radarCalibrationChrome = useMemo(() => {
+    if (isRadarActive) {
+      return {
+        wrap: {
+          borderColor: isDark ? 'rgba(16,185,129,0.58)' : 'rgba(16,185,129,0.46)',
+          borderTopColor: isDark ? 'rgba(110,231,183,0.42)' : 'rgba(255,255,255,0.82)',
+          borderBottomColor: isDark ? 'rgba(4,80,58,0.62)' : 'rgba(16,185,129,0.34)',
+          shadowColor: '#10b981',
+        },
+        fill: {
+          backgroundColor: isDark ? 'rgba(16,185,129,0.24)' : 'rgba(16,185,129,0.17)',
+        },
+        bevel: {
+          backgroundColor: isDark ? 'rgba(167,243,208,0.28)' : 'rgba(255,255,255,0.55)',
+        },
+      };
+    }
+    return {
+      wrap: {
+        borderColor: isDark ? 'rgba(255,59,48,0.58)' : 'rgba(255,59,48,0.44)',
+        borderTopColor: isDark ? 'rgba(255,138,128,0.4)' : 'rgba(255,255,255,0.82)',
+        borderBottomColor: isDark ? 'rgba(120,20,12,0.62)' : 'rgba(255,59,48,0.3)',
+        shadowColor: '#FF3B30',
+      },
+      fill: {
+        backgroundColor: isDark ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.13)',
+      },
+      bevel: {
+        backgroundColor: isDark ? 'rgba(255,180,174,0.24)' : 'rgba(255,255,255,0.52)',
+      },
+    };
+  }, [isRadarActive, isDark]);
+
   /**
    * Auto-wygaszanie trybu „Dopasowania Radaru" gdy pojawia się jakikolwiek
    * konkurencyjny stan filtrowania. Trzymamy obietnicę z komentarza przy
@@ -4621,16 +4654,18 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 openRadarCalibration();
               }}
-              style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}
+              style={({ pressed }) => [
+                styles.radarCalibrationBtnWrap,
+                radarCalibrationChrome.wrap,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.97 }] },
+              ]}
             >
               <BlurView
                 intensity={95}
                 tint={isDark ? 'dark' : 'light'}
-                style={[
-                  styles.radarPill,
-                  { backgroundColor: isRadarActive ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 59, 48, 0.14)' },
-                ]}
+                style={[styles.radarPill, radarCalibrationChrome.fill]}
               >
+                <View pointerEvents="none" style={[styles.radarPillBevel, radarCalibrationChrome.bevel]} />
                 {isRadarActive ? (
                   <Ionicons name="radio" size={18} color="#10b981" />
                 ) : (
@@ -6125,6 +6160,15 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 9,
   },
+  radarCalibrationBtnWrap: {
+    borderRadius: 26,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.32,
+    shadowRadius: 14,
+    elevation: 11,
+  },
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -6133,6 +6177,15 @@ const styles = StyleSheet.create({
     gap: 10,
     minWidth: 220,
     maxWidth: '92%',
+    position: 'relative',
+  },
+  radarPillBevel: {
+    position: 'absolute',
+    top: 0,
+    left: 10,
+    right: 10,
+    height: 1,
+    borderRadius: 1,
   },
   radarPillTextWrap: {
     flexDirection: 'column',
