@@ -1452,8 +1452,20 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     if (!isRadarActive) {
       blinkLoop = Animated.loop(
         Animated.sequence([
-          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 500, useNativeDriver: true }),
-          Animated.timing(radarInactiveBlink, { toValue: 0.35, duration: 500, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, {
+            toValue: 1,
+            duration: 480,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.delay(140),
+          Animated.timing(radarInactiveBlink, {
+            toValue: 0,
+            duration: 480,
+            easing: Easing.in(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.delay(140),
         ]),
       );
       blinkLoop.start();

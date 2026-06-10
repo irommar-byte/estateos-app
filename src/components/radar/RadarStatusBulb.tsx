@@ -9,18 +9,31 @@ type Props = {
   softBg: string;
 };
 
-/** Prosta dioda statusu — czytelna, bez przesadzonej stylizacji. */
+/** Czytelna dioda statusu — wyraźne mruganie gdy Radar nieaktywny. */
 export default function RadarStatusBulb({ active, blink, tint, softBg }: Props) {
-  return (
-    <View style={[styles.wrap, { backgroundColor: softBg }]}>
-      {active ? (
+  if (active) {
+    return (
+      <View style={[styles.wrap, { backgroundColor: softBg }]}>
         <Ionicons name="radio" size={17} color={tint} />
-      ) : (
-        <Animated.View style={{ opacity: blink.interpolate({ inputRange: [0, 1], outputRange: [0.42, 1] }) }}>
-          <Ionicons name="radio-outline" size={17} color={tint} />
-        </Animated.View>
-      )}
-    </View>
+      </View>
+    );
+  }
+
+  const iconOpacity = blink.interpolate({
+    inputRange: [0, 0.06, 1],
+    outputRange: [0, 0, 1],
+  });
+  const badgeOpacity = blink.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.28, 1],
+  });
+
+  return (
+    <Animated.View style={[styles.wrap, { backgroundColor: softBg, opacity: badgeOpacity }]}>
+      <Animated.View style={{ opacity: iconOpacity }}>
+        <Ionicons name="radio-outline" size={17} color={tint} />
+      </Animated.View>
+    </Animated.View>
   );
 }
 
