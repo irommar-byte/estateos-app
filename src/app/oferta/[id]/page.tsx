@@ -9,6 +9,7 @@ import { getOfferPageCopy } from "@/content/offerPageCopy";
 import {
   describeOfferAgentCommission,
   formatBuyerAgentCommissionLine,
+  formatCommissionAmountForDisplay,
 } from "@/lib/agentCommission";
 import {
   formatOfferBuildYear,
@@ -46,6 +47,7 @@ import { amenityLabelsFromOffer } from "@/lib/offerAmenities";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
+  formatOfferSecondaryAmount,
   resolveOfferDisplayAmount,
 } from "@/lib/money/format";
 import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
@@ -62,10 +64,11 @@ const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
   const { locale, dict } = useLocale();
-  const { formatOffer, pricePerSqmLabel, rate } = useFormatOfferPrice();
+  const { formatOffer, pricePerSqmLabel, rate, preference } = useFormatOfferPrice();
   const t = getOfferPageCopy(locale);
   const priceFormatted = formatOffer(offer);
   const listingPrice = resolveOfferListingPrice(offer, rate);
+  const dateLocale = locale === "pl" ? "pl" : "en";
   const isDiscounted = Boolean((offer as { isDiscounted?: boolean }).isDiscounted);
   const discountPercent = Number((offer as { priceDiscountPercent?: number }).priceDiscountPercent) || 0;
   const listPricePln = Number((offer as { listPricePln?: number }).listPricePln ?? (offer as { previousPrice?: number }).previousPrice ?? 0);
@@ -84,6 +87,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           rentAdminFeeAmount,
           locale === "en" ? "en" : locale === "uk" ? "uk" : "pl",
           listingCurrency,
+          { preference, rate },
         )
       : null;
   const isDealRoom = offer.badges?.isPartner === true;
@@ -244,7 +248,6 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const rawPlotAreaStr = String(offer.plotArea || '').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericPlotArea = parseFloat(rawPlotAreaStr) || 0;
   const propertyTypeRaw = String(offer.propertyType || '').toUpperCase();
-  const dateLocale = locale === "pl" ? "pl" : "en";
   const cityRaw = String(offer.city || "").trim();
   const districtRaw = String(offer.district || "").trim();
   const streetRaw = String(offer.street || offer.address || "").trim();
@@ -332,10 +335,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   ].filter((p) => p.value);
 
   const yearBuiltLabel = formatOfferBuildYear(offer);
-  const adminFeeRaw = offer.adminFee ?? offer.rent;
+  const heatingLabel = offer.heating ? String(offer.heating) : null;
   const adminFeeLabel =
-    adminFeeRaw != null && Number(adminFeeRaw) > 0
-      ? `${Number(adminFeeRaw).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} ${listingCurrency === "EUR" ? "€" : locale === "en" || locale === "uk" ? "PLN" : "zł"}`
+    rentAdminFeeAmount != null
+      ? formatOfferSecondaryAmount({
+          amount: rentAdminFeeAmount,
+          listingCurrency,
+          pricePln: listingCurrency === "PLN" ? rentAdminFeeAmount : null,
+          displayPreference: preference,
+          rate,
+          locale: dateLocale,
+        })
       : null;
 
   const mainParams = [
@@ -355,40 +365,45 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           },
           { label: t.rooms, value: offer.rooms != null && offer.rooms !== '' ? String(offer.rooms) : null },
           { label: t.floor, value: offer.floor != null && offer.floor !== '' ? String(offer.floor) : null },
-          { label: t.buildYear, value: yearBuiltLabel },
           {
             label: t.standard,
             value: formatOfferCondition(offer.condition || offer.finishCondition, locale) || null,
           },
-          { label: t.heating, value: offer.heating ? String(offer.heating) : null },
-          ...(isRent ? [{ label: t.rentFee, value: adminFeeLabel }] : []),
         ]),
   ].filter((p) => p.value != null && p.value !== '');
 
   const agentCommissionInfo = describeOfferAgentCommission(offer, offer.price);
+  const agentCommissionAmountLabel = agentCommissionInfo
+    ? formatCommissionAmountForDisplay(
+        agentCommissionInfo.amount,
+        offer,
+        offer.price,
+        preference,
+        rate,
+        dateLocale,
+      )
+    : null;
   const agentCommissionLine = agentCommissionInfo
     ? agentCommissionInfo.isZero
       ? t.agentCommissionZero
-      : formatBuyerAgentCommissionLine(agentCommissionInfo, locale)
+      : formatBuyerAgentCommissionLine(
+          {
+            ...agentCommissionInfo,
+            amountLabel: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
+          },
+          locale,
+        )
     : null;
 
   const buildingParams = [
     { label: t.buildingType, value: formatOfferPropertyType(offer.propertyType, locale) },
-    { label: t.buildYear, value: formatOfferBuildYear(offer) },
-    { label: t.heating, value: offer.heating },
+    { label: t.buildYear, value: yearBuiltLabel },
+    { label: t.heating, value: heatingLabel },
     {
       label: t.furnished,
       value: offer.isFurnished === true ? t.furnishedYes : offer.isFurnished === false ? t.furnishedNo : null,
     },
-    {
-      label: t.rentFee,
-      value:
-        offer.adminFee != null && Number(offer.adminFee) > 0
-          ? `${Number(offer.adminFee).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
-          : offer.rent
-            ? `${String(offer.rent).replace(/\D/g, "")} PLN`
-            : null,
-    },
+    ...(isRent && adminFeeLabel ? [{ label: t.rentFee, value: adminFeeLabel }] : []),
     {
       label: t.availability,
       value: offer.availabilityDate
@@ -414,7 +429,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           },
           {
             label: t.commissionAmount,
-            value: agentCommissionInfo.amountLabel,
+            value: agentCommissionAmountLabel,
           },
         ]
       : [];

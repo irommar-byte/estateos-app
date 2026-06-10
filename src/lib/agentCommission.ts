@@ -1,7 +1,6 @@
-/**
- * Kanoniczne reguły prowizji agenta (oferta) — mobile + backend muszą walidować identycznie.
- * Wartość to udział procentowy od ceny oferty (informacyjnie); rozliczenia poza platformą.
- */
+import { resolveOfferListingPrice } from "@/lib/money/resolveListingPrice";
+import { formatOfferSecondaryAmount } from "@/lib/money/format";
+import type { DisplayCurrencyPreference } from "@/lib/money/types";
 
 export const AGENT_COMMISSION_MIN_NONZERO = 0.5;
 export const AGENT_COMMISSION_MAX = Number.POSITIVE_INFINITY;
@@ -191,6 +190,33 @@ export function formatPercentLabel(percent: number): string {
 export function formatPlnAmount(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0 PLN";
   return `${Math.round(amount).toLocaleString("pl-PL")} PLN`;
+}
+
+export function formatCommissionAmountForDisplay(
+  amount: number,
+  offerRaw: unknown,
+  priceRaw: unknown,
+  preference: DisplayCurrencyPreference,
+  rate: number,
+  locale: "pl" | "en" = "pl",
+): string {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return preference === "EUR" ? "0 €" : locale === "en" ? "0 PLN" : "0 zł";
+  }
+  const listing = resolveOfferListingPrice(offerRaw ?? { price: priceRaw }, rate);
+  const priceNum = parseOfferNumeric(priceRaw ?? (offerRaw as Record<string, unknown>)?.price);
+  const commissionPln =
+    listing.plnAmount > 0 && Number.isFinite(priceNum) && priceNum > 0
+      ? Math.round((listing.plnAmount * amount) / priceNum)
+      : null;
+  return formatOfferSecondaryAmount({
+    amount,
+    listingCurrency: listing.currency,
+    pricePln: commissionPln,
+    displayPreference: preference,
+    rate,
+    locale,
+  });
 }
 
 export function isMobileAgentRole(role: unknown): boolean {
