@@ -152,7 +152,12 @@ export function calculateRadarMatchScore(pref: Record<string, unknown>, offer: R
   const propPref = String(pref.propertyType || '').toUpperCase();
   if (propPref && propPref !== 'ALL') {
     const propOffer = String(offer.propertyType || '').toUpperCase();
-    if (propOffer && propPref !== propOffer) return 0;
+    if (propOffer) {
+      const commercialMatch =
+        (propPref === 'COMMERCIAL' || propPref === 'PREMISES') &&
+        (propOffer === 'COMMERCIAL' || propOffer === 'PREMISES');
+      if (!commercialMatch && propPref !== propOffer) return 0;
+    }
   }
 
   const rawPrice = getCanonicalOfferPricePln(offer);

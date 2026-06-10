@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { OFFER_YEAR_BUILT_MIN } from '../lib/offerYearBuilt';
 import * as Haptics from 'expo-haptics';
 import Animated, { 
   useAnimatedStyle, useSharedValue, withSpring, runOnJS, Layout, FadeIn, FadeOut, withDelay, withTiming, withSequence
@@ -45,10 +46,9 @@ const LiveRadarGold = '#D4AF37';
 const SELL_MIN_PRICE_LIMIT = 50000;
 const SELL_MAX_PRICE_LIMIT = 5000000;
 const RENT_MIN_PRICE_LIMIT = 500;
-const RENT_MAX_PRICE_LIMIT = 50000;
 const MIN_AREA_LIMIT = 10;
 const MAX_AREA_LIMIT = 250;
-const MIN_YEAR_LIMIT = 1950;
+const MIN_YEAR_LIMIT = OFFER_YEAR_BUILT_MIN;
 const MAX_YEAR_LIMIT = new Date().getFullYear();
 
 // === LUKSUSOWA PALETA DYNAMICZNA ===

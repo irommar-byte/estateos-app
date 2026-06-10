@@ -55,6 +55,7 @@ function propertyTypeLabel(code: string): string {
       return t('radar.home.propertyHouse');
     case 'PLOT':
       return t('radar.home.propertyPlot');
+    case 'COMMERCIAL':
     case 'PREMISES':
       return t('radar.home.propertyPremises');
     case 'ALL':

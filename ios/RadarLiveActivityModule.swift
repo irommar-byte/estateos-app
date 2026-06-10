@@ -115,6 +115,17 @@ private final class RadarLiveActivityHeartbeat {
     ]
   }
 
+  func shouldResetEpoch(for newState: RadarLiveActivityAttributes.ContentState) -> Bool {
+    guard let prev = baseState else { return true }
+    return prev.propertyType != newState.propertyType
+      || prev.newMatchesCount != newState.newMatchesCount
+      || prev.activeMatchesCount != newState.activeMatchesCount
+      || prev.city != newState.city
+      || prev.transactionType != newState.transactionType
+      || prev.minMatchThreshold != newState.minMatchThreshold
+      || prev.unreadDealroomMessagesCount != newState.unreadDealroomMessagesCount
+  }
+
   func applySnapshot(_ state: RadarLiveActivityAttributes.ContentState, resetEpoch: Bool) {
     if resetEpoch || epochMs == 0 {
       epochMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -123,11 +134,14 @@ private final class RadarLiveActivityHeartbeat {
     var merged = state
     merged.animationEpochMs = epochMs
     merged.animationTick = currentTick
+    merged.updatedAtIso = ISO8601DateFormatter().string(from: Date())
     baseState = merged
     if isAppActive {
       startTimerIfNeeded()
-      Task { await pushState(merged) }
+    } else {
+      startUnlockBurst()
     }
+    Task { await pushState(merged, force: true) }
   }
 
   func stop() {
@@ -325,7 +339,8 @@ private actor RadarLiveActivityCoordinator {
         for orphan in Activity<RadarLiveActivityAttributes>.activities where orphan.id != existing.id {
           await orphan.end(dismissalPolicy: .immediate)
         }
-        RadarLiveActivityHeartbeat.shared.applySnapshot(contentState, resetEpoch: false)
+        let resetEpoch = RadarLiveActivityHeartbeat.shared.shouldResetEpoch(for: contentState)
+        RadarLiveActivityHeartbeat.shared.applySnapshot(contentState, resetEpoch: resetEpoch)
         return ["status": "updated"]
       }
 

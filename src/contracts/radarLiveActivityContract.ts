@@ -138,13 +138,7 @@ export const buildRadarLiveActivitySnapshot = (input: Partial<RadarLiveActivityS
 // HUMAN-READABLE FORMAT (Apple-style)
 // ============================================================================
 
-const PROPERTY_TYPE_LABELS: Record<string, string> = {
-  FLAT: 'Mieszkanie',
-  HOUSE: 'Dom',
-  PLOT: 'Działka',
-  PREMISES: 'Lokal użytkowy',
-  ALL: 'Dowolny typ',
-};
+import { radarPropertyTypeLabel, radarPropertyTypeMatchesFilter } from '../utils/radarPropertyType';
 
 const transactionLabel = (type: RadarLiveActivityTransactionType) =>
   type === 'RENT' ? 'Wynajem' : 'Sprzedaż';
@@ -227,7 +221,7 @@ export const formatRadarLiveActivityLines = (snapshot: RadarLiveActivitySnapshot
   // ZASADA: liczbę dopasowań pokazujemy WYŁĄCZNIE, gdy są nowe od ostatniego wejścia
   // na zakładkę Radar. Po obejrzeniu listy znikają — odznaczenie „przeczytane".
   // Dzięki temu lock-screen pełni rolę alertu, a nie statycznego licznika.
-  const typeLabel = PROPERTY_TYPE_LABELS[snapshot.propertyType] || 'Dowolny typ';
+  const typeLabel = radarPropertyTypeLabel(snapshot.propertyType);
   const bottomParts: string[] = [typeLabel];
   if (snapshot.minArea != null) bottomParts.push(`od ${Math.round(snapshot.minArea)} m²`);
   if (snapshot.maxPrice != null) bottomParts.push(`do ${formatPriceShort(snapshot.maxPrice, snapshot.transactionType)}`);

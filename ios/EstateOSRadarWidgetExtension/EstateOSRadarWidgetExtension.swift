@@ -143,7 +143,7 @@ struct EstateOSRadarLiveActivity: Widget {
         case "FLAT": return "Mieszkanie"
         case "HOUSE": return "Dom"
         case "PLOT": return "Działka"
-        case "PREMISES": return "Lokal użytkowy"
+        case "COMMERCIAL", "PREMISES": return "Lokal użytkowy"
         default: return "Dowolny typ"
         }
     }

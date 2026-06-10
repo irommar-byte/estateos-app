@@ -56,6 +56,7 @@ import {
   radarFiltersFromApiPreference,
 } from '../utils/radarPreferenceSync';
 import { loadRadarCommittedState, saveRadarCommittedState } from '../utils/radarCommittedStorage';
+import { radarPropertyTypeMatchesFilter } from '../utils/radarPropertyType';
 import { logAdvancedMapSearch, logRadarCalibrationSearch } from '../services/radarSearchHistoryService';
 import CountryChipHangingFlag from '../components/CountryChipHangingFlag';
 import { countryLabelInOwnLanguageUpper } from '../utils/phoneRegions';
@@ -470,12 +471,8 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
 /** Promień trybu „Oferty w Twojej okolicy" na Radarze (bez filtrów / wyszukiwania). */
 const NEARBY_RADIUS_KM = 25;
 
-/** Backend używa `PREMISES`, UI wyszukiwania rozszerzonego — `COMMERCIAL`. */
 function propertyTypeMatchesFilter(rawType: string, filterType: AdvancedFilters['propertyType']): boolean {
-  if (filterType === 'ALL') return true;
-  const raw = String(rawType || '').toUpperCase();
-  if (filterType === 'COMMERCIAL') return raw === 'PREMISES' || raw === 'COMMERCIAL';
-  return raw === filterType;
+  return radarPropertyTypeMatchesFilter(rawType, filterType);
 }
 
 /** Który wymiar lokalizacji pominąć przy liczeniu chipów (faceted search). */
@@ -724,7 +721,7 @@ function locationScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds
 function radarMatchScore(offer: MapOffer, rf: RadarFilters, bounds: RadarMapBounds | null): number {
   const raw = offer.raw;
   if (String(raw.transactionType || '').toUpperCase() !== rf.transactionType) return 0;
-  if (rf.propertyType !== 'ALL' && String(raw.propertyType || '').toUpperCase() !== rf.propertyType) return 0;
+  if (rf.propertyType !== 'ALL' && !radarPropertyTypeMatchesFilter(String(raw.propertyType || ''), rf.propertyType)) return 0;
 
   const rawPrice = numericOfferValue(raw.price);
   const rawArea = numericOfferValue(raw.area);
@@ -3077,6 +3074,38 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   ]);
 
   /**
+   * Po zmianie kluczowych filtrów radaru — odśwież „widziane” dopasowania i wymuś sync Live Activity.
+   */
+  useEffect(() => {
+    if (!isRadarActive) return;
+    const currentIds = new Set(
+      visibleRadarMatchingOffers
+        .map((o) => Number(o?.id))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    );
+    setSeenRadarOfferIds((prev) => {
+      const next = new Set([...prev].filter((id) => currentIds.has(id)));
+      if (next.size === prev.size && [...next].every((id) => prev.has(id))) return prev;
+      seenRadarOfferIdsRef.current = next;
+      void AsyncStorage.setItem('@estateos_radar_seen_offer_ids', JSON.stringify(Array.from(next)));
+      return next;
+    });
+    lastLiveActivityFingerprintRef.current = '';
+    const snap = liveActivitySnapshotRef.current;
+    if (snap) void syncRadarLiveActivity(snap, { force: true });
+  }, [
+    isRadarActive,
+    radarFilters.propertyType,
+    radarFilters.transactionType,
+    radarFilters.city,
+    radarFilters.matchThreshold,
+    radarFilters.selectedDistricts,
+    radarMapBounds?.centerLat,
+    radarMapBounds?.centerLng,
+    radarMapBounds?.radiusKm,
+  ]);
+
+  /**
    * Heartbeat Live Activity — tylko gdy aplikacja jest aktywna (nie w tle / na lock screen).
    * Rzadszy interwał + `force` omija throttling w serwisie, żeby widget nadal „żył".
    */
@@ -3087,21 +3116,29 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       const snap = liveActivitySnapshotRef.current;
       if (!snap) return;
       void syncRadarLiveActivity(snap, { force: true });
-    }, 45_000);
+    }, 30_000);
     return () => clearInterval(interval);
   }, [isRadarActive]);
 
-  /** Po wybudzeniu telefonu — odśwież Live Activity (dane + animacja pierścieni). */
+  /** Po wybudzeniu / zablokowaniu — odśwież dane, animację i liczniki na lock screenie. */
   useEffect(() => {
     if (!isRadarActive) return;
     const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        lastLiveActivityFingerprintRef.current = '';
+        const snap = liveActivitySnapshotRef.current;
+        if (snap) void syncRadarLiveActivity(snap, { force: true });
+        return;
+      }
       if (state !== 'active') return;
+      void fetchOffersOnce(false);
+      void refreshUnreadDealroomCountRef.current?.();
+      lastLiveActivityFingerprintRef.current = '';
       const snap = liveActivitySnapshotRef.current;
-      if (!snap) return;
-      void syncRadarLiveActivity(snap, { force: true });
+      if (snap) void syncRadarLiveActivity(snap, { force: true });
     });
     return () => sub.remove();
-  }, [isRadarActive]);
+  }, [isRadarActive, fetchOffersOnce]);
 
   const focusMapToBounds = useCallback((bounds: { centerLat: number; centerLng: number; radiusKm: number }) => {
     if (!mapRef.current) return;
@@ -3575,6 +3612,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         mapBounds: mapSnap,
         areaSummaryLine: summarySnap,
       });
+      lastLiveActivityFingerprintRef.current = '';
     },
     [token, user?.id, setRadarActive],
   );
