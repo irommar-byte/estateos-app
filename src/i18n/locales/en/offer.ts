@@ -227,6 +227,8 @@ export const offer = {
       count: '{{count}} views',
       countZero: '0 views',
     },
+    sheetSwipeHint: 'Swipe up for more details',
+    sheetSwipeHintShort: 'More details',
     legalVerified: {
       label: 'verified',
       a11y: 'Land registry verified by EstateOS',

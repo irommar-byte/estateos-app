@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   LayoutAnimation,
@@ -41,12 +41,13 @@ export type GalleryOffer = {
 
 type UserLocation = { latitude: number; longitude: number } | null;
 
+const GALLERY_PAGE_SIZE = 20;
+
 type Props = {
   offers: GalleryOffer[];
   isDark: boolean;
   bottomInset: number;
   favorites: number[];
-  headerTop?: React.ReactNode;
   transactionFilter: GalleryTransactionFilter;
   countryFilter: GalleryCountryFilter;
   propertyFilter: GalleryPropertyFilter;
@@ -173,7 +174,6 @@ export default function RadarOfferGallery({
   isDark,
   bottomInset,
   favorites,
-  headerTop,
   transactionFilter,
   countryFilter,
   propertyFilter,
@@ -194,7 +194,9 @@ export default function RadarOfferGallery({
   t,
 }: Props) {
   const { width } = useWindowDimensions();
+  const listRef = useRef<FlatList<GalleryOffer>>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [page, setPage] = useState(1);
   const gap = 10;
   const horizontalPad = 16;
   const cardWidth = (width - horizontalPad * 2 - gap) / 2;
@@ -238,11 +240,36 @@ export default function RadarOfferGallery({
     [t],
   );
 
+  const filterKey = `${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}`;
+  const totalCount = offers.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / GALLERY_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterKey, totalCount]);
+
+  const paginatedOffers = useMemo(() => {
+    const start = (safePage - 1) * GALLERY_PAGE_SIZE;
+    return offers.slice(start, start + GALLERY_PAGE_SIZE);
+  }, [offers, safePage]);
+
+  const goToPage = useCallback(
+    (nextPage: number) => {
+      if (nextPage < 1 || nextPage > totalPages || nextPage === safePage) return;
+      Haptics.selectionAsync();
+      animateFilterChange();
+      setPage(nextPage);
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      });
+    },
+    [safePage, totalPages],
+  );
+
   const listHeader = useMemo(
     () => (
       <View style={styles.headerBlock}>
-        {headerTop}
-
         <View style={styles.countRow}>
           <Text style={[styles.countText, { color: isDark ? 'rgba(255,255,255,0.72)' : '#64748B' }]}>
             {t('radar.home.galleryResults', { count: String(offers.length) })}
@@ -367,7 +394,6 @@ export default function RadarOfferGallery({
       countryFilter,
       filtersExpanded,
       hasActiveFilters,
-      headerTop,
       isDark,
       offers.length,
       onClearFilters,
@@ -534,19 +560,110 @@ export default function RadarOfferGallery({
     );
   };
 
+  const listFooter = useMemo(() => {
+    if (totalCount === 0 || totalPages <= 1) return null;
+    const pageStart = (safePage - 1) * GALLERY_PAGE_SIZE + 1;
+    const pageEnd = Math.min(safePage * GALLERY_PAGE_SIZE, totalCount);
+
+    return (
+      <View style={styles.paginationBlock}>
+        <Text style={[styles.paginationRangeText, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}>
+          {t('radar.home.galleryPageRange', {
+            from: String(pageStart),
+            to: String(pageEnd),
+            total: String(totalCount),
+          })}
+        </Text>
+        <View style={styles.paginationRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('radar.home.galleryPagePrev')}
+            disabled={safePage <= 1}
+            onPress={() => goToPage(safePage - 1)}
+            style={({ pressed }) => [
+              styles.paginationArrow,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                opacity: safePage <= 1 ? 0.35 : pressed ? 0.82 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="chevron-back" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
+          </Pressable>
+
+          <View style={styles.paginationPages}>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+              const active = pageNum === safePage;
+              return (
+                <Pressable
+                  key={pageNum}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={t('radar.home.galleryPageGo', { page: String(pageNum) })}
+                  onPress={() => goToPage(pageNum)}
+                  style={({ pressed }) => [
+                    styles.paginationPageChip,
+                    {
+                      backgroundColor: active
+                        ? `${GALLERY_ACCENT}${isDark ? '40' : '28'}`
+                        : isDark
+                          ? 'rgba(255,255,255,0.07)'
+                          : 'rgba(0,0,0,0.04)',
+                      borderColor: active ? `${GALLERY_ACCENT}99` : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                      opacity: pressed ? 0.86 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.paginationPageChipText,
+                      { color: active ? GALLERY_ACCENT : isDark ? '#D4D4D8' : '#475569' },
+                    ]}
+                  >
+                    {pageNum}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('radar.home.galleryPageNext')}
+            disabled={safePage >= totalPages}
+            onPress={() => goToPage(safePage + 1)}
+            style={({ pressed }) => [
+              styles.paginationArrow,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+                opacity: safePage >= totalPages ? 0.35 : pressed ? 0.82 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="chevron-forward" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }, [goToPage, isDark, safePage, t, totalCount, totalPages]);
+
   return (
     <FlatList
+      ref={listRef}
       style={styles.root}
-      data={offers}
+      data={paginatedOffers}
       keyExtractor={(item) => String(item.id)}
       numColumns={2}
-      key={`gallery-grid-${transactionFilter}-${countryFilter}-${propertyFilter}-${sortFilter}`}
+      key={`gallery-grid-${filterKey}-p${safePage}`}
       columnWrapperStyle={[styles.columnWrap, { paddingHorizontal: horizontalPad }]}
       contentContainerStyle={{
         paddingBottom: bottomInset + 20,
-        flexGrow: offers.length === 0 ? 1 : undefined,
+        flexGrow: paginatedOffers.length === 0 ? 1 : undefined,
       }}
       ListHeaderComponent={listHeader}
+      ListFooterComponent={listFooter}
       renderItem={renderItem}
       showsVerticalScrollIndicator={false}
       initialNumToRender={10}
@@ -591,8 +708,58 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerBlock: {
+    paddingTop: 4,
     paddingBottom: 6,
     gap: 8,
+  },
+  paginationBlock: {
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 8,
+    gap: 10,
+    alignItems: 'center',
+  },
+  paginationRangeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  paginationArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paginationPages: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  paginationPageChip: {
+    minWidth: 34,
+    height: 34,
+    paddingHorizontal: 8,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paginationPageChipText: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   countRow: {
     flexDirection: 'row',

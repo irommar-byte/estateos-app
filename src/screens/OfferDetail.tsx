@@ -20,7 +20,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import ImageViewing from 'react-native-image-viewing';
-import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
+import { ChevronLeft, Share as ShareIcon, Heart, Maximize, Images, MapPin, BedDouble, Layers, Calendar, Pencil, X, Lock, Crown, Handshake, CalendarClock, Star, ShieldCheck, ChevronRight, ChevronUp, Eye, MoreHorizontal, Flag, Ban } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
@@ -826,7 +826,25 @@ export default function OfferDetail({ route, navigation }: any) {
   };
 
   const scrollY = useSharedValue(0);
+  const sheetNudge = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({ onScroll: (e) => { scrollY.value = e.contentOffset.y; } });
+
+  useEffect(() => {
+    sheetNudge.value = withRepeat(
+      withSequence(withTiming(-5, { duration: 420 }), withTiming(0, { duration: 420 })),
+      3,
+      false,
+    );
+  }, [sheetNudge]);
+
+  const sheetGrabberAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetNudge.value }],
+  }));
+
+  const sheetSwipeHintStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 28, 56], [1, 0.35, 0], Extrapolation.CLAMP),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 56], [0, -10], Extrapolation.CLAMP) }],
+  }));
 
   const imageAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -1405,13 +1423,39 @@ export default function OfferDetail({ route, navigation }: any) {
             locations={[0, 0.45, 1]}
             style={styles.sheetTopShade}
           />
-          <View
+          <Animated.View
             pointerEvents="none"
-            style={[
-              styles.sheetDragHandle,
-              { backgroundColor: isDark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.16)' },
-            ]}
-          />
+            style={[styles.sheetGrabberZone, sheetGrabberAnimatedStyle]}
+            accessibilityRole="adjustable"
+            accessibilityLabel={t('offer.detail.sheetSwipeHint')}
+          >
+            <View
+              style={[
+                styles.sheetDragHandle,
+                { backgroundColor: isDark ? 'rgba(255,255,255,0.34)' : 'rgba(60,60,67,0.28)' },
+              ]}
+            />
+            <Animated.View style={[styles.sheetSwipeHintRow, sheetSwipeHintStyle]}>
+              <ChevronUp
+                size={13}
+                color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
+                strokeWidth={2.5}
+              />
+              <Text
+                style={[
+                  styles.sheetSwipeHintText,
+                  { color: isDark ? 'rgba(255,255,255,0.58)' : 'rgba(60,60,67,0.52)' },
+                ]}
+              >
+                {t('offer.detail.sheetSwipeHint')}
+              </Text>
+              <ChevronUp
+                size={13}
+                color={isDark ? 'rgba(255,255,255,0.55)' : 'rgba(60,60,67,0.45)'}
+                strokeWidth={2.5}
+              />
+            </Animated.View>
+          </Animated.View>
           {/* Cena na górze została usunięta — pełna kwota i PLN/m² siedzą teraz
               w dolnym pasku CTA. Trzymamy tu tylko badge'y meta (czynsz, views). */}
           <View style={styles.topMetaBadgesRow}>
@@ -2632,13 +2676,15 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 36,
     borderTopRightRadius: 36,
     padding: 24,
-    paddingTop: 12,
+    paddingTop: 4,
     overflow: 'visible',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.65)',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -16 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 18,
+    shadowOffset: { width: 0, height: -20 },
+    shadowOpacity: 0.28,
+    shadowRadius: 32,
+    elevation: 22,
   },
   sheetTopShade: {
     position: 'absolute',
@@ -2650,13 +2696,35 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 36,
     zIndex: 1,
   },
-  sheetDragHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    marginBottom: 12,
+  sheetGrabberZone: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+    paddingBottom: 4,
+    marginBottom: 6,
+    marginHorizontal: -8,
+    minHeight: 52,
     zIndex: 2,
+  },
+  sheetDragHandle: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+  },
+  sheetSwipeHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+  },
+  sheetSwipeHintText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    textAlign: 'center',
   },
   price: { fontSize: 34, fontWeight: '800', color: '#1d1d1f', letterSpacing: -1, marginBottom: 8 },
   topMetaBadgesRow: {

@@ -4381,7 +4381,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <View
         style={[
           styles.topBarContainer,
-          showOnlyFavorites || radarBrowseMode === 'RADAR' ? styles.topBarFavoritesLayout : styles.topBarCompact,
+          showOnlyFavorites || radarBrowseMode === 'RADAR' || radarBrowseMode === 'GALLERY'
+            ? styles.topBarFavoritesLayout
+            : styles.topBarCompact,
           { top: topBarTop },
         ]}
         pointerEvents="auto"
@@ -4578,6 +4580,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <RadarBrowseModeRail
               mode={radarBrowseMode}
               isDark={isDark}
+              embeddedInTopBar
               radarLabel={t('radar.home.browseModeRadar')}
               galleryLabel={t('radar.home.browseModeGallery')}
               onSelectRadar={() => setRadarBrowseMode('RADAR')}
@@ -4703,6 +4706,30 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               </View>
             </JellyReveal>
           </Animated.View>
+        ) : radarBrowseMode === 'GALLERY' ? (
+          <Animated.View
+            style={[
+              styles.topBarCenterStack,
+              styles.topBarCenterStackGallery,
+              {
+                opacity: modeIslandOpacity,
+                transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
+              },
+            ]}
+          >
+            <RadarBrowseModeRail
+              mode={radarBrowseMode}
+              isDark={isDark}
+              embeddedInTopBar
+              radarLabel={t('radar.home.browseModeRadar')}
+              galleryLabel={t('radar.home.browseModeGallery')}
+              onSelectRadar={() => setRadarBrowseMode('RADAR')}
+              onSelectGallery={() => {
+                setRadarBrowseMode('GALLERY');
+                setShowRadarMatchesOnly(false);
+              }}
+            />
+          </Animated.View>
         ) : (
           <View style={styles.topBarCenterSpacer} />
         )}
@@ -4755,19 +4782,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         >
           <View style={[styles.galleryOverlayInner, { paddingTop: browseChromeTop }]}>
           <RadarOfferGallery
-            headerTop={
-              <RadarBrowseModeRail
-                mode={radarBrowseMode}
-                isDark={isDark}
-                radarLabel={t('radar.home.browseModeRadar')}
-                galleryLabel={t('radar.home.browseModeGallery')}
-                onSelectRadar={() => setRadarBrowseMode('RADAR')}
-                onSelectGallery={() => {
-                  setRadarBrowseMode('GALLERY');
-                  setShowRadarMatchesOnly(false);
-                }}
-              />
-            }
             offers={galleryOffers}
             isDark={isDark}
             bottomInset={bottomCardsInset + 64}
@@ -5329,10 +5343,55 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       <Text style={[styles.advancedSection, { marginTop: 12 }]}>
                         {t('radar.advancedSearch.plCitySection')}
                       </Text>
+                      <View style={styles.advancedRow}>
+                        {cityFilterEntries.map(({ city, count }) => {
+                          const active =
+                            draftAdvancedFilters.locationMode === 'CITY' &&
+                            draftAdvancedFilters.city === city &&
+                            !draftAdvancedFilters.mapBounds;
+                          const cityLabel = city || t('radar.advancedSearch.allCitiesInCountry');
+                          return (
+                            <Pressable
+                              key={city || 'all'}
+                              style={[
+                                styles.advancedChip,
+                                active && styles.advancedChipActive,
+                                active && {
+                                  borderColor: draftModeAccentColor,
+                                  backgroundColor:
+                                    draftAdvancedFilters.transactionType === 'RENT'
+                                      ? 'rgba(10,132,255,0.18)'
+                                      : 'rgba(16,185,129,0.18)',
+                                },
+                              ]}
+                              onPress={() =>
+                                setDraftAdvancedFilters((p) => ({
+                                  ...p,
+                                  locationMode: 'CITY',
+                                  city,
+                                  districts: [],
+                                  mapBounds: null,
+                                }))
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.advancedChipText,
+                                  active && styles.advancedChipTextActive,
+                                  active && { color: draftModeAccentColor },
+                                ]}
+                              >
+                                {`${cityLabel} (${count})`}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
                       <View
                         style={[
                           styles.advancedCityInputWrap,
                           {
+                            marginTop: 10,
                             borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
                             backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
                           },
@@ -5380,6 +5439,78 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       >
                         {t('radar.advancedSearch.polandScopeHint')}
                       </Text>
+
+                      {draftAdvancedFilters.city.trim() ? (
+                        <>
+                          <Text style={styles.advancedSection}>
+                            {t('radar.calibration.districts', { city: draftAdvancedFilters.city.trim() })}
+                          </Text>
+                          {backendDistrictsForDraftCity.length > 0 ? (
+                            <View style={styles.advancedRow}>
+                              {backendDistrictsForDraftCity.map((district) => {
+                                const active = draftAdvancedFilters.districts.includes(district);
+                                return (
+                                  <Pressable
+                                    key={district}
+                                    style={[
+                                      styles.advancedChip,
+                                      active && styles.advancedChipActive,
+                                      active && {
+                                        borderColor: draftModeAccentColor,
+                                        backgroundColor:
+                                          draftAdvancedFilters.transactionType === 'RENT'
+                                            ? 'rgba(10,132,255,0.18)'
+                                            : 'rgba(16,185,129,0.18)',
+                                      },
+                                    ]}
+                                    onPress={() =>
+                                      setDraftAdvancedFilters((p) => ({
+                                        ...p,
+                                        locationMode: 'CITY',
+                                        mapBounds: null,
+                                        districts: p.districts.includes(district)
+                                          ? p.districts.filter((d) => d !== district)
+                                          : [...p.districts, district],
+                                      }))
+                                    }
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.advancedChipText,
+                                        active && styles.advancedChipTextActive,
+                                        active && { color: draftModeAccentColor },
+                                      ]}
+                                    >
+                                      {district}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          ) : (
+                            <Text
+                              style={[
+                                styles.advancedHint,
+                                { marginBottom: 4, color: isDark ? 'rgba(235,235,245,0.45)' : 'rgba(60,60,67,0.65)' },
+                              ]}
+                            >
+                              {t('radar.calibration.legacy.districtsUnmapped')}
+                            </Text>
+                          )}
+                          {draftAdvancedFilters.districts.length > 0 ? (
+                            <Pressable
+                              onPress={() =>
+                                setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))
+                              }
+                              style={{ alignSelf: 'flex-start', marginBottom: 4 }}
+                            >
+                              <Text style={{ color: '#8E8E93', fontWeight: '700' }}>
+                                {t('radar.advancedSearch.clearDistricts')}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                        </>
+                      ) : null}
 
                       <Text style={[styles.advancedOrLabel, { color: isDark ? '#8E8E93' : '#6B7280' }]}>
                         {t('radar.advancedSearch.plOrMapDivider')}
@@ -5799,6 +5930,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     maxWidth: 320,
     alignSelf: 'center',
+  },
+  topBarCenterStackGallery: {
+    justifyContent: 'center',
+    paddingTop: 2,
   },
   topBarToolsRow: {
     flexDirection: 'row',

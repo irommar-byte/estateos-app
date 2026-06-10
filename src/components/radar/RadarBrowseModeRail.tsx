@@ -11,6 +11,8 @@ type Props = {
   galleryLabel: string;
   onSelectRadar: () => void;
   onSelectGallery: () => void;
+  /** W top barze — bez dolnego marginesu i bocznego paddingu. */
+  embeddedInTopBar?: boolean;
 };
 
 export default function RadarBrowseModeRail({
@@ -20,9 +22,10 @@ export default function RadarBrowseModeRail({
   galleryLabel,
   onSelectRadar,
   onSelectGallery,
+  embeddedInTopBar = false,
 }: Props) {
   return (
-    <View style={styles.outer}>
+    <View style={[styles.outer, embeddedInTopBar && styles.outerEmbedded]}>
       <BlurView
         intensity={isDark ? 85 : 92}
         tint={isDark ? 'dark' : 'light'}
@@ -107,6 +110,11 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: 16,
     marginBottom: 8,
+  },
+  outerEmbedded: {
+    paddingHorizontal: 0,
+    marginBottom: 0,
+    maxWidth: 280,
   },
   blur: {
     borderRadius: 14,

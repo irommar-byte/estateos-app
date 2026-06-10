@@ -225,6 +225,8 @@ export const offer = {
       newOffer: 'Новое объявление',
       count: '{{count}} просмотров',
     },
+    sheetSwipeHint: 'Проведите вверх, чтобы увидеть больше',
+    sheetSwipeHintShort: 'Подробнее',
     stats: {
       rooms: '{{count}} номеров',
       floor: 'Этаж {{floor}}',

@@ -227,6 +227,8 @@ export const offer = {
       count: '{{count}} wyświetleń',
       countZero: '0 wyświetleń',
     },
+    sheetSwipeHint: 'Przesuń w górę po więcej szczegółów',
+    sheetSwipeHintShort: 'Więcej szczegółów',
     legalVerified: {
       label: 'BEZPIECZNA NIERUCHOMOŚĆ',
       sublabel: 'EstateOS™ Quality Shield',
