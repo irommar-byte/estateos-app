@@ -32,7 +32,12 @@ export type AuctionEventRecord = {
   publishedAt: string | null;
   isHost: boolean;
   isLeading: boolean;
+  timeUntilStartMs: number;
   timeRemainingMs: number;
+  host: {
+    id: number;
+    name: string | null;
+  };
   offer: {
     id: number;
     title: string;
@@ -44,6 +49,8 @@ export type AuctionEventRecord = {
     area: number;
     rooms: number | null;
     imageUrl: string | null;
+    lat: number | null;
+    lng: number | null;
   };
   recentBids: AuctionBidRecord[];
 };

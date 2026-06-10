@@ -137,5 +137,9 @@ export const UK: OfferPageCopy = {
     endedTitle: "Аукціон завершено",
     endedHint: "Переможця сповіщено. Зв'яжіться з продавцем.",
     scheduledHint: "Аукціон розпочнеться автоматично у визначений час.",
+    countdownToStart: "До старту",
+    notStartedYet: "Аукціон ще не розпочався — ставки будуть доступні після старту.",
+    contactHost: "Написати продавцю",
+    viewHostProfile: "Профіль продавця",
   },
 };

@@ -530,6 +530,9 @@ export async function buildOpenHouseTickerItems() {
       startsAt: e.nextSlotStartsAt,
       spotsLeft: e.totalSpotsLeft,
       imageUrl: e.offer.imageUrl,
+      hostUserId: e.hostUserId,
+      lat: e.offer.lat ?? null,
+      lng: e.offer.lng ?? null,
     }));
 }
 

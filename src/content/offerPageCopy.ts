@@ -135,6 +135,10 @@ export type OfferPageCopy = {
     endedTitle: string;
     endedHint: string;
     scheduledHint: string;
+    countdownToStart: string;
+    notStartedYet: string;
+    contactHost: string;
+    viewHostProfile: string;
   };
 };
 
@@ -275,6 +279,10 @@ const PL: OfferPageCopy = {
     endedTitle: "Licytacja zakończona",
     endedHint: "Zwycięzca został powiadomiony. Skontaktuj się ze sprzedającym.",
     scheduledHint: "Licytacja rozpocznie się automatycznie o wyznaczonej godzinie.",
+    countdownToStart: "Do startu",
+    notStartedYet: "Licytacja jeszcze się nie rozpoczęła — oferty będą możliwe po starcie.",
+    contactHost: "Napisz do wystawiającego",
+    viewHostProfile: "Profil wystawiającego",
   },
 };
 
@@ -414,6 +422,10 @@ const EN: OfferPageCopy = {
     endedTitle: "Auction ended",
     endedHint: "The winner has been notified. Contact the seller to proceed.",
     scheduledHint: "The auction will start automatically at the scheduled time.",
+    countdownToStart: "Starts in",
+    notStartedYet: "The auction has not started yet — bidding opens at the scheduled time.",
+    contactHost: "Message seller",
+    viewHostProfile: "Seller profile",
   },
 };
 

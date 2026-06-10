@@ -22,6 +22,8 @@ const OFFER_SELECT = {
   images: true,
   status: true,
   userId: true,
+  lat: true,
+  lng: true,
 } as const;
 
 const ANTI_SNIPE_WINDOW_MS = 90_000;
@@ -206,7 +208,12 @@ export function serializeAuctionEvent(
     publishedAt: event.publishedAt?.toISOString() ?? null,
     isHost,
     isLeading: viewerUserId != null && event.currentBidderUserId === viewerUserId,
+    timeUntilStartMs: Math.max(0, event.startsAt.getTime() - now),
     timeRemainingMs: Math.max(0, effectiveEnd.getTime() - now),
+    host: {
+      id: event.hostUserId,
+      name: (event as RawAuctionEvent & { host?: { name?: string | null } }).host?.name ?? null,
+    },
     offer: {
       id: event.offer.id,
       title: event.offer.title,
@@ -218,6 +225,8 @@ export function serializeAuctionEvent(
       area: event.offer.area,
       rooms: event.offer.rooms,
       imageUrl: images[0] ?? null,
+      lat: Number((event.offer as { lat?: number | null }).lat) || null,
+      lng: Number((event.offer as { lng?: number | null }).lng) || null,
     },
     recentBids: event.bids.map((b) => ({
       id: b.id,
@@ -591,14 +600,19 @@ export async function buildAuctionTickerItems() {
       type: 'AUCTION' as const,
       eventId: e.id,
       offerId: e.offerId,
+      hostUserId: e.hostUserId,
       title: e.title,
       city: e.offer.city,
       district: e.offer.district,
       currentPrice: e.currentPrice,
       currency: e.currency,
+      startsAt: e.startsAt,
       endsAt: e.effectiveEndsAt,
       status: e.status,
+      bidCount: e.bidCount,
       imageUrl: e.offer.imageUrl,
+      lat: e.offer.lat ?? null,
+      lng: e.offer.lng ?? null,
     }));
 }
 
@@ -631,8 +645,9 @@ export function mapAuctionError(error: unknown): { code: string; message: string
     case 'OFFER_INACTIVE':
       return { code, message: 'Oferta nie jest aktywna.', status: 400 };
     case 'AUCTION_CLOSED':
+      return { code, message: 'Licytacja zakończona.', status: 400 };
     case 'NOT_STARTED':
-      return { code, message: 'Licytacja nie jest aktywna.', status: 400 };
+      return { code, message: 'Licytacja jeszcze się nie rozpoczęła — poczekaj na godzinę startu.', status: 400 };
     case 'INVALID_BID':
     case 'BID_TOO_LOW':
       return { code, message: 'Kwota oferty jest za niska.', status: 400 };

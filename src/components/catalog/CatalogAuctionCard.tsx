@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
@@ -8,6 +8,12 @@ import { ArrowRight, CheckCircle2, Gavel, Loader2, Timer } from "lucide-react";
 import type { Locale } from "@/i18n/config";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
+import {
+  auctionCanBid,
+  auctionCountdownMs,
+  auctionHasStarted,
+  countdownUrgencyColor,
+} from "@/lib/auctionUi";
 
 type Props = {
   event: AuctionEventRecord;
@@ -75,15 +81,13 @@ export default function CatalogAuctionCard({
     return () => clearInterval(id);
   }, []);
 
-  const timeRemainingMs = useMemo(() => {
-    void tick;
-    const end = new Date(eventState.effectiveEndsAt).getTime();
-    return Math.max(0, end - Date.now());
-  }, [eventState.effectiveEndsAt, tick]);
-
-  const isLive = eventState.status === "LIVE";
-  const isScheduled = eventState.status === "SCHEDULED";
-  const canBid = (isLive || isScheduled) && timeRemainingMs > 0 && !eventState.isHost;
+  const now = Date.now();
+  void tick;
+  const hasStarted = auctionHasStarted({ ...eventState, now });
+  const countdownMs = auctionCountdownMs({ ...eventState, now });
+  const urgencyColor = countdownUrgencyColor(countdownMs);
+  const isLive = eventState.status === "LIVE" || (eventState.status === "SCHEDULED" && hasStarted);
+  const canBid = auctionCanBid({ ...eventState, now });
 
   const offer = eventState.offer;
   const imageUrl = offer.imageUrl;
@@ -118,6 +122,7 @@ export default function CatalogAuctionCard({
         const code = data?.code || "";
         if (code === "HOST_CANNOT_BID") setError(auc.hostCannotBid);
         else if (code === "AUCTION_CLOSED") setError(auc.auctionClosed);
+        else if (code === "NOT_STARTED") setError(auc.notStartedYet);
         else if (code === "BID_TOO_LOW") setError(auc.bidTooLow);
         else setError(data?.message || auc.errorGeneric);
         return;
@@ -168,9 +173,12 @@ export default function CatalogAuctionCard({
           ) : null}
         </div>
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 text-[11px] font-bold tabular-nums text-white backdrop-blur-md">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/55 px-3 py-1.5 text-[11px] font-bold tabular-nums backdrop-blur-md"
+            style={{ color: urgencyColor }}
+          >
             <Timer size={13} />
-            {auc.timeLeft}: {formatCountdown(timeRemainingMs)}
+            {hasStarted ? auc.timeLeft : auc.countdownToStart}: {formatCountdown(countdownMs)}
           </span>
         </div>
       </div>
@@ -202,8 +210,8 @@ export default function CatalogAuctionCard({
           </div>
         </div>
 
-        {isScheduled && !isLive ? (
-          <p className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-3 py-2 text-[12px] leading-relaxed text-[var(--eos-muted)]">
+        {!hasStarted ? (
+          <p className="rounded-xl border px-3 py-2 text-[12px] leading-relaxed" style={{ borderColor: `${urgencyColor}40`, backgroundColor: `${urgencyColor}12`, color: urgencyColor }}>
             {auc.bannerSubtitleScheduled(formatStartDate(eventState.startsAt, locale))}
           </p>
         ) : null}
@@ -249,7 +257,27 @@ export default function CatalogAuctionCard({
               {currentUserId ? auc.bidCta : auc.loginRequired}
             </button>
           </div>
+        ) : !hasStarted && !eventState.isHost ? (
+          <p className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/60 px-3 py-2.5 text-[12px] leading-relaxed text-[var(--eos-muted)]">
+            {auc.notStartedYet}
+          </p>
         ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href={`/profil/${eventState.hostUserId}`}
+            className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-violet-500 transition hover:opacity-80"
+          >
+            {auc.viewHostProfile}
+            <ArrowRight size={12} />
+          </Link>
+          <Link
+            href={`/moje-konto/wiadomosci?peer=${eventState.hostUserId}`}
+            className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)] transition hover:text-violet-500"
+          >
+            {auc.contactHost}
+          </Link>
+        </div>
 
         <Link
           href={`/oferta/${eventState.offerId}`}

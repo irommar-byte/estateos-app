@@ -5,6 +5,12 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Gavel, Loader2, TrendingUp } from "lucide-react";
 import type { Locale } from "@/i18n/config";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
+import {
+  auctionCanBid,
+  auctionCountdownMs,
+  auctionHasStarted,
+  countdownUrgencyColor,
+} from "@/lib/auctionUi";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import EosModal from "@/components/ui/EosModal";
 
@@ -87,17 +93,15 @@ export default function AuctionBidModal({
     return () => clearInterval(id);
   }, [isOpen, event]);
 
-  const timeRemainingMs = useMemo(() => {
-    if (!event) return 0;
-    void tick;
-    const end = new Date(event.effectiveEndsAt).getTime();
-    return Math.max(0, end - Date.now());
-  }, [event, tick]);
-
-  const isLive = event?.status === "LIVE";
-  const isScheduled = event?.status === "SCHEDULED";
+  const now = Date.now();
+  void tick;
+  const hasStarted = event ? auctionHasStarted({ ...event, now }) : false;
+  const countdownMs = event ? auctionCountdownMs({ ...event, now }) : 0;
+  const urgencyColor = countdownUrgencyColor(countdownMs);
+  const isLive = event?.status === "LIVE" || (event?.status === "SCHEDULED" && hasStarted);
+  const isScheduled = event?.status === "SCHEDULED" && !hasStarted;
   const isClosed = event && !["LIVE", "SCHEDULED"].includes(event.status);
-  const canBid = Boolean(event && (isLive || isScheduled) && timeRemainingMs > 0 && !event.isHost);
+  const canBid = Boolean(event && auctionCanBid({ ...event, now }));
 
   const quickBids = useMemo(() => {
     if (!event) return [];
@@ -131,6 +135,7 @@ export default function AuctionBidModal({
         const code = data?.code || "";
         if (code === "HOST_CANNOT_BID") setError(auc.hostCannotBid);
         else if (code === "AUCTION_CLOSED") setError(auc.auctionClosed);
+        else if (code === "NOT_STARTED") setError(auc.notStartedYet);
         else if (code === "BID_TOO_LOW") setError(auc.bidTooLow);
         else setError(data?.message || auc.errorGeneric);
         return;
@@ -183,14 +188,19 @@ export default function AuctionBidModal({
           </p>
         </div>
         <div className="eos-stat-card">
-          <p className="eos-stat-card-label">{auc.timeLeft}</p>
-          <p className="eos-stat-card-value font-mono tabular-nums">{formatCountdown(timeRemainingMs)}</p>
+          <p className="eos-stat-card-label">{hasStarted ? auc.timeLeft : auc.countdownToStart}</p>
+          <p className="eos-stat-card-value font-mono tabular-nums" style={{ color: urgencyColor }}>
+            {formatCountdown(countdownMs)}
+          </p>
         </div>
       </div>
 
-      {isScheduled && !isLive ? (
-        <p className="rounded-xl border border-violet-500/20 bg-violet-500/8 px-4 py-3 text-[13px] leading-relaxed text-[var(--eos-text)]">
-          {auc.scheduledHint}
+      {isScheduled ? (
+        <p
+          className="rounded-xl border px-4 py-3 text-[13px] leading-relaxed text-[var(--eos-text)]"
+          style={{ borderColor: `${urgencyColor}40`, backgroundColor: `${urgencyColor}10` }}
+        >
+          {auc.notStartedYet}
         </p>
       ) : null}
 
