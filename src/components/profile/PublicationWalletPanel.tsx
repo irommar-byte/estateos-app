@@ -5,6 +5,7 @@ import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2 } from "lucide-react"
 import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS, PUBLICATION_RENEWAL_PRICE_LABEL } from "@/lib/publicationConstants";
 import type { PublicationSelection } from "@/lib/publicationSelection";
 import { defaultPublicationSelection } from "@/lib/publicationSelection";
+import { useLocale } from "@/contexts/LocaleContext";
 
 type WalletCoupon = {
   id: string;
@@ -64,6 +65,10 @@ export default function PublicationWalletPanel({
   walletOverride,
   variant = "publish",
 }: Props) {
+  const { dict, locale } = useLocale();
+  const ao = dict.addOffer;
+  const dateLocale = locale === "uk" ? "uk-UA" : locale === "en" ? "en-GB" : "pl-PL";
+
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [loading, setLoading] = useState(!walletOverride);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -73,23 +78,23 @@ export default function PublicationWalletPanel({
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store" });
+      const res = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         if (data?.success) {
           setWallet(data);
         } else {
           setWallet(null);
-          setLoadError(String(data?.error || data?.message || "Nie udało się załadować portfela."));
+          setLoadError(String(data?.error || data?.message || ao.walletLoadFailed));
         }
       } else {
         setWallet(null);
-        setLoadError("Nie udało się załadować portfela (błąd HTTP).");
+        setLoadError(ao.walletHttpError);
       }
     } finally {
       setLoading(false);
     }
-  }, [walletOverride]);
+  }, [walletOverride, locale, ao.walletLoadFailed, ao.walletHttpError]);
 
   useEffect(() => {
     if (walletOverride) {
@@ -113,7 +118,7 @@ export default function PublicationWalletPanel({
 
   const expiryLabel =
     wallet?.plusExpiresAt && wallet.hasPlusCredit
-      ? new Date(wallet.plusExpiresAt).toLocaleDateString("pl-PL")
+      ? new Date(wallet.plusExpiresAt).toLocaleDateString(dateLocale)
       : null;
 
   const resolvedSelection = useMemo((): PublicationSelection => {
@@ -135,9 +140,11 @@ export default function PublicationWalletPanel({
           <div className="mb-4 flex items-center gap-3">
             <Ticket className="text-orange-400" size={20} />
             <div>
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">Kupony bonusowe</h3>
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white">{ao.walletBonusCoupons}</h3>
               <p className="mt-1 text-[10px] text-white/40">
-                {loading ? "…" : `${wallet?.couponCount ?? 0} aktywnych kuponów`}
+                {loading
+                  ? "…"
+                  : ao.walletActiveCouponsCount.replace("{count}", String(wallet?.couponCount ?? 0))}
               </p>
             </div>
           </div>
@@ -147,7 +154,7 @@ export default function PublicationWalletPanel({
             </p>
           ) : coupons.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-white/10 bg-black/30 p-6 text-center text-xs text-white/35">
-              Brak aktywnych kuponów.
+              {ao.walletNoCoupons}
             </p>
           ) : (
             <p className="rounded-2xl border border-white/10 bg-[#111] p-5 text-xs text-white/50">
@@ -156,11 +163,17 @@ export default function PublicationWalletPanel({
           )}
         </div>
         <div className="rounded-[2rem] border border-emerald-500/25 bg-gradient-to-br from-emerald-500/5 to-transparent p-6 shadow-xl">
-          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-white/35">Pakiet Plus</p>
+          <p className="mb-4 text-[10px] font-black uppercase tracking-[0.25em] text-white/35">{ao.walletPlusPackage}</p>
           <p className="text-sm font-bold text-emerald-400">
-            {hasPlusCredit ? `${plusCredits} publikacja Plus do wykorzystania` : "Brak aktywnego kredytu Plus"}
+            {hasPlusCredit
+              ? ao.walletPlusCreditsAvailable.replace("{count}", String(plusCredits))
+              : ao.walletNoPlusCredit}
           </p>
-          {expiryLabel ? <p className="mt-1 text-xs text-white/45">Ważne do {expiryLabel}</p> : null}
+          {expiryLabel ? (
+            <p className="mt-1 text-xs text-white/45">
+              {ao.walletValidUntil.replace("{date}", expiryLabel)}
+            </p>
+          ) : null}
           <button
             type="button"
             disabled={buyingPlus}
@@ -168,7 +181,7 @@ export default function PublicationWalletPanel({
             className="mt-6 flex w-full items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-4 text-left transition-all hover:border-emerald-400/50 disabled:opacity-60"
           >
             <ShoppingBag size={18} className="text-emerald-400" />
-            <span className="text-sm font-bold text-white">Kup Pakiet Plus</span>
+            <span className="text-sm font-bold text-white">{ao.walletBuyPlus}</span>
           </button>
         </div>
       </div>
@@ -177,17 +190,18 @@ export default function PublicationWalletPanel({
 
   const isRenew = variant === "renew";
   const paySelection: PublicationSelection = isRenew ? "pay_renewal" : "buy_plus";
+  const plusCreditExpirySuffix = expiryLabel
+    ? ` · ${ao.walletValidUntil.replace("{date}", expiryLabel)}`
+    : "";
 
   return (
     <div className="mb-8">
       <div className="mb-4">
         <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
-          {isRenew ? "Metoda odnowienia" : "Metoda publikacji"}
+          {isRenew ? ao.walletRenewMethod : ao.walletPublishMethod}
         </p>
         <p className="mt-1 text-sm text-white/50">
-          {isRenew
-            ? "Wybierz kupon, wykorzystaj kredyt Plus lub opłać odnowienie oferty na 30 dni."
-            : "Wybierz kupon, wykorzystaj kredyt Plus lub opłać nową publikację — tak jak w aplikacji mobilnej."}
+          {isRenew ? ao.walletRenewHint : ao.walletPublishHint}
         </p>
       </div>
 
@@ -200,7 +214,7 @@ export default function PublicationWalletPanel({
           {coupons.length > 0 && (
             <div>
               <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">
-                <Ticket size={14} /> Kupony bonusowe
+                <Ticket size={14} /> {ao.walletBonusCoupons}
               </p>
               <div className="space-y-2">
                 {coupons.map((coupon) => {
@@ -243,7 +257,7 @@ export default function PublicationWalletPanel({
 
           <div>
             <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
-              <Sparkles size={14} /> Pakiet Plus
+              <Sparkles size={14} /> {ao.walletPlusPackage}
             </p>
             <div className="space-y-2">
               {hasPlusCredit ? (
@@ -261,17 +275,19 @@ export default function PublicationWalletPanel({
                     <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500/70">Plus</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-white">Użyj kredytu Plus</p>
+                    <p className="text-sm font-bold text-white">{ao.walletUsePlusCredit}</p>
                     <p className="mt-1 text-xs text-white/45">
-                      {plusCredits} publikacja do wykorzystania · {PUBLICATION_DURATION_DAYS} dni na rynku
-                      {expiryLabel ? ` · ważne do ${expiryLabel}` : ""}
+                      {ao.walletPlusCreditLine
+                        .replace("{count}", String(plusCredits))
+                        .replace("{days}", String(PUBLICATION_DURATION_DAYS))
+                        .replace("{expiry}", plusCreditExpirySuffix)}
                     </p>
                   </div>
                   <SelectRing active={resolvedSelection === "plus_credit"} />
                 </button>
               ) : (
                 <p className="rounded-2xl border border-dashed border-white/10 bg-black/25 px-4 py-3 text-xs text-white/40">
-                  Brak aktywnego kredytu Plus na koncie.
+                  {ao.walletNoPlusOnAccount}
                 </p>
               )}
 
@@ -289,12 +305,14 @@ export default function PublicationWalletPanel({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-white">
-                    {isRenew ? "Opłać odnowienie" : "Kup Pakiet Plus"}
+                    {isRenew ? ao.walletPayRenewal : ao.walletBuyPlusAction}
                   </p>
                   <p className="mt-1 text-xs text-white/45">
                     {isRenew
-                      ? `Przedłuż ofertę o ${PUBLICATION_DURATION_DAYS} dni · ${PUBLICATION_RENEWAL_PRICE_LABEL}`
-                      : `Opłać 1 dodatkowe wystawienie (${PAKIET_PLUS_PRICE_LABEL}) — kredyt pojawi się na koncie po płatności`}
+                      ? ao.walletRenewPaymentDesc
+                          .replace("{days}", String(PUBLICATION_DURATION_DAYS))
+                          .replace("{price}", PUBLICATION_RENEWAL_PRICE_LABEL)
+                      : ao.walletBuyPlusPaymentDesc.replace("{price}", PAKIET_PLUS_PRICE_LABEL)}
                   </p>
                 </div>
                 <SelectRing active={resolvedSelection === paySelection} />

@@ -1144,8 +1144,13 @@ html.light .eos-chip-off {
   color: var(--eos-muted);
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.08em;
+  line-height: 1.35;
   text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .eos-field {

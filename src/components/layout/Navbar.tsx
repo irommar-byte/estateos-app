@@ -144,16 +144,16 @@ export default function Navbar() {
           </span>
         </button>
 
-        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-hidden lg:flex">
-          <div className="eos-nav-primary-group flex min-w-0 items-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] xl:gap-1.5 xl:p-1.5">
+        <div className="hidden min-w-0 flex-1 items-center justify-center overflow-visible lg:flex">
+          <div className="eos-nav-primary-group flex max-w-full flex-wrap items-center justify-center gap-1 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] p-1 shadow-[var(--eos-shadow-soft)] xl:gap-1.5 xl:p-1.5">
             <button
               type="button"
               onClick={() => handleNavClick("/odkryj-mape", true)}
-              className="eos-nav-link-primary shrink min-w-0"
+              className="eos-nav-link-primary shrink-0"
             >
               {dict.nav.discoverMap}
             </button>
-            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink min-w-0">
+            <button type="button" onClick={() => handleNavClick("/oferty")} className="eos-nav-link-primary shrink-0">
               {dict.nav.market}
             </button>
           </div>
@@ -181,7 +181,7 @@ export default function Navbar() {
                 <button
                   type="button"
                   onClick={() => router.push("/centrala")}
-                  className="eos-nav-admin shrink rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:px-5 xl:py-2.5 xl:text-[10px] xl:tracking-[0.18em]"
+                  className="eos-nav-admin shrink-0 rounded-full border border-[var(--eos-accent)]/30 bg-[var(--eos-accent-soft)] px-3 py-2 text-[9px] font-black uppercase leading-snug tracking-[0.08em] text-[var(--eos-accent)] shadow-[0_12px_30px_rgba(16,185,129,0.1)] transition-all hover:bg-[var(--eos-accent)] hover:text-black xl:max-w-[11rem] xl:px-4 xl:py-2.5 xl:text-[10px] xl:tracking-[0.1em]"
                 >
                   {manageLabel}
                 </button>
@@ -385,22 +385,24 @@ export default function Navbar() {
           color: var(--eos-text);
           font-size: clamp(10px, 0.78vw, 13px);
           font-weight: 800;
-          letter-spacing: 0.12em;
-          line-height: 1.15;
+          letter-spacing: 0.08em;
+          line-height: 1.25;
+          text-align: center;
           text-transform: uppercase;
           transition:
             color 0.2s ease,
             background-color 0.2s ease,
             box-shadow 0.2s ease,
             transform 0.2s ease;
-          white-space: nowrap;
+          white-space: normal;
+          overflow-wrap: anywhere;
           background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 100%);
         }
         @media (min-width: 1280px) {
           .eos-nav-link-primary {
             padding: 0.72rem 1.05rem;
             font-size: 12px;
-            letter-spacing: 0.14em;
+            letter-spacing: 0.1em;
           }
         }
         @media (min-width: 1536px) {

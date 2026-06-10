@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocale } from '@/contexts/LocaleContext';
 import {
-  AMENITY_DICT_KEYS,
   HEATING_DICT_KEYS,
   type AddOfferDictionary,
 } from '@/i18n/addOfferDictionary';
@@ -35,6 +34,7 @@ import {
 } from "@/lib/location/strictDistrictFromPin";
 import {
   buildForwardGeocodeSearchText,
+  extractCountryFromMapboxFeature,
   extractVillageLocalityHint,
   isAdministrativeAreaLabel,
   isStreetAddressMapboxFeature,
@@ -75,6 +75,12 @@ import {
   isStandaloneVillageAddress,
   sanitizeNonStrictAreaLabel,
 } from "@/lib/location/localityDisplay";
+import {
+  countryLabelForLocale,
+  countryLabelFromIso,
+  inferCountryFromCoordinates,
+  isCoordinatesInPoland,
+} from "@/lib/offerLocalityCountry";
 import AddOfferDocVerificationPanel from "@/components/offer/AddOfferDocVerificationPanel";
 import { normalizeLandRegistryInput, isValidLandRegistryNumber } from "@/lib/landRegistryInput";
 
@@ -87,9 +93,9 @@ const inputPremium =
 const inputCompact =
   "eos-field w-full min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-3 px-4 text-xs sm:text-sm leading-snug text-[var(--eos-text)] outline-none transition-all duration-300 placeholder:text-[var(--eos-muted)] focus:border-emerald-500";
 const labelPremium =
-  "eos-label mb-2.5 ml-0.5 flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.055em] md:text-[13px]";
+  "eos-label mb-2.5 ml-0.5 flex min-w-0 w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px] font-semibold uppercase tracking-[0.055em] leading-snug md:text-[13px]";
 const glassPanel =
-  "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-hidden";
+  "rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/95 p-8 shadow-2xl backdrop-blur-xl transition-all duration-500 md:p-10 relative overflow-x-clip overflow-y-visible";
 const ADD_OFFER_DRAFT_VERSION = 1;
 const ADD_OFFER_DRAFT_KEY = "estateos_add_offer_draft";
 
@@ -112,8 +118,18 @@ function buildConditionTypes(ao: AddOfferDictionary) {
   ];
 }
 
+const AMENITY_FIELD_MAP = [
+  { id: "balcony", key: "amenityBalcony" as const, field: "hasBalcony" },
+  { id: "parking", key: "amenityGarage" as const, field: "hasParking" },
+  { id: "storage", key: "amenityStorage" as const, field: "hasStorage" },
+  { id: "garden", key: "amenityGarden" as const, field: "hasGarden" },
+  { id: "duplex", key: "amenityDuplex" as const, field: null },
+  { id: "elevator", key: "amenityElevator" as const, field: "hasElevator" },
+  { id: "ac", key: "amenityAc" as const, field: "airConditioning" },
+] as const;
+
 function buildAmenities(ao: AddOfferDictionary) {
-  return AMENITY_DICT_KEYS.map((key) => ao[key]);
+  return AMENITY_FIELD_MAP.map(({ id, key }) => ({ id, label: ao[key] }));
 }
 
 function buildHeatingTypes(ao: AddOfferDictionary) {
@@ -126,6 +142,8 @@ type DistrictCatalogResponse = {
 };
 
 const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
+  const { dict } = useLocale();
+  const ao = dict.addOffer;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -141,7 +159,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 
   return (
     <div ref={setNodeRef} style={style} className="w-32 h-32 relative rounded-2xl overflow-hidden group border border-white/10 hover:border-[#10b981]/50 transition-all z-50 shadow-lg bg-black/40 flex-shrink-0">
-      <img src={img} className={`w-full h-full object-cover pointer-events-none transition-all ${isUploading ? 'opacity-40 blur-[2px]' : ''}`} alt="Miniatura" />
+      <img src={img} className={`w-full h-full object-cover pointer-events-none transition-all ${isUploading ? 'opacity-40 blur-[2px]' : ''}`} alt={ao.thumbAlt} />
 
       {/* Nakładka z kropeczkami (Uchwyt Drag & Drop) */}
       <div {...attributes} {...listeners} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing z-20">
@@ -156,7 +174,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
         <Trash2 size={14}/>
       </button>
 
-      {idx === 0 && !isUploading && !isError && <span className="absolute bottom-0 left-0 w-full bg-[#10b981] backdrop-blur-md text-black text-[9px] font-black uppercase tracking-widest text-center py-1 z-10 shadow-[0_-5px_15px_rgba(16,185,129,0.3)] pointer-events-none">Główne</span>}
+      {idx === 0 && !isUploading && !isError && <span className="absolute bottom-0 left-0 w-full bg-[#10b981] backdrop-blur-md text-black text-[9px] font-black uppercase tracking-widest text-center py-1 z-10 shadow-[0_-5px_15px_rgba(16,185,129,0.3)] pointer-events-none">{ao.photosMain}</span>}
 
       {/* Pasek postępu */}
       {isUploading && (
@@ -168,7 +186,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
       {/* Błąd */}
       {isError && (
          <div className="absolute inset-0 flex items-center justify-center bg-red-500/20 backdrop-blur-sm z-30 pointer-events-none">
-            <span className="text-[9px] font-black text-white uppercase bg-red-500 px-2 py-1 rounded-md">Błąd</span>
+            <span className="text-[9px] font-black text-white uppercase bg-red-500 px-2 py-1 rounded-md">{ao.photosError}</span>
          </div>
       )}
     </div>
@@ -176,7 +194,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj }: any) => {
 };
 
 export default function ClientForm({ initialUser }: { initialUser?: any }) {
-  const { dict } = useLocale();
+  const { dict, locale } = useLocale();
   const ao = dict.addOffer;
   const PROPERTY_TYPES = useMemo(() => buildPropertyTypes(ao), [ao]);
   const CONDITION_TYPES = useMemo(() => buildConditionTypes(ao), [ao]);
@@ -199,6 +217,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
   const [addressError, setAddressError] = useState('');
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [locatingUser, setLocatingUser] = useState(false);
   
   const [imagesList, setImagesList] = useState<string[]>([]);
@@ -368,7 +387,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
     const cityHintRaw = parsed.cityPart || data.city;
     const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? "" : cityHintRaw;
-    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint || parsed.cityPart);
+    const searchText = parsed.fullQuery || buildForwardGeocodeSearchText(parsed.streetPart || value, cityHint || parsed.cityPart, parsed.countryIso || undefined);
 
     try {
       const res = await fetch(
@@ -390,7 +409,19 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const parsed = parseAddressSearchQuery(query);
     const cityHintRaw = parsed.cityPart || data.city;
     const cityHint = isAdministrativeAreaLabel(cityHintRaw) ? parsed.cityPart || "" : cityHintRaw;
-    const searchText = buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint);
+
+    if (force && addressSuggestions.length > 0) {
+      const feature = pickBestGeocodeFeature(addressSuggestions, query, cityHint);
+      if (feature) {
+        setIsGeocoding(false);
+        setAddressError("");
+        selectAddress(feature, parsed.cityPart || cityHint || undefined);
+        return;
+      }
+    }
+
+    setIsGeocoding(true);
+    const searchText = parsed.fullQuery || buildForwardGeocodeSearchText(parsed.streetPart || query, cityHint, parsed.countryIso || undefined);
 
     try {
       const res = await fetch(
@@ -402,9 +433,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const feature = pickBestGeocodeFeature(features, query, cityHint);
       if (!feature) {
         if (!query.includes(",") && !cityHint) {
-          setAddressError(
-            "Dopisz miejscowość po przecinku (np. „Bernardyńska 8, Kalwaria Zebrzydowska”) lub wybierz wynik z listy podpowiedzi.",
-          );
+          setAddressError(ao.geocodeCityHint);
         } else {
           setAddressError(ao.pinError);
         }
@@ -412,10 +441,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       }
       lastGeocodedAddressRef.current = query;
       setAddressError("");
-      const explicitCity = query.includes(",") ? parsed.cityPart : "";
-      selectAddress(feature, explicitCity || cityHint || undefined);
+      selectAddress(feature, parsed.cityPart || cityHint || undefined);
     } catch {
       // no-op
+    } finally {
+      setIsGeocoding(false);
     }
   };
 
@@ -426,6 +456,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         if (!response.ok) return;
         const reverse = await response.json();
 
+        let countryCode = String(reverse.countryCode || "").trim().toUpperCase();
+        let countryName = String(reverse.country || "").trim();
+        if (!countryCode || (countryCode === "PL" && !isCoordinatesInPoland(lat, lng))) {
+          const inferred = await inferCountryFromCoordinates(lat, lng);
+          countryCode = inferred.localityCountryCode;
+          countryName = inferred.localityCountry;
+        }
+        if (countryCode && !countryName) {
+          countryName = countryLabelFromIso(countryCode);
+        }
+
         setData((prev: any) => {
           const reverseCity = canonicalizeCity(reverse.city || "") || String(reverse.city || "").trim();
           let preferred = canonicalizeCity(preferredCity || "") || String(preferredCity || "").trim();
@@ -435,7 +476,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           if (preferred && fallbackStreetToken && normalizeText(preferred) === fallbackStreetToken) {
             preferred = "";
           }
-          const nextCity = preferred || reverseCity || prev.city;
+          const fromPin = !fallbackAddress;
+          const nextCity = fromPin
+            ? reverseCity || preferred || prev.city
+            : preferred || reverseCity || prev.city;
           const reverseStreet = String(reverse.street || "").trim();
           const fallback = String(fallbackAddress || "").trim();
           const prevStreet = String(prev.address || "").split(",")[0]?.trim() || "";
@@ -443,9 +487,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             Boolean(fallback && /\d/.test(fallback)) &&
             Boolean(reverseStreet) &&
             normalizeText(reverseStreet) !== normalizeText(fallback);
-          const streetLine = preserveUserStreet
-            ? fallback
-            : reverseStreet || fallback || prevStreet;
+          const streetLine = fromPin
+            ? reverseStreet || String(reverse.addressLabel || "").split(",")[0]?.trim() || prevStreet
+            : preserveUserStreet
+              ? fallback
+              : reverseStreet || fallback || prevStreet;
           const nextDistrict = reverse.strictCity
             ? String(reverse.district || "").trim() ||
               resolveStrictDistrictForForm(nextCity, lat, lng, [
@@ -465,8 +511,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             district: nextDistrict,
             address: streetLine,
             street: streetLine,
-            localityCountry: String(reverse.country || prev.localityCountry || "Polska"),
-            localityCountryCode: String(reverse.countryCode || prev.localityCountryCode || "PL"),
+            localityCountry: countryName || prev.localityCountry,
+            localityCountryCode: countryCode || prev.localityCountryCode,
           };
         });
       } catch {
@@ -555,6 +601,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
 
     lastGeocodedAddressRef.current = shortStreet;
+    const { country, countryCode } = extractCountryFromMapboxFeature(feature);
     updateData({
       address: shortStreet,
       street: shortStreet,
@@ -562,6 +609,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       lat: nextLat,
       ...(cityCanon ? { city: cityCanon } : {}),
       district: nextDistrictValue,
+      ...(countryCode
+        ? {
+            localityCountry: country || countryLabelFromIso(countryCode),
+            localityCountryCode: countryCode,
+          }
+        : {}),
     });
     setAddressSuggestions([]);
     setAddressError("");
@@ -619,8 +672,8 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const handleGenerateAI = async () => {
     setIsGeneratingAI(true);
     try {
-      const hint = `${propertyTypeLabel || 'Nieruchomość'} w ${data.district || data.city || 'wybranej lokalizacji'} o metrażu ${data.area || '?'} m2.`;
-      const generated = `Przedstawiamy wyjątkową ofertę: ${hint} Komfortowy układ pomieszczeń, funkcjonalna przestrzeń oraz doskonała lokalizacja czynią tę nieruchomość idealną zarówno do zamieszkania, jak i inwestycji.`;
+      const hint = `${propertyTypeLabel || ao.aiGenPropertyFallback} w ${data.district || data.city || ao.aiGenLocationFallback} o metrażu ${data.area || '?'} m2.`;
+      const generated = ao.aiGenTemplate.replace("{hint}", hint);
       updateData({ description: generated });
       if (editorRef.current) editorRef.current.innerHTML = generated;
     } finally {
@@ -635,14 +688,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     setPhoneStatus(digits.length >= 9 ? 'available' : 'invalid');
   };
 
-  const getAmenityPatch = (item: string, selected: boolean) => {
+  const getAmenityPatch = (amenityId: string, selected: boolean) => {
     const patch: Record<string, boolean> = {};
-    if (item === 'Balkon') patch.hasBalcony = selected;
-    if (item === 'Garaż/Miejsce park.') patch.hasParking = selected;
-    if (item === 'Piwnica/Pom. gosp.') patch.hasStorage = selected;
-    if (item === 'Ogródek') patch.hasGarden = selected;
-    if (item === 'Winda') patch.hasElevator = selected;
-    if (item === 'Klimatyzacja') patch.airConditioning = selected;
+    const entry = AMENITY_FIELD_MAP.find((a) => a.id === amenityId);
+    if (entry?.field) patch[entry.field] = selected;
     return patch;
   };
 
@@ -690,7 +739,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     }
 
     if (!process.env.NEXT_PUBLIC_MAPBOX_TOKEN) {
-      setAddressError('Brak klucza mapy (NEXT_PUBLIC_MAPBOX_TOKEN).');
+      setAddressError(ao.mapTokenMissing);
       return;
     }
 
@@ -860,7 +909,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     const lngLat: [number, number] = [Number(data.lng), Number(data.lat)];
 
     if (!markerRef.current) {
-      markerRef.current = new mapboxgl.Marker({ color: '#10b981' }).setLngLat(lngLat).addTo(mapInstance.current);
+      const marker = new mapboxgl.Marker({ color: "#10b981", draggable: true })
+        .setLngLat(lngLat)
+        .addTo(mapInstance.current);
+      marker.on("dragend", () => {
+        const pos = marker.getLngLat();
+        const nextLat = +pos.lat.toFixed(6);
+        const nextLng = +pos.lng.toFixed(6);
+        setData((prev: any) => ({ ...prev, lat: nextLat, lng: nextLng }));
+        void resolveLocationFromCoordinates(nextLat, nextLng);
+      });
+      markerRef.current = marker;
     } else {
       markerRef.current.setLngLat(lngLat);
     }
@@ -902,7 +961,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     if (!canPublish) return;
     if (initialUser?.isLoggedIn) {
       if (!publicationSelection) {
-        setServerErrorMessage('Wybierz metodę publikacji: kupon, kredyt Plus lub zakup Pakietu Plus.');
+        setServerErrorMessage(ao.selectPublicationMethod);
         setActionModal('error');
         return;
       }
@@ -915,12 +974,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       return;
     }
     setIsSubmitting(true);
-    setUploadProgress('Wysyłanie oferty...');
+    setUploadProgress(ao.progressSendingOffer);
     try {
       const { payload } = buildOfferPayload();
       if (!applyAgentCommissionToPayload(payload)) return;
 
-      setUploadProgress('Tworzenie oferty...');
+      setUploadProgress(ao.progressCreatingOffer);
       const response = await fetch('/api/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -937,7 +996,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             const blobKey = uploadableImages[i];
             const file = filesMap[blobKey];
             if (!file) continue;
-            setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+            setUploadProgress(
+              ao.progressUploadingPhoto
+                .replace("{current}", String(i + 1))
+                .replace("{total}", String(uploadableImages.length)),
+            );
             const formData = new FormData();
             formData.append('offerId', String(createdOfferId));
             formData.append('file', file);
@@ -946,11 +1009,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               body: formData,
               credentials: 'include',
             });
-            if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+            if (!uploadRes.ok) {
+              throw new Error(ao.photoUploadFailed.replace("{n}", String(i + 1)));
+            }
           }
 
           if (floorPlanFile) {
-            setUploadProgress('Wysyłanie rzutu nieruchomości...');
+            setUploadProgress(ao.progressUploadingFloorPlan);
             const fpFormData = new FormData();
             fpFormData.append('offerId', String(createdOfferId));
             fpFormData.append('file', floorPlanFile);
@@ -960,7 +1025,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               body: fpFormData,
               credentials: 'include',
             });
-            if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
+            if (!fpRes.ok) throw new Error(ao.floorPlanUploadError);
           }
         }
         if (!responseData.requiresVerification && typeof window !== "undefined") {
@@ -977,13 +1042,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         setErrorFieldTarget(null);
         setActionModal('verify');
       } else {
-        const serverMessage = responseData.error || responseData.message || 'Odrzucono przez serwer';
+        const serverMessage = responseData.error || responseData.message || ao.serverRejected;
         setServerErrorMessage(serverMessage);
         setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal(response.status === 403 && responseData.limitReached ? "limit" : "error");
       }
     } catch (_error) {
-      setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setServerErrorMessage(ao.apiConnectionError);
       setErrorFieldTarget(null);
       setActionModal('error');
     } finally {
@@ -1002,7 +1067,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     try {
       await startPakietPlusCheckout();
     } catch (error) {
-      setServerErrorMessage(error instanceof Error ? error.message : 'Błąd połączenia z kasą Stripe.');
+      setServerErrorMessage(error instanceof Error ? error.message : ao.stripePaymentError);
       setErrorFieldTarget(null);
       setActionModal("error");
     } finally {
@@ -1013,13 +1078,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const submitOfferWithRedemption = async (redemption: PublicationRedemption) => {
     if (isSubmitting) return;
     if (addressMentionsOtherCity(data.address, data.city)) {
-      setServerErrorMessage('Adres wskazuje inne miasto niż wybrane w formularzu. Popraw lokalizację na mapie.');
+      setServerErrorMessage(ao.addressFormMismatch);
       setErrorFieldTarget(null);
       setActionModal('error');
       return;
     }
     setIsSubmitting(true);
-    setUploadProgress('Tworzenie oferty...');
+    setUploadProgress(ao.progressCreatingOffer);
     try {
       const { payload } = buildOfferPayload();
       if (!applyAgentCommissionToPayload(payload)) return;
@@ -1031,7 +1096,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       });
       const createData = await createRes.json().catch(() => ({}));
       if (!createRes.ok) {
-        const serverMessage = createData.error || createData.message || 'Nie udało się utworzyć oferty.';
+        const serverMessage = createData.error || createData.message || ao.createOfferFailed;
         setServerErrorMessage(serverMessage);
         setErrorFieldTarget(resolveErrorFieldTarget(serverMessage));
         setActionModal("error");
@@ -1039,7 +1104,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       }
       const createdOfferId = Number(createData?.offer?.id || createData?.id);
       if (!Number.isFinite(createdOfferId) || createdOfferId <= 0) {
-        setServerErrorMessage('Oferta została utworzona, ale brak ID do aktywacji.');
+        setServerErrorMessage(ao.createOfferNoId);
         setActionModal('error');
         return;
       }
@@ -1048,7 +1113,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
         const blobKey = uploadableImages[i];
         const file = filesMap[blobKey];
         if (!file) continue;
-        setUploadProgress(`Wysyłanie zdjęcia ${i + 1}/${uploadableImages.length}...`);
+        setUploadProgress(
+          ao.progressUploadingPhoto
+            .replace("{current}", String(i + 1))
+            .replace("{total}", String(uploadableImages.length)),
+        );
         const formData = new FormData();
         formData.append('offerId', String(createdOfferId));
         formData.append('file', file);
@@ -1057,10 +1126,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           body: formData,
           credentials: 'include',
         });
-        if (!uploadRes.ok) throw new Error(`Upload zdjęcia ${i + 1} nie powiódł się.`);
+        if (!uploadRes.ok) throw new Error(ao.photoUploadFailed.replace("{n}", String(i + 1)));
       }
       if (floorPlanFile) {
-        setUploadProgress('Wysyłanie rzutu nieruchomości...');
+        setUploadProgress(ao.progressUploadingFloorPlan);
         const fpFormData = new FormData();
         fpFormData.append('offerId', String(createdOfferId));
         fpFormData.append('file', floorPlanFile);
@@ -1070,7 +1139,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
           body: fpFormData,
           credentials: 'include',
         });
-        if (!fpRes.ok) throw new Error('Upload rzutu nieruchomości nie powiódł się.');
+        if (!fpRes.ok) throw new Error(ao.floorPlanUploadError);
       }
       const activationRes = await fetch(`/api/offers/${createdOfferId}/activate`, {
         method: 'POST',
@@ -1081,9 +1150,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       const activationData = await activationRes.json().catch(() => ({}));
       if (!activationRes.ok) {
         if (activationData?.errorCode === 'PUBLICATION_REQUIRES_PLUS') {
-          setServerErrorMessage(activationData?.message || 'Do publikacji wymagany jest Pakiet Plus.');
+          setServerErrorMessage(activationData?.message || ao.plusPackageRequired);
         } else {
-          setServerErrorMessage(activationData?.error || activationData?.message || 'Nie udało się aktywować publikacji.');
+          setServerErrorMessage(activationData?.error || activationData?.message || ao.activationFailed);
         }
         setActionModal('error');
         return;
@@ -1093,7 +1162,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       }
       setActionModal('success');
     } catch {
-      setServerErrorMessage('Błąd połączenia z serwerem API.');
+      setServerErrorMessage(ao.apiConnectionError);
       setActionModal('error');
     } finally {
       setIsSubmitting(false);
@@ -1120,7 +1189,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const restLocalityLabel = String(data.city || "").trim();
   const restAreaLabel = sanitizeNonStrictAreaLabel(data.district, data.city, data.street || data.address);
   const localityCountryFlag = flagEmojiFromIso2(data.localityCountryCode || "PL");
-  const localityCountryLabel = String(data.localityCountry || "Polska").trim();
+  const countryDisplayLocale: "pl" | "en" = locale === "en" || locale === "uk" ? "en" : "pl";
+  const localityCountryLabel = data.localityCountryCode
+    ? countryLabelForLocale(String(data.localityCountryCode), countryDisplayLocale)
+    : String(data.localityCountry || countryLabelForLocale("PL", countryDisplayLocale)).trim();
   const districtRequirementMet = isStrictCityForm ? !!data.district : true;
   const normalizedLandRegistryNumber = normalizeLandRegistryInput(String(data.landRegistryNumber || ""));
   const hasLandRegistryInput = normalizedLandRegistryNumber.length > 0;
@@ -1267,10 +1339,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const loadPublicationWallet = async () => {
     setWalletLoading(true);
     try {
-      const res = await fetch('/api/user/publication-wallet?locale=pl', { cache: 'no-store' });
+      const res = await fetch(`/api/user/publication-wallet?locale=${locale}`, { cache: 'no-store' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
-        throw new Error(String(data?.error || data?.message || 'Nie udało się pobrać portfela publikacji.'));
+        throw new Error(String(data?.error || data?.message || ao.walletFetchFailed));
       }
       const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
       setWalletCoupons(coupons);
@@ -1299,7 +1371,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || !body?.url) {
-      throw new Error(String(body?.error || 'Nie udało się uruchomić płatności Pakiet Plus.'));
+      throw new Error(String(body?.error || ao.plusCheckoutFailed));
     }
     window.location.href = String(body.url);
   };
@@ -1352,10 +1424,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   }, [initialUser?.isLoggedIn, currentStep, totalSteps]);
 
   const publishButtonLabel = useMemo(() => {
-    if (!initialUser?.isLoggedIn) return 'ZAKOŃCZ I OPUBLIKUJ';
-    if (!publicationSelection) return 'WYBIERZ METODĘ PUBLIKACJI';
-    return publicationSelectionLabel(publicationSelection).toUpperCase();
-  }, [initialUser?.isLoggedIn, publicationSelection]);
+    if (!initialUser?.isLoggedIn) return ao.publishFinishGuest;
+    if (!publicationSelection) return ao.publishSelectMethod;
+    return publicationSelectionLabel(publicationSelection, locale).toUpperCase();
+  }, [initialUser?.isLoggedIn, publicationSelection, ao.publishFinishGuest, ao.publishSelectMethod, locale]);
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] pt-28 pb-32 px-4 md:px-6 lg:px-8 font-sans overflow-x-hidden relative selection:bg-emerald-500/30">
@@ -1407,11 +1479,11 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
              <div className={`absolute top-1.5 bottom-1.5 left-1.5 w-[calc(50%-6px)] bg-[#0a0a0a] border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)] rounded-full transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${data.transactionType === 'RENT' ? 'translate-x-[calc(100%+12px)]' : 'translate-x-0'}`}></div>
              
              <button type="button" onClick={() => updateData({ transactionType: 'SELL' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'SELL' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
-               Sprzedaż
+               {ao.sell}
              </button>
              
              <button type="button" onClick={() => updateData({ transactionType: 'RENT' })} className={`relative z-10 flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors duration-500 text-center ${data.transactionType === 'RENT' ? 'text-emerald-400' : 'text-white/40 hover:text-white/80'}`}>
-               Wynajem
+               {ao.rent}
              </button>
           </div>
         </div>
@@ -1485,6 +1557,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     <strong className="text-[var(--eos-text)]">{ao.locationVisibilityTitle}</strong> {ao.locationVisibilityBody}
                   </div>
 
+                  <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/20 text-xs text-zinc-400 leading-relaxed">
+                    {ao.locationInputHint}
+                  </div>
+
                   <div className="relative z-50">
                     <label className={labelPremium}>{ao.searchAddress}</label>
                     <div className="relative">
@@ -1519,12 +1595,17 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         )}
                       </button>
                     </div>
-                    {data.address && !hasBuildingNumber && (
+                    {isGeocoding && (
+                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-emerald-400 flex items-center gap-2">
+                        <Loader2 size={14} className="animate-spin" /> {ao.locationGeocoding}
+                      </motion.div>
+                    )}
+                    {data.address && !hasBuildingNumber && !isGeocoding && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1"><AlertCircle size={14} /> {ao.buildingNumberRequired}</motion.div>
                     )}
                     {locationAddressConflict && (
                       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-[11px] font-bold text-red-400 flex items-center gap-1">
-                        <AlertCircle size={14} /> Adres wskazuje inne miasto niż wybrane. Wybierz adres z listy podpowiedzi lub zmień miasto.
+                        <AlertCircle size={14} /> {ao.addressCityConflict}
                       </motion.div>
                     )}
                     {addressSuggestions.length > 0 && (
@@ -1663,7 +1744,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                   {showLocationMeta && data.city && data.address ? (
                     <p className="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-xs text-white/55">
-                      <span className="font-black uppercase tracking-widest text-[9px] text-emerald-400/90">Podgląd lokalizacji · </span>
+                      <span className="font-black uppercase tracking-widest text-[9px] text-emerald-400/90">{ao.locationPreviewLabel} · </span>
                       {locationDisplayLine}
                     </p>
                   ) : null}
@@ -1671,6 +1752,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
                 <div className="relative w-full min-h-[420px] h-[clamp(360px,48svh,560px)] lg:min-h-[440px] rounded-[2rem] overflow-hidden bg-[#111] border border-white/10 shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] isolate">
                   <div ref={mapContainerRef} className="absolute inset-0 h-full w-full min-h-[420px]" />
+                  <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-10 rounded-xl border border-white/10 bg-black/70 px-4 py-3 text-[11px] text-white/75 leading-relaxed backdrop-blur-md">
+                    {ao.locationMapHint}
+                  </div>
                 </div>
               </div>
 
@@ -1697,12 +1781,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isTechDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isTechDone ? <Check size={24} /> : '3'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Parametry Finansowe</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">{ao.step3FinancialTitle}</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-4 flex flex-wrap items-center gap-3">
-                  <span className={labelPremium.replace('mb-2.5', 'mb-0')}>Waluta ceny</span>
+                  <span className={labelPremium.replace('mb-2.5', 'mb-0')}>{ao.priceCurrency}</span>
                   {(['PLN', 'EUR'] as OfferPriceCurrency[]).map((code) => (
                     <button
                       key={code}
@@ -1732,34 +1816,34 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   ))}
                   {cleanPrice && Number(cleanPrice) > 0 && formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate) ? (
                     <span className="text-[10px] font-bold text-zinc-400">
-                      {formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate)} (NBP)
+                      {formatApproxLine(Number(cleanPrice), data.priceCurrency, fxRate)} {ao.nbpTag}
                     </span>
                   ) : null}
                   {cleanPrice && Number(cleanPrice) > 0 && cleanArea && Number(cleanArea) > 0 ? (
                     <span className="text-[10px] font-bold text-zinc-500">
                       {Math.round(Number(cleanPrice) / Number(cleanArea)).toLocaleString('pl-PL')}{' '}
-                      {data.priceCurrency}/m²
+                      {ao.pricePerSqm.replace("{currency}", data.priceCurrency || "PLN")}
                     </span>
                   ) : null}
                 </div>
                 <div>
                   <label className={labelPremium}>
                     {data.transactionType === 'RENT'
-                      ? `Czynsz najmu (${data.priceCurrency || 'PLN'}) *`
-                      : `Cena (${data.priceCurrency || 'PLN'}) *`}
+                      ? `${ao.rentPriceLabel} (${data.priceCurrency || 'PLN'}) *`
+                      : `${ao.salePriceLabel} (${data.priceCurrency || 'PLN'}) *`}
                   </label>
                   <input type="text" className={inputPremium} placeholder="850 000" value={data.price || ''} 
                     onChange={(e) => updateData({ price: e.target.value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ") })} />
                 </div>
                 <div>
-                  <label className={labelPremium}>Metraż (m²) *</label>
+                  <label className={labelPremium}>{ao.area}</label>
                   <input type="text" className={inputPremium} placeholder="45.5" value={data.area || ''} 
                     onChange={(e) => updateData({ area: e.target.value.replace(/[^0-9.,]/g, "").replace(',', '.').slice(0, 7) })} />
                 </div>
 
                 {requiresPlot && (
                   <div>
-                    <label className={labelPremium}>Powierzchnia działki (m²) *</label>
+                    <label className={labelPremium}>{ao.plotAreaLabel}</label>
                     <input type="text" className={inputPremium} placeholder="450" value={data.plotArea || ''}
                       onChange={(e) => updateData({ plotArea: e.target.value.replace(/[^0-9.,]/g, "").replace(',', '.').slice(0, 8) })} />
                   </div>
@@ -1768,22 +1852,22 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 {data.propertyType !== 'PLOT' && (
                   <>
                     <div>
-                      <label className={labelPremium}>Liczba pokoi *</label>
+                      <label className={labelPremium}>{ao.rooms} *</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.rooms || ''} onChange={(e) => updateData({ rooms: e.target.value })}>
                         <option value="">-</option>
                         {Array.from({ length: 10 }, (_, i) => String(i + 1)).map(room => <option key={room} value={room}>{room}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className={labelPremium}>Piętro *</label>
+                      <label className={labelPremium}>{ao.floor} *</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.floor || ''} onChange={(e) => updateData({ floor: e.target.value })}>
                         <option value="">-</option>
-                        <option value="0">Parter</option>
+                        <option value="0">{ao.floorGround}</option>
                         {Array.from({ length: 30 }, (_, i) => String(i + 1)).map(floor => <option key={floor} value={floor}>{floor}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className={labelPremium}>Rok budowy *</label>
+                      <label className={labelPremium}>{ao.buildYearLabel}</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.buildYear || ''} onChange={(e) => updateData({ buildYear: e.target.value })}>
                         <option value="">-</option>
                         {buildYearBuiltSelectOptions().map(year => <option key={year} value={year}>{year}</option>)}
@@ -1795,25 +1879,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 {data.propertyType !== 'PLOT' && (
                   <>
                     <div className={requiresPlot ? 'lg:col-span-2' : ''}>
-                      <label className={labelPremium}>Rodzaj Ogrzewania</label>
+                      <label className={labelPremium}>{ao.heatingTypeLabel}</label>
                       <select className={`${inputPremium} appearance-none cursor-pointer`} value={data.heating || ''} onChange={(e) => updateData({ heating: e.target.value })}>
-                        <option value="">Wybierz...</option>
+                        <option value="">{ao.selectPlaceholder}</option>
                         {HEATING_TYPES.map(h => <option key={h} value={h}>{h}</option>)}
                       </select>
                     </div>
 
                     {/* Luksusowe przyciski Umeblowania */}
                     <div>
-                      <label className={labelPremium}>Umeblowane</label>
+                      <label className={labelPremium}>{ao.furnishedLabel}</label>
                       <div className="flex gap-4">
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: true }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Tak</button>
-                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: false }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>Nie</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: true }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === true ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>{ao.yes}</button>
+                        <button type="button" onClick={(e) => { e.preventDefault(); updateData({ isFurnished: false }); }} className={`flex-1 py-4 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${data.isFurnished === false ? 'bg-red-500/10 border-red-500 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' : 'bg-[#111] border-white/5 text-white/40 hover:border-white/20 hover:bg-white/5'}`}>{ao.no}</button>
                       </div>
                     </div>
 
                     {data.transactionType !== 'RENT' ? (
-                    <div>
-                      <label className={labelPremium}>Czynsz administracyjny <span className="text-white/30 font-normal ml-1 text-[10px]">(Opcjonalnie)</span></label>
+                    <div className="md:col-span-2 lg:col-span-2">
+                      <label className={labelPremium}>
+                        <span>{ao.adminFeeLabel}</span>
+                        <span className="text-white/30 font-normal normal-case tracking-normal text-[10px]">{ao.adminFeeOptional}</span>
+                      </label>
                       <div className="relative group">
                         <input type="text" placeholder={ao.rentPlaceholder} className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">PLN</div>
@@ -1824,13 +1911,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 )}
 
                 <div ref={agentCommissionInputRef} className="lg:col-span-4 rounded-2xl border border-orange-500/25 bg-orange-500/5 p-5">
-                  <label className={labelPremium}>Prowizja agenta (procent lub kwota)</label>
+                  <label className={labelPremium}>{ao.commissionBlockTitle}</label>
                   <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                    Wpisz prowizję procentowo lub kwotowo. Dopuszczalne: 0% (bez prowizji) albo od{" "}
-                    {AGENT_COMMISSION_MIN_NONZERO}% wzwyż — bez górnego limitu. Cena ogłoszenia pozostaje finalną kwotą brutto dla
-                    klienta, a prowizja jest rozliczana poza platformą.
+                    {ao.commissionBlockIntro.replace("{min}", String(AGENT_COMMISSION_MIN_NONZERO))}
                   </p>
                   <AgentCommissionEditor
+                    ao={ao}
                     priceRaw={data.price || 0}
                     percentValue={String(data.agentCommissionPercent ?? "")}
                     onPercentChange={(value) =>
@@ -1847,13 +1933,13 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   const a = parseFloat(String(data.area || '').replace(',', '.'));
                   if (!p || !a || a === 0) return null;
                   const ppm = Math.round(p / a);
-                  let config = { color: 'text-[#10b981]', bg: 'bg-[#10b981]/10', border: 'border-[#10b981]/30', label: 'Okazja Rynkowa', icon: <CheckCircle size={20} /> };
-                  if (ppm > 18000) config = { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', label: 'Standard Premium', icon: <Flame size={20} /> };
-                  if (ppm > 25000) config = { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', label: 'Segment Luksusowy', icon: <Crown size={20} /> };
+                  let config = { color: 'text-[#10b981]', bg: 'bg-[#10b981]/10', border: 'border-[#10b981]/30', label: ao.aiSegmentOpportunity, icon: <CheckCircle size={20} /> };
+                  if (ppm > 18000) config = { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', label: ao.aiSegmentPremium, icon: <Flame size={20} /> };
+                  if (ppm > 25000) config = { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', label: ao.aiSegmentLuxury, icon: <Crown size={20} /> };
                   return (
                     <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`mt-4 lg:col-span-4 flex items-center justify-between p-6 rounded-2xl border ${config.bg} ${config.border} backdrop-blur-md`}>
                       <div className="flex flex-col">
-                        <span className="text-[11px] text-zinc-400 font-black uppercase tracking-widest mb-1">EstateOS AI: Wycena za m²</span>
+                        <span className="text-[11px] text-zinc-400 font-black uppercase tracking-widest mb-1">{ao.aiValuationKicker}</span>
                         <span className={`text-3xl font-black tracking-tight ${config.color}`}>{ppm.toLocaleString('pl-PL')} <span className="text-base font-bold opacity-80">PLN</span></span>
                       </div>
                       <div className={`flex items-center gap-3 px-5 py-3 rounded-xl border ${config.border} bg-black/40 shadow-inner`}>
@@ -1872,34 +1958,34 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isMediaDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                   {isMediaDone ? <Check size={24} /> : '4'}
                 </div>
-                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Galeria i Prezentacja</h2>
+                <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">{ao.step4GalleryTitle}</h2>
               </div>
 
               <div className="mb-10">
-                <label className={labelPremium}>Tytuł Oferty *</label>
+                <label className={labelPremium}>{ao.offerTitleLabel}</label>
                 <input
                   type="text"
-                  placeholder="np. Luksusowy apartament z widokiem na skyline"
+                  placeholder={ao.offerTitlePlaceholder}
                   className={inputPremium}
                   maxLength={70}
                   onChange={(e) => updateData({ title: e.target.value })}
                   value={data.title || ''}
                 />
                 <p className={`text-[10px] mt-2 ml-1 font-bold ${String(data.title || '').length >= 10 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
-                  Minimum 10 znaków, tak jak w aplikacji mobilnej.
+                  {ao.titleMinHint}
                 </p>
               </div>
 
               <div className="mb-12">
                 <div className="flex items-center justify-between mb-4">
-                  <label className={labelPremium}>Galeria Zdjęć (Min. 1) *</label>
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${totalSizeMB > 25 ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-zinc-400'}`}>Użyto: {totalSizeMB.toFixed(1)} / 30 MB</span>
+                  <label className={labelPremium}>{ao.photoGalleryLabel}</label>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${totalSizeMB > 25 ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-zinc-400'}`}>{ao.photoGalleryUsed} {totalSizeMB.toFixed(1)} / 30 MB</span>
                 </div>
                 <div className="flex flex-wrap gap-4 p-6 rounded-[2rem] bg-white/5 border border-white/10 shadow-inner min-h-[180px]">
                   <label className="w-32 h-32 border-2 border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all bg-black/20 hover:border-[#10b981] hover:bg-[#10b981]/5 hover:text-[#10b981] text-zinc-500 group">
                     <input type="file" multiple accept="image/*" className="hidden" onChange={handleImageUpload} />
                     <Upload size={28} className="mb-3 transition-transform group-hover:-translate-y-1" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-center px-2">Dodaj<br/>Zdjęcia</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-center px-2">{ao.photoAddLine1}<br/>{ao.photoAddLine2}</span>
                   </label>
                   
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { const { active, over } = e; if (active.id !== over?.id && over) { setImagesList((items) => arrayMove(items, items.indexOf(active.id as string), items.indexOf(over.id as string))); } }}>
@@ -1908,16 +1994,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     </SortableContext>
                   </DndContext>
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-3 text-center">Możesz dodać dowolną liczbę zdjęć, przeciągnij je aby ułożyć kolejność. Łączna waga plików to max 30 MB.</p>
+                <p className="text-[10px] text-zinc-500 mt-3 text-center">{ao.photoGalleryHint}</p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                 <div className="lg:col-span-2">
                   <div className="flex items-center justify-between mb-4">
-                    <label className={labelPremium}>Ekskluzywny Opis</label>
+                    <label className={labelPremium}>{ao.exclusiveDescLabel}</label>
                     <button onClick={handleGenerateAI} disabled={isGeneratingAI} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#10b981]/20 to-emerald-900/40 border border-[#10b981]/50 text-[#10b981] text-[11px] font-black uppercase tracking-widest hover:bg-[#10b981] hover:text-black transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]">
                       {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                      {isGeneratingAI ? 'Generowanie...' : 'Asystent AI'}
+                      {isGeneratingAI ? ao.generating : ao.aiAssistantBtn}
                     </button>
                   </div>
                   
@@ -1943,16 +2029,16 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                 
                 <div className="space-y-8">
                   <div>
-                    <label className={labelPremium}>Plan Nieruchomości</label>
+                    <label className={labelPremium}>{ao.propertyPlanLabel}</label>
                     {!floorPlan ? (
                       <label className="w-full h-24 border-2 border-dashed border-white/20 rounded-2xl flex items-center justify-center gap-3 cursor-pointer transition-all bg-white/5 hover:border-[#10b981] hover:text-[#10b981] text-zinc-500 group">
                         <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFloorPlanUpload} />
                         <LayoutTemplate size={24} className="group-hover:scale-110 transition-transform"/>
-                        <span className="text-[10px] font-black uppercase tracking-widest">Wgraj Rzut</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">{ao.uploadFloorPlanBtn}</span>
                       </label>
                     ) : (
                       <div className="relative w-full h-32 rounded-2xl overflow-hidden border border-[#10b981]/50 shadow-[0_0_20px_rgba(16,185,129,0.2)] group">
-                        <img src={floorPlan} className="w-full h-full object-cover opacity-80" alt="Rzut" />
+                        <img src={floorPlan} className="w-full h-full object-cover opacity-80" alt={ao.floorPlanAlt} />
                         <button onClick={() => { setFloorPlan(null); setFloorPlanFile(null); }} className="absolute top-2 right-2 p-2 bg-red-500/90 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all shadow-lg"><Trash2 size={14}/></button>
                       </div>
                     )}
@@ -1970,31 +2056,31 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       >
                         <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-[2rem] p-6 md:p-8 shadow-[0_0_30px_rgba(16,185,129,0.05)]">
                           <h3 className="text-emerald-400 font-black text-[11px] uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
-                            <Key size={14} /> Szczegóły Wynajmu
+                            <Key size={14} /> {ao.rentDetailsHeading}
                           </h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                              <label className={labelPremium}>Opłaty dodatkowe (czynsz)</label>
+                              <label className={labelPremium}>{ao.rentAdminFeeLabel}</label>
                               <p className="text-[10px] text-zinc-500 mb-2 leading-relaxed">
-                                Osobno od czynszu najmu — wspólnota, media, administracja. Wybierz z listy lub zostaw „Brak”.
+                                {ao.rentAdminFeeHint}
                               </p>
                               <select
                                 className={`${inputPremium} appearance-none cursor-pointer`}
                                 value={String(data.rentAdminFee ?? "")}
                                 onChange={(e) => updateData({ rentAdminFee: e.target.value })}
                               >
-                                <option value="">Brak</option>
+                                <option value="">{ao.rentNoneOption}</option>
                                 {buildRentAdditionalFeeSelectOptions()
                                   .filter((v) => v > 0)
                                   .map((fee) => (
                                     <option key={fee} value={String(fee)}>
-                                      {fee.toLocaleString("pl-PL")} PLN / mc
+                                      {fee.toLocaleString(locale === "pl" ? "pl-PL" : locale === "uk" ? "uk-UA" : "en-GB")} {ao.rentPerMonthSuffix}
                                     </option>
                                   ))}
                               </select>
                             </div>
                             <div>
-                              <label className={labelPremium}>Kaucja (PLN)</label>
+                              <label className={labelPremium}>{ao.depositLabel}</label>
                               <input
                                 type="text"
                                 className={inputPremium}
@@ -2004,23 +2090,23 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                               />
                             </div>
                             <div>
-                              <label className={labelPremium}>Typ umowy / Dostępność</label>
+                              <label className={labelPremium}>{ao.rentTypeLabel}</label>
                               <input 
                                 type="text" 
                                 className={inputPremium} 
-                                placeholder="np. Najem okazjonalny, od 01.07" 
+                                placeholder={ao.rentTypePlaceholder} 
                                 value={data.rentType || ''} 
                                 onChange={(e) => updateData({ rentType: e.target.value })} 
                               />
                             </div>
                             <div className="flex flex-col justify-end">
-                              <label className={labelPremium}>Zwierzęta</label>
+                              <label className={labelPremium}>{ao.sumRowPets}</label>
                               <button
                                 type="button"
                                 onClick={() => updateData({ petsAllowed: !data.petsAllowed })}
                                 className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl border transition-all duration-300 ${data.petsAllowed ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'}`}
                               >
-                                <span className="font-bold uppercase tracking-widest text-[10px]">Akceptuję zwierzęta</span>
+                                <span className="font-bold uppercase tracking-widest text-[10px]">{ao.petsAcceptLabel}</span>
                                 {data.petsAllowed ? <CheckCircle size={20} /> : <div className="w-5 h-5 rounded-full border-2 border-white/10" />}
                               </button>
                             </div>
@@ -2031,20 +2117,20 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </AnimatePresence>
 
               <div>
-                    <label className={labelPremium}>Udogodnienia (Premium)</label>
+                    <label className={labelPremium}>{ao.amenitiesPremiumLabel}</label>
                     <div className="flex flex-wrap gap-2">
-                      {AMENITIES.map(item => {
-                        const isSelected = data.amenities.includes(item);
+                      {AMENITIES.map((item) => {
+                        const isSelected = data.amenities.includes(item.label);
                         return (
-                          <button key={item} onClick={() => {
+                          <button key={item.id} onClick={() => {
                             const nextSelected = !isSelected;
                             updateData({
-                              amenities: isSelected ? data.amenities.filter((a: string) => a !== item) : [...data.amenities, item],
-                              ...getAmenityPatch(item, nextSelected),
+                              amenities: isSelected ? data.amenities.filter((a: string) => a !== item.label) : [...data.amenities, item.label],
+                              ...getAmenityPatch(item.id, nextSelected),
                             });
                           }} 
                                   className={`px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 ${isSelected ? 'bg-[#10b981] text-black border border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.6)] scale-[1.05]' : 'bg-white/5 border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 hover:border-white/20'}`}>
-                            {item}
+                            {item.label}
                           </button>
                         );
                       })}
@@ -2061,28 +2147,28 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-lg transition-all duration-500 ${isContactDone ? 'bg-[#10b981] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] scale-110' : 'bg-white/5 text-zinc-500 border border-white/10'}`}>
                     {isContactDone ? <Check size={24} /> : '5'}
                   </div>
-                  <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">Profil Ogłoszeniodawcy</h2>
+                  <h2 className="text-2xl font-black uppercase tracking-[0.08em] text-white">{ao.advertiserProfileTitle}</h2>
                 </div>
 
                 <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10 w-full max-w-md mb-8">
-                  <button onClick={() => updateData({ advertiserType: 'private' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'private' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>Osoba Prywatna</button>
-                  <button onClick={() => updateData({ advertiserType: 'agency' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'agency' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>Agencja / Biuro</button>
+                  <button onClick={() => updateData({ advertiserType: 'private' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'private' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>{ao.advertiserPrivate}</button>
+                  <button onClick={() => updateData({ advertiserType: 'agency' })} className={`flex-1 py-4 text-[11px] font-black uppercase tracking-widest rounded-xl transition-all ${data.advertiserType === 'agency' ? 'bg-[#10b981] text-black shadow-md' : 'text-zinc-400 hover:text-white'}`}>{ao.advertiserAgency}</button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {data.advertiserType === 'agency' && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="md:col-span-2">
-                      <label className={labelPremium}>Nazwa Agencji Nieruchomości *</label>
+                      <label className={labelPremium}>{ao.agencyNameRequired}</label>
                       <input type="text" className={inputPremium} onChange={(e) => updateData({ agencyName: e.target.value })} value={data.agencyName || ''} placeholder={ao.agencyNamePlaceholder} />
                     </motion.div>
                   )}
                   
                   <div>
-                    <label className={labelPremium}><User size={14}/> Imię i Nazwisko / Agent *</label>
+                    <label className={labelPremium}><User size={14}/> {ao.contactNameLabel}</label>
                     <input type="text" className={inputPremium} onChange={(e) => updateData({ contactName: e.target.value })} value={data.contactName || ''} />
                   </div>
                   <div>
-                    <label className={labelPremium}><Phone size={14}/> Telefon *</label>
+                    <label className={labelPremium}><Phone size={14}/> {ao.phoneLabel}</label>
                     <div className="relative">
                       <input type="tel" placeholder="+48 500 600 700" className={`${inputPremium} pr-12 ${phoneStatus === 'invalid' || phoneStatus === 'taken' ? 'border-red-500/50' : ''}`} onChange={handlePhoneChange} value={data.contactPhone || ''} />
                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -2091,10 +2177,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         {(phoneStatus === 'invalid' || phoneStatus === 'taken') && <X size={18} className="text-red-500" />}
                       </div>
                     </div>
-                    {phoneStatus === 'taken' && <p className="text-[10px] text-red-400 mt-2 font-bold">Ten numer jest przypisany do innego konta.</p>}
+                    {phoneStatus === 'taken' && <p className="text-[10px] text-red-400 mt-2 font-bold">{ao.phoneTakenMsg}</p>}
                   </div>
                   <div>
-                    <label className={labelPremium}><Mail size={14}/> E-mail *</label>
+                    <label className={labelPremium}><Mail size={14}/> {ao.emailLabel}</label>
                     <div className="relative">
                       <input type="email" placeholder="jan@kowalski.pl" className={`${inputPremium} pr-12 ${emailStatus === 'invalid' || emailStatus === 'taken' ? 'border-red-500/50' : ''}`} onChange={(e) => updateData({ email: e.target.value })} value={data.email || ''} />
                       <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -2103,10 +2189,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                         {(emailStatus === 'invalid' || emailStatus === 'taken') && <X size={18} className="text-red-500" />}
                       </div>
                     </div>
-                    {emailStatus === 'taken' && <p className="text-[10px] text-red-400 mt-2 font-bold">Adres jest już zajęty. Zaloguj się.</p>}
+                    {emailStatus === 'taken' && <p className="text-[10px] text-red-400 mt-2 font-bold">{ao.emailTakenMsg}</p>}
                   </div>
                   <div>
-                    <label className={labelPremium}><Lock size={14}/> Hasło (Min. 6 znaków) *</label>
+                    <label className={labelPremium}><Lock size={14}/> {ao.passwordLabel}</label>
                     <input type="password" placeholder="••••••••" className={inputPremium} onChange={(e) => updateData({ password: e.target.value })} value={data.password || ''} />
                   </div>
                 </div>
@@ -2117,21 +2203,21 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             <div className={`pt-8 pb-24 relative z-50 ${currentStep === totalSteps ? '' : 'hidden'}`}>
               <div className="mb-6 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 md:p-6">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300 mb-3">
-                  Podsumowanie publikacji
+                  {ao.publishSummaryHeading}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Tytuł</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumTitle}</p>
                     <p className="text-white font-semibold">{String(data.title || '').trim() || '-'}</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Typ / Transakcja</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumTypeTransaction}</p>
                     <p className="text-white font-semibold">
                       {propertyTypeLabel || '—'} / {data.transactionType === 'RENT' ? ao.rent : ao.sell}
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Cena / Metraż</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumPriceArea}</p>
                     <p className="text-white font-semibold">
                       {String(data.price || '').trim() ? `${String(data.price).trim()} ${data.priceCurrency || 'PLN'}` : '-'}
                       {" · "}
@@ -2139,50 +2225,50 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Lokalizacja</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumLocation}</p>
                     <p className="text-white font-semibold">{locationDisplayLine}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Parametry</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumParams}</p>
                     <p className="text-white/80">
-                      Pokoje: {data.rooms || '-'} · Piętro: {data.floor || '-'} · Rok: {data.buildYear || '-'}
+                      {ao.sumRooms}: {data.rooms || '-'} · {ao.sumFloor}: {data.floor || '-'} · {ao.sumYear}: {data.buildYear || '-'}
                     </p>
                     <p className="text-white/60 mt-1">
-                      Ogrzewanie: {data.heating || '-'} · Umeblowane: {data.isFurnished === true ? 'tak' : data.isFurnished === false ? 'nie' : '-'}
+                      {ao.sumHeating}: {data.heating || '-'} · {ao.sumFurnished}: {data.isFurnished === true ? ao.yes.toLowerCase() : data.isFurnished === false ? ao.no.toLowerCase() : '-'}
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">Koszty i prowizja</p>
+                    <p className="text-white/40 uppercase tracking-wider text-[10px] mb-1">{ao.sumCostsCommission}</p>
                     <p className="text-white/80">
-                      Czynsz: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
+                      {ao.sumRent}: {String(data.rent || '').trim() ? `${String(data.rent).trim()} PLN` : '-'}
                     </p>
                     <p className="text-white/60 mt-1">
-                      Prowizja: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : 'Bez prowizji (0%)'}
+                      {ao.sumCommission}: {String(data.agentCommissionPercent || '').trim() ? `${String(data.agentCommissionPercent).trim()}%` : ao.sumCommissionZero}
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">Udogodnienia i media</p>
+                  <p className="text-white/40 uppercase tracking-wider text-[10px] mb-2">{ao.sumAmenitiesMedia}</p>
                   <p className="text-white/80 mb-2">
-                    {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : 'Brak wybranych udogodnień'}
+                    {Array.isArray(data.amenities) && data.amenities.length > 0 ? data.amenities.join(', ') : ao.sumNoAmenities}
                   </p>
                   <div className="mb-2 text-[10px] uppercase tracking-wider text-white/45">
-                    Zdjęcia: {finalImages.length} {finalFloorPlan ? '· Rzut: 1' : '· Rzut: 0'}
+                    {ao.sumPhotos}: {finalImages.length} · {ao.sumFloorPlan}: {finalFloorPlan ? '1' : '0'}
                   </div>
                   <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
                     {finalImages.length > 0 ? finalImages.map((img, idx) => (
-                      <img key={`${img}-${idx}`} src={img} alt={`Podgląd zdjęcia ${idx + 1}`} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
+                      <img key={`${img}-${idx}`} src={img} alt={ao.sumPhotoPreviewAlt.replace("{n}", String(idx + 1))} className="h-14 w-14 rounded-lg object-cover border border-white/15" />
                     )) : (
                       <div className="col-span-full rounded-lg border border-dashed border-white/20 px-3 py-2 text-[11px] text-white/50">
-                        Brak zdjęć w podsumowaniu — dodaj zdjęcia w kroku mediów.
+                        {ao.sumNoPhotos}
                       </div>
                     )}
                     {finalFloorPlan ? (
-                      <img src={finalFloorPlan} alt="Podgląd rzutu" className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
+                      <img src={finalFloorPlan} alt={ao.sumFloorPreviewAlt} className="h-14 w-14 rounded-lg object-cover border border-emerald-500/30" />
                     ) : null}
                   </div>
                 </div>
@@ -2228,18 +2314,18 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
 
               {initialUser?.isLoggedIn && !publishContactOk ? (
                 <div className="mb-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-left">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">Weryfikacja konta</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-2">{ao.acctVerifyTitle}</p>
                   <p className="text-sm text-white/70 mb-4 leading-relaxed">
-                    Przed publikacją potwierdź{' '}
-                    {!initialUser?.isVerifiedPhone ? 'telefon (SMS)' : ''}
-                    {!initialUser?.isVerifiedPhone && !initialUser?.isEmailVerified ? ' oraz ' : ''}
-                    {!initialUser?.isEmailVerified ? 'adres e-mail' : ''} — tak jak w aplikacji mobilnej.
+                    {ao.acctVerifyBefore}{' '}
+                    {!initialUser?.isVerifiedPhone ? ao.acctVerifyPhone : ''}
+                    {!initialUser?.isVerifiedPhone && !initialUser?.isEmailVerified ? ` ${ao.acctVerifyAnd} ` : ''}
+                    {!initialUser?.isEmailVerified ? ao.acctVerifyEmail : ''}.
                   </p>
                   <a
                     href="/moje-konto/weryfikacja"
                     className="inline-block py-3 px-6 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-400 transition-colors"
                   >
-                    Przejdź do weryfikacji
+                    {ao.acctVerifyGo}
                   </a>
                 </div>
               ) : null}
@@ -2254,7 +2340,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               >
                 <span className="relative z-10 flex items-center gap-3 text-xl md:text-2xl font-black uppercase tracking-[0.2em]">
                   {isSubmitting ? <Loader2 className="animate-spin" size={28} /> : (!canPublish ? <Lock size={24} /> : <Crown size={32} className="group-hover:animate-bounce" />)}
-                  {isSubmitting ? (uploadProgress || 'Przetwarzanie...') : (!canPublish ? 'Uzupełnij brakujące dane' : publishButtonLabel)}
+                  {isSubmitting ? (uploadProgress || ao.processing) : (!canPublish ? ao.fillMissingData : publishButtonLabel)}
                 </span>
               </button>
             </div>
@@ -2298,7 +2384,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               </div>
               {!canAdvanceStep(currentStep) && (
                 <p className="mt-3 text-[10px] text-red-400/80 font-bold uppercase tracking-[0.16em] text-center">
-                  Uzupełnij wymagane pola tego kroku, aby przejść dalej.
+                  {ao.stepRequiredHint}
                 </p>
               )}
             </div>
@@ -2315,10 +2401,10 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-[#0a0a0a] border border-white/10 rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl relative">
               <button onClick={() => setActionModal("none")} className="absolute top-6 right-6 text-zinc-500 hover:text-white"><X size={24} /></button>
               <ShieldCheck className="mx-auto mb-6 text-emerald-400" size={48} />
-              <h2 className="text-2xl font-black text-white mb-3">Potwierdź kontakt</h2>
-              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || 'Publikacja wymaga zweryfikowanego telefonu i e-maila.'}</p>
-              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">Weryfikacja konta</a>
-              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">Zamknij</button>
+              <h2 className="text-2xl font-black text-white mb-3">{ao.modalVerifyTitle}</h2>
+              <p className="text-zinc-400 mb-8 leading-relaxed">{serverErrorMessage || ao.modalVerifyDefault}</p>
+              <a href="/moje-konto/weryfikacja" className="block w-full py-4 bg-emerald-500 text-black font-black uppercase tracking-widest rounded-2xl mb-3 hover:bg-emerald-400 transition-colors">{ao.modalVerifyBtn}</a>
+              <button onClick={() => setActionModal("none")} className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white">{ao.modalClose}</button>
             </motion.div>
           </div>
         )}
@@ -2330,33 +2416,33 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               {actionModal === "success" && (
                 <>
                   <div className="w-24 h-24 bg-[#10b981]/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-[#10b981]/30 shadow-[0_0_40px_rgba(16,185,129,0.3)]"><CheckCircle className="text-[#10b981]" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-4">Gotowe!</h2>
+                  <h2 className="text-3xl font-black text-white mb-4">{ao.modalSuccessTitle}</h2>
                   <p className="text-zinc-400 mb-8 leading-relaxed">
-                    Oferta została zapisana i przesłana do akceptacji EstateOS™. Do czasu zatwierdzenia nie pojawi się na mapie ani na rynku — zobaczysz ją w zakładce „Oczekujące” w panelu.
+                    {ao.modalSuccessBody}
                   </p>
-                  <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Panel Zarządzania</button>
+                  <button onClick={() => { window.location.href = '/moje-konto/crm'; }} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-[#10b981] hover:text-black font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalSuccessPanel}</button>
                 </>
               )}
 
               {actionModal === "error" && (
                 <>
                   <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/30"><AlertCircle className="text-red-500" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-4">Odrzucono</h2>
+                  <h2 className="text-3xl font-black text-white mb-4">{ao.modalErrorTitle}</h2>
                   <p className="text-[var(--eos-muted)] mb-8 leading-relaxed">{serverErrorMessage || ao.serverErrorHint}</p>
-                  <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">Popraw dane</button>
+                  <button onClick={handleFixDataFromErrorModal} className="w-full py-4 bg-white/10 border border-white/20 text-white hover:bg-red-500 font-black uppercase tracking-widest rounded-2xl transition-all duration-300">{ao.modalFixData}</button>
                 </>
               )}
 
               {actionModal === "limit" && (
                 <>
                   <div className="w-24 h-24 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-blue-500/30 shadow-[0_0_40px_rgba(59,130,246,0.3)]"><Sparkles className="text-blue-400" size={40} /></div>
-                  <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">Osiągnięto Limit</h2>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-6 animate-pulse">⚡ Oferta Limitowana</div>
-                  <p className="text-zinc-400 mb-8 leading-relaxed font-medium">Odblokuj to ogłoszenie w specjalnej cenie: <br/><span className="text-zinc-600 line-through text-lg mr-2 decoration-red-500/40">49,99 zł</span><span className="text-white font-black text-3xl">29,99 zł</span></p>
+                  <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">{ao.modalLimitTitle}</h2>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-6 animate-pulse">{ao.modalLimitBadge}</div>
+                  <p className="text-zinc-400 mb-8 leading-relaxed font-medium">{ao.modalLimitBody} <br/><span className="text-zinc-600 line-through text-lg mr-2 decoration-red-500/40">49,99 zł</span><span className="text-white font-black text-3xl">29,99 zł</span></p>
                   <button onClick={handlePlusPayment} disabled={isProcessingPlus} className="w-full py-5 bg-blue-600 text-white font-black uppercase tracking-[0.2em] rounded-[1.5rem] transition-all duration-300 hover:bg-blue-500 hover:brightness-125 shadow-xl flex flex-col items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
-                    {isProcessingPlus ? <span>ŁADOWANIE KASY...</span> : <><span>ODBLOKUJ I OPUBLIKUJ</span><span className="text-[9px] opacity-70 mt-1 font-bold">AUTOPUBLIKACJA PO PŁATNOŚCI</span></>}
+                    {isProcessingPlus ? <span>{ao.modalCheckoutLoading}</span> : <><span>{ao.modalUnlock}</span><span className="text-[9px] opacity-70 mt-1 font-bold">{ao.modalAutoPublish}</span></>}
                   </button>
-                  <button onClick={() => setActionModal("none")} className="mt-6 text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white transition-colors">Wróć do edycji</button>
+                  <button onClick={() => setActionModal("none")} className="mt-6 text-[10px] text-zinc-500 uppercase tracking-widest font-bold hover:text-white transition-colors">{ao.modalBackEdit}</button>
                 </>
               )}
             </motion.div>
@@ -2530,7 +2616,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
               <motion.div initial={{ scale: 0.5, y: 100, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} transition={{ duration: 2.5, delay: 4.0, type: "spring", bounce: 0.3 }} className="relative z-10 flex flex-col items-center text-center px-6 overflow-visible">
                 <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 5.0, type: "spring" }} className="mb-8 px-6 py-2 rounded-full border border-blue-400/50 bg-blue-900/30 flex items-center gap-3">
                    <Sparkles className="text-blue-300" size={20} />
-                   <span className="text-blue-200 font-bold tracking-[0.3em] uppercase text-xs">Zasięg Zwielokrotniony</span>
+                   <span className="text-blue-200 font-bold tracking-[0.3em] uppercase text-xs">{ao.plusReachBadge}</span>
                 </motion.div>
                 <div className="relative mb-6 overflow-visible">
                   <h1 className="text-[60px] md:text-[110px] font-black tracking-tighter italic text-transparent bg-clip-text bg-gradient-to-b from-blue-100 via-white to-blue-500 drop-shadow-[0_0_80px_rgba(59,130,246,0.8)] p-4" style={{ lineHeight: 1 }}>
@@ -2538,12 +2624,12 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                   </h1>
                 </div>
                 <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 5.5, duration: 1 }} className="text-2xl md:text-3xl text-zinc-300 font-medium max-w-3xl tracking-wide">
-                  Aktywowana. Twoje ogłoszenie trafia właśnie do <span className="text-white font-bold">tysięcy inwestorów</span>.
+                  {ao.plusActivatedBody}
                 </motion.p>
                 
                 {/* NAPRAWIONY TAG MOTION.BUTTON ZAMIAST BUTTON */}
                 <motion.button initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 7.0, duration: 1 }} onClick={() => { window.location.href = '/moje-konto/crm'; }} className="mt-16 px-12 py-6 bg-blue-900/20 border-2 border-blue-500 text-white font-black uppercase tracking-[0.3em] rounded-full hover:bg-blue-600 transition-all duration-500 shadow-[0_0_30px_rgba(59,130,246,0.3)] text-xl relative overflow-hidden group">
-                  <span className="relative z-10 drop-shadow-md">Zobacz Statystyki</span>
+                  <span className="relative z-10 drop-shadow-md">{ao.plusViewStats}</span>
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-500 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                 </motion.button>
 

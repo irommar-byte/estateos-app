@@ -8,8 +8,55 @@ import { countryLabelFromIso, inferCountryIsoFromCity } from "@/lib/offerLocalit
 export type ParsedAddressQuery = {
   streetPart: string;
   cityPart: string;
+  countryPart: string;
+  countryIso: string | null;
   fullQuery: string;
 };
+
+const COUNTRY_TOKEN_TO_ISO: Record<string, string> = {
+  polska: "PL",
+  poland: "PL",
+  pl: "PL",
+  niemcy: "DE",
+  germany: "DE",
+  deutschland: "DE",
+  de: "DE",
+  czechy: "CZ",
+  czechia: "CZ",
+  cz: "CZ",
+  slowacja: "SK",
+  slovakia: "SK",
+  sk: "SK",
+  austria: "AT",
+  osterreich: "AT",
+  at: "AT",
+  ukraina: "UA",
+  ukraine: "UA",
+  ua: "UA",
+};
+
+function countryIsoFromToken(token: string): string | null {
+  const norm = token
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  return COUNTRY_TOKEN_TO_ISO[norm] || null;
+}
+
+/** Kraj i kod ISO z kontekstu wyniku Mapbox. */
+export function extractCountryFromMapboxFeature(
+  feature: { context?: Array<{ id?: string; text?: string; text_pl?: string; short_code?: string }> } | null | undefined,
+): { country: string; countryCode: string } {
+  const context = Array.isArray(feature?.context) ? feature.context : [];
+  const countryItem = context.find((item) => String(item?.id || "").startsWith("country"));
+  const countryCode = String(countryItem?.short_code || "")
+    .trim()
+    .toUpperCase()
+    .replace(/^COUNTRY:/, "");
+  const country = String(countryItem?.text_pl || countryItem?.text || "").trim();
+  return { country, countryCode };
+}
 
 /** Czy etykieta to jednostka administracyjna (powiat/gmina/województwo), a nie miejscowość. */
 export function isAdministrativeAreaLabel(value: unknown): boolean {
@@ -65,52 +112,65 @@ function extractVillageLocalityFromStreet(streetInput: unknown): string {
   return candidate;
 }
 
-/** Rozdziela „ulica nr, miasto” lub „ulica nr, miasto, Polska”. */
+/** Rozdziela „ulica nr, miasto” lub „ulica nr, miasto, kraj”. */
 export function parseAddressSearchQuery(raw: string): ParsedAddressQuery {
   const trimmed = String(raw || "").trim();
   if (!trimmed) {
-    return { streetPart: "", cityPart: "", fullQuery: "" };
+    return { streetPart: "", cityPart: "", countryPart: "", countryIso: null, fullQuery: "" };
   }
 
   const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length < 2) {
+    const iso = countryIsoFromToken(trimmed) || inferCountryIsoFromCity(trimmed) || null;
     return {
       streetPart: trimmed,
       cityPart: "",
-      fullQuery: buildForwardGeocodeSearchText(trimmed, ""),
+      countryPart: "",
+      countryIso: iso,
+      fullQuery: buildForwardGeocodeSearchText(trimmed, "", iso || undefined),
     };
   }
 
   let cityIndex = parts.length - 1;
-  if (/^(polska|poland|pl)$/i.test(parts[cityIndex]) && parts.length >= 3) {
+  let countryPart = "";
+  let countryIso: string | null = countryIsoFromToken(parts[parts.length - 1]);
+  if (countryIso && parts.length >= 3) {
+    countryPart = parts[parts.length - 1];
     cityIndex = parts.length - 2;
   }
 
   const cityPart = parts[cityIndex].replace(/^\d{2}-\d{3}\s+/i, "").trim();
   const streetPart = parts.slice(0, cityIndex).join(", ").trim() || parts[0];
+  const resolvedIso = countryIso || inferCountryIsoFromCity(cityPart) || null;
 
   return {
     streetPart,
     cityPart,
-    fullQuery: buildForwardGeocodeSearchText(streetPart, cityPart),
+    countryPart,
+    countryIso: resolvedIso,
+    fullQuery: buildForwardGeocodeSearchText(streetPart, cityPart, resolvedIso || undefined),
   };
 }
 
 /** Zapytanie do Mapbox z preferowanym miastem (formularz lub fragment po przecinku). */
-export function buildForwardGeocodeSearchText(street: string, city?: string): string {
+export function buildForwardGeocodeSearchText(
+  street: string,
+  city?: string,
+  countryIsoHint?: string,
+): string {
   const s = String(street || "").trim();
   const c = String(city || "").trim();
-  const cityIso = inferCountryIsoFromCity(c);
+  const cityIso = countryIsoHint || inferCountryIsoFromCity(c);
   const countrySuffix =
     cityIso && cityIso !== "PL" ? countryLabelFromIso(cityIso) : "Polska";
 
   if (!s) return c ? `${c}, ${countrySuffix}` : "";
   if (!c) {
     if (/polska|poland|niemcy|germany|deutschland/i.test(s)) return s;
-    return `${s}, Polska`;
+    return `${s}, ${countrySuffix}`;
   }
   const norm = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (norm(s).includes(norm(c))) return s;
+  if (norm(s).includes(norm(c))) return `${s}, ${countrySuffix}`;
   return `${s}, ${c}, ${countrySuffix}`;
 }
 
@@ -119,6 +179,7 @@ function inferCountryIsoFromQuery(query: string, cityHint?: string): string | nu
   if (fromCity) return fromCity;
 
   const parsed = parseAddressSearchQuery(query);
+  if (parsed.countryIso) return parsed.countryIso;
   const fromParsedCity = inferCountryIsoFromCity(parsed.cityPart);
   if (fromParsedCity) return fromParsedCity;
 

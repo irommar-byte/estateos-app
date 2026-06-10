@@ -31,7 +31,7 @@ export async function fetchMapboxReverseFeature(lat: number, lng: number) {
   const token = getMapboxToken();
   if (!token) return null;
 
-  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&country=pl&types=address,place,locality,neighborhood,district`;
+  const endpoint = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&language=pl&limit=1&types=address,place,locality,neighborhood,district,region,country`;
 
   try {
     const response = await fetch(endpoint, { cache: "no-store" });

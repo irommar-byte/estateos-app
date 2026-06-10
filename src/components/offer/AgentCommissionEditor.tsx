@@ -14,11 +14,22 @@ import {
   roundToQuarter,
   shouldWarnCommissionPercentDraft,
 } from "@/lib/agentCommission";
+import type { AddOfferDictionary } from "@/i18n/addOfferDictionary";
 
 type Props = {
   priceRaw: string | number;
   percentValue: string;
   onPercentChange: (value: string) => void;
+  ao: Pick<
+    AddOfferDictionary,
+    | "commissionEditorNote"
+    | "commissionPercentField"
+    | "commissionAmountField"
+    | "commissionStepPct"
+    | "commissionAmountFromPrice"
+    | "commissionAmountComputed"
+    | "commissionInvalidWarning"
+  >;
   className?: string;
 };
 
@@ -26,6 +37,7 @@ export default function AgentCommissionEditor({
   priceRaw,
   percentValue,
   onPercentChange,
+  ao,
   className = "",
 }: Props) {
   const [percentDraft, setPercentDraft] = useState(percentValue);
@@ -111,15 +123,12 @@ export default function AgentCommissionEditor({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <p className="text-xs text-zinc-400 leading-relaxed">
-        <strong className="text-zinc-200">Cena z ogłoszenia pozostaje finalną kwotą brutto</strong> — bez dopłaty
-        ponad to, co widzi klient. Wpisz prowizję procentowo albo kwotowo; oba pola synchronizują się ze sobą.
-      </p>
+      <p className="text-xs text-zinc-400 leading-relaxed">{ao.commissionEditorNote}</p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 block">
-            Procent prowizji
+            {ao.commissionPercentField}
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -153,13 +162,15 @@ export default function AgentCommissionEditor({
             >
               +
             </button>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Krok {AGENT_COMMISSION_STEP}%</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-wider">
+              {ao.commissionStepPct.replace("{step}", String(AGENT_COMMISSION_STEP))}
+            </span>
           </div>
         </div>
 
         <div>
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-2 block">
-            Kwota z ceny ofertowej (PLN)
+            {ao.commissionAmountField}
           </label>
           <input
             className="w-full bg-[#080808] border border-white/10 rounded-2xl text-white text-lg py-3 px-4 outline-none focus:border-orange-500/50"
@@ -175,15 +186,15 @@ export default function AgentCommissionEditor({
           />
           <p className="text-xs text-zinc-500 mt-2">
             {percentPreview !== null && percentPreview > 0
-              ? `Odpowiada ${formatPercentLabel(percentPreview)} ceny ofertowej.`
-              : "Kwota liczona od ceny brutto widocznej w ogłoszeniu."}
+              ? ao.commissionAmountComputed.replace("{pct}", formatPercentLabel(percentPreview))
+              : ao.commissionAmountFromPrice}
           </p>
         </div>
       </div>
 
       {showWarning ? (
         <p className="text-xs text-red-400">
-          Dozwolone: 0% (bez prowizji) albo co najmniej {AGENT_COMMISSION_MIN_NONZERO}% ceny ofertowej brutto.
+          {ao.commissionInvalidWarning.replace("{min}", String(AGENT_COMMISSION_MIN_NONZERO))}
         </p>
       ) : null}
     </div>

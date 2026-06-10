@@ -27,9 +27,9 @@ const inputWrapper = "relative group flex items-center";
 const inputPremium =
   "w-full rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-4 pl-14 pr-5 text-base text-[var(--eos-text)] outline-none transition-all duration-500 placeholder:text-[var(--eos-subtle)] focus:border-[var(--eos-accent)]/50 md:text-lg";
 const labelPremium =
-  "mb-3 ml-1 block text-[10px] font-black uppercase tracking-[0.25em] text-[var(--eos-muted)]";
+  "eos-label mb-3 ml-1 block min-w-0 w-full text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-[var(--eos-muted)]";
 const glassPanel =
-  "eos-surface-card relative overflow-hidden rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl transition-all duration-500 md:p-10";
+  "eos-surface-card relative overflow-x-clip overflow-y-visible rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl transition-all duration-500 md:p-10";
 const iconGlow =
   "absolute left-4 text-[var(--eos-muted)] transition-all duration-500 group-focus-within:text-[var(--eos-accent)]";
 
@@ -56,6 +56,7 @@ const SortablePhoto = ({ url, onRemove, isMain }: { url: string, onRemove: (url:
 
 export default function UltraPremiumEditForm({ params }: { params: Promise<{ id: string }> }) {
   const { dict } = useLocale();
+  const ao = dict.addOffer;
   const eo = dict.editOffer;
   const router = useRouter();
   const [offerId, setOfferId] = useState<string | null>(null);
@@ -326,6 +327,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             {isAgentCommissionAccount({ role: viewerRole }) ? (
               <div className="pt-4 border-t border-white/5">
                 <AgentCommissionEditor
+                  ao={ao}
                   priceRaw={String(data.price || '').replace(/\s/g, '')}
                   percentValue={agentCommissionPercent}
                   onPercentChange={setAgentCommissionPercent}

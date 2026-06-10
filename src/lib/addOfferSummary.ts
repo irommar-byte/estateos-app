@@ -10,22 +10,22 @@ function row(label: string, value: unknown): SummaryRow | null {
   return { label, value: text };
 }
 
-function formatLocationType(raw: unknown): string {
+function formatLocationType(ao: AddOfferDictionary, raw: unknown): string {
   const v = String(raw || "").toLowerCase();
-  if (v === "exact") return "Dokładna — ulica i numer";
-  if (v === "approx" || v === "approximate") return "Przybliżona — tylko obszar dzielnicy";
+  if (v === "exact") return ao.sumLocExact;
+  if (v === "approx" || v === "approximate") return ao.sumLocApprox;
   return String(raw || "");
 }
 
-function formatCommission(raw: unknown): string {
+function formatCommission(ao: AddOfferDictionary, raw: unknown): string {
   const text = String(raw ?? "").trim();
-  if (!text) return "Bez prowizji (0%)";
+  if (!text) return ao.sumCommissionZero;
   return `${text.replace(",", ".")}%`;
 }
 
-function formatYesNo(raw: unknown): string {
-  if (raw === true) return "Tak";
-  if (raw === false) return "Nie";
+function formatYesNo(ao: AddOfferDictionary, raw: unknown): string {
+  if (raw === true) return ao.yes;
+  if (raw === false) return ao.no;
   return "";
 }
 
@@ -40,11 +40,11 @@ export function buildAddOfferSummarySections(input: {
   const isRent = data.transactionType === "RENT";
 
   const offerRows = [
-    row("Rodzaj transakcji", isRent ? ao.rent : ao.sell),
-    row("Typ nieruchomości", propertyTypeLabel || data.propertyType),
-    row("Stan wykończenia", conditionLabel || data.condition),
-    row("Tytuł ogłoszenia", data.title),
-    row("Opis", descriptionText),
+    row(ao.sumRowTransaction, isRent ? ao.rent : ao.sell),
+    row(ao.sumRowPropertyType, propertyTypeLabel || data.propertyType),
+    row(ao.sumRowCondition, conditionLabel || data.condition),
+    row(ao.sumRowTitle, data.title),
+    row(ao.sumRowDescription, descriptionText),
   ].filter(Boolean) as SummaryRow[];
 
   const locationLine = formatOfferLocationLine({
@@ -55,39 +55,39 @@ export function buildAddOfferSummarySections(input: {
   });
 
   const locationRows = [
-    row("Lokalizacja", locationLine),
-    row("Widoczność na mapie", formatLocationType(data.locationType)),
-    row("Ulica i numer", data.street || data.address),
-    row("Miasto", data.city),
-    row("Dzielnica", data.district),
-    row("Nr mieszkania", data.apartmentNumber),
-    row("Księga wieczysta (KW)", data.landRegistryNumber),
+    row(ao.sumRowLocation, locationLine),
+    row(ao.sumRowMapVisibility, formatLocationType(ao, data.locationType)),
+    row(ao.sumRowStreet, data.street || data.address),
+    row(ao.sumRowCity, data.city),
+    row(ao.sumRowDistrict, data.district),
+    row(ao.sumRowApartment, data.apartmentNumber),
+    row(ao.sumRowLandRegistry, data.landRegistryNumber),
     data.lat != null && data.lng != null
-      ? row("Współrzędne", `${data.lat}, ${data.lng}`)
+      ? row(ao.sumRowCoordinates, `${data.lat}, ${data.lng}`)
       : null,
   ].filter(Boolean) as SummaryRow[];
 
   const paramsRows = [
-    row("Cena", data.price ? `${data.price} ${data.priceCurrency || "PLN"}` : ""),
-    row("Metraż", data.area ? `${data.area} m²` : ""),
-    row("Liczba pokoi", data.rooms),
-    row("Piętro", data.floor),
-    row("Rok budowy", data.buildYear),
-    row("Powierzchnia działki", data.plotArea ? `${data.plotArea} m²` : ""),
-    row("Ogrzewanie", data.heating),
-    row("Umeblowanie", formatYesNo(data.isFurnished)),
-    row("Prowizja agenta", formatCommission(data.agentCommissionPercent)),
-    row("Czynsz administracyjny", data.rent ? `${data.rent} PLN` : ""),
+    row(ao.sumRowPrice, data.price ? `${data.price} ${data.priceCurrency || "PLN"}` : ""),
+    row(ao.sumRowArea, data.area ? `${data.area} m²` : ""),
+    row(ao.sumRowRooms, data.rooms),
+    row(ao.sumRowFloor, data.floor),
+    row(ao.sumRowBuildYear, data.buildYear),
+    row(ao.sumRowPlotArea, data.plotArea ? `${data.plotArea} m²` : ""),
+    row(ao.sumRowHeating, data.heating),
+    row(ao.sumRowFurnished, formatYesNo(ao, data.isFurnished)),
+    row(ao.sumRowCommission, formatCommission(ao, data.agentCommissionPercent)),
+    row(ao.sumRowAdminFee, data.rent ? `${data.rent} PLN` : ""),
   ].filter(Boolean) as SummaryRow[];
 
   const rentRows = isRent
     ? ([
-        row("Opłaty dodatkowe (admin)", data.rentAdminFee),
-        row("Kaucja", data.deposit),
-        row("Minimalny okres najmu", data.rentMinPeriod),
-        row("Dostępne od", data.rentAvailableFrom),
-        row("Rodzaj najmu", data.rentType),
-        row("Zwierzęta", formatYesNo(data.petsAllowed)),
+        row(ao.sumRowRentAdmin, data.rentAdminFee),
+        row(ao.sumRowDeposit, data.deposit),
+        row(ao.sumRowMinPeriod, data.rentMinPeriod),
+        row(ao.sumRowAvailableFrom, data.rentAvailableFrom),
+        row(ao.sumRowRentType, data.rentType),
+        row(ao.sumRowPets, formatYesNo(ao, data.petsAllowed)),
       ].filter(Boolean) as SummaryRow[])
     : [];
 
@@ -97,32 +97,35 @@ export function buildAddOfferSummarySections(input: {
       : "";
 
   const contactRows = [
-    row("Rodzaj ogłoszeniodawcy", data.advertiserType === "agency" ? "Agencja / biuro" : "Osoba prywatna"),
-    row("Nazwa agencji", data.agencyName),
-    row("Osoba kontaktowa", data.contactName),
-    row("Telefon", data.contactPhone),
-    row("E-mail", data.email),
+    row(
+      ao.sumRowAdvertiser,
+      data.advertiserType === "agency" ? ao.sumAdvertiserAgency : ao.sumAdvertiserPrivate,
+    ),
+    row(ao.sumRowAgencyName, data.agencyName),
+    row(ao.sumRowContactName, data.contactName),
+    row(ao.sumRowPhone, data.contactPhone),
+    row(ao.sumRowEmail, data.email),
   ].filter(Boolean) as SummaryRow[];
 
   const sections: SummarySection[] = [
-    { title: "Oferta", rows: offerRows },
-    { title: "Lokalizacja", rows: locationRows },
-    { title: "Parametry i finanse", rows: paramsRows },
+    { title: ao.sumSecOffer, rows: offerRows },
+    { title: ao.sumSecLocation, rows: locationRows },
+    { title: ao.sumSecParams, rows: paramsRows },
   ];
 
   if (rentRows.length > 0) {
-    sections.push({ title: "Warunki najmu", rows: rentRows });
+    sections.push({ title: ao.sumSecRent, rows: rentRows });
   }
 
   if (amenities) {
     sections.push({
-      title: "Udogodnienia",
-      rows: [{ label: "Wybrane", value: amenities }],
+      title: ao.sumSecAmenities,
+      rows: [{ label: ao.sumSelected, value: amenities }],
     });
   }
 
   if (contactRows.length > 0) {
-    sections.push({ title: "Kontakt", rows: contactRows });
+    sections.push({ title: ao.sumSecContact, rows: contactRows });
   }
 
   return sections.filter((section) => section.rows.length > 0);

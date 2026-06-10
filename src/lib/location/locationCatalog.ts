@@ -394,7 +394,7 @@ export function inferCityFromMapboxFeature(feature: {
     for (let i = parts.length - 1; i >= 0; i--) {
       const segment = parts[i].replace(/^\d{2}-\d{3}\s+/i, "").trim();
       if (!segment) continue;
-      if (/województwo|polska|poland|^pl$/i.test(segment)) continue;
+      if (/województwo|polska|poland|^pl$|niemcy|germany|deutschland|^de$|bayern|bavaria|czechy|czechia|slovakia|austria|ukraina|ukraine/i.test(segment)) continue;
       const c = canonicalizeCity(segment);
       if (c) return c;
     }
