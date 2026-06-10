@@ -15,6 +15,8 @@ export type PresentationFlowDictionary = {
     scheduledOf: string;
     otherOffers: string;
     reviewsSection: string;
+    reviewsSectionHint: string;
+    reviewsPolicyHint: string;
     noReviewsUser: string;
     reviewNoComment: string;
     reviewerFallback: string;
@@ -82,8 +84,13 @@ const pl: PresentationFlowDictionary = {
     noShowHint: 'Umówiony termin minął — druga strona nie przyszła',
     scheduledOf: 'z {n} zakończonych umówień',
     otherOffers: 'Inne oferty ({n})',
-    reviewsSection: 'Opinie po prezentacjach',
-    noReviewsUser: 'Brak opinii dla tego użytkownika.',
+    reviewsSection: 'Opinie po transakcjach',
+    reviewsSectionHint:
+      'Opinie wystawia się wyłącznie po uzgodnieniu ceny i potwierdzeniu wycofania oferty — nie po samych prezentacjach.',
+    reviewsPolicyHint:
+      'Oceny na profilu dotyczą zakończonych transakcji (cena ustalona, oferta wycofana), nie wizyt prezentacyjnych.',
+    noReviewsUser:
+      'Brak opinii po transakcjach. Opinie pojawiają się dopiero po uzgodnieniu ceny i potwierdzeniu wycofania oferty.',
     reviewNoComment: 'Bez komentarza',
     reviewerFallback: 'Użytkownik #{id}',
     backToProfile: 'Wróć do poprzedniego profilu',
@@ -152,8 +159,13 @@ const en: PresentationFlowDictionary = {
     noShowHint: 'Accepted slot passed — counterparty did not attend',
     scheduledOf: 'of {n} closed bookings',
     otherOffers: 'Other listings ({n})',
-    reviewsSection: 'Reviews after viewings',
-    noReviewsUser: 'No reviews for this user yet.',
+    reviewsSection: 'Reviews after transactions',
+    reviewsSectionHint:
+      'Reviews can only be left after the price is agreed and the owner confirms withdrawing the listing — not after viewings alone.',
+    reviewsPolicyHint:
+      'Profile ratings reflect completed transactions (price agreed, listing withdrawn), not presentation visits.',
+    noReviewsUser:
+      'No transaction reviews yet. Reviews appear only after the price is agreed and the listing is withdrawn.',
     reviewNoComment: 'No comment',
     reviewerFallback: 'User #{id}',
     backToProfile: 'Back to previous profile',
