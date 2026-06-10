@@ -1205,9 +1205,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const isCompactViewport = useMemo(() => !isTablet && height <= 760, [height, isTablet]);
   const topUiSpacing = useMemo(
     () => ({
-      // Search + chip + breathing room before Radar/Favor island.
       radarTopOffset: isTablet ? 116 : isCompactViewport ? 94 : 102,
-      favorTopOffset: isTablet ? 98 : isCompactViewport ? 84 : 90,
     }),
     [isTablet, isCompactViewport]
   );
@@ -4380,10 +4378,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       )}
 
 
-      <View style={[styles.topBarContainer, styles.topBarCompact, { top: topBarTop }]} pointerEvents="auto">
-        <View style={styles.topBarToolsRow}>
+      <View
+        style={[
+          styles.topBarContainer,
+          showOnlyFavorites ? styles.topBarFavoritesLayout : styles.topBarCompact,
+          { top: topBarTop },
+        ]}
+        pointerEvents="auto"
+      >
         <Pressable
           style={({ pressed }) => [
+            styles.topBarSideSlot,
             styles.filterButtonWrap,
             isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
             pressed && { opacity: 0.8 },
@@ -4392,6 +4397,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setMapType((prev) => (prev === 'standard' ? 'hybrid' : 'standard'));
           }}
+          accessibilityLabel="Map type"
         >
           <BlurView
             intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
@@ -4401,8 +4407,165 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             <Ionicons name="map" size={22} color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'} />
           </BlurView>
         </Pressable>
+
+        {showOnlyFavorites ? (
+          <Animated.View
+            style={[
+              styles.topBarCenterStack,
+              {
+                opacity: modeIslandOpacity,
+                transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
+              },
+            ]}
+          >
+            <View style={[styles.favoritesScopeRailOuter, styles.favoritesScopeRailOuterTop]}>
+              <BlurView
+                intensity={isDark ? 85 : 92}
+                tint={isDark ? 'dark' : 'light'}
+                style={[
+                  styles.favoritesScopeRailBlur,
+                  {
+                    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
+                  },
+                ]}
+              >
+                <View style={styles.favoritesScopeRailRow}>
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: favoritesMapScope === 'MINE' }}
+                    onPress={() => {
+                      if (favoritesMapScope === 'MINE') return;
+                      Haptics.selectionAsync();
+                      setFavoritesMapScope('MINE');
+                    }}
+                    style={({ pressed }) => [
+                      styles.favoritesScopeHalf,
+                      favoritesMapScope === 'MINE' && styles.favoritesScopeHalfActiveMine,
+                      pressed && { opacity: 0.88 },
+                    ]}
+                  >
+                    <Ionicons
+                      name={favoritesMapScope === 'MINE' ? 'home' : 'home-outline'}
+                      size={16}
+                      color={favoritesMapScope === 'MINE' ? '#10b981' : '#8E8E93'}
+                    />
+                    <Text
+                      style={[
+                        styles.favoritesScopeHalfLabel,
+                        { color: favoritesMapScope === 'MINE' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {t('radar.home.mineTab')}
+                    </Text>
+                  </Pressable>
+                  <View style={[styles.favoritesScopeDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
+                  <Pressable
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: favoritesMapScope === 'FAVORITES' }}
+                    onPress={() => {
+                      if (favoritesMapScope === 'FAVORITES') return;
+                      Haptics.selectionAsync();
+                      setFavoritesMapScope('FAVORITES');
+                    }}
+                    style={({ pressed }) => [
+                      styles.favoritesScopeHalf,
+                      favoritesMapScope === 'FAVORITES' && styles.favoritesScopeHalfActiveFav,
+                      pressed && { opacity: 0.88 },
+                    ]}
+                  >
+                    <Ionicons
+                      name={favoritesMapScope === 'FAVORITES' ? 'heart' : 'heart-outline'}
+                      size={16}
+                      color={favoritesMapScope === 'FAVORITES' ? '#F777B2' : '#8E8E93'}
+                    />
+                    <Text
+                      style={[
+                        styles.favoritesScopeHalfLabel,
+                        { color: favoritesMapScope === 'FAVORITES' ? (isDark ? '#FFD4E7' : '#5E1C3F') : '#8E8E93' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {t('radar.home.favoritesTab')}
+                    </Text>
+                  </Pressable>
+                </View>
+              </BlurView>
+            </View>
+            <View style={styles.radarHeroWrap}>
+              {favoritesMapScope === 'FAVORITES' && isFavoritesRadarEnabled && (
+                <View pointerEvents="none" style={styles.radarPulseLayer}>
+                  <Animated.View
+                    style={[
+                      styles.favoritesAuraWave,
+                      {
+                        borderColor: 'rgba(235,112,168,0.48)',
+                        opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0] }),
+                        transform: [{ scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
+                      },
+                    ]}
+                  />
+                </View>
+              )}
+              <JellyReveal visible key={favoritesMapScope}>
+                {favoritesMapScope === 'FAVORITES' ? (
+                  <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, styles.favoritesTopPill, pressed && { transform: [{ scale: 0.96 }] }]}>
+                    <BlurView
+                      intensity={95}
+                      tint={isDark ? 'dark' : 'light'}
+                      style={[
+                        styles.radarPill,
+                        styles.favoritesTopPillInner,
+                        { backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)' },
+                      ]}
+                    >
+                      <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
+                        <Ionicons
+                          name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
+                          size={16}
+                          color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
+                        />
+                      </Animated.View>
+                      <View style={styles.radarPillTextWrap}>
+                        <Text style={[styles.radarTitle, styles.favoritesTopPillTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>
+                          {t('radar.home.favorBrand')}
+                        </Text>
+                        <Text style={[styles.radarStatus, styles.favoritesTopPillStatus]}>
+                          {isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
+                        </Text>
+                      </View>
+                    </BlurView>
+                  </Pressable>
+                ) : (
+                  <Pressable onPress={openManageMyProperties} style={({ pressed }) => [styles.radarBtnWrapper, styles.favoritesTopPill, pressed && { transform: [{ scale: 0.96 }] }]}>
+                    <BlurView
+                      intensity={95}
+                      tint={isDark ? 'dark' : 'light'}
+                      style={[styles.radarPill, styles.favoritesTopPillInner, { backgroundColor: 'rgba(16,185,129,0.16)' }]}
+                    >
+                      <Ionicons name="home" size={16} color="#10b981" />
+                      <View style={styles.radarPillTextWrap}>
+                        <Text style={[styles.radarTitle, styles.favoritesTopPillTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]}>
+                          {t('radar.home.manageMyPropertiesTitle')}
+                        </Text>
+                        <Text style={[styles.radarStatus, styles.favoritesTopPillStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]}>
+                          {t('radar.home.manageMyPropertiesSubtitle')}
+                        </Text>
+                      </View>
+                    </BlurView>
+                  </Pressable>
+                )}
+              </JellyReveal>
+            </View>
+          </Animated.View>
+        ) : (
+          <View style={styles.topBarCenterSpacer} />
+        )}
+
         <Pressable
           style={({ pressed }) => [
+            styles.topBarSideSlot,
             styles.filterButtonWrap,
             isGalleryLightChrome && styles.filterButtonWrapGalleryLight,
             pressed && { opacity: 0.8 },
@@ -4432,192 +4595,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             )}
           </BlurView>
         </Pressable>
-        </View>
       </View>
-
-      {showOnlyFavorites && (
-        <Animated.View
-          pointerEvents="auto"
-          style={[
-            styles.favorFloatingIslandWrap,
-            {
-              top: topBarTop + topUiSpacing.favorTopOffset,
-              opacity: modeIslandOpacity,
-              transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
-            },
-          ]}
-        >
-          <View style={styles.favoritesScopeRailOuter}>
-            <BlurView
-              intensity={isDark ? 85 : 92}
-              tint={isDark ? 'dark' : 'light'}
-              style={[
-                styles.favoritesScopeRailBlur,
-                {
-                  borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-                  backgroundColor: isDark ? 'rgba(28,28,30,0.72)' : 'rgba(255,255,255,0.82)',
-                },
-              ]}
-            >
-              <View style={styles.favoritesScopeRailRow}>
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: favoritesMapScope === 'MINE' }}
-                  onPress={() => {
-                    if (favoritesMapScope === 'MINE') return;
-                    Haptics.selectionAsync();
-                    setFavoritesMapScope('MINE');
-                  }}
-                  style={({ pressed }) => [
-                    styles.favoritesScopeHalf,
-                    favoritesMapScope === 'MINE' && styles.favoritesScopeHalfActiveMine,
-                    pressed && { opacity: 0.88 },
-                  ]}
-                >
-                  <Ionicons
-                    name={favoritesMapScope === 'MINE' ? 'home' : 'home-outline'}
-                    size={16}
-                    color={favoritesMapScope === 'MINE' ? '#10b981' : '#8E8E93'}
-                  />
-                  <Text
-                    style={[
-                      styles.favoritesScopeHalfLabel,
-                      { color: favoritesMapScope === 'MINE' ? (isDark ? '#C9F9E7' : '#0B5B43') : '#8E8E93' },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {t('radar.home.mineTab')}
-                  </Text>
-                </Pressable>
-                <View style={[styles.favoritesScopeDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }]} />
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: favoritesMapScope === 'FAVORITES' }}
-                  onPress={() => {
-                    if (favoritesMapScope === 'FAVORITES') return;
-                    Haptics.selectionAsync();
-                    setFavoritesMapScope('FAVORITES');
-                  }}
-                  style={({ pressed }) => [
-                    styles.favoritesScopeHalf,
-                    favoritesMapScope === 'FAVORITES' && styles.favoritesScopeHalfActiveFav,
-                    pressed && { opacity: 0.88 },
-                  ]}
-                >
-                  <Ionicons
-                    name={favoritesMapScope === 'FAVORITES' ? 'heart' : 'heart-outline'}
-                    size={16}
-                    color={favoritesMapScope === 'FAVORITES' ? '#F777B2' : '#8E8E93'}
-                  />
-                  <Text
-                    style={[
-                      styles.favoritesScopeHalfLabel,
-                      { color: favoritesMapScope === 'FAVORITES' ? (isDark ? '#FFD4E7' : '#5E1C3F') : '#8E8E93' },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {t('radar.home.favoritesTab')}
-                  </Text>
-                </Pressable>
-              </View>
-            </BlurView>
-          </View>
-          <View style={styles.radarHeroWrap}>
-            {favoritesMapScope === 'FAVORITES' && isFavoritesRadarEnabled && (
-              <View pointerEvents="none" style={styles.radarPulseLayer}>
-                <Animated.View
-                  style={[
-                    styles.favoritesAuraWave,
-                    {
-                      borderColor: 'rgba(235,112,168,0.48)',
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.38, 0] }),
-                      transform: [{ scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
-                    },
-                  ]}
-                />
-                {[
-                  { x: -72, y: -8, size: 10 },
-                  { x: -44, y: -28, size: 8 },
-                  { x: -16, y: -36, size: 9 },
-                  { x: 20, y: -34, size: 10 },
-                  { x: 52, y: -18, size: 8 },
-                  { x: 74, y: 2, size: 9 },
-                  { x: -68, y: 20, size: 8 },
-                  { x: 48, y: 22, size: 8 },
-                ].map((heart, idx) => (
-                  <Animated.View
-                    key={`fav-heart-${idx}`}
-                    style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      transform: [
-                        { translateX: heart.x },
-                        { translateY: heart.y },
-                        { scale: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] }) },
-                      ],
-                      opacity: favoritesAuraPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0.08] }),
-                    }}
-                  >
-                    <Ionicons name="heart" size={heart.size} color="rgba(247,117,172,0.72)" />
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-            <JellyReveal visible key={favoritesMapScope}>
-            {favoritesMapScope === 'FAVORITES' ? (
-              <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-                <BlurView
-                  intensity={95}
-                  tint={isDark ? 'dark' : 'light'}
-                  style={[
-                    styles.radarPill,
-                    {
-                      backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
-                    },
-                  ]}
-                >
-                  <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
-                    <Ionicons
-                      name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
-                      size={18}
-                      color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
-                    />
-                  </Animated.View>
-                  <View style={styles.radarPillTextWrap}>
-                    <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>{t('radar.home.favorBrand')}</Text>
-                    <Text style={styles.radarStatus}>{isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}</Text>
-                  </View>
-                </BlurView>
-              </Pressable>
-            ) : (
-              <Pressable onPress={openManageMyProperties} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
-                <BlurView
-                  intensity={95}
-                  tint={isDark ? 'dark' : 'light'}
-                  style={[
-                    styles.radarPill,
-                    {
-                      backgroundColor: 'rgba(16,185,129,0.16)',
-                    },
-                  ]}
-                >
-                  <Ionicons name="home" size={18} color="#10b981" />
-                  <View style={styles.radarPillTextWrap}>
-                    <Text style={[styles.radarTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]}>
-                      {t('radar.home.manageMyPropertiesTitle')}
-                    </Text>
-                    <Text style={[styles.radarStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]}>
-                      {t('radar.home.manageMyPropertiesSubtitle')}
-                    </Text>
-                  </View>
-                </BlurView>
-              </Pressable>
-            )}
-            </JellyReveal>
-          </View>
-        </Animated.View>
-      )}
 
       {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
         <Animated.View
@@ -5797,7 +5775,49 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   topBarCompact: {
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  topBarFavoritesLayout: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  topBarSideSlot: {
+    width: 50,
+    flexShrink: 0,
+  },
+  topBarCenterSpacer: {
+    flex: 1,
+  },
+  topBarCenterStack: {
+    flex: 1,
+    alignItems: 'center',
+    minWidth: 0,
+    paddingHorizontal: 6,
+    maxWidth: 320,
+    alignSelf: 'center',
+  },
+  favoritesScopeRailOuterTop: {
+    marginBottom: 6,
+    maxWidth: 280,
+  },
+  favoritesTopPill: {
+    alignSelf: 'center',
+    maxWidth: '100%',
+  },
+  favoritesTopPillInner: {
+    minWidth: 0,
+    maxWidth: 280,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    gap: 8,
+  },
+  favoritesTopPillTitle: {
+    fontSize: 13,
+  },
+  favoritesTopPillStatus: {
+    fontSize: 9,
   },
   topBarToolsRow: {
     flexDirection: 'row',
