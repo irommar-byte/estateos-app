@@ -334,12 +334,14 @@ export type Dictionary = {
     resultSummary: string;
     sections: {
       all: string;
+      nearest: string;
       sale: string;
       rent: string;
       newest: string;
       discounted: string;
       featured: string;
     };
+    nearestRequiresLocation: string;
     errorUnexpected: string;
     errorNetwork: string;
     countryDefault: string;
@@ -742,12 +744,14 @@ const pl: Dictionary = {
     resultSummary: "{n} ofert",
     sections: {
       all: "Wszystkie",
+      nearest: "Najbliższe",
       sale: "Kup",
       rent: "Wynajem",
       newest: "Najnowsze",
       discounted: "Przecenione",
       featured: "Wyróżnione",
     },
+    nearestRequiresLocation: "Udostępnij lokalizację, aby posortować oferty według odległości.",
     errorUnexpected: "Niespodziewany format odpowiedzi serwera.",
     errorNetwork: "Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.",
     countryDefault: "Polska",
@@ -1157,12 +1161,14 @@ const en: Dictionary = {
     resultSummary: "{n} listings",
     sections: {
       all: "All",
+      nearest: "Nearest",
       sale: "Buy",
       rent: "Rent",
       newest: "Newest",
       discounted: "Reduced",
       featured: "Featured",
     },
+    nearestRequiresLocation: "Share your location to sort listings by distance.",
     errorUnexpected: "Unexpected server response format.",
     errorNetwork: "No server connection. Check your network and try again.",
     countryDefault: "Poland",

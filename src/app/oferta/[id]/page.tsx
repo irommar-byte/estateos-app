@@ -792,7 +792,13 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <div className="eos-offer-panel mt-8 p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.amenities}</h3>
                   <div className="flex flex-wrap gap-3">
-                    {offer.amenities.split(',').filter(Boolean).map((amenity: string, idx: number) => (
+                    {(Array.isArray(offer.amenities)
+                      ? offer.amenities
+                      : String(offer.amenities).split(",")
+                    )
+                      .map((item: unknown) => String(item || "").trim())
+                      .filter(Boolean)
+                      .map((amenity: string, idx: number) => (
                       <div key={idx} className={`flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 ${themeColors.borderActive}`}>
                         <CheckCircle2 size={16} className={themeColors.textActive} />
                         <span className="text-sm font-semibold text-[var(--eos-text)]">{amenity.trim()}</span>

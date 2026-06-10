@@ -1,16 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getCanonicalOfferPricePln } from "@/lib/money/offerPrice";
+import {
+  computePriceDiscountPercent,
+  type OfferPriceHistoryRow,
+} from "@/lib/offerPriceHistoryShared";
 
-export type OfferPriceHistoryRow = {
-  id: number;
-  offerId: number;
-  price: number;
-  pricePln: number;
-  priceCurrency: string;
-  recordedAt: Date;
-  changeType: string;
-  source: string | null;
-};
+export type { OfferPriceHistoryRow };
+export { computePriceDiscountPercent };
 
 let columnsEnsured = false;
 let columnsPromise: Promise<void> | null = null;
@@ -68,12 +64,6 @@ export async function ensureOfferPriceHistorySchema() {
   } finally {
     columnsPromise = null;
   }
-}
-
-export function computePriceDiscountPercent(listPricePln: number, currentPricePln: number): number | null {
-  if (!Number.isFinite(listPricePln) || !Number.isFinite(currentPricePln)) return null;
-  if (listPricePln <= 0 || currentPricePln <= 0 || currentPricePln >= listPricePln) return null;
-  return Math.round((1 - currentPricePln / listPricePln) * 100);
 }
 
 export function enrichOfferPriceDiscountFields(offer: Record<string, unknown>): Record<string, unknown> {
@@ -182,8 +172,3 @@ export async function fetchOfferPriceHistory(offerId: number): Promise<OfferPric
   }));
 }
 
-/** Chart series from real history (PLN amounts). */
-export function buildChartSeriesFromHistory(rows: OfferPriceHistoryRow[]): number[] {
-  if (!rows.length) return [];
-  return rows.map((r) => Number(r.pricePln));
-}

@@ -48,10 +48,11 @@ type CatalogOffer = {
   priceDiscountPercent?: number | null;
 };
 
-type GallerySection = "all" | "sale" | "rent" | "newest" | "discounted" | "featured";
+type GallerySection = "all" | "nearest" | "sale" | "rent" | "newest" | "discounted" | "featured";
 
 const SECTION_ORDER: GallerySection[] = [
   "all",
+  "nearest",
   "sale",
   "rent",
   "newest",
@@ -86,6 +87,7 @@ function formatLocationLabel(offer: CatalogOffer, countryDefault: string): strin
 
 const sectionIcons: Record<GallerySection, typeof LayoutGrid> = {
   all: LayoutGrid,
+  nearest: Navigation,
   sale: Building2,
   rent: KeyRound,
   newest: Sparkles,
@@ -186,8 +188,13 @@ export default function CatalogPage() {
     ? [...offers]
         .filter((o) => distanceByOfferId.has(o.id))
         .sort((a, b) => (distanceByOfferId.get(a.id)! - distanceByOfferId.get(b.id)!))
-        .slice(0, 6)
     : [];
+
+  const geolocatedCount = offers.filter((o) => {
+    const lat = Number(o.lat);
+    const lng = Number(o.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng);
+  }).length;
 
   const featuredOffers = offers.filter(
     (offer) => offer.featured || offer.badges?.isPartner || offer.badges?.isPro,
@@ -195,6 +202,7 @@ export default function CatalogPage() {
 
   const sectionCounts: Record<GallerySection, number> = {
     all: offers.length,
+    nearest: location ? nearestOffers.length : geolocatedCount,
     sale: offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale").length,
     rent: offers.filter((o) => normalizeTransactionType(o.transactionType) === "rent").length,
     newest: sortedByNewest.length,
@@ -204,6 +212,8 @@ export default function CatalogPage() {
 
   const offersInSection = (() => {
     switch (activeSection) {
+      case "nearest":
+        return nearestOffers;
       case "sale":
         return offers.filter((o) => normalizeTransactionType(o.transactionType) === "sale");
       case "rent":
@@ -268,7 +278,7 @@ export default function CatalogPage() {
                       key={section}
                       type="button"
                       onClick={() => setActiveSection(section)}
-                      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border ${
+                      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border max-w-[min(100%,14rem)] sm:max-w-none ${
                         active
                           ? "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(16,185,129,0.12)]"
                           : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
@@ -278,7 +288,7 @@ export default function CatalogPage() {
                         className={`h-4 w-4 shrink-0 ${active ? "text-emerald-500" : "text-[var(--eos-subtle)]"}`}
                         strokeWidth={2.25}
                       />
-                      <span className="text-[11px] font-black uppercase tracking-[0.14em] whitespace-nowrap">
+                      <span className="text-[11px] font-black uppercase tracking-[0.1em] leading-snug whitespace-normal text-balance">
                         {labels.sections[section]}
                       </span>
                       <span
@@ -336,14 +346,31 @@ export default function CatalogPage() {
               </button>
             </motion.div>
           ) : offersInSection.length === 0 ? (
-            <motion.p
+            <motion.div
               key="empty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="py-24 text-center text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]"
+              className="py-24 text-center"
             >
-              {labels.empty}
-            </motion.p>
+              {activeSection === "nearest" && !location ? (
+                <>
+                  <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">
+                    {labels.nearestRequiresLocation}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={request}
+                    disabled={pending}
+                    className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-5 py-2.5 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+                  >
+                    {pending ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+                    {nearestCopy.enable}
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
+              )}
+            </motion.div>
           ) : (
             <motion.div
               key={activeSection}
@@ -435,47 +462,6 @@ export default function CatalogPage() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {!loading && !error && nearestOffers.length > 0 ? (
-          <section className="mt-20 border-t border-[var(--eos-border)] pt-14">
-            <h2 className="text-2xl font-bold tracking-tight text-[var(--eos-text)] md:text-3xl">
-              {nearestCopy.title}
-            </h2>
-            <p className="mt-2 max-w-xl text-sm text-[var(--eos-muted)]">{nearestCopy.lead}</p>
-            <div className="mt-8 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-              {nearestOffers.map((offer) => (
-                <Link href={`/oferta/${offer.id}`} key={`near-${offer.id}`} className="group block">
-                  <article className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)]">
-                    <div className="relative aspect-[4/3]">
-                      {offer.imageUrl ? (
-                        <Image
-                          src={offer.imageUrl}
-                          alt={offer.title || labels.offerImageAlt.replace("{id}", String(offer.id))}
-                          fill
-                          className="object-cover transition duration-500 group-hover:scale-[1.03]"
-                          unoptimized
-                        />
-                      ) : null}
-                      <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-black">
-                        <MapPin className="size-3" />
-                        {formatDistanceKm(distanceByOfferId.get(offer.id)!, locale)}
-                      </span>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="line-clamp-2 font-bold text-[var(--eos-text)] group-hover:text-emerald-500">
-                        {offer.title?.trim() ||
-                          labels.offerTitleFallback.replace("{id}", String(offer.id))}
-                      </h3>
-                      <p className="mt-2 text-sm font-semibold tabular-nums text-[var(--eos-text)]">
-                        {formatPriceLabel(offer, formatOffer, dict.homePremium.pricePerMonth)}
-                      </p>
-                    </div>
-                  </article>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ) : null}
       </div>
     </main>
   );

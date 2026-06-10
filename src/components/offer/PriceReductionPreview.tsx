@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { TrendingDown } from "lucide-react";
-import { computePriceDiscountPercent } from "@/lib/offerPriceHistory";
+import { computePriceDiscountPercent } from "@/lib/offerPriceHistoryShared";
 
 type Props = {
   listPricePln: number;

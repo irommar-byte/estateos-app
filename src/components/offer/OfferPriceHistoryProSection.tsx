@@ -5,7 +5,7 @@ import { TrendingDown } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import { numberFormatLocale } from "@/i18n/config";
 import PriceHistoryChart from "@/components/offer/PriceHistoryChart";
-import { buildChartSeriesFromHistory, type OfferPriceHistoryRow } from "@/lib/offerPriceHistory";
+import { buildChartSeriesFromHistory, type OfferPriceHistoryRow } from "@/lib/offerPriceHistoryShared";
 
 type Props = {
   offerId: number;
