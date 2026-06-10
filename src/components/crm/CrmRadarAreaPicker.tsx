@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, X, Scan, MapPin } from "lucide-react";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
+import { useLocale } from "@/contexts/LocaleContext";
 import {
   RADAR_AREA_RETICLE_PX,
   RADAR_AREA_MAX_KM,
@@ -38,8 +40,11 @@ export default function CrmRadarAreaPicker({
   onCancel,
   onApply,
 }: Props) {
+  const { dict } = useLocale();
+  const rc = dict.crm.radar.calibration;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const [mounted, setMounted] = useState(false);
   const [radiusKm, setRadiusKm] = useState(
     initialRadiusKm && initialRadiusKm > 0 ? initialRadiusKm : 2.5,
   );
@@ -49,6 +54,11 @@ export default function CrmRadarAreaPicker({
   });
   const [addressLabel, setAddressLabel] = useState("");
   const [resolving, setResolving] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const updateRadiusFromMap = useCallback(() => {
     const map = mapRef.current;
@@ -96,6 +106,7 @@ export default function CrmRadarAreaPicker({
     const r = initialRadiusKm && initialRadiusKm > 0 ? initialRadiusKm : 2.5;
     setCenter({ lat, lng });
     setRadiusKm(r);
+    setMapError(null);
     void reverseGeocode(lat, lng);
   }, [open, initialLat, initialLng, initialRadiusKm, reverseGeocode]);
 
@@ -107,35 +118,59 @@ export default function CrmRadarAreaPicker({
       }
       return;
     }
-    if (!mapContainerRef.current) return;
+
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token) return;
+    if (!token) {
+      setMapError("Mapbox token missing");
+      return;
+    }
 
-    const lat = initialLat ?? DEFAULT_CENTER.lat;
-    const lng = initialLng ?? DEFAULT_CENTER.lng;
-    const zoom = zoomFromRadiusKm(
-      lat,
-      initialRadiusKm && initialRadiusKm > 0 ? initialRadiusKm : 2.5,
-    );
+    let cancelled = false;
+    let map: mapboxgl.Map | null = null;
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/dark-v11",
-      center: [lng, lat],
-      zoom,
-      pitch: 0,
-      attributionControl: false,
-    });
-    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "top-right");
-    map.on("moveend", () => {
-      updateRadiusFromMap();
-      const c = map.getCenter();
-      void reverseGeocode(c.lat, c.lng);
-    });
-    mapRef.current = map;
+    const initMap = () => {
+      if (cancelled || mapRef.current) return;
+      const container = mapContainerRef.current;
+      if (!container) {
+        requestAnimationFrame(initMap);
+        return;
+      }
+
+      const lat = initialLat ?? DEFAULT_CENTER.lat;
+      const lng = initialLng ?? DEFAULT_CENTER.lng;
+      const zoom = zoomFromRadiusKm(
+        lat,
+        initialRadiusKm && initialRadiusKm > 0 ? initialRadiusKm : 2.5,
+      );
+
+      map = new mapboxgl.Map({
+        container,
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: [lng, lat],
+        zoom,
+        pitch: 0,
+        attributionControl: false,
+      });
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), "top-right");
+      map.on("load", () => {
+        map?.resize();
+        updateRadiusFromMap();
+      });
+      map.on("moveend", () => {
+        updateRadiusFromMap();
+        const c = map?.getCenter();
+        if (c) void reverseGeocode(c.lat, c.lng);
+      });
+      mapRef.current = map;
+    };
+
+    initMap();
 
     return () => {
-      map.remove();
+      cancelled = true;
+      if (map) {
+        map.remove();
+      }
       mapRef.current = null;
     };
   }, [open, initialLat, initialLng, initialRadiusKm, updateRadiusFromMap, reverseGeocode]);
@@ -164,22 +199,24 @@ export default function CrmRadarAreaPicker({
     });
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100000] flex flex-col bg-black"
+          className="fixed inset-0 z-[10000000] flex flex-col bg-black"
         >
           <div className="relative z-20 flex items-center justify-between border-b border-white/10 bg-black/80 px-5 py-4 backdrop-blur-md">
             <div className="flex items-center gap-3">
               <Scan className="text-emerald-400" size={22} />
               <div>
-                <p className="text-sm font-black text-white">Wybierz obszar na mapie</p>
+                <p className="text-sm font-black text-white">{rc.areaPickerTitle}</p>
                 <p className="text-[10px] uppercase tracking-widest text-white/40">
-                  Przesuń mapę · okrąg = zasięg radaru
+                  {rc.areaPickerSubtitle}
                 </p>
               </div>
             </div>
@@ -194,6 +231,11 @@ export default function CrmRadarAreaPicker({
 
           <div className="relative min-h-0 flex-1">
             <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" />
+            {mapError ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80 p-6 text-center text-sm text-white/70">
+                {mapError}
+              </div>
+            ) : null}
             <div
               className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-400/90 shadow-[0_0_40px_rgba(16,185,129,0.35)]"
               style={{
@@ -208,11 +250,11 @@ export default function CrmRadarAreaPicker({
           <div className="relative z-20 space-y-4 border-t border-white/10 bg-[#0a0a0a]/95 px-5 py-5 backdrop-blur-xl">
             <div className="flex items-start gap-2 text-xs text-white/60">
               <MapPin size={16} className="mt-0.5 shrink-0 text-emerald-500" />
-              <span>{resolving ? "Ustalam lokalizację…" : addressLabel || "—"}</span>
+              <span>{resolving ? rc.resolvingLocation : addressLabel || "—"}</span>
             </div>
             <div>
               <div className="mb-2 flex justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
-                <span>Promień</span>
+                <span>{rc.radius}</span>
                 <span className="text-emerald-400">{radiusKm.toFixed(1)} km</span>
               </div>
               <input
@@ -231,7 +273,7 @@ export default function CrmRadarAreaPicker({
                 onClick={onCancel}
                 className="flex-1 rounded-xl border border-white/15 py-4 text-[11px] font-black uppercase tracking-widest text-white/60"
               >
-                Anuluj
+                {rc.cancel}
               </button>
               <button
                 type="button"
@@ -239,12 +281,13 @@ export default function CrmRadarAreaPicker({
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-4 text-[11px] font-black uppercase tracking-widest text-black"
               >
                 <Check size={18} />
-                Zastosuj obszar
+                {rc.applyArea}
               </button>
             </div>
           </div>
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

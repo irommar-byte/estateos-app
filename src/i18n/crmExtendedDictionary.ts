@@ -123,6 +123,57 @@ export type CrmExtendedDictionary = {
     deposit: string;
     adminFee: string;
     investmentHighlight: string;
+    calibration: {
+      title: string;
+      subtitle: string;
+      activeTitle: string;
+      activeHint: string;
+      enabled: string;
+      disabled: string;
+      locationMode: string;
+      modeCity: string;
+      modeMap: string;
+      pickMapTitle: string;
+      pickMapHint: string;
+      mapRequired: string;
+      metropolis: string;
+      districts: string;
+      districtsOptional: string;
+      wholeCity: string;
+      purposeType: string;
+      buy: string;
+      rent: string;
+      minArea: string;
+      minYear: string;
+      maxBudget: string;
+      amenities: string;
+      radarOffHint: string;
+      save: string;
+      saving: string;
+      matchScale: string;
+      areaPickerTitle: string;
+      areaPickerSubtitle: string;
+      resolvingLocation: string;
+      radius: string;
+      cancel: string;
+      applyArea: string;
+      radiusKmLabel: string;
+      types: { flat: string; house: string; plot: string; commercial: string };
+      amenitiesList: {
+        balcony: string;
+        garden: string;
+        twoLevel: string;
+        elevator: string;
+        parking: string;
+        furnished: string;
+      };
+      intelligence: {
+        sniper: { title: string; desc: string };
+        selective: { title: string; desc: string };
+        balanced: { title: string; desc: string };
+        wide: { title: string; desc: string };
+      };
+    };
   };
   offers: {
     emptyActive: string;
@@ -402,6 +453,74 @@ const pl: CrmExtendedDictionary = {
     deposit: "Kaucja:",
     adminFee: "Czynsz adm:",
     investmentHighlight: "inwestycji",
+    calibration: {
+      title: "Kalibracja radaru",
+      subtitle: "Te same ustawienia co w aplikacji mobilnej",
+      activeTitle: "Aktywny radar",
+      activeHint: "Powiadomienia push o dopasowanych ofertach",
+      enabled: "Włączony",
+      disabled: "Wyłączony",
+      locationMode: "Lokalizacja · wybierz sposób",
+      modeCity: "Miasto i dzielnice",
+      modeMap: "Obszar na mapie",
+      pickMapTitle: "Wybierz obszar na mapie",
+      pickMapHint: "Przesuń mapę i ustaw promień — tak jak w aplikacji mobilnej.",
+      mapRequired: "Ustaw obszar na mapie, aby zapisać kalibrację w trybie MAP.",
+      metropolis: "Metropolia",
+      districts: "Dzielnice",
+      districtsOptional: "(opcjonalnie — puste = całe miasto)",
+      wholeCity: "Bez zaznaczenia dzielnic radar obejmuje całe {city}.",
+      purposeType: "Przeznaczenie i typ",
+      buy: "Kupno",
+      rent: "Wynajem",
+      minArea: "Min. metraż (m²)",
+      minYear: "Rok budowy od",
+      maxBudget: "Maks. budżet (PLN)",
+      amenities: "Wymagane udogodnienia",
+      radarOffHint: "Radar jest wyłączony — zapisz, aby zatrzymać powiadomienia (jak wyłącznik w aplikacji).",
+      save: "Zastosuj kalibrację",
+      saving: "Zapisywanie…",
+      matchScale: "Skala dopasowania",
+      areaPickerTitle: "Wybierz obszar na mapie",
+      areaPickerSubtitle: "Przesuń mapę · okrąg = zasięg radaru",
+      resolvingLocation: "Ustalam lokalizację…",
+      radius: "Promień",
+      cancel: "Anuluj",
+      applyArea: "Zastosuj obszar",
+      radiusKmLabel: "promień {km} km",
+      types: {
+        flat: "Mieszkanie",
+        house: "Dom",
+        plot: "Działka",
+        commercial: "Lokal",
+      },
+      amenitiesList: {
+        balcony: "Balkon",
+        garden: "Ogródek",
+        twoLevel: "Dwupoziomowe",
+        elevator: "Winda",
+        parking: "Parking",
+        furnished: "Umeblowane",
+      },
+      intelligence: {
+        sniper: {
+          title: "Snajperski",
+          desc: "Tylko niemal idealne dopasowania — mniej alertów, wyższa precyzja.",
+        },
+        selective: {
+          title: "Wyselekcjonowany",
+          desc: "Silne dopasowanie lokalizacji, budżetu i parametrów.",
+        },
+        balanced: {
+          title: "Zbalansowany",
+          desc: "Równowaga między liczbą alertów a trafnością.",
+        },
+        wide: {
+          title: "Szeroki zasięg",
+          desc: "Więcej propozycji — niższy próg dopasowania.",
+        },
+      },
+    },
   },
   offers: {
     emptyActive: "Brak aktywnych ogłoszeń.",
@@ -686,6 +805,74 @@ const en: CrmExtendedDictionary = {
     deposit: "Deposit:",
     adminFee: "Admin fee:",
     investmentHighlight: "investment",
+    calibration: {
+      title: "Radar calibration",
+      subtitle: "Same settings as the mobile app",
+      activeTitle: "Active radar",
+      activeHint: "Push notifications for matched listings",
+      enabled: "On",
+      disabled: "Off",
+      locationMode: "Location · choose method",
+      modeCity: "City and districts",
+      modeMap: "Map area",
+      pickMapTitle: "Pick area on map",
+      pickMapHint: "Pan the map and set radius — same as in the mobile app.",
+      mapRequired: "Set a map area to save calibration in MAP mode.",
+      metropolis: "Metro area",
+      districts: "Districts",
+      districtsOptional: "(optional — empty = whole city)",
+      wholeCity: "With no districts selected, radar covers all of {city}.",
+      purposeType: "Purpose and type",
+      buy: "Buy",
+      rent: "Rent",
+      minArea: "Min. area (m²)",
+      minYear: "Built from year",
+      maxBudget: "Max budget (PLN)",
+      amenities: "Required amenities",
+      radarOffHint: "Radar is off — save to stop notifications (same as the app toggle).",
+      save: "Apply calibration",
+      saving: "Saving…",
+      matchScale: "Match scale",
+      areaPickerTitle: "Pick area on map",
+      areaPickerSubtitle: "Pan the map · circle = radar range",
+      resolvingLocation: "Resolving location…",
+      radius: "Radius",
+      cancel: "Cancel",
+      applyArea: "Apply area",
+      radiusKmLabel: "radius {km} km",
+      types: {
+        flat: "Apartment",
+        house: "House",
+        plot: "Plot",
+        commercial: "Commercial",
+      },
+      amenitiesList: {
+        balcony: "Balcony",
+        garden: "Garden",
+        twoLevel: "Duplex",
+        elevator: "Elevator",
+        parking: "Parking",
+        furnished: "Furnished",
+      },
+      intelligence: {
+        sniper: {
+          title: "Sniper",
+          desc: "Near-perfect matches only — fewer alerts, higher precision.",
+        },
+        selective: {
+          title: "Selective",
+          desc: "Strong match on location, budget, and parameters.",
+        },
+        balanced: {
+          title: "Balanced",
+          desc: "Balance between alert volume and relevance.",
+        },
+        wide: {
+          title: "Wide range",
+          desc: "More suggestions — lower match threshold.",
+        },
+      },
+    },
   },
   offers: {
     emptyActive: "No active listings.",
@@ -946,6 +1133,80 @@ const uk: CrmExtendedDictionary = {
     confirmPhone: "Підтвердити телефон SMS",
   },
   welcome: "Вітаємо",
+  radar: {
+    ...en.radar,
+    recalibratingTitle: "Рекалібрування радара…",
+    recalibratingSub: "Оновлюємо критерії • Шукаємо приховані оголошення",
+    emptyHint: "Налаштуйте радар — підходящі оголошення з'являться тут.",
+    calibration: {
+      title: "Калібрування радара",
+      subtitle: "Ті самі налаштування, що в мобільному застосунку",
+      activeTitle: "Активний радар",
+      activeHint: "Push-сповіщення про підходящі оголошення",
+      enabled: "Увімкнено",
+      disabled: "Вимкнено",
+      locationMode: "Локація · оберіть спосіб",
+      modeCity: "Місто та райони",
+      modeMap: "Область на мапі",
+      pickMapTitle: "Оберіть область на мапі",
+      pickMapHint: "Пересуньте мапу та встановіть радіус — як у мобільному застосунку.",
+      mapRequired: "Встановіть область на мапі, щоб зберегти калібрування в режимі MAP.",
+      metropolis: "Мегаполіс",
+      districts: "Райони",
+      districtsOptional: "(необов'язково — порожньо = все місто)",
+      wholeCity: "Без обраних районів радар охоплює все {city}.",
+      purposeType: "Призначення та тип",
+      buy: "Купівля",
+      rent: "Оренда",
+      minArea: "Мін. площа (м²)",
+      minYear: "Рік будівництва від",
+      maxBudget: "Макс. бюджет (PLN)",
+      amenities: "Обов'язкові зручності",
+      radarOffHint: "Radar вимкнено — збережіть, щоб зупинити сповіщення (як перемикач у застосунку).",
+      save: "Застосувати калібрування",
+      saving: "Збереження…",
+      matchScale: "Шкала відповідності",
+      areaPickerTitle: "Оберіть область на мапі",
+      areaPickerSubtitle: "Пересуньте мапу · коло = зона радара",
+      resolvingLocation: "Визначаю локацію…",
+      radius: "Радіус",
+      cancel: "Скасувати",
+      applyArea: "Застосувати область",
+      radiusKmLabel: "радіус {km} км",
+      types: {
+        flat: "Квартира",
+        house: "Будинок",
+        plot: "Ділянка",
+        commercial: "Приміщення",
+      },
+      amenitiesList: {
+        balcony: "Балкон",
+        garden: "Сад",
+        twoLevel: "Дворівневе",
+        elevator: "Ліфт",
+        parking: "Паркінг",
+        furnished: "Мебльоване",
+      },
+      intelligence: {
+        sniper: {
+          title: "Снайперський",
+          desc: "Лише майже ідеальні збіги — менше сповіщень, вища точність.",
+        },
+        selective: {
+          title: "Вибірковий",
+          desc: "Сильний збіг локації, бюджету та параметрів.",
+        },
+        balanced: {
+          title: "Збалансований",
+          desc: "Баланс між кількістю сповіщень і релевантністю.",
+        },
+        wide: {
+          title: "Широкий охоплення",
+          desc: "Більше пропозицій — нижчий поріг відповідності.",
+        },
+      },
+    },
+  },
   alerts: {
     ...en.alerts,
     network: "Помилка з'єднання з сервером.",

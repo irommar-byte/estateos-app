@@ -117,6 +117,8 @@ async function resolveCurrentUser() {
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureOfferLegalColumns();
+    await ensureOfferMoneyColumns();
+    await ensureOfferExtendedAmenityColumns();
     await ensureOfferLocalityCountryColumns();
     await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;

@@ -4,22 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Radar,
   Check,
-  Target,
-  SlidersHorizontal,
   MapPin,
   Bell,
   BellOff,
 } from "lucide-react";
 import { canonicalizeCity } from "@/lib/location/locationCatalog";
 import {
-  defaultWebRadarFilters,
-  radarIntelligenceLabel,
   type WebRadarFilters,
 } from "@/lib/radarCalibrationWeb";
 import { isWebRadarCalibrationReady } from "@/lib/radarMatchedOffers";
 import CrmRadarAreaPicker from "@/components/crm/CrmRadarAreaPicker";
 import EosModal from "@/components/ui/EosModal";
 import type { RadarMapAreaSelection } from "@/lib/radarMapArea";
+import { useLocale } from "@/contexts/LocaleContext";
+import { fmtDict } from "@/i18n/crmExtendedDictionary";
 
 type Catalog = {
   strictCities: string[];
@@ -35,21 +33,16 @@ type Props = {
   onSave: (filters: WebRadarFilters) => Promise<void>;
 };
 
-const PROPERTY_TYPES = [
-  { id: "FLAT", label: "Mieszkanie" },
-  { id: "HOUSE", label: "Dom" },
-  { id: "PLOT", label: "Działka" },
-  { id: "COMMERCIAL", label: "Lokal" },
-] as const;
+const PROPERTY_TYPE_IDS = ["FLAT", "HOUSE", "PLOT", "COMMERCIAL"] as const;
 
-const AMENITIES = [
-  { key: "requireBalcony" as const, label: "Balkon" },
-  { key: "requireGarden" as const, label: "Ogródek" },
-  { key: "requireTwoLevel" as const, label: "Dwupoziomowe" },
-  { key: "requireElevator" as const, label: "Winda" },
-  { key: "requireParking" as const, label: "Parking" },
-  { key: "requireFurnished" as const, label: "Umeblowane" },
-];
+const AMENITY_KEYS = [
+  "requireBalcony",
+  "requireGarden",
+  "requireTwoLevel",
+  "requireElevator",
+  "requireParking",
+  "requireFurnished",
+] as const;
 
 export default function CrmRadarCalibrationModal({
   open,
@@ -59,6 +52,8 @@ export default function CrmRadarCalibrationModal({
   saving,
   onSave,
 }: Props) {
+  const { dict } = useLocale();
+  const rc = dict.crm.radar.calibration;
   const [draft, setDraft] = useState<WebRadarFilters>(initialFilters);
   const [areaPickerOpen, setAreaPickerOpen] = useState(false);
   const [mapAreaLabel, setMapAreaLabel] = useState("");
@@ -80,10 +75,36 @@ export default function CrmRadarCalibrationModal({
     }
   }, [open, initialFilters]);
 
-  const intelligence = useMemo(
-    () => radarIntelligenceLabel(draft.matchThreshold),
-    [draft.matchThreshold],
-  );
+  const intelligence = useMemo(() => {
+    const t = Math.max(50, Math.min(100, draft.matchThreshold));
+    const intel = rc.intelligence;
+    if (t >= 90) return { ...intel.sniper, color: "#a78bfa" };
+    if (t >= 75) return { ...intel.selective, color: "#10b981" };
+    if (t >= 60) return { ...intel.balanced, color: "#38bdf8" };
+    return { ...intel.wide, color: "#f59e0b" };
+  }, [draft.matchThreshold, rc.intelligence]);
+
+  const propertyTypeLabel = (id: (typeof PROPERTY_TYPE_IDS)[number]) => {
+    const map = {
+      FLAT: rc.types.flat,
+      HOUSE: rc.types.house,
+      PLOT: rc.types.plot,
+      COMMERCIAL: rc.types.commercial,
+    };
+    return map[id];
+  };
+
+  const amenityLabel = (key: (typeof AMENITY_KEYS)[number]) => {
+    const map = {
+      requireBalcony: rc.amenitiesList.balcony,
+      requireGarden: rc.amenitiesList.garden,
+      requireTwoLevel: rc.amenitiesList.twoLevel,
+      requireElevator: rc.amenitiesList.elevator,
+      requireParking: rc.amenitiesList.parking,
+      requireFurnished: rc.amenitiesList.furnished,
+    };
+    return map[key];
+  };
 
   const cityOptions = catalog.strictCities.length ? catalog.strictCities : ["Warszawa"];
   const districts =
@@ -122,7 +143,8 @@ export default function CrmRadarCalibrationModal({
       selectedDistricts: sel.district ? [sel.district] : [],
     }));
     setMapAreaLabel(
-      sel.addressLabel || `${sel.city} · promień ${sel.radiusKm} km`,
+      sel.addressLabel ||
+        fmtDict(rc.radiusKmLabel, { km: String(sel.radiusKm) }),
     );
     setAreaPickerOpen(false);
   };
@@ -130,10 +152,10 @@ export default function CrmRadarCalibrationModal({
   return (
     <>
       <EosModal
-        open={open}
+        open={open && !areaPickerOpen}
         onClose={onClose}
-        title="Kalibracja radaru"
-        subtitle="Te same ustawienia co w aplikacji mobilnej"
+        title={rc.title}
+        subtitle={rc.subtitle}
         icon={<Radar size={20} />}
         maxWidth="max-w-2xl"
         ariaLabelledBy="crm-radar-calibration-title"
@@ -146,10 +168,8 @@ export default function CrmRadarCalibrationModal({
           >
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-bold text-[var(--eos-text)]">Aktywny radar</p>
-                <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                  Powiadomienia push o dopasowanych ofertach
-                </p>
+                <p className="text-sm font-bold text-[var(--eos-text)]">{rc.activeTitle}</p>
+                <p className="mt-1 text-xs text-[var(--eos-muted)]">{rc.activeHint}</p>
               </div>
               <button
                 type="button"
@@ -163,7 +183,7 @@ export default function CrmRadarCalibrationModal({
                 }`}
               >
                 {radarAwake ? <Bell size={14} /> : <BellOff size={14} />}
-                {radarAwake ? "Włączony" : "Wyłączony"}
+                {radarAwake ? rc.enabled : rc.disabled}
               </button>
             </div>
           </div>
@@ -195,14 +215,14 @@ export default function CrmRadarCalibrationModal({
                 />
                 <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                   <span>50%</span>
-                  <span>Skala dopasowania</span>
+                  <span>{rc.matchScale}</span>
                   <span>100%</span>
                 </div>
               </div>
 
               <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
                 <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/90">
-                  Lokalizacja · wybierz sposób
+                  {rc.locationMode}
                 </p>
                 <div className="flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-1">
                   {(["CITY", "MAP"] as const).map((mode) => (
@@ -216,7 +236,7 @@ export default function CrmRadarCalibrationModal({
                           : "text-[var(--eos-subtle)] hover:text-[var(--eos-text)]"
                       }`}
                     >
-                      {mode === "CITY" ? "Miasto i dzielnice" : "Obszar na mapie"}
+                      {mode === "CITY" ? rc.modeCity : rc.modeMap}
                     </button>
                   ))}
                 </div>
@@ -233,9 +253,9 @@ export default function CrmRadarCalibrationModal({
                       <MapPin className="text-emerald-500" size={22} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-[var(--eos-text)]">Wybierz obszar na mapie</p>
+                      <p className="text-sm font-bold text-[var(--eos-text)]">{rc.pickMapTitle}</p>
                       <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-                        Przesuń mapę i ustaw promień — tak jak w aplikacji mobilnej.
+                        {rc.pickMapHint}
                       </p>
                       {mapAreaLabel ? (
                         <p className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400/90">{mapAreaLabel}</p>
@@ -244,7 +264,7 @@ export default function CrmRadarCalibrationModal({
                   </button>
                   {draft.lat == null || draft.lng == null || !draft.radiusKm ? (
                     <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400/90">
-                      Ustaw obszar na mapie, aby zapisać kalibrację w trybie MAP.
+                      {rc.mapRequired}
                     </p>
                   ) : null}
                 </div>
@@ -252,7 +272,7 @@ export default function CrmRadarCalibrationModal({
                 <>
                   <div>
                     <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                      Metropolia
+                      {rc.metropolis}
                     </label>
                     <div className="flex flex-wrap gap-2">
                       {cityOptions.map((city) => (
@@ -280,9 +300,9 @@ export default function CrmRadarCalibrationModal({
 
                   <div>
                     <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                      Dzielnice · {draft.city}
+                      {rc.districts} · {draft.city}
                       <span className="ml-2 font-medium normal-case tracking-normal text-[var(--eos-subtle)]">
-                        (opcjonalnie — puste = całe miasto)
+                        {rc.districtsOptional}
                       </span>
                     </label>
                     <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-2">
@@ -318,7 +338,7 @@ export default function CrmRadarCalibrationModal({
                     </div>
                     {districts.length > 0 && draft.selectedDistricts.length === 0 ? (
                       <p className="mt-2 text-[11px] font-medium text-[var(--eos-muted)]">
-                        Bez zaznaczenia dzielnic radar obejmuje całe {draft.city}.
+                        {fmtDict(rc.wholeCity, { city: draft.city })}
                       </p>
                     ) : null}
                   </div>
@@ -327,7 +347,7 @@ export default function CrmRadarCalibrationModal({
 
               <div>
                 <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                  Przeznaczenie i typ
+                  {rc.purposeType}
                 </label>
                 <div className="mb-4 flex rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] p-1">
                   {(["SELL", "RENT"] as const).map((tx) => (
@@ -343,23 +363,23 @@ export default function CrmRadarCalibrationModal({
                           : "text-[var(--eos-subtle)]"
                       }`}
                     >
-                      {tx === "SELL" ? "Kupno" : "Wynajem"}
+                      {tx === "SELL" ? rc.buy : rc.rent}
                     </button>
                   ))}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {PROPERTY_TYPES.map((pt) => (
+                  {PROPERTY_TYPE_IDS.map((id) => (
                     <button
-                      key={pt.id}
+                      key={id}
                       type="button"
-                      onClick={() => setDraft((p) => ({ ...p, propertyType: pt.id }))}
+                      onClick={() => setDraft((p) => ({ ...p, propertyType: id }))}
                       className={`rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-wider ${
-                        draft.propertyType === pt.id
+                        draft.propertyType === id
                           ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                           : "border-[var(--eos-border)] text-[var(--eos-muted)]"
                       }`}
                     >
-                      {pt.label}
+                      {propertyTypeLabel(id)}
                     </button>
                   ))}
                 </div>
@@ -368,7 +388,7 @@ export default function CrmRadarCalibrationModal({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                    Min. metraż (m²)
+                    {rc.minArea}
                   </label>
                   <input
                     type="text"
@@ -386,7 +406,7 @@ export default function CrmRadarCalibrationModal({
                 </div>
                 <div>
                   <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                    Rok budowy od
+                    {rc.minYear}
                   </label>
                   <input
                     type="text"
@@ -404,7 +424,7 @@ export default function CrmRadarCalibrationModal({
                 </div>
                 <div>
                   <label className="mb-2 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                    Maks. budżet (PLN)
+                    {rc.maxBudget}
                   </label>
                   <input
                     type="text"
@@ -424,23 +444,23 @@ export default function CrmRadarCalibrationModal({
 
               <div>
                 <label className="mb-3 block text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-                  Wymagane udogodnienia
+                  {rc.amenities}
                 </label>
                 <div className="flex flex-wrap gap-2">
-                  {AMENITIES.map((a) => (
+                  {AMENITY_KEYS.map((key) => (
                     <button
-                      key={a.key}
+                      key={key}
                       type="button"
                       onClick={() =>
-                        setDraft((p) => ({ ...p, [a.key]: !p[a.key] }))
+                        setDraft((p) => ({ ...p, [key]: !p[key] }))
                       }
                       className={`rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-                        draft[a.key]
+                        draft[key]
                           ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                           : "border-[var(--eos-border)] text-[var(--eos-subtle)]"
                       }`}
                     >
-                      {a.label}
+                      {amenityLabel(key)}
                     </button>
                   ))}
                 </div>
@@ -448,7 +468,7 @@ export default function CrmRadarCalibrationModal({
             </>
           ) : (
             <p className="eos-modal-panel p-4 text-sm text-[var(--eos-muted)]">
-              Radar jest wyłączony — zapisz, aby zatrzymać powiadomienia (jak wyłącznik w aplikacji).
+              {rc.radarOffHint}
             </p>
           )}
 
@@ -463,7 +483,7 @@ export default function CrmRadarCalibrationModal({
           >
             <div className="relative z-10 flex items-center justify-center gap-3">
               <Radar size={20} className={saving ? "animate-spin" : ""} />
-              {saving ? "Zapisywanie…" : "Zastosuj kalibrację"}
+              {saving ? rc.saving : rc.save}
             </div>
           </button>
         </form>
