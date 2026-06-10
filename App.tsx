@@ -489,7 +489,7 @@ const FloatingNextButton = (props: any) => {
 
   return (
     <View
-      style={[tabBarStyle, { top: -35, justifyContent: 'center', alignItems: 'center' }]}
+      style={[tabBarStyle, { top: -35, justifyContent: 'center', alignItems: 'center', zIndex: 110, elevation: 110 }]}
       {...tabBarProps}
     >
       {/*
@@ -907,6 +907,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
 
   return (
     <View style={{ flex: 1 }}>
+    {splashDone ? <TabBarLiveTicker isDark={resolvedTheme === 'dark'} /> : null}
     <Tab.Navigator
       /**
        * RN 0.81 + bottom-tabs `animation: 'shift'` + domyślne detach inactive screens
@@ -949,6 +950,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         shadowRadius: 22,
         shadowOffset: { width: 0, height: -8 },
         elevation: 14,
+        zIndex: 100,
       },
       sceneStyle: {
         backgroundColor: resolvedTheme === 'dark' ? '#000000' : '#F2F2F7',
@@ -1037,7 +1039,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         )}
       </Tab.Screen>
     </Tab.Navigator>
-    {splashDone ? <TabBarLiveTicker isDark={resolvedTheme === 'dark'} /> : null}
     {splashDone ? <OpenHouseLiveOrchestrator enabled /> : null}
     {splashDone ? <TabBarTickerEngine /> : null}
     </View>

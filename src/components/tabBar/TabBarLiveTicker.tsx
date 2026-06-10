@@ -226,8 +226,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     overflow: 'hidden',
-    zIndex: 200,
-    elevation: 200,
+    zIndex: 1,
+    elevation: 1,
   },
   slidePanel: {
     height: '100%',
