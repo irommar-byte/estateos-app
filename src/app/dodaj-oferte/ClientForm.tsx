@@ -118,19 +118,12 @@ function buildConditionTypes(ao: AddOfferDictionary) {
   ];
 }
 
-const AMENITY_FIELD_MAP = [
-  { id: "balcony", key: "amenityBalcony" as const, field: "hasBalcony" },
-  { id: "parking", key: "amenityGarage" as const, field: "hasParking" },
-  { id: "storage", key: "amenityStorage" as const, field: "hasStorage" },
-  { id: "garden", key: "amenityGarden" as const, field: "hasGarden" },
-  { id: "duplex", key: "amenityDuplex" as const, field: null },
-  { id: "elevator", key: "amenityElevator" as const, field: "hasElevator" },
-  { id: "ac", key: "amenityAc" as const, field: "airConditioning" },
-] as const;
-
-function buildAmenities(ao: AddOfferDictionary) {
-  return AMENITY_FIELD_MAP.map(({ id, key }) => ({ id, label: ao[key] }));
-}
+import {
+  amenityBooleanPatch,
+  buildAmenityOptions,
+  OFFER_AMENITY_DEFS,
+  type OfferAmenityId,
+} from "@/lib/offerAmenities";
 
 function buildHeatingTypes(ao: AddOfferDictionary) {
   return HEATING_DICT_KEYS.map((key) => ao[key]);
@@ -198,7 +191,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   const ao = dict.addOffer;
   const PROPERTY_TYPES = useMemo(() => buildPropertyTypes(ao), [ao]);
   const CONDITION_TYPES = useMemo(() => buildConditionTypes(ao), [ao]);
-  const AMENITIES = useMemo(() => buildAmenities(ao), [ao]);
+  const AMENITIES = useMemo(() => buildAmenityOptions(ao), [ao]);
   const HEATING_TYPES = useMemo(() => buildHeatingTypes(ao), [ao]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const { rate: fxRate } = useFxRate();
@@ -689,10 +682,9 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
   };
 
   const getAmenityPatch = (amenityId: string, selected: boolean) => {
-    const patch: Record<string, boolean> = {};
-    const entry = AMENITY_FIELD_MAP.find((a) => a.id === amenityId);
-    if (entry?.field) patch[entry.field] = selected;
-    return patch;
+    const entry = OFFER_AMENITY_DEFS.find((a) => a.id === amenityId);
+    if (entry?.field) return { [entry.field]: selected };
+    return {};
   };
 
   useEffect(() => {
@@ -1321,6 +1313,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
       title: data.title || `${propertyTypeLabel || data.propertyType} - ${data.district || data.city || 'Polska'}`,
       price: cleanPriceValue,
       priceCurrency: data.priceCurrency || 'PLN',
+      yearBuilt: data.buildYear ? Number(data.buildYear) : null,
       area: String(data.area).replace(',', '.'),
       adminFee:
         data.transactionType === "RENT"
@@ -1903,7 +1896,7 @@ export default function ClientForm({ initialUser }: { initialUser?: any }) {
                       </label>
                       <div className="relative group">
                         <input type="text" placeholder={ao.rentPlaceholder} className={`${inputPremium} pr-12`} value={data.rent || ''} onChange={(e) => updateData({ rent: e.target.value.replace(/[^0-9]/g, '') })} />
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">PLN</div>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 text-[10px] font-black tracking-widest uppercase">{data.priceCurrency || 'PLN'}</div>
                       </div>
                     </div>
                     ) : null}

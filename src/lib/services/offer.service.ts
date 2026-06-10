@@ -94,6 +94,8 @@ let offerMoneyColumnsEnsured = false;
 let offerMoneyColumnsPromise: Promise<void> | null = null;
 let offerLocalityColumnsEnsured = false;
 let offerLocalityColumnsPromise: Promise<void> | null = null;
+let extendedAmenityColumnsEnsured = false;
+let extendedAmenityColumnsPromise: Promise<void> | null = null;
 
 function isIgnorableAddColumnError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -211,6 +213,21 @@ export async function ensureOfferMoneyColumns() {
     throw error;
   } finally {
     offerMoneyColumnsPromise = null;
+  }
+}
+
+export async function ensureOfferExtendedAmenityColumns() {
+  if (extendedAmenityColumnsEnsured) return;
+  if (extendedAmenityColumnsPromise) return extendedAmenityColumnsPromise;
+  extendedAmenityColumnsPromise = (async () => {
+    await ensureOfferColumn("hasAirConditioning", "BOOLEAN NOT NULL DEFAULT false");
+    await ensureOfferColumn("isDuplex", "BOOLEAN NOT NULL DEFAULT false");
+    extendedAmenityColumnsEnsured = true;
+  })();
+  try {
+    await extendedAmenityColumnsPromise;
+  } finally {
+    extendedAmenityColumnsPromise = null;
   }
 }
 
@@ -332,6 +349,7 @@ export async function createOffer(body: any) {
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
   await ensureOfferLocalityCountryColumns();
+  await ensureOfferExtendedAmenityColumns();
   const resolvedPrice = await resolveOfferPriceFromBody(body);
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
@@ -401,7 +419,12 @@ export async function createOffer(body: any) {
 
       floor: body.floor !== undefined && body.floor !== null ? Number(body.floor) : null,
       totalFloors: body.totalFloors !== undefined && body.totalFloors !== null ? Number(body.totalFloors) : null,
-      yearBuilt: body.yearBuilt !== undefined && body.yearBuilt !== null ? Number(body.yearBuilt) : null,
+      yearBuilt: (() => {
+        const raw = body.yearBuilt ?? body.buildYear ?? body.year;
+        if (raw === undefined || raw === null || raw === "") return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+      })(),
 
       city: locationValidation.city,
       district: locationValidation.district,
@@ -431,6 +454,8 @@ export async function createOffer(body: any) {
       hasStorage: !!body.hasStorage,
       hasParking: !!body.hasParking,
       hasGarden: !!body.hasGarden,
+      hasAirConditioning: !!body.hasAirConditioning,
+      isDuplex: !!body.isDuplex,
       isFurnished: !!body.isFurnished,
       heating: body.heating ? String(body.heating).trim() : null,
 
@@ -506,6 +531,7 @@ export async function updateOffer(body: any) {
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
   await ensureOfferLocalityCountryColumns();
+  await ensureOfferExtendedAmenityColumns();
 
   if (body.landRegistryNumber !== undefined && body.landRegistryNumber !== null) {
     validateLandRegistryNumberInput(body.landRegistryNumber);
@@ -691,6 +717,9 @@ export async function updateOffer(body: any) {
       ...(body.yearBuilt !== undefined && {
         yearBuilt: body.yearBuilt === null ? null : Number(body.yearBuilt)
       }),
+      ...(body.buildYear !== undefined && body.yearBuilt === undefined && {
+        yearBuilt: body.buildYear === null || body.buildYear === '' ? null : Number(body.buildYear),
+      }),
       ...(body.city !== undefined && {
         city: locationValidation?.city
       }),
@@ -709,6 +738,8 @@ export async function updateOffer(body: any) {
       ...(body.hasStorage !== undefined && { hasStorage: !!body.hasStorage }),
       ...(body.hasParking !== undefined && { hasParking: !!body.hasParking }),
       ...(body.hasGarden !== undefined && { hasGarden: !!body.hasGarden }),
+      ...(body.hasAirConditioning !== undefined && { hasAirConditioning: !!body.hasAirConditioning }),
+      ...(body.isDuplex !== undefined && { isDuplex: !!body.isDuplex }),
       ...(body.isFurnished !== undefined && { isFurnished: !!body.isFurnished }),
       ...(body.heating !== undefined && {
         heating: body.heating ? String(body.heating).trim() : null

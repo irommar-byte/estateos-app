@@ -30,6 +30,8 @@ export const MOBILE_OFFER_PRISMA_SELECT = {
   hasStorage: true,
   hasParking: true,
   hasGarden: true,
+  hasAirConditioning: true,
+  isDuplex: true,
   isFurnished: true,
   heating: true,
   city: true,

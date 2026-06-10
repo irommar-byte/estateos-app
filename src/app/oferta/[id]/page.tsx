@@ -41,6 +41,8 @@ import {
   isAgentOrAgencySeller,
 } from "@/lib/sellerDisplay";
 import { resolveRentAdminFeeAmount, formatRentAdminFeeCostsLabel } from "@/lib/offers/rentAdminFeeDisplay";
+import { normalizeListingCurrency } from "@/lib/money/convert";
+import { amenityLabelsFromOffer } from "@/lib/offerAmenities";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import {
   formatAmountWithCurrency,
@@ -59,7 +61,7 @@ const NeighborhoodMapPreview = dynamic(
 const HERO_BELOW_NAV = 'calc(env(safe-area-inset-top, 0px) + 6.25rem)';
 
 function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) {
-  const { locale } = useLocale();
+  const { locale, dict } = useLocale();
   const { formatOffer, pricePerSqmLabel, rate } = useFormatOfferPrice();
   const t = getOfferPageCopy(locale);
   const priceFormatted = formatOffer(offer);
@@ -75,9 +77,14 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const tx = String(offer.transactionType || "sale").toLowerCase();
   const isRent = tx.includes("rent") || tx.includes("wynajem");
   const rentAdminFeeAmount = isRent ? resolveRentAdminFeeAmount(offer) : null;
+  const listingCurrency = normalizeListingCurrency(offer.priceCurrency);
   const rentAdminFeeInline =
     rentAdminFeeAmount != null
-      ? formatRentAdminFeeCostsLabel(rentAdminFeeAmount, locale === "en" ? "en" : "pl")
+      ? formatRentAdminFeeCostsLabel(
+          rentAdminFeeAmount,
+          locale === "en" ? "en" : locale === "uk" ? "uk" : "pl",
+          listingCurrency,
+        )
       : null;
   const isDealRoom = offer.badges?.isPartner === true;
   const themeColors = {
@@ -295,6 +302,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
     // Sekcje Specyfikacji Luksusowej
   
+  const amenityLabels = amenityLabelsFromOffer(offer as Record<string, unknown>, dict.addOffer);
+
   const ensureAuthenticated = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -326,7 +335,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const adminFeeRaw = offer.adminFee ?? offer.rent;
   const adminFeeLabel =
     adminFeeRaw != null && Number(adminFeeRaw) > 0
-      ? `${Number(adminFeeRaw).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} PLN`
+      ? `${Number(adminFeeRaw).toLocaleString(locale === "pl" ? "pl-PL" : "en-GB")} ${listingCurrency === "EUR" ? "€" : locale === "en" || locale === "uk" ? "PLN" : "zł"}`
       : null;
 
   const mainParams = [
@@ -788,17 +797,11 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                   <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
-                {offer.amenities && offer.amenities.length > 0 && (
+                {amenityLabels.length > 0 && (
                 <div className="eos-offer-panel mt-8 p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.amenities}</h3>
                   <div className="flex flex-wrap gap-3">
-                    {(Array.isArray(offer.amenities)
-                      ? offer.amenities
-                      : String(offer.amenities).split(",")
-                    )
-                      .map((item: unknown) => String(item || "").trim())
-                      .filter(Boolean)
-                      .map((amenity: string, idx: number) => (
+                    {amenityLabels.map((amenity: string, idx: number) => (
                       <div key={idx} className={`flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 ${themeColors.borderActive}`}>
                         <CheckCircle2 size={16} className={themeColors.textActive} />
                         <span className="text-sm font-semibold text-[var(--eos-text)]">{amenity.trim()}</span>

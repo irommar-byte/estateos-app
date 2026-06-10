@@ -11,7 +11,16 @@ import PriceReductionPreview from '@/components/offer/PriceReductionPreview';
 import { isAgentCommissionAccount } from '@/lib/agentCommission';
 import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { useLocale } from '@/contexts/LocaleContext';
+import { useFxRate } from '@/contexts/FxRateContext';
 import { buildYearBuiltSelectOptions } from '@/lib/offerYearBuilt';
+import { convertBetweenCurrencies } from '@/lib/money/convert';
+import type { ListingCurrency } from '@/lib/money/types';
+import {
+  amenityBooleanPatch,
+  buildAmenityOptions,
+  readAmenitySelectionFromOffer,
+  type OfferAmenityId,
+} from '@/lib/offerAmenities';
 import { buildRentAdditionalFeeSelectOptions } from '@/lib/rentAdditionalFees';
 import { resolveStreetFieldsForForm, streetFieldsForOfferStorage } from '@/lib/offerStreetFields';
 import { descriptionForEditForm, descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
@@ -32,8 +41,6 @@ const glassPanel =
   "eos-surface-card relative overflow-x-clip overflow-y-visible rounded-[2.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)] p-6 shadow-[var(--eos-shadow-soft)] backdrop-blur-3xl transition-all duration-500 md:p-10";
 const iconGlow =
   "absolute left-4 text-[var(--eos-muted)] transition-all duration-500 group-focus-within:text-[var(--eos-accent)]";
-
-const AMENITIES_LIST = ["Balkon", "Garaż/Miejsce park.", "Piwnica/Pom. gosp.", "Ogródek", "Dwupoziomowe", "Winda", "Klimatyzacja"];
 
 // --- FORMATOWANIE LICZB ---
 const formatNum = (val: string) => val.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -58,9 +65,12 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const { dict } = useLocale();
   const ao = dict.addOffer;
   const eo = dict.editOffer;
+  const { rate: fxRate } = useFxRate();
+  const amenityOptions = React.useMemo(() => buildAmenityOptions(ao), [ao]);
   const router = useRouter();
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
+  const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
   const [imagesList, setImagesList] = useState<string[]>([]);
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanUploading, setFloorPlanUploading] = useState(false);
@@ -108,13 +118,13 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         setData({
           ...offer,
           price: String(offer.price || ''),
+          priceCurrency: String(offer.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN',
           area: String(offer.area || ''),
           rooms: String(offer.rooms || ''),
           floor: String(offer.floor || ''),
           year: String(offer.yearBuilt ?? offer.year ?? offer.buildYear ?? ''),
-          rentAdminFee: offer.adminFee != null ? String(offer.adminFee) : '',
+          adminFee: offer.adminFee != null ? String(offer.adminFee) : '',
           plotArea: String(offer.plotArea || ''),
-          amenities: offer.amenities || "",
           district: offer.district || "",
           address: offer.street || offer.address || "",
           description: descriptionForEditForm(offer.description),
@@ -127,6 +137,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           apartmentNumber: offer.apartmentNumber || "",
           propertyType: offer.propertyType || "FLAT",
         });
+        setSelectedAmenities(readAmenitySelectionFromOffer(offer));
         const cp = offer.agentCommissionPercent;
         setAgentCommissionPercent(
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
@@ -227,19 +238,28 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     const buildingNumber = String(data.buildingNumber || '').trim();
     const storedStreet = streetFieldsForOfferStorage(streetName, buildingNumber, exactLocation);
     // Przed wysłaniem usuwamy spacje z ceny
+    const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
     const payload = {
-      ...data,
+      title: data.title,
       description: descriptionForStorageFromEdit(data.description),
       price: String(data.price || '').replace(/\s/g, ''),
+      priceCurrency: listingCurrency,
       images: JSON.stringify(imagesList),
       floorPlanUrl: floorPlanUrl || null,
       floorPlan: floorPlanUrl || null,
-      buildYear: data.year,
-      yearBuilt: data.year,
-      adminFee: data.rentAdminFee ? Number(String(data.rentAdminFee).replace(/\D/g, '')) : null,
+      buildYear: data.year ? Number(data.year) : null,
+      yearBuilt: data.year ? Number(data.year) : null,
+      area: data.area,
+      rooms: data.rooms,
+      floor: data.floor,
+      adminFee: data.adminFee ? Number(String(data.adminFee).replace(/\D/g, '')) : null,
       street: storedStreet.street,
       buildingNumber: storedStreet.buildingNumber,
       isExactLocation: exactLocation,
+      lat: data.lat,
+      lng: data.lng,
+      district: data.district,
+      ...amenityBooleanPatch(selectedAmenities),
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
         : {}),
@@ -254,11 +274,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     }
   };
 
-  const toggleAmenity = (am: string) => {
-    const current = data.amenities ? data.amenities.split(',').filter(Boolean) : [];
-    if (current.includes(am)) updateData({ amenities: current.filter((a: string) => a !== am).join(',') });
-    else updateData({ amenities: [...current, am].join(',') });
+  const toggleAmenity = (id: OfferAmenityId) => {
+    setSelectedAmenities((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
+
+  const listingCurrency = (String(data.priceCurrency || 'PLN').toUpperCase() === 'EUR' ? 'EUR' : 'PLN') as ListingCurrency;
 
   if (isLoading) return <div className="theme-aware-dashboard flex min-h-screen flex-col items-center justify-center gap-6 bg-[var(--eos-bg)]"><Loader2 className="size-10 animate-spin text-[var(--eos-accent)]" /></div>;
   if (authError) return <div className="theme-aware-dashboard flex min-h-screen items-center justify-center bg-[var(--eos-bg)] font-bold uppercase tracking-widest text-red-500">{authError}</div>;
@@ -306,14 +326,54 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <label className={labelPremium}>Cena (PLN)</label>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className={labelPremium.replace('mb-3', 'mb-0')}>{ao.priceCurrency}</span>
+                  {(['PLN', 'EUR'] as ListingCurrency[]).map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        const amount = Number(String(data.price || '').replace(/\s/g, ''));
+                        const converted =
+                          amount > 0 ? convertBetweenCurrencies(amount, listingCurrency, code, fxRate) : 0;
+                        updateData({
+                          priceCurrency: code,
+                          price: converted > 0 ? String(converted).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : data.price,
+                          adminFee:
+                            data.adminFee && Number(String(data.adminFee).replace(/\D/g, '')) > 0
+                              ? String(
+                                  convertBetweenCurrencies(
+                                    Number(String(data.adminFee).replace(/\D/g, '')),
+                                    listingCurrency,
+                                    code,
+                                    fxRate,
+                                  ),
+                                )
+                              : data.adminFee,
+                        });
+                      }}
+                      className={`px-4 py-2 rounded-xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${
+                        listingCurrency === code
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
+                          : 'bg-[#111] border-white/10 text-white/40 hover:border-white/25'
+                      }`}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+                <label className={labelPremium}>
+                  {listingCurrency === 'EUR' ? ao.salePriceLabel : ao.salePriceLabel} ({listingCurrency})
+                </label>
                 <div className={inputWrapper}>
                   <Sparkles className={iconGlow} size={20} />
-                  <input value={formatNum(data.price || '')} onChange={e => updateData({ price: e.target.value })} className={`${inputPremium} font-mono font-bold text-emerald-400`} placeholder="Np. 1 250 000" />
+                  <input value={formatNum(data.price || '')} onChange={e => updateData({ price: e.target.value })} className={`${inputPremium} font-mono font-bold text-emerald-400`} placeholder={listingCurrency === 'EUR' ? 'Np. 250 000' : 'Np. 1 250 000'} />
                 </div>
                 <PriceReductionPreview
-                  listPricePln={Number(data.listPricePln ?? data.pricePln ?? data.price ?? 0)}
+                  listPricePln={Number(data.listPricePln ?? data.pricePln ?? 0)}
                   draftPriceRaw={String(data.price || '')}
+                  priceCurrency={listingCurrency}
+                  exchangeRate={fxRate}
                 />
               </div>
               <div>
@@ -382,13 +442,33 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           </div>
 
           <div>
-            <label className={labelPremium}>Udogodnienia</label>
+            <label className={labelPremium}>{ao.adminFeeLabel}</label>
+            <div className={inputWrapper}>
+              <Sparkles className={iconGlow} size={18} />
+              <input
+                value={formatNum(data.adminFee || '')}
+                onChange={(e) => updateData({ adminFee: e.target.value })}
+                className={inputPremium}
+                placeholder={listingCurrency === 'EUR' ? 'Np. 150' : 'Np. 650'}
+              />
+            </div>
+            <p className="mt-2 text-[10px] uppercase tracking-widest text-zinc-500">
+              {ao.adminFeeOptional} · {listingCurrency}
+            </p>
+          </div>
+
+          <div>
+            <label className={labelPremium}>{ao.amenitiesPremiumLabel}</label>
             <div className="flex flex-wrap gap-3 mt-4">
-              {AMENITIES_LIST.map(am => {
-                const isActive = (data.amenities || '').includes(am);
+              {amenityOptions.map(({ id, label }) => {
+                const isActive = selectedAmenities.includes(id);
                 return (
-                  <div key={am} onClick={() => toggleAmenity(am)} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all duration-300 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'}`}>
-                    {am}
+                  <div
+                    key={id}
+                    onClick={() => toggleAmenity(id)}
+                    className={`max-w-full px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.08em] leading-snug text-balance cursor-pointer transition-all duration-300 border ${isActive ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'bg-[#0a0a0a] text-zinc-500 border-white/5 hover:bg-[#111] hover:border-white/10'}`}
+                  >
+                    {label}
                   </div>
                 );
               })}

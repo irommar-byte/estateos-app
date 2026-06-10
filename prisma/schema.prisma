@@ -168,6 +168,8 @@ model Offer {
   hasStorage      Boolean        @default(false)
   hasParking      Boolean        @default(false)
   hasGarden       Boolean        @default(false)
+  hasAirConditioning Boolean     @default(false)
+  isDuplex        Boolean        @default(false)
   isFurnished     Boolean        @default(false)
   heating         String?
   city            String         @default("Warszawa")

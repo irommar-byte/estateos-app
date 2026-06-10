@@ -10,7 +10,7 @@ import {
 } from '@/lib/offerVerification';
 import { dispatchFavoritesPriceChangePush } from '@/lib/favoritesPricePush';
 import { enrichOfferPriceDiscountFields, ensureOfferPriceHistorySchema, syncOfferPriceHistory } from '@/lib/offerPriceHistory';
-import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns } from '@/lib/services/offer.service';
+import { ensureOfferLegalColumns, ensureOfferMoneyColumns, ensureOfferLocalityCountryColumns, ensureOfferExtendedAmenityColumns } from '@/lib/services/offer.service';
 import { enrichOfferMoneyFieldsForApi, resolveOfferPriceFromBody } from '@/lib/money/offerPrice.server';
 import { enrichOfferMoneyFields, parsePriceAmount, getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { WEB_OFFER_PUBLIC_PRISMA_SELECT } from '@/lib/mobileOfferPrismaSelect';
@@ -52,6 +52,14 @@ const OFFER_WEB_PUT_SELECT = {
   rooms: true,
   floor: true,
   yearBuilt: true,
+  adminFee: true,
+  hasBalcony: true,
+  hasElevator: true,
+  hasStorage: true,
+  hasParking: true,
+  hasGarden: true,
+  hasAirConditioning: true,
+  isDuplex: true,
   condition: true,
   agentCommissionPercent: true,
   plotArea: true,
@@ -265,6 +273,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   try {
     await ensureOfferLegalColumns();
     await ensureOfferMoneyColumns();
+    await ensureOfferExtendedAmenityColumns();
     await ensureOfferPriceHistorySchema();
     const resolvedParams = await params;
     const body = await req.json();
@@ -344,9 +353,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ? await resolveOfferPriceFromBody({
             price: parsedPrice,
             priceAmount: parsedPrice,
-            priceCurrency: String((currentOffer as { priceCurrency?: string }).priceCurrency || 'PLN'),
+            priceCurrency: String(body.priceCurrency ?? (currentOffer as { priceCurrency?: string }).priceCurrency ?? 'PLN'),
           })
-        : {};
+        : body.priceCurrency != null
+          ? await resolveOfferPriceFromBody({
+              price: Number(currentOffer.price),
+              priceAmount: Number(currentOffer.price),
+              priceCurrency: String(body.priceCurrency),
+            })
+          : {};
     const parsedArea = parseFloat(String(body.area ?? currentOffer.area).replace(',', '.'));
     const parsedRooms =
       body.rooms !== undefined && String(body.rooms).trim() !== ''
@@ -425,6 +440,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         isFurnished: body.isFurnished !== undefined
           ? !!body.isFurnished
           : currentOffer.isFurnished,
+        adminFee:
+          body.adminFee !== undefined
+            ? body.adminFee === null || body.adminFee === ''
+              ? null
+              : Number(body.adminFee)
+            : currentOffer.adminFee,
+        hasBalcony: body.hasBalcony !== undefined ? !!body.hasBalcony : currentOffer.hasBalcony,
+        hasElevator: body.hasElevator !== undefined ? !!body.hasElevator : currentOffer.hasElevator,
+        hasStorage: body.hasStorage !== undefined ? !!body.hasStorage : currentOffer.hasStorage,
+        hasParking: body.hasParking !== undefined ? !!body.hasParking : currentOffer.hasParking,
+        hasGarden: body.hasGarden !== undefined ? !!body.hasGarden : currentOffer.hasGarden,
+        hasAirConditioning:
+          body.hasAirConditioning !== undefined ? !!body.hasAirConditioning : currentOffer.hasAirConditioning,
+        isDuplex: body.isDuplex !== undefined ? !!body.isDuplex : currentOffer.isDuplex,
         condition: body.condition !== undefined ? body.condition : currentOffer.condition,
         ...(agentCommissionPercent !== undefined && { agentCommissionPercent }),
         status: newStatus,
