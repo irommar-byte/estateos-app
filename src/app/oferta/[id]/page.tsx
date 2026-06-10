@@ -471,7 +471,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
       
       <div ref={ref} className="eos-cinematic-dark relative w-full min-h-[64vh] h-[72svh] sm:min-h-[100vh] sm:h-[100dvh] overflow-hidden bg-black">
         <motion.div style={{ y: bgY, backgroundImage: `url('${images[0]}')` }} className={`absolute inset-0 z-0 bg-cover bg-center ${isArchived ? 'opacity-25 blur-2xl grayscale' : isLocked ? 'opacity-60 blur-xl' : 'opacity-60'}`} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" />
+        <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 
         <div
           className="absolute inset-x-0 z-40 px-4 sm:px-6 pointer-events-none"
@@ -612,7 +612,7 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
           onClick={() => !isLocked && openGallery(0)}
           className="absolute inset-x-0 bottom-0 z-20 hidden cursor-pointer flex-col items-center justify-end px-4 pb-16 pt-32 hover:bg-black/10 sm:flex sm:pb-24"
         >
-          <h1 className="max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter drop-shadow-2xl [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
+          <h1 className="eos-offer-hero-title max-w-7xl text-center text-4xl font-light leading-tight tracking-tighter [text-wrap:balance] sm:text-6xl md:text-[6vw] px-4 sm:px-8 pointer-events-none">
             {isLocked ? t.beforeLaunchTitle : offer.title}
           </h1>
         </div>
