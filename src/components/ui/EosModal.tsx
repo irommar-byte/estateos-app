@@ -21,6 +21,7 @@ type Props = {
   /** Nagłówek wbudowany — wyłącz gdy przekazujesz własny w children */
   hideHeader?: boolean;
   ariaLabelledBy?: string;
+  iconWrapClassName?: string;
 };
 
 export default function EosModal({
@@ -38,6 +39,7 @@ export default function EosModal({
   footer,
   hideHeader = false,
   ariaLabelledBy,
+  iconWrapClassName = "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-500 shadow-[0_8px_24px_rgba(16,185,129,0.12)]",
 }: Props) {
   const [mounted, setMounted] = useState(false);
 
@@ -89,7 +91,7 @@ export default function EosModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={`eos-modal-surface eos-modal-shell pointer-events-auto relative z-10 flex max-h-[min(92dvh,920px)] w-full flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px] ${maxWidth}`}
+            className={`eos-modal-surface eos-modal-shell eos-themed-modal pointer-events-auto relative z-10 flex max-h-[min(92dvh,920px)] w-full flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px] ${maxWidth}`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
@@ -99,11 +101,7 @@ export default function EosModal({
             {!hideHeader && (title || showCloseButton) ? (
               <div className="relative flex shrink-0 items-start justify-between gap-4 border-b border-[var(--eos-border)] px-6 py-5">
                 <div className="flex min-w-0 items-start gap-3">
-                  {icon ? (
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-500 shadow-[0_8px_24px_rgba(16,185,129,0.12)]">
-                      {icon}
-                    </div>
-                  ) : null}
+                  {icon ? <div className={iconWrapClassName}>{icon}</div> : null}
                   <div className="min-w-0">
                     {badge ? (
                       <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#D4AF37]">{badge}</p>

@@ -32,8 +32,11 @@ import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadg
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
+import AuctionOfferBanner from "@/components/offer/AuctionOfferBanner";
+import AuctionBidModal from "@/components/offer/AuctionBidModal";
 import ProfileWriteMessageButton from "@/components/contact/ProfileWriteMessageButton";
 import type { OpenHouseEventRecord } from "@/lib/openHouseTypes";
+import type { AuctionEventRecord } from "@/lib/auctionTypes";
 import { getBestUserAvatarUrl, isAgencyUser } from "@/lib/userAvatar";
 import {
   resolveSellerDisplayName,
@@ -157,6 +160,8 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
   const [isFloorplanModalOpen, setIsFloorplanModalOpen] = useState(false);
   const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
   const [isOpenHouseModalOpen, setIsOpenHouseModalOpen] = useState(false);
+  const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
+  const [isAuctionModalOpen, setIsAuctionModalOpen] = useState(false);
   const isLegalKwVerified = isOfferLegallyVerified(offer);
   const isNewListing = isOfferNewListing(offer);
   const sellerAvatar = getBestUserAvatarUrl(offer?.user);
@@ -240,8 +245,37 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
     };
   }, [offer, isArchived]);
 
+  useEffect(() => {
+    const offerId = offer.id || offer._id;
+    if (!offerId || isArchived) {
+      setAuctionEvent(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/auction/offers/${offerId}`, { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const event = data?.event as AuctionEventRecord | null;
+        if (event && (event.status === "LIVE" || event.status === "SCHEDULED")) {
+          setAuctionEvent(event);
+        } else {
+          setAuctionEvent(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAuctionEvent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer, isArchived]);
+
   const showOpenHouseBanner = Boolean(openHouseEvent);
+  const showAuctionBanner = Boolean(auctionEvent);
   const openOpenHouseModal = () => setIsOpenHouseModalOpen(true);
+  const openAuctionModal = () => setIsAuctionModalOpen(true);
+  const offerLocale = locale === "uk" ? "uk" : locale === "en" ? "en" : "pl";
 
   const rawAreaStr = String(offer.area || '0').replace(/,/g, '.').replace(/[^\d.]/g, '');
   const numericArea = parseFloat(rawAreaStr) || 0;
@@ -604,11 +638,26 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
 
               </div>
 
+            {showAuctionBanner && auctionEvent ? (
+              <AuctionOfferBanner
+                variant="hero"
+                event={auctionEvent}
+                locale={offerLocale}
+                copy={{
+                  title: t.auction.bannerTitle,
+                  subtitleLive: t.auction.bannerSubtitleLive,
+                  subtitleScheduled: t.auction.bannerSubtitleScheduled,
+                  cta: t.auction.bannerCta,
+                  liveBadge: t.auction.liveBadge,
+                }}
+                onPress={openAuctionModal}
+              />
+            ) : null}
             {showOpenHouseBanner && openHouseEvent ? (
               <OpenHouseOfferBanner
                 variant="hero"
                 event={openHouseEvent}
-                locale={locale === "en" ? "en" : "pl"}
+                locale={offerLocale}
                 copy={{
                   title: t.openHouse.bannerTitle,
                   subtitle: t.openHouse.bannerSubtitle,
@@ -730,12 +779,29 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
                 <h1 className="mb-7 text-4xl font-light leading-tight tracking-tighter text-[var(--eos-text)] [text-wrap:balance] sm:hidden">
                   {isLocked ? t.beforeLaunchTitle : offer.title}
                 </h1>
+                {showAuctionBanner && auctionEvent && !isLocked ? (
+                  <div className="mb-6 sm:hidden">
+                    <AuctionOfferBanner
+                      variant="inline"
+                      event={auctionEvent}
+                      locale={offerLocale}
+                      copy={{
+                        title: t.auction.bannerTitle,
+                        subtitleLive: t.auction.bannerSubtitleLive,
+                        subtitleScheduled: t.auction.bannerSubtitleScheduled,
+                        cta: t.auction.bannerCta,
+                        liveBadge: t.auction.liveBadge,
+                      }}
+                      onPress={openAuctionModal}
+                    />
+                  </div>
+                ) : null}
                 {showOpenHouseBanner && openHouseEvent && !isLocked ? (
                   <div className="mb-6 sm:hidden">
                     <OpenHouseOfferBanner
                       variant="inline"
                       event={openHouseEvent}
-                      locale={locale === "en" ? "en" : "pl"}
+                      locale={offerLocale}
                       copy={{
                         title: t.openHouse.bannerTitle,
                         subtitle: t.openHouse.bannerSubtitle,
@@ -1087,6 +1153,17 @@ function OfferDetails({ offer, currentUser }: { offer: any, currentUser: any }) 
         currentUser={currentUser}
         locale={locale}
         onClose={() => setIsOpenHouseModalOpen(false)}
+        onRequireAuth={() => {
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        }}
+      />
+
+      <AuctionBidModal
+        isOpen={isAuctionModalOpen}
+        eventId={auctionEvent?.id ?? null}
+        currentUser={currentUser}
+        locale={locale}
+        onClose={() => setIsAuctionModalOpen(false)}
         onRequireAuth={() => {
           window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
         }}

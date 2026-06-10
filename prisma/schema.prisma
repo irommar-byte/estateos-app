@@ -75,6 +75,8 @@ model User {
   discoveryProfile   DiscoveryProfile?
   hostedOpenHouseEvents OpenHouseEvent[]       @relation("OpenHouseHost")
   openHouseReservations OpenHouseReservation[] @relation("OpenHouseGuest")
+  hostedAuctionEvents   AuctionEvent[]         @relation("AuctionHost")
+  auctionBids           AuctionBidEntry[]      @relation("AuctionBidder")
 }
 
 model Alert {
@@ -205,6 +207,7 @@ model Offer {
   user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   legalVerificationRequests LegalVerificationRequest[]
   openHouseEvents OpenHouseEvent[]
+  auctionEvents   AuctionEvent[]
   priceHistory    OfferPriceHistory[]
 
   @@index([userId], map: "Offer_userId_fkey")
@@ -731,6 +734,69 @@ enum OpenHouseStatus {
 enum OpenHouseReservationStatus {
   CONFIRMED
   CANCELLED
+}
+
+enum AuctionStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+  SETTLED
+}
+
+enum AuctionBidStatus {
+  VALID
+  OUTBID
+  WINNING
+}
+
+model AuctionEvent {
+  id                 Int           @id @default(autoincrement())
+  offerId            Int
+  hostUserId         Int
+  title              String?       @db.VarChar(255)
+  description        String?       @db.Text
+  currency           String        @default("PLN") @db.VarChar(8)
+  startPrice         Float
+  reservePrice       Float?
+  minIncrement       Float?
+  currentPrice       Float         @default(0)
+  currentBidderUserId Int?
+  bidCount           Int           @default(0)
+  startsAt           DateTime
+  endsAt             DateTime
+  extendedEndsAt     DateTime?
+  status             AuctionStatus @default(DRAFT)
+  winnerUserId       Int?
+  publishedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  offer Offer             @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  host  User              @relation("AuctionHost", fields: [hostUserId], references: [id], onDelete: Cascade)
+  bids  AuctionBidEntry[]
+
+  @@index([offerId])
+  @@index([hostUserId])
+  @@index([status, startsAt])
+  @@index([status, endsAt])
+}
+
+model AuctionBidEntry {
+  id        Int              @id @default(autoincrement())
+  eventId   Int
+  userId    Int
+  amount    Float
+  currency  String           @default("PLN") @db.VarChar(8)
+  status    AuctionBidStatus @default(VALID)
+  createdAt DateTime         @default(now())
+
+  event AuctionEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User         @relation("AuctionBidder", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([userId])
 }
 
 model RadarPreference {

@@ -47,61 +47,26 @@ export default function OpenHouseOfferBanner({
     <motion.button
       type="button"
       onClick={onPress}
-      className={`group relative w-full overflow-hidden text-left transition-transform active:scale-[0.99] ${
-        isHero
-          ? "rounded-2xl border border-amber-400/35 bg-amber-500/12 px-4 py-3.5 shadow-[0_8px_32px_rgba(245,158,11,0.12)] backdrop-blur-2xl sm:px-5 sm:py-4"
-          : "rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 sm:px-5"
-      }`}
-      animate={{
-        opacity: [1, 0.88, 1],
-        boxShadow: isHero
-          ? [
-              "0 8px 32px rgba(245,158,11,0.12)",
-              "0 8px 40px rgba(245,158,11,0.28)",
-              "0 8px 32px rgba(245,158,11,0.12)",
-            ]
-          : [
-              "0 0 0 rgba(245,158,11,0)",
-              "0 0 24px rgba(245,158,11,0.18)",
-              "0 0 0 rgba(245,158,11,0)",
-            ],
-      }}
-      transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      className={`eos-offer-feature-banner group relative w-full overflow-hidden text-left transition-transform active:scale-[0.99] ${
+        isHero ? "eos-offer-feature-banner--hero" : ""
+      } rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3.5 sm:px-5 sm:py-4`}
+      whileTap={{ scale: 0.99 }}
     >
-      <motion.span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-amber-400/0 via-amber-300/10 to-amber-400/0"
-        animate={{ opacity: [0.35, 0.75, 0.35] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-      />
-
       <div className="relative flex items-center gap-3 sm:gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/18 text-amber-400 ring-1 ring-amber-400/25 sm:h-12 sm:w-12">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/20 sm:h-12 sm:w-12">
           <DoorOpen size={22} strokeWidth={2.2} />
         </div>
 
         <div className="min-w-0 flex-1">
-          <p
-            className={`font-black uppercase tracking-[0.14em] ${
-              isHero ? "text-[10px] text-amber-200/95 sm:text-[11px]" : "text-[10px] text-amber-600 sm:text-[11px]"
-            }`}
-          >
+          <p className="eos-offer-feature-banner-title text-[13px] font-semibold tracking-tight eos-amber-accent">
             {copy.title}
           </p>
-          <p
-            className={`mt-1 text-sm font-semibold leading-snug ${
-              isHero ? "text-white/90" : "text-[var(--eos-text)]"
-            }`}
-          >
+          <p className="eos-offer-feature-banner-subtitle mt-1 text-[13px] font-medium leading-snug text-[var(--eos-text)]">
             {copy.subtitle(dateLabel, event.totalSpotsLeft)}
           </p>
         </div>
 
-        <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white transition group-hover:brightness-110 ${
-            isHero ? "bg-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.35)]" : "bg-amber-500"
-          }`}
-        >
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500 px-3.5 py-2 text-[13px] font-semibold text-white transition group-hover:bg-amber-400">
           {copy.cta}
           <ChevronRight size={14} strokeWidth={2.5} />
         </span>

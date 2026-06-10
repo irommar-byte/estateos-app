@@ -1574,6 +1574,117 @@ html.light .eos-modal-panel {
   border-color: rgba(15, 23, 42, 0.1);
 }
 
+/* Apple-style etykiety i przyciski w modalach */
+.eos-field-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--eos-muted);
+}
+
+.eos-tab-pill {
+  border-radius: 9999px;
+  padding: 0.5rem 1rem;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.eos-primary-cta {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 1rem;
+  padding: 0.875rem 1.25rem;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #ffffff;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.eos-primary-cta:active {
+  transform: scale(0.98);
+}
+
+.eos-primary-cta:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.eos-stat-card {
+  border-radius: 1rem;
+  border: 1px solid var(--eos-border);
+  background: var(--eos-input);
+  padding: 1rem;
+}
+
+.eos-stat-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--eos-muted);
+}
+
+.eos-stat-card-value {
+  margin-top: 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--eos-text);
+}
+
+.eos-violet-accent {
+  color: #c4b5fd;
+}
+
+html.light .eos-violet-accent {
+  color: #6d28d9;
+}
+
+.eos-violet-accent-strong {
+  color: #a78bfa;
+}
+
+html.light .eos-violet-accent-strong {
+  color: #5b21b6;
+}
+
+.eos-amber-accent {
+  color: #fbbf24;
+}
+
+html.light .eos-amber-accent {
+  color: #d97706;
+}
+
+html.light .eos-themed-modal .text-violet-300,
+html.light .eos-themed-modal .text-violet-200,
+html.light .eos-modal-surface .text-violet-300,
+html.light .eos-modal-surface .text-violet-200 {
+  color: #6d28d9 !important;
+}
+
+html.light .eos-themed-modal [class*="text-violet-200/"],
+html.light .eos-modal-surface [class*="text-violet-200/"] {
+  color: #7c3aed !important;
+}
+
+/* Bannery ofertowe — jasny motyw na jasnym tle */
+html.light .eos-offer-feature-banner--hero .eos-offer-feature-banner-title {
+  color: #6d28d9 !important;
+}
+
+html.light .eos-offer-feature-banner--hero .eos-offer-feature-banner-subtitle {
+  color: var(--eos-text) !important;
+}
+
 @media print {
   @page {
     size: A4;

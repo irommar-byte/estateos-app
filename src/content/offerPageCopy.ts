@@ -105,6 +105,37 @@ export type OfferPageCopy = {
     errorGeneric: string;
     close: string;
   };
+  auction: {
+    bannerTitle: string;
+    bannerSubtitleLive: (price: string, bids: number) => string;
+    bannerSubtitleScheduled: (date: string) => string;
+    bannerCta: string;
+    liveBadge: string;
+    modalTitle: string;
+    modalSubtitle: string;
+    currentPrice: string;
+    nextMinBid: string;
+    yourBid: string;
+    bidCta: string;
+    leadingBadge: string;
+    outbidBadge: string;
+    timeLeft: string;
+    recentBids: string;
+    bidSuccess: string;
+    bidSuccessHint: string;
+    loginRequired: string;
+    hostCannotBid: string;
+    auctionClosed: string;
+    bidTooLow: string;
+    loadError: string;
+    loadErrorHint: string;
+    errorGeneric: string;
+    close: string;
+    quickBid: string;
+    endedTitle: string;
+    endedHint: string;
+    scheduledHint: string;
+  };
 };
 
 const PL: OfferPageCopy = {
@@ -214,6 +245,37 @@ const PL: OfferPageCopy = {
     errorGeneric: "Coś poszło nie tak. Spróbuj ponownie.",
     close: "Zamknij",
   },
+  auction: {
+    bannerTitle: "Licytacja online",
+    bannerSubtitleLive: (price, bids) => `Aktualna oferta: ${price} · ${bids} ofert`,
+    bannerSubtitleScheduled: (date) => `Start: ${date}`,
+    bannerCta: "Licytuj",
+    liveBadge: "Na żywo",
+    modalTitle: "Licytacja",
+    modalSubtitle: "Złóż ofertę wyższą od aktualnej",
+    currentPrice: "Aktualna cena",
+    nextMinBid: "Minimalna oferta",
+    yourBid: "Twoja oferta (PLN)",
+    bidCta: "Złóż ofertę",
+    leadingBadge: "Prowadzisz",
+    outbidBadge: "Przebito",
+    timeLeft: "Pozostało",
+    recentBids: "Ostatnie oferty",
+    bidSuccess: "Oferta złożona",
+    bidSuccessHint: "Otrzymasz powiadomienie, jeśli ktoś Cię przebije.",
+    loginRequired: "Zaloguj się, aby licytować.",
+    hostCannotBid: "Organizator nie może licytować własnej aukcji.",
+    auctionClosed: "Licytacja zakończona.",
+    bidTooLow: "Oferta za niska — podnieś kwotę.",
+    loadError: "Nie udało się wczytać licytacji",
+    loadErrorHint: "Licytacja mogła wygasnąć lub zostać anulowana.",
+    errorGeneric: "Coś poszło nie tak. Spróbuj ponownie.",
+    close: "Zamknij",
+    quickBid: "Szybka oferta",
+    endedTitle: "Licytacja zakończona",
+    endedHint: "Zwycięzca został powiadomiony. Skontaktuj się ze sprzedającym.",
+    scheduledHint: "Licytacja rozpocznie się automatycznie o wyznaczonej godzinie.",
+  },
 };
 
 const EN: OfferPageCopy = {
@@ -321,6 +383,37 @@ const EN: OfferPageCopy = {
     loadErrorHint: "The event may have expired or been cancelled.",
     errorGeneric: "Something went wrong. Please try again.",
     close: "Close",
+  },
+  auction: {
+    bannerTitle: "Online auction",
+    bannerSubtitleLive: (price, bids) => `Current bid: ${price} · ${bids} bids`,
+    bannerSubtitleScheduled: (date) => `Starts: ${date}`,
+    bannerCta: "Place bid",
+    liveBadge: "Live",
+    modalTitle: "Auction",
+    modalSubtitle: "Bid higher than the current price",
+    currentPrice: "Current price",
+    nextMinBid: "Minimum bid",
+    yourBid: "Your bid (PLN)",
+    bidCta: "Submit bid",
+    leadingBadge: "You are leading",
+    outbidBadge: "Outbid",
+    timeLeft: "Time left",
+    recentBids: "Recent bids",
+    bidSuccess: "Bid placed",
+    bidSuccessHint: "You will be notified if someone outbids you.",
+    loginRequired: "Sign in to place a bid.",
+    hostCannotBid: "The host cannot bid on their own auction.",
+    auctionClosed: "Auction has ended.",
+    bidTooLow: "Bid too low — increase your amount.",
+    loadError: "Could not load auction",
+    loadErrorHint: "The auction may have expired or been cancelled.",
+    errorGeneric: "Something went wrong. Please try again.",
+    close: "Close",
+    quickBid: "Quick bid",
+    endedTitle: "Auction ended",
+    endedHint: "The winner has been notified. Contact the seller to proceed.",
+    scheduledHint: "The auction will start automatically at the scheduled time.",
   },
 };
 

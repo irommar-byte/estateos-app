@@ -55,7 +55,40 @@ export type CrmExtendedDictionary = {
     exclusiveBadge: string;
     auctionTitle: string;
     auctionSubtitle: string;
-    auctionSoon: string;
+    auctionModalTitle: string;
+    auctionCreateTab: string;
+    auctionListTab: string;
+    auctionGuideTab: string;
+    auctionGuideLead: string;
+    auctionGuideStartPrice: string;
+    auctionGuideReserve: string;
+    auctionGuideIncrement: string;
+    auctionGuideAntiSnipe: string;
+    auctionGuideWinner: string;
+    auctionPickOffer: string;
+    auctionStartPrice: string;
+    auctionReservePrice: string;
+    auctionOptional: string;
+    auctionMinIncrement: string;
+    auctionAutoIncrement: string;
+    auctionStartsAt: string;
+    auctionEndsAt: string;
+    auctionOptionalTitle: string;
+    auctionOptionalDescription: string;
+    auctionPublish: string;
+    auctionNoOffers: string;
+    auctionBidsCount: string;
+    auctionViewOffer: string;
+    auctionCancel: string;
+    auctionEmpty: string;
+    auctionPublishError: string;
+    auctionCancelConfirm: string;
+    auctionCancelError: string;
+    auctionSuccess: string;
+    auctionStatusLive: string;
+    auctionStatusScheduled: string;
+    auctionStatusEnded: string;
+    auctionStatusCancelled: string;
     openHouseSpotsLeft: string;
     importModalLead: string;
     importLinkLabel: string;
@@ -367,8 +400,46 @@ const pl: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Informacje dla gości (opcjonalnie)",
     exclusiveBadge: "Ekskluzywne narzędzie Pro",
     auctionTitle: "Licytacje online",
-    auctionSubtitle: "Transparentne licytacje ofert — moduł aktywujemy w najbliższym czasie.",
-    auctionSoon: "Wkrótce",
+    auctionSubtitle: "Uruchom transparentną licytację — cena startowa, rezerwa i ochrona przed snajpingiem.",
+    auctionModalTitle: "Licytacja online",
+    auctionCreateTab: "Nowa",
+    auctionListTab: "Moje licytacje",
+    auctionGuideTab: "Instrukcja",
+    auctionGuideLead: "Jak działa licytacja EstateOS:",
+    auctionGuideStartPrice:
+      "Cena startowa — minimalna kwota pierwszej oferty. Kupujący mogą licytować tylko powyżej aktualnej ceny + krok.",
+    auctionGuideReserve:
+      "Cena rezerwy (opcjonalnie) — sprzedaż finalizuje się tylko gdy najwyższa oferta osiągnie rezerwę. Kupujący nie widzą kwoty rezerwy.",
+    auctionGuideIncrement:
+      "Krok licytacji — minimalna różnica między kolejnymi ofertami. Pusty = automatyczny krok (~1–2% ceny).",
+    auctionGuideAntiSnipe:
+      "Ochrona przed snajpingiem — oferta w ostatnich 2 minutach przedłuża licytację o 2 minuty.",
+    auctionGuideWinner:
+      "Po zakończeniu zwycięzca i sprzedający otrzymują powiadomienie push i mogą przejść do negocjacji w Dealroom.",
+    auctionPickOffer: "Wybierz ogłoszenie",
+    auctionStartPrice: "Cena startowa (PLN)",
+    auctionReservePrice: "Cena rezerwy (opcjonalnie)",
+    auctionOptional: "Opcjonalnie",
+    auctionMinIncrement: "Minimalny krok (PLN)",
+    auctionAutoIncrement: "Auto — system dobierze krok",
+    auctionStartsAt: "Start licytacji",
+    auctionEndsAt: "Koniec licytacji",
+    auctionOptionalTitle: "Tytuł licytacji (opcjonalnie)",
+    auctionOptionalDescription: "Opis dla licytujących (opcjonalnie)",
+    auctionPublish: "Opublikuj licytację",
+    auctionNoOffers: "Brak aktywnych ogłoszeń do przypisania.",
+    auctionBidsCount: "ofert",
+    auctionViewOffer: "Zobacz ogłoszenie",
+    auctionCancel: "Anuluj licytację",
+    auctionEmpty: "Nie masz jeszcze opublikowanych licytacji.",
+    auctionPublishError: "Nie udało się opublikować licytacji.",
+    auctionCancelConfirm: "Anulować tę licytację? Aktywne oferty zostaną unieważnione.",
+    auctionCancelError: "Nie udało się anulować licytacji.",
+    auctionSuccess: "Licytacja opublikowana — widoczna na ogłoszeniu i w hubie.",
+    auctionStatusLive: "Na żywo",
+    auctionStatusScheduled: "Zaplanowana",
+    auctionStatusEnded: "Zakończona",
+    auctionStatusCancelled: "Anulowana",
     openHouseSpotsLeft: "wolnych miejsc",
     importModalLead:
       "Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
@@ -719,8 +790,46 @@ const en: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Notes for guests (optional)",
     exclusiveBadge: "Exclusive Pro tool",
     auctionTitle: "Online auctions",
-    auctionSubtitle: "Transparent listing auctions — module coming soon.",
-    auctionSoon: "Coming soon",
+    auctionSubtitle: "Run a transparent auction — starting price, reserve, and anti-snipe protection.",
+    auctionModalTitle: "Online auction",
+    auctionCreateTab: "New",
+    auctionListTab: "My auctions",
+    auctionGuideTab: "Guide",
+    auctionGuideLead: "How EstateOS auctions work:",
+    auctionGuideStartPrice:
+      "Starting price — minimum for the first bid. Bidders must exceed current price plus increment.",
+    auctionGuideReserve:
+      "Reserve price (optional) — sale completes only if the top bid meets reserve. Bidders never see the reserve.",
+    auctionGuideIncrement:
+      "Bid increment — minimum gap between bids. Leave empty for automatic step (~1–2% of price).",
+    auctionGuideAntiSnipe:
+      "Anti-snipe — a bid in the last 2 minutes extends the auction by 2 minutes.",
+    auctionGuideWinner:
+      "When it ends, winner and seller get push notifications and can continue in Dealroom.",
+    auctionPickOffer: "Select listing",
+    auctionStartPrice: "Starting price (PLN)",
+    auctionReservePrice: "Reserve price (optional)",
+    auctionOptional: "Optional",
+    auctionMinIncrement: "Min increment (PLN)",
+    auctionAutoIncrement: "Auto — system picks increment",
+    auctionStartsAt: "Auction starts",
+    auctionEndsAt: "Auction ends",
+    auctionOptionalTitle: "Auction title (optional)",
+    auctionOptionalDescription: "Description for bidders (optional)",
+    auctionPublish: "Publish auction",
+    auctionNoOffers: "No active listings to assign.",
+    auctionBidsCount: "bids",
+    auctionViewOffer: "View listing",
+    auctionCancel: "Cancel auction",
+    auctionEmpty: "You have no published auctions yet.",
+    auctionPublishError: "Could not publish auction.",
+    auctionCancelConfirm: "Cancel this auction? Active bids will be voided.",
+    auctionCancelError: "Could not cancel auction.",
+    auctionSuccess: "Auction published — visible on the listing and in the hub.",
+    auctionStatusLive: "Live",
+    auctionStatusScheduled: "Scheduled",
+    auctionStatusEnded: "Ended",
+    auctionStatusCancelled: "Cancelled",
     openHouseSpotsLeft: "spots left",
     importModalLead:
       "Paste a listing link — click the field and the URL from your clipboard fills in automatically. Before conversion you choose a coupon or Plus credit. After payment the listing goes to review with publication reserved.",
@@ -1060,8 +1169,46 @@ const uk: CrmExtendedDictionary = {
     openHouseOptionalDescription: "Інформація для гостей (необов'язково)",
     exclusiveBadge: "Ексклюзивний інструмент Pro",
     auctionTitle: "Онлайн-аукціони",
-    auctionSubtitle: "Прозорі аукціони оголошень — модуль незабаром.",
-    auctionSoon: "Незабаром",
+    auctionSubtitle: "Запустіть прозорий аукціон — стартова ціна, резерв і захист від снайпінгу.",
+    auctionModalTitle: "Онлайн-аукціон",
+    auctionCreateTab: "Новий",
+    auctionListTab: "Мої аукціони",
+    auctionGuideTab: "Інструкція",
+    auctionGuideLead: "Як працює аукціон EstateOS:",
+    auctionGuideStartPrice:
+      "Стартова ціна — мінімум першої ставки. Ставки лише вище поточної ціни + крок.",
+    auctionGuideReserve:
+      "Резервна ціна (опційно) — продаж завершується лише якщо ставка досягне резерву. Резерв прихований.",
+    auctionGuideIncrement:
+      "Крок ставки — мінімальна різниця між ставками. Порожньо = автоматичний крок (~1–2%).",
+    auctionGuideAntiSnipe:
+      "Захист від снайпінгу — ставка в останні 2 хв продовжує аукціон на 2 хв.",
+    auctionGuideWinner:
+      "Після завершення переможець і продавець отримують push і можуть перейти в Dealroom.",
+    auctionPickOffer: "Оберіть оголошення",
+    auctionStartPrice: "Стартова ціна (PLN)",
+    auctionReservePrice: "Резервна ціна (опційно)",
+    auctionOptional: "Опційно",
+    auctionMinIncrement: "Мін. крок (PLN)",
+    auctionAutoIncrement: "Авто — система підбере крок",
+    auctionStartsAt: "Початок аукціону",
+    auctionEndsAt: "Кінець аукціону",
+    auctionOptionalTitle: "Назва аукціону (опційно)",
+    auctionOptionalDescription: "Опис для учасників (опційно)",
+    auctionPublish: "Опублікувати аукціон",
+    auctionNoOffers: "Немає активних оголошень для призначення.",
+    auctionBidsCount: "ставок",
+    auctionViewOffer: "Переглянути оголошення",
+    auctionCancel: "Скасувати аукціон",
+    auctionEmpty: "У вас ще немає опублікованих аукціонів.",
+    auctionPublishError: "Не вдалося опублікувати аукціон.",
+    auctionCancelConfirm: "Скасувати цей аукціон? Активні ставки будуть анульовані.",
+    auctionCancelError: "Не вдалося скасувати аукціон.",
+    auctionSuccess: "Аукціон опубліковано — видно в оголошенні та в хабі.",
+    auctionStatusLive: "Наживо",
+    auctionStatusScheduled: "Заплановано",
+    auctionStatusEnded: "Завершено",
+    auctionStatusCancelled: "Скасовано",
     openHouseSpotsLeft: "вільних місць",
     importModalLead:
       "Вставте посилання на оголошення — натисніть поле, і адреса з буфера вставиться автоматично. Перед конверсією оберіть купон або кредит Plus. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",

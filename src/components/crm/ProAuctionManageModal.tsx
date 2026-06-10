@@ -1,0 +1,413 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { ExternalLink, Gavel, Info, Loader2, X } from "lucide-react";
+import Link from "next/link";
+import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
+import type { AuctionEventRecord } from "@/lib/auctionTypes";
+
+type OfferRow = { id: number; title: string; city?: string; district?: string; price?: number };
+
+type Props = {
+  isOpen: boolean;
+  copy: CrmExtendedDictionary["proTools"];
+  activeOffers: OfferRow[];
+  onClose: () => void;
+  onChanged?: () => void;
+};
+
+function defaultStartIso() {
+  const d = new Date();
+  d.setHours(d.getHours() + 2, 0, 0, 0);
+  return d.toISOString().slice(0, 16);
+}
+
+function defaultEndIso() {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  d.setHours(20, 0, 0, 0);
+  return d.toISOString().slice(0, 16);
+}
+
+function formatMoney(n: number, currency: string) {
+  return `${Math.round(n).toLocaleString("pl-PL")} ${currency}`;
+}
+
+function statusLabel(status: string, copy: CrmExtendedDictionary["proTools"]) {
+  switch (status) {
+    case "LIVE":
+      return copy.auctionStatusLive;
+    case "SCHEDULED":
+      return copy.auctionStatusScheduled;
+    case "ENDED":
+    case "SETTLED":
+      return copy.auctionStatusEnded;
+    case "CANCELLED":
+      return copy.auctionStatusCancelled;
+    default:
+      return status;
+  }
+}
+
+export default function ProAuctionManageModal({
+  isOpen,
+  copy,
+  activeOffers,
+  onClose,
+  onChanged,
+}: Props) {
+  const [mounted, setMounted] = useState(false);
+  const [tab, setTab] = useState<"create" | "list" | "guide">("create");
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [events, setEvents] = useState<AuctionEventRecord[]>([]);
+  const [offerId, setOfferId] = useState<number | null>(null);
+  const [startPrice, setStartPrice] = useState("");
+  const [reservePrice, setReservePrice] = useState("");
+  const [minIncrement, setMinIncrement] = useState("");
+  const [startsAt, setStartsAt] = useState(defaultStartIso);
+  const [endsAt, setEndsAt] = useState(defaultEndIso);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => setMounted(true), []);
+
+  const selectedOffer = useMemo(
+    () => activeOffers.find((o) => o.id === offerId) ?? null,
+    [activeOffers, offerId]
+  );
+
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auction/events?scope=host", { cache: "no-store", credentials: "include" });
+      const data = await res.json();
+      setEvents(Array.isArray(data?.events) ? data.events : []);
+    } catch {
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTab("create");
+    setError("");
+    setSuccess("");
+    const first = activeOffers[0] ?? null;
+    setOfferId(first?.id ?? null);
+    if (first?.price) setStartPrice(String(Math.round(first.price)));
+    setStartsAt(defaultStartIso());
+    setEndsAt(defaultEndIso());
+    void loadEvents();
+  }, [isOpen, activeOffers, loadEvents]);
+
+  useEffect(() => {
+    if (selectedOffer?.price && !startPrice) {
+      setStartPrice(String(Math.round(selectedOffer.price)));
+    }
+  }, [selectedOffer, startPrice]);
+
+  const publish = async () => {
+    if (!offerId) return;
+    setSubmitting(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/auction/events", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId,
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          startPrice: Number(startPrice),
+          reservePrice: reservePrice ? Number(reservePrice) : undefined,
+          minIncrement: minIncrement ? Number(minIncrement) : undefined,
+          startsAt: new Date(startsAt).toISOString(),
+          endsAt: new Date(endsAt).toISOString(),
+          publish: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.event) {
+        setError(data?.message || copy.auctionPublishError);
+        return;
+      }
+      setSuccess(copy.auctionSuccess);
+      setTab("list");
+      await loadEvents();
+      onChanged?.();
+    } catch {
+      setError(copy.auctionPublishError);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const cancelEvent = async (eventId: number) => {
+    if (!window.confirm(copy.auctionCancelConfirm)) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/auction/events/${eventId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "CANCELLED" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.message || copy.auctionCancelError);
+        return;
+      }
+      await loadEvents();
+      onChanged?.();
+    } catch {
+      setError(copy.auctionCancelError);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!mounted) return null;
+
+  const modal = (
+    <AnimatePresence>
+      {isOpen ? (
+        <div className="fixed inset-0 z-[999998] flex items-start justify-center overflow-y-auto p-4 pb-10 pt-10 sm:pt-16">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="eos-modal-backdrop absolute inset-0"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            onClick={(e) => e.stopPropagation()}
+            className="eos-modal-surface eos-modal-shell eos-themed-modal relative my-auto w-full max-w-xl overflow-hidden rounded-[2rem] border"
+          >
+            <div className="flex items-center justify-between border-b border-[var(--eos-border)] px-6 py-5">
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={{ rotate: [0, -8, 8, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/15 text-violet-400"
+                >
+                  <Gavel size={20} />
+                </motion.div>
+                <h3 className="text-[17px] font-semibold tracking-tight text-[var(--eos-text)]">{copy.auctionModalTitle}</h3>
+              </div>
+              <button type="button" onClick={onClose} className="eos-pro-muted rounded-full bg-[var(--eos-input)] p-2 transition hover:bg-[var(--eos-border)]">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-b border-[var(--eos-border)] px-6 py-3">
+              {(["create", "list", "guide"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`eos-tab-pill ${
+                    tab === key ? "bg-violet-500/15 eos-violet-accent-strong" : "text-[var(--eos-muted)]"
+                  }`}
+                >
+                  {key === "create" ? copy.auctionCreateTab : key === "list" ? copy.auctionListTab : copy.auctionGuideTab}
+                </button>
+              ))}
+            </div>
+
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto p-6">
+              {error ? <p className="text-sm text-red-400">{error}</p> : null}
+              {success ? <p className="text-sm text-emerald-400">{success}</p> : null}
+
+              {tab === "guide" ? (
+                <div className="space-y-4 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <Info size={18} className="mt-0.5 shrink-0 text-violet-400" />
+                    <div className="space-y-3 text-sm leading-relaxed text-[var(--eos-text)]/90">
+                      <p className="font-semibold">{copy.auctionGuideLead}</p>
+                      <ul className="list-disc space-y-2 pl-5 eos-pro-muted">
+                        <li>{copy.auctionGuideStartPrice}</li>
+                        <li>{copy.auctionGuideReserve}</li>
+                        <li>{copy.auctionGuideIncrement}</li>
+                        <li>{copy.auctionGuideAntiSnipe}</li>
+                        <li>{copy.auctionGuideWinner}</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {tab === "create" ? (
+                activeOffers.length ? (
+                  <>
+                    <div>
+                      <p className="eos-field-label">{copy.auctionPickOffer}</p>
+                      <div className="space-y-2">
+                        {activeOffers.map((offer) => (
+                          <button
+                            key={offer.id}
+                            type="button"
+                            onClick={() => {
+                              setOfferId(offer.id);
+                              if (offer.price) setStartPrice(String(Math.round(offer.price)));
+                            }}
+                            className={`w-full rounded-xl border px-4 py-3 text-left ${
+                              offerId === offer.id
+                                ? "border-violet-500/50 bg-violet-500/10"
+                                : "border-[var(--eos-border)] bg-[var(--eos-input)]"
+                            }`}
+                          >
+                            <p className="text-sm font-semibold text-[var(--eos-text)]">{offer.title}</p>
+                            <p className="eos-pro-muted text-xs">
+                              #{offer.id} · {offer.city} · {offer.district}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="eos-field-label">{copy.auctionStartPrice}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={startPrice}
+                          onChange={(e) => setStartPrice(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="eos-field-label">{copy.auctionReservePrice}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={copy.auctionOptional}
+                          value={reservePrice}
+                          onChange={(e) => setReservePrice(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                        />
+                      </label>
+                      <label className="block col-span-2">
+                        <span className="eos-field-label">{copy.auctionMinIncrement}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={copy.auctionAutoIncrement}
+                          value={minIncrement}
+                          onChange={(e) => setMinIncrement(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="eos-field-label">{copy.auctionStartsAt}</span>
+                        <input
+                          type="datetime-local"
+                          value={startsAt}
+                          onChange={(e) => setStartsAt(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="eos-field-label">{copy.auctionEndsAt}</span>
+                        <input
+                          type="datetime-local"
+                          value={endsAt}
+                          onChange={(e) => setEndsAt(e.target.value)}
+                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                        />
+                      </label>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder={copy.auctionOptionalTitle}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                    />
+                    <textarea
+                      rows={3}
+                      placeholder={copy.auctionOptionalDescription}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                    />
+
+                    <button
+                      type="button"
+                      disabled={submitting || !offerId || !startPrice}
+                      onClick={() => void publish()}
+                      className="eos-primary-cta bg-violet-600 hover:bg-violet-500"
+                    >
+                      {submitting ? <Loader2 size={16} className="animate-spin" /> : <Gavel size={16} />}
+                      {copy.auctionPublish}
+                    </button>
+                  </>
+                ) : (
+                  <p className="eos-pro-muted text-sm">{copy.auctionNoOffers}</p>
+                )
+              ) : null}
+
+              {tab === "list" ? (
+                loading ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="animate-spin text-violet-400" />
+                  </div>
+                ) : events.length ? (
+                  <div className="space-y-3">
+                    {events.map((ev) => (
+                      <div key={ev.id} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-[var(--eos-text)]">{ev.title}</p>
+                            <p className="eos-pro-muted mt-1 text-xs">
+                              {statusLabel(ev.status, copy)} · {formatMoney(ev.currentPrice || ev.startPrice, ev.currency)} · {ev.bidCount} {copy.auctionBidsCount}
+                            </p>
+                          </div>
+                          <Link
+                            href={`/oferta/${ev.offerId}`}
+                            className="inline-flex items-center gap-1 text-[12px] font-semibold eos-violet-accent"
+                          >
+                            {copy.auctionViewOffer}
+                            <ExternalLink size={12} />
+                          </Link>
+                        </div>
+                        {["SCHEDULED", "LIVE", "DRAFT"].includes(ev.status) && ev.bidCount === 0 ? (
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => void cancelEvent(ev.id)}
+                            className="mt-3 text-xs font-semibold text-red-400"
+                          >
+                            {copy.auctionCancel}
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="eos-pro-muted text-sm">{copy.auctionEmpty}</p>
+                )
+              ) : null}
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+    </AnimatePresence>
+  );
+
+  return createPortal(modal, document.body);
+}
