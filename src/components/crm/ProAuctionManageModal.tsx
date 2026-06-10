@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Gavel, Info, Loader2, X } from "lucide-react";
+import { CheckCircle2, ExternalLink, Gavel, Info, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
+import {
+  datetimeLocalToIso,
+  defaultAuctionEndLocal,
+  defaultAuctionStartLocal,
+} from "@/lib/datetimeLocal";
 import type { AuctionEventRecord } from "@/lib/auctionTypes";
 
 type OfferRow = { id: number; title: string; city?: string; district?: string; price?: number };
@@ -18,18 +23,8 @@ type Props = {
   onChanged?: () => void;
 };
 
-function defaultStartIso() {
-  const d = new Date();
-  d.setHours(d.getHours() + 2, 0, 0, 0);
-  return d.toISOString().slice(0, 16);
-}
-
-function defaultEndIso() {
-  const d = new Date();
-  d.setDate(d.getDate() + 3);
-  d.setHours(20, 0, 0, 0);
-  return d.toISOString().slice(0, 16);
-}
+const MIN_DURATION_MS = 60 * 60 * 1000;
+const MAX_DURATION_MS = 14 * 24 * 60 * 60 * 1000;
 
 function formatMoney(n: number, currency: string) {
   return `${Math.round(n).toLocaleString("pl-PL")} ${currency}`;
@@ -51,6 +46,10 @@ function statusLabel(status: string, copy: CrmExtendedDictionary["proTools"]) {
   }
 }
 
+function FieldHint({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--eos-muted)]">{children}</p>;
+}
+
 export default function ProAuctionManageModal({
   isOpen,
   copy,
@@ -64,15 +63,17 @@ export default function ProAuctionManageModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [publishedOfferId, setPublishedOfferId] = useState<number | null>(null);
   const [events, setEvents] = useState<AuctionEventRecord[]>([]);
   const [offerId, setOfferId] = useState<number | null>(null);
   const [startPrice, setStartPrice] = useState("");
   const [reservePrice, setReservePrice] = useState("");
   const [minIncrement, setMinIncrement] = useState("");
-  const [startsAt, setStartsAt] = useState(defaultStartIso);
-  const [endsAt, setEndsAt] = useState(defaultEndIso);
+  const [startsAt, setStartsAt] = useState(defaultAuctionStartLocal);
+  const [endsAt, setEndsAt] = useState(defaultAuctionEndLocal);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const alertRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -99,11 +100,12 @@ export default function ProAuctionManageModal({
     setTab("create");
     setError("");
     setSuccess("");
+    setPublishedOfferId(null);
     const first = activeOffers[0] ?? null;
     setOfferId(first?.id ?? null);
     if (first?.price) setStartPrice(String(Math.round(first.price)));
-    setStartsAt(defaultStartIso());
-    setEndsAt(defaultEndIso());
+    setStartsAt(defaultAuctionStartLocal());
+    setEndsAt(defaultAuctionEndLocal());
     void loadEvents();
   }, [isOpen, activeOffers, loadEvents]);
 
@@ -113,8 +115,45 @@ export default function ProAuctionManageModal({
     }
   }, [selectedOffer, startPrice]);
 
+  useEffect(() => {
+    if (!error && !success) return;
+    alertRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [error, success]);
+
+  const validateForm = (): string | null => {
+    if (!offerId) return copy.auctionNoOffers;
+    const price = Number(startPrice);
+    if (!Number.isFinite(price) || price <= 0) return copy.auctionPublishError;
+    if (reservePrice) {
+      const reserve = Number(reservePrice);
+      if (!Number.isFinite(reserve) || reserve < price) {
+        return copy.auctionGuideReserve;
+      }
+    }
+    const start = new Date(startsAt);
+    const end = new Date(endsAt);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return copy.auctionPublishError;
+    }
+    if (start.getTime() <= Date.now()) {
+      return copy.auctionValidationStartPast;
+    }
+    const duration = end.getTime() - start.getTime();
+    if (duration < MIN_DURATION_MS || duration > MAX_DURATION_MS) {
+      return copy.auctionValidationDuration;
+    }
+    return null;
+  };
+
   const publish = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      setSuccess("");
+      return;
+    }
     if (!offerId) return;
+
     setSubmitting(true);
     setError("");
     setSuccess("");
@@ -130,8 +169,8 @@ export default function ProAuctionManageModal({
           startPrice: Number(startPrice),
           reservePrice: reservePrice ? Number(reservePrice) : undefined,
           minIncrement: minIncrement ? Number(minIncrement) : undefined,
-          startsAt: new Date(startsAt).toISOString(),
-          endsAt: new Date(endsAt).toISOString(),
+          startsAt: datetimeLocalToIso(startsAt),
+          endsAt: datetimeLocalToIso(endsAt),
           publish: true,
         }),
       });
@@ -140,7 +179,8 @@ export default function ProAuctionManageModal({
         setError(data?.message || copy.auctionPublishError);
         return;
       }
-      setSuccess(copy.auctionSuccess);
+      setPublishedOfferId(offerId);
+      setSuccess(copy.auctionPublishSuccessBody);
       setTab("list");
       await loadEvents();
       onChanged?.();
@@ -228,23 +268,54 @@ export default function ProAuctionManageModal({
             </div>
 
             <div className="max-h-[70vh] space-y-4 overflow-y-auto p-6">
-              {error ? <p className="text-sm text-red-400">{error}</p> : null}
-              {success ? <p className="text-sm text-emerald-400">{success}</p> : null}
+              <div ref={alertRef} className="space-y-3">
+                {error ? (
+                  <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
+                ) : null}
+                {success ? (
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-emerald-300">{copy.auctionPublishSuccessTitle}</p>
+                        <p className="text-sm text-emerald-400/90">{success}</p>
+                        {publishedOfferId ? (
+                          <Link
+                            href={`/oferta/${publishedOfferId}`}
+                            className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-300 underline-offset-2 hover:underline"
+                          >
+                            {copy.auctionViewPublishedOffer}
+                            <ExternalLink size={12} />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
 
               {tab === "guide" ? (
-                <div className="space-y-4 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
-                  <div className="flex items-start gap-3">
-                    <Info size={18} className="mt-0.5 shrink-0 text-violet-400" />
-                    <div className="space-y-3 text-sm leading-relaxed text-[var(--eos-text)]/90">
-                      <p className="font-semibold">{copy.auctionGuideLead}</p>
-                      <ul className="list-disc space-y-2 pl-5 eos-pro-muted">
-                        <li>{copy.auctionGuideStartPrice}</li>
-                        <li>{copy.auctionGuideReserve}</li>
-                        <li>{copy.auctionGuideIncrement}</li>
-                        <li>{copy.auctionGuideAntiSnipe}</li>
-                        <li>{copy.auctionGuideWinner}</li>
-                      </ul>
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <Info size={18} className="mt-0.5 shrink-0 text-violet-400" />
+                      <div className="space-y-3 text-sm leading-relaxed text-[var(--eos-text)]/90">
+                        <p className="font-semibold">{copy.auctionGuideLead}</p>
+                        <ul className="list-disc space-y-2 pl-5 eos-pro-muted">
+                          <li>{copy.auctionGuideStartPrice}</li>
+                          <li>{copy.auctionGuideReserve}</li>
+                          <li>{copy.auctionGuideIncrement}</li>
+                          <li>{copy.auctionGuideAntiSnipe}</li>
+                          <li>{copy.auctionGuideWinner}</li>
+                        </ul>
+                      </div>
                     </div>
+                  </div>
+                  <div className="space-y-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 p-4 text-sm leading-relaxed text-[var(--eos-text)]/90">
+                    <p><span className="font-semibold text-[var(--eos-text)]">1.</span> {copy.auctionGuideWhere}</p>
+                    <p><span className="font-semibold text-[var(--eos-text)]">2.</span> {copy.auctionGuideWho}</p>
+                    <p><span className="font-semibold text-[var(--eos-text)]">3.</span> {copy.auctionGuideFlow}</p>
+                    <p><span className="font-semibold text-[var(--eos-text)]">4.</span> {copy.auctionGuideNotifications}</p>
                   </div>
                 </div>
               ) : null}
@@ -252,9 +323,14 @@ export default function ProAuctionManageModal({
               {tab === "create" ? (
                 activeOffers.length ? (
                   <>
+                    <p className="rounded-2xl border border-violet-500/15 bg-violet-500/5 px-4 py-3 text-[13px] leading-relaxed text-[var(--eos-text)]/90">
+                      {copy.auctionCreateIntro}
+                    </p>
+
                     <div>
                       <p className="eos-field-label">{copy.auctionPickOffer}</p>
-                      <div className="space-y-2">
+                      <FieldHint>{copy.auctionPickOfferHint}</FieldHint>
+                      <div className="mt-2 space-y-2">
                         {activeOffers.map((offer) => (
                           <button
                             key={offer.id}
@@ -263,10 +339,10 @@ export default function ProAuctionManageModal({
                               setOfferId(offer.id);
                               if (offer.price) setStartPrice(String(Math.round(offer.price)));
                             }}
-                            className={`w-full rounded-xl border px-4 py-3 text-left ${
+                            className={`w-full rounded-xl border px-4 py-3 text-left transition ${
                               offerId === offer.id
                                 ? "border-violet-500/50 bg-violet-500/10"
-                                : "border-[var(--eos-border)] bg-[var(--eos-input)]"
+                                : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:border-violet-500/25"
                             }`}
                           >
                             <p className="text-sm font-semibold text-[var(--eos-text)]">{offer.title}</p>
@@ -278,79 +354,90 @@ export default function ProAuctionManageModal({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-4">
                       <label className="block">
                         <span className="eos-field-label">{copy.auctionStartPrice}</span>
+                        <FieldHint>{copy.auctionStartPriceHint}</FieldHint>
                         <input
                           type="number"
                           min={1}
                           value={startPrice}
                           onChange={(e) => setStartPrice(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                       <label className="block">
                         <span className="eos-field-label">{copy.auctionReservePrice}</span>
+                        <FieldHint>{copy.auctionReservePriceHint}</FieldHint>
                         <input
                           type="number"
                           min={0}
                           placeholder={copy.auctionOptional}
                           value={reservePrice}
                           onChange={(e) => setReservePrice(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
-                      <label className="block col-span-2">
+                      <label className="col-span-2 block">
                         <span className="eos-field-label">{copy.auctionMinIncrement}</span>
+                        <FieldHint>{copy.auctionMinIncrementHint}</FieldHint>
                         <input
                           type="number"
                           min={0}
                           placeholder={copy.auctionAutoIncrement}
                           value={minIncrement}
                           onChange={(e) => setMinIncrement(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                       <label className="block">
                         <span className="eos-field-label">{copy.auctionStartsAt}</span>
+                        <FieldHint>{copy.auctionStartsAtHint}</FieldHint>
                         <input
                           type="datetime-local"
                           value={startsAt}
                           onChange={(e) => setStartsAt(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                       <label className="block">
                         <span className="eos-field-label">{copy.auctionEndsAt}</span>
+                        <FieldHint>{copy.auctionEndsAtHint}</FieldHint>
                         <input
                           type="datetime-local"
                           value={endsAt}
                           onChange={(e) => setEndsAt(e.target.value)}
-                          className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
+                          className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
                         />
                       </label>
                     </div>
 
-                    <input
-                      type="text"
-                      placeholder={copy.auctionOptionalTitle}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
-                    />
-                    <textarea
-                      rows={3}
-                      placeholder={copy.auctionOptionalDescription}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-sm text-[var(--eos-text)]"
-                    />
+                    <label className="block">
+                      <span className="eos-field-label">{copy.auctionOptionalTitle}</span>
+                      <FieldHint>{copy.auctionOptionalTitleHint}</FieldHint>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="eos-field-label">{copy.auctionOptionalDescription}</span>
+                      <FieldHint>{copy.auctionOptionalDescriptionHint}</FieldHint>
+                      <textarea
+                        rows={3}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        className="mt-2 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)]"
+                      />
+                    </label>
 
                     <button
                       type="button"
                       disabled={submitting || !offerId || !startPrice}
                       onClick={() => void publish()}
-                      className="eos-primary-cta bg-violet-600 hover:bg-violet-500"
+                      className="eos-primary-cta flex w-full items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50"
                     >
                       {submitting ? <Loader2 size={16} className="animate-spin" /> : <Gavel size={16} />}
                       {copy.auctionPublish}

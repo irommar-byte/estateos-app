@@ -89,6 +89,24 @@ export type CrmExtendedDictionary = {
     auctionStatusScheduled: string;
     auctionStatusEnded: string;
     auctionStatusCancelled: string;
+    auctionCreateIntro: string;
+    auctionPickOfferHint: string;
+    auctionStartPriceHint: string;
+    auctionReservePriceHint: string;
+    auctionMinIncrementHint: string;
+    auctionStartsAtHint: string;
+    auctionEndsAtHint: string;
+    auctionOptionalTitleHint: string;
+    auctionOptionalDescriptionHint: string;
+    auctionGuideWhere: string;
+    auctionGuideWho: string;
+    auctionGuideFlow: string;
+    auctionGuideNotifications: string;
+    auctionPublishSuccessTitle: string;
+    auctionPublishSuccessBody: string;
+    auctionViewPublishedOffer: string;
+    auctionValidationStartPast: string;
+    auctionValidationDuration: string;
     openHouseSpotsLeft: string;
     importModalLead: string;
     importLinkLabel: string;
@@ -440,6 +458,36 @@ const pl: CrmExtendedDictionary = {
     auctionStatusScheduled: "Zaplanowana",
     auctionStatusEnded: "Zakończona",
     auctionStatusCancelled: "Anulowana",
+    auctionCreateIntro:
+      "Po publikacji licytacja pojawi się na Twoim ogłoszeniu (fioletowy baner), w hubie „Na żywo” oraz w aplikacji mobilnej. Każdy zalogowany kupujący może składać oferty — Ty otrzymujesz powiadomienia o każdej nowej kwocie.",
+    auctionPickOfferHint: "Wybierz ogłoszenie, które chcesz wystawić na licytację. Może być aktywna tylko jedna licytacja na ofertę.",
+    auctionStartPriceHint:
+      "Minimalna kwota pierwszej oferty. Np. przy cenie 450 000 zł często ustawia się 400 000–430 000 zł, aby przyciągnąć licytujących.",
+    auctionReservePriceHint:
+      "Ukryta kwota, od której sprzedaż ma sens. Jeśli najwyższa oferta jej nie osiągnie, nie finalizujesz transakcji — kupujący tej kwoty nie widzą.",
+    auctionMinIncrementHint:
+      "O ile musi wzrosnąć każda kolejna oferta. Zostaw puste — system ustawi krok automatycznie (ok. 1–2% aktualnej ceny).",
+    auctionStartsAtHint:
+      "Godzina, od której można składać oferty. Musi być co najmniej 1 godzina w przyszłości (liczone wg Twojej strefy czasowej).",
+    auctionEndsAtHint:
+      "Moment zamknięcia licytacji (min. 1 h, max. 14 dni od startu). Oferta w ostatnich 2 min przedłuża czas o 2 min.",
+    auctionOptionalTitleHint: "Krótki nagłówek na banerze, np. „Licytacja 3-pokojowego mieszkania na Pradze”.",
+    auctionOptionalDescriptionHint:
+      "Informacje dla licytujących: termin oględzin, warunki wpłaty wadium, kontakt po wygranej itd.",
+    auctionGuideWhere:
+      "Gdzie licytować: na stronie ogłoszenia (baner „Licytuj”), w aplikacji mobilnej EstateOS (Profil → Licytacja → Na żywo) oraz z powiadomień push.",
+    auctionGuideWho:
+      "Kto widzi licytację: wszyscy użytkownicy przeglądający Twoje ogłoszenie. Licytować mogą zalogowani kupujący (nie Ty jako organizator).",
+    auctionGuideFlow:
+      "Przebieg: publikujesz → kupujący składają rosnące oferty → po zakończeniu zwycięzca i Ty dostajecie push → kontaktujecie się i możecie przejść do Dealroom.",
+    auctionGuideNotifications:
+      "Powiadomienia: dostajesz push przy każdej nowej ofercie; licytujący dostają push gdy ktoś ich przebije; po wygranej obie strony dostają informację o wyniku.",
+    auctionPublishSuccessTitle: "Licytacja opublikowana",
+    auctionPublishSuccessBody:
+      "Baner licytacji jest już widoczny na ogłoszeniu. Możesz śledzić oferty w zakładce „Moje licytacje”.",
+    auctionViewPublishedOffer: "Zobacz ogłoszenie z banerem",
+    auctionValidationStartPast: "Ustaw start licytacji co najmniej godzinę w przyszłości.",
+    auctionValidationDuration: "Licytacja musi trwać od 1 godziny do 14 dni.",
     openHouseSpotsLeft: "wolnych miejsc",
     importModalLead:
       "Wklej link do ogłoszenia — kliknij w pole, a adres ze schowka wklei się automatycznie. Przed konwersją wybierzesz kupon lub kredyt Plus. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
@@ -830,6 +878,36 @@ const en: CrmExtendedDictionary = {
     auctionStatusScheduled: "Scheduled",
     auctionStatusEnded: "Ended",
     auctionStatusCancelled: "Cancelled",
+    auctionCreateIntro:
+      "After publishing, the auction appears on your listing (purple banner), in the Live hub, and in the mobile app. Any signed-in buyer can bid — you get notified on every new amount.",
+    auctionPickOfferHint: "Pick the listing to auction. Only one active auction per listing is allowed.",
+    auctionStartPriceHint:
+      "Minimum first bid. E.g. for a 450,000 PLN listing, hosts often set 400,000–430,000 PLN to attract bidders.",
+    auctionReservePriceHint:
+      "Hidden minimum you would accept. If the top bid does not reach it, you do not finalize — bidders never see this amount.",
+    auctionMinIncrementHint:
+      "How much each next bid must increase by. Leave empty — the system sets a step automatically (~1–2% of current price).",
+    auctionStartsAtHint:
+      "When bidding opens. Must be in the future (your local timezone).",
+    auctionEndsAtHint:
+      "When bidding closes (min. 1 h, max. 14 days from start). A bid in the last 2 minutes extends the end by 2 minutes.",
+    auctionOptionalTitleHint: "Short banner headline, e.g. “Auction: 3-room flat in Praga”.",
+    auctionOptionalDescriptionHint:
+      "Info for bidders: viewing times, deposit terms, contact after winning, etc.",
+    auctionGuideWhere:
+      "Where to bid: on the listing page (Bid banner), in the EstateOS mobile app (Profile → Auction → Live), and via push notifications.",
+    auctionGuideWho:
+      "Who sees it: anyone viewing your listing. Only signed-in buyers can bid (not you as the host).",
+    auctionGuideFlow:
+      "Flow: you publish → buyers place rising bids → when it ends, winner and you get a push → you contact each other and can move to Dealroom.",
+    auctionGuideNotifications:
+      "Notifications: you get a push on every new bid; bidders get a push when outbid; both sides get the result after close.",
+    auctionPublishSuccessTitle: "Auction published",
+    auctionPublishSuccessBody:
+      "The auction banner is live on your listing. Track bids under My auctions.",
+    auctionViewPublishedOffer: "View listing with banner",
+    auctionValidationStartPast: "Set the auction start at least a few minutes in the future.",
+    auctionValidationDuration: "The auction must last between 1 hour and 14 days.",
     openHouseSpotsLeft: "spots left",
     importModalLead:
       "Paste a listing link — click the field and the URL from your clipboard fills in automatically. Before conversion you choose a coupon or Plus credit. After payment the listing goes to review with publication reserved.",
@@ -1209,6 +1287,36 @@ const uk: CrmExtendedDictionary = {
     auctionStatusScheduled: "Заплановано",
     auctionStatusEnded: "Завершено",
     auctionStatusCancelled: "Скасовано",
+    auctionCreateIntro:
+      "Після публікації аукціон з’явиться в оголошенні (фіолетовий банер), у хабі «Наживо» та в мобільному застосунку. Будь-який авторизований покупець може ставити — ви отримуєте сповіщення про кожну нову суму.",
+    auctionPickOfferHint: "Оберіть оголошення для аукціону. Лише один активний аукціон на оголошення.",
+    auctionStartPriceHint:
+      "Мінімальна перша ставка. Напр., для 450 000 PLN часто ставлять 400 000–430 000 PLN, щоб залучити учасників.",
+    auctionReservePriceHint:
+      "Прихований мінімум, від якого продаж має сенс. Якщо найвища ставка його не досягне — угоду не фіналізуєте; покупці цю суму не бачать.",
+    auctionMinIncrementHint:
+      "На скільки має зрости кожна наступна ставка. Залиште порожнім — система встановить крок автоматично (~1–2% поточної ціни).",
+    auctionStartsAtHint:
+      "Час відкриття ставок. Має бути у майбутньому (ваш локальний час).",
+    auctionEndsAtHint:
+      "Час закриття (мін. 1 год, макс. 14 днів від старту). Ставка в останні 2 хв продовжує час на 2 хв.",
+    auctionOptionalTitleHint: "Короткий заголовок банера, напр. «Аукціон 3-кімнатної на Празі».",
+    auctionOptionalDescriptionHint:
+      "Інформація для учасників: перегляди, умови застави, контакт після перемоги тощо.",
+    auctionGuideWhere:
+      "Де ставити: на сторінці оголошення (банер «Ставка»), у мобільному EstateOS (Профіль → Аукціон → Наживо) та через push.",
+    auctionGuideWho:
+      "Хто бачить: усі, хто переглядає оголошення. Ставити можуть лише авторизовані покупці (не ви як організатор).",
+    auctionGuideFlow:
+      "Процес: публікуєте → покупці підвищують ставки → після завершення переможець і ви отримуєте push → контакт і можливий Dealroom.",
+    auctionGuideNotifications:
+      "Сповіщення: push при кожній новій ставці; учасники — коли їх перебили; обидві сторони — результат після закриття.",
+    auctionPublishSuccessTitle: "Аукціон опубліковано",
+    auctionPublishSuccessBody:
+      "Банер аукціону вже на оголошенні. Ставки — у вкладці «Мої аукціони».",
+    auctionViewPublishedOffer: "Переглянути оголошення з банером",
+    auctionValidationStartPast: "Встановіть старт аукціону хоча б на кілька хвилин у майбутньому.",
+    auctionValidationDuration: "Аукціон має тривати від 1 години до 14 днів.",
     openHouseSpotsLeft: "вільних місць",
     importModalLead:
       "Вставте посилання на оголошення — натисніть поле, і адреса з буфера вставиться автоматично. Перед конверсією оберіть купон або кредит Plus. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
