@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-
-const GAP = '   ◆   ';
+import { Animated, Easing, LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   text: string;
@@ -10,9 +8,12 @@ type Props = {
   height?: number;
   backgroundColor?: string;
   borderBottomRadius?: number;
+  /** restart = wjeżdża z prawej, przejeżdża, znika po lewej, pauza, znów z prawej; once = jeden przejazd */
+  repeat?: 'loop' | 'restart' | 'once';
+  pauseMs?: number;
+  onPassComplete?: () => void;
 };
 
-/** Jedna linia, zawsze przewija w kółko (bez statycznego skrótu …). */
 export default function ScrollingNewsLine({
   text,
   textStyle,
@@ -20,30 +21,86 @@ export default function ScrollingNewsLine({
   height = 32,
   backgroundColor,
   borderBottomRadius,
+  repeat = 'restart',
+  pauseMs = 1200,
+  onPassComplete,
 }: Props) {
   const scrollX = useRef(new Animated.Value(0)).current;
-  const [segmentWidth, setSegmentWidth] = useState(0);
-  const segment = `${text}${GAP}`;
-  const loopDistance = Math.max(segmentWidth, 120);
+  const [textWidth, setTextWidth] = useState(0);
+  const [laneWidth, setLaneWidth] = useState(0);
+
+  const onLaneLayout = (e: LayoutChangeEvent) => {
+    setLaneWidth(e.nativeEvent.layout.width);
+  };
 
   useEffect(() => {
-    scrollX.setValue(0);
-    if (segmentWidth <= 0) return;
-    const duration = Math.max(6000, Math.round((loopDistance / pxPerSec) * 1000));
-    const loop = Animated.loop(
-      Animated.timing(scrollX, {
-        toValue: -loopDistance,
-        duration,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [text, segmentWidth, loopDistance, pxPerSec, scrollX]);
+    if (repeat === 'loop') {
+      if (textWidth <= 0) return;
+      const GAP = '   ◆   ';
+      const loopDistance = Math.max(textWidth, 120);
+      scrollX.setValue(0);
+      const duration = Math.max(6000, Math.round((loopDistance / pxPerSec) * 1000));
+      const loop = Animated.loop(
+        Animated.timing(scrollX, {
+          toValue: -loopDistance,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+
+    if (textWidth <= 0 || laneWidth <= 0) return;
+
+    const startX = laneWidth;
+    const endX = -textWidth;
+    const distance = startX - endX;
+    const duration = Math.max(repeat === 'once' ? 5500 : 3500, Math.round((distance / pxPerSec) * 1000));
+
+    let cancelled = false;
+    const runPass = () => {
+      if (cancelled) return;
+      scrollX.setValue(startX);
+      if (repeat === 'once') {
+        Animated.timing(scrollX, {
+          toValue: endX,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }).start(({ finished }) => {
+          if (!finished || cancelled) return;
+          onPassComplete?.();
+        });
+        return;
+      }
+      Animated.sequence([
+        Animated.timing(scrollX, {
+          toValue: endX,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.delay(pauseMs),
+      ]).start(({ finished }) => {
+        if (!finished || cancelled) return;
+        runPass();
+      });
+    };
+
+    runPass();
+    return () => {
+      cancelled = true;
+      scrollX.stopAnimation();
+    };
+  }, [text, textWidth, laneWidth, pxPerSec, pauseMs, repeat, scrollX, onPassComplete]);
+
+  const segment = repeat === 'loop' ? `${text}   ◆   ` : text;
 
   return (
     <View
+      onLayout={onLaneLayout}
       style={[
         styles.lane,
         {
@@ -57,14 +114,14 @@ export default function ScrollingNewsLine({
       <View style={styles.measureOffscreen} pointerEvents="none">
         <Text
           style={[styles.text, textStyle]}
-          onLayout={(e) => setSegmentWidth(e.nativeEvent.layout.width)}
+          onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
         >
-          {segment}
+          {text}
         </Text>
       </View>
       <Animated.View style={[styles.track, { transform: [{ translateX: scrollX }] }]}>
         <Text style={[styles.text, textStyle]}>{segment}</Text>
-        <Text style={[styles.text, textStyle]}>{segment}</Text>
+        {repeat === 'loop' ? <Text style={[styles.text, textStyle]}>{segment}</Text> : null}
       </Animated.View>
     </View>
   );

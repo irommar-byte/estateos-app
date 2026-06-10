@@ -11,6 +11,9 @@ import AuctionHubScreen from './src/screens/AuctionHubScreen';
 import AuctionCreateScreen from './src/screens/AuctionCreateScreen';
 import AuctionEventScreen from './src/screens/AuctionEventScreen';
 import OpenHouseLiveOrchestrator from './src/components/openHouse/OpenHouseLiveOrchestrator';
+import TabBarBackground, { TAB_BAR_BASE_HEIGHT } from './src/components/tabBar/TabBarBackground';
+import TabBarLiveTicker from './src/components/tabBar/TabBarLiveTicker';
+import TabBarTickerEngine from './src/components/tabBar/TabBarTickerEngine';
 import { useOpenHouseLiveStore } from './src/store/useOpenHouseLiveStore';
 import CircularLabelRing from './src/components/CircularLabelRing';
 import { IAPManager } from './src/services/iapManager';
@@ -815,7 +818,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
   const unreadContactCount = useUnreadBadgeStore((state) => state.unreadContactCount);
   const messagesTabBadgeCount = unreadDealCount + unreadContactCount;
   const profilePendingCount = useProfileTabBadgeStore((state) => state.profilePendingCount);
-
   useEffect(() => { restoreSession(); }, []);
 
   useEffect(() => {
@@ -937,35 +939,11 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         borderRadius: 20,
         marginHorizontal: 2,
       },
-      tabBarBackground: () => (
-        // Owijka klipuje BlurView tylko w obrębie tab bara, ale samej grupy
-        // przycisków NIE klipujemy — dzięki temu wystający centralny „plus"
-        // (FloatingNextButton) ma swobodę wychodzenia ponad krawędź paska.
-        <View style={StyleSheet.absoluteFill as any} pointerEvents="none">
-          <View style={{ flex: 1, overflow: 'hidden' }}>
-            <BlurView
-              intensity={resolvedTheme === 'dark' ? 62 : 78}
-              tint={resolvedTheme === 'dark' ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFill}
-            />
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor:
-                    resolvedTheme === 'dark'
-                      ? 'rgba(10,10,12,0.55)'
-                      : 'rgba(255,255,255,0.55)',
-                },
-              ]}
-            />
-          </View>
-        </View>
-      ),
+      tabBarBackground: () => <TabBarBackground isDark={resolvedTheme === 'dark'} />,
       tabBarStyle: {
         backgroundColor: 'transparent',
         borderTopWidth: 0,
-        height: 95,
+        height: TAB_BAR_BASE_HEIGHT,
         paddingBottom: 30,
         paddingTop: 10,
         // Plusik (FloatingNextButton) ma być widoczny w pełnej krasie nad paskiem,
@@ -1065,7 +1043,9 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
         )}
       </Tab.Screen>
     </Tab.Navigator>
+    {splashDone ? <TabBarLiveTicker isDark={resolvedTheme === 'dark'} /> : null}
     {splashDone ? <OpenHouseLiveOrchestrator enabled /> : null}
+    {splashDone ? <TabBarTickerEngine /> : null}
     </View>
   );
 }

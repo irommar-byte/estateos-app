@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Animated,
+  Easing,
   Platform,
   Pressable,
   FlatList,
@@ -998,7 +999,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
 
   const mapRef = useRef<MapViewCore | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
-  const searchInputRef = useRef<TextInput | null>(null);
   const pendingSearchMapFocusRef = useRef<string | null>(null);
 
   const [offers, setOffers] = useState<MapOffer[]>([]);
@@ -1067,7 +1067,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const [favoritesCalibrationSessionId, setFavoritesCalibrationSessionId] = useState(0);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [advancedExtrasExpanded, setAdvancedExtrasExpanded] = useState(false);
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   
   const [isMapMoving, setIsMapMoving] = useState(false);
@@ -1247,7 +1246,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     [topBarTop, topUiSpacing.radarTopOffset]
   );
   /** Bezpośrednio pod paskiem wyszukiwania — bez luki na mapę. */
-  const browseChromeTop = useMemo(() => topBarTop + 76, [topBarTop]);
+  const browseChromeTop = useMemo(() => topBarTop + 52, [topBarTop]);
   const isGalleryBrowse = !showOnlyFavorites && radarBrowseMode === 'GALLERY';
   const isGalleryLightChrome = isGalleryBrowse && !isDark;
   /** iOS: po wyjściu z Galerii MapView potrafi „zamrozić” gesty — odświeżamy je jednym cyklem. */
@@ -1260,6 +1259,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   );
   const radarPulseA = useRef(new Animated.Value(0)).current;
   const radarPulseB = useRef(new Animated.Value(0)).current;
+  const radarInactiveBlink = useRef(new Animated.Value(1)).current;
+  const radarCalibrateNudge = useRef(new Animated.Value(0)).current;
   const favoritesHeartBeat = useRef(new Animated.Value(1)).current;
   const favoritesAuraPulse = useRef(new Animated.Value(0)).current;
   const modeIslandOpacity = useRef(new Animated.Value(1)).current;
@@ -1444,6 +1445,50 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   }, [isRadarActive, radarPulseA, radarPulseB]);
 
   useEffect(() => {
+    let blinkLoop: Animated.CompositeAnimation | null = null;
+    let nudgeTimer: ReturnType<typeof setInterval> | null = null;
+
+    if (!isRadarActive) {
+      blinkLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(radarInactiveBlink, { toValue: 0.22, duration: 500, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ]),
+      );
+      blinkLoop.start();
+
+      const runNudge = () => {
+        radarCalibrateNudge.setValue(0);
+        Animated.sequence([
+          Animated.timing(radarCalibrateNudge, {
+            toValue: 1,
+            duration: 1400,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(radarCalibrateNudge, {
+            toValue: 0,
+            duration: 1000,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      };
+      nudgeTimer = setInterval(runNudge, 30_000);
+    } else {
+      radarInactiveBlink.stopAnimation();
+      radarCalibrateNudge.stopAnimation();
+      radarInactiveBlink.setValue(1);
+      radarCalibrateNudge.setValue(0);
+    }
+
+    return () => {
+      blinkLoop?.stop();
+      if (nudgeTimer) clearInterval(nudgeTimer);
+    };
+  }, [isRadarActive, radarInactiveBlink, radarCalibrateNudge]);
+
+  useEffect(() => {
     let beatAnim: Animated.CompositeAnimation | null = null;
     let auraAnim: Animated.CompositeAnimation | null = null;
     if (isFavoritesRadarEnabled && showOnlyFavorites) {
@@ -1596,7 +1641,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       if (t.length >= 2) pendingSearchMapFocusRef.current = t;
       else pendingSearchMapFocusRef.current = null;
       void persistRecentSearch(phrase);
-      setIsSearchFocused(false);
       Keyboard.dismiss();
       Haptics.selectionAsync();
     },
@@ -4253,80 +4297,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         </View>
       )}
 
-      {isSearchFocused ? (
-        <View style={styles.searchFocusLayer} pointerEvents="auto">
-          <Pressable
-            style={styles.searchDismissStrip}
-            onPress={() => {
-              Keyboard.dismiss();
-              setIsSearchFocused(false);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={t('radar.home.closeSearch')}
-          />
-        </View>
-      ) : null}
 
-      <View style={[styles.topBarContainer, { top: topBarTop }]} pointerEvents="auto">
-        <View style={styles.searchBarSlot}>
-          <BlurView
-            intensity={isGalleryLightChrome ? 96 : isDark ? 80 : 90}
-            tint={isDark ? 'dark' : 'light'}
-            style={[
-              styles.searchGlass,
-              isGalleryLightChrome && styles.searchGlassGalleryLight,
-              showOnlyFavorites && {
-                backgroundColor: favoritesScopeBg,
-                borderColor: isMineScope ? 'rgba(16,185,129,0.55)' : 'rgba(247,119,178,0.55)',
-              },
-            ]}
-          >
-            <Ionicons
-              name="search"
-              size={20}
-              color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
-              style={{ marginLeft: 16 }}
-            />
-          <TextInput
-            ref={searchInputRef}
-              style={[
-                styles.searchInput,
-                {
-                  color: showOnlyFavorites
-                    ? (isMineScope ? (isDark ? '#C9F9E7' : '#0B5B43') : isDark ? '#FFD4E7' : '#5E1C3F')
-                    : isDark
-                      ? '#FFF'
-                      : '#1C1C1E',
-                },
-              ]}
-              placeholder={t('radar.home.searchPlaceholder')}
-              placeholderTextColor={showOnlyFavorites ? (isMineScope ? 'rgba(16,185,129,0.9)' : 'rgba(247,119,178,0.9)') : searchPanelText.tertiary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setIsSearchFocused(true)}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            clearButtonMode="never"
-            onSubmitEditing={() => finalizeSearchChoice(searchQuery)}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setSearchQuery('');
-                searchInputRef.current?.focus();
-              }}
-              hitSlop={10}
-              style={styles.searchClearBtn}
-                accessibilityLabel={t('radar.home.clearSearch')}
-            >
-              <Ionicons name="close-circle" size={22} color="#8E8E93" />
-            </Pressable>
-          )}
-        </BlurView>
-        </View>
-
+      <View style={[styles.topBarContainer, styles.topBarCompact, { top: topBarTop }]} pointerEvents="auto">
+        <View style={styles.topBarToolsRow}>
         <Pressable
           style={({ pressed }) => [
             styles.filterButtonWrap,
@@ -4368,7 +4341,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             style={[styles.filterGlass, isGalleryLightChrome && styles.filterGlassGalleryLight, showOnlyFavorites && { backgroundColor: favoritesScopeBg }]}
           >
             <Ionicons
-              name="options"
+              name="search"
               size={22}
               color={showOnlyFavorites ? favoritesScopeAccent : isDark ? '#FFF' : '#1C1C1E'}
             />
@@ -4377,6 +4350,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             )}
           </BlurView>
         </Pressable>
+        </View>
       </View>
 
       {showOnlyFavorites && (
@@ -4562,192 +4536,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </View>
         </Animated.View>
       )}
-      
-      {isSearchFocused && (
-        <View
-          style={[styles.suggestionsWrap, { top: Platform.OS === 'ios' ? 113 : 98 }]}
-          pointerEvents="auto"
-        >
-          <BlurView
-            intensity={isDark ? 85 : 95}
-            tint={isDark ? 'dark' : 'light'}
-            style={[
-              styles.suggestionsGlass,
-              { maxHeight: Math.min(height * 0.52, 440) },
-              showOnlyFavorites && { backgroundColor: favoritesUiBg, borderColor: 'rgba(247,119,178,0.55)' },
-            ]}
-          >
-            <ScrollView
-              keyboardShouldPersistTaps="always"
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              {searchQuery.trim().length === 0 && (
-                <>
-                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>{t('radar.home.recentSearches')}</Text>
-                  {recentSearches.length === 0 ? (
-                    <Text style={[styles.smartHint, { color: searchPanelText.secondary }]}>
-                      {t('radar.home.recentSearchesHint')}
-                    </Text>
-                  ) : (
-                    recentSearches.map((s) => (
-                      <TouchableOpacity
-                        key={`r-${s}`}
-                        activeOpacity={0.65}
-                        onPress={() => finalizeSearchChoice(s)}
-                        style={styles.suggestionRowTouchable}
-                      >
-                        <Ionicons name="time-outline" size={18} color={searchPanelText.icon} />
-                        <Text
-                          style={[
-                            styles.suggestionText,
-                            { color: showOnlyFavorites ? (isDark ? '#FFD4E7' : '#5E1C3F') : isDark ? '#FFF' : '#1C1C1E' },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {s}
-                        </Text>
-                        <Ionicons name="chevron-forward" size={16} color={searchPanelText.chevron} />
-                      </TouchableOpacity>
-                    ))
-                  )}
-                  <Text style={[styles.smartSectionTitle, { color: searchPanelText.section, marginTop: 6 }]}>{t('radar.home.quickCityPick')}</Text>
-                  <Text style={[styles.smartHint, { color: searchPanelText.secondary, marginBottom: 8 }]}>
-                    {t('radar.home.quickCityPolandOnly')}
-                  </Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator
-                    keyboardShouldPersistTaps="always"
-                    contentContainerStyle={styles.cityChipsRow}
-                  >
-                    {QUICK_CITIES.map((city) => (
-                      <Pressable
-                        key={city}
-                        onPress={() => finalizeSearchChoice(city)}
-                        style={[
-                          styles.cityChip,
-                          {
-                            borderColor: showOnlyFavorites
-                              ? 'rgba(247,119,178,0.5)'
-                              : isDark
-                                ? 'rgba(255,255,255,0.22)'
-                                : 'rgba(0,0,0,0.14)',
-                            backgroundColor: showOnlyFavorites ? favoritesUiSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.94)',
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.cityChipText,
-                            { color: showOnlyFavorites ? (isDark ? '#FFD4E7' : '#5E1C3F') : isDark ? '#FFF' : '#1C1C1E' },
-                          ]}
-                        >
-                          {city}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                  <Text style={[styles.smartFootnote, { color: searchPanelText.secondary }]}>
-                    {t('radar.home.searchFootnote')}
-                  </Text>
-                </>
-              )}
-
-              {searchQuery.trim().length === 1 && (
-                <Text style={[styles.smartHint, { color: searchPanelText.secondary, paddingVertical: 8 }]}>
-                  {t('radar.home.searchMinChars')}
-                </Text>
-              )}
-
-              {searchQuery.trim().length >= 2 && (
-                <>
-                  {rankedPlaceSuggestions.length === 0 ? (
-                    <View style={styles.smartEmptyBlock}>
-                      <Ionicons name="search-outline" size={28} color={searchPanelText.icon} />
-                      <Text style={[styles.smartEmptyTitle, { color: searchPanelText.body }]}>
-                        {t('radar.home.searchNoMatchesTitle')}
-                      </Text>
-                      <Text style={[styles.smartHint, { color: searchPanelText.secondary, textAlign: 'center' }]}>
-                        {t('radar.home.searchNoMatchesHint')}
-                      </Text>
-                    </View>
-                  ) : (
-                    <>
-                      <Text style={[styles.smartSectionTitle, { color: searchPanelText.section }]}>{t('radar.home.searchSuggestions')}</Text>
-                      {rankedPlaceSuggestions.map((item) => (
-                        <TouchableOpacity
-                          key={item.key}
-                          activeOpacity={0.65}
-                          onPress={() => finalizeSearchChoice(item.value)}
-                          style={styles.suggestionRowTouchable}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${item.category}: ${item.value}`}
-                        >
-                          <Ionicons name="navigate-outline" size={18} color={modeAccentColor} />
-                          <View style={styles.suggestionMain}>
-                            <Text
-                              style={[
-                                styles.suggestionText,
-                                { color: showOnlyFavorites ? (isDark ? '#FFD4E7' : '#5E1C3F') : isDark ? '#FFF' : '#1C1C1E' },
-                              ]}
-                              numberOfLines={2}
-                            >
-                              {item.value}
-                            </Text>
-                            <Text style={[styles.suggestionCategory, { color: searchPanelText.tertiary }]}>{item.category}</Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.countBadge,
-                              {
-                                backgroundColor: showOnlyFavorites
-                                  ? favoritesUiSubtleBg
-                                  : isDark
-                                    ? 'rgba(255,255,255,0.08)'
-                                    : 'rgba(0,0,0,0.05)',
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.countBadgeText,
-                                { color: showOnlyFavorites ? favoritesUiAccent : isDark ? '#FFF' : '#1C1C1E' },
-                              ]}
-                            >
-                              {item.count}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
-
-              {(normalizedSearchTokens.length > 0 || searchQuery.trim().length >= 2) && (
-                <View
-                  style={[
-                    styles.smartFooter,
-                    { borderTopColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' },
-                  ]}
-                >
-                  <Ionicons name="map-outline" size={16} color={modeAccentColor} />
-                  <Text style={[styles.smartFooterText, { color: searchPanelText.secondary }]}>
-                    {t('radar.home.searchFooterPrefix')}{' '}
-                    <Text style={{ fontWeight: '700', color: searchPanelText.body }}>
-                      {searchFooterMatchCount} {pluralOffers(searchFooterMatchCount)}
-                    </Text>{' '}
-                    {hasAdvancedFiltersActive
-                      ? t('radar.home.searchFooterWithFilters')
-                      : t('radar.home.searchFooterSuffix')}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </BlurView>
-        </View>
-      )}
 
       {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
         <Animated.View
@@ -4798,6 +4586,28 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 />
               </View>
             )}
+            <Animated.View
+              style={
+                !isRadarActive
+                  ? {
+                      transform: [
+                        {
+                          translateY: radarCalibrateNudge.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [0, -4, 0],
+                          }),
+                        },
+                        {
+                          scale: radarCalibrateNudge.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [1, 1.028, 1],
+                          }),
+                        },
+                      ],
+                    }
+                  : undefined
+              }
+            >
             <Pressable
               onPress={() => {
                 if (isRadarActive && visibleRadarMatchingOffers.length > 0 && !showOnlyFavorites) {
@@ -4821,7 +4631,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                   { backgroundColor: isRadarActive ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255, 59, 48, 0.14)' },
                 ]}
               >
-                <Ionicons name={isRadarActive ? 'radio' : 'radio-outline'} size={18} color={isRadarActive ? '#10b981' : '#FF3B30'} />
+                {isRadarActive ? (
+                  <Ionicons name="radio" size={18} color="#10b981" />
+                ) : (
+                  <Animated.View style={{ opacity: radarInactiveBlink }}>
+                    <Ionicons name="radio-outline" size={18} color="#FF3B30" />
+                  </Animated.View>
+                )}
                 <View style={styles.radarPillTextWrap}>
                   <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>{t('radar.home.radarBrand')}</Text>
                   <Text style={styles.radarStatus}>{isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}</Text>
@@ -4840,12 +4656,13 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 </View>
               </BlurView>
             </Pressable>
+            </Animated.View>
           </View>
           </JellyReveal>
         </Animated.View>
       )}
 
-      {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && !isSearchFocused && (
+      {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && (
         <Animated.View
           pointerEvents="auto"
           style={[
@@ -5256,7 +5073,10 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             >
             <View style={styles.modalDragHandle} />
             <View style={styles.advancedHeader}>
+              <View style={styles.advancedHeaderTitleRow}>
+                <Ionicons name="search" size={22} color={draftModeAccentColor} />
                 <Text style={[styles.advancedTitle, { color: isDark ? '#FFF' : '#1C1C1E' }]}>{t('radar.advancedSearch.title')}</Text>
+              </View>
               <Pressable onPress={resetAdvancedFilters}>
                   <Text style={styles.advancedReset}>{t('radar.advancedSearch.reset')}</Text>
               </Pressable>
@@ -5430,49 +5250,48 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       <Text style={[styles.advancedSection, { marginTop: 12 }]}>
                         {t('radar.advancedSearch.plCitySection')}
                       </Text>
-                      <View style={styles.advancedRow}>
-                        {cityFilterEntries.map(({ city, count }) => {
-                          const active =
-                            draftAdvancedFilters.locationMode === 'CITY' &&
-                            draftAdvancedFilters.city === city &&
-                            !draftAdvancedFilters.mapBounds;
-                          const cityLabel = city || t('radar.advancedSearch.allCitiesInCountry');
-                          return (
-                            <Pressable
-                              key={city || 'all'}
-                              style={[
-                                styles.advancedChip,
-                                active && styles.advancedChipActive,
-                                active && {
-                                  borderColor: draftModeAccentColor,
-                                  backgroundColor:
-                                    draftAdvancedFilters.transactionType === 'RENT'
-                                      ? 'rgba(10,132,255,0.18)'
-                                      : 'rgba(16,185,129,0.18)',
-                                },
-                              ]}
-                              onPress={() =>
-                                setDraftAdvancedFilters((p) => ({
-                                  ...p,
-                                  locationMode: 'CITY',
-                                  city,
-                                  districts: [],
-                                  mapBounds: null,
-                                }))
-                              }
-                            >
-                              <Text
-                                style={[
-                                  styles.advancedChipText,
-                                  active && styles.advancedChipTextActive,
-                                  active && { color: draftModeAccentColor },
-                                ]}
-                              >
-                                {`${cityLabel} (${count})`}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
+                      <View
+                        style={[
+                          styles.advancedCityInputWrap,
+                          {
+                            borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.1)',
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
+                          },
+                        ]}
+                      >
+                        <Ionicons name="search" size={18} color={draftModeAccentColor} />
+                        <TextInput
+                          style={[styles.advancedCityInput, { color: isDark ? '#FFF' : '#1C1C1E' }]}
+                          value={draftAdvancedFilters.city}
+                          onChangeText={(city) =>
+                            setDraftAdvancedFilters((p) => ({
+                              ...p,
+                              locationMode: 'CITY',
+                              city,
+                              districts: [],
+                              mapBounds: null,
+                            }))
+                          }
+                          placeholder={t('radar.home.searchPlaceholder')}
+                          placeholderTextColor={isDark ? 'rgba(235,235,245,0.45)' : 'rgba(60,60,67,0.55)'}
+                          autoCorrect={false}
+                          autoCapitalize="words"
+                          returnKeyType="done"
+                        />
+                        {draftAdvancedFilters.city.trim().length > 0 ? (
+                          <Pressable
+                            onPress={() =>
+                              setDraftAdvancedFilters((p) => ({
+                                ...p,
+                                city: '',
+                                districts: [],
+                              }))
+                            }
+                            hitSlop={8}
+                          >
+                            <Ionicons name="close-circle" size={20} color="#8E8E93" />
+                          </Pressable>
+                        ) : null}
                       </View>
                       <Text
                         style={[
@@ -5482,65 +5301,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                       >
                         {t('radar.advancedSearch.polandScopeHint')}
                       </Text>
-
-                      {draftAdvancedFilters.city.trim() ? (
-                        <>
-                          <Text style={styles.advancedSection}>{t('radar.advancedSearch.districtSection')}</Text>
-                          <View style={styles.advancedRow}>
-                            {backendDistrictsForDraftCity.map((district) => {
-                              const active = draftAdvancedFilters.districts.includes(district);
-                              return (
-                                <Pressable
-                                  key={district}
-                                  style={[
-                                    styles.advancedChip,
-                                    active && styles.advancedChipActive,
-                                    active && {
-                                      borderColor: draftModeAccentColor,
-                                      backgroundColor:
-                                        draftAdvancedFilters.transactionType === 'RENT'
-                                          ? 'rgba(10,132,255,0.18)'
-                                          : 'rgba(16,185,129,0.18)',
-                                    },
-                                  ]}
-                                  onPress={() =>
-                                    setDraftAdvancedFilters((p) => ({
-                                      ...p,
-                                      locationMode: 'CITY',
-                                      mapBounds: null,
-                                      districts: p.districts.includes(district)
-                                        ? p.districts.filter((d) => d !== district)
-                                        : [...p.districts, district],
-                                    }))
-                                  }
-                                >
-                                  <Text
-                                    style={[
-                                      styles.advancedChipText,
-                                      active && styles.advancedChipTextActive,
-                                      active && { color: draftModeAccentColor },
-                                    ]}
-                                  >
-                                    {district}
-                                  </Text>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                          {draftAdvancedFilters.districts.length > 0 ? (
-                            <Pressable
-                              onPress={() =>
-                                setDraftAdvancedFilters((p) => ({ ...p, districts: [] }))
-                              }
-                              style={{ alignSelf: 'flex-start', marginBottom: 4 }}
-                            >
-                              <Text style={{ color: '#8E8E93', fontWeight: '700' }}>
-                                {t('radar.advancedSearch.clearDistricts')}
-                              </Text>
-                            </Pressable>
-                          ) : null}
-                        </>
-                      ) : null}
 
                       <Text style={[styles.advancedOrLabel, { color: isDark ? '#8E8E93' : '#6B7280' }]}>
                         {t('radar.advancedSearch.plOrMapDivider')}
@@ -5936,6 +5696,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     zIndex: 50,
+  },
+  topBarCompact: {
+    justifyContent: 'flex-end',
+  },
+  topBarToolsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   searchBarSlot: {
     flex: 1,
@@ -6791,6 +6559,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+  },
+  advancedHeaderTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  advancedCityInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    minHeight: 44,
+  },
+  advancedCityInput: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    paddingVertical: 10,
   },
   advancedTitle: {
     fontSize: 21,
