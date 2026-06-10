@@ -87,6 +87,7 @@ import RadarOfferGallery, {
   type GalleryTransactionFilter,
 } from '../components/radar/RadarOfferGallery';
 import RadarBrowseModeRail from '../components/radar/RadarBrowseModeRail';
+import RadarStatusBulb from '../components/radar/RadarStatusBulb';
 import { advancedPriceBoundsToPln, convertBetweenCurrencies } from '../money/convert';
 import { formatCurrencySuffix, formatMarkerPriceCompact, resolveOfferDisplayAmount } from '../money/format';
 import { parseOfferNumericPrice, resolveOfferListingPrice } from '../money/offerPrice';
@@ -1451,8 +1452,24 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     if (!isRadarActive) {
       blinkLoop = Animated.loop(
         Animated.sequence([
-          Animated.timing(radarInactiveBlink, { toValue: 0.22, duration: 500, useNativeDriver: true }),
-          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, {
+            toValue: 1,
+            duration: 380,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(radarInactiveBlink, { toValue: 0.9, duration: 55, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 70, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, { toValue: 0.96, duration: 45, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 55, useNativeDriver: true }),
+          Animated.delay(260),
+          Animated.timing(radarInactiveBlink, {
+            toValue: 0.04,
+            duration: 720,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.delay(180),
         ]),
       );
       blinkLoop.start();
@@ -4712,23 +4729,48 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                     pointerEvents="none"
                     style={[styles.radarPillBottomInset, { backgroundColor: radarCalibrationChrome.bottomInset }]}
                   />
-                  <View
+                  <Animated.View
                     style={[
                       styles.radarPillIconBadge,
+                      styles.radarPillIconBadgeBulb,
                       {
-                        backgroundColor: radarCalibrationChrome.iconBg,
-                        borderColor: radarCalibrationChrome.iconBorder,
+                        backgroundColor: isRadarActive
+                          ? radarCalibrationChrome.iconBg
+                          : radarInactiveBlink.interpolate({
+                              inputRange: [0, 0.2, 1],
+                              outputRange: [
+                                isDark ? 'rgba(40,18,16,0.92)' : 'rgba(72,32,28,0.88)',
+                                isDark ? 'rgba(90,28,22,0.94)' : 'rgba(120,40,32,0.9)',
+                                isDark ? 'rgba(120,36,28,0.96)' : 'rgba(150,48,38,0.92)',
+                              ],
+                            }),
+                        borderColor: isRadarActive
+                          ? radarCalibrationChrome.iconBorder
+                          : radarInactiveBlink.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [
+                                isDark ? 'rgba(120,40,32,0.45)' : 'rgba(180,60,48,0.38)',
+                                isDark ? 'rgba(255,160,140,0.72)' : 'rgba(255,120,100,0.62)',
+                              ],
+                            }),
+                        shadowColor: isRadarActive ? '#10B981' : '#FF3B30',
+                        shadowOpacity: isRadarActive
+                          ? 0.22
+                          : radarInactiveBlink.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.08, 0.55],
+                            }),
+                        shadowRadius: isRadarActive
+                          ? 4
+                          : radarInactiveBlink.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [2, 12],
+                            }),
                       },
                     ]}
                   >
-                    {isRadarActive ? (
-                      <Ionicons name="radio" size={18} color="#10b981" />
-                    ) : (
-                      <Animated.View style={{ opacity: radarInactiveBlink }}>
-                        <Ionicons name="radio-outline" size={18} color="#FF3B30" />
-                      </Animated.View>
-                    )}
-                  </View>
+                    <RadarStatusBulb active={isRadarActive} blink={radarInactiveBlink} isDark={isDark} />
+                  </Animated.View>
                   <View style={styles.radarPillTextWrap}>
                     <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>
                       {t('radar.home.radarBrand')}
@@ -6262,18 +6304,18 @@ const styles = StyleSheet.create({
     height: 7,
   },
   radarPillIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
     zIndex: 2,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-    elevation: 3,
+    elevation: 4,
+  },
+  radarPillIconBadgeBulb: {
+    overflow: 'visible',
   },
   radarPill: {
     flexDirection: 'row',
