@@ -51,7 +51,7 @@ import { getPublicMapPresentation } from '../utils/publicLocationPrivacy';
 import { formatOfferDescriptionForDisplay } from '../utils/offerDescriptionDisplay';
 import { isPartnerIdentity } from '../utils/partnerIdentity';
 import { requestInvestorProUpsell } from '../services/investorProUpsell';
-import { describeOfferAgentCommission, parseOfferNumeric } from '../lib/agentCommission';
+import { describeOfferAgentCommission, parseOfferNumeric, formatCommissionAmountForDisplay } from '../lib/agentCommission';
 import ReportSheet from '../components/ReportSheet';
 import BlockUserSheet from '../components/BlockUserSheet';
 import { useBlockedUsersStore } from '../store/useBlockedUsersStore';
@@ -70,7 +70,8 @@ import {
   loadFavoriteIds,
   toggleFavoriteId,
 } from '../utils/favoritesStorage';
-import { formatAmountWithCurrency, resolveOfferDisplayAmount } from '../money/format';
+import { normalizeListingCurrency } from '../money/convert';
+import { formatAmountWithCurrency, formatOfferSecondaryAmount, resolveOfferDisplayAmount } from '../money/format';
 import { resolveOfferListingPrice } from '../money/offerPrice';
 import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
 import OfferDiscountPriceBlock from '../components/OfferDiscountPriceBlock';
@@ -615,7 +616,17 @@ export default function OfferDetail({ route, navigation }: any) {
   const furnishedLabel = isTrue(offer?.isFurnished) ? t('offer.shared.furnished.yes') : t('offer.shared.furnished.no');
   const adminFeeNumber = Number(String(offer?.adminFee ?? '').replace(/[^\d.,-]/g, '').replace(',', '.'));
   const hasAdminFee = Number.isFinite(adminFeeNumber) && adminFeeNumber > 0;
-  const adminFeeLabel = hasAdminFee ? `${Math.round(adminFeeNumber).toLocaleString(dateLocale)} PLN` : t('offer.shared.none');
+  const adminFeeLabel = useMemo(() => {
+    if (!hasAdminFee) return t('offer.shared.none');
+    const listingCurrency = normalizeListingCurrency(offer?.priceCurrency);
+    return formatOfferSecondaryAmount({
+      amount: adminFeeNumber,
+      listingCurrency,
+      pricePln: listingCurrency === 'PLN' ? adminFeeNumber : null,
+      displayPreference: preference,
+      rate,
+    });
+  }, [hasAdminFee, adminFeeNumber, offer?.priceCurrency, preference, rate, t]);
 
   /**
    * ====================================================================
@@ -680,6 +691,16 @@ export default function OfferDetail({ route, navigation }: any) {
     () => describeOfferAgentCommission(offer, offer?.price),
     [offer],
   );
+  const agentCommissionAmountLabel = useMemo(() => {
+    if (!agentCommissionInfo) return null;
+    return formatCommissionAmountForDisplay(
+      agentCommissionInfo.amount,
+      offer,
+      offer?.price,
+      preference,
+      rate,
+    );
+  }, [agentCommissionInfo, offer, preference, rate]);
   const txTypeLabel = formatOfferTransactionTypeLabel(offer?.transactionType, t);
   const propTypeLabel = formatOfferPropertyTypeLabel(offer?.propertyType, t);
   const areaNumForStats = parseOfferNumeric(offer?.area);
@@ -770,7 +791,7 @@ export default function OfferDetail({ route, navigation }: any) {
       ? t('offer.detail.commission.zeroDetail')
       : t('offer.detail.commission.percentDetail', {
           percent: agentCommissionInfo.percentLabel,
-          amount: agentCommissionInfo.amountLabel,
+          amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
         })
     : t('offer.detail.commission.undisclosed');
   const formatDate = (dateString: string) => {
@@ -1477,7 +1498,6 @@ export default function OfferDetail({ route, navigation }: any) {
             ) : null}
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.rooms')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{offer?.rooms != null && offer?.rooms !== '' ? String(offer.rooms) : t('offer.shared.emDash')}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.floor')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{formatFloorStat(offer?.floor, t)}</Text></View>
-            <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}><Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.yearBuilt')}</Text><Text style={[styles.detailValue, isDark && { color: '#e5e7eb' }]}>{offer?.yearBuilt || offer?.buildYear || offer?.year || t('offer.shared.emDash')}</Text></View>
             <View style={[styles.detailRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }]}>
               <Text style={[styles.detailLabel, isDark && { color: '#9ca3af' }]}>{t('offer.detail.labels.price')}</Text>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
@@ -1834,7 +1854,7 @@ export default function OfferDetail({ route, navigation }: any) {
                         ? t('offer.detail.commission.ownerPillZero')
                         : t('offer.detail.commission.ownerPillPercent', {
                             percent: agentCommissionInfo.percentLabel,
-                            amount: agentCommissionInfo.amountLabel,
+                            amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
                           })}
                     </Text>
                   ) : null}
@@ -1906,7 +1926,7 @@ export default function OfferDetail({ route, navigation }: any) {
                         numberOfLines={1}
                         allowFontScaling={false}
                       >
-                        {t('offer.detail.commission.approxAmount', { amount: agentCommissionInfo.amountLabel })}
+                        {t('offer.detail.commission.approxAmount', { amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel })}
                       </Text>
                     </>
                   )}
@@ -1933,7 +1953,7 @@ export default function OfferDetail({ route, navigation }: any) {
                 ) : (
                   <>
                     {t('offer.detail.commission.bodyPaid', {
-                      amount: agentCommissionInfo.amountLabel,
+                      amount: agentCommissionAmountLabel ?? agentCommissionInfo.amountLabel,
                       percent: agentCommissionInfo.percentLabel,
                       agentSuffix: agentCommissionInfo.companyName
                         ? ` ${agentCommissionInfo.companyName}`

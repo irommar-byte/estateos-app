@@ -18,6 +18,10 @@
  * Walidacja: 0% (bez prowizji) albo od 0,5% w górę — bez górnego limitu procentu.
  */
 
+import { resolveOfferListingPrice } from '../money/offerPrice';
+import { formatOfferSecondaryAmount } from '../money/format';
+import type { DisplayCurrencyPreference } from '../money/types';
+
 /**
  * Minimalna NIEZEROWA prowizja — chroni przed literówkami typu "0,1".
  * Wartość `0` (zero) jest dozwolona OSOBNO jako tryb „Bez prowizji" — patrz
@@ -253,6 +257,31 @@ export function formatPercentLabel(percent: number): string {
 export function formatPlnAmount(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return '0 PLN';
   return `${Math.round(amount).toLocaleString('pl-PL')} PLN`;
+}
+
+export function formatCommissionAmountForDisplay(
+  amount: number,
+  offerRaw: unknown,
+  priceRaw: unknown,
+  preference: DisplayCurrencyPreference,
+  rate: number,
+): string {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return preference === 'EUR' ? '0 €' : '0 zł';
+  }
+  const listing = resolveOfferListingPrice(offerRaw ?? { price: priceRaw }, rate);
+  const priceNum = parseOfferNumeric(priceRaw ?? (offerRaw as Record<string, unknown>)?.price);
+  const commissionPln =
+    listing.plnAmount > 0 && Number.isFinite(priceNum) && priceNum > 0
+      ? Math.round((listing.plnAmount * amount) / priceNum)
+      : null;
+  return formatOfferSecondaryAmount({
+    amount,
+    listingCurrency: listing.currency,
+    pricePln: commissionPln,
+    displayPreference: preference,
+    rate,
+  });
 }
 
 /**

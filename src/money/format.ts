@@ -132,3 +132,14 @@ export function formatOfferPriceDisplay(params: {
   }
   return { primary, secondary, listingCurrency, listingAmount, plnAmount };
 }
+
+export function formatOfferSecondaryAmount(params: {
+  amount: number;
+  listingCurrency?: unknown;
+  pricePln?: number | null;
+  displayPreference: DisplayCurrencyPreference;
+  rate: number;
+}): string {
+  const resolved = resolveOfferDisplayAmount(params);
+  return formatAmountWithCurrency(resolved.displayAmount, resolved.displayCurrency);
+}
