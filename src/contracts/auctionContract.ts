@@ -27,6 +27,8 @@ export type AuctionBidRecord = {
   status: 'VALID' | 'OUTBID' | 'WINNING';
   createdAt: string;
   bidderLabel: string;
+  /** Tylko dla organizatora — umożliwia kontakt z licytującym. */
+  bidderUserId?: number;
   isMine: boolean;
 };
 

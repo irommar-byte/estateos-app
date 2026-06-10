@@ -39,7 +39,7 @@ export default function OpenHouseLiveBootstrap({ enabled = true }: Props) {
       const next = await fetchOpenHouseTicker(token);
       if (cancelled) return;
       setItems(next);
-      if (next.length) showBanner();
+      if (next.length) showBanner({ silent: true });
     };
 
     void load();

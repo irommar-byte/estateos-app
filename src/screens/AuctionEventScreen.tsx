@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
-import { useI18n } from '../i18n';
+import { useI18n, getAppLocale } from '../i18n';
 import type { AuctionEventRecord } from '../contracts/auctionContract';
 import {
   cancelAuctionEvent,
@@ -35,13 +35,18 @@ import {
 import { openDirectContactChat } from '../utils/openDirectContact';
 import { resolveMediaUrl } from '../utils/userAvatar';
 
-function formatCountdown(ms: number) {
-  if (ms <= 0) return '00:00:00';
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+function formatBidTime(iso: string, locale: string) {
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }
 
 export default function AuctionEventScreen() {
@@ -50,6 +55,7 @@ export default function AuctionEventScreen() {
   const eventId = Number(route.params?.eventId);
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
+  const locale = getAppLocale();
   const token = useAuthStore((s) => s.token);
   const themeMode = useThemeStore((s) => s.themeMode);
   const systemScheme = useColorScheme();
@@ -109,7 +115,7 @@ export default function AuctionEventScreen() {
     return [base, base + inc, base + inc * 2, base + inc * 5];
   }, [event]);
 
-  const submitBid = async () => {
+  const submitBid = () => {
     if (!token) {
       Alert.alert(t('auction.event.title'), t('auction.event.loginRequired'));
       return;
@@ -120,15 +126,25 @@ export default function AuctionEventScreen() {
       Alert.alert(t('auction.event.title'), t('auction.event.bidTooLow'));
       return;
     }
-    setSubmitting(true);
-    const result = await placeAuctionBid(token, event.id, amount);
-    setSubmitting(false);
-    if (!result.event) {
-      Alert.alert(t('auction.event.title'), result.message || t('common.error'));
-      return;
-    }
-    setEvent(result.event);
-    Alert.alert(t('auction.event.bidSuccess'), t('auction.event.bidSuccessHint'));
+    Alert.alert(t('auction.event.confirmBidTitle'), t('auction.event.confirmBidBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('auction.event.outbidCta'),
+        onPress: () => {
+          void (async () => {
+            setSubmitting(true);
+            const result = await placeAuctionBid(token, event.id, amount);
+            setSubmitting(false);
+            if (!result.event) {
+              Alert.alert(t('auction.event.title'), result.message || t('common.error'));
+              return;
+            }
+            setEvent(result.event);
+            setBidAmount(String(Math.round(result.event.nextMinBid)));
+          })();
+        },
+      },
+    ]);
   };
 
   const onCancel = () => {
@@ -212,6 +228,9 @@ export default function AuctionEventScreen() {
               <Text style={[styles.statValue, { color: accent }]}>
                 {formatAmountWithCurrency(event.currentPrice || event.startPrice, normalizeListingCurrency(event.currency))}
               </Text>
+              <Text style={{ color: muted, fontSize: 11, marginTop: 4 }}>
+                {t('openHouse.live.auctionBids', { n: event.bidCount })}
+              </Text>
             </View>
             <View style={[styles.statBox, { backgroundColor: card, borderColor: border }]}>
               <Text style={[styles.statLabel, { color: muted }]}>
@@ -270,7 +289,7 @@ export default function AuctionEventScreen() {
             </View>
           ) : canBid ? (
             <>
-              <Text style={[styles.fieldLabel, { color: muted }]}>{t('auction.event.yourBid')}</Text>
+              <Text style={[styles.fieldLabel, { color: muted }]}>{t('auction.event.outbidCta')}</Text>
               <TextInput
                 value={bidAmount}
                 onChangeText={setBidAmount}
@@ -297,7 +316,7 @@ export default function AuctionEventScreen() {
               </View>
               <Pressable
                 disabled={submitting}
-                onPress={() => void submitBid()}
+                onPress={submitBid}
                 style={[styles.bidBtn, { backgroundColor: accent, opacity: submitting ? 0.7 : 1 }]}
               >
                 {submitting ? (
@@ -305,7 +324,7 @@ export default function AuctionEventScreen() {
                 ) : (
                   <>
                     <Ionicons name="hammer" size={18} color="#FFF" />
-                    <Text style={styles.bidBtnText}>{t('auction.event.bidCta')}</Text>
+                    <Text style={styles.bidBtnText}>{t('auction.event.confirmBidBtn')}</Text>
                   </>
                 )}
               </Pressable>
@@ -325,8 +344,10 @@ export default function AuctionEventScreen() {
 
           {event.recentBids.length > 0 ? (
             <View>
-              <Text style={[styles.fieldLabel, { color: muted }]}>{t('auction.event.recentBids')}</Text>
-              {event.recentBids.slice(0, 8).map((b) => (
+              <Text style={[styles.fieldLabel, { color: muted }]}>
+                {event.isHost ? t('auction.event.bidHistory') : t('auction.event.recentBids')}
+              </Text>
+              {event.recentBids.map((b) => (
                 <View
                   key={b.id}
                   style={[
@@ -334,10 +355,28 @@ export default function AuctionEventScreen() {
                     { backgroundColor: card, borderColor: b.isMine ? 'rgba(52,199,89,0.35)' : border },
                   ]}
                 >
-                  <Text style={{ color: text, fontWeight: '600' }}>{b.bidderLabel}</Text>
-                  <Text style={{ color: accent, fontWeight: '800' }}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={{ color: text, fontWeight: '700' }} numberOfLines={1}>
+                      {b.bidderLabel}
+                    </Text>
+                    <Text style={{ color: muted, fontSize: 11 }}>
+                      {t('auction.event.bidAt', { time: formatBidTime(b.createdAt, locale) })}
+                    </Text>
+                  </View>
+                  <Text style={{ color: accent, fontWeight: '800', marginHorizontal: 8 }}>
                     {formatAmountWithCurrency(b.amount, normalizeListingCurrency(b.currency))}
                   </Text>
+                  {event.isHost && b.bidderUserId ? (
+                    <Pressable
+                      onPress={() =>
+                        void openDirectContactChat(navigation, token, b.bidderUserId!, b.bidderLabel)
+                      }
+                      hitSlop={8}
+                      style={styles.writeBtn}
+                    >
+                      <Text style={styles.writeBtnText}>{t('auction.event.writeToBidder')}</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -446,12 +485,21 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: '#EF4444', fontWeight: '700' },
   bidRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 10,
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 6,
   },
+  writeBtn: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(139,92,246,0.08)',
+  },
+  writeBtnText: { color: '#8B5CF6', fontWeight: '800', fontSize: 10, textTransform: 'uppercase' },
   hostActions: { flexDirection: 'row', gap: 8 },
   hostActionBtn: {
     flex: 1,

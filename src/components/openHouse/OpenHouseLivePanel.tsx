@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useColorScheme,
 } from 'react-native';
@@ -28,12 +31,11 @@ import {
 } from './openHouseLiveFormat';
 import LiveEventCountdown from './LiveEventCountdown';
 import ScrollingNewsLine from './ScrollingNewsLine';
-import { fetchLiveAuctionEvents } from '../../services/auctionService';
+import { fetchLiveAuctionEvents, placeAuctionBid } from '../../services/auctionService';
 import { formatAmountWithCurrency } from '../../money/format';
 import { normalizeListingCurrency } from '../../money/convert';
-import { auctionHasStarted } from '../../utils/auctionUi';
+import { auctionCanBid, auctionHasStarted } from '../../utils/auctionUi';
 import { formatLiveDistanceKm } from '../../utils/liveDistance';
-import { openDirectContactChat } from '../../utils/openDirectContact';
 
 type Props = {
   visible: boolean;
@@ -59,6 +61,8 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
   const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
 
   const [auctionEvents, setAuctionEvents] = useState<AuctionEventRecord[]>([]);
+  const [bidDrafts, setBidDrafts] = useState<Record<number, string>>({});
+  const [submittingBidId, setSubmittingBidId] = useState<number | null>(null);
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLng, setUserLng] = useState<number | null>(null);
   const [division, setDivision] = useState<LiveDivision>('open_house');
@@ -83,6 +87,57 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
       }
     })();
   }, [visible, token]);
+
+  useEffect(() => {
+    setBidDrafts((prev) => {
+      const next = { ...prev };
+      for (const event of auctionEvents) {
+        if (next[event.id] == null) {
+          next[event.id] = String(Math.round(event.nextMinBid || event.startPrice));
+        }
+      }
+      return next;
+    });
+  }, [auctionEvents]);
+
+  const submitCardBid = useCallback(
+    (event: AuctionEventRecord) => {
+      const amount = Number(String(bidDrafts[event.id] ?? '').replace(/\s/g, ''));
+      if (!token) {
+        Alert.alert(t('auction.event.title'), t('auction.event.loginRequired'));
+        return;
+      }
+      if (!Number.isFinite(amount) || amount <= 0) {
+        Alert.alert(t('auction.event.title'), t('auction.event.bidTooLow'));
+        return;
+      }
+      Alert.alert(t('auction.event.confirmBidTitle'), t('auction.event.confirmBidBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('auction.event.outbidCta'),
+          onPress: () => {
+            void (async () => {
+              setSubmittingBidId(event.id);
+              const result = await placeAuctionBid(token, event.id, amount);
+              setSubmittingBidId(null);
+              if (!result.event) {
+                Alert.alert(t('auction.event.title'), result.message || t('common.error'));
+                return;
+              }
+              setAuctionEvents((items) =>
+                items.map((item) => (item.id === result.event!.id ? result.event! : item)),
+              );
+              setBidDrafts((prev) => ({
+                ...prev,
+                [result.event!.id]: String(Math.round(result.event!.nextMinBid)),
+              }));
+            })();
+          },
+        },
+      ]);
+    },
+    [bidDrafts, t, token],
+  );
 
   const reservedSet = useMemo(() => new Set(reservedEventIds), [reservedEventIds]);
 
@@ -140,17 +195,34 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
     [navigation, onClose],
   );
 
-  const openOffer = useCallback(
-    (offerId: number) => {
-      onClose();
-      navigation.dispatch(
-        CommonActions.navigate({
-          name: 'OfferDetail',
-          params: { offer: { id: offerId }, id: offerId, offerId },
-        }),
-      );
-    },
-    [navigation, onClose],
+  const renderCountdownStrip = (
+    targetAt: string | null,
+    accent: string,
+    options?: { live?: boolean; untilEnd?: boolean },
+  ) => (
+    <View
+      style={[
+        styles.countdownStrip,
+        {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+          borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+        },
+      ]}
+    >
+      <Text style={[styles.countdownPrefix, { color: muted }]}>
+        {options?.untilEnd === false
+          ? t('openHouse.live.countdownToStart')
+          : t('openHouse.live.countdownToEnd')}
+      </Text>
+      <View style={styles.countdownValue}>
+        <LiveEventCountdown targetAt={targetAt} compact urgency accent={accent} />
+      </View>
+      {options?.live ? (
+        <View style={[styles.liveDot, styles.liveDotStrip]}>
+          <Text style={styles.liveDotText}>LIVE</Text>
+        </View>
+      ) : null}
+    </View>
   );
 
   const renderOpenHouseCard = (item: OpenHouseTickerItem) => {
@@ -171,6 +243,7 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
           pressed && { opacity: 0.88 },
         ]}
       >
+        {renderCountdownStrip(item.startsAt, '#10B981', { untilEnd: false })}
         <View style={styles.cardRow}>
           {thumb ? (
             <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
@@ -187,34 +260,9 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
               {location} · {dateShort}
               {distance ? ` · ${distance}` : ''}
             </Text>
-            <View style={styles.metaRow}>
-              <Text style={[styles.spotsText, { color: muted }]}>
-                {t('openHouse.hub.spotsLeft', { n: item.spotsLeft })}
-              </Text>
-              <LiveEventCountdown startsAt={item.startsAt} compact urgency />
-            </View>
-            <View style={styles.actionRow}>
-              {item.hostUserId ? (
-                <Pressable
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    void openDirectContactChat(navigation, token, item.hostUserId!, undefined);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.actionLink}>{t('openHouse.live.contactHost')}</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  openOffer(item.offerId);
-                }}
-                hitSlop={8}
-              >
-                <Text style={[styles.actionLink, { color: muted }]}>{t('openHouse.live.viewOffer')}</Text>
-              </Pressable>
-            </View>
+            <Text style={[styles.spotsText, { color: muted, marginTop: 2 }]}>
+              {t('openHouse.hub.spotsLeft', { n: item.spotsLeft })}
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={14} color={muted} style={styles.chevron} />
         </View>
@@ -225,6 +273,7 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
           backgroundColor={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'}
           borderBottomRadius={10}
           pxPerSec={40}
+          repeat="restart"
         />
       </Pressable>
     );
@@ -239,16 +288,32 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
       normalizeListingCurrency(event.currency),
     );
     const distance = formatLiveDistanceKm(userLat, userLng, event.offer.lat, event.offer.lng, locale);
+    const canBid = auctionCanBid({ ...event, now: Date.now() });
+    const isSubmitting = submittingBidId === event.id;
+    const tickerText = [
+      !started
+        ? t('openHouse.live.auctionStartsHint', {
+            date: formatOpenHouseLiveDateShort(event.startsAt, locale),
+          })
+        : t('openHouse.live.auctionLiveHint'),
+      event.description?.trim(),
+    ]
+      .filter(Boolean)
+      .join(' ◆ ');
 
     return (
       <Pressable
-        onPress={() => openAuction(event.id)}
+        onPress={event.isHost || !canBid ? () => openAuction(event.id) : undefined}
         style={({ pressed }) => [
           styles.card,
           { backgroundColor: cardBg, borderColor: 'rgba(139,92,246,0.35)' },
-          pressed && { opacity: 0.88 },
+          pressed && (event.isHost || !canBid) && { opacity: 0.88 },
         ]}
       >
+        {renderCountdownStrip(targetAt, '#8B5CF6', {
+          live: event.status === 'LIVE' || started,
+          untilEnd: started,
+        })}
         <View style={styles.cardRow}>
           {thumb ? (
             <Image source={{ uri: thumb }} style={styles.thumb} contentFit="cover" />
@@ -258,62 +323,80 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
             </View>
           )}
           <View style={styles.cardBody}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
-                {event.title || event.offer.title}
-              </Text>
-              {event.status === 'LIVE' || started ? (
-                <View style={styles.liveDot}>
-                  <Text style={styles.liveDotText}>LIVE</Text>
-                </View>
-              ) : null}
-            </View>
+            <Text style={[styles.cardTitle, { color: text }]} numberOfLines={2}>
+              {event.title || event.offer.title}
+            </Text>
             <Text style={[styles.metaLine, { color: muted }]} numberOfLines={1}>
               {event.offer.city} · {event.offer.district}
               {distance ? ` · ${distance}` : ''}
             </Text>
-            <Text style={[styles.priceLine, { color: '#8B5CF6' }]}>{price}</Text>
-            <View style={styles.metaRow}>
-              <Text style={[styles.spotsText, { color: muted }]}>
-                {t('openHouse.live.auctionBids', { n: event.bidCount })}
-              </Text>
-              <LiveEventCountdown targetAt={targetAt} compact urgency />
-            </View>
-            <View style={styles.countdownFull}>
-              <LiveEventCountdown targetAt={targetAt} urgency />
-            </View>
-            <View style={styles.actionRow}>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  void openDirectContactChat(navigation, token, event.hostUserId, event.host?.name ?? undefined);
-                }}
-                hitSlop={8}
-              >
-                <Text style={[styles.actionLink, { color: '#8B5CF6' }]}>{t('openHouse.live.contactHost')}</Text>
-              </Pressable>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  openOffer(event.offerId);
-                }}
-                hitSlop={8}
-              >
-                <Text style={[styles.actionLink, { color: muted }]}>{t('openHouse.live.viewOffer')}</Text>
-              </Pressable>
-            </View>
+            <Text style={[styles.priceLabel, { color: muted }]}>
+              {t('openHouse.live.currentAuctionPrice')}
+            </Text>
+            <Text style={[styles.priceValue, { color: '#8B5CF6' }]}>{price}</Text>
+            <Text style={[styles.spotsText, { color: muted }]}>
+              {t('openHouse.live.auctionBids', { n: event.bidCount })}
+            </Text>
+            {event.isLeading ? (
+              <Text style={styles.leadingHint}>{t('openHouse.live.yourOfferLeading')}</Text>
+            ) : event.bidCount > 0 && event.recentBids.some((b) => b.isMine) ? (
+              <Text style={styles.outbidHint}>{t('auction.event.outbid')}</Text>
+            ) : null}
           </View>
-          <Ionicons name="chevron-forward" size={14} color={muted} style={styles.chevron} />
+          {event.isHost ? (
+            <Ionicons name="chevron-forward" size={14} color={muted} style={styles.chevron} />
+          ) : null}
         </View>
-        <View style={[styles.auctionTicker, { backgroundColor: isDark ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.06)' }]}>
-          <Text style={[styles.tickerText, { color: muted }]}>
-            {started
-              ? t('openHouse.live.auctionLiveHint')
-              : t('openHouse.live.auctionStartsHint', {
-                  date: formatOpenHouseLiveDateShort(event.startsAt, locale),
-                })}
-          </Text>
-        </View>
+
+        {canBid ? (
+          <View
+            style={[
+              styles.bidRow,
+              {
+                borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                backgroundColor: isDark ? 'rgba(139,92,246,0.06)' : 'rgba(139,92,246,0.04)',
+              },
+            ]}
+          >
+            <Text style={[styles.bidRowLabel, { color: muted }]}>{t('openHouse.live.outbidCta')}</Text>
+            <TextInput
+              value={bidDrafts[event.id] ?? ''}
+              onChangeText={(v) => setBidDrafts((prev) => ({ ...prev, [event.id]: v }))}
+              keyboardType="numeric"
+              placeholder={String(Math.round(event.nextMinBid))}
+              placeholderTextColor={muted}
+              style={[
+                styles.bidInput,
+                {
+                  color: text,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(139,92,246,0.2)',
+                },
+              ]}
+            />
+            <Pressable
+              disabled={isSubmitting}
+              onPress={() => submitCardBid(event)}
+              style={[styles.bidSubmit, { opacity: isSubmitting ? 0.65 : 1 }]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.bidSubmitText}>{t('auction.event.confirmBidBtn')}</Text>
+              )}
+            </Pressable>
+          </View>
+        ) : null}
+
+        <ScrollingNewsLine
+          text={tickerText || t('openHouse.live.auctionLiveHint')}
+          textStyle={[styles.tickerText, { color: muted }]}
+          height={22}
+          backgroundColor={isDark ? 'rgba(139,92,246,0.08)' : 'rgba(139,92,246,0.06)'}
+          borderBottomRadius={10}
+          pxPerSec={36}
+          repeat="restart"
+        />
       </Pressable>
     );
   };
@@ -345,31 +428,63 @@ export default function OpenHouseLivePanel({ visible, onClose }: Props) {
           </Pressable>
         </View>
 
-        <View style={[styles.segmented, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }]}>
-          {divisionTabs.map((tab) => {
-            const active = division === tab.key;
-            return (
-              <Pressable
-                key={tab.key}
-                onPress={() => setDivision(tab.key)}
-                style={[
-                  styles.segment,
-                  active && { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF' },
-                ]}
-              >
-                <Ionicons name={tab.icon} size={14} color={active ? tab.accent : muted} />
-                <Text
-                  style={[styles.segmentLabel, { color: active ? text : muted }]}
-                  numberOfLines={2}
+        <View
+          style={[
+            styles.segmentedOuter,
+            {
+              backgroundColor: isDark ? '#1C1C1E' : '#E8E8ED',
+              borderColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.08)',
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.segmentedInner,
+              { backgroundColor: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.04)' },
+            ]}
+          >
+            {divisionTabs.map((tab) => {
+              const active = division === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setDivision(tab.key)}
+                  style={[
+                    styles.segment,
+                    active && [
+                      styles.segmentActive,
+                      {
+                        backgroundColor: isDark ? '#3A3A3C' : '#FFFFFF',
+                        shadowColor: '#000',
+                      },
+                    ],
+                  ]}
                 >
-                  {tab.label}
-                </Text>
-                <View style={[styles.segmentBadge, { backgroundColor: active ? `${tab.accent}22` : 'transparent' }]}>
-                  <Text style={[styles.segmentBadgeText, { color: active ? tab.accent : muted }]}>{tab.count}</Text>
-                </View>
-              </Pressable>
-            );
-          })}
+                  <View style={styles.segmentTopRow}>
+                    <Ionicons name={tab.icon} size={13} color={active ? tab.accent : muted} />
+                    <View
+                      style={[
+                        styles.segmentBadge,
+                        {
+                          backgroundColor: active ? `${tab.accent}18` : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.segmentBadgeText, { color: active ? tab.accent : muted }]}>
+                        {tab.count}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={[styles.segmentLabel, { color: active ? text : muted, opacity: active ? 1 : 0.72 }]}
+                    numberOfLines={2}
+                  >
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         <Text style={[styles.divisionLead, { color: muted }]}>
@@ -431,39 +546,70 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmented: {
-    flexDirection: 'row',
-    gap: 6,
-    padding: 4,
-    borderRadius: 14,
+  segmentedOuter: {
+    borderRadius: 13,
+    padding: 2,
     marginBottom: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  segmentedInner: {
+    flexDirection: 'row',
+    gap: 3,
+    padding: 3,
+    borderRadius: 11,
   },
   segment: {
     flex: 1,
-    minHeight: 56,
-    borderRadius: 11,
+    minHeight: 52,
+    borderRadius: 9,
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 3,
+  },
+  segmentActive: {
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.14,
+    shadowRadius: 2.5,
+    elevation: 2,
+  },
+  segmentTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   segmentLabel: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 9,
+    fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 12,
-    letterSpacing: 0.2,
-    textTransform: 'uppercase',
+    lineHeight: 11,
+    letterSpacing: 0.15,
   },
   segmentBadge: {
-    minWidth: 22,
+    minWidth: 18,
     borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
   },
-  segmentBadgeText: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  segmentBadgeText: { fontSize: 10, fontWeight: '800', fontVariant: ['tabular-nums'] },
   divisionLead: { fontSize: 12, lineHeight: 16, marginBottom: 8, paddingHorizontal: 2 },
+  countdownStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  countdownPrefix: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  countdownValue: { flex: 1 },
   card: {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
@@ -487,29 +633,49 @@ const styles = StyleSheet.create({
   },
   thumbFallbackDark: { backgroundColor: 'rgba(255,255,255,0.06)' },
   cardBody: { flex: 1, minWidth: 0, gap: 2 },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
-  cardTitle: { flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 16 },
+  cardTitle: { fontSize: 13, fontWeight: '700', lineHeight: 16 },
   liveDot: {
     backgroundColor: '#EF4444',
     borderRadius: 999,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
+  liveDotStrip: { marginLeft: 'auto' },
   liveDotText: { color: '#FFF', fontSize: 8, fontWeight: '900' },
   metaLine: { fontSize: 11, lineHeight: 14 },
-  priceLine: { fontSize: 12, fontWeight: '800', marginTop: 2 },
-  metaRow: {
+  priceLabel: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.4, marginTop: 4 },
+  priceValue: { fontSize: 16, fontWeight: '900', marginTop: 1 },
+  spotsText: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  leadingHint: { fontSize: 10, fontWeight: '800', color: '#34C759', marginTop: 3 },
+  outbidHint: { fontSize: 10, fontWeight: '800', color: '#F59E0B', marginTop: 3 },
+  bidRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
-    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  countdownFull: { marginTop: 4, marginBottom: 2 },
-  spotsText: { fontSize: 10, fontWeight: '600' },
-  actionRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  actionLink: { fontSize: 10, fontWeight: '800', color: '#10B981', textTransform: 'uppercase', letterSpacing: 0.4 },
+  bidRowLabel: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3, width: 52 },
+  bidInput: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 14,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  bidSubmit: {
+    backgroundColor: '#8B5CF6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  bidSubmitText: { color: '#FFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   chevron: { marginTop: 10 },
   tickerText: { fontSize: 10, fontWeight: '500' },
-  auctionTicker: { paddingHorizontal: 10, paddingVertical: 6 },
 });
