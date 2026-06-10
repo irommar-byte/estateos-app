@@ -25,7 +25,14 @@ import {
 } from '../services/auctionService';
 import { formatAmountWithCurrency } from '../money/format';
 import { normalizeListingCurrency } from '../money/convert';
-import { resolveMediaUrl } from '../utils/userAvatar';
+import {
+  auctionCanBid,
+  auctionCountdownMs,
+  auctionHasStarted,
+  countdownUrgencyColor,
+  formatAuctionCountdown,
+} from '../utils/auctionUi';
+import { openDirectContactChat } from '../utils/openDirectContact';
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return '00:00:00';
@@ -85,16 +92,14 @@ export default function AuctionEventScreen() {
     return () => clearInterval(id);
   }, [event]);
 
-  const timeRemainingMs = useMemo(() => {
-    if (!event) return 0;
-    void tick;
-    const end = new Date(event.effectiveEndsAt).getTime();
-    return Math.max(0, end - Date.now());
-  }, [event, tick]);
-
-  const isLive = event?.status === 'LIVE';
+  const now = Date.now();
+  void tick;
+  const hasStarted = event ? auctionHasStarted({ ...event, now }) : false;
+  const countdownMs = event ? auctionCountdownMs({ ...event, now }) : 0;
+  const urgencyColor = countdownUrgencyColor(countdownMs);
+  const isLive = event?.status === 'LIVE' || (event?.status === 'SCHEDULED' && hasStarted);
   const isClosed = event && !['LIVE', 'SCHEDULED'].includes(event.status);
-  const canBid = Boolean(event && !isClosed && timeRemainingMs > 0 && !event.isHost);
+  const canBid = Boolean(event && auctionCanBid({ ...event, now }));
 
   const quickBids = useMemo(() => {
     if (!event) return [];
@@ -208,11 +213,42 @@ export default function AuctionEventScreen() {
               </Text>
             </View>
             <View style={[styles.statBox, { backgroundColor: card, borderColor: border }]}>
-              <Text style={[styles.statLabel, { color: muted }]}>{t('auction.event.timeLeft')}</Text>
-              <Text style={[styles.statValue, { color: text, fontFamily: 'Menlo' }]}>
-                {formatCountdown(timeRemainingMs)}
+              <Text style={[styles.statLabel, { color: muted }]}>
+                {hasStarted ? t('auction.event.timeLeft') : t('auction.event.countdownToStart')}
+              </Text>
+              <Text style={[styles.statValue, { color: urgencyColor, fontFamily: 'Menlo' }]}>
+                {formatAuctionCountdown(countdownMs)}
               </Text>
             </View>
+          </View>
+
+          {!hasStarted && !event.isHost ? (
+            <View style={[styles.infoBox, { backgroundColor: card, borderColor: `${urgencyColor}40`, borderWidth: 1 }]}>
+              <Text style={{ color: urgencyColor, fontSize: 13, lineHeight: 18 }}>{t('auction.event.notStartedYet')}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.hostActions}>
+            <Pressable
+              onPress={() =>
+                navigation.navigate('OfferDetail', {
+                  offer: { id: event.offerId },
+                  id: event.offerId,
+                  offerId: event.offerId,
+                })
+              }
+              style={[styles.hostActionBtn, { borderColor: border }]}
+            >
+              <Text style={{ color: accent, fontWeight: '700', fontSize: 12 }}>{t('auction.event.viewOffer')}</Text>
+            </Pressable>
+            {!event.isHost ? (
+              <Pressable
+                onPress={() => void openDirectContactChat(navigation, token, event.hostUserId, event.host?.name ?? undefined)}
+                style={[styles.hostActionBtn, { borderColor: border }]}
+              >
+                <Text style={{ color: muted, fontWeight: '700', fontSize: 12 }}>{t('auction.event.contactHost')}</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {event.isLeading ? (
@@ -233,9 +269,6 @@ export default function AuctionEventScreen() {
             </View>
           ) : canBid ? (
             <>
-              {!isLive && event.status === 'SCHEDULED' ? (
-                <Text style={{ color: muted, fontSize: 13 }}>{t('auction.event.scheduledHint')}</Text>
-              ) : null}
               <Text style={[styles.fieldLabel, { color: muted }]}>{t('auction.event.yourBid')}</Text>
               <TextInput
                 value={bidAmount}
@@ -417,5 +450,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 6,
+  },
+  hostActions: { flexDirection: 'row', gap: 8 },
+  hostActionBtn: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    alignItems: 'center',
   },
 });

@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,6 +53,8 @@ export default function AuctionCreateScreen() {
   const [startPrice, setStartPrice] = useState('');
   const [reservePrice, setReservePrice] = useState('');
   const [minIncrement, setMinIncrement] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const descriptionYRef = useRef(0);
 
   useEffect(() => {
     if (!token || !user?.id) return;
@@ -114,7 +118,11 @@ export default function AuctionCreateScreen() {
   };
 
   return (
-    <View style={[styles.root, { backgroundColor: bg, paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[styles.root, { backgroundColor: bg, paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+    >
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
           <Ionicons name="chevron-back" size={28} color={text} />
@@ -122,7 +130,12 @@ export default function AuctionCreateScreen() {
         <Text style={[styles.title, { color: text }]}>{t('auction.create.title')}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24, gap: 14 }}>
+      <ScrollView
+        ref={scrollRef}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 120, gap: 14 }}
+      >
         <View style={[styles.guideBox, { backgroundColor: card, borderColor: border }]}>
           <Text style={[styles.guideTitle, { color: text }]}>{t('auction.create.guideTitle')}</Text>
           <Text style={{ color: muted, fontSize: 13, lineHeight: 18 }}>• {t('auction.create.guideStart')}</Text>
@@ -193,12 +206,23 @@ export default function AuctionCreateScreen() {
         />
 
         <Text style={[styles.label, { color: muted }]}>{t('auction.create.eventDescription')}</Text>
-        <TextInput
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          style={[styles.input, styles.textarea, { backgroundColor: card, color: text, borderColor: border }]}
-        />
+        <View
+          onLayout={(e) => {
+            descriptionYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            onFocus={() => {
+              setTimeout(() => {
+                scrollRef.current?.scrollTo({ y: Math.max(0, descriptionYRef.current - 24), animated: true });
+              }, 120);
+            }}
+            multiline
+            style={[styles.input, styles.textarea, { backgroundColor: card, color: text, borderColor: border }]}
+          />
+        </View>
 
         <Pressable
           disabled={submitting || !selectedOfferId}
@@ -212,7 +236,7 @@ export default function AuctionCreateScreen() {
           )}
         </Pressable>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

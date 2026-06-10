@@ -11,6 +11,9 @@ export type OpenHouseTickerItem = {
   startsAt: string | null;
   spotsLeft: number;
   imageUrl: string | null;
+  hostUserId?: number;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 export type OpenHouseSlotRecord = {

@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useI18n } from '../../i18n';
 import { getCountdownParts } from './openHouseLiveFormat';
+import { countdownUrgencyColor } from '../../utils/auctionUi';
 
 type Props = {
-  startsAt: string | null;
+  startsAt?: string | null;
+  /** Alternatywny cel odliczania (np. koniec licytacji). */
+  targetAt?: string | null;
   accent?: string;
   muted?: string;
   compact?: boolean;
+  urgency?: boolean;
 };
 
 function pad2(n: number) {
@@ -36,24 +40,35 @@ function Unit({
 }
 
 export default function LiveEventCountdown({
-  startsAt,
-  accent = '#10B981',
+  startsAt = null,
+  targetAt,
+  accent,
   muted = 'rgba(16,185,129,0.65)',
   compact = false,
+  urgency = false,
 }: Props) {
   const { t } = useI18n();
-  const [parts, setParts] = useState(() => getCountdownParts(startsAt));
+  const iso = targetAt ?? startsAt;
+  const [parts, setParts] = useState(() => getCountdownParts(iso));
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const tick = () => setParts(getCountdownParts(startsAt));
+    const tick = () => {
+      setNow(Date.now());
+      setParts(getCountdownParts(iso));
+    };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [startsAt]);
+  }, [iso]);
+
+  const msRemaining = iso ? Math.max(0, new Date(iso).getTime() - now) : 0;
+  const accentColor = urgency ? countdownUrgencyColor(msRemaining) : accent || '#10B981';
+  const mutedColor = muted;
 
   if (parts.past) {
     return (
-      <Text style={[compact ? styles.pastCompact : styles.past, { color: muted }]}>
+      <Text style={[compact ? styles.pastCompact : styles.past, { color: mutedColor }]}>
         {t('openHouse.live.countdownStarted')}
       </Text>
     );
@@ -61,7 +76,7 @@ export default function LiveEventCountdown({
 
   if (compact) {
     return (
-      <Text style={[styles.inlineCompact, { color: accent }]}>
+      <Text style={[styles.inlineCompact, { color: accentColor }]}>
         {pad2(parts.days)}:{pad2(parts.hours)}:{pad2(parts.minutes)}:{pad2(parts.seconds)}
       </Text>
     );
@@ -69,13 +84,13 @@ export default function LiveEventCountdown({
 
   return (
     <View style={styles.row}>
-      <Unit value={pad2(parts.days)} label={t('openHouse.live.countdownDays')} accent={accent} muted={muted} />
-      <Text style={[styles.sep, { color: accent }]}>:</Text>
-      <Unit value={pad2(parts.hours)} label={t('openHouse.live.countdownHours')} accent={accent} muted={muted} />
-      <Text style={[styles.sep, { color: accent }]}>:</Text>
-      <Unit value={pad2(parts.minutes)} label={t('openHouse.live.countdownMinutes')} accent={accent} muted={muted} />
-      <Text style={[styles.sep, { color: accent }]}>:</Text>
-      <Unit value={pad2(parts.seconds)} label={t('openHouse.live.countdownSeconds')} accent={accent} muted={muted} />
+      <Unit value={pad2(parts.days)} label={t('openHouse.live.countdownDays')} accent={accentColor} muted={mutedColor} />
+      <Text style={[styles.sep, { color: accentColor }]}>:</Text>
+      <Unit value={pad2(parts.hours)} label={t('openHouse.live.countdownHours')} accent={accentColor} muted={mutedColor} />
+      <Text style={[styles.sep, { color: accentColor }]}>:</Text>
+      <Unit value={pad2(parts.minutes)} label={t('openHouse.live.countdownMinutes')} accent={accentColor} muted={mutedColor} />
+      <Text style={[styles.sep, { color: accentColor }]}>:</Text>
+      <Unit value={pad2(parts.seconds)} label={t('openHouse.live.countdownSeconds')} accent={accentColor} muted={mutedColor} />
     </View>
   );
 }

@@ -5,14 +5,19 @@ export type AuctionTickerItem = {
   type: 'AUCTION';
   eventId: number;
   offerId: number;
+  hostUserId?: number;
   title: string | null;
   city: string;
   district: string;
   currentPrice: number;
   currency: string;
+  startsAt?: string;
   endsAt: string;
   status: AuctionStatus;
+  bidCount?: number;
   imageUrl: string | null;
+  lat?: number | null;
+  lng?: number | null;
 };
 
 export type AuctionBidRecord = {
@@ -47,7 +52,12 @@ export type AuctionEventRecord = {
   publishedAt: string | null;
   isHost: boolean;
   isLeading: boolean;
+  timeUntilStartMs?: number;
   timeRemainingMs: number;
+  host?: {
+    id: number;
+    name: string | null;
+  };
   offer: {
     id: number;
     title: string;
@@ -59,6 +69,8 @@ export type AuctionEventRecord = {
     area: number;
     rooms: number | null;
     imageUrl: string | null;
+    lat?: number | null;
+    lng?: number | null;
   };
   recentBids: AuctionBidRecord[];
 };
