@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { randomBytes } from 'crypto';
+import { logWalletCouponConsume, logWalletCouponGrant } from '@/lib/walletLedger';
 
 export type ProfilePromoCardRow = {
   id: string;
@@ -156,12 +157,62 @@ export async function createProfilePromoCard(
   )) as ProfilePromoCardRow[];
   const row = rows[0];
   if (!row) throw new Error('INSERT_FAILED');
-  return rowToApiCard(row);
+  const card = rowToApiCard(row);
+  try {
+    await logWalletCouponGrant({
+      userId,
+      cardId: card.id,
+      label: card.title,
+      purpose: card.purpose || 'coupon',
+      meta: { kind: card.kind, templateId: card.templateId },
+    });
+  } catch {
+    /* ledger optional */
+  }
+  return card;
+}
+
+export function welcomePromoCardId(userId: number): string {
+  return `welcome_${userId}`;
+}
+
+/** Stały kupon powitalny w DB — wymagany do pobrania przy imporcie / publikacji z mobile. */
+export async function ensureWelcomePromoCardForUser(userId: number): Promise<void> {
+  await ensureProfilePromoCardTable();
+  const id = welcomePromoCardId(userId);
+  const existing = (await prisma.$queryRawUnsafe(
+    `SELECT id, couponUsed FROM MobileProfilePromoCard WHERE id = ? AND userId = ? LIMIT 1`,
+    id,
+    userId,
+  )) as Array<{ id: string; couponUsed: number }>;
+  if (existing[0]) return;
+
+  const userRows = (await prisma.$queryRawUnsafe(
+    'SELECT firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
+    userId,
+  )) as Array<{ firstFreePublicationUsed: number | null }>;
+  if (Number(userRows[0]?.firstFreePublicationUsed ?? 0) > 0) return;
+
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO MobileProfilePromoCard
+        (id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
+         templateId, grantsFreeListing, couponUsed, purpose, birthdayYear, expiresAt)
+      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny', 'Jedna darmowa publikacja pierwszej oferty',
+              'Wykorzystaj przy pierwszym publicznym wystawieniu ogłoszenia.',
+              '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, 0, 'publication', NULL, NULL)
+    `,
+    id,
+    userId,
+  );
 }
 
 export async function markProfilePromoCardUsed(userId: number, cardId: string): Promise<boolean> {
   await ensureProfilePromoCardTable();
   const normalizedId = String(cardId).slice(0, 64);
+  if (normalizedId.startsWith('welcome_')) {
+    await ensureWelcomePromoCardForUser(userId);
+  }
   const result = await prisma.$executeRawUnsafe(
     `
       UPDATE MobileProfilePromoCard
@@ -171,48 +222,31 @@ export async function markProfilePromoCardUsed(userId: number, cardId: string): 
     normalizedId,
     userId,
   );
-  if (Number(result || 0) > 0) return true;
-
-  const welcomeId = `welcome_${userId}`;
-  if (normalizedId === welcomeId || normalizedId.startsWith('welcome_')) {
-    await ensureWelcomePromoCardForUser(userId);
-    const retry = await prisma.$executeRawUnsafe(
-      `
-        UPDATE MobileProfilePromoCard
-        SET couponUsed = 1, updatedAt = NOW(3)
-        WHERE id = ? AND userId = ?
-      `,
-      welcomeId,
+  const ok = Number(result || 0) > 0;
+  if (ok) {
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT title FROM MobileProfilePromoCard WHERE id = ? AND userId = ? LIMIT 1`,
+        normalizedId,
+        userId,
+      )) as Array<{ title: string }>;
+      await logWalletCouponConsume({
+        userId,
+        cardId: normalizedId,
+        label: `Wykorzystano kupon: ${rows[0]?.title || normalizedId}`,
+        purpose: 'publication',
+      });
+    } catch {
+      /* ledger optional */
+    }
+  }
+  if (ok && normalizedId.startsWith('welcome_')) {
+    await prisma.$executeRawUnsafe(
+      'UPDATE `User` SET firstFreePublicationUsed = 1 WHERE id = ?',
       userId,
     );
-    return Number(retry || 0) > 0;
   }
-
-  return false;
-}
-
-/** Kupon powitalny w DB — przetrwa reinstalację aplikacji. */
-export async function ensureWelcomePromoCardForUser(userId: number) {
-  await ensureProfilePromoCardTable();
-  const id = `welcome_${userId}`;
-  const existing = await getProfilePromoCardForUser(userId, id);
-  if (existing) return existing;
-
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO MobileProfilePromoCard
-        (id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
-         templateId, grantsFreeListing, couponUsed, purpose, birthdayYear, expiresAt)
-      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny',
-        'Jedna darmowa publikacja pierwszej oferty',
-        'Gotowy do wykorzystania przy pierwszym wystawieniu.',
-        '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, 0, 'publication', NULL, NULL)
-    `,
-    id,
-    userId,
-  );
-
-  return getProfilePromoCardForUser(userId, id);
+  return ok;
 }
 
 export async function getProfilePromoCardForUser(userId: number, cardId: string) {

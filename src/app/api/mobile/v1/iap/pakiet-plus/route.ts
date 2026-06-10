@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '@/lib/prisma';
 import { buildPakietPlusUserUpdate, isPakietPlusProductId } from '@/lib/mobileIapEntitlements';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
+import { logWalletCreditGrant } from '@/lib/walletLedger';
 
 function getTokenFromReq(req: NextRequest): string | null {
   const auth = req.headers.get('authorization') || '';
@@ -134,6 +135,18 @@ export async function POST(req: NextRequest) {
       extraListings = updatedUser.extraListings;
       plusExpiresAt = updatedUser.plusExpiresAt;
       slotGranted = true;
+      try {
+        await logWalletCreditGrant({
+          userId,
+          amount: 1,
+          purpose: 'pakiet_plus',
+          referenceType: 'iap',
+          referenceId: transactionId,
+          label: 'Zakup Pakiet PLUS (IAP)',
+        });
+      } catch (error) {
+        console.warn('[walletLedger] pakiet-plus grant log failed', error);
+      }
     }
     await prisma.$executeRawUnsafe(
       `

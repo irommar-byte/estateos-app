@@ -2,15 +2,11 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search, PlusCircle, ExternalLink } from "lucide-react";
+import { Database, Users, BarChart3, ShieldAlert, LogOut, ArrowRight, Loader2, AlertTriangle, Smartphone, Power, Link2, Search, PlusCircle, ExternalLink, Wallet } from "lucide-react";
 import type { OtodomImportDraft } from "@/lib/otodomImport";
 import type { OtodomPresentationCopy } from "@/lib/otodomImportRewrite";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OtodomCreateConfirmModal from "@/components/admin/OtodomCreateConfirmModal";
-import PublicationChoiceModal, {
-  type PublicationCouponOption,
-  type PublicationRedemption,
-} from "@/components/publication/PublicationChoiceModal";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -44,11 +40,6 @@ export default function Centrala() {
     publicUrl: string;
   } | null>(null);
   const [otodomConfirmOpen, setOtodomConfirmOpen] = useState(false);
-  const [otodomPubOpen, setOtodomPubOpen] = useState(false);
-  const [otodomPendingRedemption, setOtodomPendingRedemption] = useState<PublicationRedemption | null>(null);
-  const [otodomWalletCoupons, setOtodomWalletCoupons] = useState<PublicationCouponOption[]>([]);
-  const [otodomWalletPlusCredits, setOtodomWalletPlusCredits] = useState(0);
-  const [otodomWalletHasPlusCredit, setOtodomWalletHasPlusCredit] = useState(false);
   const [otodomResolvedDistrict, setOtodomResolvedDistrict] = useState<string>("");
   const [otodomResolvedCity, setOtodomResolvedCity] = useState<string>("");
 
@@ -91,11 +82,7 @@ export default function Centrala() {
 
     let cancelled = false;
     void fetch(
-      `/api/location/reverse?lat=${encodeURIComponent(String(otodomDraft.lat))}&lng=${encodeURIComponent(String(otodomDraft.lng))}` +
-        `&city=${encodeURIComponent(String(otodomDraft.city || ""))}` +
-        `&district=${encodeURIComponent(String(otodomDraft.district || ""))}` +
-        `&neighborhood=${encodeURIComponent(String(otodomDraft.neighborhood || ""))}` +
-        `&street=${encodeURIComponent(String(otodomDraft.street || ""))}`,
+      `/api/location/reverse?lat=${encodeURIComponent(String(otodomDraft.lat))}&lng=${encodeURIComponent(String(otodomDraft.lng))}`,
       { cache: "no-store" },
     )
       .then((res) => (res.ok ? res.json() : null))
@@ -137,7 +124,7 @@ export default function Centrala() {
   const handleOtodomImport = async () => {
     const url = otodomUrl.trim();
     if (!url) {
-      setOtodomError("Wklej link do oferty OtoDom, OLX lub Nieruchomosci-Online.");
+      setOtodomError("Wklej link do oferty OtoDom.");
       return;
     }
 
@@ -170,30 +157,8 @@ export default function Centrala() {
     }
   };
 
-  const loadOtodomPublicationWallet = async () => {
-    const res = await fetch("/api/user/publication-wallet?locale=pl", { cache: "no-store" });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.success) {
-      throw new Error(String(data?.error || data?.message || "Nie udało się pobrać portfela publikacji."));
-    }
-    const coupons = Array.isArray(data.publicationCoupons) ? data.publicationCoupons : [];
-    setOtodomWalletCoupons(coupons);
-    setOtodomWalletPlusCredits(Number(data.plusCredits || 0));
-    setOtodomWalletHasPlusCredit(Boolean(data.hasPlusCredit));
-  };
-
-  const handleOtodomStartCreate = async () => {
-    if (!otodomDraft) return;
-    try {
-      await loadOtodomPublicationWallet();
-      setOtodomPubOpen(true);
-    } catch (e) {
-      setOtodomCreateError(e instanceof Error ? e.message : "Nie udało się załadować metod płatności.");
-    }
-  };
-
   const handleOtodomCreateOffer = async () => {
-    if (!otodomDraft || !otodomPendingRedemption) return;
+    if (!otodomDraft) return;
 
     setOtodomCreating(true);
     setOtodomCreateError("");
@@ -205,11 +170,7 @@ export default function Centrala() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          draft: otodomDraft,
-          rightsConfirmed: true,
-          publication: otodomPendingRedemption,
-        }),
+        body: JSON.stringify({ draft: otodomDraft, rightsConfirmed: true }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -280,10 +241,11 @@ export default function Centrala() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
           {[
             { title: "Baza Ofert", desc: "Zarządzaj nieruchomościami.", icon: <Database size={32} />, path: "/centrala/oferty", color: "from-blue-500/20 to-blue-500/5" },
             { title: "Użytkownicy", desc: "Zarządzaj kontami.", icon: <Users size={32} />, path: "/centrala/uzytkownicy", color: "from-emerald-500/20 to-emerald-500/5" },
+            { title: "Portfel", desc: "Kredyty, kupony i historia.", icon: <Wallet size={32} />, path: "/centrala/portfel", color: "from-amber-500/20 to-amber-500/5" },
             { title: "Statystyki", desc: "Przeglądaj ruch.", icon: <BarChart3 size={32} />, path: "/centrala/statystyki", color: "from-purple-500/20 to-purple-500/5" }
           ].map((item, index) => (
             <motion.div
@@ -351,14 +313,14 @@ export default function Centrala() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-xl md:text-2xl font-black mb-2 flex flex-wrap items-center gap-3">
-                  Importuj z OtoDom + OLX + Nieruchomosci-Online
+                  Importuj z OtoDom + OLX
                   <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-500/20 text-blue-400">
                     Auto Detect
                   </span>
                 </h3>
                 <p className="text-gray-500 text-xs md:text-sm leading-relaxed max-w-2xl">
-                  Wklej publiczny link do ogłoszenia z OtoDom, OLX albo Nieruchomosci-Online. Centrala automatycznie
-                  wykryje serwis, pobierze dane i pokaże podgląd pól do mapowania na EstateOS (bez zapisu oferty).
+                  Wklej publiczny link do ogłoszenia z OtoDom albo OLX. Centrala automatycznie wykryje serwis, pobierze
+                  dane i pokaże podgląd pól do mapowania na EstateOS (bez zapisu oferty).
                 </p>
               </div>
             </div>
@@ -371,7 +333,7 @@ export default function Centrala() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") void handleOtodomImport();
                 }}
-                placeholder="https://www.otodom.pl/... lub https://www.olx.pl/d/oferta/... lub https://...nieruchomosci-online.pl/...html"
+                placeholder="https://www.otodom.pl/... lub https://www.olx.pl/d/oferta/..."
                 className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-blue-400/50 focus:ring-2 focus:ring-blue-500/20"
               />
               <button
@@ -457,7 +419,7 @@ export default function Centrala() {
                 <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center">
                   <button
                     type="button"
-                    onClick={() => void handleOtodomStartCreate()}
+                    onClick={() => setOtodomConfirmOpen(true)}
                     disabled={otodomCreating}
                     className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed text-black px-6 py-4 rounded-2xl font-black uppercase tracking-wider text-xs transition-colors shadow-[0_12px_32px_rgba(16,185,129,0.28)]"
                   >
@@ -465,8 +427,8 @@ export default function Centrala() {
                     Dodaj na EstateOS
                   </button>
                   <p className="text-[11px] text-white/40 max-w-md leading-relaxed">
-                    Najpierw opłacisz publikację (kupon lub kredyt Plus), potem potwierdzisz prawa do materiałów.
-                    Oferta trafi do weryfikacji z zarezerwowaną publikacją — po akceptacji od razu na rynek.
+                    Tworzy ofertę PENDING z przepisanym tytułem/opisem, zdjęciami bez znaku źródłowego portalu (przycięcie + delikatna
+                    modyfikacja). Aktywuj w Centrali → Baza Ofert.
                   </p>
                 </div>
 
@@ -548,30 +510,6 @@ export default function Centrala() {
             ) : null}
           </div>
         </motion.div>
-
-        <PublicationChoiceModal
-          isOpen={otodomPubOpen}
-          onClose={() => setOtodomPubOpen(false)}
-          title="Opłata za publikację importu"
-          subtitle="Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją."
-          coupons={otodomWalletCoupons}
-          hasPlusCredit={otodomWalletHasPlusCredit}
-          plusCredits={otodomWalletPlusCredits}
-          onConfirm={(result) => {
-            if (result.action === "cancel") {
-              setOtodomPubOpen(false);
-              return;
-            }
-            if (result.action === "buy_plus") {
-              setOtodomCreateError("Kup Pakiet Plus w portfelu, a następnie ponów import.");
-              setOtodomPubOpen(false);
-              return;
-            }
-            setOtodomPendingRedemption(result.redemption);
-            setOtodomPubOpen(false);
-            setOtodomConfirmOpen(true);
-          }}
-        />
 
         <OtodomCreateConfirmModal
           open={otodomConfirmOpen}
