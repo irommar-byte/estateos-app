@@ -4744,6 +4744,17 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 </View>
               </BlurView>
             </Pressable>
+            {!isRadarActive ? (
+              <Text
+                pointerEvents="none"
+                style={[
+                  styles.radarCalibrationTapHint,
+                  { color: isDark ? 'rgba(255,180,174,0.78)' : 'rgba(185,28,28,0.62)' },
+                ]}
+              >
+                {t('radar.home.calibrationTapHint')}
+              </Text>
+            ) : null}
             </Animated.View>
           </View>
           </JellyReveal>
@@ -6222,6 +6233,13 @@ const styles = StyleSheet.create({
   radarCalibrationPressed: {
     opacity: 0.88,
     transform: [{ scale: 0.985 }],
+  },
+  radarCalibrationTapHint: {
+    marginTop: 4,
+    fontSize: 9,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textAlign: 'center',
   },
   radarPill: {
     flexDirection: 'row',

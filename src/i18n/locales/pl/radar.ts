@@ -43,6 +43,7 @@ export const radar = {
     statusLive: 'Status: LIVE',
     statusLoveLive: 'Status: LOVE LIVE',
     statusInactive: 'Status: NIEAKTYWNY',
+    calibrationTapHint: 'Kliknij, aby ustawić',
     browseModeRadar: 'Radar',
     browseModeGallery: 'Galeria',
     galleryTitle: 'Galeria ofert',

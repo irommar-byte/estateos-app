@@ -43,6 +43,7 @@ export const radar = {
     statusLive: 'Статус: ЖИВОЙ',
     statusLoveLive: 'Статус: ЛЮБЛЮ ЖИВУЮ',
     statusInactive: 'Статус: НЕАКТИВНО',
+    calibrationTapHint: 'Нажмите, чтобы настроить',
     browseModeRadar: 'Радар',
     browseModeGallery: 'Галерея',
     galleryTitle: 'Галерея объявлений',
