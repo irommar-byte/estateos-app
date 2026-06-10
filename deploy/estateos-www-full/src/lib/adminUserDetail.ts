@@ -1,5 +1,6 @@
 import { shapeRadarPreference, type RadarPreferenceDto } from '@/lib/radarPreferenceShape';
 import { radarIntelligenceLabel } from '@/lib/radarCalibrationWeb';
+import type { WalletSnapshot } from '@/lib/walletLedger';
 
 export type AdminUserDeviceRow = {
   id: string;
@@ -45,6 +46,7 @@ export type AdminUserDetail = {
   lastLoginAt: string | null;
   image: string | null;
   extraListings: number;
+  wallet?: WalletSnapshot;
   legacyPreferences: {
     searchType: string | null;
     searchTransactionType: string | null;

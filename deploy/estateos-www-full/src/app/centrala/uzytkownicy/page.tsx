@@ -13,6 +13,8 @@ import {
   BadgeCheck,
   Radar,
   Smartphone,
+  Coins,
+  Ticket,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -338,6 +340,18 @@ export default function AdminUsers() {
                           {verified ? <BadgeCheck size={14} className="shrink-0 text-emerald-500" /> : null}
                           {u.devices.length > 0 ? <Smartphone size={13} className="shrink-0 text-[var(--eos-subtle)]" /> : null}
                           {u.radar ? <Radar size={13} className="shrink-0 text-sky-500" /> : null}
+                          {u.wallet && u.wallet.credits > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">
+                              <Coins size={10} />
+                              {u.wallet.credits}
+                            </span>
+                          ) : null}
+                          {u.wallet && u.wallet.activeCoupons > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:text-sky-400">
+                              <Ticket size={10} />
+                              {u.wallet.activeCoupons}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="truncate text-xs text-[var(--eos-muted)]">{u.email}</p>
                         <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
@@ -349,6 +363,14 @@ export default function AdminUsers() {
                     </div>
                     <div className="flex shrink-0 items-center gap-4">
                       <div className="hidden text-right sm:block">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Kredyty</p>
+                        <p className="text-sm font-black tabular-nums">{u.wallet?.credits ?? 0}</p>
+                      </div>
+                      <div className="hidden text-right sm:block">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Kupony</p>
+                        <p className="text-sm font-black tabular-nums">{u.wallet?.activeCoupons ?? 0}</p>
+                      </div>
+                      <div className="hidden text-right md:block">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">Oferty</p>
                         <p className="text-sm font-black tabular-nums">{u.offers?.length || 0}</p>
                       </div>

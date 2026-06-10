@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { shapeAdminUserDetail } from '@/lib/adminUserDetail';
+import { getWalletSnapshotsForUserIds } from '@/lib/walletLedger';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -56,7 +57,11 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     });
 
-    const users = rows.map((row) => shapeAdminUserDetail(row as Parameters<typeof shapeAdminUserDetail>[0]));
+    const snapshots = await getWalletSnapshotsForUserIds(rows.map((row) => row.id));
+    const users = rows.map((row) => {
+      const shaped = shapeAdminUserDetail(row as Parameters<typeof shapeAdminUserDetail>[0]);
+      return { ...shaped, wallet: snapshots[row.id] };
+    });
 
     return NextResponse.json({ success: true, users });
   } catch (error) {

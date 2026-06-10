@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { randomBytes } from 'crypto';
+import { logWalletCouponConsume, logWalletCouponGrant } from '@/lib/walletLedger';
 
 export type ProfilePromoCardRow = {
   id: string;
@@ -156,7 +157,19 @@ export async function createProfilePromoCard(
   )) as ProfilePromoCardRow[];
   const row = rows[0];
   if (!row) throw new Error('INSERT_FAILED');
-  return rowToApiCard(row);
+  const card = rowToApiCard(row);
+  try {
+    await logWalletCouponGrant({
+      userId,
+      cardId: card.id,
+      label: card.title,
+      purpose: card.purpose || 'coupon',
+      meta: { kind: card.kind, templateId: card.templateId },
+    });
+  } catch {
+    /* ledger optional */
+  }
+  return card;
 }
 
 export function welcomePromoCardId(userId: number): string {
@@ -210,6 +223,23 @@ export async function markProfilePromoCardUsed(userId: number, cardId: string): 
     userId,
   );
   const ok = Number(result || 0) > 0;
+  if (ok) {
+    try {
+      const rows = (await prisma.$queryRawUnsafe(
+        `SELECT title FROM MobileProfilePromoCard WHERE id = ? AND userId = ? LIMIT 1`,
+        normalizedId,
+        userId,
+      )) as Array<{ title: string }>;
+      await logWalletCouponConsume({
+        userId,
+        cardId: normalizedId,
+        label: `Wykorzystano kupon: ${rows[0]?.title || normalizedId}`,
+        purpose: 'publication',
+      });
+    } catch {
+      /* ledger optional */
+    }
+  }
   if (ok && normalizedId.startsWith('welcome_')) {
     await prisma.$executeRawUnsafe(
       'UPDATE `User` SET firstFreePublicationUsed = 1 WHERE id = ?',

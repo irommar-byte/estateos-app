@@ -9,10 +9,12 @@ import {
   buildInvestorProSubscriptionUserUpdate,
   buildPakietPlusUserUpdate,
   extractSubscriptionExpiresAtFromJws,
+  INVESTOR_PRO_MONTHLY_CREDITS,
   isInvestorProProductId,
   isPakietPlusProductId,
   isSupportedIapProductId,
 } from '@/lib/mobileIapEntitlements';
+import { appendWalletLedgerEvent, logWalletCreditGrant } from '@/lib/walletLedger';
 
 export async function POST(req: Request) {
   const userId = mobileBearerUserId(req);
@@ -214,6 +216,18 @@ export async function POST(req: Request) {
     isPro = updatedUser.isPro;
     proExpiresAt = updatedUser.proExpiresAt;
     entitlementGranted = true;
+    try {
+      await logWalletCreditGrant({
+        userId,
+        amount: 1,
+        purpose: 'pakiet_plus',
+        referenceType: 'iap',
+        referenceId: transactionId || pendingPurchaseId,
+        label: 'Zakup Pakiet PLUS (IAP)',
+      });
+    } catch (error) {
+      console.warn('[walletLedger] verify plus grant log failed', error);
+    }
   }
 
   let proCreditsGranted = false;
@@ -267,6 +281,34 @@ export async function POST(req: Request) {
     if (shouldGrantInvestorPro || updatedUser.isPro) {
       entitlementGranted = entitlementGranted || shouldGrantInvestorPro;
       if (updatedUser.isPro) investorProGranted = true;
+    }
+
+    try {
+      if (shouldGrantInvestorPro) {
+        await appendWalletLedgerEvent({
+          userId,
+          direction: 'GRANT',
+          assetType: 'INVESTOR_PRO',
+          amount: 1,
+          balanceAfter: null,
+          purpose: 'investor_pro',
+          referenceType: 'iap',
+          referenceId: transactionId || pendingPurchaseId,
+          label: 'Aktywacja Investor Pro (IAP)',
+        });
+      }
+      if (proCreditsGranted) {
+        await logWalletCreditGrant({
+          userId,
+          amount: INVESTOR_PRO_MONTHLY_CREDITS,
+          purpose: 'investor_pro',
+          referenceType: 'iap',
+          referenceId: transactionId || pendingPurchaseId,
+          label: `Odnowienie Investor Pro · +${INVESTOR_PRO_MONTHLY_CREDITS} kredytów`,
+        });
+      }
+    } catch (error) {
+      console.warn('[walletLedger] verify investor pro log failed', error);
     }
   }
 

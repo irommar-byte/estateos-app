@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
+import { logWalletCouponConsume, logWalletCreditConsume } from '@/lib/walletLedger';
 import {
   clearPendingPublication,
   ensureOfferPendingPublicationColumns,
@@ -65,6 +66,47 @@ function asDb(db?: any): any {
 function toBooleanFlag(value: unknown): boolean {
   const n = Number(value ?? 0);
   return Number.isFinite(n) && n > 0;
+}
+
+async function logPublicationEntitlementConsumed(params: {
+  userId: number;
+  offerId: number;
+  kind: PublicationKind;
+  bonusCouponId?: string | null;
+}) {
+  try {
+    if (params.kind === 'PLUS_CREDIT') {
+      await logWalletCreditConsume({
+        userId: params.userId,
+        purpose: 'publication',
+        referenceType: 'offer',
+        referenceId: String(params.offerId),
+        label: `Kredyt PLUS · oferta #${params.offerId}`,
+      });
+    }
+    if (params.kind === 'FREE_FIRST') {
+      await logWalletCouponConsume({
+        userId: params.userId,
+        cardId: params.bonusCouponId || `welcome_${params.userId}`,
+        label: `Kupon powitalny · oferta #${params.offerId}`,
+        purpose: 'publication',
+        referenceType: 'offer',
+        referenceId: String(params.offerId),
+      });
+    }
+    if (params.bonusCouponId && params.kind !== 'FREE_FIRST') {
+      await logWalletCouponConsume({
+        userId: params.userId,
+        cardId: params.bonusCouponId,
+        label: `Kupon · oferta #${params.offerId}`,
+        purpose: 'publication',
+        referenceType: 'offer',
+        referenceId: String(params.offerId),
+      });
+    }
+  } catch (error) {
+    console.warn('[walletLedger] publication consume log failed', error);
+  }
 }
 
 function hasPlusCreditOnUser(user: { extraListings?: number | null; plusExpiresAt?: Date | string | null }) {
@@ -526,6 +568,13 @@ export async function stageOfferPublicationForReview(params: {
     };
   }, PUBLICATION_TX_OPTIONS);
 
+  await logPublicationEntitlementConsumed({
+    userId: params.userId,
+    offerId: params.offerId,
+    kind: params.kind,
+    bonusCouponId: params.bonusCouponId,
+  });
+
   notifyAdminsOfferPending(staged.offerId, staged.offerTitle);
   return staged;
 }
@@ -602,6 +651,14 @@ export async function activateOfferPublication(params: {
       publication,
     };
   }, PUBLICATION_TX_OPTIONS);
+
+  if (!params.skipEntitlementConsume) {
+    await logPublicationEntitlementConsumed({
+      userId: params.userId,
+      offerId: params.offerId,
+      kind: params.kind,
+    });
+  }
 
   const publicationId = result.publication?.id ?? null;
   void import('@/lib/services/radar.service').then(({ dispatchRadarForMarketEntry }) =>

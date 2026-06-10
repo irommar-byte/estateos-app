@@ -16,9 +16,11 @@ import {
   Smartphone,
   Trash2,
   User,
+  Wallet,
   X,
 } from "lucide-react";
 import type { AdminUserDetail } from "@/lib/adminUserDetail";
+import AdminWalletSection from "@/components/admin/AdminWalletSection";
 import {
   labelPropertyType,
   labelSearchType,
@@ -294,6 +296,12 @@ export default function AdminUserDetailPanel({
           ))}
         </Section>
       ) : null}
+
+      <Section title="Kredyty i kupony" icon={<Wallet size={12} className="text-emerald-500" />}>
+        <div className="px-4 py-4">
+          <AdminWalletSection userId={user.id} initialSnapshot={user.wallet} />
+        </div>
+      </Section>
 
       <Section title="Aktywność" icon={<Activity size={12} className="text-emerald-500" />}>
         <InfoRow label="Rejestracja" value={formatDate(user.createdAt)} />

@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import { shapeMobileUser } from '@/lib/mobileUserShape';
-import { buildInvestorProGrantData, buildInvestorProRevokeData } from '@/lib/investorProGrant';
+import { buildInvestorProGrantData, buildInvestorProRevokeData, INVESTOR_PRO_PUBLICATION_CREDITS } from '@/lib/investorProGrant';
+import { appendWalletLedgerEvent, logWalletCreditGrant } from '@/lib/walletLedger';
 
 async function requireAdmin() {
   const cookieStore = await cookies();
@@ -55,6 +56,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       where: { id: userId },
       data: updatedData,
     });
+
+    if (action === 'give') {
+      await logWalletCreditGrant({
+        userId,
+        amount: INVESTOR_PRO_PUBLICATION_CREDITS,
+        purpose: 'investor_pro_admin',
+        referenceType: 'admin',
+        referenceId: String(admin.id),
+        label: `Nadanie Investor Pro (admin) · +${INVESTOR_PRO_PUBLICATION_CREDITS} kredytów`,
+        meta: { adminId: admin.id },
+      });
+      await appendWalletLedgerEvent({
+        userId,
+        direction: 'GRANT',
+        assetType: 'INVESTOR_PRO',
+        amount: 1,
+        balanceAfter: null,
+        purpose: 'investor_pro_admin',
+        referenceType: 'admin',
+        referenceId: String(admin.id),
+        label: 'Aktywacja Investor Pro przez administratora',
+        meta: { proExpiresAt: updated.proExpiresAt?.toISOString() ?? null },
+      });
+    } else {
+      await appendWalletLedgerEvent({
+        userId,
+        direction: 'CONSUME',
+        assetType: 'INVESTOR_PRO',
+        amount: 1,
+        balanceAfter: 0,
+        purpose: 'investor_pro_revoke',
+        referenceType: 'admin',
+        referenceId: String(admin.id),
+        label: 'Cofnięcie Investor Pro przez administratora',
+      });
+    }
 
     const shaped = shapeMobileUser(updated);
 
