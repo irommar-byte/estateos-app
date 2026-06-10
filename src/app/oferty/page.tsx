@@ -65,14 +65,14 @@ type GallerySection =
 
 const SECTION_ORDER: GallerySection[] = [
   "all",
+  "mine",
+  "auction",
   "nearest",
   "sale",
   "rent",
   "newest",
   "discounted",
   "featured",
-  "mine",
-  "auction",
 ];
 
 function formatPriceLabel(
@@ -364,33 +364,48 @@ export default function CatalogPage() {
               className="mt-8 md:mt-10"
               aria-label={labels.title}
             >
-              <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none [scrollbar-width:none]">
+              <div className="flex flex-wrap gap-2 pb-1">
                 {SECTION_ORDER.map((section) => {
                   const Icon = sectionIcons[section];
                   const active = activeSection === section;
                   const count = sectionCounts[section];
+                  const accentAuction = section === "auction";
                   return (
                     <button
                       key={section}
                       type="button"
                       onClick={() => setActiveSection(section)}
-                      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border max-w-[min(100%,14rem)] sm:max-w-none ${
+                      className={`flex shrink-0 items-center gap-2.5 rounded-xl px-4 py-3 text-left transition-all duration-200 border ${
                         active
-                          ? "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(16,185,129,0.12)]"
-                          : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
+                          ? accentAuction
+                            ? "border-violet-500/40 bg-violet-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(139,92,246,0.12)]"
+                            : "border-emerald-500/40 bg-emerald-500/10 text-[var(--eos-text)] shadow-[0_0_20px_rgba(16,185,129,0.12)]"
+                          : accentAuction
+                            ? "border-violet-500/15 bg-transparent text-[var(--eos-muted)] hover:bg-violet-500/8 hover:text-[var(--eos-text)]"
+                            : "border-transparent bg-transparent text-[var(--eos-muted)] hover:bg-[var(--eos-card)] hover:text-[var(--eos-text)] hover:border-[var(--eos-border)]"
                       }`}
                     >
                       <Icon
-                        className={`h-4 w-4 shrink-0 ${active ? "text-emerald-500" : "text-[var(--eos-subtle)]"}`}
+                        className={`h-4 w-4 shrink-0 ${
+                          active
+                            ? accentAuction
+                              ? "text-violet-500"
+                              : "text-emerald-500"
+                            : accentAuction
+                              ? "text-violet-400"
+                              : "text-[var(--eos-subtle)]"
+                        }`}
                         strokeWidth={2.25}
                       />
-                      <span className="text-[11px] font-black uppercase tracking-[0.1em] leading-snug whitespace-normal text-balance">
+                      <span className="text-[11px] font-black uppercase tracking-[0.1em] leading-snug whitespace-nowrap">
                         {labels.sections[section]}
                       </span>
                       <span
                         className={`min-w-[1.75rem] rounded-md px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums ${
                           active
-                            ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300"
+                            ? accentAuction
+                              ? "bg-violet-500/20 text-violet-600 dark:text-violet-300"
+                              : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300"
                             : "bg-[var(--eos-border)]/80 text-[var(--eos-subtle)]"
                         }`}
                       >
