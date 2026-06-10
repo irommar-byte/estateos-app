@@ -1,4 +1,4 @@
-Zapisz też napisz mi ogłoszenieimport { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseMobileUserIdFromAuthHeader } from '@/lib/mobileAuthUserId';
 
@@ -30,4 +30,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch {
     return NextResponse.json({ ok: false }, { status: 500 });
   }
-}image.png
+}

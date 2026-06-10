@@ -4381,7 +4381,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
       <View
         style={[
           styles.topBarContainer,
-          showOnlyFavorites ? styles.topBarFavoritesLayout : styles.topBarCompact,
+          showOnlyFavorites || radarBrowseMode === 'RADAR' ? styles.topBarFavoritesLayout : styles.topBarCompact,
           { top: topBarTop },
         ]}
         pointerEvents="auto"
@@ -4418,7 +4418,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               },
             ]}
           >
-            <View style={[styles.favoritesScopeRailOuter, styles.favoritesScopeRailOuterTop]}>
+            <View style={styles.favoritesScopeRailOuter}>
               <BlurView
                 intensity={isDark ? 85 : 92}
                 tint={isDark ? 'dark' : 'light'}
@@ -4510,46 +4510,52 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
               )}
               <JellyReveal visible key={favoritesMapScope}>
                 {favoritesMapScope === 'FAVORITES' ? (
-                  <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, styles.favoritesTopPill, pressed && { transform: [{ scale: 0.96 }] }]}>
+                  <Pressable onPress={openFavoritesCalibration} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
                     <BlurView
                       intensity={95}
                       tint={isDark ? 'dark' : 'light'}
                       style={[
                         styles.radarPill,
-                        styles.favoritesTopPillInner,
-                        { backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)' },
+                        {
+                          backgroundColor: isFavoritesRadarEnabled ? 'rgba(232,108,165,0.22)' : 'rgba(255,255,255,0.1)',
+                        },
                       ]}
                     >
                       <Animated.View style={{ transform: [{ scale: favoritesHeartBeat }] }}>
                         <Ionicons
                           name={isFavoritesRadarEnabled ? 'heart' : 'heart-outline'}
-                          size={16}
+                          size={18}
                           color={isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93'}
                         />
                       </Animated.View>
                       <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, styles.favoritesTopPillTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>
+                        <Text style={[styles.radarTitle, { color: isFavoritesRadarEnabled ? '#F777B2' : '#8E8E93' }]}>
                           {t('radar.home.favorBrand')}
                         </Text>
-                        <Text style={[styles.radarStatus, styles.favoritesTopPillStatus]}>
+                        <Text style={styles.radarStatus}>
                           {isFavoritesRadarEnabled ? t('radar.home.statusLoveLive') : t('radar.home.statusInactive')}
                         </Text>
                       </View>
                     </BlurView>
                   </Pressable>
                 ) : (
-                  <Pressable onPress={openManageMyProperties} style={({ pressed }) => [styles.radarBtnWrapper, styles.favoritesTopPill, pressed && { transform: [{ scale: 0.96 }] }]}>
+                  <Pressable onPress={openManageMyProperties} style={({ pressed }) => [styles.radarBtnWrapper, pressed && { transform: [{ scale: 0.96 }] }]}>
                     <BlurView
                       intensity={95}
                       tint={isDark ? 'dark' : 'light'}
-                      style={[styles.radarPill, styles.favoritesTopPillInner, { backgroundColor: 'rgba(16,185,129,0.16)' }]}
+                      style={[
+                        styles.radarPill,
+                        {
+                          backgroundColor: 'rgba(16,185,129,0.16)',
+                        },
+                      ]}
                     >
-                      <Ionicons name="home" size={16} color="#10b981" />
+                      <Ionicons name="home" size={18} color="#10b981" />
                       <View style={styles.radarPillTextWrap}>
-                        <Text style={[styles.radarTitle, styles.favoritesTopPillTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]}>
+                        <Text style={[styles.radarTitle, { color: isDark ? '#C9F9E7' : '#0B5B43' }]}>
                           {t('radar.home.manageMyPropertiesTitle')}
                         </Text>
-                        <Text style={[styles.radarStatus, styles.favoritesTopPillStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]}>
+                        <Text style={[styles.radarStatus, { color: isDark ? 'rgba(201,249,231,0.72)' : 'rgba(11,91,67,0.72)' }]}>
                           {t('radar.home.manageMyPropertiesSubtitle')}
                         </Text>
                       </View>
@@ -4558,6 +4564,144 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 )}
               </JellyReveal>
             </View>
+          </Animated.View>
+        ) : radarBrowseMode === 'RADAR' ? (
+          <Animated.View
+            style={[
+              styles.topBarCenterStack,
+              {
+                opacity: modeIslandOpacity,
+                transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
+              },
+            ]}
+          >
+            <RadarBrowseModeRail
+              mode={radarBrowseMode}
+              isDark={isDark}
+              radarLabel={t('radar.home.browseModeRadar')}
+              galleryLabel={t('radar.home.browseModeGallery')}
+              onSelectRadar={() => setRadarBrowseMode('RADAR')}
+              onSelectGallery={() => {
+                setRadarBrowseMode('GALLERY');
+                setShowRadarMatchesOnly(false);
+              }}
+            />
+            <JellyReveal visible key="radar-calibration-pill">
+              <View style={styles.radarHeroWrap}>
+                {isRadarActive && (
+                  <View pointerEvents="none" style={styles.radarPulseLayer}>
+                    <Animated.View
+                      style={[
+                        styles.radarPulseWave,
+                        {
+                          borderColor: 'rgba(16,185,129,0.55)',
+                          opacity: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.42, 0] }),
+                          transform: [{ scale: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
+                        },
+                      ]}
+                    />
+                    <Animated.View
+                      style={[
+                        styles.radarPulseWave,
+                        {
+                          borderColor: 'rgba(16,185,129,0.42)',
+                          opacity: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0] }),
+                          transform: [{ scale: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.95] }) }],
+                        },
+                      ]}
+                    />
+                  </View>
+                )}
+                <Animated.View
+                  style={
+                    !isRadarActive
+                      ? {
+                          transform: [
+                            {
+                              translateY: radarCalibrateNudge.interpolate({
+                                inputRange: [0, 0.5, 1],
+                                outputRange: [0, -4, 0],
+                              }),
+                            },
+                            {
+                              scale: radarCalibrateNudge.interpolate({
+                                inputRange: [0, 0.5, 1],
+                                outputRange: [1, 1.028, 1],
+                              }),
+                            },
+                          ],
+                        }
+                      : undefined
+                  }
+                >
+                  <Pressable
+                    onPress={() => {
+                      if (isRadarActive && visibleRadarMatchingOffers.length > 0 && !showOnlyFavorites) {
+                        Haptics.selectionAsync();
+                        setShowRadarMatchesOnly(true);
+                        return;
+                      }
+                      openRadarCalibration();
+                    }}
+                    onLongPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      openRadarCalibration();
+                    }}
+                    style={({ pressed }) => [
+                      styles.radarBtnWrapper,
+                      styles.radarCalibrationBtn,
+                      radarCalibrationChrome.shadow,
+                      { borderColor: radarCalibrationChrome.borderColor },
+                      pressed && styles.radarCalibrationPressed,
+                    ]}
+                  >
+                    <BlurView
+                      intensity={isDark ? 82 : 92}
+                      tint={isDark ? 'dark' : 'light'}
+                      style={[styles.radarPill, styles.radarCalibrationFace, { backgroundColor: radarCalibrationChrome.fill }]}
+                    >
+                      <RadarStatusBulb
+                        active={isRadarActive}
+                        blink={radarInactiveBlink}
+                        tint={radarCalibrationChrome.accent}
+                        softBg={radarCalibrationChrome.iconBg}
+                      />
+                      <View style={styles.radarPillTextWrap}>
+                        <Text style={[styles.radarTitle, { color: radarCalibrationChrome.accent }]}>
+                          {t('radar.home.radarBrand')}
+                        </Text>
+                        <Text style={styles.radarStatus}>
+                          {isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}
+                        </Text>
+                        {isRadarActive && radarActiveScopeLine ? (
+                          <Text
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                            style={[
+                              styles.radarScopeLine,
+                              { color: isDark ? 'rgba(16,185,129,0.92)' : 'rgba(5,120,85,0.95)' },
+                            ]}
+                          >
+                            {radarActiveScopeLine}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </BlurView>
+                  </Pressable>
+                  {!isRadarActive ? (
+                    <Text
+                      pointerEvents="none"
+                      style={[
+                        styles.radarCalibrationTapHint,
+                        { color: isDark ? 'rgba(255,180,174,0.78)' : 'rgba(185,28,28,0.62)' },
+                      ]}
+                    >
+                      {t('radar.home.calibrationTapHint')}
+                    </Text>
+                  ) : null}
+                </Animated.View>
+              </View>
+            </JellyReveal>
           </Animated.View>
         ) : (
           <View style={styles.topBarCenterSpacer} />
@@ -4596,148 +4740,6 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           </BlurView>
         </Pressable>
       </View>
-
-      {!showOnlyFavorites && radarBrowseMode === 'RADAR' && (
-        <Animated.View
-          pointerEvents="box-none"
-          style={[
-            styles.favorFloatingIslandWrap,
-            {
-              top: browseChromeTop,
-              opacity: modeIslandOpacity,
-              transform: [{ translateY: modeIslandTranslateY }, { scale: modeIslandScale }],
-            },
-          ]}
-        >
-          <RadarBrowseModeRail
-            mode={radarBrowseMode}
-            isDark={isDark}
-            radarLabel={t('radar.home.browseModeRadar')}
-            galleryLabel={t('radar.home.browseModeGallery')}
-            onSelectRadar={() => setRadarBrowseMode('RADAR')}
-            onSelectGallery={() => {
-              setRadarBrowseMode('GALLERY');
-              setShowRadarMatchesOnly(false);
-            }}
-          />
-          <JellyReveal visible key="radar-calibration-pill">
-          <View style={styles.radarHeroWrap}>
-            {isRadarActive && (
-              <View pointerEvents="none" style={styles.radarPulseLayer}>
-                <Animated.View
-                  style={[
-                    styles.radarPulseWave,
-                    {
-                      borderColor: 'rgba(16,185,129,0.55)',
-                      opacity: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.42, 0] }),
-                      transform: [{ scale: radarPulseA.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1.85] }) }],
-                    },
-                  ]}
-                />
-                <Animated.View
-                  style={[
-                    styles.radarPulseWave,
-                    {
-                      borderColor: 'rgba(16,185,129,0.42)',
-                      opacity: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.34, 0] }),
-                      transform: [{ scale: radarPulseB.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1.95] }) }],
-                    },
-                  ]}
-                />
-              </View>
-            )}
-            <Animated.View
-              style={
-                !isRadarActive
-                  ? {
-                      transform: [
-                        {
-                          translateY: radarCalibrateNudge.interpolate({
-                            inputRange: [0, 0.5, 1],
-                            outputRange: [0, -4, 0],
-                          }),
-                        },
-                        {
-                          scale: radarCalibrateNudge.interpolate({
-                            inputRange: [0, 0.5, 1],
-                            outputRange: [1, 1.028, 1],
-                          }),
-                        },
-                      ],
-                    }
-                  : undefined
-              }
-            >
-            <Pressable
-              onPress={() => {
-                if (isRadarActive && visibleRadarMatchingOffers.length > 0 && !showOnlyFavorites) {
-                  Haptics.selectionAsync();
-                  setShowRadarMatchesOnly(true);
-                  return;
-                }
-                openRadarCalibration();
-              }}
-              onLongPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                openRadarCalibration();
-              }}
-              style={({ pressed }) => [
-                styles.radarBtnWrapper,
-                styles.radarCalibrationBtn,
-                radarCalibrationChrome.shadow,
-                { borderColor: radarCalibrationChrome.borderColor },
-                pressed && styles.radarCalibrationPressed,
-              ]}
-            >
-              <BlurView
-                intensity={isDark ? 82 : 92}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.radarPill, styles.radarCalibrationFace, { backgroundColor: radarCalibrationChrome.fill }]}
-              >
-                <RadarStatusBulb
-                  active={isRadarActive}
-                  blink={radarInactiveBlink}
-                  tint={radarCalibrationChrome.accent}
-                  softBg={radarCalibrationChrome.iconBg}
-                />
-                <View style={styles.radarPillTextWrap}>
-                  <Text style={[styles.radarTitle, { color: radarCalibrationChrome.accent }]}>
-                    {t('radar.home.radarBrand')}
-                  </Text>
-                  <Text style={styles.radarStatus}>
-                    {isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}
-                  </Text>
-                  {isRadarActive && radarActiveScopeLine ? (
-                    <Text
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                      style={[
-                        styles.radarScopeLine,
-                        { color: isDark ? 'rgba(16,185,129,0.92)' : 'rgba(5,120,85,0.95)' },
-                      ]}
-                    >
-                      {radarActiveScopeLine}
-                    </Text>
-                  ) : null}
-                </View>
-              </BlurView>
-            </Pressable>
-            {!isRadarActive ? (
-              <Text
-                pointerEvents="none"
-                style={[
-                  styles.radarCalibrationTapHint,
-                  { color: isDark ? 'rgba(255,180,174,0.78)' : 'rgba(185,28,28,0.62)' },
-                ]}
-              >
-                {t('radar.home.calibrationTapHint')}
-              </Text>
-            ) : null}
-            </Animated.View>
-          </View>
-          </JellyReveal>
-        </Animated.View>
-      )}
 
       {!showOnlyFavorites && radarBrowseMode === 'GALLERY' && (
         <Animated.View
@@ -5798,27 +5800,6 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     alignSelf: 'center',
   },
-  favoritesScopeRailOuterTop: {
-    marginBottom: 6,
-    maxWidth: 280,
-  },
-  favoritesTopPill: {
-    alignSelf: 'center',
-    maxWidth: '100%',
-  },
-  favoritesTopPillInner: {
-    minWidth: 0,
-    maxWidth: 280,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    gap: 8,
-  },
-  favoritesTopPillTitle: {
-    fontSize: 13,
-  },
-  favoritesTopPillStatus: {
-    fontSize: 9,
-  },
   topBarToolsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5829,13 +5810,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
     minHeight: 68,
-  },
-  favorFloatingIslandWrap: {
-    position: 'absolute',
-    alignSelf: 'center',
-    alignItems: 'center',
-    zIndex: 48,
-    elevation: 48,
   },
   favoritesScopeRailOuter: {
     width: '100%',
