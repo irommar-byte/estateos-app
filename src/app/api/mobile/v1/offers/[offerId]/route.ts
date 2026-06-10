@@ -18,6 +18,7 @@ import {
 } from '@/lib/offerSchemaErrors';
 import { endOfferPublication } from '@/lib/offerPublication';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
+import { ensureOfferPriceHistorySchema, enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
 
 type RouteContext = {
   params: Promise<{ offerId: string }> | { offerId: string };
@@ -41,6 +42,7 @@ export async function GET(req: Request, context: RouteContext) {
   }
 
   try {
+    await ensureOfferPriceHistorySchema();
     const authUserId = parseUserIdFromBearer(req);
     let viewerRole: string | null = null;
     if (authUserId) {
@@ -73,11 +75,22 @@ export async function GET(req: Request, context: RouteContext) {
       lat: legalOffer.lat,
       lng: legalOffer.lng,
     });
-    const shapedOffer = {
+    const shapedOffer = enrichOfferPriceDiscountFields({
       ...legalOffer,
       localityCountry: localityResolved.localityCountry,
       localityCountryCode: localityResolved.localityCountryCode,
-    };
+      listPricePln:
+        Number(
+          (
+            await prisma.$queryRawUnsafe<Array<{ listPricePln: number | null }>>(
+              `SELECT listPricePln FROM \`Offer\` WHERE id = ? LIMIT 1`,
+              offerId,
+            )
+          )[0]?.listPricePln,
+        ) ||
+        legalOffer.pricePln ||
+        legalOffer.price,
+    });
 
     return NextResponse.json({ success: true, offer: enrichOfferWithLegalAliases(shapedOffer) }, {
       headers: { 'Cache-Control': 'no-store, max-age=0' },

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Home, MapPin, Loader2, Save, ArrowLeft, Image as ImageIcon, Trash2, GripHorizontal, Building2, Layers, CheckCircle, BedDouble, Calendar, Box, Sparkles, Map } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -68,6 +68,13 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const { rate: fxRate } = useFxRate();
   const amenityOptions = React.useMemo(() => buildAmenityOptions(ao), [ao]);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const crmReturnHref = React.useMemo(() => {
+    const ret = searchParams.get('return');
+    if (ret && ret.startsWith('/moje-konto/crm')) return ret;
+    return '/moje-konto/crm?tab=my_offers';
+  }, [searchParams]);
+  const goBackFromEdit = () => router.push(crmReturnHref);
   const [offerId, setOfferId] = useState<string | null>(null);
   const [data, setData] = useState<any>({});
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
@@ -267,7 +274,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (res.ok) { 
       setIsSuccess(true); 
-      setTimeout(() => router.back(), 2500); 
+      setTimeout(() => goBackFromEdit(), 2500); 
     } else { 
       alert("Wystąpił błąd zapisu."); 
       setIsSubmitting(false); 
@@ -288,7 +295,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       
       {/* Pasek Nawigacyjny */}
       <div className="sticky top-0 z-50 bg-[#020202]/80 backdrop-blur-2xl border-b border-white/5 p-4 md:p-6 flex items-center justify-between shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
-        <button onClick={() => router.back()} className="flex items-center gap-3 text-zinc-400 hover:text-white transition-all duration-300 group">
+        <button onClick={goBackFromEdit} className="flex items-center gap-3 text-zinc-400 hover:text-white transition-all duration-300 group">
           <div className="w-10 h-10 rounded-full bg-[#0a0a0a] border border-white/5 flex items-center justify-center group-hover:bg-white/10 group-hover:border-white/20 transition-all"><ArrowLeft size={16} /></div>
           <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden md:block">Wróć</span>
         </button>

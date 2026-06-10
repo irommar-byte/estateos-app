@@ -14,6 +14,7 @@ import { verifyMobileToken } from '@/lib/jwtMobile';
 import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
 import { findManyMobileListOffers } from '@/lib/offers/mobileOfferListQuery';
 import { loadOfferViewCounts, shapePublicListOffer } from '@/lib/offers/publicListShape';
+import { ensureOfferPriceHistorySchema, enrichOfferPriceDiscountFields } from '@/lib/offerPriceHistory';
 import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
 import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
 import {
@@ -102,6 +103,7 @@ export async function GET(req: Request) {
   }
 
   try {
+    await ensureOfferPriceHistorySchema();
     await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS OfferViewLog (
         id BIGINT NOT NULL AUTO_INCREMENT,
@@ -143,6 +145,14 @@ export async function GET(req: Request) {
 
     const viewsMap = await loadOfferViewCounts(prisma, offerIds);
     const legalOverrides = await legalStatusOverridesForOffers(prisma, offerIds);
+    const listPriceRows = (offerIds.length
+      ? await prisma.$queryRawUnsafe(
+          `SELECT id, listPricePln FROM \`Offer\` WHERE id IN (${offerIds.join(',')})`,
+        )
+      : []) as Array<{ id: number; listPricePln: number | null }>;
+    const listPriceMap = new Map(
+      listPriceRows.map((row) => [Number(row.id), Number(row.listPricePln)]),
+    );
     let listFxRate = DEFAULT_EUR_PLN_RATE;
     let listFxDate: string | null = new Date().toISOString().slice(0, 10);
     try {
@@ -154,7 +164,15 @@ export async function GET(req: Request) {
     }
 
     const normalizedOffers = visibleOffers.map((offer: any) =>
-      shapePublicListOffer(offer, {
+      shapePublicListOffer(
+        {
+          ...offer,
+          listPricePln:
+            listPriceMap.get(Number(offer.id)) ??
+            offer.pricePln ??
+            offer.price,
+        },
+        {
         viewsCount: viewsMap.get(Number(offer.id)) || 0,
         fx: { rate: listFxRate, date: listFxDate },
         legalOverrides,
