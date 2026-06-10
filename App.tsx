@@ -292,7 +292,6 @@ const FloatingNextButton = (props: any) => {
 
   // Kąty: 180° lewo = Discovery, 270° góra = Live, 0° prawo = jasny motyw
   const openLivePanel = useOpenHouseLiveStore((s) => s.openPanel);
-  const liveUnread = useOpenHouseLiveStore((s) => s.hasLiveUnread());
   const setPlusAnchor = useOpenHouseLiveStore((s) => s.setPlusAnchor);
 
   const quickActions = useMemo(
@@ -569,11 +568,6 @@ const FloatingNextButton = (props: any) => {
           alignItems: 'center'
         }}>
           <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
-          {liveUnread && !isArrow ? (
-            <View style={styles.livePlusBadge}>
-              <View style={styles.livePlusDot} />
-            </View>
-          ) : null}
 
           {/*
             ╔══════════════════════════════════════════════════════════╗
@@ -1607,24 +1601,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 18,
-  },
-  livePlusBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#10b981',
-  },
-  livePlusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#F59E0B',
   },
 });

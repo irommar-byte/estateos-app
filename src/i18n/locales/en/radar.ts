@@ -38,7 +38,7 @@ export const radar = {
     mineTab: 'Mine',
     radarBrand: 'EstateOS™ Radar',
     favorBrand: 'EstateOS™ Favor',
-    manageMyPropertiesTitle: 'Property management',
+    manageMyPropertiesTitle: 'Manage my properties',
     manageMyPropertiesSubtitle: 'Edit, publish and withdraw listings',
     statusLive: 'Status: LIVE',
     statusLoveLive: 'Status: LOVE LIVE',
