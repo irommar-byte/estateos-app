@@ -15,15 +15,19 @@ import {
   LayoutGrid,
   MapPin,
   Navigation,
+  UserRound,
+  Gavel,
 } from "lucide-react";
 import { useFormatOfferPrice } from "@/hooks/useFormatOfferPrice";
 import { normalizeTransactionType } from "@/lib/transactionType";
 import { useLocale } from "@/contexts/LocaleContext";
 import OfferFavoriteButton from "@/components/offer/OfferFavoriteButton";
 import LegalVerifiedShieldBadge from "@/components/offer/LegalVerifiedShieldBadge";
+import CatalogAuctionCard from "@/components/catalog/CatalogAuctionCard";
 import { getOfferPageCopy } from "@/content/offerPageCopy";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { formatDistanceKm, haversineKm } from "@/lib/geo/haversine";
+import type { AuctionEventRecord } from "@/lib/auctionTypes";
 
 type CatalogOffer = {
   id: number;
@@ -48,7 +52,16 @@ type CatalogOffer = {
   priceDiscountPercent?: number | null;
 };
 
-type GallerySection = "all" | "nearest" | "sale" | "rent" | "newest" | "discounted" | "featured";
+type GallerySection =
+  | "all"
+  | "nearest"
+  | "sale"
+  | "rent"
+  | "newest"
+  | "discounted"
+  | "featured"
+  | "mine"
+  | "auction";
 
 const SECTION_ORDER: GallerySection[] = [
   "all",
@@ -58,6 +71,8 @@ const SECTION_ORDER: GallerySection[] = [
   "newest",
   "discounted",
   "featured",
+  "mine",
+  "auction",
 ];
 
 function formatPriceLabel(
@@ -93,6 +108,8 @@ const sectionIcons: Record<GallerySection, typeof LayoutGrid> = {
   newest: Sparkles,
   discounted: BadgePercent,
   featured: Gem,
+  mine: UserRound,
+  auction: Gavel,
 };
 
 export default function CatalogPage() {
@@ -101,7 +118,13 @@ export default function CatalogPage() {
   const offerCopy = getOfferPageCopy(locale);
   const { formatOffer } = useFormatOfferPrice();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
+  const [myOffers, setMyOffers] = useState<CatalogOffer[]>([]);
+  const [auctionEvents, setAuctionEvents] = useState<AuctionEventRecord[]>([]);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMine, setLoadingMine] = useState(false);
+  const [loadingAuction, setLoadingAuction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<GallerySection>("all");
   const { location, denied, pending, request } = useUserLocation();
@@ -127,6 +150,56 @@ export default function CatalogPage() {
             enable: "Share location",
             denied: "Location denied — enable it in the browser to see distances.",
           };
+
+  const loadMine = useCallback(async () => {
+    setLoadingMine(true);
+    try {
+      const res = await fetch(`/api/offers?scope=mine&t=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      if (res.status === 401) {
+        setMyOffers([]);
+        return;
+      }
+      const data: unknown = await res.json().catch(() => null);
+      setMyOffers(Array.isArray(data) ? (data as CatalogOffer[]) : []);
+    } catch {
+      setMyOffers([]);
+    } finally {
+      setLoadingMine(false);
+    }
+  }, []);
+
+  const loadAuctions = useCallback(async () => {
+    setLoadingAuction(true);
+    try {
+      const res = await fetch(`/api/auction/live?t=${Date.now()}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await res.json();
+      setAuctionEvents(Array.isArray(data?.events) ? data.events : []);
+    } catch {
+      setAuctionEvents([]);
+    } finally {
+      setLoadingAuction(false);
+    }
+  }, []);
+
+  const loadAuth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/check", { cache: "no-store", credentials: "include" });
+      const data = await res.json();
+      const isLoggedIn = Boolean(data?.loggedIn && data?.user?.id);
+      setLoggedIn(isLoggedIn);
+      setCurrentUserId(isLoggedIn ? Number(data.user.id) : null);
+      if (isLoggedIn) void loadMine();
+    } catch {
+      setLoggedIn(false);
+      setCurrentUserId(null);
+    }
+  }, [loadMine]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,7 +232,14 @@ export default function CatalogPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadAuth();
+    void loadAuctions();
+  }, [load, loadAuth, loadAuctions]);
+
+  useEffect(() => {
+    if (activeSection === "mine" && loggedIn) void loadMine();
+    if (activeSection === "auction") void loadAuctions();
+  }, [activeSection, loggedIn, loadMine, loadAuctions]);
 
   const sortedByNewest = [...offers].sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : Number(a.id) * 1000;
@@ -208,10 +288,14 @@ export default function CatalogPage() {
     newest: sortedByNewest.length,
     discounted: discountedOffers.length,
     featured: featuredOffers.length,
+    mine: myOffers.length,
+    auction: auctionEvents.length,
   };
 
   const offersInSection = (() => {
     switch (activeSection) {
+      case "mine":
+        return myOffers;
       case "nearest":
         return nearestOffers;
       case "sale":
@@ -229,7 +313,19 @@ export default function CatalogPage() {
     }
   })();
 
-  const resultLabel = labels.resultSummary.replace("{n}", String(offersInSection.length));
+  const resultLabel = labels.resultSummary.replace("{n}", String(
+    activeSection === "auction" ? auctionEvents.length : offersInSection.length,
+  ));
+
+  const sectionLoading =
+    (activeSection === "mine" && loadingMine) || (activeSection === "auction" && loadingAuction);
+
+  const sectionLead =
+    activeSection === "mine"
+      ? labels.mineLead
+      : activeSection === "auction"
+        ? labels.auctionLead
+        : null;
 
   return (
     <main className="theme-aware-dashboard min-h-screen bg-[var(--eos-bg)] pb-24 pt-36 md:pt-40 font-sans text-[var(--eos-text)]">
@@ -260,7 +356,7 @@ export default function CatalogPage() {
             ) : null}
           </motion.div>
 
-          {!loading && !error && offers.length > 0 && (
+          {!loading && !error && (
             <motion.nav
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -309,6 +405,9 @@ export default function CatalogPage() {
                 <span className="mx-2 text-[var(--eos-border)]">·</span>
                 <span className="text-[var(--eos-muted)]">{labels.sections[activeSection]}</span>
               </p>
+              {sectionLead ? (
+                <p className="mt-3 max-w-3xl text-sm leading-relaxed text-[var(--eos-muted)]">{sectionLead}</p>
+              ) : null}
             </motion.nav>
           )}
         </header>
@@ -345,6 +444,62 @@ export default function CatalogPage() {
                 {labels.retry}
               </button>
             </motion.div>
+          ) : sectionLoading ? (
+            <motion.div
+              key="section-loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center gap-4 py-32 text-[var(--eos-muted)]"
+            >
+              <Loader2 className="h-9 w-9 animate-spin text-emerald-500/85" />
+              <p className="text-xs font-semibold uppercase tracking-[0.35em]">{labels.loading}</p>
+            </motion.div>
+          ) : activeSection === "mine" && !loggedIn ? (
+            <motion.div
+              key="mine-login"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="py-24 text-center"
+            >
+              <p className="mx-auto max-w-md text-sm leading-relaxed text-[var(--eos-muted)]">{labels.mineRequiresLogin}</p>
+              <Link
+                href={`/login?redirect=${encodeURIComponent("/oferty")}`}
+                className="mt-6 inline-flex rounded-full border border-emerald-500/35 bg-emerald-500/10 px-6 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600 transition hover:bg-emerald-500/15 dark:text-emerald-400"
+              >
+                {labels.mineLoginCta}
+              </Link>
+            </motion.div>
+          ) : activeSection === "auction" ? (
+            auctionEvents.length === 0 ? (
+              <motion.div key="auction-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-24 text-center">
+                <p className="text-sm uppercase tracking-[0.2em] text-[var(--eos-muted)]">{labels.empty}</p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="auction-grid"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="grid grid-cols-1 gap-12 md:grid-cols-2 md:gap-x-10 md:gap-y-14 lg:gap-x-14"
+              >
+                {auctionEvents.map((event, i) => (
+                  <CatalogAuctionCard
+                    key={event.id}
+                    event={event}
+                    locale={locale}
+                    index={i}
+                    currentUserId={currentUserId}
+                    onRequireAuth={() => {
+                      window.location.href = `/login?redirect=${encodeURIComponent("/oferty")}`;
+                    }}
+                    onEventUpdated={(updated) => {
+                      setAuctionEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+                    }}
+                  />
+                ))}
+              </motion.div>
+            )
           ) : offersInSection.length === 0 ? (
             <motion.div
               key="empty"

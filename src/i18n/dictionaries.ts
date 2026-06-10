@@ -340,7 +340,13 @@ export type Dictionary = {
       newest: string;
       discounted: string;
       featured: string;
+      mine: string;
+      auction: string;
     };
+    mineRequiresLogin: string;
+    mineLoginCta: string;
+    mineLead: string;
+    auctionLead: string;
     nearestRequiresLocation: string;
     errorUnexpected: string;
     errorNetwork: string;
@@ -750,7 +756,13 @@ const pl: Dictionary = {
       newest: "Najnowsze",
       discounted: "Przecenione",
       featured: "Wyróżnione",
+      mine: "Moje",
+      auction: "Na licytacji",
     },
+    mineRequiresLogin: "Zaloguj się, aby zobaczyć swoje ogłoszenia tak, jak widzą je inni użytkownicy.",
+    mineLoginCta: "Zaloguj się",
+    mineLead: "Twoje aktywne ogłoszenia na rynku — dokładnie ten sam widok, który mają kupujący.",
+    auctionLead: "Trwające licytacje — odliczanie do końca, aktualna cena i możliwość złożenia oferty bez wychodzenia z katalogu.",
     nearestRequiresLocation: "Udostępnij lokalizację, aby posortować oferty według odległości.",
     errorUnexpected: "Niespodziewany format odpowiedzi serwera.",
     errorNetwork: "Brak połączenia z serwerem. Sprawdź sieć i spróbuj ponownie.",
@@ -1167,7 +1179,13 @@ const en: Dictionary = {
       newest: "Newest",
       discounted: "Reduced",
       featured: "Featured",
+      mine: "Mine",
+      auction: "On auction",
     },
+    mineRequiresLogin: "Sign in to see your listings exactly as other users see them.",
+    mineLoginCta: "Sign in",
+    mineLead: "Your active market listings — the same view buyers get on the map and catalog.",
+    auctionLead: "Live auctions — countdown, current price, and bidding without leaving the catalog.",
     nearestRequiresLocation: "Share your location to sort listings by distance.",
     errorUnexpected: "Unexpected server response format.",
     errorNetwork: "No server connection. Check your network and try again.",

@@ -23,13 +23,14 @@ import {
 } from '@/lib/money/offerPrice';
 import { DEFAULT_EUR_PLN_RATE } from '@/lib/money/constants';
 import { getNbpEurPlnRate } from '@/lib/money/nbpEurPln';
+import { resolveWebUserId } from '@/lib/webSessionAuth';
 
 export const dynamic = 'force-dynamic';
 
 // =======================
 // GET
 // =======================
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await ensureOfferLocalityCountryColumns();
     await ensureOfferPriceHistorySchema();
@@ -50,8 +51,21 @@ export async function GET() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    const { searchParams } = new URL(req.url);
+    const scope = searchParams.get('scope');
+    let ownerUserId: number | null = null;
+    if (scope === 'mine') {
+      ownerUserId = await resolveWebUserId(req);
+      if (!ownerUserId) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+
     const offers = await prisma.offer.findMany({
-      where: { status: { in: ["ACTIVE"] } },
+      where: {
+        status: { in: ['ACTIVE'] },
+        ...(ownerUserId ? { userId: ownerUserId } : {}),
+      },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
