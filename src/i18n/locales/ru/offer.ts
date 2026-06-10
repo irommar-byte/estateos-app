@@ -254,6 +254,8 @@ export const offer = {
       furnished: 'Меблированный',
       onMarketSince: 'На рынке с',
       offerPrice: 'Цена листинга',
+      listedAt: 'Цена публикации',
+      discountBadge: '−{{percent}}%',
     },
     commission: {
       zeroDetail: 'Без комиссии (0%). Покупатель не платит комиссию брокеру.',

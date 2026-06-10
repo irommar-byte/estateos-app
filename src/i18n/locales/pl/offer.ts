@@ -261,6 +261,8 @@ export const offer = {
       furnished: 'Umeblowanie',
       onMarketSince: 'Na rynku od',
       offerPrice: 'Cena ofertowa',
+      listedAt: 'Cena wystawienia',
+      discountBadge: '−{{percent}}%',
     },
     commission: {
       zeroDetail:

@@ -271,13 +271,16 @@ export default function EstateDiscoveryMode({ navigation }: any) {
       .map((raw: any): DiscoveryOffer | null => {
         const listing = resolveOfferListingPrice(raw);
         if (listing.amount <= 0) return null;
-        const previousPrice = parsePriceNumber(raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart);
+        const previousPrice = parsePriceNumber(
+          raw?.listPricePln ?? raw?.originalPrice ?? raw?.previousPrice ?? raw?.priceStart,
+        );
         const prevPln =
-          previousPrice > 0
+          previousPrice > 0 && (raw?.isDiscounted || previousPrice > listing.plnAmount)
             ? resolveOfferListingPrice({
                 priceAmount: previousPrice,
                 price: previousPrice,
                 priceCurrency: listing.currency,
+                pricePln: Number(raw?.listPricePln) > 0 ? Number(raw?.listPricePln) : undefined,
               }).plnAmount
             : listing.plnAmount;
         const city = String(raw?.city ?? '').trim();

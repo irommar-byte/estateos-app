@@ -72,6 +72,8 @@ import {
 } from '../utils/favoritesStorage';
 import { formatAmountWithCurrency, resolveOfferDisplayAmount } from '../money/format';
 import { resolveOfferListingPrice } from '../money/offerPrice';
+import { formatListedPriceLabel, resolveOfferPriceDiscount } from '../utils/offerPriceDiscount';
+import OfferDiscountPriceBlock from '../components/OfferDiscountPriceBlock';
 import { isOfferLegallyVerified } from '../utils/legalVerificationStatus';
 import { localeToDateFormat, useI18n } from '../i18n';
 
@@ -514,6 +516,11 @@ export default function OfferDetail({ route, navigation }: any) {
   const lightboxImages = useMemo(() => imagesToShow.map((uri) => ({ uri })), [imagesToShow]);
 
   const listingPrice = useMemo(() => resolveOfferListingPrice(offer, rate), [offer, rate]);
+  const priceDiscount = useMemo(() => resolveOfferPriceDiscount(offer), [offer]);
+  const listedPriceLabel = useMemo(
+    () => formatListedPriceLabel(offer, rate, preference),
+    [offer, rate, preference],
+  );
   const displayOffer = {
     title: offer?.title || t('offer.shared.defaultTitle'),
     price: offerPriceDisplay.primary,
@@ -1610,6 +1617,13 @@ export default function OfferDetail({ route, navigation }: any) {
           <View style={styles.bottomBarTopRow}>
             <View style={styles.bottomBarPriceColumn}>
               <Text style={styles.bottomBarPriceLabel}>{t('offer.detail.labels.offerPrice')}</Text>
+              {priceDiscount.isDiscounted && listedPriceLabel ? (
+                <OfferDiscountPriceBlock
+                  discountPercent={priceDiscount.discountPercent}
+                  listedPriceLabel={listedPriceLabel}
+                  isDark={isDark}
+                />
+              ) : null}
               <Text
                 style={[styles.bottomBarPrice, isDark && { color: '#ffffff' }]}
                 numberOfLines={1}

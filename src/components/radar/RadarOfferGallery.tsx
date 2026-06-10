@@ -20,6 +20,7 @@ import type { useI18n } from '../../i18n';
 import type { AppLocale } from '../../i18n';
 import { isFavoriteId } from '../../utils/favoritesStorage';
 import AdvancedFilterSegment from '../AdvancedFilterSegment';
+import { resolveOfferPriceDiscount } from '../../utils/offerPriceDiscount';
 
 export type GalleryTransactionFilter = 'ALL' | 'RENT' | 'SELL';
 export type GalleryCountryFilter = 'ALL' | 'PL' | 'ABROAD';
@@ -398,6 +399,7 @@ export default function RadarOfferGallery({
       .join(' · ');
     const fav = isFavoriteId(item.id, favorites);
     const priceLabel = formatPrice(item.raw).primary;
+    const priceDiscount = resolveOfferPriceDiscount(item.raw);
     const verified = isOfferVerified(item.id, item.raw);
     const publishLabel = formatPublishDate(item.raw);
     const isLeftColumn = index % 2 === 0;
@@ -485,9 +487,16 @@ export default function RadarOfferGallery({
             </BlurView>
           </Pressable>
           <View style={styles.imageFooter}>
-            <Text style={styles.cardPrice} numberOfLines={1}>
-              {priceLabel}
-            </Text>
+            <View style={styles.priceRow}>
+              <Text style={styles.cardPrice} numberOfLines={1}>
+                {priceLabel}
+              </Text>
+              {priceDiscount.isDiscounted ? (
+                <View style={styles.discountBadge}>
+                  <Text style={styles.discountBadgeText}>−{priceDiscount.discountPercent}%</Text>
+                </View>
+              ) : null}
+            </View>
             {distanceBadgeLabel ? (
               <BlurView intensity={isDark ? 48 : 72} tint="dark" style={styles.distancePillLux}>
                 <Ionicons name="navigate" size={10} color="#A7F3D0" />
@@ -847,6 +856,27 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
+    flexShrink: 1,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  discountBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.55)',
+    backgroundColor: 'rgba(127,29,29,0.55)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  discountBadgeText: {
+    color: '#fecaca',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
   distancePillLux: {
     alignSelf: 'flex-start',

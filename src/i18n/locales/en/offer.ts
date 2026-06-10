@@ -260,6 +260,8 @@ export const offer = {
       furnished: 'Furnished',
       onMarketSince: 'On market since',
       offerPrice: 'Listing price',
+      listedAt: 'Listed at',
+      discountBadge: '−{{percent}}%',
     },
     commission: {
       zeroDetail:
