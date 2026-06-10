@@ -10,6 +10,7 @@ import { report } from './report';
 import { tabs } from './tabs';
 import { appRating } from './appRating';
 import { openHouse } from './openHouse';
+import { auction } from './auction';
 import { contact } from './contact';
 
 export const en = {
@@ -26,4 +27,5 @@ export const en = {
   radar,
   appRating,
   openHouse,
+  auction,
 };

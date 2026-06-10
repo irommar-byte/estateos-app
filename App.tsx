@@ -7,6 +7,9 @@ import OfferDetail from './src/screens/OfferDetail';
 import OpenHouseHubScreen from './src/screens/OpenHouseHubScreen';
 import OpenHouseCreateScreen from './src/screens/OpenHouseCreateScreen';
 import OpenHouseEventScreen from './src/screens/OpenHouseEventScreen';
+import AuctionHubScreen from './src/screens/AuctionHubScreen';
+import AuctionCreateScreen from './src/screens/AuctionCreateScreen';
+import AuctionEventScreen from './src/screens/AuctionEventScreen';
 import OpenHouseLiveOrchestrator from './src/components/openHouse/OpenHouseLiveOrchestrator';
 import { useOpenHouseLiveStore } from './src/store/useOpenHouseLiveStore';
 import CircularLabelRing from './src/components/CircularLabelRing';
@@ -1088,6 +1091,10 @@ type PushNavigationTarget =
         screen: 'Radar' | 'Ulubione' | 'Wiadomości' | 'Profil';
         params?: Record<string, unknown>;
       };
+    }
+  | {
+      screen: 'AuctionEvent';
+      params: { eventId: number | string };
     };
 
 const parseNumericOrStringId = (value: unknown): number | string | null => {
@@ -1154,6 +1161,25 @@ const parsePushTargetFromResponse = (
   const extractedIds = extractPushDealAndOfferIds(data);
   const offerId = parseNumericOrStringId(extractedIds.offerId ?? deeplinkOfferId);
   const dealId = parseNumericOrStringId(extractedIds.dealId ?? deeplinkDealId);
+  const auctionEventId = parseNumericOrStringId(data.eventId);
+  const pushTypeNorm = String(firstDefined(data.type, data.notificationType) || '')
+    .trim()
+    .toUpperCase();
+
+  if (pushTypeNorm.startsWith('AUCTION')) {
+    if (auctionEventId) {
+      return {
+        screen: 'AuctionEvent',
+        params: { eventId: auctionEventId },
+      };
+    }
+    if (offerId) {
+      return {
+        screen: 'OfferDetail',
+        params: { offer: { id: offerId }, id: offerId, offerId },
+      };
+    }
+  }
 
   const looksLikeOffer = routeHint.includes('offer') || routeHint.includes('oferta');
   const looksLikeDealOrChat =
@@ -1572,6 +1598,9 @@ export default function App() {
             <AppStack.Screen name="OpenHouseHub" component={OpenHouseHubScreen} />
             <AppStack.Screen name="OpenHouseCreate" component={OpenHouseCreateScreen} />
             <AppStack.Screen name="OpenHouseEvent" component={OpenHouseEventScreen} />
+            <AppStack.Screen name="AuctionHub" component={AuctionHubScreen} />
+            <AppStack.Screen name="AuctionCreate" component={AuctionCreateScreen} />
+            <AppStack.Screen name="AuctionEvent" component={AuctionEventScreen} />
           </AppStack.Navigator>
           {!isSplashVisible ? <FloatingChatsDock /> : null}
         </NavigationContainer>

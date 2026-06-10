@@ -3975,6 +3975,10 @@ function ProfileScreenLoggedIn({
                 }
                 if (featureId === 'openHouse') {
                   (navigation as any).navigate('OpenHouseHub');
+                  return;
+                }
+                if (featureId === 'auction') {
+                  (navigation as any).navigate('AuctionHub');
                 }
               }}
             />

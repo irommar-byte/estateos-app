@@ -26,8 +26,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BidActionModal from '../components/dealroom/BidActionModal';
 import AppointmentActionModal from '../components/dealroom/AppointmentActionModal';
 import OpenHouseOfferBanner from '../components/openHouse/OpenHouseOfferBanner';
+import AuctionOfferBanner from '../components/auction/AuctionOfferBanner';
 import { fetchOpenHouseForOffer } from '../services/openHouseService';
+import { fetchAuctionForOffer } from '../services/auctionService';
 import type { OpenHouseEventRecord } from '../contracts/openHouseContract';
+import type { AuctionEventRecord } from '../contracts/auctionContract';
 import { buildOfferShareMessage, SITE_ORIGIN } from '../utils/offerShareUrls';
 import { DEAL_EVENT_PREFIX } from '../contracts/parityContracts';
 import EliteStatusBadges from '../components/EliteStatusBadges';
@@ -460,6 +463,7 @@ export default function OfferDetail({ route, navigation }: any) {
   const [profileHistory, setProfileHistory] = useState<number[]>([]);
   const [ownerLegalVerifiedOverride, setOwnerLegalVerifiedOverride] = useState<boolean | null>(null);
   const [openHouseEvent, setOpenHouseEvent] = useState<OpenHouseEventRecord | null>(null);
+  const [auctionEvent, setAuctionEvent] = useState<AuctionEventRecord | null>(null);
   const bidBtnScale = useSharedValue(1);
   const apptBtnScale = useSharedValue(1);
 
@@ -472,6 +476,27 @@ export default function OfferDetail({ route, navigation }: any) {
     let cancelled = false;
     void fetchOpenHouseForOffer(token, offerIdNum).then((event) => {
       if (!cancelled) setOpenHouseEvent(event);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.id, token]);
+
+  useEffect(() => {
+    const offerIdNum = Number(offer?.id || 0);
+    if (!Number.isFinite(offerIdNum) || offerIdNum <= 0) {
+      setAuctionEvent(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchAuctionForOffer(token, offerIdNum).then((event) => {
+      if (!cancelled) {
+        if (event && (event.status === 'LIVE' || event.status === 'SCHEDULED')) {
+          setAuctionEvent(event);
+        } else {
+          setAuctionEvent(null);
+        }
+      }
     });
     return () => {
       cancelled = true;
@@ -1427,6 +1452,15 @@ export default function OfferDetail({ route, navigation }: any) {
           
           <Text style={[styles.title, isDark && { color: '#ffffff' }]}>{displayOffer.title}</Text>
 
+          {auctionEvent ? (
+            <AuctionOfferBanner
+              event={auctionEvent}
+              isDark={isDark}
+              onPress={() =>
+                (navigation as any).navigate('AuctionEvent', { eventId: auctionEvent.id })
+              }
+            />
+          ) : null}
           {openHouseEvent && openHouseEvent.status === 'PUBLISHED' && openHouseEvent.totalSpotsLeft > 0 ? (
             <OpenHouseOfferBanner
               event={openHouseEvent}

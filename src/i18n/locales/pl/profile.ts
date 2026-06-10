@@ -411,11 +411,10 @@ export const profile = {
     features: {
       auction: {
         title: 'Licytacja',
-        subtitle: 'Uruchom transparentną licytację przy wybranej ofercie — wkrótce w aplikacji.',
-        tag: 'Wkrótce',
+        subtitle: 'Uruchom transparentną licytację — cena startowa, rezerwa i ochrona przed snajpingiem.',
+        tag: 'Pro',
         alertTitle: 'Licytacja Pro',
-        alertBody:
-          'Przygotowujemy moduł licytacji dla członków Investor Pro. Powiadomimy Cię, gdy będzie gotowy do użycia.',
+        alertBody: 'Otwieram hub licytacji, gdzie możesz licytować lub wystawić własną nieruchomość.',
       },
       openHouse: {
         title: 'Dzień otwartych drzwi',

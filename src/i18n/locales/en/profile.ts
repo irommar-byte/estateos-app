@@ -408,11 +408,10 @@ export const profile = {
     features: {
       auction: {
         title: 'Auction',
-        subtitle: 'Run a transparent auction on a listing you choose — coming soon in the app.',
-        tag: 'Soon',
+        subtitle: 'Run a transparent auction — starting price, reserve, and anti-snipe protection.',
+        tag: 'Pro',
         alertTitle: 'Pro auction',
-        alertBody:
-          'We are preparing the auction module for Investor Pro members. We will notify you when it is ready.',
+        alertBody: 'Opening the auction hub where you can bid or list your own property.',
       },
       openHouse: {
         title: 'Open house day',
