@@ -1452,24 +1452,8 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
     if (!isRadarActive) {
       blinkLoop = Animated.loop(
         Animated.sequence([
-          Animated.timing(radarInactiveBlink, {
-            toValue: 1,
-            duration: 380,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: true,
-          }),
-          Animated.timing(radarInactiveBlink, { toValue: 0.9, duration: 55, useNativeDriver: true }),
-          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 70, useNativeDriver: true }),
-          Animated.timing(radarInactiveBlink, { toValue: 0.96, duration: 45, useNativeDriver: true }),
-          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 55, useNativeDriver: true }),
-          Animated.delay(260),
-          Animated.timing(radarInactiveBlink, {
-            toValue: 0.04,
-            duration: 720,
-            easing: Easing.in(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.delay(180),
+          Animated.timing(radarInactiveBlink, { toValue: 1, duration: 500, useNativeDriver: true }),
+          Animated.timing(radarInactiveBlink, { toValue: 0.35, duration: 500, useNativeDriver: true }),
         ]),
       );
       blinkLoop.start();
@@ -2962,57 +2946,31 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
   const radarCalibrationChrome = useMemo(() => {
     if (isRadarActive) {
       return {
-        dropShadow: {
-          shadowColor: '#064E3B',
-          shadowOffset: { width: 0, height: 9 },
-          shadowOpacity: isDark ? 0.55 : 0.38,
-          shadowRadius: 14,
-          elevation: 16,
+        accent: '#10B981',
+        borderColor: isDark ? 'rgba(16,185,129,0.42)' : 'rgba(16,185,129,0.34)',
+        fill: isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.09)',
+        iconBg: isDark ? 'rgba(16,185,129,0.2)' : 'rgba(16,185,129,0.12)',
+        shadow: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: isDark ? 0.26 : 0.1,
+          shadowRadius: 10,
+          elevation: 5,
         },
-        glowShadow: {
-          shadowColor: '#10B981',
-          shadowOffset: { width: 0, height: 0 },
-          shadowOpacity: isDark ? 0.55 : 0.42,
-          shadowRadius: 22,
-        },
-        rimColors: ['#A7F3D0', '#34D399', '#059669', '#065F46'] as [string, string, ...string[]],
-        rimInnerBorder: isDark ? 'rgba(110,231,183,0.35)' : 'rgba(255,255,255,0.55)',
-        face: {
-          backgroundColor: isDark ? 'rgba(16,185,129,0.32)' : 'rgba(255,255,255,0.88)',
-        },
-        topSheen: isDark
-          ? (['rgba(255,255,255,0.28)', 'rgba(255,255,255,0.06)', 'transparent'] as [string, string, ...string[]])
-          : (['rgba(255,255,255,0.92)', 'rgba(255,255,255,0.35)', 'transparent'] as [string, string, ...string[]]),
-        bottomInset: isDark ? 'rgba(4,70,52,0.42)' : 'rgba(16,185,129,0.22)',
-        iconBg: isDark ? 'rgba(16,185,129,0.38)' : 'rgba(16,185,129,0.16)',
-        iconBorder: isDark ? 'rgba(110,231,183,0.55)' : 'rgba(16,185,129,0.45)',
       };
     }
     return {
-      dropShadow: {
-        shadowColor: '#7F1D1D',
-        shadowOffset: { width: 0, height: 9 },
-        shadowOpacity: isDark ? 0.52 : 0.36,
-        shadowRadius: 14,
-        elevation: 16,
+      accent: '#FF3B30',
+      borderColor: isDark ? 'rgba(255,59,48,0.4)' : 'rgba(255,59,48,0.32)',
+      fill: isDark ? 'rgba(255,59,48,0.12)' : 'rgba(255,59,48,0.07)',
+      iconBg: isDark ? 'rgba(255,59,48,0.18)' : 'rgba(255,59,48,0.1)',
+      shadow: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDark ? 0.26 : 0.1,
+        shadowRadius: 10,
+        elevation: 5,
       },
-      glowShadow: {
-        shadowColor: '#FF3B30',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: isDark ? 0.5 : 0.38,
-        shadowRadius: 20,
-      },
-      rimColors: ['#FFB4AB', '#FF6961', '#FF3B30', '#B91C1C'] as [string, string, ...string[]],
-      rimInnerBorder: isDark ? 'rgba(255,180,174,0.32)' : 'rgba(255,255,255,0.58)',
-      face: {
-        backgroundColor: isDark ? 'rgba(255,59,48,0.26)' : 'rgba(255,255,255,0.9)',
-      },
-      topSheen: isDark
-        ? (['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.05)', 'transparent'] as [string, string, ...string[]])
-        : (['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.38)', 'transparent'] as [string, string, ...string[]]),
-      bottomInset: isDark ? 'rgba(90,15,10,0.38)' : 'rgba(255,59,48,0.18)',
-      iconBg: isDark ? 'rgba(255,59,48,0.34)' : 'rgba(255,59,48,0.14)',
-      iconBorder: isDark ? 'rgba(255,138,128,0.55)' : 'rgba(255,59,48,0.42)',
     };
   }, [isRadarActive, isDark]);
 
@@ -4696,103 +4654,45 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 openRadarCalibration();
               }}
               style={({ pressed }) => [
-                styles.radarCalibrationPressable,
-                radarCalibrationChrome.dropShadow,
-                radarCalibrationChrome.glowShadow,
-                pressed ? styles.radarCalibrationPressed : styles.radarCalibrationRaised,
+                styles.radarBtnWrapper,
+                styles.radarCalibrationBtn,
+                radarCalibrationChrome.shadow,
+                { borderColor: radarCalibrationChrome.borderColor },
+                pressed && styles.radarCalibrationPressed,
               ]}
             >
-              <LinearGradient
-                colors={radarCalibrationChrome.rimColors}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={styles.radarCalibrationRim}
+              <BlurView
+                intensity={isDark ? 82 : 92}
+                tint={isDark ? 'dark' : 'light'}
+                style={[styles.radarPill, styles.radarCalibrationFace, { backgroundColor: radarCalibrationChrome.fill }]}
               >
-                <BlurView
-                  intensity={isDark ? 88 : 96}
-                  tint={isDark ? 'dark' : 'light'}
-                  style={[
-                    styles.radarPill,
-                    styles.radarPillFace,
-                    radarCalibrationChrome.face,
-                    { borderColor: radarCalibrationChrome.rimInnerBorder },
-                  ]}
-                >
-                  <LinearGradient
-                    pointerEvents="none"
-                    colors={radarCalibrationChrome.topSheen}
-                    start={{ x: 0.5, y: 0 }}
-                    end={{ x: 0.5, y: 1 }}
-                    style={styles.radarPillTopSheen}
-                  />
-                  <View
-                    pointerEvents="none"
-                    style={[styles.radarPillBottomInset, { backgroundColor: radarCalibrationChrome.bottomInset }]}
-                  />
-                  <Animated.View
-                    style={[
-                      styles.radarPillIconBadge,
-                      styles.radarPillIconBadgeBulb,
-                      {
-                        backgroundColor: isRadarActive
-                          ? radarCalibrationChrome.iconBg
-                          : radarInactiveBlink.interpolate({
-                              inputRange: [0, 0.2, 1],
-                              outputRange: [
-                                isDark ? 'rgba(40,18,16,0.92)' : 'rgba(72,32,28,0.88)',
-                                isDark ? 'rgba(90,28,22,0.94)' : 'rgba(120,40,32,0.9)',
-                                isDark ? 'rgba(120,36,28,0.96)' : 'rgba(150,48,38,0.92)',
-                              ],
-                            }),
-                        borderColor: isRadarActive
-                          ? radarCalibrationChrome.iconBorder
-                          : radarInactiveBlink.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [
-                                isDark ? 'rgba(120,40,32,0.45)' : 'rgba(180,60,48,0.38)',
-                                isDark ? 'rgba(255,160,140,0.72)' : 'rgba(255,120,100,0.62)',
-                              ],
-                            }),
-                        shadowColor: isRadarActive ? '#10B981' : '#FF3B30',
-                        shadowOpacity: isRadarActive
-                          ? 0.22
-                          : radarInactiveBlink.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0.08, 0.55],
-                            }),
-                        shadowRadius: isRadarActive
-                          ? 4
-                          : radarInactiveBlink.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [2, 12],
-                            }),
-                      },
-                    ]}
-                  >
-                    <RadarStatusBulb active={isRadarActive} blink={radarInactiveBlink} isDark={isDark} />
-                  </Animated.View>
-                  <View style={styles.radarPillTextWrap}>
-                    <Text style={[styles.radarTitle, { color: isRadarActive ? '#10b981' : '#FF3B30' }]}>
-                      {t('radar.home.radarBrand')}
+                <RadarStatusBulb
+                  active={isRadarActive}
+                  blink={radarInactiveBlink}
+                  tint={radarCalibrationChrome.accent}
+                  softBg={radarCalibrationChrome.iconBg}
+                />
+                <View style={styles.radarPillTextWrap}>
+                  <Text style={[styles.radarTitle, { color: radarCalibrationChrome.accent }]}>
+                    {t('radar.home.radarBrand')}
+                  </Text>
+                  <Text style={styles.radarStatus}>
+                    {isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}
+                  </Text>
+                  {isRadarActive && radarActiveScopeLine ? (
+                    <Text
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                      style={[
+                        styles.radarScopeLine,
+                        { color: isDark ? 'rgba(16,185,129,0.92)' : 'rgba(5,120,85,0.95)' },
+                      ]}
+                    >
+                      {radarActiveScopeLine}
                     </Text>
-                    <Text style={styles.radarStatus}>
-                      {isRadarActive ? t('radar.home.statusLive') : t('radar.home.statusInactive')}
-                    </Text>
-                    {isRadarActive && radarActiveScopeLine ? (
-                      <Text
-                        numberOfLines={2}
-                        ellipsizeMode="tail"
-                        style={[
-                          styles.radarScopeLine,
-                          { color: isDark ? 'rgba(16,185,129,0.92)' : 'rgba(5,120,85,0.95)' },
-                        ]}
-                      >
-                        {radarActiveScopeLine}
-                      </Text>
-                    ) : null}
-                  </View>
-                </BlurView>
-              </LinearGradient>
+                  ) : null}
+                </View>
+              </BlurView>
             </Pressable>
             </Animated.View>
           </View>
@@ -6263,70 +6163,24 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 9,
   },
-  radarCalibrationPressable: {
-    alignSelf: 'center',
-    borderRadius: 28,
-  },
-  radarCalibrationRaised: {
-    transform: [{ translateY: 0 }],
-  },
-  radarCalibrationPressed: {
-    transform: [{ translateY: 4 }, { scale: 0.985 }],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.22,
-    shadowRadius: 5,
-    elevation: 7,
-  },
-  radarCalibrationRim: {
-    borderRadius: 28,
-    paddingTop: 3,
-    paddingHorizontal: 3,
-    paddingBottom: 5,
-  },
-  radarPillFace: {
-    overflow: 'hidden',
+  radarCalibrationBtn: {
     borderWidth: 1,
   },
-  radarPillTopSheen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '46%',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+  radarCalibrationFace: {
+    borderRadius: 25,
   },
-  radarPillBottomInset: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 7,
-  },
-  radarPillIconBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    zIndex: 2,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  radarPillIconBadgeBulb: {
-    overflow: 'visible',
+  radarCalibrationPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.985 }],
   },
   radarPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 11,
-    minWidth: 228,
+    paddingVertical: 11,
+    gap: 10,
+    minWidth: 220,
     maxWidth: '92%',
-    position: 'relative',
-    borderRadius: 24,
   },
   radarPillTextWrap: {
     flexDirection: 'column',
