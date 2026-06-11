@@ -41,6 +41,10 @@ export function parseStatsDate(value: string | Date | null | undefined): Date {
     );
   }
   const raw = String(value).trim();
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? new Date(NaN) : d;
+  }
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
   if (m) {
     return instantFromWarsawWall(

@@ -59,6 +59,10 @@ export function parseMysqlAsWarsawWall(value: unknown): Date | null {
   }
 
   const raw = String(value).trim();
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return parseIsoOrDbUtc(raw);
+  }
+
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
   if (m) {
     return pick(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]));
@@ -99,10 +103,16 @@ function instantFromWarsawWall(
   return new Date(t);
 }
 
-/** ISO UTC dla API — poprawny instant z MySQL DATETIME (czas warszawski na VPS). */
+/** ISO UTC z surowego MySQL DATETIME / Prisma Date (cyfry = czas warszawski). */
 export function serializeDbDateTime(value: unknown): string | null {
   const d = parseMysqlAsWarsawWall(value);
   return d ? d.toISOString() : null;
+}
+
+/** ISO UTC z już poprawnego obiektu Date (np. po aggregateVisitors). */
+export function serializeInstant(value: Date | null | undefined): string | null {
+  if (!value || Number.isNaN(value.getTime())) return null;
+  return value.toISOString();
 }
 
 /** Domyślne parsowanie zdarzeń z bazy (wizyty, oferty, użytkownicy). */
@@ -110,12 +120,23 @@ export function parseDbDateTime(value: unknown): Date | null {
   return parseMysqlAsWarsawWall(value);
 }
 
+function parseForDisplay(value: Date | string): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    return parseIsoOrDbUtc(raw);
+  }
+  return parseMysqlAsWarsawWall(raw);
+}
+
 export function formatDateTimePl(
   value: Date | string | null | undefined,
   options?: Intl.DateTimeFormatOptions,
 ): string {
-  const d =
-    value instanceof Date ? value : typeof value === "string" ? parseIsoOrDbUtc(value) : null;
+  const d = value == null ? null : parseForDisplay(value instanceof Date ? value : String(value));
   if (!d || Number.isNaN(d.getTime())) return "—";
 
   return new Intl.DateTimeFormat("pl-PL", {
@@ -132,7 +153,7 @@ export function formatDateTimePl(
 }
 
 export function getWarsawYmd(value: Date | string): string {
-  const d = value instanceof Date ? value : parseIsoOrDbUtc(value);
+  const d = value instanceof Date ? value : parseForDisplay(value);
   if (!d) return "";
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: ESTATEOS_TIMEZONE,
@@ -143,7 +164,7 @@ export function getWarsawYmd(value: Date | string): string {
 }
 
 export function getWarsawYm(value: Date | string): string {
-  const d = value instanceof Date ? value : parseIsoOrDbUtc(value);
+  const d = value instanceof Date ? value : parseForDisplay(value);
   if (!d) return "";
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: ESTATEOS_TIMEZONE,
@@ -156,7 +177,7 @@ export function getWarsawYm(value: Date | string): string {
 }
 
 export function getWarsawHour(value: Date | string): number {
-  const d = value instanceof Date ? value : parseIsoOrDbUtc(value);
+  const d = value instanceof Date ? value : parseForDisplay(value);
   if (!d) return 0;
   return Number(
     new Intl.DateTimeFormat("en-GB", {
@@ -168,7 +189,7 @@ export function getWarsawHour(value: Date | string): number {
 }
 
 export function getWarsawDay(value: Date | string): number {
-  const d = value instanceof Date ? value : parseIsoOrDbUtc(value);
+  const d = value instanceof Date ? value : parseForDisplay(value);
   if (!d) return 0;
   const weekday = new Intl.DateTimeFormat("en-GB", {
     timeZone: ESTATEOS_TIMEZONE,
