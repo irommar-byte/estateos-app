@@ -47,10 +47,13 @@ export async function GET() {
         price: true,
         area: true,
         district: true,
+        city: true,
         createdAt: true,
         status: true,
-        propertyType: true
-      }
+        propertyType: true,
+        localityCountry: true,
+        localityCountryCode: true,
+      },
     });
 
     const usersTimelineRaw = await prisma.user.findMany({
