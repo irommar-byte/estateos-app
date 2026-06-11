@@ -4,6 +4,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,10 +12,11 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Defs, LinearGradient, Path, Stop, Line, Text as SvgText } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
 import { useAuthStore } from '../../store/useAuthStore';
+import AdminStatsChart from './AdminStatsChart';
 import {
   ADMIN_STATS_PERIODS,
   ADMIN_STATS_PROPERTY_TYPES,
@@ -32,102 +34,143 @@ import {
 type Props = {
   visible: boolean;
   onClose: () => void;
-  theme: any;
+  theme: { background?: string; text?: string; subtitle?: string; glass?: string };
 };
 
-function StatsAreaChart({
-  data,
-  dataKey,
-  color,
-  width,
-  height,
-  activeLabel,
-  activeValue,
-  onSelectIndex,
+type SectionId = 'overview' | 'market' | 'visitors';
+
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  colors,
 }: {
-  data: any[];
-  dataKey: AdminStatsTabId;
-  color: string;
-  width: number;
-  height: number;
-  activeLabel: string | null;
-  activeValue: number;
-  onSelectIndex: (index: number, label: string, value: number) => void;
+  options: Array<{ id: T; label: string }>;
+  value: T;
+  onChange: (id: T) => void;
+  colors: ReturnType<typeof useAnalyticsTheme>;
 }) {
-  const padding = { left: 34, right: 10, top: 12, bottom: 34 };
-  const chartW = Math.max(1, width - padding.left - padding.right);
-  const chartH = Math.max(1, height - padding.top - padding.bottom);
-  const values = data.map((d) => Number(d[dataKey] || 0));
-  const maxVal = Math.max(1, ...values);
-  const points = values.map((v, i) => {
-    const x = padding.left + (i / Math.max(1, values.length - 1)) * chartW;
-    const y = padding.top + chartH - (v / maxVal) * chartH;
-    return { x, y, v, label: String(data[i]?.name || '') };
-  });
-
-  if (points.length === 0) {
-    return (
-      <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#6b7280', fontSize: 12 }}>Brak danych wykresu.</Text>
-      </View>
-    );
-  }
-
-  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const areaPath = `${linePath} L ${points[points.length - 1].x} ${padding.top + chartH} L ${points[0].x} ${padding.top + chartH} Z`;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((t) => ({
-    y: padding.top + chartH - t * chartH,
-    label: Math.round(maxVal * t).toLocaleString('pl-PL'),
-  }));
-
   return (
-    <View>
-      <Svg width={width} height={height}>
-        <Defs>
-          <LinearGradient id="statsGradient" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="5%" stopColor={color} stopOpacity="0.4" />
-            <Stop offset="95%" stopColor={color} stopOpacity="0" />
-          </LinearGradient>
-        </Defs>
-        {yTicks.map((tick) => (
-          <Line
-            key={tick.label}
-            x1={padding.left}
-            y1={tick.y}
-            x2={width - padding.right}
-            y2={tick.y}
-            stroke="rgba(255,255,255,0.05)"
-            strokeDasharray="3 3"
-          />
-        ))}
-        <Path d={areaPath} fill="url(#statsGradient)" />
-        <Path d={linePath} stroke={color} strokeWidth={3} fill="none" />
-        {points.map((p, i) => (
-          <SvgText key={`${p.label}-${i}`} x={p.x} y={height - 8} fill="#6b7280" fontSize="8" fontWeight="700" textAnchor="middle">
-            {i % Math.ceil(Math.max(1, points.length / 6)) === 0 || i === points.length - 1 ? p.label : ''}
-          </SvgText>
-        ))}
-        {yTicks.slice(1).map((tick) => (
-          <SvgText key={`y-${tick.label}`} x={4} y={tick.y + 3} fill="#6b7280" fontSize="8" fontWeight="700">
-            {tick.label}
-          </SvgText>
-        ))}
-      </Svg>
-      <View style={styles.chartTouchRow}>
-        {points.map((p, i) => (
+    <View style={[styles.segmented, { backgroundColor: colors.segmentBg }]}>
+      {options.map((opt) => {
+        const active = opt.id === value;
+        return (
           <Pressable
-            key={`touch-${i}`}
-            style={styles.chartTouchCell}
-            onPress={() => onSelectIndex(i, p.label, p.v)}
-          />
-        ))}
+            key={opt.id}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              onChange(opt.id);
+            }}
+            style={[styles.segment, active && [styles.segmentActive, { backgroundColor: colors.segmentActive }]]}
+          >
+            <Text
+              style={[styles.segmentText, { color: active ? colors.text : colors.secondary }]}
+              numberOfLines={1}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function useAnalyticsTheme(theme: Props['theme']) {
+  return useMemo(() => {
+    const isDark = theme.glass === 'dark';
+    return {
+      isDark,
+      bg: isDark ? '#000000' : theme.background || '#F2F2F7',
+      card: isDark ? '#1C1C1E' : '#FFFFFF',
+      cardSecondary: isDark ? '#2C2C2E' : '#F2F2F7',
+      text: isDark ? '#FFFFFF' : theme.text || '#000000',
+      secondary: isDark ? '#8E8E93' : '#6C6C70',
+      tertiary: isDark ? '#636366' : '#AEAEB2',
+      separator: isDark ? 'rgba(84,84,88,0.65)' : 'rgba(60,60,67,0.12)',
+      segmentBg: isDark ? '#2C2C2E' : '#E5E5EA',
+      segmentActive: isDark ? '#636366' : '#FFFFFF',
+      accent: '#10b981',
+      accentBlue: '#007AFF',
+      accentPink: '#ec4899',
+      accentViolet: '#8b5cf6',
+      chartGrid: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      chartAxis: isDark ? '#8E8E93' : '#6C6C70',
+      tooltipBg: isDark ? '#2C2C2E' : '#FFFFFF',
+      tooltipBorder: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+      tooltipLabel: isDark ? '#8E8E93' : '#6C6C70',
+      tooltipValue: isDark ? '#FFFFFF' : '#000000',
+      cursor: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)',
+    };
+  }, [theme]);
+}
+
+function KpiGrid({ kpis, colors }: { kpis: Record<string, number>; colors: ReturnType<typeof useAnalyticsTheme> }) {
+  const items = [
+    { label: 'Użytkownicy', value: kpis.users },
+    { label: 'Oferty', value: kpis.offers },
+    { label: 'Aktywne', value: kpis.active },
+    { label: 'Odsłony', value: kpis.pageViews },
+    { label: 'Unikalne IP', value: kpis.uniqueViews },
+  ];
+  return (
+    <View style={styles.kpiGrid}>
+      {items.map((item) => (
+        <View key={item.label} style={[styles.kpiCell, { backgroundColor: colors.cardSecondary }]}>
+          <Text style={[styles.kpiLabel, { color: colors.secondary }]}>{item.label}</Text>
+          <Text style={[styles.kpiValue, { color: colors.text }]}>{Number(item.value || 0).toLocaleString('pl-PL')}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function InsightCards({ insights, colors }: { insights: any; colors: ReturnType<typeof useAnalyticsTheme> }) {
+  if (!insights?.visits?.best) return null;
+  return (
+    <View style={styles.insightRow}>
+      <View style={[styles.insightCard, { backgroundColor: colors.cardSecondary }]}>
+        <Text style={[styles.insightKicker, { color: colors.secondary }]}>Wizyty — najlepszy dzień</Text>
+        <Text style={[styles.insightValue, { color: colors.text }]}>
+          {insights.visits.best.day} ({insights.visits.best.visits})
+        </Text>
+        {insights.visits.peakHour != null ? (
+          <Text style={[styles.insightExtra, { color: colors.tertiary }]}>
+            Szczyt: {String(insights.visits.peakHour).padStart(2, '0')}:00
+          </Text>
+        ) : null}
       </View>
-      {activeLabel != null ? (
-        <View style={styles.chartTooltip}>
-          <Text style={styles.chartTooltipLabel}>{activeLabel}</Text>
-          <Text style={styles.chartTooltipValue}>{Number(activeValue || 0).toLocaleString('pl-PL')}</Text>
+      {insights.offers?.best ? (
+        <View style={[styles.insightCard, { backgroundColor: colors.cardSecondary }]}>
+          <Text style={[styles.insightKicker, { color: colors.secondary }]}>Oferty — najlepszy dzień</Text>
+          <Text style={[styles.insightValue, { color: colors.text }]}>
+            {insights.offers.best.day} ({insights.offers.best.offers})
+          </Text>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function MonthlyOffersChart({ data, colors }: { data: Array<{ label: string; count: number }>; colors: ReturnType<typeof useAnalyticsTheme> }) {
+  if (!data.length) return null;
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card }]}>
+      <Text style={[styles.cardTitle, { color: colors.text }]}>Oferty w tym roku</Text>
+      <View style={styles.barRow}>
+        {data.map((row) => (
+          <View key={row.label} style={styles.barCol}>
+            <Text style={[styles.barValue, { color: colors.secondary }]}>{row.count}</Text>
+            <View style={[styles.barTrack, { backgroundColor: colors.cardSecondary }]}>
+              <View style={[styles.barFill, { height: `${Math.max(8, (row.count / max) * 100)}%`, backgroundColor: colors.accentPink }]} />
+            </View>
+            <Text style={[styles.barLabel, { color: colors.tertiary }]} numberOfLines={1}>
+              {row.label.slice(0, 3)}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -135,38 +178,35 @@ function StatsAreaChart({
 export default function AdminStatisticsModal({ visible, onClose, theme }: Props) {
   const { token } = useAuthStore();
   const { width } = useWindowDimensions();
-  const isDark = theme.glass === 'dark';
+  const insets = useSafeAreaInsets();
+  const colors = useAnalyticsTheme(theme);
 
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [section, setSection] = useState<SectionId>('overview');
   const [activeTabId, setActiveTabId] = useState<AdminStatsTabId>('pageViews');
   const [activePeriod, setActivePeriod] = useState<AdminStatsPeriod>('Ostatnie 30 Dni');
-  const [showVisitors, setShowVisitors] = useState(false);
-  const [showMarket, setShowMarket] = useState(false);
   const [marketFilter, setMarketFilter] = useState('Wszystkie');
-  const [selectedChartLabel, setSelectedChartLabel] = useState<string | null>(null);
-  const [selectedChartValue, setSelectedChartValue] = useState(0);
+  const [selectedChartIndex, setSelectedChartIndex] = useState(0);
   const [chartPending, startChartTransition] = useTransition();
 
   const activeTab = ADMIN_STATS_TABS.find((t) => t.id === activeTabId) || ADMIN_STATS_TABS[0];
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (silent = false) => {
     if (!token) {
       setFetchError('Brak sesji — zaloguj się ponownie.');
       setStats(null);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setFetchError(null);
     try {
       const res = await fetch(`${API_URL}/api/mobile/v1/admin/stats`, {
         cache: 'no-store',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Cache-Control': 'no-cache',
-        },
+        headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success !== false) {
@@ -180,122 +220,229 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
       setFetchError('Brak połączenia z serwerem.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [token]);
 
   useEffect(() => {
-    if (visible) fetchStats();
+    if (visible) void fetchStats();
   }, [visible, fetchStats]);
 
-  const chartData = useMemo(
-    () => processAdminStatsChartData(activePeriod, stats?.timeline),
-    [activePeriod, stats]
-  );
+  const chartData = useMemo(() => processAdminStatsChartData(activePeriod, stats?.timeline), [activePeriod, stats]);
   const visitorsList = useMemo(() => buildAdminStatsVisitorsList(stats?.timeline), [stats]);
+  const visitorCountries = useMemo(() => stats?.timeline?.visitorCountries || [], [stats]);
   const marketData = useMemo(() => buildAdminStatsMarketData(stats, marketFilter), [stats, marketFilter]);
   const insights = useMemo(() => buildAdminStatsInsights(stats), [stats]);
+  const monthlyOffers = useMemo(() => insights?.monthlyOffers || [], [insights]);
 
   useEffect(() => {
-    if (chartData.length > 0) {
-      const last = chartData[chartData.length - 1];
-      setSelectedChartLabel(String(last?.name || ''));
-      setSelectedChartValue(Number(last?.[activeTabId] || 0));
-    }
+    if (chartData.length > 0) setSelectedChartIndex(chartData.length - 1);
   }, [chartData, activeTabId, activePeriod]);
 
   if (!visible) return null;
 
+  const chartWidth = width - 32;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: isDark ? '#050505' : theme.background }]}>
-        <View style={styles.header}>
+      <View style={[styles.root, { backgroundColor: colors.bg, paddingTop: insets.top }]}>
+        <View style={[styles.navBar, { borderBottomColor: colors.separator }]}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: theme.text }]}>
-              Analityka<Text style={{ color: '#10b981' }}>.</Text>
-            </Text>
-            <View style={styles.subtitleRow}>
-              <Ionicons name="trending-up" size={14} color="#10b981" />
-              <Text style={styles.subtitle}>Raport Systemowy EstateOS</Text>
-            </View>
+            <Text style={[styles.navTitle, { color: colors.text }]}>Analityka</Text>
+            <Text style={[styles.navSubtitle, { color: colors.secondary }]}>Raport systemowy · Europe/Warsaw</Text>
           </View>
-          <Pressable onPress={onClose}>
-            <Ionicons name="close-circle" size={32} color={theme.subtitle} />
+          <Pressable onPress={onClose} hitSlop={12} style={[styles.closeBtn, { backgroundColor: colors.cardSecondary }]}>
+            <Ionicons name="close" size={20} color={colors.text} />
           </Pressable>
         </View>
 
         {loading ? (
-          <ActivityIndicator size="large" color="#10b981" style={{ marginTop: 50 }} />
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
         ) : fetchError ? (
-          <View style={{ padding: 24 }}>
-            <Text style={{ color: '#FF3B30', marginBottom: 12 }}>{fetchError}</Text>
-            <Pressable onPress={() => void fetchStats()} style={styles.retryBtn}>
-              <Text style={styles.retryBtnText}>Spróbuj ponownie</Text>
+          <View style={styles.centered}>
+            <Text style={{ color: '#FF3B30', marginBottom: 12, textAlign: 'center', paddingHorizontal: 24 }}>{fetchError}</Text>
+            <Pressable onPress={() => void fetchStats()} style={[styles.primaryBtn, { backgroundColor: colors.accent }]}>
+              <Text style={styles.primaryBtnText}>Spróbuj ponownie</Text>
             </Pressable>
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-            <View style={styles.moduleButtonsRow}>
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setShowMarket((v) => !v);
-                  setShowVisitors(false);
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                tintColor={colors.accent}
+                onRefresh={() => {
+                  setRefreshing(true);
+                  void fetchStats(true);
                 }}
-                style={[styles.moduleBtn, showMarket && styles.moduleBtnMarketActive]}
-              >
-                <Ionicons name="map-outline" size={16} color={showMarket ? '#10b981' : theme.text} />
-                <Text style={[styles.moduleBtnText, showMarket && { color: '#10b981' }]}>Analiza Rynku</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  setShowVisitors((v) => !v);
-                  setShowMarket(false);
-                }}
-                style={[styles.moduleBtn, showVisitors && styles.moduleBtnVisitorsActive]}
-              >
-                <Ionicons name="globe-outline" size={16} color={showVisitors ? '#3b82f6' : theme.text} />
-                <Text style={[styles.moduleBtnText, showVisitors && { color: '#3b82f6' }]}>Live IP Tracker</Text>
-              </Pressable>
-            </View>
+              />
+            }
+          >
+            <SegmentedControl
+              options={[
+                { id: 'overview', label: 'Przegląd' },
+                { id: 'market', label: 'Rynek' },
+                { id: 'visitors', label: 'Live IP' },
+              ]}
+              value={section}
+              onChange={setSection}
+              colors={colors}
+            />
 
-            {showMarket && marketData ? (
-              <View style={styles.panel}>
-                <Text style={styles.panelKicker}>Średnia w Warszawie</Text>
-                <Text style={styles.panelBigValue}>
-                  {marketData.avgWarsawSqm.toLocaleString('pl-PL')} <Text style={styles.panelUnit}>PLN/m²</Text>
+            {section === 'overview' ? (
+              <>
+                <View style={{ marginTop: 14 }}>
+                  <KpiGrid kpis={stats?.kpis || {}} colors={colors} />
+                </View>
+                <View style={{ marginTop: 12 }}>
+                  <InsightCards insights={insights} colors={colors} />
+                </View>
+                {monthlyOffers.length > 0 ? (
+                  <View style={{ marginTop: 12 }}>
+                    <MonthlyOffersChart data={monthlyOffers} colors={colors} />
+                  </View>
+                ) : null}
+
+                <View style={[styles.card, { backgroundColor: colors.card, marginTop: 12 }]}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                    {ADMIN_STATS_TABS.map((tab) => {
+                      const isActive = tab.id === activeTabId;
+                      const total = chartData.reduce((sum, item) => sum + Number(item[tab.id] || 0), 0);
+                      return (
+                        <Pressable
+                          key={tab.id}
+                          onPress={() => {
+                            void Haptics.selectionAsync();
+                            startChartTransition(() => setActiveTabId(tab.id));
+                          }}
+                          style={[
+                            styles.chip,
+                            {
+                              backgroundColor: isActive ? `${tab.color}22` : colors.cardSecondary,
+                              borderColor: isActive ? tab.color : 'transparent',
+                            },
+                          ]}
+                        >
+                          <Ionicons name={tab.icon} size={14} color={isActive ? tab.color : colors.secondary} />
+                          <Text style={[styles.chipText, { color: isActive ? colors.text : colors.secondary }]}>
+                            {tab.label}
+                            {total > 0 ? ` · ${total}` : ''}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.chipRow, { marginTop: 8 }]}>
+                    {ADMIN_STATS_PERIODS.map((period) => {
+                      const active = period === activePeriod;
+                      return (
+                        <Pressable
+                          key={period}
+                          onPress={() => {
+                            void Haptics.selectionAsync();
+                            startChartTransition(() => setActivePeriod(period));
+                          }}
+                          style={[
+                            styles.periodChip,
+                            { backgroundColor: active ? colors.text : colors.cardSecondary },
+                          ]}
+                        >
+                          <Text style={[styles.periodChipText, { color: active ? colors.bg : colors.secondary }]}>{period}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <View style={{ marginTop: 8, position: 'relative' }}>
+                    {chartPending ? (
+                      <View style={[styles.chartOverlay, { backgroundColor: `${colors.card}CC` }]}>
+                        <ActivityIndicator color={colors.accent} />
+                        <Text style={[styles.chartOverlayText, { color: colors.secondary }]}>Przeliczanie…</Text>
+                      </View>
+                    ) : null}
+                    <AdminStatsChart
+                      data={chartData}
+                      dataKey={activeTabId}
+                      color={activeTab.color}
+                      width={chartWidth - 28}
+                      height={260}
+                      selectedIndex={selectedChartIndex}
+                      onSelectIndex={setSelectedChartIndex}
+                      colors={{
+                        grid: colors.chartGrid,
+                        axis: colors.chartAxis,
+                        tooltipBg: colors.tooltipBg,
+                        tooltipBorder: colors.tooltipBorder,
+                        tooltipLabel: colors.tooltipLabel,
+                        tooltipValue: colors.tooltipValue,
+                        cursor: colors.cursor,
+                      }}
+                    />
+                  </View>
+
+                  {activePeriod === 'Dni Szczytu' && insights?.weekdays ? (
+                    <View style={styles.weekdayGrid}>
+                      {insights.weekdays.map((row: any) => (
+                        <View key={row.day} style={[styles.weekdayCell, { backgroundColor: colors.cardSecondary }]}>
+                          <Text style={[styles.weekdayName, { color: colors.secondary }]}>{row.day.slice(0, 3)}</Text>
+                          <Text style={[styles.weekdayVisits, { color: colors.accent }]}>{row.visits}</Text>
+                          <Text style={[styles.weekdayOffers, { color: colors.tertiary }]}>{row.offers} ofert</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              </>
+            ) : null}
+
+            {section === 'market' && marketData ? (
+              <View style={[styles.card, { backgroundColor: colors.card, marginTop: 14 }]}>
+                <Text style={[styles.cardKicker, { color: colors.secondary }]}>Średnia w Warszawie</Text>
+                <Text style={[styles.marketBig, { color: colors.text }]}>
+                  {marketData.avgWarsawSqm.toLocaleString('pl-PL')}{' '}
+                  <Text style={{ color: colors.accent, fontSize: 18 }}>PLN/m²</Text>
                 </Text>
-                <Text style={styles.panelHint}>Na podstawie wszystkich zgromadzonych ofert w systemie.</Text>
+                <Text style={[styles.cardHint, { color: colors.tertiary }]}>Na podstawie aktywnych ofert w systemie.</Text>
 
-                <Text style={[styles.panelKicker, { marginTop: 18 }]}>Typ Nieruchomości</Text>
-                <View style={styles.filterCol}>
-                  {ADMIN_STATS_PROPERTY_TYPES.map((type) => (
-                    <Pressable
-                      key={type}
-                      onPress={() => setMarketFilter(type)}
-                      style={[styles.filterChip, marketFilter === type && styles.filterChipActive]}
-                    >
-                      <Text style={[styles.filterChipText, marketFilter === type && styles.filterChipTextActive]}>{type}</Text>
-                    </Pressable>
-                  ))}
+                <Text style={[styles.cardKicker, { color: colors.secondary, marginTop: 18 }]}>Typ nieruchomości</Text>
+                <View style={styles.filterWrap}>
+                  {ADMIN_STATS_PROPERTY_TYPES.map((type) => {
+                    const active = marketFilter === type;
+                    return (
+                      <Pressable
+                        key={type}
+                        onPress={() => setMarketFilter(type)}
+                        style={[styles.filterChip, { backgroundColor: active ? colors.accent : colors.cardSecondary }]}
+                      >
+                        <Text style={[styles.filterChipText, { color: active ? '#000' : colors.text }]}>{type}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
 
-                <Text style={[styles.panelKicker, { marginTop: 18 }]}>Ranking Dzielnic (PLN/m²)</Text>
+                <Text style={[styles.cardKicker, { color: colors.secondary, marginTop: 18 }]}>Ranking dzielnic</Text>
                 {marketData.districts.length === 0 ? (
-                  <Text style={styles.panelHint}>Brak danych dla wybranego filtru.</Text>
+                  <Text style={[styles.cardHint, { color: colors.tertiary }]}>Brak danych dla filtra.</Text>
                 ) : (
-                  marketData.districts.map((d: any, index: number) => {
-                    const percentage = Math.max((d.avgSqm / marketData.maxDistrictPrice) * 100, 5);
+                  marketData.districts.slice(0, 15).map((d: any, index: number) => {
+                    const pct = Math.max(6, (d.avgSqm / marketData.maxDistrictPrice) * 100);
                     return (
                       <View key={d.name} style={styles.districtRow}>
                         <View style={styles.districtHeader}>
-                          <Text style={styles.districtName}>{index + 1}. {d.name}</Text>
-                          <Text style={styles.districtPrice}>{d.avgSqm.toLocaleString('pl-PL')} PLN</Text>
+                          <Text style={[styles.districtName, { color: colors.text }]} numberOfLines={1}>
+                            {index + 1}. {d.name}
+                          </Text>
+                          <Text style={[styles.districtPrice, { color: colors.text }]}>{d.avgSqm.toLocaleString('pl-PL')}</Text>
                         </View>
-                        <View style={styles.districtTrack}>
-                          <View style={[styles.districtFill, { width: `${percentage}%` }]} />
+                        <View style={[styles.districtTrack, { backgroundColor: colors.cardSecondary }]}>
+                          <View style={[styles.districtFill, { width: `${pct}%`, backgroundColor: colors.accent }]} />
                         </View>
-                        <Text style={styles.districtCount}>{d.count} ofert</Text>
+                        <Text style={[styles.districtCount, { color: colors.tertiary }]}>{d.count} ofert</Text>
                       </View>
                     );
                   })
@@ -303,104 +450,50 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
               </View>
             ) : null}
 
-            {showVisitors ? (
-              <View style={[styles.panel, styles.panelVisitors]}>
-                <Text style={styles.panelTitle}>Rejestr Odwiedzających (Top 50 powracających)</Text>
-                {visitorsList.map((v: any, i: number) => (
-                  <View key={`${v.ip}-${i}`} style={styles.visitorRow}>
-                    <Text style={styles.visitorFlag}>{getFlagEmoji(v.country)}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.visitorIp}>{v.ip}</Text>
-                      <Text style={styles.visitorMeta}>{formatStatsDateTime(v.lastVisit)}</Text>
+            {section === 'visitors' ? (
+              <View style={{ marginTop: 14, gap: 12 }}>
+                {visitorCountries.length > 0 ? (
+                  <View style={[styles.card, { backgroundColor: colors.card }]}>
+                    <Text style={[styles.cardTitle, { color: colors.text }]}>Rozkład krajów</Text>
+                    <View style={styles.countryWrap}>
+                      {visitorCountries.map((c: any) => (
+                        <View key={c.countryCode} style={[styles.countryChip, { backgroundColor: colors.cardSecondary }]}>
+                          <Text>{c.flag || getFlagEmoji(c.countryCode)}</Text>
+                          <Text style={[styles.countryChipText, { color: colors.text }]}>{c.countryName}</Text>
+                          <Text style={[styles.countryChipMeta, { color: colors.secondary }]}>
+                            {c.pageViews} · {c.sharePct}%
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                    <View style={styles.visitorCounts}>
-                      <Text style={styles.visitorCount}>{v.count}</Text>
-                      <Text style={styles.visitorMain}>{v.mainPageViews}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {insights?.visits?.best ? (
-              <View style={styles.insightRow}>
-                <View style={styles.insightCard}>
-                  <Text style={styles.insightKicker}>Wizyty — najlepszy dzień</Text>
-                  <Text style={styles.insightValue}>
-                    {insights.visits.best.day} ({insights.visits.best.visits})
-                  </Text>
-                </View>
-                {insights.offers?.best ? (
-                  <View style={styles.insightCard}>
-                    <Text style={styles.insightKicker}>Oferty — najlepszy dzień</Text>
-                    <Text style={styles.insightValue}>
-                      {insights.offers.best.day} ({insights.offers.best.offers})
-                    </Text>
                   </View>
                 ) : null}
-              </View>
-            ) : null}
 
-            <View style={styles.chartPanel}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
-                {ADMIN_STATS_TABS.map((tab) => {
-                  const isActive = tab.id === activeTabId;
-                  const total = chartData.reduce((sum, item) => sum + Number(item[tab.id] || 0), 0);
-                  return (
-                    <Pressable
-                      key={tab.id}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        startChartTransition(() => setActiveTabId(tab.id));
-                      }}
-                      style={[styles.tabBtn, isActive && { borderColor: tab.color, backgroundColor: 'rgba(255,255,255,0.05)' }]}
+                <View style={[styles.card, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.cardTitle, { color: colors.text }]}>Top 50 odwiedzających</Text>
+                  <Text style={[styles.cardHint, { color: colors.tertiary }]}>Czas w strefie Europe/Warsaw</Text>
+                  {visitorsList.map((v: any, i: number) => (
+                    <View
+                      key={`${v.ip}-${i}`}
+                      style={[styles.visitorRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator }]}
                     >
-                      <Ionicons name={tab.icon} size={14} color={isActive ? tab.color : '#6b7280'} />
-                      <Text style={[styles.tabBtnText, isActive && { color: theme.text }]}>
-                        {tab.label}{total > 0 ? ` (${total})` : ''}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodRow}>
-                {ADMIN_STATS_PERIODS.map((period) => (
-                  <Pressable
-                    key={period}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      startChartTransition(() => setActivePeriod(period));
-                    }}
-                    style={[styles.periodBtn, activePeriod === period && styles.periodBtnActive]}
-                  >
-                    <Text style={[styles.periodBtnText, activePeriod === period && styles.periodBtnTextActive]}>{period}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-
-              <View style={{ position: 'relative' }}>
-                {chartPending ? (
-                  <View style={styles.chartLoadingOverlay}>
-                    <ActivityIndicator size="small" color="#10b981" />
-                    <Text style={styles.chartLoadingText}>Przeliczanie…</Text>
-                  </View>
-                ) : null}
-                <StatsAreaChart
-                  data={chartData}
-                  dataKey={activeTabId}
-                  color={activeTab.color}
-                  width={width - 32}
-                  height={280}
-                  activeLabel={selectedChartLabel}
-                  activeValue={selectedChartValue}
-                  onSelectIndex={(index, label, value) => {
-                    setSelectedChartLabel(label);
-                    setSelectedChartValue(value);
-                  }}
-                />
+                      <Text style={styles.visitorFlag}>{getFlagEmoji(v.country)}</Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={[styles.visitorIp, { color: colors.text }]}>{v.ip}</Text>
+                        <Text style={[styles.visitorMeta, { color: colors.secondary }]} numberOfLines={1}>
+                          {[v.city, v.regionName].filter(Boolean).join(', ') || v.countryName || v.country}
+                        </Text>
+                        <Text style={[styles.visitorTime, { color: colors.tertiary }]}>{formatStatsDateTime(v.lastVisit)}</Text>
+                      </View>
+                      <View style={styles.visitorCounts}>
+                        <Text style={[styles.visitorCount, { color: colors.text }]}>{v.count}</Text>
+                        <Text style={[styles.visitorMap, { color: colors.accent }]}>{v.mainPageViews} mapa</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
               </View>
-            </View>
+            ) : null}
           </ScrollView>
         )}
       </View>
@@ -409,158 +502,91 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 10,
-  },
-  title: { fontSize: 34, fontWeight: '900', fontStyle: 'italic', letterSpacing: -1 },
-  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  subtitle: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
-  retryBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#10b981',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  retryBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  moduleButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  moduleBtn: {
+  root: { flex: 1 },
+  navBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  moduleBtnMarketActive: { borderColor: 'rgba(16,185,129,0.35)', backgroundColor: 'rgba(16,185,129,0.1)' },
-  moduleBtnVisitorsActive: { borderColor: 'rgba(59,130,246,0.35)', backgroundColor: 'rgba(59,130,246,0.1)' },
-  moduleBtnText: { color: '#fff', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
-  panel: {
-    backgroundColor: '#0a0a0a',
-    borderColor: 'rgba(16,185,129,0.2)',
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 16,
-    marginBottom: 14,
-  },
-  panelVisitors: { borderColor: 'rgba(59,130,246,0.2)' },
-  panelKicker: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2 },
-  panelBigValue: { color: '#fff', fontSize: 34, fontWeight: '900', marginTop: 8 },
-  panelUnit: { color: '#10b981', fontSize: 16 },
-  panelHint: { color: '#6b7280', fontSize: 12, marginTop: 6, marginBottom: 4 },
-  panelTitle: { color: '#fff', fontSize: 18, fontWeight: '900', marginBottom: 12 },
-  filterCol: { gap: 8, marginTop: 8 },
-  filterChip: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  filterChipActive: { backgroundColor: '#10b981' },
-  filterChipText: { color: '#9ca3af', fontSize: 12, fontWeight: '700' },
-  filterChipTextActive: { color: '#000', fontWeight: '900' },
-  districtRow: { marginTop: 12 },
-  districtHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  districtName: { color: '#fff', fontWeight: '800', fontSize: 13, flex: 1, paddingRight: 8 },
-  districtPrice: { color: '#fff', fontWeight: '900', fontSize: 14 },
-  districtTrack: { height: 8, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' },
-  districtFill: { height: '100%', borderRadius: 999, backgroundColor: '#10b981' },
-  districtCount: { color: '#6b7280', fontSize: 10, marginTop: 4 },
-  visitorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  visitorFlag: { fontSize: 22, width: 30 },
-  visitorIp: { color: '#fff', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12 },
-  visitorMeta: { color: '#6b7280', fontSize: 10, marginTop: 2 },
-  visitorCounts: { alignItems: 'flex-end', minWidth: 52 },
-  visitorCount: { color: '#fff', fontWeight: '900', fontSize: 16 },
-  visitorMain: { color: '#10b981', fontWeight: '900', fontSize: 14 },
-  insightRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  insightCard: {
-    flex: 1,
-    minWidth: 140,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    padding: 12,
-  },
-  insightKicker: { color: '#6b7280', fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
-  insightValue: { color: '#fff', fontSize: 14, fontWeight: '900', marginTop: 6 },
-  chartLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(5,5,5,0.75)',
-    borderRadius: 16,
-    gap: 8,
-  },
-  chartLoadingText: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  chartPanel: {
-    backgroundColor: '#0a0a0a',
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 14,
-  },
-  tabsRow: { gap: 8, paddingBottom: 10 },
-  tabBtn: {
+  navTitle: { fontSize: 28, fontWeight: '700', letterSpacing: -0.5 },
+  navSubtitle: { fontSize: 12, marginTop: 2 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  primaryBtn: { borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12 },
+  primaryBtnText: { color: '#000', fontWeight: '700', fontSize: 15 },
+  segmented: { flexDirection: 'row', borderRadius: 10, padding: 3, gap: 2 },
+  segment: { flex: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  segmentActive: { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  segmentText: { fontSize: 12, fontWeight: '600' },
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  kpiCell: { width: '31%', borderRadius: 12, padding: 10, minWidth: 100, flexGrow: 1 },
+  kpiLabel: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+  kpiValue: { fontSize: 20, fontWeight: '700', marginTop: 4, fontVariant: ['tabular-nums'] },
+  insightRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  insightCard: { flex: 1, minWidth: 150, borderRadius: 12, padding: 12 },
+  insightKicker: { fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  insightValue: { fontSize: 15, fontWeight: '700', marginTop: 6 },
+  insightExtra: { fontSize: 11, marginTop: 4 },
+  card: { borderRadius: 16, padding: 14 },
+  cardTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
+  cardKicker: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardHint: { fontSize: 12, marginTop: 4, marginBottom: 8 },
+  marketBig: { fontSize: 32, fontWeight: '700', marginTop: 6 },
+  chipRow: { gap: 8, paddingVertical: 2 },
+  chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'transparent',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipText: { fontSize: 12, fontWeight: '600' },
+  periodChip: { borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
+  periodChipText: { fontSize: 11, fontWeight: '700' },
+  chartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    gap: 8,
   },
-  tabBtnText: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  periodRow: { gap: 8, marginBottom: 8 },
-  periodBtn: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#050505',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  periodBtnActive: { backgroundColor: 'rgba(255,255,255,0.1)' },
-  periodBtnText: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  periodBtnTextActive: { color: '#fff' },
-  chartTouchRow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 240,
-    flexDirection: 'row',
-  },
-  chartTouchCell: { flex: 1 },
-  chartTooltip: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(5,5,5,0.85)',
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  chartTooltipLabel: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  chartTooltipValue: { color: '#fff', fontSize: 22, fontWeight: '900', marginTop: 2 },
+  chartOverlayText: { fontSize: 11, fontWeight: '600' },
+  weekdayGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 },
+  weekdayCell: { width: '13%', minWidth: 44, borderRadius: 10, paddingVertical: 8, alignItems: 'center' },
+  weekdayName: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  weekdayVisits: { fontSize: 14, fontWeight: '800', marginTop: 4 },
+  weekdayOffers: { fontSize: 9, marginTop: 2 },
+  barRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 120, marginTop: 12 },
+  barCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
+  barTrack: { width: '100%', height: 80, borderRadius: 6, justifyContent: 'flex-end', overflow: 'hidden' },
+  barFill: { width: '100%', borderRadius: 6 },
+  barValue: { fontSize: 9, fontWeight: '700', marginBottom: 4 },
+  barLabel: { fontSize: 9, marginTop: 4, textAlign: 'center' },
+  filterWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  filterChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  filterChipText: { fontSize: 13, fontWeight: '600' },
+  districtRow: { marginTop: 12 },
+  districtHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  districtName: { fontSize: 14, fontWeight: '600', flex: 1 },
+  districtPrice: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  districtTrack: { height: 6, borderRadius: 99, marginTop: 6, overflow: 'hidden' },
+  districtFill: { height: '100%', borderRadius: 99 },
+  districtCount: { fontSize: 11, marginTop: 4 },
+  countryWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  countryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
+  countryChipText: { fontSize: 12, fontWeight: '600' },
+  countryChipMeta: { fontSize: 11 },
+  visitorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  visitorFlag: { fontSize: 22, width: 28 },
+  visitorIp: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, fontWeight: '600' },
+  visitorMeta: { fontSize: 11, marginTop: 2 },
+  visitorTime: { fontSize: 12, marginTop: 4, fontVariant: ['tabular-nums'] },
+  visitorCounts: { alignItems: 'flex-end', minWidth: 56 },
+  visitorCount: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  visitorMap: { fontSize: 11, fontWeight: '600', marginTop: 2 },
 });

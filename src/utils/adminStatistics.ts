@@ -27,18 +27,11 @@ export type AdminStatsTabId = (typeof ADMIN_STATS_TABS)[number]['id'];
 const ESTATEOS_TIMEZONE = 'Europe/Warsaw';
 const WEEKDAY_PL = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
 
-/** MySQL DATETIME / ISO z API — czas ścienny Warszawa na serwerze produkcyjnym. */
+/** ISO UTC z API lub surowy MySQL DATETIME (cyfry = czas warszawski). */
 export function parseStatsDate(value: string | Date | null | undefined): Date {
   if (!value) return new Date(NaN);
   if (value instanceof Date) {
-    return instantFromWarsawWall(
-      value.getUTCFullYear(),
-      value.getUTCMonth() + 1,
-      value.getUTCDate(),
-      value.getUTCHours(),
-      value.getUTCMinutes(),
-      value.getUTCSeconds(),
-    );
+    return Number.isNaN(value.getTime()) ? new Date(NaN) : new Date(value.getTime());
   }
   const raw = String(value).trim();
   if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
@@ -256,11 +249,16 @@ export function buildAdminStatsVisitorsList(timeline: any) {
       .map((v: any) => ({
         ip: v.ip,
         country: v.countryCode || v.country,
+        countryName: v.countryName,
         count: v.count,
         mainPageViews: v.mainPageViews,
-        lastVisit: parseStatsDate(v.lastVisit),
+        lastVisit: v.lastVisit,
+        firstVisit: v.firstVisit,
         city: v.city,
+        regionName: v.regionName,
         deviceType: v.deviceType,
+        topPaths: v.topPaths,
+        isRelay: v.isRelay,
       }))
       .slice(0, 50);
   }
