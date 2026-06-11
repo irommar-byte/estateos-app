@@ -1,16 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   TrendingUp,
-  Users,
-  UserCheck,
-  UserPlus,
   Home,
-  Building2,
   Globe,
   Eye,
   BarChart3,
@@ -19,30 +15,31 @@ import {
   Tablet,
   Bot,
   Shield,
+  UserPlus,
+  Users,
+  Loader2,
+  Calendar,
+  Clock,
 } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { flagEmojiFromCountryCode } from "@/lib/visitGeo";
+import { ESTATEOS_TIMEZONE, formatWarsawDateTime } from "@/lib/warsawDateTime";
 import {
-  ESTATEOS_TIMEZONE,
-  formatWarsawDateTime,
-  getWarsawDateKey,
-  getWarsawHour,
-  getWarsawMonthKey,
-  getWarsawWeekday,
-  parseEventDate,
-} from "@/lib/warsawDateTime";
+  TIMELINE_TABS,
+  TIMELINE_PERIODS,
+  buildTimelineChart,
+  buildTimelineInsights,
+  type TimelineTabId,
+  type TimelinePeriod,
+} from "@/lib/adminTimelineAnalytics";
 import AdminMarketAnalyticsPanel from "@/components/admin/AdminMarketAnalyticsPanel";
 
-const TABS = [
-  { id: "pageViews", label: "Wizyty", icon: <Eye size={16} />, color: "#10b981" },
-  { id: "uniqueViews", label: "Unikalni", icon: <UserCheck size={16} />, color: "#3b82f6" },
-  { id: "buyers", label: "Kupujący", icon: <Users size={16} />, color: "#8b5cf6" },
-  { id: "sellers", label: "Sprzedający", icon: <UserPlus size={16} />, color: "#f59e0b" },
-  { id: "offers", label: "Oferty", icon: <Home size={16} />, color: "#ec4899" },
-  { id: "agencies", label: "Agencje", icon: <Building2 size={16} />, color: "#06b6d4" },
-];
-
-const PERIODS = ["Ostatnie 30 Dni", "Ten Rok", "Godziny Szczytu", "Dni Szczytu"];
+const TAB_ICONS: Record<TimelineTabId, React.ReactNode> = {
+  pageViews: <Eye size={16} />,
+  uniqueViews: <Users size={16} />,
+  offers: <Home size={16} />,
+  users: <UserPlus size={16} />,
+};
 
 const deviceIcon = (deviceType: string) => {
   switch (String(deviceType || "").toLowerCase()) {
@@ -57,118 +54,16 @@ const deviceIcon = (deviceType: string) => {
   }
 };
 
-const processChartData = (period: string, timeline: any) => {
-  if (!timeline) return [];
-  const now = new Date();
-  const buckets: any[] = [];
-
-  if (period === "Godziny Szczytu") {
-    for (let i = 0; i < 24; i++) {
-      buckets.push({
-        name: `${String(i).padStart(2, "0")}:00`,
-        hourMatch: i,
-        pageViews: 0,
-        uniqueViews: 0,
-        offers: 0,
-        agencies: 0,
-        privateUsers: 0,
-        buyers: 0,
-        sellers: 0,
-        uniqueIps: new Set(),
-      });
-    }
-  } else if (period === "Dni Szczytu") {
-    const days = ["Niedziela", "Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota"];
-    for (let i = 0; i < 7; i++) {
-      buckets.push({
-        name: days[i],
-        dayMatch: i,
-        pageViews: 0,
-        uniqueViews: 0,
-        offers: 0,
-        agencies: 0,
-        privateUsers: 0,
-        buyers: 0,
-        sellers: 0,
-        uniqueIps: new Set(),
-      });
-    }
-  } else if (period === "Ostatnie 30 Dni") {
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      buckets.push({
-        name: d.toLocaleDateString("pl-PL", { timeZone: ESTATEOS_TIMEZONE, day: "2-digit", month: "short" }),
-        dateMatch: getWarsawDateKey(d),
-        pageViews: 0,
-        uniqueViews: 0,
-        offers: 0,
-        agencies: 0,
-        privateUsers: 0,
-        buyers: 0,
-        sellers: 0,
-        uniqueIps: new Set(),
-      });
-    }
-  } else {
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      buckets.push({
-        name: d.toLocaleDateString("pl-PL", { timeZone: ESTATEOS_TIMEZONE, month: "short" }),
-        dateMatch: getWarsawMonthKey(d),
-        pageViews: 0,
-        uniqueViews: 0,
-        offers: 0,
-        agencies: 0,
-        privateUsers: 0,
-        buyers: 0,
-        sellers: 0,
-        uniqueIps: new Set(),
-      });
-    }
-  }
-
-  const assignToBucket = (dateStr: string, callback: (bucket: any) => void) => {
-    const d = parseEventDate(dateStr);
-    if (Number.isNaN(d.getTime())) return;
-    let match: any;
-    if (period === "Godziny Szczytu") match = buckets.find((b) => b.hourMatch === getWarsawHour(d));
-    else if (period === "Dni Szczytu") match = buckets.find((b) => b.dayMatch === getWarsawWeekday(d));
-    else if (period === "Ostatnie 30 Dni") match = buckets.find((b) => b.dateMatch === getWarsawDateKey(d));
-    else match = buckets.find((b) => b.dateMatch === getWarsawMonthKey(d));
-    if (match) callback(match);
-  };
-
-  timeline.visits?.forEach((v: any) =>
-    assignToBucket(v.createdAt, (b) => {
-      b.pageViews++;
-      b.uniqueIps.add(v.ip);
-    }),
-  );
-  timeline.offers?.forEach((o: any) =>
-    assignToBucket(o.createdAt, (b) => {
-      b.offers++;
-      if (o.advertiserType === "agency") b.agencies++;
-      else b.privateUsers++;
-    }),
-  );
-  timeline.users?.forEach((u: any) =>
-    assignToBucket(u.createdAt, (b) => {
-      if (u.isBuyer) b.buyers++;
-      if (u.isSeller) b.sellers++;
-    }),
-  );
-
-  return buckets.map((b) => ({ ...b, uniqueViews: b.uniqueIps.size }));
-};
-
 export default function Statystyki() {
   const [stats, setStats] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState(TABS[0]);
-  const [activePeriod, setActivePeriod] = useState(PERIODS[0]);
+  const [activeTabId, setActiveTabId] = useState<TimelineTabId>("pageViews");
+  const [activePeriod, setActivePeriod] = useState<TimelinePeriod>("Ostatnie 30 Dni");
   const [showVisitors, setShowVisitors] = useState(false);
   const [showMarket, setShowMarket] = useState(true);
+  const [chartPending, startChartTransition] = useTransition();
   const router = useRouter();
+
+  const activeTab = TIMELINE_TABS.find((t) => t.id === activeTabId) || TIMELINE_TABS[0];
 
   useEffect(() => {
     void fetch("/api/admin/stats", { cache: "no-store" })
@@ -176,7 +71,8 @@ export default function Statystyki() {
       .then((data) => setStats(data));
   }, []);
 
-  const chartData = useMemo(() => processChartData(activePeriod, stats?.timeline), [activePeriod, stats]);
+  const insights = useMemo(() => buildTimelineInsights(stats?.timeline), [stats]);
+  const chartData = useMemo(() => buildTimelineChart(activePeriod, stats?.timeline), [activePeriod, stats]);
 
   const visitorsList = useMemo(() => {
     if (Array.isArray(stats?.timeline?.visitors) && stats.timeline.visitors.length > 0) {
@@ -192,6 +88,14 @@ export default function Statystyki() {
 
   const visitorInsight = stats?.timeline?.visitorGeoInsight ?? null;
   const marketOffers = stats?.timeline?.offers ?? [];
+
+  const selectPeriod = (period: TimelinePeriod) => {
+    startChartTransition(() => setActivePeriod(period));
+  };
+
+  const selectTab = (id: TimelineTabId) => {
+    startChartTransition(() => setActiveTabId(id));
+  };
 
   if (!stats) {
     return (
@@ -219,7 +123,7 @@ export default function Statystyki() {
             </h1>
             <p className="mt-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
               <TrendingUp size={12} className="text-emerald-500" />
-              Raport systemowy EstateOS
+              Raport systemowy EstateOS · {ESTATEOS_TIMEZONE.replace("_", " ")}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -254,18 +158,55 @@ export default function Statystyki() {
           </div>
         </header>
 
-        <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
           {[
             { label: "Użytkownicy", value: stats.kpis?.users ?? 0 },
             { label: "Oferty", value: stats.kpis?.offers ?? 0 },
             { label: "Aktywne", value: stats.kpis?.active ?? 0 },
             { label: "Odsłony", value: stats.kpis?.pageViews ?? 0 },
+            { label: "Unikalne IP", value: stats.kpis?.uniqueViews ?? 0 },
+            { label: "Wartość portfela", value: `${Math.round((stats.kpis?.totalValue ?? 0) / 1_000_000)}M` },
           ].map((kpi) => (
             <div key={kpi.label} className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5">
               <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--eos-subtle)]">{kpi.label}</p>
-              <p className="text-xl font-black tabular-nums">{Number(kpi.value).toLocaleString("pl-PL")}</p>
+              <p className="text-xl font-black tabular-nums">{typeof kpi.value === "number" ? Number(kpi.value).toLocaleString("pl-PL") : kpi.value}</p>
             </div>
           ))}
+        </div>
+
+        <div className="mb-6 grid gap-3 lg:grid-cols-3">
+          <InsightCard
+            icon={<Calendar size={16} className="text-emerald-500" />}
+            title="Wizyty — dni tygodnia"
+            best={insights.visits.best ? `${insights.visits.best.day} (${insights.visits.best.visits})` : "—"}
+            worst={insights.visits.worst ? `${insights.visits.worst.day} (${insights.visits.worst.visits})` : "—"}
+            extra={
+              insights.visits.peakHour != null
+                ? `Szczyt godzinowy: ${String(insights.visits.peakHour).padStart(2, "0")}:00`
+                : undefined
+            }
+          />
+          <InsightCard
+            icon={<Home size={16} className="text-pink-500" />}
+            title="Oferty — dni tygodnia"
+            best={insights.offers.best ? `${insights.offers.best.day} (${insights.offers.best.offers})` : "—"}
+            worst={insights.offers.worst ? `${insights.offers.worst.day} (${insights.offers.worst.offers})` : "—"}
+          />
+          <InsightCard
+            icon={<Clock size={16} className="text-violet-500" />}
+            title="Wolumen ofert"
+            best={
+              insights.yearlyOffers.length
+                ? `Rok ${insights.yearlyOffers[insights.yearlyOffers.length - 1]?.year}: ${insights.yearlyOffers[insights.yearlyOffers.length - 1]?.count}`
+                : "—"
+            }
+            worst={
+              insights.monthlyOffers.length
+                ? `${insights.monthlyOffers[insights.monthlyOffers.length - 1]?.label}: ${insights.monthlyOffers[insights.monthlyOffers.length - 1]?.count}`
+                : "Brak w tym roku"
+            }
+            extra={`Łącznie w próbce: ${insights.totals.offers} ofert`}
+          />
         </div>
 
         <AnimatePresence mode="wait">
@@ -288,8 +229,7 @@ export default function Statystyki() {
                   <Globe className="text-sky-500" size={18} /> Rejestr odwiedzających
                 </h3>
                 <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[var(--eos-muted)]">
-                  Top 50 adresów IP. Czas wyświetlany w strefie {ESTATEOS_TIMEZONE.replace("_", " ")} (zapis serwera UTC →
-                  konwersja na czas polski).
+                  Top 50 adresów IP. Czas w strefie {ESTATEOS_TIMEZONE.replace("_", " ")} (zapis serwera = czas polski).
                 </p>
                 {visitorInsight ? (
                   <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -402,21 +342,49 @@ export default function Statystyki() {
           ) : null}
         </AnimatePresence>
 
+        {insights.monthlyOffers.length > 0 ? (
+          <div className="mb-6 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:p-6">
+            <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+              Oferty w bieżącym roku (miesięcznie)
+            </p>
+            <div className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={insights.monthlyOffers} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--eos-border)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "var(--eos-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: "var(--eos-muted)", fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    content={({ active, payload, label }) =>
+                      active && payload?.length ? (
+                        <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2 shadow-lg">
+                          <p className="text-[10px] font-bold uppercase text-[var(--eos-subtle)]">{label}</p>
+                          <p className="text-lg font-black">{payload[0]?.value} ofert</p>
+                        </div>
+                      ) : null
+                    }
+                  />
+                  <Bar dataKey="count" fill="#ec4899" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        ) : null}
+
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:p-6"
+          className="relative rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 sm:p-6"
         >
           <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex flex-wrap gap-1.5">
-              {TABS.map((tab) => {
-                const isActive = activeTab.id === tab.id;
-                const total = chartData.reduce((sum, item) => sum + (item[tab.id as keyof typeof item] as number), 0);
+              {TIMELINE_TABS.map((tab) => {
+                const isActive = tab.id === activeTabId;
+                const total = chartData.reduce((sum, item) => sum + Number(item[tab.id] || 0), 0);
                 return (
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => selectTab(tab.id)}
                     className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors ${
                       isActive
                         ? "border-[var(--eos-border-strong)] bg-[var(--eos-bg)] text-[var(--eos-text)]"
@@ -424,7 +392,7 @@ export default function Statystyki() {
                     }`}
                     style={{ borderColor: isActive ? tab.color : undefined }}
                   >
-                    <span style={{ color: isActive ? tab.color : undefined }}>{tab.icon}</span>
+                    <span style={{ color: isActive ? tab.color : undefined }}>{TAB_ICONS[tab.id]}</span>
                     {tab.label}
                     {total > 0 ? ` (${total})` : ""}
                   </button>
@@ -432,11 +400,11 @@ export default function Statystyki() {
               })}
             </div>
             <div className="flex flex-wrap gap-1 rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] p-1">
-              {PERIODS.map((period) => (
+              {TIMELINE_PERIODS.map((period) => (
                 <button
                   key={period}
                   type="button"
-                  onClick={() => setActivePeriod(period)}
+                  onClick={() => selectPeriod(period)}
                   className={`rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${
                     activePeriod === period
                       ? "bg-[var(--eos-card)] text-[var(--eos-text)] shadow-sm"
@@ -449,7 +417,13 @@ export default function Statystyki() {
             </div>
           </div>
 
-          <div className="h-[360px] w-full">
+          <div className="relative h-[360px] w-full">
+            {chartPending ? (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-xl bg-[var(--eos-card)]/80 backdrop-blur-sm">
+                <Loader2 className="size-8 animate-spin text-emerald-500" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">Przeliczanie…</p>
+              </div>
+            ) : null}
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
@@ -488,17 +462,60 @@ export default function Statystyki() {
                 />
                 <Area
                   type="monotone"
-                  dataKey={activeTab.id}
+                  dataKey={activeTabId}
                   stroke={activeTab.color}
                   strokeWidth={2.5}
                   fill="url(#analyticsGradient)"
-                  animationDuration={800}
+                  animationDuration={chartPending ? 0 : 600}
+                  isAnimationActive={!chartPending}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {activePeriod === "Dni Szczytu" ? (
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+              {insights.weekdays.map((row) => (
+                <div key={row.day} className="rounded-lg border border-[var(--eos-border)] bg-[var(--eos-bg)] px-2 py-2 text-center">
+                  <p className="text-[9px] font-bold uppercase text-[var(--eos-subtle)]">{row.day.slice(0, 3)}</p>
+                  <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">{row.visits}</p>
+                  <p className="text-[10px] text-[var(--eos-muted)]">{row.offers} ofert</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </motion.div>
       </div>
+    </div>
+  );
+}
+
+function InsightCard({
+  icon,
+  title,
+  best,
+  worst,
+  extra,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  best: string;
+  worst: string;
+  extra?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
+      <div className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
+        {icon}
+        {title}
+      </div>
+      <p className="text-xs text-[var(--eos-muted)]">
+        Najlepszy: <span className="font-bold text-[var(--eos-text)]">{best}</span>
+      </p>
+      <p className="text-xs text-[var(--eos-muted)]">
+        Najgorszy: <span className="font-bold text-[var(--eos-text)]">{worst}</span>
+      </p>
+      {extra ? <p className="mt-2 text-[10px] text-[var(--eos-subtle)]">{extra}</p> : null}
     </div>
   );
 }

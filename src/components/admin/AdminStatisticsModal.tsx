@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -21,8 +21,10 @@ import {
   ADMIN_STATS_TABS,
   AdminStatsPeriod,
   AdminStatsTabId,
+  buildAdminStatsInsights,
   buildAdminStatsMarketData,
   buildAdminStatsVisitorsList,
+  formatStatsDateTime,
   getFlagEmoji,
   processAdminStatsChartData,
 } from '../../utils/adminStatistics';
@@ -145,6 +147,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
   const [marketFilter, setMarketFilter] = useState('Wszystkie');
   const [selectedChartLabel, setSelectedChartLabel] = useState<string | null>(null);
   const [selectedChartValue, setSelectedChartValue] = useState(0);
+  const [chartPending, startChartTransition] = useTransition();
 
   const activeTab = ADMIN_STATS_TABS.find((t) => t.id === activeTabId) || ADMIN_STATS_TABS[0];
 
@@ -190,6 +193,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
   );
   const visitorsList = useMemo(() => buildAdminStatsVisitorsList(stats?.timeline), [stats]);
   const marketData = useMemo(() => buildAdminStatsMarketData(stats, marketFilter), [stats, marketFilter]);
+  const insights = useMemo(() => buildAdminStatsInsights(stats), [stats]);
 
   useEffect(() => {
     if (chartData.length > 0) {
@@ -307,7 +311,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
                     <Text style={styles.visitorFlag}>{getFlagEmoji(v.country)}</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.visitorIp}>{v.ip}</Text>
-                      <Text style={styles.visitorMeta}>{v.lastVisit.toLocaleString('pl-PL')}</Text>
+                      <Text style={styles.visitorMeta}>{formatStatsDateTime(v.lastVisit)}</Text>
                     </View>
                     <View style={styles.visitorCounts}>
                       <Text style={styles.visitorCount}>{v.count}</Text>
@@ -315,6 +319,25 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
                     </View>
                   </View>
                 ))}
+              </View>
+            ) : null}
+
+            {insights?.visits?.best ? (
+              <View style={styles.insightRow}>
+                <View style={styles.insightCard}>
+                  <Text style={styles.insightKicker}>Wizyty — najlepszy dzień</Text>
+                  <Text style={styles.insightValue}>
+                    {insights.visits.best.day} ({insights.visits.best.visits})
+                  </Text>
+                </View>
+                {insights.offers?.best ? (
+                  <View style={styles.insightCard}>
+                    <Text style={styles.insightKicker}>Oferty — najlepszy dzień</Text>
+                    <Text style={styles.insightValue}>
+                      {insights.offers.best.day} ({insights.offers.best.offers})
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ) : null}
 
@@ -328,7 +351,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
                       key={tab.id}
                       onPress={() => {
                         Haptics.selectionAsync();
-                        setActiveTabId(tab.id);
+                        startChartTransition(() => setActiveTabId(tab.id));
                       }}
                       style={[styles.tabBtn, isActive && { borderColor: tab.color, backgroundColor: 'rgba(255,255,255,0.05)' }]}
                     >
@@ -347,7 +370,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
                     key={period}
                     onPress={() => {
                       Haptics.selectionAsync();
-                      setActivePeriod(period);
+                      startChartTransition(() => setActivePeriod(period));
                     }}
                     style={[styles.periodBtn, activePeriod === period && styles.periodBtnActive]}
                   >
@@ -356,19 +379,27 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
                 ))}
               </ScrollView>
 
-              <StatsAreaChart
-                data={chartData}
-                dataKey={activeTabId}
-                color={activeTab.color}
-                width={width - 32}
-                height={280}
-                activeLabel={selectedChartLabel}
-                activeValue={selectedChartValue}
-                onSelectIndex={(index, label, value) => {
-                  setSelectedChartLabel(label);
-                  setSelectedChartValue(value);
-                }}
-              />
+              <View style={{ position: 'relative' }}>
+                {chartPending ? (
+                  <View style={styles.chartLoadingOverlay}>
+                    <ActivityIndicator size="small" color="#10b981" />
+                    <Text style={styles.chartLoadingText}>Przeliczanie…</Text>
+                  </View>
+                ) : null}
+                <StatsAreaChart
+                  data={chartData}
+                  dataKey={activeTabId}
+                  color={activeTab.color}
+                  width={width - 32}
+                  height={280}
+                  activeLabel={selectedChartLabel}
+                  activeValue={selectedChartValue}
+                  onSelectIndex={(index, label, value) => {
+                    setSelectedChartLabel(label);
+                    setSelectedChartValue(value);
+                  }}
+                />
+              </View>
             </View>
           </ScrollView>
         )}
@@ -458,6 +489,28 @@ const styles = StyleSheet.create({
   visitorCounts: { alignItems: 'flex-end', minWidth: 52 },
   visitorCount: { color: '#fff', fontWeight: '900', fontSize: 16 },
   visitorMain: { color: '#10b981', fontWeight: '900', fontSize: 14 },
+  insightRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  insightCard: {
+    flex: 1,
+    minWidth: 140,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    padding: 12,
+  },
+  insightKicker: { color: '#6b7280', fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 },
+  insightValue: { color: '#fff', fontSize: 14, fontWeight: '900', marginTop: 6 },
+  chartLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(5,5,5,0.75)',
+    borderRadius: 16,
+    gap: 8,
+  },
+  chartLoadingText: { color: '#6b7280', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
   chartPanel: {
     backgroundColor: '#0a0a0a',
     borderColor: 'rgba(255,255,255,0.05)',
