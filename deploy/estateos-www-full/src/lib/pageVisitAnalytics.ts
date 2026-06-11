@@ -1,4 +1,5 @@
 import { countryDisplayName, flagEmojiFromCountryCode, geoSourceLabel } from './visitGeo';
+import { parseEventDate } from './warsawDateTime';
 
 export type RawPageVisit = {
   ip: string;
@@ -66,7 +67,7 @@ export function aggregateVisitorsFromVisits(visits: RawPageVisit[], limit = 50):
 
   for (const visit of visits) {
     const ip = String(visit.ip || '').trim() || 'unknown';
-    const createdAt = new Date(visit.createdAt);
+    const createdAt = parseEventDate(visit.createdAt);
     if (Number.isNaN(createdAt.getTime())) continue;
 
     const countryCode = String(visit.country || 'UN').trim().toUpperCase().slice(0, 8) || 'UN';
