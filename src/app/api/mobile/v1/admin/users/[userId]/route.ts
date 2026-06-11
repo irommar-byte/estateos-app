@@ -28,7 +28,14 @@ export async function GET(
         phone: true,
         role: true,
         isVerified: true,
+        planType: true,
+        companyName: true,
+        phoneVerifiedAt: true,
+        emailVerifiedAt: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
         createdAt: true,
+        updatedAt: true,
         offers: {
           select: {
             id: true,
