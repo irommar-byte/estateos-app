@@ -11,10 +11,6 @@ export default function OfertyAdmin() {
   const [loading, setLoading] = useState(true);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'archived'>('pending');
-  const [legacyOffers, setLegacyOffers] = useState<any[]>([]);
-  const [legacyLoading, setLegacyLoading] = useState(false);
-  const [legacySuspending, setLegacySuspending] = useState(false);
-
   const fetchOffers = async () => {
     try {
       const res = await fetch("/api/admin/offers");
@@ -32,47 +28,6 @@ export default function OfertyAdmin() {
   };
 
   useEffect(() => { fetchOffers(); }, []);
-
-  const fetchLegacyMarket = async () => {
-    setLegacyLoading(true);
-    try {
-      const res = await fetch('/api/admin/offers/legacy-market');
-      const data = await res.json();
-      setLegacyOffers(data?.success && Array.isArray(data.offers) ? data.offers : []);
-    } catch {
-      setLegacyOffers([]);
-    } finally {
-      setLegacyLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchLegacyMarket();
-  }, []);
-
-  const suspendLegacyBatch = async () => {
-    if (!legacyOffers.length) return;
-    if (!confirm(`Wstrzymać ${legacyOffers.length} ofert ACTIVE na rynku bez kolejki moderacji?`)) return;
-    setLegacySuspending(true);
-    try {
-      const res = await fetch('/api/admin/offers/legacy-market', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ offerIds: legacyOffers.map((o) => o.id) }),
-      });
-      const data = await res.json();
-      if (data?.success) {
-        await fetchLegacyMarket();
-        fetchOffers();
-      } else {
-        alert(data?.error || 'Nie udało się wstrzymać batcha.');
-      }
-    } catch {
-      alert('Błąd połączenia z API.');
-    } finally {
-      setLegacySuspending(false);
-    }
-  };
 
   const handleUpdateStatus = async (id: string, status: string, verificationStatus?: string) => {
     const res = await fetch(`/api/admin/offers`, {
@@ -187,43 +142,6 @@ export default function OfertyAdmin() {
           />
         </div>
       </div>
-
-      <section className="mb-12 rounded-[2.5rem] border border-amber-500/25 bg-amber-500/5 p-6 md:p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-lg font-black uppercase tracking-widest text-amber-400">Legacy market review</h2>
-            <p className="text-[11px] text-[var(--eos-muted)] mt-2 max-w-2xl leading-relaxed">
-              Oferty ACTIVE widoczne na rynku bez wpisu w kolejce moderacji (sprzed wdrożenia pendingPublicationKind).
-              Batch ustawia status PENDING i kończy aktywną publikację.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void suspendLegacyBatch()}
-            disabled={legacySuspending || legacyOffers.length === 0}
-            className="px-5 py-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 text-[10px] font-black uppercase tracking-widest text-amber-300 hover:bg-amber-500/20 disabled:opacity-40 transition-colors"
-          >
-            {legacySuspending ? 'Przetwarzam…' : `Wstrzymaj wszystkie (${legacyOffers.length})`}
-          </button>
-        </div>
-        {legacyLoading ? (
-          <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)] animate-pulse">Skanowanie legacy…</p>
-        ) : legacyOffers.length === 0 ? (
-          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Brak ofert do przeglądu.</p>
-        ) : (
-          <div className="space-y-2 max-h-64 overflow-auto custom-scrollbar">
-            {legacyOffers.map((o) => (
-              <div key={o.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/60 px-4 py-3 text-xs">
-                <div className="min-w-0">
-                  <p className="font-bold truncate text-[var(--eos-text)]">{o.title || `Oferta #${o.id}`}</p>
-                  <p className="text-[var(--eos-subtle)] truncate">{o.district || o.city} • {o.owner?.email || '—'}</p>
-                </div>
-                <span className="shrink-0 text-[9px] font-black uppercase tracking-widest text-amber-400">ID {o.id}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
 
       <div className="flex flex-col lg:flex-row gap-8">
         <div className="flex-1 space-y-4">
