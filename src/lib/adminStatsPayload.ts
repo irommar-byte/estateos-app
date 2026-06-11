@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { buildTimelineInsights } from '@/lib/adminTimelineAnalytics';
-import { serializeDbDateTime } from '@/lib/datetime/warsaw';
+import { serializeDbDateTime, serializeInstant } from '@/lib/datetime/warsaw';
 import {
   aggregateVisitorsFromVisits,
   buildVisitorCountryStats,
@@ -77,8 +77,8 @@ export async function getAdminStatsPayload() {
     })),
     visitors: visitors.map((v) => ({
       ...v,
-      firstVisit: serializeDbDateTime(v.firstVisit),
-      lastVisit: serializeDbDateTime(v.lastVisit),
+      firstVisit: serializeInstant(v.firstVisit),
+      lastVisit: serializeInstant(v.lastVisit),
     })),
     visitorCountries,
     visitorGeoInsight: {
