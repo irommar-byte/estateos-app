@@ -17,7 +17,7 @@ import {
   Ticket,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { AdminUserDetail } from "@/lib/adminUserDetail";
 import AdminUserDetailPanel from "@/components/admin/AdminUserDetailPanel";
 
@@ -41,6 +41,7 @@ function isVerifiedUser(u: AdminUserDetail) {
 
 export default function AdminUsers() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,6 +64,15 @@ export default function AdminUsers() {
   useEffect(() => {
     void fetchUsers();
   }, []);
+
+  useEffect(() => {
+    const userId = Number(searchParams.get("userId"));
+    if (!Number.isFinite(userId) || userId <= 0 || users.length === 0) return;
+    const match = users.find((u) => u.id === userId);
+    if (!match) return;
+    setActiveTab(classifyUser(match));
+    setSelectedUser(match);
+  }, [searchParams, users]);
 
   const segmentCounts = useMemo(() => {
     const counts: Record<TabType, number> = { PRIVATE: 0, AGENCIES: 0, PARTNER: 0 };
