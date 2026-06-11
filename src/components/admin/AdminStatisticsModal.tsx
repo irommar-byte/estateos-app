@@ -16,15 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { API_URL } from '../../config/network';
 import { useAuthStore } from '../../store/useAuthStore';
+import AdminMarketSection from './AdminMarketSection';
 import AdminStatsChart from './AdminStatsChart';
 import {
   ADMIN_STATS_PERIODS,
-  ADMIN_STATS_PROPERTY_TYPES,
   ADMIN_STATS_TABS,
   AdminStatsPeriod,
   AdminStatsTabId,
   buildAdminStatsInsights,
-  buildAdminStatsMarketData,
   buildAdminStatsVisitorsList,
   formatStatsDateTime,
   getFlagEmoji,
@@ -188,7 +187,6 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
   const [section, setSection] = useState<SectionId>('overview');
   const [activeTabId, setActiveTabId] = useState<AdminStatsTabId>('pageViews');
   const [activePeriod, setActivePeriod] = useState<AdminStatsPeriod>('Ostatnie 30 Dni');
-  const [marketFilter, setMarketFilter] = useState('Wszystkie');
   const [selectedChartIndex, setSelectedChartIndex] = useState(0);
   const [chartPending, startChartTransition] = useTransition();
 
@@ -231,7 +229,7 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
   const chartData = useMemo(() => processAdminStatsChartData(activePeriod, stats?.timeline), [activePeriod, stats]);
   const visitorsList = useMemo(() => buildAdminStatsVisitorsList(stats?.timeline), [stats]);
   const visitorCountries = useMemo(() => stats?.timeline?.visitorCountries || [], [stats]);
-  const marketData = useMemo(() => buildAdminStatsMarketData(stats, marketFilter), [stats, marketFilter]);
+  const marketOffers = useMemo(() => stats?.timeline?.offers || [], [stats]);
   const insights = useMemo(() => buildAdminStatsInsights(stats), [stats]);
   const monthlyOffers = useMemo(() => insights?.monthlyOffers || [], [insights]);
 
@@ -400,53 +398,24 @@ export default function AdminStatisticsModal({ visible, onClose, theme }: Props)
               </>
             ) : null}
 
-            {section === 'market' && marketData ? (
+            {section === 'market' && marketOffers.length > 0 ? (
+              <AdminMarketSection
+                offers={marketOffers}
+                colors={{
+                  card: colors.card,
+                  cardSecondary: colors.cardSecondary,
+                  text: colors.text,
+                  secondary: colors.secondary,
+                  tertiary: colors.tertiary,
+                  separator: colors.separator,
+                  accent: colors.accent,
+                }}
+              />
+            ) : section === 'market' ? (
               <View style={[styles.card, { backgroundColor: colors.card, marginTop: 14 }]}>
-                <Text style={[styles.cardKicker, { color: colors.secondary }]}>Średnia w Warszawie</Text>
-                <Text style={[styles.marketBig, { color: colors.text }]}>
-                  {marketData.avgWarsawSqm.toLocaleString('pl-PL')}{' '}
-                  <Text style={{ color: colors.accent, fontSize: 18 }}>PLN/m²</Text>
+                <Text style={[styles.cardHint, { color: colors.tertiary, textAlign: 'center', paddingVertical: 24 }]}>
+                  Brak ofert do analizy rynku.
                 </Text>
-                <Text style={[styles.cardHint, { color: colors.tertiary }]}>Na podstawie aktywnych ofert w systemie.</Text>
-
-                <Text style={[styles.cardKicker, { color: colors.secondary, marginTop: 18 }]}>Typ nieruchomości</Text>
-                <View style={styles.filterWrap}>
-                  {ADMIN_STATS_PROPERTY_TYPES.map((type) => {
-                    const active = marketFilter === type;
-                    return (
-                      <Pressable
-                        key={type}
-                        onPress={() => setMarketFilter(type)}
-                        style={[styles.filterChip, { backgroundColor: active ? colors.accent : colors.cardSecondary }]}
-                      >
-                        <Text style={[styles.filterChipText, { color: active ? '#000' : colors.text }]}>{type}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={[styles.cardKicker, { color: colors.secondary, marginTop: 18 }]}>Ranking dzielnic</Text>
-                {marketData.districts.length === 0 ? (
-                  <Text style={[styles.cardHint, { color: colors.tertiary }]}>Brak danych dla filtra.</Text>
-                ) : (
-                  marketData.districts.slice(0, 15).map((d: any, index: number) => {
-                    const pct = Math.max(6, (d.avgSqm / marketData.maxDistrictPrice) * 100);
-                    return (
-                      <View key={d.name} style={styles.districtRow}>
-                        <View style={styles.districtHeader}>
-                          <Text style={[styles.districtName, { color: colors.text }]} numberOfLines={1}>
-                            {index + 1}. {d.name}
-                          </Text>
-                          <Text style={[styles.districtPrice, { color: colors.text }]}>{d.avgSqm.toLocaleString('pl-PL')}</Text>
-                        </View>
-                        <View style={[styles.districtTrack, { backgroundColor: colors.cardSecondary }]}>
-                          <View style={[styles.districtFill, { width: `${pct}%`, backgroundColor: colors.accent }]} />
-                        </View>
-                        <Text style={[styles.districtCount, { color: colors.tertiary }]}>{d.count} ofert</Text>
-                      </View>
-                    );
-                  })
-                )}
               </View>
             ) : null}
 
@@ -533,7 +502,6 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 17, fontWeight: '700', marginBottom: 4 },
   cardKicker: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   cardHint: { fontSize: 12, marginTop: 4, marginBottom: 8 },
-  marketBig: { fontSize: 32, fontWeight: '700', marginTop: 6 },
   chipRow: { gap: 8, paddingVertical: 2 },
   chip: {
     flexDirection: 'row',
@@ -567,16 +535,6 @@ const styles = StyleSheet.create({
   barFill: { width: '100%', borderRadius: 6 },
   barValue: { fontSize: 9, fontWeight: '700', marginBottom: 4 },
   barLabel: { fontSize: 9, marginTop: 4, textAlign: 'center' },
-  filterWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  filterChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  filterChipText: { fontSize: 13, fontWeight: '600' },
-  districtRow: { marginTop: 12 },
-  districtHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  districtName: { fontSize: 14, fontWeight: '600', flex: 1 },
-  districtPrice: { fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  districtTrack: { height: 6, borderRadius: 99, marginTop: 6, overflow: 'hidden' },
-  districtFill: { height: '100%', borderRadius: 99 },
-  districtCount: { fontSize: 11, marginTop: 4 },
   countryWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   countryChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
   countryChipText: { fontSize: 12, fontWeight: '600' },
