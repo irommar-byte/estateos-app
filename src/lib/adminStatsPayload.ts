@@ -1,21 +1,15 @@
 import { prisma } from '@/lib/prisma';
+import { buildTimelineInsights } from '@/lib/adminTimelineAnalytics';
 import { serializeDbDateTime } from '@/lib/datetime/warsaw';
+import {
+  aggregateVisitorsFromVisits,
+  buildVisitorCountryStats,
+  type RawPageVisit,
+} from '@/lib/pageVisitAnalytics';
+import { ensurePageVisitLogTable } from '@/lib/pageVisitLogTable';
 
 export async function getAdminStatsPayload() {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS PageVisitLog (
-      id BIGINT NOT NULL AUTO_INCREMENT,
-      visitorHash VARCHAR(64) NOT NULL,
-      ip VARCHAR(64) NOT NULL,
-      country VARCHAR(8) NOT NULL DEFAULT 'PL',
-      path VARCHAR(191) NOT NULL DEFAULT '/',
-      userAgent VARCHAR(255) NULL,
-      createdAt DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (id),
-      KEY PageVisitLog_path_createdAt_idx (path, createdAt),
-      KEY PageVisitLog_hash_createdAt_idx (visitorHash, createdAt)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-  `);
+  await ensurePageVisitLogTable();
 
   const usersCount = await prisma.user.count();
   const totalOffers = await prisma.offer.count();
@@ -28,9 +22,12 @@ export async function getAdminStatsPayload() {
       price: true,
       area: true,
       district: true,
+      city: true,
       createdAt: true,
       status: true,
       propertyType: true,
+      localityCountry: true,
+      localityCountryCode: true,
     },
   });
 
@@ -43,13 +40,18 @@ export async function getAdminStatsPayload() {
     take: 5000,
   });
 
-  const visitsRaw = await prisma.$queryRawUnsafe<any[]>(`
-    SELECT ip, country, path,
-      DATE_FORMAT(createdAt, '%Y-%m-%dT%H:%i:%s') AS createdAt
+  const visitsRaw = await prisma.$queryRawUnsafe<RawPageVisit[]>(`
+    SELECT ip, country, city, regionName, isp, geoSource, deviceType, path, userAgent, createdAt
     FROM PageVisitLog
     ORDER BY createdAt DESC
     LIMIT 5000
   `);
+
+  const visitors = aggregateVisitorsFromVisits(visitsRaw, 50);
+  const visitorCountries = buildVisitorCountryStats(visitors);
+  const plSharePct = visitorCountries.find((c) => c.countryCode === 'PL')?.sharePct ?? 0;
+  const geoFromEdge = visitors.filter((v) => v.geoSource === 'cloudflare' || v.geoSource === 'vercel').length;
+  const geoFromLookup = visitors.filter((v) => v.geoSource === 'ipapi').length;
 
   const totalValue = offersRaw.reduce((acc, curr) => {
     const price = Number(String(curr.price || '0').replace(/\D/g, ''));
@@ -57,7 +59,44 @@ export async function getAdminStatsPayload() {
   }, 0);
 
   const pageViews = visitsRaw.length;
-  const uniqueViews = new Set(visitsRaw.map((v: any) => String(v.ip || ''))).size;
+  const uniqueViews = new Set(visitsRaw.map((v) => String(v.ip || ''))).size;
+
+  const timeline = {
+    offers: offersRaw.map((o) => ({
+      ...o,
+      createdAt: serializeDbDateTime(o.createdAt) ?? String(o.createdAt),
+    })),
+    visits: visitsRaw.map((v) => ({
+      ip: v.ip,
+      country: v.country,
+      city: v.city,
+      regionName: v.regionName,
+      path: v.path,
+      deviceType: v.deviceType,
+      createdAt: serializeDbDateTime(v.createdAt) ?? String(v.createdAt),
+    })),
+    visitors: visitors.map((v) => ({
+      ...v,
+      firstVisit: serializeDbDateTime(v.firstVisit),
+      lastVisit: serializeDbDateTime(v.lastVisit),
+    })),
+    visitorCountries,
+    visitorGeoInsight: {
+      uniqueVisitors: visitors.length,
+      countriesDetected: visitorCountries.length,
+      polandPageViewSharePct: plSharePct,
+      geoFromEdge,
+      geoFromLookup,
+      note:
+        plSharePct >= 95 && geoFromLookup === 0
+          ? 'Prawie wszystkie wizyty mają kraj PL — sprawdź CDN/geo. Nowe wizyty używają lookup IP, gdy brak nagłówka.'
+          : null,
+    },
+    users: usersTimelineRaw.map((u) => ({
+      createdAt: serializeDbDateTime(u.createdAt) ?? String(u.createdAt),
+      role: u.role,
+    })),
+  };
 
   return {
     kpis: {
@@ -68,20 +107,7 @@ export async function getAdminStatsPayload() {
       pageViews,
       uniqueViews,
     },
-    timeline: {
-      offers: offersRaw,
-      visits: visitsRaw.map((v: any) => ({
-        ip: v.ip,
-        country: v.country,
-        path: v.path,
-        createdAt: serializeDbDateTime(v.createdAt) ?? String(v.createdAt),
-      })),
-      users: usersTimelineRaw.map((u) => ({
-        createdAt: serializeDbDateTime(u.createdAt) ?? String(u.createdAt),
-        isBuyer: true,
-        isSeller: true,
-        role: u.role,
-      })),
-    },
+    timeline,
+    insights: buildTimelineInsights(timeline),
   };
 }

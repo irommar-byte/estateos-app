@@ -99,9 +99,15 @@ function instantFromWarsawWall(
   return new Date(t);
 }
 
+/** ISO UTC dla API — poprawny instant z MySQL DATETIME (czas warszawski na VPS). */
 export function serializeDbDateTime(value: unknown): string | null {
-  const d = parseIsoOrDbUtc(value);
+  const d = parseMysqlAsWarsawWall(value);
   return d ? d.toISOString() : null;
+}
+
+/** Domyślne parsowanie zdarzeń z bazy (wizyty, oferty, użytkownicy). */
+export function parseDbDateTime(value: unknown): Date | null {
+  return parseMysqlAsWarsawWall(value);
 }
 
 export function formatDateTimePl(
