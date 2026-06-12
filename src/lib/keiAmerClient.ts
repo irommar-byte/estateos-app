@@ -1,6 +1,8 @@
 const KEI_BASE = 'https://amer.kei.pl/newAmer';
 const KEI_ORIGIN = 'https://amer.kei.pl';
 
+export type KeiPropertyKind = 'apartment' | 'house';
+
 export type KeiListingRow = {
   id: string;
   data: string;
@@ -13,6 +15,14 @@ export type KeiListingRow = {
   zrodlo: string;
   tekst?: string;
 };
+
+export function keiRodzajForPropertyKind(kind: KeiPropertyKind): string {
+  return kind === 'house' ? '2' : '1';
+}
+
+export function keiPropertyKindLabel(kind: KeiPropertyKind): string {
+  return kind === 'house' ? 'dom' : 'mieszkanie';
+}
 
 type KeiListingsResponse = {
   total: number;
@@ -194,9 +204,10 @@ export async function fetchKeiListingsPage(params: {
   limit?: number;
   sort?: string;
   dir?: 'ASC' | 'DESC';
+  propertyKind?: KeiPropertyKind;
 }): Promise<{ total: number; rows: KeiListingRow[] }> {
   const qs = new URLSearchParams({
-    rodzaj: '1',
+    rodzaj: keiRodzajForPropertyKind(params.propertyKind ?? 'apartment'),
     typ: '1',
     okres: '1',
     wystapienia: '1',
@@ -217,18 +228,43 @@ export async function fetchKeiListingsPage(params: {
   };
 }
 
-export async function findLatestWarsawPortalListing(maxPages = 8): Promise<KeiListingRow | null> {
+export async function findWarsawPortalListings(options?: {
+  propertyKind?: KeiPropertyKind;
+  maxResults?: number;
+  maxPages?: number;
+}): Promise<KeiListingRow[]> {
+  const propertyKind = options?.propertyKind ?? 'apartment';
+  const maxResults = Math.max(1, options?.maxResults ?? 1);
+  const maxPages = options?.maxPages ?? 8;
   const limit = 50;
-  for (let page = 0; page < maxPages; page += 1) {
-    const { rows } = await fetchKeiListingsPage({ start: page * limit, limit, sort: 'data', dir: 'DESC' });
+  const results: KeiListingRow[] = [];
+
+  for (let page = 0; page < maxPages && results.length < maxResults; page += 1) {
+    const { rows } = await fetchKeiListingsPage({
+      start: page * limit,
+      limit,
+      sort: 'data',
+      dir: 'DESC',
+      propertyKind,
+    });
     for (const row of rows) {
       if (!isWarsawListing(row)) continue;
       if (!isSupportedKeiPortalUrl(row.www || '')) continue;
-      return row;
+      results.push(row);
+      if (results.length >= maxResults) break;
     }
     if (rows.length < limit) break;
   }
-  return null;
+
+  return results;
+}
+
+export async function findLatestWarsawPortalListing(
+  propertyKind: KeiPropertyKind = 'apartment',
+  maxPages = 8,
+): Promise<KeiListingRow | null> {
+  const rows = await findWarsawPortalListings({ propertyKind, maxResults: 1, maxPages });
+  return rows[0] ?? null;
 }
 
 export function rewriteKeiProxyHtml(html: string, proxyPrefix: string): string {
