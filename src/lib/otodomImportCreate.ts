@@ -67,6 +67,7 @@ export async function draftToOfferCreateBody(
   draft: OtodomImportDraft,
   userId: number,
   presentation: { title: string; descriptionHtml: string },
+  options?: { agentCommissionPercent?: number | null },
 ) {
   assertOtodomImportDraftReady(draft);
 
@@ -108,6 +109,9 @@ export async function draftToOfferCreateBody(
     heating: draft.heating,
     status: 'PENDING',
     images: '[]',
+    ...(options?.agentCommissionPercent != null
+      ? { agentCommissionPercent: options.agentCommissionPercent }
+      : {}),
   };
 }
 
@@ -209,8 +213,9 @@ export async function importOtodomImagesForOffer(params: {
 
 export async function createOfferFromOtodomDraft(
   draft: OtodomImportDraft,
-  adminUserId: number,
+  ownerUserId: number,
   publication?: OtodomPublicationInput | unknown,
+  options?: { agentCommissionPercent?: number | null },
 ) {
   const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
   if (existing) {
@@ -223,7 +228,7 @@ export async function createOfferFromOtodomDraft(
   }
 
   const presentation = await buildOtodomPresentationCopy(draft);
-  const body = await draftToOfferCreateBody(draft, adminUserId, presentation);
+  const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);
   if (!Number.isFinite(offerId)) {
@@ -232,13 +237,13 @@ export async function createOfferFromOtodomDraft(
 
   await upsertImportedOfferPrivateSnapshot({
     offerId,
-    userId: adminUserId,
+    userId: ownerUserId,
     draft,
   });
 
   const imageResult = await importOtodomImagesForOffer({
     offerId,
-    ownerUserId: adminUserId,
+    ownerUserId: ownerUserId,
     imageUrls: draft.imageUrls,
     source: draft.source,
   });
@@ -254,7 +259,7 @@ export async function createOfferFromOtodomDraft(
       try {
         await consumeAndReserveImportPublication({
           offerId,
-          userId: adminUserId,
+          userId: ownerUserId,
           redemption,
         });
       } catch (error) {
