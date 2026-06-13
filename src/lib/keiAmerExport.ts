@@ -302,7 +302,9 @@ export async function exportKeiListingsToEstateOS(options?: {
             index: currentIndex,
             step: 'create_offer',
             label,
-            detail: meta?.rewrittenByAi ? 'AI ✓' : detail || 'reguły',
+            detail: meta?.rewrittenByAi
+              ? 'AI ✓'
+              : detail || 'reguły',
           });
         },
         onImageProgress: (progress) => {

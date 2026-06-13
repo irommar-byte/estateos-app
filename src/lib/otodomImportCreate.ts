@@ -373,9 +373,14 @@ export async function createOfferFromOtodomDraft(
     isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
   );
   const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
+  const detail = presentation.rewrittenByAi
+    ? 'AI ✓'
+    : presentation.aiSkipReason
+      ? `reguły · ${presentation.aiSkipReason}`
+      : 'reguły · treść ze źródła';
   options?.onCopyProgress?.(
-    presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis wygenerowany automatycznie',
-    presentation.rewrittenByAi ? 'AI' : 'reguły',
+    presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis uzupełniony automatycznie',
+    detail,
     { rewrittenByAi: presentation.rewrittenByAi },
   );
   const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
