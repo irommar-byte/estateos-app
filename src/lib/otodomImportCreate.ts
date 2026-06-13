@@ -3,7 +3,7 @@ import { normalizeImportPortalUrl, sanitizeImportYearBuilt } from '@/lib/otodomI
 import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
-import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
+import { buildOtodomPresentationCopy, isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
 import { upsertImportedOfferPrivateSnapshot, ensureOfferPrivateNoteTable } from '@/lib/offerPrivateNotes';
 import {
@@ -355,6 +355,7 @@ export async function createOfferFromOtodomDraft(
     maxImportImages?: number;
     lastImageFloorPlan?: boolean;
     onImageProgress?: (progress: ImportImageProgress) => void;
+    onCopyProgress?: (label: string, detail?: string) => void;
   },
 ) {
   const existing = await findExistingImportedOffer(draft);
@@ -367,7 +368,14 @@ export async function createOfferFromOtodomDraft(
     };
   }
 
-  const presentation = await buildOtodomPresentationCopy(draft);
+  options?.onCopyProgress?.(
+    'Przeróbka opisu ogłoszenia…',
+    isOtodomImportAiConfigured() ? 'AI' : 'reguły',
+  );
+  const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
+  options?.onCopyProgress?.(
+    presentation.rewrittenByAi ? 'Opis przygotowany przez AI' : 'Opis przygotowany automatycznie',
+  );
   const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
   const offer = await createOffer(body);
   const offerId = Number((offer as { id?: number }).id);

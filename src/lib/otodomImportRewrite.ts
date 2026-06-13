@@ -5,7 +5,35 @@ export type OtodomPresentationCopy = {
   title: string;
   descriptionHtml: string;
   descriptionPreview: string;
+  /** true = OpenAI, false = reguły/heurystyka */
+  rewrittenByAi: boolean;
 };
+
+export type OtodomPresentationCopyOptions = {
+  /** Głos agenta reprezentującego klienta (domyślnie: true). */
+  agentVoice?: boolean;
+  /** Wymuś AI nawet gdy OTODOM_IMPORT_AI_REWRITE=0 (jeśli jest klucz API). */
+  forceAi?: boolean;
+};
+
+const BANNED_PHRASE_PATTERNS: RegExp[] = [
+  /\bb(?:iuro|iura)\s+nieruchomo[śs]ci\b/gi,
+  /\bagencj[aąę]\s+nieruchomo[śs]ci\b/gi,
+  /\bbezpo[śs]rednio\s+od\s+w[łl]a[śs]ciciela\b/gi,
+  /\boferta\s+bez\s+po[śs]rednik[óo]w\b/gi,
+  /\bw[łl]a[śs]ciciel\s+(?:oferuje|wystawia|zaprasza|wsp[óo][łl]pracuje)\b/gi,
+  /\b(?:serdecznie\s+)?zapraszam(?:y)?\s+do\s+kontaktu\b/gi,
+  /\b(?:zachęcam|zachęcamy)\s+do\s+kontaktu\b/gi,
+  /\bdzi[eę]kuj[eę](?:my)?\s+(?:za\s+)?(?:zainteresowanie|uwagę|kontakt)?\b/gi,
+  /\b(?:otodom|olx|nieruchomosci[- ]online|gratka|morizon)\b/gi,
+  /\b(?:www\.|https?:\/\/)\S+/gi,
+  /\bnumer\s+licencji\b/gi,
+  /\bpo[śs]rednik\s+(?:nieruchomo[śs]ci|w\s+obrocie)\b/gi,
+  /\b(?:tel\.?|telefon|gsm)\.?\s*[\d\s+\-()]{7,}\b/gi,
+  /\bkontakt\s+w\s+godzinach\b/gi,
+  /\b(?:napisz|zadzwo[nń])\s+(?:do\s+nas|teraz)\b/gi,
+  /\b(?:prezentujemy|oferujemy)\s+pa[nń]stwu\b/gi,
+];
 
 function escapeHtml(text: string): string {
   return text
@@ -30,17 +58,36 @@ function stripHtmlToPlain(html: string): string {
     .trim();
 }
 
+function sanitizePortalListingText(text: string): string {
+  let out = text;
+  for (const pattern of BANNED_PHRASE_PATTERNS) {
+    out = out.replace(pattern, ' ');
+  }
+  return out
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function sanitizeListingHtml(html: string): string {
+  const plain = sanitizePortalListingText(stripHtmlToPlain(html));
+  const paragraphs = splitParagraphs(plain);
+  if (paragraphs.length === 0) return '';
+  return paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n');
+}
+
 function splitParagraphs(text: string): string[] {
-  return text
+  return sanitizePortalListingText(text)
     .split(/\n{2,}|\n/)
     .map((p) => p.trim())
-    .filter((p) => p.length > 12)
-    .filter((p) => !/(otodom|olx)/i.test(p))
+    .filter((p) => p.length > 16)
+    .filter((p) => !/^(otodom|olx|www\.|http)/i.test(p))
     .slice(0, 8);
 }
 
 function transactionLabel(type: OtodomImportDraft['transactionType']): string {
-  return type === 'RENT' ? 'ofertę najmu' : 'ofertę sprzedaży';
+  return type === 'RENT' ? 'najmu' : 'sprzedaży';
 }
 
 function propertyLabel(type: OtodomImportDraft['propertyType']): string {
@@ -63,7 +110,7 @@ function buildLocationPhrase(draft: OtodomImportDraft): string {
 }
 
 function refineTitle(draft: OtodomImportDraft): string {
-  const original = draft.title?.trim() || '';
+  const original = sanitizePortalListingText(draft.title?.trim() || '');
   const location = buildLocationPhrase(draft);
   const rooms =
     draft.rooms != null && draft.rooms > 0
@@ -98,8 +145,19 @@ function normalizeForCompare(value: string): string {
     .replace(/[^a-z0-9ąćęłńóśźż]+/g, '');
 }
 
-function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
-  const sourcePlain = stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || '');
+function isAiRewriteEnabled(options?: OtodomPresentationCopyOptions): boolean {
+  if (options?.forceAi) return true;
+  const flag = String(process.env.OTODOM_IMPORT_AI_REWRITE ?? '1').trim().toLowerCase();
+  return flag !== '0' && flag !== 'false' && flag !== 'off';
+}
+
+function buildHeuristicDescriptionHtml(
+  draft: OtodomImportDraft,
+  agentVoice: boolean,
+): string {
+  const sourcePlain = sanitizePortalListingText(
+    stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || ''),
+  );
   const sourceParagraphs = splitParagraphs(sourcePlain);
   const location = buildLocationPhrase(draft);
   const tx = transactionLabel(draft.transactionType);
@@ -115,19 +173,26 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
   }
   if (draft.yearBuilt != null) introFacts.push(`rok budowy ${draft.yearBuilt}`);
 
-  const htmlParts: string[] = [
-    `<p>Przedstawiamy ${tx} — ${typeWord} w ${escapeHtml(location)}${
-      introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
-    }. Poniżej najważniejsze informacje o nieruchomości.</p>`,
-  ];
+  const htmlParts: string[] = [];
 
-  for (const paragraph of sourceParagraphs) {
-    const cleaned = paragraph
-      .replace(/\bOTODOM\b/gi, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    if (cleaned.length > 20) {
-      htmlParts.push(`<p>${escapeHtml(cleaned)}</p>`);
+  if (agentVoice) {
+    htmlParts.push(
+      `<p>Reprezentuję klienta w procesie ${tx} ${typeWord === 'działkę' ? 'tej działki' : `tego ${typeWord === 'dom' ? 'domu' : typeWord === 'lokal użytkowy' ? 'lokalu' : 'mieszkania'}`} w ${escapeHtml(location)}${
+        introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
+      }. Poniżej zebrane parametry i atuty nieruchomości.</p>`,
+    );
+  } else {
+    htmlParts.push(
+      `<p>Oferta ${tx} — ${typeWord} w ${escapeHtml(location)}${
+        introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
+      }.</p>`,
+    );
+  }
+
+  if (sourceParagraphs.length > 0) {
+    htmlParts.push('<p><strong>O nieruchomości:</strong></p>');
+    for (const paragraph of sourceParagraphs.slice(0, 5)) {
+      htmlParts.push(`<p>${escapeHtml(paragraph)}</p>`);
     }
   }
 
@@ -143,22 +208,20 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
     const extras: string[] = [rentLine];
     if (draft.adminFee != null && draft.adminFee > 0) {
       extras.push(`opłaty administracyjne: ${draft.adminFee.toLocaleString('pl-PL')} PLN`);
-    } else {
-      extras.push('opłaty administracyjne mogą być wliczone w cenę (szczegóły w treści ogłoszenia)');
     }
     if (draft.deposit != null && draft.deposit > 0) {
       extras.push(`kaucja: ${draft.deposit.toLocaleString('pl-PL')} PLN`);
     }
     htmlParts.push(`<p>${escapeHtml(extras.join(' · '))}.</p>`);
   } else if (draft.price != null) {
-    htmlParts.push(
-      `<p>Cena: ${escapeHtml(draft.price.toLocaleString('pl-PL'))} PLN.</p>`,
-    );
+    htmlParts.push(`<p>Cena: ${escapeHtml(draft.price.toLocaleString('pl-PL'))} PLN.</p>`);
   }
 
-  htmlParts.push(
-    '<p><em>Opis przygotowany na podstawie publicznych danych rynkowych i sformułowany na potrzeby prezentacji w serwisie EstateOS.</em></p>',
-  );
+  if (agentVoice) {
+    htmlParts.push(
+      '<p>Chętnie przekażę szczegóły i umówię prezentację w dogodnym terminie — napisz wiadomość przez EstateOS.</p>',
+    );
+  }
 
   return htmlParts.join('\n');
 }
@@ -166,51 +229,77 @@ function buildHeuristicDescriptionHtml(draft: OtodomImportDraft): string {
 async function rewriteWithOpenAI(
   draft: OtodomImportDraft,
   apiKey: string,
+  agentVoice: boolean,
 ): Promise<OtodomPresentationCopy | null> {
   try {
     const { default: OpenAI } = await import('openai');
     const client = new OpenAI({ apiKey });
-    const plain = stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || '').slice(0, 6000);
+    const plain = sanitizePortalListingText(
+      stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || ''),
+    ).slice(0, 6500);
 
-    const prompt = `Jesteś redaktorem ogłoszeń nieruchomości w Polsce. Przepisz tytuł i opis tak, aby:
-- zachować wszystkie fakty (cena, metraż, pokoje, lokalizacja, cechy),
-- brzmieć profesjonalnie i elegancko po polsku,
-- NIE kopiować sformułowań 1:1 (unikaj duplikatu treści),
-- NIE wspominać OtoDom, OLX ani innych portali,
-- opis zwróć jako krótki HTML (tylko tagi: p, ul, li, strong).
+    const voiceRules = agentVoice
+      ? `- Pisz w pierwszej osobie liczby pojedynczej jako agent nieruchomości reprezentujący klienta (np. „reprezentuję”, „przedstawiam”, „proponuję”).
+- NIE pisz „od właściciela”, „bez pośredników”, „zapraszam serdecznie”, „dziękuję za zainteresowanie”.
+- NIE wspominaj nazw innych portali, agencji konkurencyjnych, numerów telefonu ani linków www.
+- Zakończ krótkim wezwaniem do kontaktu przez EstateOS (bez numeru telefonu).`
+      : `- Profesjonalny ton, bez marketingowego bełkotu portali.`;
 
-Dane:
+    const prompt = `Jesteś doświadczonym agentem nieruchomości w Polsce. Przepisz tytuł i opis ogłoszenia importowanego z portalu tak, aby:
+
+ZASADY OBOWiĄZKOWE:
+- Zachowaj WSZYSTKIE fakty: cena, metraż, pokoje, piętro, rok budowy, lokalizacja, cechy, opłaty.
+- Przepisz własnymi słowami — tekst NIE może wyglądać jak kopia 1:1 (unikaj plagiatu).
+- Usuń całkowicie: podziękowania agencji, „bezpośrednio od właściciela”, nazwy OtoDom/OLX, CTA portali, telefony, linki, licencje pośrednika.
+- Opis ma być rozbudowany (min. 3 akapity + lista atutów jeśli są dane).
+- HTML: tylko tagi p, ul, li, strong. Bez nagłówków h1-h6.
+${voiceRules}
+
+DANE OFERTY:
 Tytuł źródłowy: ${draft.title}
 Miasto: ${draft.city}
-Dzielnica: ${draft.district}
+Dzielnica: ${draft.district || '—'}
 Transakcja: ${draft.transactionType}
 Typ: ${draft.propertyType}
 Cena: ${draft.price ?? '—'} PLN
 Metraż: ${draft.area ?? '—'} m²
 Pokoje: ${draft.rooms ?? '—'}
-Cechy: ${draft.features.join(', ')}
-Tekst źródłowy:
-${plain}
+Piętro: ${draft.floor ?? '—'} / ${draft.totalFloors ?? '—'}
+Rok budowy: ${draft.yearBuilt ?? '—'}
+Cechy: ${draft.features.join(', ') || '—'}
 
-Odpowiedz wyłącznie JSON: {"title":"...","descriptionHtml":"..."}`;
+TEKST ŹRÓDŁOWY (do przeróbki, nie kopiuj zdań):
+${plain || '(brak — opracuj opis z samych danych)'}
+
+Odpowiedz WYŁĄCZNIE JSON: {"title":"...","descriptionHtml":"..."}`;
 
     const completion = await client.chat.completions.create({
       model: process.env.OPENAI_OTODOM_MODEL || 'gpt-4o-mini',
-      temperature: 0.65,
-      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.62,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Redagujesz ogłoszenia nieruchomości po polsku. Zwracasz wyłącznie poprawny JSON bez markdown.',
+        },
+        { role: 'user', content: prompt },
+      ],
       response_format: { type: 'json_object' },
     });
 
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };
-    const title = String(parsed.title || '').trim();
-    const descriptionHtml = String(parsed.descriptionHtml || '').trim();
-    if (!title || !descriptionHtml) return null;
+    const title = sanitizePortalListingText(String(parsed.title || '').trim());
+    let descriptionHtml = sanitizeListingHtml(String(parsed.descriptionHtml || '').trim());
+    if (!title || !descriptionHtml || stripHtmlToPlain(descriptionHtml).length < 80) {
+      return null;
+    }
 
     return {
       title: capitalizeImportTitle(title),
       descriptionHtml,
       descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
+      rewrittenByAi: true,
     };
   } catch (error) {
     console.warn('[otodom-import] OpenAI rewrite skipped:', error);
@@ -220,18 +309,26 @@ Odpowiedz wyłącznie JSON: {"title":"...","descriptionHtml":"..."}`;
 
 export async function buildOtodomPresentationCopy(
   draft: OtodomImportDraft,
+  options?: OtodomPresentationCopyOptions,
 ): Promise<OtodomPresentationCopy> {
+  const agentVoice = options?.agentVoice !== false;
   const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (apiKey) {
-    const ai = await rewriteWithOpenAI(draft, apiKey);
+
+  if (apiKey && isAiRewriteEnabled(options)) {
+    const ai = await rewriteWithOpenAI(draft, apiKey, agentVoice);
     if (ai) return ai;
   }
 
   const title = refineTitle(draft);
-  const descriptionHtml = buildHeuristicDescriptionHtml(draft);
+  const descriptionHtml = buildHeuristicDescriptionHtml(draft, agentVoice);
   return {
     title,
     descriptionHtml,
     descriptionPreview: stripHtmlToPlain(descriptionHtml).slice(0, 500),
+    rewrittenByAi: false,
   };
+}
+
+export function isOtodomImportAiConfigured(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY?.trim()) && isAiRewriteEnabled();
 }

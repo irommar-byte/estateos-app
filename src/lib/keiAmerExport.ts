@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft, findExistingImportedOffer, findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
+import { isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
 import { activateOfferPublication } from '@/lib/offerPublication';
 import type { KeiExportProgressEmitter } from '@/lib/keiAmerExportProgress';
@@ -285,7 +286,9 @@ export async function exportKeiListingsToEstateOS(options?: {
         type: 'step',
         index: currentIndex,
         step: 'create_offer',
-        label: 'Tworzenie oferty w EstateOS',
+        label: isOtodomImportAiConfigured()
+          ? 'Przeróbka opisu (AI) i tworzenie oferty'
+          : 'Tworzenie oferty w EstateOS',
         detail: draft.title,
       });
 
@@ -293,6 +296,15 @@ export async function exportKeiListingsToEstateOS(options?: {
         agentCommissionPercent,
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         lastImageFloorPlan: floorPlanOverride,
+        onCopyProgress: (label, detail) => {
+          emit?.({
+            type: 'step',
+            index: currentIndex,
+            step: 'create_offer',
+            label,
+            detail: detail || draft.title,
+          });
+        },
         onImageProgress: (progress) => {
           emit?.({
             type: 'image_progress',
