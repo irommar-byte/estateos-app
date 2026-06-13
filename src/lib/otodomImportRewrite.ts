@@ -151,49 +151,48 @@ function isAiRewriteEnabled(options?: OtodomPresentationCopyOptions): boolean {
   return flag !== '0' && flag !== 'false' && flag !== 'off';
 }
 
+function buildPresentationIntro(draft: OtodomImportDraft, location: string, typeWord: string): string {
+  const txPhrase = draft.transactionType === 'RENT' ? 'do wynajmu' : 'na sprzedaż';
+  const noun =
+    typeWord === 'działkę'
+      ? 'działkę'
+      : typeWord === 'dom'
+        ? 'dom'
+        : typeWord === 'lokal użytkowy'
+          ? 'lokal użytkowy'
+          : 'mieszkanie';
+  return `Prezentujemy Państwu ${noun} ${txPhrase} w ${location}. Poniżej najważniejsze informacje o nieruchomości.`;
+}
+
 function buildHeuristicDescriptionHtml(
   draft: OtodomImportDraft,
   agentVoice: boolean,
 ): string {
-  const sourcePlain = sanitizePortalListingText(
-    stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || ''),
-  );
-  const sourceParagraphs = splitParagraphs(sourcePlain);
   const location = buildLocationPhrase(draft);
-  const tx = transactionLabel(draft.transactionType);
   const typeWord = propertyLabel(draft.propertyType);
-
-  const introFacts: string[] = [];
-  if (draft.area != null) introFacts.push(`${draft.area} m²`);
-  if (draft.rooms != null) introFacts.push(`${draft.rooms} ${draft.rooms === 1 ? 'pokój' : 'pokoje'}`);
-  if (draft.floor != null && draft.totalFloors != null) {
-    introFacts.push(`piętro ${draft.floor}/${draft.totalFloors}`);
-  } else if (draft.floor != null) {
-    introFacts.push(`piętro ${draft.floor}`);
-  }
-  if (draft.yearBuilt != null) introFacts.push(`rok budowy ${draft.yearBuilt}`);
 
   const htmlParts: string[] = [];
 
   if (agentVoice) {
-    htmlParts.push(
-      `<p>Reprezentuję klienta w procesie ${tx} ${typeWord === 'działkę' ? 'tej działki' : `tego ${typeWord === 'dom' ? 'domu' : typeWord === 'lokal użytkowy' ? 'lokalu' : 'mieszkania'}`} w ${escapeHtml(location)}${
-        introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
-      }. Poniżej zebrane parametry i atuty nieruchomości.</p>`,
-    );
+    htmlParts.push(`<p>${escapeHtml(buildPresentationIntro(draft, location, typeWord))}</p>`);
   } else {
-    htmlParts.push(
-      `<p>Oferta ${tx} — ${typeWord} w ${escapeHtml(location)}${
-        introFacts.length ? ` (${escapeHtml(introFacts.join(' · '))})` : ''
-      }.</p>`,
-    );
+    const tx = transactionLabel(draft.transactionType);
+    htmlParts.push(`<p>Oferta ${tx} — ${typeWord} w ${escapeHtml(location)}.</p>`);
   }
 
-  if (sourceParagraphs.length > 0) {
-    htmlParts.push('<p><strong>O nieruchomości:</strong></p>');
-    for (const paragraph of sourceParagraphs.slice(0, 5)) {
-      htmlParts.push(`<p>${escapeHtml(paragraph)}</p>`);
-    }
+  const factLines: string[] = [];
+  if (draft.area != null) factLines.push(`Powierzchnia: ${draft.area} m²`);
+  if (draft.rooms != null) factLines.push(`Liczba pokoi: ${draft.rooms}`);
+  if (draft.floor != null && draft.totalFloors != null) {
+    factLines.push(`Piętro: ${draft.floor} z ${draft.totalFloors}`);
+  } else if (draft.floor != null) {
+    factLines.push(`Piętro: ${draft.floor}`);
+  }
+  if (draft.yearBuilt != null) factLines.push(`Rok budowy: ${draft.yearBuilt}`);
+
+  if (factLines.length > 0) {
+    htmlParts.push('<p><strong>Parametry:</strong></p>');
+    htmlParts.push(`<ul>${factLines.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}</ul>`);
   }
 
   if (draft.features.length > 0) {
@@ -204,13 +203,12 @@ function buildHeuristicDescriptionHtml(
   }
 
   if (draft.transactionType === 'RENT' && draft.price != null) {
-    const rentLine = `Czynsz najmu: ${draft.price.toLocaleString('pl-PL')} PLN / miesiąc`;
-    const extras: string[] = [rentLine];
+    const extras: string[] = [`Czynsz najmu: ${draft.price.toLocaleString('pl-PL')} PLN / miesiąc`];
     if (draft.adminFee != null && draft.adminFee > 0) {
-      extras.push(`opłaty administracyjne: ${draft.adminFee.toLocaleString('pl-PL')} PLN`);
+      extras.push(`Opłaty administracyjne: ${draft.adminFee.toLocaleString('pl-PL')} PLN`);
     }
     if (draft.deposit != null && draft.deposit > 0) {
-      extras.push(`kaucja: ${draft.deposit.toLocaleString('pl-PL')} PLN`);
+      extras.push(`Kaucja: ${draft.deposit.toLocaleString('pl-PL')} PLN`);
     }
     htmlParts.push(`<p>${escapeHtml(extras.join(' · '))}.</p>`);
   } else if (draft.price != null) {
@@ -219,11 +217,19 @@ function buildHeuristicDescriptionHtml(
 
   if (agentVoice) {
     htmlParts.push(
-      '<p>Chętnie przekażę szczegóły i umówię prezentację w dogodnym terminie — napisz wiadomość przez EstateOS.</p>',
+      '<p>Zapraszamy do kontaktu — chętnie umówimy prezentację nieruchomości w dogodnym terminie.</p>',
     );
   }
 
   return htmlParts.join('\n');
+}
+
+function sanitizeAiHtml(html: string): string {
+  let out = html.trim();
+  for (const pattern of BANNED_PHRASE_PATTERNS) {
+    out = out.replace(pattern, ' ');
+  }
+  return out.replace(/\s{2,}/g, ' ').trim();
 }
 
 async function rewriteWithOpenAI(
@@ -238,49 +244,47 @@ async function rewriteWithOpenAI(
       stripHtmlToPlain(draft.descriptionHtml || draft.descriptionText || ''),
     ).slice(0, 6500);
 
+    const txPhrase = draft.transactionType === 'RENT' ? 'do wynajmu' : 'na sprzedaż';
     const voiceRules = agentVoice
-      ? `- Pisz w pierwszej osobie liczby pojedynczej jako agent nieruchomości reprezentujący klienta (np. „reprezentuję”, „przedstawiam”, „proponuję”).
-- NIE pisz „od właściciela”, „bez pośredników”, „zapraszam serdecznie”, „dziękuję za zainteresowanie”.
-- NIE wspominaj nazw innych portali, agencji konkurencyjnych, numerów telefonu ani linków www.
-- Zakończ krótkim wezwaniem do kontaktu przez EstateOS (bez numeru telefonu).`
-      : `- Profesjonalny ton, bez marketingowego bełkotu portali.`;
+      ? `- Pisz w liczbie mnogiej, profesjonalnie: „Prezentujemy Państwu…”, „Chcielibyśmy zaprezentować Państwu…”, „${txPhrase}”.
+- NIE pisz „reprezentuję klienta”, „od właściciela”, „bez pośredników”, „zapraszam serdecznie”, „dziękuję za zainteresowanie”.
+- NIE wspominaj nazw portali (OtoDom, OLX), innych agencji, telefonów ani linków www.
+- Zakończ eleganckim zaproszeniem do kontaktu (bez numeru telefonu).`
+      : `- Profesjonalny ton biura nieruchomości, forma „Prezentujemy Państwu…”.`;
 
-    const prompt = `Jesteś doświadczonym agentem nieruchomości w Polsce. Przepisz tytuł i opis ogłoszenia importowanego z portalu tak, aby:
+    const prompt = `Jesteś redaktorem ogłoszeń w polskim biurze nieruchomości. Przepisz tytuł i opis importowany z portalu:
 
-ZASADY OBOWiĄZKOWE:
-- Zachowaj WSZYSTKIE fakty: cena, metraż, pokoje, piętro, rok budowy, lokalizacja, cechy, opłaty.
-- Przepisz własnymi słowami — tekst NIE może wyglądać jak kopia 1:1 (unikaj plagiatu).
-- Usuń całkowicie: podziękowania agencji, „bezpośrednio od właściciela”, nazwy OtoDom/OLX, CTA portali, telefony, linki, licencje pośrednika.
-- Opis ma być rozbudowany (min. 3 akapity + lista atutów jeśli są dane).
-- HTML: tylko tagi p, ul, li, strong. Bez nagłówków h1-h6.
+ZASADY:
+- Zachowaj WSZYSTKIE fakty (cena, metraż, pokoje, piętro, rok, lokalizacja, cechy, opłaty).
+- Przepisz CAŁKOWICIE własnymi słowami — zero kopiowania zdań ze źródła.
+- Usuń język portali/agencji: podziękowania, „od właściciela”, licencje, CTA sprzedające.
+- Minimum 4 akapity + lista atutów (ul/li) jeśli są dane.
+- HTML: tylko p, ul, li, strong.
 ${voiceRules}
 
-DANE OFERTY:
+DANE:
 Tytuł źródłowy: ${draft.title}
-Miasto: ${draft.city}
-Dzielnica: ${draft.district || '—'}
-Transakcja: ${draft.transactionType}
+Lokalizacja: ${draft.city}, ${draft.district || ''}
+Transakcja: ${txPhrase}
 Typ: ${draft.propertyType}
-Cena: ${draft.price ?? '—'} PLN
-Metraż: ${draft.area ?? '—'} m²
-Pokoje: ${draft.rooms ?? '—'}
-Piętro: ${draft.floor ?? '—'} / ${draft.totalFloors ?? '—'}
-Rok budowy: ${draft.yearBuilt ?? '—'}
+Cena: ${draft.price ?? '—'} PLN · ${draft.area ?? '—'} m² · ${draft.rooms ?? '—'} pok.
+Piętro: ${draft.floor ?? '—'}/${draft.totalFloors ?? '—'} · Rok: ${draft.yearBuilt ?? '—'}
 Cechy: ${draft.features.join(', ') || '—'}
 
-TEKST ŹRÓDŁOWY (do przeróbki, nie kopiuj zdań):
-${plain || '(brak — opracuj opis z samych danych)'}
+TEKST ŹRÓDŁOWY (tylko fakty — nie kopiuj stylu ani zdań):
+${plain || '(brak — napisz od danych)'}
 
-Odpowiedz WYŁĄCZNIE JSON: {"title":"...","descriptionHtml":"..."}`;
+JSON: {"title":"...","descriptionHtml":"..."}`;
 
     const completion = await client.chat.completions.create({
       model: process.env.OPENAI_OTODOM_MODEL || 'gpt-4o-mini',
-      temperature: 0.62,
+      temperature: 0.72,
+      max_tokens: 2200,
       messages: [
         {
           role: 'system',
           content:
-            'Redagujesz ogłoszenia nieruchomości po polsku. Zwracasz wyłącznie poprawny JSON bez markdown.',
+            'Redagujesz ogłoszenia nieruchomości po polsku w tonie „Prezentujemy Państwu…”. Zwracasz wyłącznie JSON.',
         },
         { role: 'user', content: prompt },
       ],
@@ -290,8 +294,18 @@ Odpowiedz WYŁĄCZNIE JSON: {"title":"...","descriptionHtml":"..."}`;
     const raw = completion.choices[0]?.message?.content || '';
     const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };
     const title = sanitizePortalListingText(String(parsed.title || '').trim());
-    let descriptionHtml = sanitizeListingHtml(String(parsed.descriptionHtml || '').trim());
-    if (!title || !descriptionHtml || stripHtmlToPlain(descriptionHtml).length < 80) {
+    const descriptionHtml = sanitizeAiHtml(String(parsed.descriptionHtml || '').trim());
+    const plainOut = stripHtmlToPlain(descriptionHtml);
+    if (!title || plainOut.length < 120) {
+      console.warn('[otodom-import] OpenAI rewrite too short:', plainOut.length);
+      return null;
+    }
+
+    const sourcePlain = plain.slice(0, 2000);
+    const similarity = normalizeForCompare(plainOut).slice(0, 400);
+    const sourceNorm = normalizeForCompare(sourcePlain).slice(0, 400);
+    if (similarity.length > 80 && sourceNorm.includes(similarity.slice(0, 120))) {
+      console.warn('[otodom-import] OpenAI rewrite too similar to source — retry heuristic');
       return null;
     }
 
@@ -302,7 +316,7 @@ Odpowiedz WYŁĄCZNIE JSON: {"title":"...","descriptionHtml":"..."}`;
       rewrittenByAi: true,
     };
   } catch (error) {
-    console.warn('[otodom-import] OpenAI rewrite skipped:', error);
+    console.warn('[otodom-import] OpenAI rewrite failed:', error instanceof Error ? error.message : error);
     return null;
   }
 }

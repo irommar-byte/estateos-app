@@ -296,13 +296,13 @@ export async function exportKeiListingsToEstateOS(options?: {
         agentCommissionPercent,
         maxImportImages: KEI_MAX_IMPORT_IMAGES,
         lastImageFloorPlan: floorPlanOverride,
-        onCopyProgress: (label, detail) => {
+        onCopyProgress: (label, detail, meta) => {
           emit?.({
             type: 'step',
             index: currentIndex,
             step: 'create_offer',
             label,
-            detail: detail || draft.title,
+            detail: meta?.rewrittenByAi ? 'AI ✓' : detail || 'reguły',
           });
         },
         onImageProgress: (progress) => {

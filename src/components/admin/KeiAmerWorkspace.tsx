@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
   ExternalLink,
   Eye,
   ImageIcon,
   Loader2,
+  Pencil,
   RefreshCw,
   UploadCloud,
 } from "lucide-react";
@@ -71,6 +74,7 @@ type ItemProgress = {
   index: number;
   keiListingId: string;
   portalUrl: string;
+  address?: string;
   status: "pending" | "active" | "done" | "skipped";
   completedSteps: ImportStepId[];
   currentStep: ImportStepId | null;
@@ -78,7 +82,10 @@ type ItemProgress = {
   stepDetail?: string;
   imageProgress?: { index: number; total: number; label: string; asFloorPlan: boolean };
   offerId?: number;
+  publicUrl?: string;
+  editUrl?: string;
   reason?: string;
+  aiRewrite?: boolean;
 };
 
 type ImportProgressState = {
@@ -151,25 +158,22 @@ function PagePager(props: {
   );
 }
 
-function computeProgressPercent(progress: ImportProgressState): number {
-  if (progress.total <= 0) return 0;
-  let sum = 0;
-  for (const item of progress.items) {
-    if (item.status === "done") {
-      sum += 1;
-    } else if (item.status === "active") {
-      const stepIdx = item.currentStep ? STEP_ORDER.indexOf(item.currentStep) : 0;
-      const stepPart = (Math.max(stepIdx, 0) + 1) / STEP_ORDER.length;
-      let imagePart = 0;
-      if (item.imageProgress && item.imageProgress.total > 0) {
-        imagePart = item.imageProgress.index / item.imageProgress.total / STEP_ORDER.length;
-      }
-      sum += Math.min(stepPart + imagePart, 0.95);
-    } else if (item.status === "skipped") {
-      sum += 1;
-    }
+function computeItemPercent(item: ItemProgress): number {
+  if (item.status === "done" || item.status === "skipped") return 100;
+  if (item.status === "pending") return 0;
+  const stepIdx = item.currentStep ? STEP_ORDER.indexOf(item.currentStep) : 0;
+  const base = (Math.max(stepIdx, 0) + 0.35) / STEP_ORDER.length;
+  let imagePart = 0;
+  if (item.currentStep === "images" && item.imageProgress && item.imageProgress.total > 0) {
+    imagePart = item.imageProgress.index / item.imageProgress.total / STEP_ORDER.length;
   }
-  return Math.min(100, Math.round((sum / progress.total) * 100));
+  return Math.min(98, Math.round((base + imagePart) * 100));
+}
+
+function computeOverallPercent(items: ItemProgress[]): number {
+  if (items.length === 0) return 0;
+  const sum = items.reduce((acc, item) => acc + computeItemPercent(item), 0);
+  return Math.round(sum / items.length);
 }
 
 function AppleSwitch(props: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
@@ -201,120 +205,144 @@ function AppleSwitch(props: { checked: boolean; onChange: (checked: boolean) => 
   );
 }
 
-function ImportProgressDock(props: {
+function ImportOfferQueue(props: {
   progress: ImportProgressState;
   exporting: boolean;
-  onDismiss: () => void;
+  onClear: () => void;
 }) {
   const { progress, exporting } = props;
-  const show = exporting || progress.visible;
-  if (!show) return null;
+  if (!progress.visible && !exporting) return null;
+  if (progress.items.length === 0 && exporting) {
+    return (
+      <div className="rounded-[28px] border border-cyan-400/20 bg-gradient-to-b from-cyan-500/[0.08] to-black/40 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="flex items-center gap-3">
+          <Loader2 size={20} className="text-cyan-300 animate-spin shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-white">Przygotowanie importu…</p>
+            <p className="text-xs text-white/50 mt-0.5">{progress.message || "Łączenie z serwerem"}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  const overallPct = computeOverallPercent(progress.items);
   const doneCount = progress.items.filter((i) => i.status === "done").length;
-  const pct = computeProgressPercent(progress);
-  const activeItem = progress.items.find((i) => i.status === "active");
-  const isDone = progress.status === "done" && !exporting;
+  const isComplete = progress.status === "done" && !exporting;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[120] pointer-events-none px-3 pb-4 md:px-6 md:pb-6">
-      <div className="pointer-events-auto mx-auto max-w-3xl rounded-[28px] border border-white/15 bg-[#111111ee] backdrop-blur-2xl shadow-[0_-8px_60px_rgba(0,0,0,0.55),0_0_0_1px_rgba(255,255,255,0.06)_inset] overflow-hidden">
-        <div className="px-5 py-4 flex items-start gap-4">
-          <div className="shrink-0 mt-0.5">
-            {exporting && progress.status === "running" ? (
-              <Loader2 size={22} className="text-cyan-300 animate-spin" />
-            ) : isDone ? (
-              <CheckCircle2 size={22} className="text-emerald-400" />
-            ) : (
-              <Circle size={22} className="text-white/30" />
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-3 mb-1">
-              <p className="text-sm font-semibold text-white">
-                {isDone
-                  ? "Import zakończony"
-                  : exporting
-                    ? "Import ogłoszeń KEI"
-                    : "Postęp importu"}
-              </p>
-              <span className="text-xs font-bold text-white/50 tabular-nums">{pct}%</span>
-            </div>
-
-            <div className="h-2 rounded-full bg-white/10 overflow-hidden mb-2">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ease-out ${
-                  isDone
-                    ? "bg-emerald-400"
-                    : "bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400"
-                }`}
-                style={{ width: `${Math.max(pct, exporting && progress.items.length === 0 ? 4 : 0)}%` }}
-              />
-            </div>
-
-            <p className="text-xs text-white/55 truncate">
-              {activeItem?.stepLabel ||
-                progress.message ||
-                (exporting ? "Łączenie z serwerem…" : "Oczekiwanie")}
+    <div className="rounded-[28px] border border-white/12 bg-gradient-to-b from-white/[0.04] to-black/50 overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.1)]">
+      <div className="px-5 py-4 border-b border-white/10 bg-black/20 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          {exporting ? (
+            <Loader2 size={22} className="text-cyan-300 animate-spin shrink-0" />
+          ) : isComplete ? (
+            <CheckCircle2 size={22} className="text-emerald-400 shrink-0" />
+          ) : (
+            <Circle size={22} className="text-white/30 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-white">
+              {isComplete ? "Import zakończony" : "Import ogłoszeń — postęp na żywo"}
             </p>
-            {activeItem?.stepDetail ? (
-              <p className="text-[11px] text-white/40 truncate mt-0.5">{activeItem.stepDetail}</p>
-            ) : null}
-            {activeItem?.imageProgress ? (
-              <p className="text-[11px] text-cyan-300/85 mt-1">
-                {activeItem.imageProgress.label}
-                {activeItem.imageProgress.asFloorPlan ? " · zapisuję jako rzut lokalu" : ""}
-              </p>
-            ) : null}
-
-            <p className="text-[10px] text-white/35 mt-1.5 uppercase tracking-wider font-bold">
-              {doneCount} / {progress.total || "—"} ogłoszeń
+            <p className="text-[11px] text-white/45 mt-0.5">
+              {doneCount} / {progress.total} ukończonych · ogółem {overallPct}%
             </p>
           </div>
-
-          {isDone ? (
-            <button
-              type="button"
-              onClick={props.onDismiss}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-[10px] font-black uppercase tracking-wider text-white/80"
-            >
-              Zamknij
-            </button>
-          ) : null}
         </div>
+        {isComplete ? (
+          <button
+            type="button"
+            onClick={props.onClear}
+            className="px-3 py-1.5 rounded-xl bg-white/8 hover:bg-white/12 border border-white/10 text-[10px] font-black uppercase tracking-wider text-white/70"
+          >
+            Wyczyść
+          </button>
+        ) : null}
+      </div>
 
-        {progress.items.length > 0 ? (
-          <div className="border-t border-white/10 px-5 py-3 max-h-[160px] overflow-y-auto space-y-2">
-            {progress.items.map((item) => (
-              <div key={`${item.index}-${item.portalUrl}`} className="flex items-center gap-2">
-                {item.status === "done" ? (
-                  <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
-                ) : item.status === "active" ? (
-                  <Loader2 size={14} className="text-cyan-300 animate-spin shrink-0" />
-                ) : item.status === "skipped" ? (
-                  <Circle size={14} className="text-amber-400/80 shrink-0" />
-                ) : (
-                  <Circle size={14} className="text-white/20 shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-white/75 truncate">
-                    #{item.index + 1}
-                    {item.offerId ? ` · oferta #${item.offerId}` : ""}
-                    {item.status === "skipped" ? ` · ${item.reason}` : ""}
+      <div className="p-4 space-y-3 max-h-[min(70vh,640px)] overflow-y-auto">
+        {progress.items.map((item) => {
+          const pct = computeItemPercent(item);
+          const isActive = item.status === "active";
+          const isDone = item.status === "done";
+          const isSkipped = item.status === "skipped";
+
+          return (
+            <div
+              key={`${item.index}-${item.portalUrl}`}
+              className={`rounded-[22px] border p-4 transition-all duration-300 ${
+                isActive
+                  ? "border-cyan-400/35 bg-gradient-to-br from-cyan-500/[0.12] via-black/40 to-black/60 shadow-[0_8px_32px_rgba(34,211,238,0.15),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                  : isDone
+                    ? "border-emerald-400/25 bg-gradient-to-br from-emerald-500/[0.08] to-black/50 shadow-[0_4px_24px_rgba(16,185,129,0.12)]"
+                    : isSkipped
+                      ? "border-amber-400/20 bg-amber-500/[0.04]"
+                      : "border-white/8 bg-black/30 opacity-70"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-white/40 mb-1">
+                    Ogłoszenie {item.index + 1}
+                    {item.offerId ? ` · #${item.offerId}` : ""}
                   </p>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <p className="text-sm font-semibold text-white truncate">
+                    {item.address || item.portalUrl}
+                  </p>
+                  {isActive ? (
+                    <p className="text-xs text-cyan-200/90 mt-1 truncate">{item.stepLabel}</p>
+                  ) : isDone ? (
+                    <p className="text-xs text-emerald-300/90 mt-1">Zaimportowano pomyślnie</p>
+                  ) : isSkipped ? (
+                    <p className="text-xs text-amber-300/90 mt-1">{item.reason || "Pominięto"}</p>
+                  ) : (
+                    <p className="text-xs text-white/40 mt-1">Oczekuje w kolejce…</p>
+                  )}
+                  {item.stepDetail && isActive ? (
+                    <p className="text-[11px] text-white/45 mt-0.5 truncate">{item.stepDetail}</p>
+                  ) : null}
+                  {item.imageProgress && isActive ? (
+                    <p className="text-[11px] text-cyan-300/80 mt-1">
+                      {item.imageProgress.label}
+                      {item.imageProgress.asFloorPlan ? " · zapis jako rzut lokalu" : ""}
+                    </p>
+                  ) : null}
+                </div>
+                <span
+                  className={`shrink-0 tabular-nums text-lg font-black ${
+                    isDone ? "text-emerald-400" : isActive ? "text-cyan-300" : "text-white/35"
+                  }`}
+                >
+                  {pct}%
+                </span>
+              </div>
+
+              {!isDone && !isSkipped ? (
+                <>
+                  <div className="h-2.5 rounded-full bg-black/50 border border-white/10 overflow-hidden shadow-inner mb-3">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ease-out ${
+                        isActive
+                          ? "bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 shadow-[0_0_12px_rgba(34,211,238,0.5)]"
+                          : "bg-white/15"
+                      }`}
+                      style={{ width: `${Math.max(pct, isActive ? 3 : 0)}%` }}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
                     {STEP_ORDER.map((step) => {
                       const done = item.completedSteps.includes(step);
-                      const current = item.status === "active" && item.currentStep === step;
+                      const current = isActive && item.currentStep === step;
                       return (
                         <span
                           key={step}
-                          className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase ${
+                          className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border ${
                             done
-                              ? "bg-emerald-500/20 text-emerald-300"
+                              ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
                               : current
-                                ? "bg-cyan-500/20 text-cyan-200"
-                                : "bg-white/5 text-white/25"
+                                ? "bg-cyan-500/20 border-cyan-400/40 text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.2)]"
+                                : "bg-white/[0.03] border-white/8 text-white/25"
                           }`}
                         >
                           {STEP_LABELS[step]}
@@ -322,11 +350,42 @@ function ImportProgressDock(props: {
                       );
                     })}
                   </div>
+                </>
+              ) : isDone ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {item.publicUrl ? (
+                    <a
+                      href={item.publicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500/15 border border-blue-400/35 text-[11px] font-black uppercase tracking-wider text-blue-200 hover:bg-blue-500/25 shadow-[0_4px_16px_rgba(59,130,246,0.2)] transition-colors"
+                    >
+                      <Eye size={14} /> Podgląd
+                    </a>
+                  ) : null}
+                  {item.editUrl ? (
+                    <a
+                      href={item.editUrl}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-[11px] font-black uppercase tracking-wider text-white hover:bg-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25)] transition-colors"
+                    >
+                      <Pencil size={14} /> Edytuj
+                    </a>
+                  ) : null}
+                  {item.portalUrl ? (
+                    <a
+                      href={item.portalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-[11px] font-black uppercase tracking-wider text-white/75 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <ExternalLink size={14} /> Pokaż oryginał
+                    </a>
+                  ) : null}
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -438,6 +497,7 @@ export default function KeiAmerWorkspace() {
   const [selectedMeta, setSelectedMeta] = useState<Map<string, SelectedListingMeta>>(new Map());
   const [floorPlanOverrides, setFloorPlanOverrides] = useState<Record<string, boolean>>({});
   const [lastImagePeeks, setLastImagePeeks] = useState<Record<string, LastImagePeek>>({});
+  const [expandedImported, setExpandedImported] = useState<Set<string>>(new Set());
   const [importProgress, setImportProgress] = useState<ImportProgressState>({
     visible: false,
     status: "idle",
@@ -748,7 +808,10 @@ export default function KeiAmerWorkspace() {
         status: "running",
         total,
         message: "",
-        items: [],
+        items:
+          prev.items.length > 0
+            ? prev.items
+            : [],
       }));
       return;
     }
@@ -767,20 +830,23 @@ export default function KeiAmerWorkspace() {
       const index = Number(payload.index) || 0;
       setImportProgress((prev) => {
         const items = [...prev.items];
-        const existing = items.find((i) => i.index === index);
-        if (!existing) {
-          items.push({
-            index,
-            keiListingId: String(payload.keiListingId || ""),
-            portalUrl: String(payload.portalUrl || ""),
-            status: "active",
-            completedSteps: [],
-            currentStep: null,
-            stepLabel: "Rozpoczynanie importu…",
-          });
+        const existingIdx = items.findIndex((i) => i.index === index);
+        const base = {
+          index,
+          keiListingId: String(payload.keiListingId || ""),
+          portalUrl: String(payload.portalUrl || ""),
+          address: payload.address ? String(payload.address) : undefined,
+          status: "active" as const,
+          completedSteps: [] as ImportStepId[],
+          currentStep: null,
+          stepLabel: "Rozpoczynanie importu…",
+        };
+        if (existingIdx >= 0) {
+          items[existingIdx] = { ...items[existingIdx], ...base, address: base.address || items[existingIdx].address };
         } else {
-          existing.status = "active";
+          items.push(base);
         }
+        items.sort((a, b) => a.index - b.index);
         return { ...prev, items };
       });
       return;
@@ -805,6 +871,7 @@ export default function KeiAmerWorkspace() {
             completedSteps,
             stepLabel: String(payload.label || item.stepLabel),
             stepDetail: payload.detail ? String(payload.detail) : item.stepDetail,
+            aiRewrite: payload.detail === "AI ✓" ? true : item.aiRewrite,
           };
         });
         return { ...prev, items };
@@ -846,6 +913,8 @@ export default function KeiAmerWorkspace() {
                 completedSteps: [...STEP_ORDER],
                 currentStep: null,
                 offerId: Number(payload.offerId) || item.offerId,
+                publicUrl: String(payload.publicUrl || item.publicUrl || ""),
+                editUrl: String(payload.editUrl || item.editUrl || ""),
                 stepLabel: "Zaimportowano",
               },
         ),
@@ -936,12 +1005,23 @@ export default function KeiAmerWorkspace() {
       overrides[portalUrl] = resolveFloorPlan(portalUrl);
     }
 
+    const queueItems: ItemProgress[] = selections.map((sel, index) => ({
+      index,
+      keiListingId: sel.keiId,
+      portalUrl: sel.portalUrl,
+      address: selectedMeta.get(sel.keiId)?.address || sel.portalUrl,
+      status: "pending",
+      completedSteps: [],
+      currentStep: null,
+      stepLabel: "Oczekuje w kolejce…",
+    }));
+
     setImportProgress({
       visible: true,
       status: "running",
       total: selections.length,
       message: "Łączenie z serwerem…",
-      items: [],
+      items: queueItems,
     });
     setExportState({
       loading: true,
@@ -1047,6 +1127,15 @@ export default function KeiAmerWorkspace() {
     return Array.from(selectedMeta.values());
   }, [selectedMeta]);
 
+  const toggleImportedExpand = (keiId: string) => {
+    setExpandedImported((prev) => {
+      const next = new Set(prev);
+      if (next.has(keiId)) next.delete(keiId);
+      else next.add(keiId);
+      return next;
+    });
+  };
+
   const dismissImportProgress = () => {
     setImportProgress({
       visible: false,
@@ -1058,8 +1147,7 @@ export default function KeiAmerWorkspace() {
   };
 
   return (
-    <>
-    <div className={`mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative ${exportState.loading || importProgress.visible ? "pb-8" : ""}`}>
+    <div className="mt-10 bg-[#0a0a0a] border border-white/5 rounded-[40px] p-6 md:p-8 shadow-2xl relative">
       <div className="absolute top-0 right-0 w-72 h-72 bg-cyan-500/5 blur-[120px] rounded-full pointer-events-none" />
 
       <div className="relative z-10 flex flex-col gap-6">
@@ -1207,58 +1295,21 @@ export default function KeiAmerWorkspace() {
           </p>
         ) : null}
 
-        {exportState.message && importProgress.status !== "running" ? (
-          <div className="space-y-3">
-            <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3 text-sm">
-              {exportState.message}
-              {exportState.skippedCount > 0 ? (
-                <span className="block mt-1 text-emerald-200/70 text-xs">
-                  Pominięto {exportState.skippedCount} ogłoszeń (już w bazie lub błąd importu).
-                </span>
-              ) : null}
-            </p>
+        <ImportOfferQueue
+          progress={importProgress}
+          exporting={exportState.loading}
+          onClear={dismissImportProgress}
+        />
 
-            {exportState.items.length > 0 ? (
-              <div className="space-y-2">
-                {exportState.items.map((item) => (
-                  <div
-                    key={item.offerId}
-                    className="flex flex-wrap gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/10"
-                  >
-                    <span className="text-xs font-bold text-white/70 self-center">#{item.offerId}</span>
-                    {item.portalUrl ? (
-                      <a
-                        href={item.portalUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-wider text-white/80 hover:text-white"
-                      >
-                        Portal <ExternalLink size={12} />
-                      </a>
-                    ) : null}
-                    {item.publicUrl ? (
-                      <a
-                        href={item.publicUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/15 border border-blue-400/30 text-[10px] font-bold uppercase tracking-wider text-blue-300 hover:bg-blue-500/25"
-                      >
-                        Oferta <ExternalLink size={12} />
-                      </a>
-                    ) : null}
-                    {item.editUrl ? (
-                      <a
-                        href={item.editUrl}
-                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 border border-white/15 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-white/15"
-                      >
-                        Edytuj <ExternalLink size={12} />
-                      </a>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+        {exportState.message && importProgress.status === "done" && !exportState.loading ? (
+          <p className="text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-4 py-3 text-sm">
+            {exportState.message}
+            {exportState.skippedCount > 0 ? (
+              <span className="block mt-1 text-emerald-200/70 text-xs">
+                Pominięto {exportState.skippedCount} ogłoszeń (już w bazie lub błąd importu).
+              </span>
             ) : null}
-          </div>
+          </p>
         ) : null}
 
         <div className="rounded-[28px] border border-white/10 bg-white/[0.02]">
@@ -1299,18 +1350,51 @@ export default function KeiAmerWorkspace() {
               {preview.listings.map((item) => {
                 const isSelected = selectedMap.has(item.keiId);
                 const disabled = item.alreadyImported;
+                const isExpanded = expandedImported.has(item.keiId);
+
+                if (disabled && !isExpanded) {
+                  return (
+                    <button
+                      key={item.keiId}
+                      type="button"
+                      onClick={() => toggleImportedExpand(item.keiId)}
+                      className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-white/[0.03] transition-colors opacity-55"
+                    >
+                      <ChevronRight size={14} className="text-white/35 shrink-0" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-amber-300/80 shrink-0">
+                        w bazie #{item.existingOfferId}
+                      </span>
+                      <span className="text-xs text-white/55 truncate flex-1">
+                        {item.address || "Brak adresu"}
+                      </span>
+                      <span className="text-[10px] text-white/30 shrink-0 hidden sm:inline">
+                        {item.price || "—"}
+                      </span>
+                    </button>
+                  );
+                }
 
                 return (
                   <div
                     key={item.keiId}
                     className={`px-3 py-2.5 ${
                       disabled
-                        ? "opacity-60"
+                        ? "opacity-60 bg-white/[0.02]"
                         : isSelected
                           ? "bg-emerald-500/[0.07]"
                           : "hover:bg-white/[0.03]"
                     }`}
                   >
+                    {disabled ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleImportedExpand(item.keiId)}
+                        className="flex items-center gap-2 mb-2 text-[10px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60"
+                      >
+                        <ChevronDown size={14} />
+                        Zwiń zaimportowane
+                      </button>
+                    ) : null}
                     <div className="flex items-center gap-3">
                     <button
                       type="button"
@@ -1387,11 +1471,5 @@ export default function KeiAmerWorkspace() {
         </div>
       </div>
     </div>
-    <ImportProgressDock
-      progress={importProgress}
-      exporting={exportState.loading}
-      onDismiss={dismissImportProgress}
-    />
-    </>
   );
 }

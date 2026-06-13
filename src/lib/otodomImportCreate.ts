@@ -355,7 +355,7 @@ export async function createOfferFromOtodomDraft(
     maxImportImages?: number;
     lastImageFloorPlan?: boolean;
     onImageProgress?: (progress: ImportImageProgress) => void;
-    onCopyProgress?: (label: string, detail?: string) => void;
+    onCopyProgress?: (label: string, detail?: string, meta?: { rewrittenByAi?: boolean }) => void;
   },
 ) {
   const existing = await findExistingImportedOffer(draft);
@@ -369,12 +369,14 @@ export async function createOfferFromOtodomDraft(
   }
 
   options?.onCopyProgress?.(
-    'Przeróbka opisu ogłoszenia…',
-    isOtodomImportAiConfigured() ? 'AI' : 'reguły',
+    'Przeróbka opisu (sztuczna inteligencja)…',
+    isOtodomImportAiConfigured() ? 'GPT' : 'reguły',
   );
   const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
   options?.onCopyProgress?.(
-    presentation.rewrittenByAi ? 'Opis przygotowany przez AI' : 'Opis przygotowany automatycznie',
+    presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis wygenerowany automatycznie',
+    presentation.rewrittenByAi ? 'AI' : 'reguły',
+    { rewrittenByAi: presentation.rewrittenByAi },
   );
   const body = await draftToOfferCreateBody(draft, ownerUserId, presentation, options);
   const offer = await createOffer(body);
