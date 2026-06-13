@@ -375,9 +375,10 @@ export async function createOfferFromOtodomDraft(
   const presentation = await buildOtodomPresentationCopy(draft, { agentVoice: true });
   const detail = presentation.rewrittenByAi
     ? 'AI ✓'
-    : presentation.aiSkipReason
-      ? `reguły · ${presentation.aiSkipReason}`
-      : 'reguły · treść ze źródła';
+    : 'automatycznie';
+  if (!presentation.rewrittenByAi && presentation.aiSkipReason) {
+    console.warn('[otodom-import] copy fallback:', presentation.aiSkipReason);
+  }
   options?.onCopyProgress?.(
     presentation.rewrittenByAi ? 'Opis przepisany przez AI' : 'Opis uzupełniony automatycznie',
     detail,
