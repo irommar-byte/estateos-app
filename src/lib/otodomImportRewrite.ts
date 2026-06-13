@@ -74,6 +74,8 @@ function sanitizePortalListingText(text: string): string {
   }
   return out
     .replace(/\(\s*\)/g, '')
+    .replace(/\s+\./g, '.')
+    .replace(/\.\s*\./g, '.')
     .replace(/\s{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -100,6 +102,39 @@ function splitParagraphs(text: string): string[] {
     .filter((p) => !isJunkParagraph(p))
     .filter((p) => !/^(otodom|olx|www\.|http)/i.test(p))
     .slice(0, 12);
+}
+
+function mergeRoomListParagraphs(paragraphs: string[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < paragraphs.length) {
+    const current = paragraphs[i];
+    const isIntro = /wchodzi\s*:?\s*$/i.test(current) || /skład\s+mieszkania/i.test(current);
+    if (isIntro) {
+      const items: string[] = [];
+      let j = i + 1;
+      while (j < paragraphs.length && isRoomListLine(paragraphs[j])) {
+        items.push(paragraphs[j].replace(/,\s*$/, ''));
+        j += 1;
+      }
+      if (items.length >= 2) {
+        out.push(`${current.replace(/\s*:?\s*$/, '')}:`);
+        out.push(items.join('\n'));
+        i = j;
+        continue;
+      }
+    }
+    out.push(current);
+    i += 1;
+  }
+  return out;
+}
+
+function isRoomListLine(text: string): boolean {
+  return (
+    /\d+[,.]?\d*\s*m²/i.test(text) ||
+    /^(pokój|kuchnia|łazienka|przedpokój|salon|sypialnia|balkon|taras|garaż)/i.test(text)
+  );
 }
 
 function splitListBlock(text: string): { intro?: string; items: string[]; outro?: string } | null {
@@ -246,7 +281,7 @@ function buildHeuristicDescriptionHtml(
   }
 
   if (paragraphs.length > 0) {
-    for (const paragraph of paragraphs) {
+    for (const paragraph of mergeRoomListParagraphs(paragraphs)) {
       htmlParts.push(paragraphToHtml(paragraph));
     }
   } else {
