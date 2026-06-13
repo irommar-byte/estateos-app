@@ -1,10 +1,11 @@
 import type { OtodomImportDraft } from '@/lib/otodomImport';
+import { normalizeImportPortalUrl, sanitizeImportYearBuilt } from '@/lib/otodomImport';
 import { assertOtodomImportDraftReady } from '@/lib/importDraftValidate';
 import { resolveOtodomImportLocationFields } from '@/lib/location/resolveOfferLocationFromCoordinates';
 import { processOtodomImportImageBuffer } from '@/lib/otodomImportImageProcess';
 import { buildOtodomPresentationCopy } from '@/lib/otodomImportRewrite';
 import { inferCountryFromCoordinates } from '@/lib/offerLocalityCountry';
-import { upsertImportedOfferPrivateSnapshot } from '@/lib/offerPrivateNotes';
+import { upsertImportedOfferPrivateSnapshot, ensureOfferPrivateNoteTable } from '@/lib/offerPrivateNotes';
 import {
   consumeAndReserveImportPublication,
   deleteOfferAfterImportPaymentFailure,
@@ -63,6 +64,52 @@ export async function findExistingOtodomImportOffer(source: OtodomImportDraft['s
   });
 }
 
+function portalUrlLookupCandidates(portalUrl: string): string[] {
+  let normalized = portalUrl.trim();
+  try {
+    normalized = normalizeImportPortalUrl(portalUrl);
+  } catch {
+    // keep raw trimmed URL
+  }
+  const withoutSlash = normalized.replace(/\/$/, '');
+  const withSlash = `${withoutSlash}/`;
+  return Array.from(new Set([normalized, withoutSlash, withSlash, portalUrl.trim()]));
+}
+
+export async function findExistingOfferByImportUrl(portalUrl: string) {
+  const candidates = portalUrlLookupCandidates(portalUrl);
+  if (candidates.length === 0) return null;
+
+  await ensureOfferPrivateNoteTable();
+  const placeholders = candidates.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
+    `SELECT offerId FROM OfferPrivateNote WHERE importExternalUrl IN (${placeholders}) LIMIT 1`,
+    ...candidates,
+  );
+  const offerId = Number(rows[0]?.offerId);
+  if (!Number.isFinite(offerId) || offerId <= 0) return null;
+
+  return prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { id: true, title: true, status: true },
+  });
+}
+
+export async function findExistingImportedOffer(
+  draft: Pick<OtodomImportDraft, 'source' | 'externalId' | 'externalUrl'>,
+) {
+  const byMarker = await findExistingOtodomImportOffer(draft.source, draft.externalId);
+  if (byMarker) return byMarker;
+  if (draft.externalUrl) {
+    return findExistingOfferByImportUrl(draft.externalUrl);
+  }
+  return null;
+}
+
+export async function findExistingImportedOfferByPortalUrl(portalUrl: string) {
+  return findExistingOfferByImportUrl(portalUrl);
+}
+
 export async function draftToOfferCreateBody(
   draft: OtodomImportDraft,
   userId: number,
@@ -91,7 +138,7 @@ export async function draftToOfferCreateBody(
     rooms: draft.rooms,
     floor: draft.floor,
     totalFloors: draft.totalFloors,
-    yearBuilt: draft.yearBuilt,
+    yearBuilt: sanitizeImportYearBuilt(draft.yearBuilt),
     city,
     district,
     street: street || draft.street,
@@ -162,11 +209,13 @@ export async function importOtodomImagesForOffer(params: {
   ownerUserId: number;
   imageUrls: string[];
   source: OtodomImportDraft['source'];
+  maxImages?: number;
 }): Promise<{ uploaded: number; failed: number; urls: string[] }> {
   const urls: string[] = [];
   let uploaded = 0;
   let failed = 0;
-  const toFetch = params.imageUrls.slice(0, MAX_IMPORT_IMAGES);
+  const cap = Math.min(params.maxImages ?? MAX_IMPORT_IMAGES, MAX_IMPORT_IMAGES);
+  const toFetch = params.imageUrls.slice(0, cap);
 
   await acquireOfferUploadLock(params.offerId);
   try {
@@ -215,9 +264,9 @@ export async function createOfferFromOtodomDraft(
   draft: OtodomImportDraft,
   ownerUserId: number,
   publication?: OtodomPublicationInput | unknown,
-  options?: { agentCommissionPercent?: number | null },
+  options?: { agentCommissionPercent?: number | null; maxImportImages?: number },
 ) {
-  const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
+  const existing = await findExistingImportedOffer(draft);
   if (existing) {
     return {
       ok: false as const,
@@ -246,6 +295,7 @@ export async function createOfferFromOtodomDraft(
     ownerUserId: ownerUserId,
     imageUrls: draft.imageUrls,
     source: draft.source,
+    maxImages: options?.maxImportImages,
   });
 
   const refreshed = await prisma.offer.findUnique({

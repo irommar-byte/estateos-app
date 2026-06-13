@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
-import { createOfferFromOtodomDraft, findExistingOtodomImportOffer } from '@/lib/otodomImportCreate';
+import { createOfferFromOtodomDraft, findExistingImportedOffer, findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
 import { activateOfferPublication } from '@/lib/offerPublication';
 import {
   findWarsawPortalListings,
@@ -14,6 +14,7 @@ const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
 const DEFAULT_EXPORT_COUNT = 1;
 const MAX_EXPORT_COUNT = 25;
+const KEI_MAX_IMPORT_IMAGES = 8;
 
 function resolveExportUserId(raw?: unknown): number {
   const fromEnv = Number(process.env.KEI_AMER_EXPORT_USER_ID);
@@ -123,8 +124,19 @@ export async function exportKeiListingsToEstateOS(options?: {
     }
 
     try {
+      const existingByUrl = await findExistingImportedOfferByPortalUrl(portalUrl);
+      if (existingByUrl) {
+        skipped.push({
+          keiListingId: listing.id,
+          portalUrl,
+          reason: 'Już zaimportowane (URL) — pominięto.',
+          existingOfferId: existingByUrl.id,
+        });
+        continue;
+      }
+
       const draft = await importOfferFromUrl(portalUrl);
-      const existing = await findExistingOtodomImportOffer(draft.source, draft.externalId);
+      const existing = await findExistingImportedOffer(draft);
       if (existing) {
         skipped.push({
           keiListingId: listing.id,
@@ -137,6 +149,7 @@ export async function exportKeiListingsToEstateOS(options?: {
 
       const created = await createOfferFromOtodomDraft(draft, targetUserId, undefined, {
         agentCommissionPercent,
+        maxImportImages: KEI_MAX_IMPORT_IMAGES,
       });
 
       if (!created.ok) {
