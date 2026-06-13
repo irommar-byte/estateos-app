@@ -305,7 +305,9 @@ export async function importOtodomImagesForOffer(params: {
       } else {
         let processedBuffer: Buffer;
         try {
-          processedBuffer = await processOtodomImportImageBuffer(file.buffer, galleryUrls.length);
+          processedBuffer = await processOtodomImportImageBuffer(file.buffer, galleryUrls.length, {
+            isFloorPlan: true,
+          });
         } catch {
           processedBuffer = file.buffer;
         }
